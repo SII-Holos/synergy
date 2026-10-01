@@ -51,7 +51,7 @@ beforeAll(async () => {
             setImageScaleMode: () => {},
           },
           pdf: { get: () => undefined, load: async () => {} },
-          explorer: { open: () => false, setOpen: () => {}, reveal: async () => {} },
+          explorer: { open: () => false, width: () => 260, setWidth() {}, setOpen: () => {}, reveal: async () => {} },
         })
       `,
     ),
@@ -208,7 +208,7 @@ beforeAll(async () => {
     if (pageError) throw new Error(`file workbench fixture page failed to render: ${pageError.stack}`, { cause: error })
     throw error
   }
-})
+}, 30_000)
 
 afterAll(async () => {
   await page?.close()

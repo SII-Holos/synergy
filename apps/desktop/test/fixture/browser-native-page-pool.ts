@@ -190,7 +190,7 @@ async function run() {
     }
     const manager = new BrowserNativeViewManager(window, pool, () => {})
     const request = {
-      protocolVersion: 4 as const,
+      protocolVersion: 5 as const,
       ownerKey: secondInput.ownerKey,
       pageId: secondInput.page.id,
       bounds: { x: 0, y: 0, width: 600, height: 400 },

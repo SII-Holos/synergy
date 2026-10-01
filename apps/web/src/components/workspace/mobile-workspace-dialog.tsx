@@ -3,7 +3,6 @@ import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useLingui } from "@lingui/solid"
 import { workspace as W } from "@/locales/messages"
-import { WorkspaceMobileHeader } from "./mobile-header"
 import "./mobile-workspace-dialog.css"
 
 export function MobileWorkspaceDialog(props: ParentProps<{ onClose: () => void }>) {
@@ -15,7 +14,6 @@ export function MobileWorkspaceDialog(props: ParentProps<{ onClose: () => void }
     id = dialog.push(
       () => (
         <Dialog ariaLabel={_(W.mobileHeader)} class="mobile-workspace-dialog">
-          <WorkspaceMobileHeader onClose={() => dialog.close(id)} />
           <div class="mobile-workbench-overlay relative flex-1 min-h-0">{props.children}</div>
         </Dialog>
       ),

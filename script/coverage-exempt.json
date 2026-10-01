@@ -755,8 +755,8 @@
           "reason": "workspace/browser surfaces require a live runtime"
         },
         {
-          "glob": "src/components/workspace/browser/browser-view-effects.tsx",
-          "reason": "workspace/browser surfaces require a live runtime"
+          "glob": "src/components/workspace/workspace-output-effects.tsx",
+          "reason": "Live task output presentation is verified by the workbench acceptance fixture; the finite reveal policy is measured in test/context/workbench/reveal-policy.test.ts"
         },
         {
           "glob": "src/components/workspace/browser/browser-workbench-sync.tsx",

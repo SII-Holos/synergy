@@ -15,6 +15,8 @@ const playwrightIsolated = [
   "test/components/session/workbench-layout.dom.test.tsx",
 
   "test/components/workspace/builtin-workbench-panels.test.ts",
+  "test/components/workspace/workspace-output-effects.test.ts",
+  "test/components/note/documents.test.ts",
   "test/components/workspace/browser/browser-draft.test.ts",
   "test/components/workspace/browser/browser-ws-reconnect.test.ts",
   "test/components/sidebar/sidebar-collections.dom.test.tsx",
@@ -117,6 +119,8 @@ await runBatchedTests({
     "test/components/note/document-editor-core.test.ts",
     "test/components/terminal/dispose-reentrancy.test.ts",
     "test/components/workspace/builtin-workbench-panels.test.ts",
+    "test/components/workspace/workspace-output-effects.test.ts",
+    "test/components/note/documents.test.ts",
     "test/context/font-preference-provider.test.ts",
     "test/context/layout/completion-notice.test.ts",
     "test/pages/fatal-error.test.tsx",

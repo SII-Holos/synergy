@@ -1,5 +1,16 @@
 import { useExtensionOutlet } from "@ericsanchezok/synergy-ui/context/extension-outlet"
-import { ErrorBoundary, For, Show, Suspense, createEffect, createMemo, on, onCleanup, onMount } from "solid-js"
+import {
+  ErrorBoundary,
+  For,
+  Show,
+  Suspense,
+  createEffect,
+  createMemo,
+  createSignal,
+  on,
+  onCleanup,
+  onMount,
+} from "solid-js"
 import { Trans, useLingui } from "@lingui/solid"
 import type { Component } from "solid-js"
 import { createStore } from "solid-js/store"
@@ -17,7 +28,7 @@ import {
   isWorkbenchPanelLaunchable,
   workbenchPanelMountKey,
 } from "@/context/workbench/panel-model"
-import { WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
+import { WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH, workspacePresentation } from "@/context/layout/workspace"
 import { useLayout } from "@/context/layout"
 import type {
   WorkbenchPanelContentProps,
@@ -146,10 +157,14 @@ function WorkbenchSortableTab(props: {
   const lingui = useLingui()
   const sortable = createSortable(props.tab.id)
   let main!: HTMLButtonElement
-  createEffect(() => {
-    if (!props.active) return
-    main?.scrollIntoView({ block: "nearest", inline: "nearest" })
-  })
+  createEffect(
+    on(
+      () => props.active,
+      (active) => {
+        if (active) main?.scrollIntoView({ block: "nearest", inline: "nearest" })
+      },
+    ),
+  )
   const currentIndex = () => props.tabs.findIndex((tab) => tab.id === props.tab.id)
   return (
     <div
@@ -329,7 +344,7 @@ function Launcher(props: {
   )
 }
 
-export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
+export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalHost?: boolean }) {
   useExtensionOutlet(`workbench.${props.surface}`)
   const lingui = useLingui()
   const dialog = useDialog()
@@ -373,10 +388,24 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
     actionsOpen: false,
     menuTabId: undefined as string | undefined,
     resizing: false,
+    initialized: false,
   })
   let tabRun: HTMLDivElement | undefined
   let root: HTMLDivElement | undefined
   let returnFocus: HTMLElement | undefined
+  const visited = new Set<string>()
+  const [visitedVersion, setVisitedVersion] = createSignal(0)
+  createEffect(() => {
+    const id = panelMountKey()
+    if (state().opened() && id && !visited.has(id)) {
+      visited.add(id)
+      setVisitedVersion((value) => value + 1)
+    }
+  })
+  createEffect(() => {
+    if (!state().opened() || activePanel() || !workbench.getPanel("resource-home")) return
+    void workbench.openPanel(workbench.getPanel("browser") ? "browser" : "resource-home", { intent: "restore" })
+  })
   createEffect(
     on(
       () => state().opened(),
@@ -386,7 +415,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
           if (active instanceof HTMLElement && !root?.contains(active)) returnFocus = active
           return
         }
-        if (root?.contains(active) && returnFocus?.isConnected) returnFocus.focus()
+        if (root?.contains(active) && returnFocus?.isConnected) queueMicrotask(() => returnFocus?.focus())
       },
     ),
   )
@@ -414,6 +443,34 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
   onMount(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return
+      if (
+        event.key === "Tab" &&
+        isSide() &&
+        state().opened() &&
+        presentation().overlay &&
+        root?.contains(event.target as Node) &&
+        !dialog.active &&
+        !local.addOpen &&
+        !local.actionsOpen &&
+        !local.menuTabId
+      ) {
+        const focusable = [
+          ...root.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex], [contenteditable="true"]',
+          ),
+        ].filter(
+          (element) =>
+            element.tabIndex >= 0 &&
+            element.getClientRects().length &&
+            !element.closest('[inert], [aria-hidden="true"]'),
+        )
+        const index = focusable.indexOf(document.activeElement as HTMLElement)
+        if ((event.shiftKey && index <= 0) || (!event.shiftKey && index === focusable.length - 1)) {
+          event.preventDefault()
+          focusable[event.shiftKey ? focusable.length - 1 : 0]?.focus()
+        }
+        return
+      }
       const action = resolveWorkbenchEscapeAction({
         key: event.key,
         opened: state().opened(),
@@ -454,6 +511,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
     if (container) observer?.observe(container)
     window.addEventListener("resize", measure)
     measure()
+    requestAnimationFrame(() => setLocal("initialized", true))
     onCleanup(() => {
       observer?.disconnect()
       window.removeEventListener("resize", measure)
@@ -464,7 +522,25 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
     return Math.max(0, width - WORKSPACE_SESSION_MIN_WIDTH)
   }
   const maxBottomHeight = () => Math.max(0, available.height * 0.6)
-  const displaySize = () => Math.min(size(), isSide() ? maxSideWidth() : maxBottomHeight())
+  const presentation = createMemo(() =>
+    workspacePresentation(
+      available.width - (available.container ? 0 : layout.sidebar.occupiedWidth()),
+      size(),
+      state().fullscreen(),
+    ),
+  )
+  const displaySize = () => (isSide() ? presentation().width : Math.min(size(), maxBottomHeight()))
+  createEffect(() => {
+    if (!isSide() || !root) return
+    const pane = root.closest('[data-ui-part="session"]')?.querySelector<HTMLElement>(".session-workbench-pane")
+    if (!pane || !state().opened() || !presentation().overlay) return
+    const wasInert = pane.inert
+    pane.inert = true
+    if (pane.contains(document.activeElement)) root.querySelector<HTMLButtonElement>("button")?.focus()
+    onCleanup(() => {
+      pane.inert = wasInert
+    })
+  })
 
   const rootStyle = () =>
     isSide()
@@ -493,33 +569,45 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
       ref={root}
       inert={!state().opened() || displaySize() === 0}
       aria-hidden={!state().opened() || displaySize() === 0}
+      onPointerDown={() => workbench.interact()}
+      onKeyDown={(event) => {
+        if (event.key !== "Tab") workbench.interact()
+      }}
       data-ui-part="resource-panel"
+      data-workspace-width={displaySize()}
+      role={!props.modalHost && isSide() && state().opened() && presentation().overlay ? "dialog" : undefined}
+      aria-modal={!props.modalHost && isSide() && state().opened() && presentation().overlay ? true : undefined}
+      aria-label={!props.modalHost && isSide() && presentation().overlay ? lingui._(W.sideWorkspace) : undefined}
       class="workbench-surface"
       classList={{
         "workbench-surface--side": isSide(),
         "workbench-surface--bottom": !isSide(),
         "workbench-surface--open": state().opened(),
         "workbench-surface--resizing": local.resizing,
+        "workbench-surface--overlay": isSide() && state().opened() && presentation().overlay,
+        "workbench-surface--initialized": local.initialized,
       }}
       style={rootStyle()}
     >
-      <ResizeHandle
-        direction={isSide() ? "horizontal" : "vertical"}
-        edge="start"
-        aria-label={
-          isSide()
-            ? lingui._({ id: W.resizeSide.id, message: W.resizeSide.message })
-            : lingui._({ id: W.resizeBottom.id, message: W.resizeBottom.message })
-        }
-        size={displaySize()}
-        min={Math.min(isSide() ? WORKSPACE_MIN_WIDTH : 120, isSide() ? maxSideWidth() : maxBottomHeight())}
-        max={isSide() ? maxSideWidth() : maxBottomHeight()}
-        collapseThreshold={isSide() ? 200 : 50}
-        onResize={state().setSize}
-        onResizeStart={() => setLocal("resizing", true)}
-        onResizeEnd={() => setLocal("resizing", false)}
-        onCollapse={state().close}
-      />
+      <Show when={!isSide() || !presentation().overlay}>
+        <ResizeHandle
+          direction={isSide() ? "horizontal" : "vertical"}
+          edge="start"
+          aria-label={
+            isSide()
+              ? lingui._({ id: W.resizeSide.id, message: W.resizeSide.message })
+              : lingui._({ id: W.resizeBottom.id, message: W.resizeBottom.message })
+          }
+          size={displaySize()}
+          min={Math.min(isSide() ? WORKSPACE_MIN_WIDTH : 120, isSide() ? maxSideWidth() : maxBottomHeight())}
+          max={isSide() ? maxSideWidth() : maxBottomHeight()}
+          collapseThreshold={isSide() ? 200 : 50}
+          onResize={state().setSize}
+          onResizeStart={() => setLocal("resizing", true)}
+          onResizeEnd={() => setLocal("resizing", false)}
+          onCollapse={state().close}
+        />
+      </Show>
       <aside
         class="workbench-surface-panel"
         role="complementary"
@@ -529,7 +617,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
             : lingui._({ id: W.bottomWorkspace.id, message: W.bottomWorkspace.message })
         }
       >
-        <Show when={state().tabs().length > 0}>
+        <Show when={state().tabs().length > 0 || isSide()}>
           <div class="workbench-surface-tabs">
             <DragDropProvider onDragEnd={handleDragEnd} collisionDetector={closestCenter}>
               <DragDropSensors />
@@ -562,7 +650,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
                         active={state().active() === tab.id}
                         title={workbench.panelTitle(tab)}
                         entry={workbench.panelForTab(tab)}
-                        onActivate={() => state().setActive(tab.id)}
+                        onActivate={() => workbench.activateTab(props.surface, tab.id)}
                         onClose={() => void workbench.closeTab(tab.id)}
                         onCloseOthers={() => void workbench.closeOtherTabsOnSurface(props.surface, tab.id)}
                         onCloseRight={() => void workbench.closeOtherTabsOnSurface(props.surface, tab.id, "right")}
@@ -596,6 +684,21 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
                       )}
                     >
                       <div class="workbench-surface-add-list" role="menu">
+                        <For each={state().tabs()}>
+                          {(tab) => (
+                            <button
+                              type="button"
+                              role="menuitem"
+                              class="workbench-surface-add-row"
+                              onClick={() => {
+                                workbench.activateTab(props.surface, tab.id)
+                                setLocal("actionsOpen", false)
+                              }}
+                            >
+                              {workbench.panelTitle(tab)}
+                            </button>
+                          )}
+                        </For>
                         <button
                           type="button"
                           class="workbench-surface-add-row"
@@ -611,6 +714,18 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
                     </Popover>
                   </div>
                 </Show>
+                <Show when={isSide()}>
+                  <IconButton
+                    icon={getSemanticIcon("action.add")}
+                    variant="ghost"
+                    aria-label={lingui._({ id: "workspace.tab.new", message: "New resource tab" })}
+                    onClick={() =>
+                      void workbench.openPanel(workbench.getPanel("browser") ? "browser" : "resource-home", {
+                        forceNew: true,
+                      })
+                    }
+                  />
+                </Show>
                 <Show when={addablePanels().length > 0}>
                   <div class="workbench-surface-add-wrap">
                     <Popover
@@ -622,7 +737,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
                       triggerAs={(triggerProps) => (
                         <IconButton
                           {...triggerProps}
-                          icon={getSemanticIcon("action.add")}
+                          icon={getSemanticIcon(isSide() ? "navigation.collapse" : "action.add")}
                           variant="ghost"
                           aria-label={
                             isSide()
@@ -654,11 +769,33 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
                 </Show>
               </div>
             </DragDropProvider>
+            <Show when={isSide()}>
+              <IconButton
+                icon={getSemanticIcon(state().fullscreen() ? "workspace.split" : "workspace.fullscreen")}
+                variant="ghost"
+                aria-label={
+                  state().fullscreen()
+                    ? lingui._({ id: "workspace.fullscreen.exit", message: "Exit fullscreen" })
+                    : lingui._({ id: "workspace.fullscreen.enter", message: "Expand workspace" })
+                }
+                aria-pressed={state().fullscreen()}
+                onClick={() => state().setFullscreen(!state().fullscreen())}
+              />
+              <IconButton
+                icon={getSemanticIcon("app.sideWorkspace")}
+                variant="ghost"
+                onClick={() => state().close()}
+                aria-label={lingui._({ id: "workspace.collapse", message: "Collapse workspace" })}
+              />
+            </Show>
           </div>
         </Show>
         <div class="workbench-surface-body">
           <Show
-            when={panelMountKey()}
+            when={
+              (visitedVersion(),
+              panelMountKey() && (state().opened() || visited.has(panelMountKey()!)) ? panelMountKey() : undefined)
+            }
             keyed
             fallback={<Launcher surface={props.surface} panels={addablePanels()} onOpen={openPanel} />}
           >

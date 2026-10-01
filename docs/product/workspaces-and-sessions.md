@@ -132,7 +132,7 @@ The durable message history remains available. Compaction is a model-context ope
 
 ## Browser Ownership
 
-Desktop Browser pages belong to their task. A task can keep multiple real pages with independent immutable identities; human selection and Agent targets are separate. Persistent identities can reuse website logins across tasks without transferring page ownership.
+Ordinary Desktop Browser pages belong to their project Scope and can exist before a task starts. People and same-project Agents share those pages; human selection and explicit task targets are separate. Local-file and historical pages retain their task owner. Task completion, cancellation and Workspace changes preserve shared pages. Persistent identities reuse website logins without merging page owners.
 
 See [Browser workspace](browser.md).
 

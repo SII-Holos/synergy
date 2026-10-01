@@ -15,7 +15,21 @@ function normalizeSurfaceState(value: unknown): WorkbenchSurfaceLayoutState | un
     ? value.tabs.flatMap((tab: unknown) => {
         if (!isRecord(tab) || typeof tab.id !== "string" || typeof tab.panelId !== "string") return []
         const { dirty, ...rest } = tab
-        return [{ ...rest, id: tab.id, panelId: tab.panelId, ...(typeof dirty === "boolean" ? { dirty } : {}) }]
+        const state = isRecord(tab.state) ? { ...tab.state } : tab.state
+        if (tab.panelId === "browser" && isRecord(state) && isRecord(state.browserRoute)) {
+          const route = state.browserRoute
+          if (typeof route.sessionID === "string" && route.mode === undefined)
+            state.browserRoute = { ...route, mode: "session" }
+        }
+        return [
+          {
+            ...rest,
+            ...(state !== undefined ? { state } : {}),
+            id: tab.id,
+            panelId: tab.panelId,
+            ...(typeof dirty === "boolean" ? { dirty } : {}),
+          },
+        ]
       })
     : []
   return {
@@ -24,6 +38,11 @@ function normalizeSurfaceState(value: unknown): WorkbenchSurfaceLayoutState | un
     active:
       typeof value.active === "string" && tabs.some((tab) => tab.id === value.active) ? value.active : tabs[0]?.id,
     tabs,
+    reveal: isRecord(value.reveal)
+      ? { interacted: value.reveal.interacted === true, consumed: value.reveal.consumed === true }
+      : tabs.length
+        ? { interacted: true, consumed: false }
+        : undefined,
   }
 }
 
@@ -80,7 +99,7 @@ function normalizeSidebarState(value: unknown): unknown {
 export function migrateWorkbenchLayout(value: unknown): unknown {
   if (!isRecord(value)) return value
 
-  const next: Record<string, unknown> = { version: 1 }
+  const next: Record<string, unknown> = { version: 2 }
   for (const key of currentLayoutKeys) {
     if (key in value) next[key] = value[key]
   }

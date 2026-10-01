@@ -16,7 +16,7 @@ async function fixture() {
   roots.push(root)
   return root
 }
-const request = { protocolVersion: 4 as const, ownerKey: "owner", pageId: "page" }
+const request = { protocolVersion: 5 as const, ownerKey: "owner", pageId: "page" }
 const encryption = {
   available: async () => true,
   encrypt: async (text: string) => Buffer.from(text).reverse(),

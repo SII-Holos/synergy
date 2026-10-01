@@ -1,5 +1,5 @@
 export const WORKSPACE_DEFAULT_WIDTH = 640
-export const WORKSPACE_MIN_WIDTH = 300
+export const WORKSPACE_MIN_WIDTH = 360
 export const WORKSPACE_SESSION_MIN_WIDTH = 350
 export const WORKSPACE_TABS_MIN_WIDTH = 200
 
@@ -32,5 +32,17 @@ export function clampWorkspaceWidth(width: number, viewportWidth: number, constr
 }
 
 export function computeDefaultWorkspaceWidth(viewportWidth: number, constraints: WorkspaceWidthConstraints = {}) {
-  return clampWorkspaceWidth(Math.round(viewportWidth * 0.5), viewportWidth, constraints)
+  return clampWorkspaceWidth(Math.min(720, Math.round(viewportWidth * 0.5)), viewportWidth, constraints)
+}
+
+export function workspacePresentation(availableWidth: number, preferredWidth: number, fullscreen: boolean) {
+  const automatic = availableWidth < WORKSPACE_MIN_WIDTH + WORKSPACE_SESSION_MIN_WIDTH
+  const overlay = fullscreen || automatic
+  return { overlay, automatic, width: overlay ? availableWidth : clampWorkspaceWidth(preferredWidth, availableWidth) }
+}
+
+export function workspaceNavigatorWidth(resourceWidth: number, preferredWidth: number) {
+  const drawer = resourceWidth < 520
+  const width = Math.max(208, Math.min(420, preferredWidth, drawer ? resourceWidth - 24 : resourceWidth - 280))
+  return { drawer, width }
 }

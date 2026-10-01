@@ -10841,6 +10841,26 @@ msgid "environment.dialog.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "files.close.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "files.close.discard"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "files.close.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "files.close.save"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "files.close.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "list.for-label"
 msgstr ""
 
@@ -10986,6 +11006,62 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "nav.tools.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.backupFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.close"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.conflict"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.deleted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.exportDraft"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.more"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.saved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.saveFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.saving"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.unsaved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.navigation.toggle"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -23112,6 +23188,10 @@ msgid "workbench.discard.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "workspace.collapse"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.applyBinding"
 msgstr ""
 
@@ -23228,6 +23308,34 @@ msgid "workspace.dialog.unavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "workspace.document.newTab"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.fullscreen.enter"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.fullscreen.exit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.home.available"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.home.continue"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.home.newTab"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.home.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "workspace.location.directory"
 msgstr ""
 
@@ -23253,4 +23361,24 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "workspace.location.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.navigation.close"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.navigation.resize"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.output.ready"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.output.view"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.tab.new"
 msgstr ""

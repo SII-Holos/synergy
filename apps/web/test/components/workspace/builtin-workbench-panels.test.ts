@@ -44,9 +44,15 @@ mock.module("@/context/locale", () => ({
   }),
 }))
 
+mock.module("@/components/note/documents", () => ({
+  useNoteDocuments: () => ({ get: () => ({ flush: async () => true }) }),
+}))
+mock.module("../../../src/components/workspace/browser/browser-catalog", () => ({ useBrowserCatalog: () => ({}) }))
+
 const { BuiltinWorkbenchPanelsProvider } = await import("../../../src/components/workspace/builtin-workbench-panels")
 
 const BUILTIN_PANEL_IDS = [
+  "resource-home",
   "notes",
   "context",
   "session-review",
@@ -68,6 +74,15 @@ afterEach(() => {
 })
 
 describe("built-in workbench panels", () => {
+  test("each explicit new resource tab gets an independent empty slot", () => {
+    const dispose = createRoot((done) => {
+      BuiltinWorkbenchPanelsProvider({ children: null })
+      return done
+    })
+    expect(listWorkbenchPanels().find((panel) => panel.id === "resource-home")?.cardinality).toBe("multi")
+    dispose()
+  })
+
   test("registers only selected optional panels and removes them after reconnection", async () => {
     setSelected(["note"])
     const dispose = createRoot((done) => {

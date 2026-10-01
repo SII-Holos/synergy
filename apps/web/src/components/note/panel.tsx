@@ -50,24 +50,18 @@ import {
   type BlueprintRunMode,
 } from "@/components/note/blueprint-run-session"
 import {
-  clearCapturedDirty,
-  cloneDirtyRevisions,
-  dirtyConflicts,
-  EMPTY_DIRTY_REVISIONS,
   hasDirtyFields,
   isNoteNotFoundError,
-  noteChangedFields,
   patchBlueprintLoops,
   patchNoteGroups,
   patchNoteGroupsMany,
   removeNotesFromGroups,
   shouldReplaceEditorContent,
-  isEmptyEditorDoc,
-  type NoteChangedField,
-  type NoteDirtyField,
-  type NoteDirtyRevisions,
 } from "@/components/note/note-sync"
-import { note as N } from "@/locales/messages"
+import { note as N, panels as P } from "@/locales/messages"
+import { useNoteDocuments } from "./documents"
+import { WorkspaceNavigator, type WorkspaceNavigatorController } from "../workspace/workspace-navigator"
+import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import "./panel.css"
 
 type LoopStatus = BlueprintLoopInfo["status"]
@@ -192,7 +186,7 @@ function NoteCard(props: {
   originName?: string
   variant?: NoteCardVariant
   loops?: BlueprintLoopInfo[]
-  onClick: () => void
+  onClick: (newTab?: boolean) => void
   selecting?: boolean
   selected?: boolean
   onToggleSelect?: (id: string, shiftKey?: boolean) => void
@@ -234,7 +228,13 @@ function NoteCard(props: {
         if (props.selecting && props.onToggleSelect) {
           props.onToggleSelect(props.note.id, e.shiftKey)
         } else {
-          props.onClick()
+          props.onClick(e.metaKey || e.ctrlKey)
+        }
+      }}
+      onKeyDown={(event) => {
+        if (!props.selecting && event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+          event.preventDefault()
+          props.onClick(true)
         }
       }}
     >
@@ -769,7 +769,7 @@ function ScopeSection(props: {
   expanded: boolean
   loopsByNote: Map<string, BlueprintLoopInfo[]>
   onToggle: () => void
-  onOpenNote: (id: string) => void
+  onOpenNote: (id: string, newTab?: boolean) => void
   onCreateNote: () => void
   scopeLookup: Map<string, { name: string; directory: string }>
   selecting?: boolean
@@ -885,7 +885,7 @@ function ScopeSection(props: {
                     originName={getOriginName(note)}
                     loops={props.loopsByNote.get(note.id) ?? []}
                     variant="compact"
-                    onClick={() => props.onOpenNote(note.id)}
+                    onClick={(newTab) => props.onOpenNote(note.id, newTab)}
                     selecting={props.selecting}
                     selected={props.selectedNotes?.has(note.id) ?? false}
                     onToggleSelect={props.onToggleSelect}
@@ -922,7 +922,7 @@ function ScopeSection(props: {
                   originName={getOriginName(note)}
                   loops={props.loopsByNote.get(note.id) ?? []}
                   variant={note.pinned ? "featured" : "balanced"}
-                  onClick={() => props.onOpenNote(note.id)}
+                  onClick={(newTab) => props.onOpenNote(note.id, newTab)}
                   selecting={props.selecting}
                   selected={props.selectedNotes?.has(note.id) ?? false}
                   onToggleSelect={props.onToggleSelect}
@@ -946,6 +946,10 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   const directory = createMemo(() => (params.dir ? base64Decode(params.dir) : undefined))
   const lingui = useLingui()
   const workbench = useWorkbenchPanels()
+
+  const noteDocuments = useNoteDocuments()
+  const navigation = noteDocuments.navigation(directory() ?? HOME_SCOPE_KEY)
+  let navigator: WorkspaceNavigatorController | undefined
 
   const [view, setView] = createSignal<"list" | "editor">("list")
   const [selectedNoteId, setSelectedNoteId] = createSignal<string | null>(null)
@@ -1228,12 +1232,20 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
     setExpandedState((prev) => ({ ...prev, [scopeID]: !isExpanded(scopeID, isCurrent) }))
   }
 
-  function openNote(id: string, dir: string) {
+  async function openNote(id: string, dir: string, newTab = false) {
     if (!dir) return
+    if (props.tab) {
+      const opened = await workbench.openPanel("notes", {
+        replaceCurrent: !newTab,
+        forceNew: newTab,
+        init: { resourceId: id, source: dir },
+      })
+      if (opened) navigator?.closeDrawer()
+      return
+    }
     setSelectedNoteId(id)
     setSelectedNoteDir(dir)
     setView("editor")
-    if (props.tab) workbench.updateTab(props.tab.id, { resourceId: id, source: dir })
   }
 
   function showNoteList() {
@@ -1245,8 +1257,13 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
     on(
       () => [props.tab?.resourceId, props.tab?.source] as const,
       ([id, source]) => {
-        if (!id || id === NOTES_LIST_RESOURCE) return
-        openNote(id, source || directory() || HOME_SCOPE_KEY)
+        if (!id || id === NOTES_LIST_RESOURCE) {
+          setView("list")
+          return
+        }
+        setSelectedNoteId(id)
+        setSelectedNoteDir(source || directory() || HOME_SCOPE_KEY)
+        setView("editor")
       },
     ),
   )
@@ -1391,6 +1408,15 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
 
       <Show when={view() === "list"}>
         <div class="flex flex-col h-full">
+          <div class="note-workspace-toolbar">
+            <span class="note-workspace-scope">{lingui._({ id: P.notes.id, message: P.notes.message })}</span>
+            <IconButton
+              icon={getSemanticIcon("action.add")}
+              variant="ghost"
+              onClick={() => void createNoteInScope(directory() ?? HOME_SCOPE_KEY)}
+              aria-label={lingui._({ id: N.newNote.id, message: N.newNote.message })}
+            />
+          </div>
           <div class="shrink-0 px-4 pt-3 pb-2">
             <div class="flex flex-wrap items-center gap-2.5 rounded-xl bg-surface-inset-base/60 px-3.5 py-2.5 transition-colors">
               <Icon name={getSemanticIcon("notes.search")} size="small" class="text-icon-weak-base shrink-0" />
@@ -1574,7 +1600,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                         expanded={isExpanded(group.scopeID, group.isCurrent)}
                         loopsByNote={loopsByNote()}
                         onToggle={() => toggleExpanded(group.scopeID, group.isCurrent)}
-                        onOpenNote={(id) => openNote(id, group.directory)}
+                        onOpenNote={(id, newTab) => openNote(id, group.directory, newTab)}
                         onCreateNote={() => createNoteInScope(group.directory)}
                         scopeLookup={scopeLookup()}
                         selecting={selecting()}
@@ -1590,23 +1616,148 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
         </div>
       </Show>
 
-      <Show when={view() === "editor" && selectedNoteId()}>
-        <NoteEditor
-          id={selectedNoteId()!}
-          directory={selectedNoteDir() ?? directory() ?? "home"}
-          onBack={showNoteList}
-          onDelete={showNoteList}
-          loops={loopsByNote().get(selectedNoteId()!) ?? []}
-        />
+      <Show
+        when={
+          view() === "editor" && selectedNoteId() ? JSON.stringify([selectedNoteDir(), selectedNoteId()]) : undefined
+        }
+        keyed
+      >
+        {(_resource) => (
+          <div class="note-workspace-editor-layout">
+            <WorkspaceNavigator
+              label={lingui._({ id: N.searchNotes.id, message: N.searchNotes.message })}
+              open={navigation.state.open}
+              width={navigation.state.width}
+              onResize={navigation.setWidth}
+              onReady={(value) => (navigator = value)}
+              onOpen={() => navigation.setOpen(true)}
+              onClose={() => navigation.setOpen(false)}
+            >
+              <div class="note-navigation-search">
+                <input
+                  type="search"
+                  aria-label={lingui._({ id: N.searchNotes.id, message: N.searchNotes.message })}
+                  placeholder={lingui._({ id: N.searchNotes.id, message: N.searchNotes.message })}
+                  value={search()}
+                  onInput={(event) => setSearch(event.currentTarget.value)}
+                />
+                <IconButton
+                  icon={getSemanticIcon("action.add")}
+                  variant="ghost"
+                  onClick={() => void createNoteInScope(directory() ?? HOME_SCOPE_KEY)}
+                  aria-label={lingui._({ id: N.newNote.id, message: N.newNote.message })}
+                />
+              </div>
+              <div class="note-navigation-list">
+                <Show when={rawGroups.error}>
+                  <div role="alert" class="note-navigation-message">
+                    {requestErrorMessage(rawGroups.error)}
+                    <button type="button" onClick={() => void refetch()}>
+                      {lingui._({ id: N.refresh.id, message: N.refresh.message })}
+                    </button>
+                  </div>
+                </Show>
+                <Show when={rawGroups.loading}>
+                  <Spinner class="size-4" />
+                </Show>
+                <For
+                  each={displayGroups()}
+                  fallback={
+                    <Show when={!rawGroups.loading}>
+                      <div class="note-navigation-message">
+                        {lingui._({ id: N.noNotesFound.id, message: N.noNotesFound.message })}
+                      </div>
+                    </Show>
+                  }
+                >
+                  {(group) => (
+                    <section>
+                      <button
+                        type="button"
+                        class="note-navigation-group"
+                        aria-expanded={isExpanded(group.scopeID, group.isCurrent)}
+                        onClick={() => toggleExpanded(group.scopeID, group.isCurrent)}
+                      >
+                        <Icon
+                          name={getSemanticIcon(
+                            isExpanded(group.scopeID, group.isCurrent) ? "navigation.collapse" : "navigation.expand",
+                          )}
+                          size="small"
+                        />
+                        <span>{group.name}</span>
+                      </button>
+                      <Show when={isExpanded(group.scopeID, group.isCurrent)}>
+                        <For each={group.notes}>
+                          {(item) => (
+                            <div
+                              class="note-navigation-row"
+                              classList={{ "note-navigation-row--blueprint": isBlueprintNote(item) }}
+                            >
+                              <button
+                                type="button"
+                                class="note-navigation-document"
+                                aria-current={
+                                  selectedNoteId() === item.id && selectedNoteDir() === group.directory
+                                    ? "page"
+                                    : undefined
+                                }
+                                title={item.title}
+                                draggable
+                                onDragStart={(event) => attachNoteDragData(event, item)}
+                                onClick={() => void openNote(item.id, group.directory)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                                    event.preventDefault()
+                                    void openNote(item.id, group.directory, true)
+                                  }
+                                }}
+                              >
+                                <Icon
+                                  name={getSemanticIcon(isBlueprintNote(item) ? "blueprint.main" : "notes.main")}
+                                  size="small"
+                                />
+                                <span class="note-navigation-copy">
+                                  <span>
+                                    {item.title || lingui._({ id: N.untitled.id, message: N.untitled.message })}
+                                  </span>
+                                  <Show when={isBlueprintNote(item)}>
+                                    <small>
+                                      {getBlueprintVisualState(lingui, item, loopsByNote().get(item.id)).label}
+                                    </small>
+                                  </Show>
+                                </span>
+                              </button>
+                              <IconButton
+                                icon={getSemanticIcon("action.open")}
+                                variant="ghost"
+                                onClick={() => void openNote(item.id, group.directory, true)}
+                                aria-label={lingui._({ id: "workspace.document.newTab", message: "Open in new tab" })}
+                              />
+                            </div>
+                          )}
+                        </For>
+                      </Show>
+                    </section>
+                  )}
+                </For>
+              </div>
+            </WorkspaceNavigator>
+            <NoteEditor
+              id={selectedNoteId()!}
+              directory={selectedNoteDir() ?? directory() ?? "home"}
+              onBack={() => navigator?.toggle()}
+              onDelete={() => {
+                if (props.tab) void workbench.closeTab(props.tab.id)
+                else showNoteList()
+              }}
+              loops={loopsByNote().get(selectedNoteId()!) ?? []}
+              tab={props.tab}
+            />
+          </div>
+        )}
       </Show>
     </div>
   )
-}
-
-type NoteConflictState = {
-  type: "remote-update"
-  message: string
-  remote: NoteInfo
 }
 
 function NoteEditor(props: {
@@ -1615,52 +1766,64 @@ function NoteEditor(props: {
   loops: BlueprintLoopInfo[]
   onBack: () => void
   onDelete: () => void
+  tab?: WorkbenchPanelTab
 }) {
+  const noteID = props.id
+  const scopeID = props.directory
+  const tab = props.tab ? { ...props.tab } : undefined
   const sdk = useGlobalSDK()
+  const client = sdk.client
+  const serverURL = sdk.url
   const globalSync = useGlobalSync()
   const sync = useSync()
   const data = useData()
   const platform = usePlatform()
   const params = useParams()
   const confirm = useConfirm()
-  const directory = () => props.directory
+  const directory = () => scopeID
   const { fmt } = useLocale()
   const lingui = useLingui()
 
   const [note, { refetch }] = createResource(
-    () => ({ id: props.id, dir: directory(), reconnect: globalSync.reconnectVersion() }),
+    () => ({ id: noteID, dir: directory(), reconnect: globalSync.reconnectVersion() }),
     async ({ id, dir }) => {
       if (!dir) return null
-      const result = await sdk.client.note.get({ id, scopeID: dir })
+      const result = await client.note.get({ id, scopeID: dir })
       return result.data as NoteInfo
     },
   )
 
-  let noteDeleted = false
-  createEffect(() => {
-    const err = note.error
-    if (err && isNoteNotFoundError(err) && !noteDeleted) {
-      noteDeleted = true
-      props.onDelete()
-    }
+  const documents = useNoteDocuments()
+  const doc = documents.get(scopeID, noteID)
+  onCleanup(documents.retain(scopeID, noteID))
+  const workbench = useWorkbenchPanels()
+  const sessionKey = workbench.sessionKey()
+  let disposed = false
+  onCleanup(() => {
+    disposed = true
   })
-
-  const [baseNote, setBaseNote] = createSignal<NoteInfo | null>(null)
-  const [title, setTitle] = createSignal("")
-  const [tags, setTags] = createSignal<string[]>([])
+  const isCurrent = () =>
+    !disposed &&
+    sessionKey === workbench.sessionKey() &&
+    (!tab ||
+      workbench
+        .surface("side")
+        .tabs()
+        .some(
+          (item) =>
+            item.id === tab.id && item.panelId === "notes" && item.resourceId === noteID && item.source === scopeID,
+        ))
+  const baseNote = doc.base
+  const title = doc.title
+  const tags = doc.tags
+  const saving = doc.saving
+  const conflict = doc.conflict
   const [tagInput, setTagInput] = createSignal("")
-  const [saving, setSaving] = createSignal(false)
-  const [dirty, setDirty] = createSignal<NoteDirtyRevisions>(EMPTY_DIRTY_REVISIONS)
-  const [conflict, setConflict] = createSignal<NoteConflictState | null>(null)
   const [editor, setEditor] = createSignal<Editor>()
   const [convertingBlueprint, setConvertingBlueprint] = createSignal(false)
   const [runningBlueprint, setRunningBlueprint] = createSignal(false)
   const [showRunMenu, setShowRunMenu] = createSignal(false)
-
-  let debounceTimer: ReturnType<typeof setTimeout> | undefined
-  let saveQueued = false
-  let saveInFlight: Promise<void> | undefined
-  let draftRevision = 0
+  const [moreOpen, setMoreOpen] = createSignal(false)
 
   const noteLoaded = createMemo(() => !!baseNote())
   const isBlueprint = createMemo(() => baseNote()?.kind === "blueprint")
@@ -1691,316 +1854,57 @@ function NoteEditor(props: {
     return activeBlueprintLoop(base, noteLoops())
   })
 
-  function remoteConflict() {
-    const current = conflict()
-    if (current?.type !== "remote-update") return null
-    return current.remote
-  }
-
-  const hasDirty = createMemo(() => hasDirtyFields(dirty()))
-
-  function markDirty(field: NoteDirtyField) {
-    const revision = ++draftRevision
-    setDirty((current) => ({ ...current, [field]: revision }))
-    if (!remoteConflict()) setConflict(null)
-  }
-
-  function clearDebounce() {
-    if (!debounceTimer) return
-    clearTimeout(debounceTimer)
-    debounceTimer = undefined
-  }
-
-  function clearDirty() {
-    setDirty(cloneDirtyRevisions(EMPTY_DIRTY_REVISIONS))
-  }
-
-  function captureDirty() {
-    return cloneDirtyRevisions(dirty())
-  }
-
-  function replaceEditorContent(content: unknown) {
-    const ed = editor()
-    if (!ed || ed.isDestroyed) return false
-    if (!shouldReplaceEditorContent(ed.getJSON(), content)) return false
-    const scrollParent = ed.view.dom.parentElement
-    const scrollTop = scrollParent?.scrollTop
-    const { from } = ed.state.selection
-    ed.commands.setContent(content as any, { emitUpdate: false })
-    const docSize = ed.state.doc.content.size
-    if (from > 0 && from < docSize) {
-      try {
-        ed.commands.setTextSelection(from)
-      } catch {
-        // selection may no longer exist in the replacement document
-      }
-    }
-    if (scrollParent && scrollTop !== undefined) {
-      scrollParent.scrollTop = scrollTop
-      queueMicrotask(() => {
-        scrollParent.scrollTop = scrollTop
-      })
-    }
-    return true
-  }
-
-  function seedEditorFromSnapshot(instance?: Editor) {
-    const snapshot = baseNote()
-    if (!snapshot || dirty().content) return
-    const ed = instance ?? editor()
-    if (!ed || ed.isDestroyed) return
-    const current = ed.getJSON()
-    if (!isEmptyEditorDoc(current) && !shouldReplaceEditorContent(current, snapshot.content)) return
-    if (instance) {
-      setEditor(instance)
-      instance.commands.setContent(snapshot.content as any, { emitUpdate: false })
-      return
-    }
-    replaceEditorContent(snapshot.content)
-  }
+  const flushSave = doc.flush
+  const saveMetadata = doc.mutate
 
   function handleEditorReady(instance: Editor) {
     setEditor(instance)
-    seedEditorFromSnapshot(instance)
-  }
-
-  function applySnapshot(
-    snapshot: NoteInfo,
-    options: { mode?: "replace" | "merge"; changed?: NoteChangedField[]; message?: string } = {},
-  ) {
-    const mode = options.mode ?? "replace"
-    const current = baseNote()
-    const changed = options.changed ?? (current ? noteChangedFields(current, snapshot) : ["content", "title", "tags"])
-    if (mode === "merge" && current && snapshot.version <= current.version) return true
-
-    if (mode === "merge") {
-      const conflicts = dirtyConflicts(dirty(), changed)
-      if (conflicts.length > 0) {
-        setConflict({
-          type: "remote-update",
-          message: options.message ?? "This note was updated elsewhere while you were editing.",
-          remote: snapshot,
-        })
-        return false
-      }
-      const currentDirty = dirty()
-      setBaseNote(snapshot)
-      if (!currentDirty.title) setTitle(snapshot.title)
-      if (!currentDirty.tags) setTags(snapshot.tags ?? [])
-      if (!currentDirty.content && changed.includes("content")) replaceEditorContent(snapshot.content)
-      setConflict(null)
-      return true
-    }
-
-    setBaseNote(snapshot)
-    setTitle(snapshot.title)
-    setTags(snapshot.tags ?? [])
-    setConflict(null)
-    clearDirty()
-    replaceEditorContent(snapshot.content)
-    return true
-  }
-
-  function currentDraft() {
-    const ed = editor()
-    if (!ed || ed.isDestroyed) return null
-    const content = ed.getJSON()
-    return {
-      title: title(),
-      tags: tags(),
-      content,
-    }
-  }
-
-  function parseConflict(error: unknown) {
-    if (!(error instanceof Error) || error.name !== "APIError") return null
-    const data = (error as { data?: { statusCode?: number; responseBody?: string } }).data
-    if (data?.statusCode !== 409 || !data.responseBody) return null
-    try {
-      const parsed = JSON.parse(data.responseBody) as {
-        name?: string
-        data?: { note?: NoteInfo }
-      }
-      if (parsed.name !== "NoteConflictError" || !parsed.data?.note) return null
-      return parsed.data.note
-    } catch {
-      return null
-    }
-  }
-
-  async function runSave() {
-    const dir = directory()
-    const base = baseNote()
-    const draft = currentDraft()
-    const captured = captureDirty()
-    if (!dir || !base || !draft || !hasDirtyFields(captured) || remoteConflict()) return
-
-    const notePatchInput: NotePatchInput = { expectedVersion: base.version }
-    if (captured.title) notePatchInput.title = draft.title
-    if (captured.content) notePatchInput.content = draft.content
-    if (captured.tags) notePatchInput.tags = draft.tags
-
-    setSaving(true)
-    try {
-      const result = await sdk.client.note.update({
-        id: props.id,
-        scopeID: dir,
-        notePatchInput,
-      })
-      const saved = result.data as NoteInfo
-      setBaseNote(saved)
-      const currentDirty = dirty()
-      if (!currentDirty.title || currentDirty.title === captured.title) setTitle(saved.title)
-      if (!currentDirty.tags || currentDirty.tags === captured.tags) setTags(saved.tags ?? [])
-      setDirty((current) => clearCapturedDirty(current, captured))
-      setConflict(null)
-    } catch (error) {
-      const remote = parseConflict(error)
-      if (remote) {
-        const current = baseNote()
-        const merged = applySnapshot(remote, {
-          mode: "merge",
-          changed: current ? noteChangedFields(current, remote) : undefined,
-          message: "This note was updated elsewhere. Review the remote version or overwrite it with your draft.",
-        })
-        if (merged && hasDirtyFields(dirty())) saveQueued = true
-        return
-      }
-      console.error("Failed to save note", error)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function drainSaveQueue() {
-    if (saveInFlight) {
-      saveQueued = true
-      return saveInFlight
-    }
-    saveInFlight = (async () => {
-      do {
-        saveQueued = false
-        await runSave()
-      } while (saveQueued)
-    })().finally(() => {
-      saveInFlight = undefined
-    })
-    return saveInFlight
-  }
-
-  function scheduleSave() {
-    clearDebounce()
-    debounceTimer = setTimeout(() => {
-      debounceTimer = undefined
-      void drainSaveQueue()
-    }, 1000)
-  }
-
-  async function flushSave() {
-    clearDebounce()
-    if (!hasDirty()) return
-    await drainSaveQueue()
   }
 
   createEffect(() => {
     const incoming = note()
-    if (!incoming) return
-    const current = baseNote()
-    if (!current) {
-      applySnapshot(incoming)
-      return
-    }
-    if (incoming.version <= current.version) return
-    if (!hasDirty()) {
-      applySnapshot(incoming)
-      return
-    }
-    applySnapshot(incoming, {
-      mode: "merge",
-      changed: noteChangedFields(current, incoming),
-      message: "This note was updated elsewhere while you were editing.",
-    })
+    if (incoming) doc.ingest(incoming)
+    if (note.error && isNoteNotFoundError(note.error)) doc.markDeleted()
   })
-
-  const unsubEditorNoteEvents = sdk.event.listen((entry: { details: SynergyEvent }) => {
+  createEffect(() => {
+    const instance = editor()
+    const content = doc.content()
+    if (!instance || instance.isDestroyed || !shouldReplaceEditorContent(instance.getJSON(), content)) return
+    const selection = instance.state.selection
+    instance.commands.setContent(content as Parameters<Editor["commands"]["setContent"]>[0], { emitUpdate: false })
+    const size = instance.state.doc.content.size
+    instance.commands.setTextSelection({ from: Math.min(selection.from, size), to: Math.min(selection.to, size) })
+  })
+  createEffect(() => {
+    if (!tab) return
+    workbench.updateTab(tab.id, { title: title(), dirty: hasDirtyFields(doc.dirty()) })
+  })
+  if (tab) onCleanup(workbench.beforeClose(tab.id, doc.flush))
+  const unsubEditorNoteEvents = sdk.event.listen((entry: { name?: string; details: SynergyEvent }) => {
     const event = entry.details
-    if (event.type === "note.updated") {
-      const incoming = event.properties.note
-      if (incoming.id !== props.id) return
-      const current = baseNote()
-      if (!current || incoming.version <= current.version) return
-      applySnapshot(incoming, {
-        mode: "merge",
-        changed: event.properties.changed,
-        message: "This note was updated elsewhere while you were editing.",
-      })
-      return
-    }
-    if (event.type === "note.deleted" && event.properties.id === props.id) props.onDelete()
+    if (entry.name && entry.name !== scopeID) return
+    if (event.type === "note.updated" && event.properties.note.id === noteID)
+      doc.ingest(event.properties.note, event.properties.changed)
+    if (event.type === "note.deleted" && event.properties.id === noteID) doc.markDeleted()
   })
-
-  onCleanup(() => {
-    clearDebounce()
-    unsubEditorNoteEvents()
-  })
+  onCleanup(unsubEditorNoteEvents)
 
   async function handleBack() {
-    await flushSave()
-    if (remoteConflict()) return
-    props.onBack()
-  }
-
-  async function saveMetadata(buildPatch: (base: NoteInfo) => NotePatchInput) {
-    const dir = directory()
-    if (!dir || !baseNote()) return false
-    setSaving(true)
-    try {
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const base = baseNote()
-        if (!base) return false
-        try {
-          const result = await sdk.client.note.update({
-            id: props.id,
-            scopeID: dir,
-            notePatchInput: buildPatch(base),
-          })
-          applySnapshot(result.data as NoteInfo)
-          return true
-        } catch (error) {
-          const remote = parseConflict(error)
-          if (!remote) throw error
-          const current = baseNote()
-          const merged = applySnapshot(remote, {
-            mode: "merge",
-            changed: current ? noteChangedFields(current, remote) : undefined,
-            message: "This note changed before your metadata update could be saved.",
-          })
-          if (attempt === 0 && merged && !remoteConflict()) continue
-          return false
-        }
-      }
-      return false
-    } catch (error) {
-      console.error("Failed to save note metadata", error)
-      return false
-    } finally {
-      setSaving(false)
-    }
+    isCurrent() && props.onBack()
   }
 
   function addTag(tag: string) {
     const t = tag.trim().toLowerCase()
     if (!t || tags().includes(t)) return
-    setTags([...tags(), t])
-    markDirty("tags")
-    scheduleSave()
+    doc.edit("tags", [...tags(), t])
     setTagInput("")
   }
 
   function removeTag(tag: string) {
-    setTags(tags().filter((t) => t !== tag))
-    markDirty("tags")
-    scheduleSave()
+    doc.edit(
+      "tags",
+      tags().filter((t) => t !== tag),
+    )
   }
 
   function handleTagKeyDown(e: KeyboardEvent) {
@@ -2014,19 +1918,16 @@ function NoteEditor(props: {
   }
 
   async function uploadFile(file: File): Promise<string> {
-    const res = await sdk.client.asset.upload({ file })
-    return assetHttpUrl(sdk.url, res.data as { id?: string; url?: string } | undefined)
+    const res = await client.asset.upload({ file })
+    return assetHttpUrl(serverURL, res.data as { id?: string; url?: string } | undefined)
   }
 
   function onTitleInput(e: InputEvent & { currentTarget: HTMLInputElement }) {
-    setTitle(e.currentTarget.value)
-    markDirty("title")
-    scheduleSave()
+    doc.edit("title", e.currentTarget.value)
   }
 
   async function togglePin() {
-    await flushSave()
-    if (remoteConflict()) return
+    if (!(await flushSave())) return
     const current = baseNote()
     if (!current) return
     const pinned = !current.pinned
@@ -2034,34 +1935,22 @@ function NoteEditor(props: {
   }
 
   async function toggleGlobal() {
-    await flushSave()
-    if (remoteConflict()) return
+    if (!(await flushSave())) return
     const current = baseNote()
     if (!current) return
     const global = !current.global
     await saveMetadata((base) => ({ global, expectedVersion: base.version }))
   }
 
-  function reloadRemote() {
-    const remote = remoteConflict()
-    if (!remote) return
-    applySnapshot(remote)
-  }
+  const reloadRemote = doc.reloadRemote
+  const overwriteRemote = doc.overwriteRemote
 
-  async function overwriteRemote() {
-    const remote = remoteConflict()
-    if (!remote) return
-    setBaseNote(remote)
-    setConflict(null)
-    if (hasDirty()) saveQueued = true
-    await drainSaveQueue()
-  }
-
-  function downloadNote() {
+  async function downloadNote() {
     const dir = directory()
     if (!dir) return
+    if (!(await flushSave())) return
     const params = new URLSearchParams({ scopeID: dir, format: "md" })
-    const url = `${sdk.url}/note/export/${encodeURIComponent(props.id)}?${params}`
+    const url = `${serverURL}/note/export/${encodeURIComponent(noteID)}?${params}`
     const a = document.createElement("a")
     a.href = url
     a.download = ""
@@ -2070,77 +1959,36 @@ function NoteEditor(props: {
     document.body.removeChild(a)
   }
 
-  async function convertToBlueprint() {
-    const dir = directory()
-    const base = baseNote()
-    if (!dir || !base || isBlueprint() || convertingBlueprint()) return
-    await flushSave()
-    if (remoteConflict()) return
-    const latest = baseNote()
-    if (!latest) return
+  function downloadDraft() {
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify({ title: title(), tags: tags(), content: doc.content() }, null, 2)], {
+        type: "application/json",
+      }),
+    )
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = `${(title() || "note").replace(/[\\/:*?"<>|]/g, "_").slice(0, 128)}.json`
+    anchor.click()
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+  }
 
+  async function convertToBlueprint() {
+    if (isBlueprint() || convertingBlueprint()) return
     setConvertingBlueprint(true)
     try {
-      const result = await sdk.client.note.update({
-        id: latest.id,
-        scopeID: dir,
-        notePatchInput: {
-          kind: "blueprint",
-          blueprint: {},
-          expectedVersion: latest.version,
-        },
-      })
-      applySnapshot(result.data as NoteInfo)
-    } catch (error) {
-      const remote = parseConflict(error)
-      if (remote) {
-        setConflict({
-          type: "remote-update",
-          message: "This note changed before it could be converted to a Blueprint.",
-          remote,
-        })
-        return
-      }
-      console.error("Failed to convert note to blueprint", error)
+      await saveMetadata((base) => ({ kind: "blueprint", blueprint: {}, expectedVersion: base.version }))
     } finally {
       setConvertingBlueprint(false)
     }
   }
   async function convertToNote() {
-    const dir = directory()
+    if (!isBlueprint() || convertingBlueprint()) return
     const base = baseNote()
-    if (!dir || !base || !isBlueprint() || convertingBlueprint()) return
-    await flushSave()
-    if (remoteConflict()) return
-    const latest = baseNote()
-    if (!latest) return
-    if (latest.blueprint?.activeLoopID || noteLoops().some((loop) => isActiveBlueprintLoopStatus(loop.status))) {
-      alert("This Blueprint has an active loop. Finish or cancel the loop before converting it back to a Note.")
+    if (!base || base.blueprint?.activeLoopID || noteLoops().some((loop) => isActiveBlueprintLoopStatus(loop.status)))
       return
-    }
-
     setConvertingBlueprint(true)
     try {
-      const result = await sdk.client.note.update({
-        id: latest.id,
-        scopeID: dir,
-        notePatchInput: {
-          kind: "note",
-          expectedVersion: latest.version,
-        },
-      })
-      applySnapshot(result.data as NoteInfo)
-    } catch (error) {
-      const remote = parseConflict(error)
-      if (remote) {
-        setConflict({
-          type: "remote-update",
-          message: "This note changed before it could be converted from a Blueprint.",
-          remote,
-        })
-        return
-      }
-      console.error("Failed to convert blueprint to note", error)
+      await saveMetadata((base) => ({ kind: "note", expectedVersion: base.version }))
     } finally {
       setConvertingBlueprint(false)
     }
@@ -2153,7 +2001,7 @@ function NoteEditor(props: {
   function scopedClient(directory: string) {
     globalSync.ensureScopeState(directory)
     return createSynergyClient({
-      baseUrl: sdk.url,
+      baseUrl: serverURL,
       fetch: platform.fetch,
       scopeID: directory,
       throwOnError: true,
@@ -2195,8 +2043,7 @@ function NoteEditor(props: {
   ) {
     const dir = directory()
     if (!dir || runningBlueprint()) return
-    await flushSave()
-    if (remoteConflict()) return
+    if (!(await flushSave())) return
     let base = baseNote()
     if (!base || !isBlueprint()) return
     const activeLoop = activeBlueprintLoop(base, noteLoops())
@@ -2218,7 +2065,7 @@ function NoteEditor(props: {
 
       target = await createExecutionSession(mode, dir)
       if (!target) return
-      const loop = await sdk.client.blueprint.loop
+      const loop = await client.blueprint.loop
         .create({
           scopeID: dir,
           blueprintLoopCreateInput: {
@@ -2235,11 +2082,11 @@ function NoteEditor(props: {
         .then((result) => result.data)
       if (!loop?.id) throw new Error("Failed to create BlueprintLoop")
       createdLoopID = loop.id
-      await sdk.client.blueprint.loop.start({ id: loop.id, scopeID: dir })
+      await client.blueprint.loop.start({ id: loop.id, scopeID: dir })
       setShowRunMenu(false)
     } catch (error) {
       if (createdLoopID) {
-        await sdk.client.blueprint.loop.cancel({ id: createdLoopID, scopeID: dir }).catch(() => undefined)
+        await client.blueprint.loop.cancel({ id: createdLoopID, scopeID: dir }).catch(() => undefined)
       }
       if (target?.createdSession) {
         await target.client.session.delete({ sessionID: target.sessionID }).catch(() => undefined)
@@ -2257,13 +2104,12 @@ function NoteEditor(props: {
   async function archiveNote() {
     const dir = directory()
     if (!dir) return
-    await flushSave()
-    if (remoteConflict()) return
+    if (!(await flushSave())) return
     confirm.show({
       ...archiveNoteConfirm(1),
       onConfirm: async () => {
-        await sdk.client.note.batch({ ids: [props.id], action: "archive", scopeID: dir })
-        props.onBack()
+        await client.note.batch({ ids: [noteID], action: "archive", scopeID: dir })
+        isCurrent() && props.onBack()
       },
     })
   }
@@ -2271,9 +2117,8 @@ function NoteEditor(props: {
   async function restoreNote() {
     const dir = directory()
     if (!dir) return
-    await flushSave()
-    if (remoteConflict()) return
-    await sdk.client.note.batch({ ids: [props.id], action: "unarchive", scopeID: dir })
+    if (!(await flushSave())) return
+    await client.note.batch({ ids: [noteID], action: "unarchive", scopeID: dir })
   }
 
   async function deleteArchivedNote() {
@@ -2282,8 +2127,8 @@ function NoteEditor(props: {
     confirm.show({
       ...deleteArchivedNoteConfirm(1),
       onConfirm: async () => {
-        await sdk.client.note.batch({ ids: [props.id], action: "delete", scopeID: dir })
-        props.onDelete()
+        await client.note.batch({ ids: [noteID], action: "delete", scopeID: dir })
+        isCurrent() && props.onDelete()
       },
     })
   }
@@ -2294,25 +2139,35 @@ function NoteEditor(props: {
     setShowRunMenu(true)
   }
 
-  onCleanup(() => {
-    clearDebounce()
-  })
-
   return (
-    <div class="flex h-full flex-col bg-background-base">
+    <div class="note-workspace-document flex h-full min-w-0 flex-1 flex-col bg-background-base">
       <style>{TIPTAP_STYLES}</style>
 
       <div class="border-b border-border-weaker-base/40">
-        <div class="flex items-center gap-2 px-4 py-2">
+        <div class="note-workspace-toolbar">
           <button
             type="button"
             class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
             onClick={handleBack}
-            aria-label={lingui._({ id: N.backToList.id, message: N.backToList.message })}
+            aria-label={lingui._({ id: "note.navigation.toggle", message: "Toggle notes navigation" })}
           >
-            <Icon name={getSemanticIcon("navigation.back")} size="small" />
+            <Icon name={getSemanticIcon("notes.main")} size="small" />
           </button>
-          <span class="flex-1" />
+          <span class="note-workspace-owner">
+            {getScopeLabel(
+              globalSync.data.scope.find((scope) => scope.id === directory()),
+              directory(),
+            )}
+          </span>
+          <span class="note-workspace-save" role="status">
+            {doc.deleted()
+              ? lingui._({ id: "note.document.unavailable", message: "Unavailable" })
+              : saving()
+                ? lingui._({ id: "note.document.saving", message: "Saving…" })
+                : hasDirtyFields(doc.dirty())
+                  ? lingui._({ id: "note.document.unsaved", message: "Unsaved changes" })
+                  : lingui._({ id: "note.document.saved", message: "Saved" })}
+          </span>
           <Show when={isBlueprint()}>
             <button
               type="button"
@@ -2324,81 +2179,120 @@ function NoteEditor(props: {
               {lingui._({ id: N.run.id, message: N.run.message })}
             </button>
           </Show>
-          <button
-            type="button"
-            class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
-            onClick={downloadNote}
-            aria-label={lingui._({ id: N.downloadNote.id, message: N.downloadNote.message })}
-            title={lingui._({ id: N.downloadNote.id, message: N.downloadNote.message })}
-          >
-            <Icon name={getSemanticIcon("action.download")} size="small" />
-          </button>
-          <button
-            type="button"
-            class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
-            onClick={togglePin}
-            aria-label={
-              baseNote()?.pinned
-                ? lingui._({ id: N.unpin.id, message: N.unpin.message })
-                : lingui._({ id: N.pin.id, message: N.pin.message })
-            }
-          >
-            <Icon
-              name={getSemanticIcon(baseNote()?.pinned ? "notes.pin" : "action.pin")}
-              size="small"
-              class={baseNote()?.pinned ? "text-icon-base" : "text-icon-weak-base"}
-            />
-          </button>
-          <Show when={isBlueprint()}>
-            <button
-              type="button"
-              class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
-              onClick={convertToNote}
-              disabled={convertingBlueprint()}
-              aria-label={lingui._({ id: N.convertToNote.id, message: N.convertToNote.message })}
-              title={lingui._({ id: N.convertToNote.id, message: N.convertToNote.message })}
+          <KobaltePopover open={moreOpen()} onOpenChange={setMoreOpen} placement="bottom-end">
+            <KobaltePopover.Trigger
+              class="note-toolbar-more"
+              aria-label={lingui._({ id: "note.document.more", message: "Note options" })}
             >
-              <Icon name={getSemanticIcon("blueprint.main")} size="small" class="opacity-60" />
-            </button>
-          </Show>
-          <Show when={!isBlueprint()}>
-            <button
-              type="button"
-              class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
-              onClick={convertToBlueprint}
-              disabled={convertingBlueprint()}
-              aria-label={lingui._({ id: N.convertToBlueprint.id, message: N.convertToBlueprint.message })}
-              title={lingui._({ id: N.convertToBlueprint.id, message: N.convertToBlueprint.message })}
-            >
-              <Icon name={getSemanticIcon("blueprint.main")} size="small" />
-            </button>
-          </Show>
-          <Show when={baseNote()?.global !== undefined}>
-            <button
-              type="button"
-              class="flex size-7 items-center justify-center rounded-lg transition-colors"
-              classList={{
-                "text-icon-base bg-text-interactive-base/10": baseNote()?.global,
-                "text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base": !baseNote()?.global,
-              }}
-              onClick={toggleGlobal}
-              aria-label={
-                baseNote()?.global
-                  ? lingui._({ id: N.makeLocal.id, message: N.makeLocal.message })
-                  : lingui._({ id: N.makeGlobal.id, message: N.makeGlobal.message })
-              }
-            >
-              <Icon name={getSemanticIcon("navigation.home")} size="small" />
-            </button>
-          </Show>
-          <button
-            type="button"
-            class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
-            onClick={() => props.onDelete()}
-            aria-label={lingui._({ id: N.deleteNote.id, message: N.deleteNote.message })}
-          >
-            <Icon name={getSemanticIcon("action.close")} size="small" />
-          </button>
+              <Icon name={getSemanticIcon("action.more")} size="small" />
+            </KobaltePopover.Trigger>
+            <KobaltePopover.Portal>
+              <KobaltePopover.Content
+                class="note-toolbar-menu"
+                onClick={(event) => {
+                  if ((event.target as HTMLElement).closest("button")) setMoreOpen(false)
+                }}
+              >
+                <button
+                  type="button"
+                  class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
+                  onClick={() => void downloadNote()}
+                  aria-label={lingui._({ id: N.downloadNote.id, message: N.downloadNote.message })}
+                  title={lingui._({ id: N.downloadNote.id, message: N.downloadNote.message })}
+                >
+                  <Icon name={getSemanticIcon("action.download")} size="small" />
+                </button>
+                <Show when={hasDirtyFields(doc.dirty())}>
+                  <button
+                    type="button"
+                    onClick={downloadDraft}
+                    aria-label={lingui._({ id: "note.document.exportDraft", message: "Export draft" })}
+                  >
+                    <Icon name={getSemanticIcon("action.download")} size="small" />
+                  </button>
+                </Show>
+                <button
+                  type="button"
+                  class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
+                  onClick={togglePin}
+                  aria-label={
+                    baseNote()?.pinned
+                      ? lingui._({ id: N.unpin.id, message: N.unpin.message })
+                      : lingui._({ id: N.pin.id, message: N.pin.message })
+                  }
+                >
+                  <Icon
+                    name={getSemanticIcon(baseNote()?.pinned ? "notes.pin" : "action.pin")}
+                    size="small"
+                    class={baseNote()?.pinned ? "text-icon-base" : "text-icon-weak-base"}
+                  />
+                </button>
+                <Show when={isBlueprint()}>
+                  <button
+                    type="button"
+                    class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
+                    onClick={convertToNote}
+                    disabled={convertingBlueprint()}
+                    aria-label={lingui._({ id: N.convertToNote.id, message: N.convertToNote.message })}
+                    title={lingui._({ id: N.convertToNote.id, message: N.convertToNote.message })}
+                  >
+                    <Icon name={getSemanticIcon("blueprint.main")} size="small" class="opacity-60" />
+                  </button>
+                </Show>
+                <Show when={!isBlueprint()}>
+                  <button
+                    type="button"
+                    class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
+                    onClick={convertToBlueprint}
+                    disabled={convertingBlueprint()}
+                    aria-label={lingui._({ id: N.convertToBlueprint.id, message: N.convertToBlueprint.message })}
+                    title={lingui._({ id: N.convertToBlueprint.id, message: N.convertToBlueprint.message })}
+                  >
+                    <Icon name={getSemanticIcon("blueprint.main")} size="small" />
+                  </button>
+                </Show>
+                <Show when={baseNote()?.global !== undefined}>
+                  <button
+                    type="button"
+                    class="flex size-7 items-center justify-center rounded-lg transition-colors"
+                    classList={{
+                      "text-icon-base bg-text-interactive-base/10": baseNote()?.global,
+                      "text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base":
+                        !baseNote()?.global,
+                    }}
+                    onClick={toggleGlobal}
+                    aria-label={
+                      baseNote()?.global
+                        ? lingui._({ id: N.makeLocal.id, message: N.makeLocal.message })
+                        : lingui._({ id: N.makeGlobal.id, message: N.makeGlobal.message })
+                    }
+                  >
+                    <Icon name={getSemanticIcon("navigation.home")} size="small" />
+                  </button>
+                </Show>
+                <button
+                  type="button"
+                  class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
+                  onClick={() => isCurrent() && props.onDelete()}
+                  aria-label={lingui._({ id: "note.document.close", message: "Close note" })}
+                >
+                  <Icon name={getSemanticIcon("action.close")} size="small" />
+                </button>
+                <button
+                  type="button"
+                  onClick={isArchived() ? restoreNote : archiveNote}
+                  aria-label={lingui._(isArchived() ? N.restore : N.archive)}
+                >
+                  <Icon name={getSemanticIcon("notes.archive")} size="small" />
+                </button>
+                <Show when={isArchived()}>
+                  <button type="button" onClick={deleteArchivedNote} aria-label={lingui._(N.deletePermanently)}>
+                    <Icon name={getSemanticIcon("action.remove")} size="small" />
+                  </button>
+                </Show>
+              </KobaltePopover.Content>
+            </KobaltePopover.Portal>
+          </KobaltePopover>
         </div>
 
         <Show when={conflict()}>
@@ -2406,7 +2300,12 @@ function NoteEditor(props: {
             ref={conflictBannerEl}
             class="flex items-center gap-2 border-t border-text-diff-delete-base/15 bg-text-diff-delete-base/8 px-4 py-2"
           >
-            <span class="flex-1 text-11-regular text-text-diff-delete-base">{conflict()?.message}</span>
+            <span class="flex-1 text-11-regular text-text-diff-delete-base">
+              {lingui._({
+                id: "note.document.conflict",
+                message: "This note changed elsewhere. Review the remote version or keep your draft.",
+              })}
+            </span>
             <button
               type="button"
               class="rounded-full px-2 py-0.5 text-10-medium text-text-base ring-1 ring-inset ring-border-base/35 hover:bg-surface-raised-base-hover"
@@ -2466,9 +2365,48 @@ function NoteEditor(props: {
         </Show>
       </div>
 
+      <Show when={doc.backupUnavailable() && hasDirtyFields(doc.dirty())}>
+        <div class="note-document-error" role="alert">
+          <span>
+            {lingui._({
+              id: "note.document.backupFailed",
+              message: "Local backup is unavailable. Keep this window open until your changes are saved.",
+            })}
+          </span>
+          <button type="button" onClick={() => doc.persist()}>
+            {lingui._({ id: "note.document.retry", message: "Retry" })}
+          </button>
+        </div>
+      </Show>
+      <Show when={doc.error() || doc.deleted()}>
+        <div class="note-document-error" role="alert">
+          <span>
+            {doc.deleted()
+              ? lingui._({ id: "note.document.deleted", message: "This note was deleted. Your draft is preserved." })
+              : lingui._({
+                  id: "note.document.saveFailed",
+                  message: "Changes could not be saved. Your draft is preserved.",
+                })}
+          </span>
+          <button type="button" onClick={() => void (doc.deleted() ? refetch() : doc.flush())}>
+            {lingui._({ id: "note.document.retry", message: "Retry" })}
+          </button>
+        </div>
+      </Show>
+
       <Show when={!noteLoaded()}>
         <div class="flex flex-1 items-center justify-center">
-          <Spinner class="size-4" />
+          <Show when={note.error || doc.deleted()} fallback={<Spinner class="size-4" />}>
+            <div role="alert" class="note-document-error">
+              <span>
+                {requestErrorMessage(note.error) ||
+                  lingui._({ id: "note.document.unavailable", message: "Unavailable" })}
+              </span>
+              <button type="button" onClick={() => void refetch()}>
+                {lingui._({ id: "note.document.retry", message: "Retry" })}
+              </button>
+            </div>
+          </Show>
         </div>
       </Show>
 
@@ -2479,6 +2417,7 @@ function NoteEditor(props: {
               type="text"
               class="w-full border-none bg-transparent text-16-medium text-text-strong outline-none placeholder:text-text-weaker"
               placeholder={lingui._({ id: N.untitled.id, message: N.untitled.message })}
+              aria-label={lingui._({ id: "note.document.title", message: "Note title" })}
               value={title()}
               onInput={onTitleInput}
             />
@@ -2486,12 +2425,17 @@ function NoteEditor(props: {
 
           <div class="flex min-h-0 flex-1 flex-col px-4 py-4">
             <DocumentEditorCore
-              content={baseNote()?.content}
-              onUpdate={() => markDirty("content")}
+              content={doc.content()}
+              retained={doc.view}
+              onPositionChange={doc.persist}
+              onUpdate={() => {
+                const instance = editor()
+                if (instance) doc.edit("content", instance.getJSON())
+              }}
               onEditorReady={handleEditorReady}
               uploadFile={uploadFile}
-              sdkClient={sdk.client}
-              sdkUrl={sdk.url}
+              sdkClient={client}
+              sdkUrl={serverURL}
               saving={saving()}
             />
           </div>

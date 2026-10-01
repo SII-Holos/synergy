@@ -58,6 +58,19 @@ test("late restoration writes the captured draft, never the newly navigated sess
   expect(await page.locator("#value").textContent()).toBe("restored A")
 })
 
+test("a draft capture remains current while typing but is invalidated by resetting the draft", async () => {
+  await page.evaluate(() => {
+    const fixture = (window as unknown as { projectDraftFixture: { prompt: { capture(): unknown } } })
+      .projectDraftFixture
+    ;(window as unknown as { draftCapture: unknown }).draftCapture = fixture.prompt.capture()
+  })
+  await page.click("#seed")
+  expect(await page.evaluate<boolean>("window.draftCapture.isCurrent()")).toBe(true)
+  await page.evaluate("window.projectDraftFixture.prompt.resetDraft()")
+  expect(await page.evaluate<boolean>("window.draftCapture.isCurrent()")).toBe(false)
+  await page.evaluate("window.draftCapture.release()")
+})
+
 test("late submit failure restores an untouched draft and preserves subsequent user edits", async () => {
   await page.click("#submit")
   await page.click("#fail-submit")

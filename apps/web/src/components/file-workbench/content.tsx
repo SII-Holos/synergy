@@ -17,6 +17,7 @@ import { workspaceFileOwner, workspaceFilePath } from "@/context/file/workspace"
 import { fileWriteErrorMessage, isFileWriteConflictError, isFileWriteDeniedError } from "@/context/file/errors"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { FileExplorer } from "./explorer"
+import { WorkspaceNavigator, type WorkspaceNavigatorController } from "../workspace/workspace-navigator"
 import { classifyFilePreview, resolveWorkspaceRelativePath } from "./model"
 import { buildWorkspaceFileBrowserUrl, buildWorkspaceFilePreviewUrl } from "@/utils/workspace-file-url"
 import { AttachmentPdfPreview } from "@/components/attachment-workbench/pdf-preview"
@@ -413,6 +414,7 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
   const [editing, setEditing] = createSignal(!!file.draft.get(path()))
   const dirty = createMemo(() => file.draft.dirty(path()))
   const [saving, setSaving] = createSignal(false)
+  let navigator: WorkspaceNavigatorController | undefined
   let sourceApi: FileSourceViewApi | undefined
   const canEdit = createMemo(
     () => mode() === "source" && !!textContent()?.contentVersion && textContent()?.truncationReason !== "size",
@@ -664,11 +666,22 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
             class="file-tree-toggle"
             aria-label={lingui._({ id: F.toggleFileTree.id, message: F.toggleFileTree.message })}
             aria-pressed={file.explorer.open()}
-            onClick={() => file.explorer.setOpen(!file.explorer.open())}
+            onClick={() => navigator?.toggle()}
           />
         </div>
       </div>
       <div class="file-workbench-main">
+        <WorkspaceNavigator
+          label={lingui._({ id: F.toggleFileTree.id, message: F.toggleFileTree.message })}
+          open={file.explorer.open()}
+          width={file.explorer.width()}
+          onResize={file.explorer.setWidth}
+          onReady={(value) => (navigator = value)}
+          onOpen={() => file.explorer.setOpen(true)}
+          onClose={() => file.explorer.setOpen(false)}
+        >
+          <FileExplorer onClose={() => file.explorer.setOpen(false)} onOpenResource={() => navigator?.closeDrawer()} />
+        </WorkspaceNavigator>
         <main class="file-viewer">
           <Show when={file.draft.backupUnavailable()}>
             <div class="file-state-banner" role="alert">
@@ -778,9 +791,6 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
             </Match>
           </Switch>
         </main>
-        <Show when={file.explorer.open()}>
-          <FileExplorer onClose={() => file.explorer.setOpen(false)} />
-        </Show>
       </div>
     </div>
   )

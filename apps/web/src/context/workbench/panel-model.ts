@@ -4,6 +4,7 @@ import type {
   WorkbenchPanelTab,
   WorkbenchPanelTabInit,
 } from "@/plugin/registries/workbench-panel-registry"
+import type { WorkspaceRevealState } from "./reveal-policy"
 
 export interface WorkbenchSurfaceState {
   opened?: boolean
@@ -11,6 +12,15 @@ export interface WorkbenchSurfaceState {
   tabs?: WorkbenchPanelTab[]
   size?: number
   resized?: boolean
+  fullscreen?: boolean
+  reveal?: WorkspaceRevealState
+}
+
+export function workbenchForNewSession(source: { side?: WorkbenchSurfaceState; bottom?: WorkbenchSurfaceState }) {
+  return {
+    ...(source.side ? { side: { ...source.side, opened: false } } : {}),
+    ...(source.bottom ? { bottom: { ...source.bottom, opened: false } } : {}),
+  }
 }
 
 export interface OpenWorkbenchPanelInput {
@@ -21,6 +31,32 @@ export interface OpenWorkbenchPanelInput {
   createId: () => string
   reuseExisting?: boolean
   replaceEmpty?: boolean
+  replaceCurrent?: boolean
+  active?: string
+}
+
+export function sameWorkbenchResource(tab: WorkbenchPanelTab, panelId: string, init?: WorkbenchPanelTabInit) {
+  return (
+    tab.panelId === panelId &&
+    tab.resourceId === init?.resourceId &&
+    (!(panelId === "notes" || panelId === "browser") || tab.source === init?.source)
+  )
+}
+
+export function workbenchReplacementTab(
+  input: Pick<OpenWorkbenchPanelInput, "tabs" | "panelId" | "init" | "active" | "replaceCurrent" | "replaceEmpty">,
+) {
+  if (
+    input.init?.resourceId !== undefined &&
+    input.tabs.some((tab) => sameWorkbenchResource(tab, input.panelId, input.init))
+  )
+    return
+  if (input.replaceCurrent)
+    return (
+      input.tabs.find((tab) => tab.id === input.active && tab.panelId === input.panelId) ??
+      input.tabs.findLast((tab) => tab.panelId === input.panelId)
+    )
+  if (input.replaceEmpty) return input.tabs.find((tab) => tab.panelId === input.panelId && tab.resourceId === undefined)
 }
 
 export function isWorkbenchPanelAvailable(entry: WorkbenchPanelEntry, hasSession: boolean) {
@@ -127,12 +163,8 @@ export function openWorkbenchPanelTab(input: OpenWorkbenchPanelInput): {
 } {
   const resource = input.init?.resourceId
   const resourceMatch =
-    resource === undefined
-      ? undefined
-      : input.tabs.find((tab) => tab.panelId === input.panelId && tab.resourceId === resource)
-  const emptyMatch = input.replaceEmpty
-    ? input.tabs.find((tab) => tab.panelId === input.panelId && tab.resourceId === undefined)
-    : undefined
+    resource === undefined ? undefined : input.tabs.find((tab) => sameWorkbenchResource(tab, input.panelId, input.init))
+  const emptyMatch = workbenchReplacementTab(input)
   const panelMatch = input.tabs.find((tab) => tab.panelId === input.panelId)
   const existing = resourceMatch ?? emptyMatch ?? panelMatch
 

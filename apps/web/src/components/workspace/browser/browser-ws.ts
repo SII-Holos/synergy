@@ -6,7 +6,6 @@ import {
   BrowserEventSchema,
   type BrowserHostStatus,
   type BrowserControlRequest,
-  type BrowserPresentationPreference,
 } from "@ericsanchezok/synergy-browser-core"
 import { useSDK } from "@/context/sdk"
 import { usePlatform } from "@/context/platform"
@@ -21,50 +20,18 @@ const RECONNECT_DELAY = 2000
 const HOST_RETRY_INTERVAL_MS = 1_000
 
 type BrowserWebSocketOptions = {
-  sessionID: string
+  sessionID?: string
+  mode?: "scope" | "session"
   ownerKey: string
   routeDirectory?: string
   presentation: BrowserClientPresentationMode
-}
-
-type BrowserWebSocketUrlOptions = {
-  serverUrl: string
-  sessionID: string
-  routeDirectory?: string
-  directory?: string
   scopeID?: string
-  scopeKey?: string
-  presentation?: BrowserPresentationPreference
-  traceId?: string
-  sinceSeq?: number
-  epoch?: string | null
-  nativeTicket?: string
+  serverUrl?: string
+  client?: ReturnType<typeof useSDK>["client"]
 }
 
-export function createBrowserEventsWebSocketUrl(options: BrowserWebSocketUrlOptions) {
-  return createBrowserRouteUrl(options, "events", "ws")
-}
-
-function createBrowserRouteUrl(options: BrowserWebSocketUrlOptions, route: "events", scheme: "ws") {
-  const pathDirectory = options.routeDirectory ?? options.directory ?? options.scopeID ?? options.scopeKey
-  if (!pathDirectory) return null
-
-  const params = new URLSearchParams({
-    mode: "session",
-    sessionID: options.sessionID,
-    presentation: options.presentation ?? "auto",
-    protocolVersion: String(BROWSER_PROTOCOL_VERSION),
-  })
-  if (options.scopeID) params.set("scopeID", options.scopeID)
-  else if (options.directory) params.set("directory", options.directory)
-  if (options.traceId) params.set("traceId", options.traceId)
-  if (options.sinceSeq !== undefined) params.set("sinceSeq", String(options.sinceSeq))
-  if (options.epoch) params.set("epoch", options.epoch)
-  if (options.nativeTicket) params.set("nativeTicket", options.nativeTicket)
-
-  const baseUrl = options.serverUrl.replace(/^http/, "ws")
-  return baseUrl + `/${encodeURIComponent(pathDirectory)}/browser/${route}?${params.toString()}`
-}
+import { createBrowserEventsWebSocketUrl, type BrowserWebSocketUrlOptions } from "./browser-route-url"
+export { createBrowserEventsWebSocketUrl } from "./browser-route-url"
 
 function isBrowserHostStatus(value: unknown): value is BrowserHostStatus {
   return [
@@ -97,7 +64,7 @@ function createBrowserHttpControlSender(
         path_directory: options.routeDirectory ?? options.directory ?? options.scopeID ?? options.scopeKey ?? "",
         query_directory: options.directory,
         scopeID: options.scopeID,
-        mode: "session" as const,
+        mode: options.mode ?? (options.sessionID ? ("session" as const) : ("scope" as const)),
         sessionID: options.sessionID,
         presentation: "native" as const,
         nativeTicket: await createNativeTicket?.(),
@@ -159,6 +126,9 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
   const platform = usePlatform()
   const sessionID = options.sessionID
   const routeDirectory = options.routeDirectory
+  const serverUrl = options.serverUrl ?? sdk.url
+  const client = options.client ?? sdk.client
+  const scopeID = options.scopeID ?? sdk.scopeID
   let ws: WebSocket | undefined
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let disposed = false
@@ -167,7 +137,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
     options.presentation === "native" && platform.browserNative
       ? new NativePresentationCoordinator({
           bridge: platform.browserNative,
-          serverUrl: sdk.url,
+          serverUrl,
           ownerKey: options.ownerKey,
           onState(state) {
             const pageId = store.pageId()
@@ -197,12 +167,13 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
   const controlSender = createBrowserHttpControlSender(
     store,
     {
-      client: sdk.client,
-      serverUrl: sdk.url,
+      client,
+      serverUrl,
       sessionID,
+      mode: options.mode,
       routeDirectory,
       directory: sdk.directory,
-      scopeID: sdk.scopeID,
+      scopeID,
       scopeKey: sdk.scopeKey,
       traceId: store.browserTraceId(),
       presentation: options.presentation,
@@ -251,11 +222,12 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
     }
     if (disposed) return
     const wsUrl = createBrowserEventsWebSocketUrl({
-      serverUrl: sdk.url,
+      serverUrl,
       sessionID,
+      mode: options.mode,
       routeDirectory,
       directory: sdk.directory,
-      scopeID: sdk.scopeID,
+      scopeID,
       scopeKey: sdk.scopeKey,
       traceId: store.browserTraceId(),
       sinceSeq: store.session.seq,
@@ -269,7 +241,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
         sessionID,
         routeDirectory,
         directory: sdk.directory,
-        scopeID: sdk.scopeID,
+        scopeID,
         scopeKey: sdk.scopeKey,
       })
       return
@@ -280,7 +252,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
       url: wsUrl,
       routeDirectory,
       directory: sdk.directory,
-      scopeID: sdk.scopeID,
+      scopeID,
       scopeKey: sdk.scopeKey,
     })
     const socket = new WebSocket(wsUrl)
@@ -381,6 +353,8 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
         }
         case "agent.activity": {
           store.applyAgentActivity({
+            sessionID: msg.sessionID,
+            operationID: msg.operationID,
             pageId: msg.pageId,
             url: msg.url,
             title: msg.title,

@@ -10841,6 +10841,26 @@ msgid "environment.dialog.title"
 msgstr "选择 Environment"
 
 #. js-lingui-explicit-id
+msgid "files.close.description"
+msgstr "离开此文件前，保存 {name} 的更改。"
+
+#. js-lingui-explicit-id
+msgid "files.close.discard"
+msgstr "丢弃"
+
+#. js-lingui-explicit-id
+msgid "files.close.failed"
+msgstr "文件保存失败。你的更改仍保留在此标签页中。"
+
+#. js-lingui-explicit-id
+msgid "files.close.save"
+msgstr "保存"
+
+#. js-lingui-explicit-id
+msgid "files.close.title"
+msgstr "保存文件更改？"
+
+#. js-lingui-explicit-id
 msgid "list.for-label"
 msgstr "用于"
 
@@ -10987,6 +11007,62 @@ msgstr "工具"
 #. js-lingui-explicit-id
 msgid "nav.tools.title"
 msgstr "工具"
+
+#. js-lingui-explicit-id
+msgid "note.document.backupFailed"
+msgstr "本地备份不可用。请保持此窗口打开，直到更改保存成功。"
+
+#. js-lingui-explicit-id
+msgid "note.document.close"
+msgstr "关闭笔记"
+
+#. js-lingui-explicit-id
+msgid "note.document.conflict"
+msgstr "此笔记已在别处更新。请查看远端版本或保留你的草稿。"
+
+#. js-lingui-explicit-id
+msgid "note.document.deleted"
+msgstr "此笔记已被删除。你的草稿仍保留在这里。"
+
+#. js-lingui-explicit-id
+msgid "note.document.exportDraft"
+msgstr "导出草稿"
+
+#. js-lingui-explicit-id
+msgid "note.document.more"
+msgstr "笔记选项"
+
+#. js-lingui-explicit-id
+msgid "note.document.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "note.document.saved"
+msgstr "已保存"
+
+#. js-lingui-explicit-id
+msgid "note.document.saveFailed"
+msgstr "更改保存失败。你的草稿仍保留在这里。"
+
+#. js-lingui-explicit-id
+msgid "note.document.saving"
+msgstr "正在保存…"
+
+#. js-lingui-explicit-id
+msgid "note.document.title"
+msgstr "笔记标题"
+
+#. js-lingui-explicit-id
+msgid "note.document.unavailable"
+msgstr "不可用"
+
+#. js-lingui-explicit-id
+msgid "note.document.unsaved"
+msgstr "未保存的更改"
+
+#. js-lingui-explicit-id
+msgid "note.navigation.toggle"
+msgstr "切换笔记导航"
 
 #. js-lingui-explicit-id
 msgid "plugin.textAction.back"
@@ -23112,6 +23188,10 @@ msgid "workbench.discard.title"
 msgstr "放弃未保存的更改？"
 
 #. js-lingui-explicit-id
+msgid "workspace.collapse"
+msgstr "收起工作区"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.applyBinding"
 msgstr "重新绑定 Workspace"
 
@@ -23228,6 +23308,34 @@ msgid "workspace.dialog.unavailable"
 msgstr "Workspace 不可用"
 
 #. js-lingui-explicit-id
+msgid "workspace.document.newTab"
+msgstr "在新标签页打开"
+
+#. js-lingui-explicit-id
+msgid "workspace.fullscreen.enter"
+msgstr "展开工作区"
+
+#. js-lingui-explicit-id
+msgid "workspace.fullscreen.exit"
+msgstr "恢复分栏视图"
+
+#. js-lingui-explicit-id
+msgid "workspace.home.available"
+msgstr "打开资源"
+
+#. js-lingui-explicit-id
+msgid "workspace.home.continue"
+msgstr "继续查看"
+
+#. js-lingui-explicit-id
+msgid "workspace.home.newTab"
+msgstr "新标签页"
+
+#. js-lingui-explicit-id
+msgid "workspace.home.title"
+msgstr "工作区"
+
+#. js-lingui-explicit-id
 msgid "workspace.location.directory"
 msgstr "本地目录"
 
@@ -23254,3 +23362,23 @@ msgstr "存储型 Workspace"
 #. js-lingui-explicit-id
 msgid "workspace.location.unavailable"
 msgstr "Workspace 不可用"
+
+#. js-lingui-explicit-id
+msgid "workspace.navigation.close"
+msgstr "关闭导航"
+
+#. js-lingui-explicit-id
+msgid "workspace.navigation.resize"
+msgstr "调整导航宽度"
+
+#. js-lingui-explicit-id
+msgid "workspace.output.ready"
+msgstr "新资源已就绪"
+
+#. js-lingui-explicit-id
+msgid "workspace.output.view"
+msgstr "查看"
+
+#. js-lingui-explicit-id
+msgid "workspace.tab.new"
+msgstr "新建资源标签页"

@@ -1,5 +1,6 @@
 import { createSignal, onCleanup, onMount, Show, untrack } from "solid-js"
-import { Editor, type AnyExtension } from "@tiptap/core"
+import { Editor, type AnyExtension, type Content } from "@tiptap/core"
+import { undoDepth, redoDepth } from "@tiptap/pm/history"
 import StarterKit from "@tiptap/starter-kit"
 import Placeholder from "@tiptap/extension-placeholder"
 import Link from "@tiptap/extension-link"
@@ -468,6 +469,8 @@ export function createDocumentEditorExtensions(config: DocumentEditorExtensionsC
 // ---------------------------------------------------------------------------
 
 export interface DocumentEditorCoreProps {
+  retained?: DocumentEditorRetention
+  onPositionChange?: () => void
   /** Initial ProseMirror content (JSON). Used only on first mount. */
   content: unknown
   /** Called on every editor content update so the parent can mark dirty & schedule save. */
@@ -484,12 +487,59 @@ export interface DocumentEditorCoreProps {
   saving: boolean
 }
 
+export interface DocumentEditorRetention {
+  editor?: Editor
+  hasHistory?: () => boolean
+  onUpdate?: () => void
+  scroll: number
+  selection?: { from: number; to: number }
+}
+
+export function unmountDocumentEditor(editor: Editor) {
+  // Async decoration plugins retain the old view; their callbacks must not dispatch into its replacement.
+  editor.view.setProps({ dispatchTransaction: () => {} })
+  void editor.state
+  editor.unmount()
+}
+
+export function mountDocumentEditor(input: {
+  element: HTMLElement
+  config: DocumentEditorExtensionsConfig
+  content: unknown
+  onUpdate: () => void
+  retained?: DocumentEditorRetention
+}) {
+  const retained = input.retained
+  if (retained) retained.onUpdate = input.onUpdate
+  if (retained?.editor) {
+    const instance = retained.editor
+    const bubble = instance.extensionManager.extensions.find((extension) => extension.name === "bubbleMenu")
+    if (bubble) bubble.options.element = input.config.bubbleRef
+    instance.mount(input.element)
+    return instance
+  }
+  const instance = new Editor({
+    element: input.element,
+    extensions: createDocumentEditorExtensions(input.config),
+    content: input.content as Content,
+    onUpdate: ({ editor }) => {
+      if (!editor.isDestroyed) (retained?.onUpdate ?? input.onUpdate)()
+    },
+  })
+  if (retained) {
+    retained.editor = instance
+    retained.hasHistory = () => undoDepth(instance.state) > 0 || redoDepth(instance.state) > 0
+  }
+  return instance
+}
+
 /**
  * Shared Tiptap editor core: extensions, editor lifecycle, editor area DOM,
  * bubble menu, and save indicator.
  *
  * Mount this component inside a {@link Show when={loaded}} guard — it creates
- * the editor on mount and destroys it on cleanup.
+ * the editor on mount. Retained document editors unmount without losing history;
+ * the owning document controller destroys them when it is disposed.
  *
  * Consumers (NoteEditor, future BlueprintEditor) own their own data-loading,
  * autosave/conflict, toolbar, tags, and metadata logic.
@@ -501,26 +551,43 @@ export function DocumentEditorCore(props: DocumentEditorCoreProps) {
   const [editorInstance, setEditorInstance] = createSignal<Editor>()
 
   onMount(() => {
-    const instance = new Editor({
+    const instance = mountDocumentEditor({
       element: editorRef,
-      extensions: createDocumentEditorExtensions({
+      config: {
         sdkClient: props.sdkClient,
         sdkUrl: props.sdkUrl,
         onUploadFile: props.uploadFile,
         bubbleRef,
         lingui,
-      }),
-      content: untrack(() => props.content) as any,
-      onUpdate: ({ editor }) => {
-        if (editor.isDestroyed) return
-        props.onUpdate()
       },
+      content: untrack(() => props.content),
+      onUpdate: () => props.onUpdate(),
+      retained: props.retained,
     })
 
     setEditorInstance(instance)
     props.onEditorReady(instance)
 
-    onCleanup(() => instance.destroy())
+    if (props.retained) {
+      editorRef.scrollTop = props.retained.scroll
+      const selection = props.retained.selection
+      if (selection) instance.commands.setTextSelection(selection)
+    }
+    const position = () => {
+      if (!props.retained || instance.isDestroyed) return
+      props.retained.scroll = editorRef.scrollTop
+      props.retained.selection = { from: instance.state.selection.from, to: instance.state.selection.to }
+      props.onPositionChange?.()
+    }
+    instance.on("selectionUpdate", position)
+    editorRef.addEventListener("scroll", position)
+    onCleanup(() => {
+      position()
+      instance.off("selectionUpdate", position)
+      editorRef.removeEventListener("scroll", position)
+      if (props.retained) unmountDocumentEditor(instance)
+      else instance.destroy()
+    })
   })
 
   function handleEditorAreaClick(e: MouseEvent) {
@@ -555,11 +622,6 @@ export function DocumentEditorCore(props: DocumentEditorCoreProps) {
       <div ref={bubbleRef} class="note-bubble-menu">
         <Show when={editorInstance()} keyed>
           {(editor) => <BubbleMenuContent editor={editor} />}
-        </Show>
-      </div>
-      <div class="pointer-events-none absolute bottom-4 right-4 inline-flex items-center rounded-full bg-background-base/72 px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-weak-base backdrop-blur-sm">
-        <Show when={props.saving} fallback="Saved">
-          {lingui._({ id: D.saving.id, message: D.saving.message })}
         </Show>
       </div>
     </div>

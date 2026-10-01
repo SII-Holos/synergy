@@ -10895,7 +10895,7 @@ export type BrowserManageProfile =
     }
 
 export type BrowserAnnotationResponse = {
-  protocolVersion: 4
+  protocolVersion: 5
   annotation: {
     id: string
     pageURL: string
@@ -10911,7 +10911,7 @@ export type BrowserAnnotationResponse = {
 }
 
 export type BrowserAnnotationRequest = {
-  protocolVersion: 4
+  protocolVersion: 5
   pageId: string
   x: number
   y: number
@@ -10922,14 +10922,14 @@ export type BrowserAnnotationRequest = {
 }
 
 export type BrowserDiagnosticsResponse = {
-  protocolVersion: 4
+  protocolVersion: 5
   pageId: string
   action: string
   data: unknown
 }
 
 export type BrowserDiagnosticsRequest = {
-  protocolVersion: 4
+  protocolVersion: 5
   pageId: string
   commandId: string
   action: "console" | "network" | "elements" | "assets" | "downloads" | "clear"
@@ -10938,11 +10938,11 @@ export type BrowserDiagnosticsRequest = {
 
 export type BrowserApiSessionState = {
   type: "session.state"
-  protocolVersion: 4
+  protocolVersion: 5
   ownerKey: string
   status: "empty" | "suspended" | "active" | "failed"
   presentation: {
-    protocolVersion: 4
+    protocolVersion: 5
     kind: "native"
     capabilities: {
       native: boolean
@@ -10967,7 +10967,7 @@ export type BrowserApiSessionState = {
 
 export type BrowserControlResponse = {
   type: "control.result"
-  protocolVersion: 4
+  protocolVersion: 5
   result:
     | {
         type: "void"
@@ -11062,7 +11062,7 @@ export type BrowserControlResponse = {
 
 export type BrowserControlRequest = {
   pageId: string
-  protocolVersion: 4
+  protocolVersion: 5
   command:
     | {
         type: "navigate"

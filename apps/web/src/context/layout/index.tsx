@@ -14,7 +14,8 @@ import { createScrollPersistence, type SessionScroll } from "./scroll"
 import { retry } from "@ericsanchezok/synergy-util/retry"
 import { computeDefaultWorkspaceWidth, sidebarOccupancy } from "./workspace"
 import type { WorkbenchPanelSurface, WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
-import type { WorkbenchSurfaceState } from "../workbench/panel-model"
+import { workbenchForNewSession, type WorkbenchSurfaceState } from "../workbench/panel-model"
+import type { WorkspaceRevealState } from "../workbench/reveal-policy"
 import { migrateWorkbenchLayout } from "../workbench/layout-migration"
 import { clampSidebarWidth, createInitialLayoutDefaults, effectiveSidebarWidth } from "./defaults"
 import { reconcile } from "solid-js/store"
@@ -170,7 +171,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       { ...Persist.connection(globalSdk.url, "layout"), migrate: migrateWorkbenchLayout },
       createStore({
         ...createInitialLayoutDefaults(),
-        version: 1,
+        version: 2,
         review: {
           diffStyle: "split" as ReviewDiffStyle,
         },
@@ -1338,6 +1339,16 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           active: () => current().active,
           tabs: () => current().tabs ?? [],
           activeTab: () => (current().tabs ?? []).find((tab) => tab.id === current().active),
+          fullscreen: () => current().fullscreen === true,
+          reveal: () => current().reveal,
+          setReveal(value: WorkspaceRevealState) {
+            ensureSurface()
+            setStore("workbenchSurfaces", sessionKey, surface, "reveal", value)
+          },
+          setFullscreen(fullscreen: boolean) {
+            ensureSurface()
+            setStore("workbenchSurfaces", sessionKey, surface, "fullscreen", fullscreen)
+          },
           size: () => {
             const state = current()
             return state.resized && typeof state.size === "number" ? state.size : sizeDefault()
@@ -1378,7 +1389,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         if (targetHasTabs) return
         setStore(
           produce((draft) => {
-            draft.workbenchSurfaces[to] = source
+            draft.workbenchSurfaces[to] = workbenchForNewSession(source)
             delete draft.workbenchSurfaces[from]
           }),
         )

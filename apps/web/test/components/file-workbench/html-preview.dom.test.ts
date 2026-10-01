@@ -58,7 +58,7 @@ beforeAll(async () => {
             setImageScaleMode: () => {},
           },
           pdf: { get: () => undefined, load: async () => {} },
-          explorer: { open: () => false, setOpen: () => {}, reveal: async () => {} },
+          explorer: { open: () => false, width: () => 260, setWidth() {}, setOpen: () => {}, reveal: async () => {} },
         })
       `,
     ),

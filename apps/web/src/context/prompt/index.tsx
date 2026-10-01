@@ -173,6 +173,7 @@ function createPromptSession(dir: string, id: string | undefined, drafts: Return
   const current = createMemo(() => sanitizePrompt(store.prompt))
   const dirty = createMemo(() => !isPromptEqual(current(), DEFAULT_PROMPT))
   let revision = 0
+  let generation = 0
 
   createEffect(() => drafts.markDraftSession(id, dirty()))
   onCleanup(() => drafts.clearLocalDraftMark(id))
@@ -183,6 +184,7 @@ function createPromptSession(dir: string, id: string | undefined, drafts: Return
     cursor: createMemo(() => store.cursor),
     dirty,
     revision: () => revision,
+    generation: () => generation,
     restoreIfUnchanged(
       expectedRevision: number,
       snapshot: { prompt: Prompt; context: PromptContextSnapshot; cursor?: number },
@@ -237,6 +239,7 @@ function createPromptSession(dir: string, id: string | undefined, drafts: Return
     },
     reset() {
       revision++
+      generation++
       batch(() => {
         setStore("prompt", clonePrompt(DEFAULT_PROMPT))
         setStore("cursor", 0)
@@ -244,6 +247,7 @@ function createPromptSession(dir: string, id: string | undefined, drafts: Return
     },
     resetDraft() {
       revision++
+      generation++
       batch(() => {
         setStore("prompt", clonePrompt(DEFAULT_PROMPT))
         setStore("cursor", 0)
@@ -352,11 +356,12 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
       },
       capture() {
         const draft = session()
+        const generation = draft.generation()
         retained.set(draft, (retained.get(draft) ?? 0) + 1)
         let released = false
         return {
           draft,
-          isCurrent: () => session() === draft,
+          isCurrent: () => session() === draft && draft.generation() === generation,
           release() {
             if (released) return
             released = true

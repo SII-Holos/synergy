@@ -9,6 +9,8 @@ import {
   computeMaxWorkspaceWidth,
   sessionSideWorkspaceMounts,
   sidebarOccupancy,
+  workspacePresentation,
+  workspaceNavigatorWidth,
 } from "../../../src/context/layout/workspace"
 
 describe("workspace layout constants", () => {
@@ -17,7 +19,7 @@ describe("workspace layout constants", () => {
   })
 
   test("keeps the drawer usable at its minimum", () => {
-    expect(WORKSPACE_MIN_WIDTH).toBe(300)
+    expect(WORKSPACE_MIN_WIDTH).toBe(360)
   })
 
   test("reserves a narrow auxiliary session column", () => {
@@ -112,7 +114,7 @@ describe("computeDefaultWorkspaceWidth", () => {
   })
 
   test("returns half of the viewport on a 1920px desktop", () => {
-    expect(computeDefaultWorkspaceWidth(1920)).toBe(960)
+    expect(computeDefaultWorkspaceWidth(1920)).toBe(720)
   })
 
   test("scales down on narrower viewports", () => {
@@ -135,4 +137,17 @@ describe("computeDefaultWorkspaceWidth", () => {
       expect(computeDefaultWorkspaceWidth(vp)).toBeGreaterThan(640)
     }
   })
+})
+
+test("automatic narrow coverage and manual fullscreen preserve the user's split width", () => {
+  expect(workspacePresentation(1024, 600, false)).toEqual({ overlay: false, automatic: false, width: 600 })
+  expect(workspacePresentation(709, 600, false)).toEqual({ overlay: true, automatic: true, width: 709 })
+  expect(workspacePresentation(1024, 600, true)).toEqual({ overlay: true, automatic: false, width: 1024 })
+  expect(workspacePresentation(1024, 600, false).width).toBe(600)
+})
+
+test("navigation uses a drawer below 520px and constrains the displayed width without changing preference", () => {
+  expect(workspaceNavigatorWidth(519, 420)).toEqual({ drawer: true, width: 420 })
+  expect(workspaceNavigatorWidth(540, 420)).toEqual({ drawer: false, width: 260 })
+  expect(workspaceNavigatorWidth(900, 420)).toEqual({ drawer: false, width: 420 })
 })

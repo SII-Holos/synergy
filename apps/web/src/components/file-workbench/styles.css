@@ -11,8 +11,8 @@
 .file-workbench-toolbar,
 .file-explorer-header {
   display: flex;
-  height: 40px;
-  min-height: 40px;
+  height: 48px;
+  min-height: 48px;
   align-items: center;
   border-bottom: 1px solid var(--workbench-border, var(--border-weak-base));
   background: var(--workbench-panel-bg, var(--background-stronger));
@@ -520,7 +520,7 @@
 .file-tree-row,
 .file-tree-state {
   display: flex;
-  height: 29px;
+  height: 32px;
   align-items: center;
   min-width: 0;
   padding-right: 6px;
@@ -682,4 +682,15 @@
 .file-explorer-folder:focus-visible {
   outline: 2px solid var(--border-focus);
   outline-offset: 2px;
+}
+
+.file-tree-new-tab {
+  width: 24px;
+  height: 24px;
+  opacity: 0;
+  flex-shrink: 0;
+}
+.file-tree-row:hover .file-tree-new-tab,
+.file-tree-row:focus-within .file-tree-new-tab {
+  opacity: 1;
 }

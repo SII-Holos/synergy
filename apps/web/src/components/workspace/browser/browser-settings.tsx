@@ -67,8 +67,7 @@ type IdentityList = z.infer<typeof BrowserProfileListSchema>
 
 export function BrowserSettings(props: {
   ownerKey?: string
-  sessionID: string
-  routeDirectory?: string
+  route: import("./browser-workbench-model").BrowserWorkbenchRoute
   createTicket(): Promise<string>
 }) {
   const browser = useBrowser(),
@@ -88,11 +87,11 @@ export function BrowserSettings(props: {
   const [error, setError] = createSignal("")
   const selected = () => catalog().profiles.find((profile) => profile.id === identity())
   const route = async () => ({
-    path_directory: props.routeDirectory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey,
+    path_directory: props.route.path_directory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey,
     query_directory: sdk.directory,
     scopeID: sdk.scopeID,
-    mode: "session" as const,
-    sessionID: props.sessionID,
+    mode: props.route.mode,
+    sessionID: props.route.sessionID,
     presentation: "native" as const,
     nativeTicket: await props.createTicket(),
   })

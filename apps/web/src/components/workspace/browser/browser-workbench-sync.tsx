@@ -1,14 +1,16 @@
 import { Show, batch, createEffect, createResource, untrack, on, onCleanup } from "solid-js"
-import { useSDK } from "@/context/sdk"
 import { useWorkbenchPanels } from "@/context/workbench"
-import { BROWSER_PROTOCOL_VERSION, type BrowserAPISessionState } from "@ericsanchezok/synergy-browser-core"
-import { createBrowserStore } from "./browser-store"
-import { createBrowserWebSocket } from "./browser-ws"
-import { reconcileBrowserTabs, type BrowserWorkbenchRoute } from "./browser-workbench-model"
+import { useBrowserCatalog, type BrowserCatalog } from "./browser-catalog"
+import {
+  reconcileBrowserTabs,
+  sameBrowserCatalog,
+  browserWorkbenchRoute,
+  type BrowserWorkbenchRoute,
+} from "./browser-workbench-model"
 
 export function BrowserWorkbenchSync(props: { route: BrowserWorkbenchRoute }) {
-  const sdk = useSDK()
-  const workbench = useWorkbenchPanels()
+  const catalog = useBrowserCatalog(),
+    workbench = useWorkbenchPanels()
   const [state, { refetch }] = createResource(
     () => props.route,
     async (route) => {
@@ -16,15 +18,13 @@ export function BrowserWorkbenchSync(props: { route: BrowserWorkbenchRoute }) {
         workbench
           .surface("side")
           .tabs()
-          .filter((tab) => tab.panelId === "browser" && tab.resourceId)
+          .filter((tab) => {
+            const owner = browserWorkbenchRoute(tab.state)
+            return tab.panelId === "browser" && tab.resourceId && (!owner || sameBrowserCatalog(owner, route))
+          })
           .map((tab) => tab.resourceId!),
       )
-      const response = await sdk.client.browser.session(
-        { ...route, mode: "session", presentation: "auto", protocolVersion: BROWSER_PROTOCOL_VERSION },
-        { throwOnError: true },
-      )
-      if (!response.data) throw new Error("Browser state could not be loaded")
-      return { state: response.data, route, knownPageIds }
+      return { catalog: await catalog.get(route), knownPageIds }
     },
   )
   createEffect(() => {
@@ -34,41 +34,48 @@ export function BrowserWorkbenchSync(props: { route: BrowserWorkbenchRoute }) {
   })
   return (
     <Show when={!state.loading && !state.error ? state() : undefined} keyed>
-      {(value) => <SyncState initial={value.state} route={value.route} knownPageIds={value.knownPageIds} />}
+      {(value) => <SyncState catalog={value.catalog} knownPageIds={value.knownPageIds} />}
     </Show>
   )
 }
-function SyncState(props: {
-  initial: BrowserAPISessionState
-  route: BrowserWorkbenchRoute
-  knownPageIds: ReadonlySet<string>
-}) {
+function SyncState(props: { catalog: BrowserCatalog; knownPageIds: ReadonlySet<string> }) {
   const workbench = useWorkbenchPanels()
-  const store = createBrowserStore()
-  store.replacePages(props.initial.pages)
-  store.setSession("seq", props.initial.seq)
-  store.setSession("epoch", props.initial.epoch)
-  createBrowserWebSocket(store, {
-    sessionID: props.route.sessionID,
-    ownerKey: props.initial.ownerKey,
-    routeDirectory: props.route.path_directory,
-    presentation: "native",
-  })
   let knownPageIds = props.knownPageIds
+  let previousSessionKey = workbench.sessionKey()
   createEffect(
     on(
-      () => store.session.pages.map((page) => ({ id: page.id, title: page.title, url: page.url })),
-      (pages) => {
-        const surface = workbench.surface("side")
-        const tabs = surface.tabs(),
+      () =>
+        [
+          workbench.sessionKey(),
+          props.catalog.store.session.pages.map((page) => ({ id: page.id, title: page.title, url: page.url })),
+        ] as const,
+      ([sessionKey, pages]) => {
+        const surface = workbench.surface("side"),
+          tabs = surface.tabs(),
           active = surface.active()
-        const next = reconcileBrowserTabs({ tabs, active, pages, route: props.route, knownPageIds })
+        if (sessionKey !== previousSessionKey) {
+          knownPageIds = new Set(
+            tabs
+              .filter((tab) => {
+                const route = browserWorkbenchRoute(tab.state)
+                return (
+                  tab.panelId === "browser" &&
+                  tab.resourceId &&
+                  (!route || sameBrowserCatalog(route, props.catalog.route))
+                )
+              })
+              .map((tab) => tab.resourceId!),
+          )
+          previousSessionKey = sessionKey
+        }
+        const next = reconcileBrowserTabs({ tabs, active, pages, route: props.catalog.route, knownPageIds })
         knownPageIds = new Set(pages.map((page) => page.id))
         if (next.tabs === tabs && next.active === active) return
         untrack(() =>
           batch(() => {
             surface.setTabs(next.tabs)
-            surface.setActive(next.active)
+            if (active !== undefined || surface.opened()) surface.setActive(next.active)
+            if (!next.tabs.length && surface.opened()) surface.close()
           }),
         )
       },

@@ -2,18 +2,20 @@ import { usePlatform } from "@/context/platform"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { runtimeFeatureAvailable } from "../runtime-features"
 import { createEffect, createMemo, lazy, Show, Suspense, onCleanup, onMount, type ParentProps } from "solid-js"
-import { useNavigate, useParams } from "@solidjs/router"
-import { base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { useParams } from "@solidjs/router"
 import { useSDK } from "@/context/sdk"
 import { useWorkbenchPanels } from "@/context/workbench"
-import { browserWorkbenchRoute, browserTabURL } from "./browser/browser-workbench-model"
+import { browserWorkbenchRoute, browserTabURL, type BrowserWorkbenchRoute } from "./browser/browser-workbench-model"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { normalizeBrowserError } from "./browser/browser-error"
 import { useTerminal } from "@/context/terminal"
 import { workspaceFilePath } from "@/context/file/workspace"
-import { useFile } from "@/context/file"
+import { useFile, useProjectFiles } from "@/context/file"
+import { useNoteDocuments } from "@/components/note/documents"
+import { useBrowserCatalog } from "./browser/browser-catalog"
+import { browserPageTab } from "./browser/browser-workbench-model"
 import { registerWorkbenchPanel } from "@/plugin/registries/workbench-panel-registry"
 import { shortestUniqueFileTitle } from "@/components/file-workbench/model"
 import { panels as P, browser as B } from "@/locales/messages"
@@ -26,7 +28,6 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
   const platform = usePlatform()
   const sdk = useSDK()
   const params = useParams()
-  const navigate = useNavigate()
   const workbench = useWorkbenchPanels()
   let openingBrowser = false
   onMount(() => {
@@ -46,26 +47,13 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
     window.addEventListener("keydown", key)
     onCleanup(() => window.removeEventListener("keydown", key))
   })
-  const browserRoute = createMemo(() =>
-    params.id
-      ? {
-          sessionID: params.id,
-          path_directory: params.dir ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey,
-          query_directory: sdk.directory,
-          scopeID: sdk.scopeID,
-        }
-      : undefined,
-  )
+  const browserRoute = createMemo<BrowserWorkbenchRoute>(() => ({
+    mode: "scope" as const,
+    path_directory: params.dir ?? sdk.scopeID ?? sdk.scopeKey,
+    scopeID: sdk.scopeID,
+  }))
   const browserSync = createMemo(() =>
-    Boolean(
-      browserRoute() &&
-        platform.browserNative &&
-        runtimeFeatureAvailable("panel", "browser", capabilities.has) &&
-        workbench
-          .surface("side")
-          .tabs()
-          .some((tab) => tab.panelId === "browser"),
-    ),
+    Boolean(platform.browserNative && runtimeFeatureAvailable("panel", "browser", capabilities.has)),
   )
   const register = (entry: Parameters<typeof registerWorkbenchPanel>[0]) =>
     runtimeFeatureAvailable("panel", entry.id, capabilities.has) &&
@@ -74,8 +62,44 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
       : () => {}
   const terminal = useTerminal()
   const file = useFile()
+  const files = useProjectFiles()
+  const notes = useNoteDocuments()
+  const catalog = useBrowserCatalog()
   const { controller, i18n } = useLocale()
   const disposers: VoidFunction[] = []
+  async function openNativePage(restore = false, url?: string) {
+    if (openingBrowser) return
+    openingBrowser = true
+    try {
+      const { openBrowserWorkbenchPage } = await import("./browser/browser-workbench-api")
+      const route =
+        url?.startsWith("file:") && params.id
+          ? {
+              mode: "session" as const,
+              sessionID: params.id,
+              scopeID: sdk.scopeID,
+              path_directory: params.dir ?? sdk.scopeID,
+              query_directory: sdk.directory,
+            }
+          : browserRoute()
+      return await openBrowserWorkbenchPage({
+        client: sdk.client,
+        serverUrl: sdk.url,
+        bridge: platform.browserNative,
+        route,
+        restore,
+        url,
+      })
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: i18n._(B.issue),
+        description: normalizeBrowserError(error, "Page could not be opened. Retry.").message,
+      })
+    } finally {
+      openingBrowser = false
+    }
+  }
 
   createEffect(() => {
     controller.activeLocale()
@@ -85,14 +109,26 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
     for (const dispose of disposers.splice(0)) dispose()
     disposers.push(
       register({
+        id: "resource-home",
+        label: i18n._({ id: "workspace.home.newTab", message: "New tab" }),
+        icon: getSemanticIcon("navigation.home"),
+        surface: "side",
+        cardinality: "singleton",
+        pluginId: "builtin",
+        launchable: false,
+        loader: async () => ({ default: (await import("./resource-home")).ResourceHome }),
+      }),
+      register({
         id: "notes",
         label: i18n._(P.notes),
         icon: getSemanticIcon("notes.main"),
         surface: "side",
-        cardinality: "singleton",
+        cardinality: "multi",
         pluginId: "builtin",
         order: 10,
         loader: async () => ({ default: (await import("./tool-notes")).NotesWorkbenchContent }),
+        title: (tab) => tab.title ?? i18n._(P.notes),
+        beforeCloseTab: (tab) => !tab.resourceId || notes.get(tab.source ?? sdk.scopeID, tab.resourceId).flush(),
       }),
       register(createContextWorkbenchPanel(i18n._(P.context))),
       register({
@@ -138,6 +174,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         pluginId: "builtin",
         order: 18,
         loader: async () => ({ default: (await import("@/components/file-workbench/content")).FileWorkbenchContent }),
+        beforeCloseTab: (tab) => files.canClose(tab),
         createTab() {
           file.explorer.setOpen(true)
           return { title: i18n._(P.openFile), source: "explorer", state: { workspace: file.workspace } }
@@ -170,57 +207,50 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         pluginId: "builtin",
         order: 20,
         loader: async () => ({ default: (await import("./tool-browser")).BrowserWorkbenchContent }),
-        async createTab() {
-          if (openingBrowser) return
-          openingBrowser = true
+        createTab: () => openNativePage(),
+        restoreTab: () => openNativePage(true),
+        async resolveTab(init) {
+          if (!init.resourceId) {
+            const state = init.state
+            const url =
+              state && typeof state === "object" && "url" in state && typeof state.url === "string"
+                ? state.url
+                : undefined
+            return openNativePage(false, url)
+          }
+          const requested = browserWorkbenchRoute(init.state)
+          const route = requested ?? browserRoute()
+          if (route.serverUrl && route.serverUrl !== sdk.url) return
           try {
-            const route = browserRoute()
-            const { openBrowserWorkbenchPage } = await import("./browser/browser-workbench-api")
-            if (!route) {
-              const scopeKey = sdk.scopeKey
-              const created = await sdk.client.session.create(
-                { workspace: { mode: "current" } },
-                { throwOnError: true },
-              )
-              if (!created.data || params.id || sdk.scopeKey !== scopeKey) return
-              const newRoute = {
-                sessionID: created.data.id,
-                path_directory: sdk.directory ?? sdk.scopeID ?? scopeKey,
-                query_directory: sdk.directory,
+            const routes: BrowserWorkbenchRoute[] = [route]
+            if (!requested && params.id)
+              routes.push({
+                mode: "session",
+                sessionID: params.id,
                 scopeID: sdk.scopeID,
+                path_directory: params.dir ?? sdk.scopeID,
+              })
+            for (const candidate of routes) {
+              const owner = await catalog.get(candidate)
+              if (!owner.store.session.pages.some((page) => page.id === init.resourceId)) await catalog.refresh(owner)
+              const page = owner.store.session.pages.find((page) => page.id === init.resourceId)
+              if (!page) continue
+              const canonical = browserPageTab(page, owner.route)
+              return {
+                ...init,
+                ...canonical,
+                state: {
+                  ...(init.state && typeof init.state === "object" ? init.state : {}),
+                  ...(canonical.state as object),
+                },
               }
-              const tab = await openBrowserWorkbenchPage({
-                client: sdk.client,
-                serverUrl: sdk.url,
-                bridge: platform.browserNative,
-                route: newRoute,
-              })
-              if (params.id || sdk.scopeKey !== scopeKey) return
-              navigate(`/${base64Encode(scopeKey)}/session/${created.data.id}`)
-              queueMicrotask(() => void workbench.openPanel("browser", { init: tab }))
-              return
             }
-            return openBrowserWorkbenchPage({
-              client: sdk.client,
-              serverUrl: sdk.url,
-              bridge: platform.browserNative,
-              route,
-            }).catch((error) => {
-              showToast({
-                type: "error",
-                title: i18n._(B.issue),
-                description: normalizeBrowserError(error, "Page could not be opened. Retry.").message,
-              })
-              return undefined
-            })
           } catch (error) {
             showToast({
               type: "error",
               title: i18n._(B.issue),
               description: normalizeBrowserError(error, "Page could not be opened. Retry.").message,
             })
-          } finally {
-            openingBrowser = false
           }
         },
         tabActions(tab) {

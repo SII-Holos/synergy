@@ -7,6 +7,8 @@ import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 
+const originalWithTask = BrowserToolHelper.withTask
+const originalResolveOwner = BrowserToolHelper.resolveOwner
 const originalResolvePage = BrowserToolHelper.resolvePage
 const originalExecute = BrowserToolHelper.execute
 const originalWithActivity = BrowserToolHelper.withActivity
@@ -14,6 +16,13 @@ const originalGetOrCreateSession = BrowserToolHelper.getOrCreateSession
 
 beforeEach(() =>
   runtime.run(() => {
+    BrowserToolHelper.withTask = async (_ctx, fn) => fn()
+    BrowserToolHelper.resolveOwner = async () => ({
+      mode: "scope",
+      scopeID: "scope-test",
+      directory: null,
+      workspaceID: null,
+    })
     BrowserToolHelper.resolvePage = async () =>
       ({ id: "page-test", url: "https://example.com/", title: "Example", loading: false }) as never
     BrowserToolHelper.getOrCreateSession = async () =>
@@ -27,6 +36,8 @@ beforeEach(() =>
 
 afterEach(() =>
   runtime.run(() => {
+    BrowserToolHelper.withTask = originalWithTask
+    BrowserToolHelper.resolveOwner = originalResolveOwner
     BrowserToolHelper.resolvePage = originalResolvePage
     BrowserToolHelper.execute = originalExecute
     BrowserToolHelper.withActivity = originalWithActivity
@@ -105,6 +116,7 @@ describe("tool.browser_navigation", () => {
             snapshot: { snapshotId: "snap-nav", elements: [{ ref: "@1-1" }] },
             page: { url: "https://example.com/target" },
           })
+          expect(result.metadata.url).toBe("https://example.com/target")
         },
       })
     }))

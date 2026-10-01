@@ -26,7 +26,7 @@ function gitStatus(status: string | undefined) {
   return undefined
 }
 
-export function FileExplorer(props: { onClose: () => void }) {
+export function FileExplorer(props: { onClose: () => void; onOpenResource?: () => void }) {
   const project = useProjectFiles()
   const file = useFile()
   const [chosen, setChosen] = createSignal<string>()
@@ -37,10 +37,19 @@ export function FileExplorer(props: { onClose: () => void }) {
       project.roots()[0],
   )
   return (
-    <Show when={root()} keyed fallback={<SingleFileExplorer onClose={props.onClose} />}>
+    <Show
+      when={root()}
+      keyed
+      fallback={<SingleFileExplorer onClose={props.onClose} onOpenResource={props.onOpenResource} />}
+    >
       {(workspace) => (
         <FileWorkspaceProvider workspace={workspace}>
-          <SingleFileExplorer onClose={props.onClose} folders={project.roots()} onFolderChange={setChosen} />
+          <SingleFileExplorer
+            onClose={props.onClose}
+            onOpenResource={props.onOpenResource}
+            folders={project.roots()}
+            onFolderChange={setChosen}
+          />
         </FileWorkspaceProvider>
       )}
     </Show>
@@ -49,6 +58,7 @@ export function FileExplorer(props: { onClose: () => void }) {
 
 function SingleFileExplorer(props: {
   onClose: () => void
+  onOpenResource?: () => void
   folders?: FileWorkspace[]
   onFolderChange?: (id: string) => void
 }) {
@@ -66,6 +76,9 @@ function SingleFileExplorer(props: {
   let searchController: AbortController | undefined
   let debounce: number | undefined
   let listHandle: VListHandle | undefined
+  async function openDocument(path: string, newTab = false) {
+    if (await file.openWorkspaceFile(path, { newTab })) props.onOpenResource?.()
+  }
 
   const rows = createMemo(() => {
     const result: TreeRow[] = []
@@ -184,7 +197,7 @@ function SingleFileExplorer(props: {
       }
     } else if (event.key === "Enter") {
       if (node?.type === "directory") file.explorer.setExpanded(row.path, !file.explorer.isExpanded(row.path))
-      else void file.openWorkspaceFile(row.path)
+      else void openDocument(row.path, event.metaKey || event.ctrlKey)
     } else if (event.key === "F2") openActions(row.path, "move")
     else if (event.key === "Delete") openActions(row.path, "remove")
     else return
@@ -207,7 +220,7 @@ function SingleFileExplorer(props: {
         edge="start"
         aria-label={lingui._({ id: X.resize.id, message: X.resize.message })}
         size={file.explorer.width()}
-        min={220}
+        min={208}
         max={420}
         collapseThreshold={180}
         onResize={file.explorer.setWidth}
@@ -302,7 +315,7 @@ function SingleFileExplorer(props: {
               <VList
                 ref={(handle) => (listHandle = handle)}
                 data={rows()}
-                itemSize={26}
+                itemSize={32}
                 overscan={10}
                 style={{ height: "100%" }}
               >
@@ -347,9 +360,9 @@ function SingleFileExplorer(props: {
                             openActions(nodeRow().path)
                           }}
                           onMouseDown={() => setFocusedPath(nodeRow().path)}
-                          onClick={() => {
+                          onClick={(event) => {
                             if (directory()) file.explorer.setExpanded(nodeRow().path, !expanded())
-                            else void file.openWorkspaceFile(nodeRow().path)
+                            else void openDocument(nodeRow().path, event.metaKey || event.ctrlKey)
                           }}
                         >
                           <span class="file-tree-disclosure">
@@ -366,6 +379,18 @@ function SingleFileExplorer(props: {
                             class="file-tree-icon"
                           />
                           <span class="file-tree-name">{node()?.name ?? nodeRow().path.split("/").at(-1)}</span>
+                          <Show when={!directory()}>
+                            <IconButton
+                              class="file-tree-new-tab"
+                              icon={getSemanticIcon("action.open")}
+                              variant="ghost"
+                              aria-label={lingui._({ id: "workspace.document.newTab", message: "Open in new tab" })}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                void openDocument(nodeRow().path, true)
+                              }}
+                            />
+                          </Show>
                           <Show when={node()?.symlink}>
                             <span
                               class="file-tree-link"
@@ -407,7 +432,21 @@ function SingleFileExplorer(props: {
                     type="button"
                     class="file-search-result"
                     role="option"
-                    onClick={() => void project.open(result.workspace, result.path)}
+                    onClick={(event) =>
+                      void project
+                        .open(result.workspace, result.path, { newTab: event.metaKey || event.ctrlKey })
+                        .then((tab) => {
+                          if (tab) props.onOpenResource?.()
+                        })
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                        event.preventDefault()
+                        void project.open(result.workspace, result.path, { newTab: true }).then((tab) => {
+                          if (tab) props.onOpenResource?.()
+                        })
+                      }
+                    }}
                   >
                     <FileIcon node={{ path: result.path, type: "file" }} class="file-tree-icon" />
                     <span class="file-search-copy">

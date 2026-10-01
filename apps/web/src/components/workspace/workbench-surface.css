@@ -5,10 +5,10 @@
   background: var(--workbench-panel-bg, var(--background-stronger));
 }
 
-.workbench-surface:not(.workbench-surface--resizing) {
+.workbench-surface--initialized:not(.workbench-surface--resizing) {
   transition:
-    width 160ms cubic-bezier(0.2, 0, 0, 1),
-    height 160ms cubic-bezier(0.2, 0, 0, 1);
+    width var(--motion-duration-slow) var(--motion-ease-standard),
+    height var(--motion-duration-slow) var(--motion-ease-standard);
 }
 
 .workbench-surface--resizing {
@@ -17,6 +17,12 @@
 
 .workbench-surface--side {
   height: 100%;
+}
+
+.workbench-surface--overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
 }
 
 .workbench-surface--bottom {
@@ -30,7 +36,7 @@
   overflow: hidden;
   background: var(--workbench-panel-bg, var(--background-stronger));
   opacity: 0;
-  transition: opacity 160ms ease-out 40ms;
+  transition: opacity var(--motion-duration-base) var(--motion-ease-standard);
 }
 
 .workbench-surface--side .workbench-surface-panel {
@@ -54,7 +60,8 @@
 .workbench-surface-tabs {
   position: relative;
   display: flex;
-  min-height: 42px;
+  height: 48px;
+  min-height: 48px;
   align-items: center;
   gap: 4px;
   border-bottom: 1px solid var(--workbench-border, var(--border-weak-base));
@@ -85,7 +92,8 @@
   position: relative;
   --workbench-tab-bg: transparent;
   display: inline-flex;
-  max-width: 220px;
+  max-width: 180px;
+  flex-shrink: 0;
   min-width: 0;
   height: 32px;
   align-items: center;
@@ -139,15 +147,15 @@
   right: 6px;
   z-index: 1;
   display: inline-flex;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
   background: var(--workbench-control-bg-hover, var(--surface-raised-base-hover));
   color: var(--icon-base);
-  margin-top: -10px;
+  margin-top: -12px;
   opacity: 0;
   pointer-events: none;
   box-shadow:
@@ -159,6 +167,7 @@
     color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
+.workbench-surface-tab--active .workbench-surface-tab-close,
 .workbench-surface-tab:hover .workbench-surface-tab-close,
 .workbench-surface-tab:focus-within .workbench-surface-tab-close {
   opacity: 1;
@@ -243,6 +252,49 @@
   min-height: 0;
   flex: 1;
   overflow: hidden;
+}
+
+.resource-home {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.resource-home-toolbar {
+  display: flex;
+  height: 48px;
+  min-height: 48px;
+  align-items: center;
+  padding-inline: 12px;
+  border-bottom: 1px solid var(--border-weak-base);
+}
+.resource-home h2 {
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 500;
+}
+.resource-home-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 380px;
+  margin-inline: auto;
+  padding: 20px 24px;
+  min-height: 0;
+  overflow: auto;
+}
+.resource-home h3 {
+  color: var(--text-weak);
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 16px;
+}
+@media (hover: none) {
+  .workbench-surface-tab-close {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .workbench-surface-launcher {
@@ -379,6 +431,7 @@
   .workbench-surface:not(.workbench-surface--resizing),
   .workbench-surface-panel,
   .workbench-surface-tab,
+  .workbench-surface-tab-close,
   .workbench-surface-launcher-row,
   .workbench-surface-add-row {
     transition: none;

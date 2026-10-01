@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test"
-import { reconcileBrowserTabs } from "../../../../src/components/workspace/browser/browser-workbench-model"
-const route = { sessionID: "session-one", path_directory: "home", scopeID: "home" }
+import {
+  browserPageTab,
+  reconcileBrowserTabs,
+} from "../../../../src/components/workspace/browser/browser-workbench-model"
+const route = { mode: "session" as const, sessionID: "session-one", path_directory: "home", scopeID: "home" }
 const page = (id: string, title = id) => ({ id, title, url: `https://${id}.test` })
 test("each native page becomes a peer tab without changing the active file or order", () => {
   const tabs = [
@@ -70,4 +73,21 @@ test("page menu address follows navigation even when the website title is unchan
   })
   expect(second.tabs[0]?.state).toMatchObject({ browserURL: "https://one.test/next" })
   expect(second.active).toBe(first.active)
+})
+
+test("a shared catalog preserves historical owners and separates identical page IDs across runtimes", () => {
+  const shared = {
+    mode: "scope" as const,
+    path_directory: "home",
+    scopeID: "home",
+    ownerKey: "scope-owner",
+    serverUrl: "http://one",
+  }
+  const old = browserPageTab(page("same"), { ...route, ownerKey: "session-owner", serverUrl: "http://one" })
+  const other = browserPageTab(page("same"), { ...shared, serverUrl: "http://two" })
+  const current = browserPageTab(page("same"), shared)
+  expect(new Set([old.id, other.id, current.id]).size).toBe(3)
+  const next = reconcileBrowserTabs({ tabs: [old, other], active: old.id, pages: [page("same")], route: shared })
+  expect(next.tabs).toEqual([old, other, current])
+  expect(next.active).toBe(old.id)
 })

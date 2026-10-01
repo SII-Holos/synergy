@@ -25344,7 +25344,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 4,
+              "default": 5,
               "type": "number"
             }
           },
@@ -25484,7 +25484,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 4,
+              "default": 5,
               "type": "number"
             }
           },
@@ -25603,7 +25603,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 4,
+              "default": 5,
               "type": "number"
             }
           },
@@ -25733,7 +25733,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 4,
+              "default": 5,
               "type": "number"
             }
           },
@@ -25881,7 +25881,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 4,
+              "default": 5,
               "type": "number"
             }
           },
@@ -26032,7 +26032,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 4,
+              "default": 5,
               "type": "number"
             }
           },
@@ -26183,7 +26183,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 4,
+              "default": 5,
               "type": "number"
             }
           },
@@ -26350,7 +26350,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 4,
+              "default": 5,
               "type": "number"
             }
           },
@@ -26482,7 +26482,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 4,
+              "default": 5,
               "type": "number"
             }
           },
@@ -64359,7 +64359,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 4
+            "const": 5
           },
           "annotation": {
             "type": "object",
@@ -64419,7 +64419,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 4
+            "const": 5
           },
           "pageId": {
             "type": "string",
@@ -64458,7 +64458,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 4
+            "const": 5
           },
           "pageId": {
             "type": "string",
@@ -64480,7 +64480,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 4
+            "const": 5
           },
           "pageId": {
             "type": "string",
@@ -64516,7 +64516,7 @@
           },
           "protocolVersion": {
             "type": "number",
-            "const": 4
+            "const": 5
           },
           "ownerKey": {
             "type": "string",
@@ -64534,7 +64534,7 @@
                 "properties": {
                   "protocolVersion": {
                     "type": "number",
-                    "const": 4
+                    "const": 5
                   },
                   "kind": {
                     "type": "string",
@@ -64620,7 +64620,7 @@
           },
           "protocolVersion": {
             "type": "number",
-            "const": 4
+            "const": 5
           },
           "result": {
             "anyOf": [
@@ -65030,7 +65030,7 @@
           },
           "protocolVersion": {
             "type": "number",
-            "const": 4
+            "const": 5
           },
           "command": {
             "anyOf": [

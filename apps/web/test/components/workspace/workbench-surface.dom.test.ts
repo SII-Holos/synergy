@@ -1,14 +1,15 @@
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
-import { afterAll, beforeAll, expect, test } from "bun:test"
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
-import { chromium, type Browser, type Page } from "playwright"
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solidPlugin from "vite-plugin-solid"
 import tailwindcss from "@tailwindcss/vite"
 import { lingui } from "@lingui/vite-plugin"
 
 let browser: Browser
+let context: BrowserContext
 let page: Page
 let server: ViteDevServer
 let directory: string
@@ -38,13 +39,15 @@ beforeAll(async () => {
     const states = Object.fromEntries(["side", "bottom"].map(id => {
       const [opened, setOpened] = createSignal(false)
       const [size, setSize] = createSignal(id === "side" ? 360 : 200)
+      const [fullscreen, setFullscreen] = createSignal(false)
       const tabs = [{ id, panelId: id }]
       return [id, { opened, setOpened, close: () => setOpened(false), size, setSize, tabs: () => tabs,
-        activeTab: () => tabs[0], active: () => id, setActive: () => {} }]
+        fullscreen, setFullscreen, activeTab: () => tabs[0], active: () => id, setActive: () => {} }]
     }))
     window.fixture = { open: id => states[id].setOpened(true), close: id => states[id].close(), crash: setCrash, resize: (id,size) => states[id].setSize(size), size: id => states[id].size() }
     export const useWorkbenchPanels = () => ({
       surface: id => states[id], panels: () => entries, panelForTab: tab => entries.find(x => x.id === tab?.panelId),
+      interact() {}, activateTab(name, id) { states[name].setActive(id) }, getPanel: id => entries.find(entry => entry.id === id),
       panelTitle: tab => tab.panelId, openPanel: () => {}, closeTab: () => {}, closeOtherTabs: () => {}, moveTab: () => {}
     })
     export const useLayout = () => ({ isDesktop: () => true, sidebar: { opened: () => false, width: () => 250, occupiedWidth: () => 0 } })
@@ -59,13 +62,27 @@ beforeAll(async () => {
     import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
     import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
     import { WorkbenchSurface } from ${JSON.stringify(`/@fs/${source}/components/workspace/workbench-surface.tsx`)}
+    import { WorkspaceNavigator } from ${JSON.stringify(`/@fs/${source}/components/workspace/workspace-navigator.tsx`)}
+    import { createSignal } from "solid-js"
     import { messages as en } from ${JSON.stringify(`/@fs/${source}/locales/en/messages.po`)}
     import "./state"
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
     const i18n = setupI18n({ locale: "en", messages: { en } })
+    function NavigatorProbe() {
+      const [open, setOpen] = createSignal(true)
+      let navigation
+      return <div data-ui-part="resource-panel" style="width:100vw;height:400px;display:flex">
+        <WorkspaceNavigator label="Documents" open={open()} width={320} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} onResize={() => {}} onReady={value => navigation = value}>
+          <button onClick={() => navigation.closeDrawer()}>Select document</button>
+        </WorkspaceNavigator>
+        <button onClick={() => navigation.toggle()}>Toggle navigation</button>
+      </div>
+    }
     function Fixture() {
       const dialog = useDialog()
+      if (location.search === "?navigator-nested") return <button onClick={() => dialog.push(() => <Dialog title="Workspace"><NavigatorProbe /></Dialog>)}>Open host</button>
+      if (location.search) return <NavigatorProbe />
       return <>
         <button onClick={() => window.fixture.open("side")}>Open side</button>
         <button onClick={() => window.fixture.open("bottom")}>Open bottom</button>
@@ -96,9 +113,18 @@ beforeAll(async () => {
   baseUrl = server.resolvedUrls!.local[0]!
   await server.warmupRequest("/main.tsx")
   browser = await chromium.launch({ headless: true })
-  page = await browser.newPage({ viewport: { width: 1200, height: 1000 } })
-  page.on("pageerror", (error) => errors.push(error.message))
 }, 60000)
+
+beforeEach(async () => {
+  errors.length = 0
+  context = await browser.newContext({ viewport: { width: 1200, height: 1000 } })
+  page = await context.newPage()
+  page.on("pageerror", (error) => errors.push(error.message))
+})
+
+afterEach(async () => {
+  await context?.close()
+})
 
 afterAll(async () => {
   await browser?.close()
@@ -124,6 +150,22 @@ async function openSurfaces() {
   await page.getByRole("button", { name: "Open bottom", exact: true }).click()
   await page.getByRole("button", { name: "bottom action" }).waitFor()
 }
+
+test("rapid reverse operations retain the mounted resource and its draft", async () => {
+  await page.setViewportSize({ width: 1200, height: 1000 })
+  await openSurfaces()
+  await page.getByRole("textbox", { name: "side draft" }).fill("Retained during reversal")
+  for (let index = 0; index < 4; index++) {
+    await page
+      .locator(".workbench-surface--side")
+      .getByRole("button", { name: "Collapse workspace", exact: true })
+      .click()
+    await page.getByRole("button", { name: "Open side", exact: true }).click()
+  }
+  expect(await page.getByRole("textbox", { name: "side draft" }).inputValue()).toBe("Retained during reversal")
+  expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).mounts.side)).toBe(1)
+  expect(await page.locator(".workbench-surface--side").getAttribute("aria-hidden")).toBe("false")
+})
 
 test("closed workspaces cannot receive focus and preserve their draft when reopened", async () => {
   await openSurfaces()
@@ -227,3 +269,50 @@ test("resizing available space constrains both panels without overwriting prefer
   expect(await side.evaluate((node) => parseFloat((node as HTMLElement).style.width))).toBe(640)
   expect(await bottom.evaluate((node) => parseFloat((node as HTMLElement).style.height))).toBe(500)
 })
+
+test("navigation drawers start closed and preserve the wide navigation preference", async () => {
+  await page.setViewportSize({ width: 375, height: 900 })
+  await page.goto(baseUrl + "?navigator")
+  await page.getByRole("button", { name: "Toggle navigation" }).waitFor()
+  expect(await page.getByRole("dialog").count()).toBe(0)
+  await page.getByRole("button", { name: "Toggle navigation" }).click()
+  await page.getByRole("dialog", { name: "Documents" }).waitFor()
+  await page.getByRole("button", { name: "Select document" }).click()
+  await page.getByRole("dialog").waitFor({ state: "detached" })
+  expect(await page.evaluate(() => document.activeElement?.textContent)).toBe("Toggle navigation")
+  await page.setViewportSize({ width: 768, height: 900 })
+  await page.getByRole("complementary", { name: "Documents" }).waitFor()
+  expect(await page.getByRole("complementary").evaluate((el) => Math.round(el.getBoundingClientRect().width))).toBe(320)
+  await page.setViewportSize({ width: 1200, height: 1000 })
+}, 30000)
+
+test("Escape closes a nested navigation drawer and returns focus inside its workspace host", async () => {
+  await page.setViewportSize({ width: 375, height: 900 })
+  await page.goto(baseUrl + "?navigator-nested")
+  await page.getByRole("button", { name: "Open host" }).click()
+  await page.getByRole("button", { name: "Toggle navigation" }).click()
+  await page.getByRole("dialog", { name: "Documents", exact: true }).waitFor()
+  await page.keyboard.press("Escape")
+  await page.getByRole("dialog", { name: "Documents", exact: true }).waitFor({ state: "detached" })
+  expect(await page.getByRole("dialog", { name: "Workspace", exact: true }).count()).toBe(1)
+  expect(await page.evaluate(() => document.activeElement?.textContent)).toBe("Toggle navigation")
+  await page.keyboard.press("Escape")
+  await page.getByRole("dialog").waitFor({ state: "detached" })
+  await page.setViewportSize({ width: 1200, height: 1000 })
+}, 30000)
+
+test("the automatic workspace overlay contains keyboard focus and restores the preferred width", async () => {
+  await page.setViewportSize({ width: 375, height: 900 })
+  await page.goto(baseUrl)
+  await page.getByRole("button", { name: "Open side", exact: true }).click()
+  const panel = page.locator(".workbench-surface--side")
+  await panel.getByRole("textbox", { name: "side draft" }).focus()
+  await page.keyboard.press("Tab")
+  expect(await panel.evaluate((el) => el.contains(document.activeElement))).toBe(true)
+  await page.setViewportSize({ width: 1200, height: 1000 })
+  await page.waitForFunction(() => !document.querySelector(".workbench-surface--side")?.hasAttribute("aria-modal"))
+  await page.waitForFunction(
+    () => Math.round(document.querySelector(".workbench-surface--side")!.getBoundingClientRect().width) === 360,
+  )
+  expect(Math.round((await panel.boundingBox())!.width)).toBe(360)
+}, 30000)

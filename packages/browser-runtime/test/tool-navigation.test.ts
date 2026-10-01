@@ -88,6 +88,38 @@ test("one page serializes commands while other pages make progress", () =>
     await Promise.all([first, second])
     expect(order.at(-1)).toBe(`${pageId}:stop`)
   }))
+
+test("cancelling a queued task cannot stop another task's active page operation", () =>
+  runtime.run(async () => {
+    let release!: () => void
+    let entered!: () => void
+    const started = new Promise<void>((resolve) => (entered = resolve))
+    const blocked = new Promise<void>((resolve) => (release = resolve))
+    const commands: string[] = []
+    const { pageId } = await setup(async (_id, command) => {
+      commands.push(command.type)
+      if (command.type === "reload") {
+        entered()
+        await blocked
+      }
+      return { type: "void" }
+    })
+    const first = BrowserCommandService.execute(owner, { pageId, commandId: "one:reload", command: { type: "reload" } })
+    await started
+    const cancellation = new AbortController()
+    const second = BrowserCommandService.execute(owner, {
+      pageId,
+      commandId: "two:reload",
+      command: { type: "reload" },
+      signal: cancellation.signal,
+    })
+    cancellation.abort()
+    expect(commands).toEqual(["reload"])
+    release()
+    await first
+    await expect(second).rejects.toMatchObject({ code: "browser_command_aborted" })
+    expect(commands).toEqual(["reload"])
+  }))
 test("dialog response bypasses its blocked page command and disposal drains all pages", () =>
   runtime.run(async () => {
     let release!: () => void

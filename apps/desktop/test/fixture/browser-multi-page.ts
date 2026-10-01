@@ -80,9 +80,34 @@ async function run() {
     "find",
   )
   await runBrowserPageAction(first, { type: "stopFind" })
-  assert.deepEqual(await runBrowserPageAction(first, { type: "zoom", factor: 1.25 }), { type: "zoom", factor: 1.25 })
+  assert.deepEqual(await runBrowserPageAction(first, { type: "zoom", factor: 2 }), { type: "zoom", factor: 2 })
   await runBrowserPageAction(first, { type: "zoom", factor: 1 })
   assert.equal((await pages[0]!.execute({ type: "screenshot", fullPage: true })).type, "screenshot")
+  await first.executeJavaScript(`
+    document.body.insertAdjacentHTML("beforeend", '<textarea id="composition-input"></textarea>');
+    window.compositionEvents = [];
+    const input = document.getElementById("composition-input");
+    for (const type of ["compositionstart", "compositionupdate", "compositionend"])
+      input.addEventListener(type, event => window.compositionEvents.push(event.type));
+    input.focus();
+  `)
+  await first.debugger.sendCommand("Input.imeSetComposition", {
+    text: "中文输入验收",
+    selectionStart: 6,
+    selectionEnd: 6,
+  })
+  await first.debugger.sendCommand("Input.insertText", { text: "中文输入验收" })
+  const composition = (await first.executeJavaScript(`({
+    value: document.getElementById("composition-input").value,
+    events: window.compositionEvents
+  })`)) as { value: string; events: string[] }
+  assert.equal(composition.value, "中文输入验收")
+  assert.deepEqual(
+    composition.events.filter((event) => event !== "compositionupdate"),
+    ["compositionstart", "compositionend"],
+  )
+  assert.ok(composition.events.includes("compositionupdate"))
+  await first.executeJavaScript('document.getElementById("composition-input").remove()')
   let syntheticGestures = 0
   const key = () => {
     syntheticGestures++
@@ -115,12 +140,12 @@ async function run() {
   await first.executeJavaScript(
     'document.body.insertAdjacentHTML("beforeend",`<form><input autocomplete="username" value="fixture"><input type="password" value="fixture-pass"></form>`)',
   )
-  await data.execute({ protocolVersion: 4, ownerKey: base.ownerKey, pageId: "page-0", action: { type: "saveLogin" } })
+  await data.execute({ protocolVersion: 5, ownerKey: base.ownerKey, pageId: "page-0", action: { type: "saveLogin" } })
   const state = await store.list(base.profile.partition)
   assert.equal(state.passwords.length, 1)
   await first.executeJavaScript('document.querySelector("input[type=password]").value=""')
   await data.execute({
-    protocolVersion: 4,
+    protocolVersion: 5,
     ownerKey: base.ownerKey,
     pageId: "page-0",
     action: { type: "fillLogin", id: state.passwords[0]!.id },
