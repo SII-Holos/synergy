@@ -680,6 +680,93 @@ a {
   overscroll-behavior: contain;
 }
 
+.prompt-attachments {
+  min-width: 0;
+  padding: 8px 10px 0;
+}
+.prompt-attachments [data-slot="attachment-row-layout"] {
+  max-height: min(240px, calc(var(--composer-available-height, 480px) * 0.35));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.prompt-attachment-entry:has([data-slot="attachment-card-preview"] img) [data-slot="attachment-card-preview"] {
+  width: 64px;
+  height: 64px;
+  flex-basis: 64px;
+}
+.prompt-attachment-entry {
+  min-width: 0;
+  max-width: 100%;
+}
+.prompt-attachment-remove {
+  position: absolute;
+  inset-inline-end: 0;
+  top: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-base);
+  background: var(--surface-raised-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.prompt-attachment-remove [data-component="icon"] {
+  width: 12px;
+  height: 12px;
+}
+.prompt-attachment-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-weak);
+  padding: 2px;
+}
+.prompt-attachment-status button,
+[data-slot="attachment-retry"] {
+  min-height: 24px;
+  color: var(--text-interactive-base);
+  cursor: pointer;
+  text-align: start;
+}
+.prompt-attachment-error {
+  font-size: 11px;
+  color: var(--text-error);
+  max-width: 168px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prompt-attachment-reference {
+  height: 48px;
+  max-width: 216px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-md);
+  background: var(--surface-base);
+  padding: 8px;
+}
+.prompt-attachment-reference span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (hover: hover) and (pointer: fine) {
+  .prompt-attachment-remove {
+    opacity: 0;
+  }
+  .prompt-attachment-entry:hover .prompt-attachment-remove,
+  .prompt-attachment-entry:focus-within .prompt-attachment-remove {
+    opacity: 1;
+  }
+}
+
 .session-conversation-content {
   font-size: 1rem;
   line-height: 1.625rem;

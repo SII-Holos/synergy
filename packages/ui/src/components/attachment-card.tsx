@@ -6,11 +6,13 @@ import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
 import { ImagePreview } from "./image-preview"
 import { getSemanticIcon } from "./semantic-icon"
+import { AttachmentRows } from "./attachment-rows"
 import {
   attachmentColumns,
   attachmentMeta,
   isHtmlAttachment,
   isPdfAttachment,
+  isImageAttachment,
   resolveAttachmentPresentation,
   resolveAttachmentOpenTarget,
   resolveAttachmentThumbnailUrl,
@@ -49,6 +51,8 @@ export function AttachmentCard(props: {
   imagePreview?: { images: ImagePreviewImage[]; index: number }
   autoplay?: boolean
   autoplayKey?: string
+  compact?: "draft" | "user"
+  onOpen?: (file: AttachmentFile) => void
 }) {
   const { _ } = useLingui()
   const dialog = useDialog()
@@ -58,7 +62,9 @@ export function AttachmentCard(props: {
   const thumbnailUrl = createMemo(() => resolveAttachmentThumbnailUrl(props.serverUrl, props.file))
   const presentation = createMemo(() => resolveAttachmentPresentation(props.file))
   const filename = createMemo(() => props.file.filename ?? (isPdfAttachment(props.file) ? "file.pdf" : "file"))
-  const meta = createMemo(() => attachmentMeta(props.file))
+  const meta = createMemo(() =>
+    attachmentMeta(props.compact ? { ...props.file, mime: props.file.mime.split(";")[0]!.trim() } : props.file),
+  )
   const [mounted, setMounted] = createSignal(false)
   let audioRef: HTMLAudioElement | undefined
 
@@ -103,6 +109,11 @@ export function AttachmentCard(props: {
   })
 
   const openAttachment = () => {
+    if (props.onOpen) {
+      props.onOpen(props.file)
+      return
+    }
+    if (props.compact === "user" && resourceOpen?.openAttachment(props.file, { serverUrl: props.serverUrl })) return
     const preview = props.imagePreview
     if (preview) {
       const images = preview.images.map((image) => ({
@@ -134,7 +145,40 @@ export function AttachmentCard(props: {
         />
       }
     >
-      <Match when={presentation().renderer === "image" && url() && !imageFailed()}>
+      <Match when={props.compact}>
+        <button
+          type="button"
+          data-component="attachment-card"
+          data-compact={props.compact}
+          data-type={isImageAttachment(props.file) && !imageFailed() ? "image" : "file"}
+          aria-label={_({ ...openAttachmentDescriptor, values: { filename: filename() } })}
+          title={filename()}
+          onClick={openAttachment}
+        >
+          <Show
+            when={isImageAttachment(props.file) && url() && !imageFailed()}
+            fallback={
+              <>
+                <span data-slot="attachment-card-preview">
+                  <FileIcon node={{ path: filename(), type: "file" }} />
+                </span>
+                <span data-slot="attachment-card-body">
+                  <span data-slot="attachment-card-filename" class="attachment-compact-filename">
+                    <span>
+                      {filename().includes(".") ? filename().slice(0, filename().lastIndexOf(".")) : filename()}
+                    </span>
+                    <span>{filename().includes(".") ? filename().slice(filename().lastIndexOf(".")) : ""}</span>
+                  </span>
+                  <span data-slot="attachment-card-meta">{meta()}</span>
+                </span>
+              </>
+            }
+          >
+            <img src={thumbnailUrl() ?? url()} alt={filename()} loading="lazy" onError={() => setImageFailed(true)} />
+          </Show>
+        </button>
+      </Match>
+      <Match when={!props.compact && presentation().renderer === "image" && url() && !imageFailed()}>
         <button
           type="button"
           data-component="attachment-card"
@@ -148,7 +192,7 @@ export function AttachmentCard(props: {
           <img src={url()!} alt={filename()} loading="lazy" onError={() => setImageFailed(true)} />
         </button>
       </Match>
-      <Match when={presentation().renderer === "video" && url()}>
+      <Match when={!props.compact && presentation().renderer === "video" && url()}>
         <div data-component="attachment-card" data-type="video" data-size={size()} data-crop={crop()}>
           <video src={url()} controls preload="metadata" title={filename()} />
           <button
@@ -162,7 +206,7 @@ export function AttachmentCard(props: {
           </button>
         </div>
       </Match>
-      <Match when={presentation().renderer === "audio" && url()}>
+      <Match when={!props.compact && presentation().renderer === "audio" && url()}>
         <div data-component="attachment-card" data-type="audio" data-size={size()}>
           <span data-slot="attachment-card-preview">
             <FileIcon node={{ path: filename(), type: "file" }} />
@@ -183,7 +227,7 @@ export function AttachmentCard(props: {
           </button>
         </div>
       </Match>
-      <Match when={presentation().renderer === "thumbnail" && thumbnailUrl() && !imageFailed()}>
+      <Match when={!props.compact && presentation().renderer === "thumbnail" && thumbnailUrl() && !imageFailed()}>
         <button
           type="button"
           data-component="attachment-card"
@@ -300,6 +344,9 @@ export function AttachmentGallery(props: {
   align?: "start" | "end"
   autoplay?: boolean
   autoplayKey?: string
+  layout?: "columns" | "rows"
+  compact?: "draft" | "user"
+  onOpen?: (file: AttachmentFile) => void
 }) {
   const visibleFiles = createMemo(() => props.files.filter((file) => !resolveAttachmentPresentation(file).hidden))
   const entries = createMemo<AttachmentGalleryEntry[]>(() => {
@@ -317,32 +364,57 @@ export function AttachmentGallery(props: {
   )
   const columns = createMemo(() => attachmentColumns(entries()))
   return (
-    <Show when={columns().length > 0}>
-      <div data-component="attachment-gallery" data-columns={columns().length} data-align={props.align ?? "start"}>
-        <div data-slot="attachment-column-layout">
-          <For each={columns()}>
-            {(column) => (
-              <div data-slot="attachment-column">
-                <For each={column}>
-                  {(entry) => (
-                    <AttachmentCard
-                      file={entry.file}
-                      serverUrl={props.serverUrl}
-                      autoplay={props.autoplay}
-                      autoplayKey={props.autoplay ? props.autoplayKey : undefined}
-                      imagePreview={
-                        entry.imagePreviewIndex !== undefined
-                          ? { images: previewImages(), index: entry.imagePreviewIndex }
-                          : undefined
-                      }
-                    />
-                  )}
-                </For>
-              </div>
+    <Show
+      when={props.layout !== "rows"}
+      fallback={
+        <div data-component="attachment-gallery" data-align={props.align ?? "start"}>
+          <AttachmentRows items={entries()}>
+            {(entry) => (
+              <AttachmentCard
+                file={entry.file}
+                serverUrl={props.serverUrl}
+                compact={props.compact}
+                onOpen={props.onOpen}
+                imagePreview={
+                  entry.imagePreviewIndex !== undefined
+                    ? { images: previewImages(), index: entry.imagePreviewIndex }
+                    : undefined
+                }
+              />
             )}
-          </For>
+          </AttachmentRows>
         </div>
-      </div>
+      }
+    >
+      <Show when={columns().length > 0}>
+        <div data-component="attachment-gallery" data-columns={columns().length} data-align={props.align ?? "start"}>
+          <div data-slot="attachment-column-layout">
+            <For each={columns()}>
+              {(column) => (
+                <div data-slot="attachment-column">
+                  <For each={column}>
+                    {(entry) => (
+                      <AttachmentCard
+                        file={entry.file}
+                        serverUrl={props.serverUrl}
+                        autoplay={props.autoplay}
+                        autoplayKey={props.autoplay ? props.autoplayKey : undefined}
+                        onOpen={props.onOpen}
+                        compact={props.compact}
+                        imagePreview={
+                          entry.imagePreviewIndex !== undefined
+                            ? { images: previewImages(), index: entry.imagePreviewIndex }
+                            : undefined
+                        }
+                      />
+                    )}
+                  </For>
+                </div>
+              )}
+            </For>
+          </div>
+        </div>
+      </Show>
     </Show>
   )
 }

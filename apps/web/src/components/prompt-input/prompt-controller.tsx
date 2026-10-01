@@ -536,7 +536,8 @@ export function createPromptInputController(props: PromptInputProps) {
   const submitPending = createMemo(() => newSessionSubmitPending() || sessionTransitionPending())
   const pendingUploads = createPendingAttachmentTracker()
   onCleanup(() => pendingUploads.clear())
-  const attachmentsUploading = createMemo(() => pendingUploads.uploading())
+  const attachmentsUploading = createMemo(() => pendingUploads.blocking())
+  const attachmentsFailed = createMemo(() => pendingUploads.pending().some((entry) => entry.status === "failed"))
   const canSubmit = createMemo(() => {
     if (props.readOnly || props.locationPending || submitPending()) return false
     const intent = resolvePromptSubmitIntent({
@@ -592,6 +593,8 @@ export function createPromptInputController(props: PromptInputProps) {
       case "continue":
         return i18n._(PI.continueControl)
       default:
+        if (attachmentsFailed())
+          return i18n._({ id: "prompt.attachments.resolveFailed", message: "Review failed attachments" })
         if (attachmentsUploading()) return i18n._(PI.submitWaitUploadsTitle)
         if (activity() === "paused" && hasDraft()) return i18n._(PI.sendAndContinue)
         if (working() && hasDraft()) return i18n._(PI.queueMessage)
@@ -1709,26 +1712,33 @@ export function createPromptInputController(props: PromptInputProps) {
     onCleanup(() => document.removeEventListener("selectionchange", onSelectionChange))
   })
 
-  const { addAttachments, removeAttachment, handlePaste, handleDragOver, handleDragLeave, handleDrop } =
-    usePromptAttachments({
-      editor: editorElement,
-      isFocused,
-      addPart,
-      noteAttachments,
-      sessionAttachments,
-      localArmedLoop,
-      activeLoopID: () => info()?.blueprint?.loopID,
-      working,
-      workflowKind: armedWorkflowKind,
-      clearPendingWorkflows: () => {
-        setPendingPlan(false)
-        setPendingLightLoop(false)
-        setPendingBoss(false)
-      },
-      setLocalArmedLoop,
-      setStore,
-      pendingUploads,
-    })
+  const {
+    addAttachments,
+    retryAttachment,
+    removeAttachment,
+    handlePaste,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+  } = usePromptAttachments({
+    editor: editorElement,
+    isFocused,
+    addPart,
+    noteAttachments,
+    sessionAttachments,
+    localArmedLoop,
+    activeLoopID: () => info()?.blueprint?.loopID,
+    working,
+    workflowKind: armedWorkflowKind,
+    clearPendingWorkflows: () => {
+      setPendingPlan(false)
+      setPendingLightLoop(false)
+      setPendingBoss(false)
+    },
+    setLocalArmedLoop,
+    setStore,
+    pendingUploads,
+  })
 
   const addToHistory = (prompt: Prompt, mode: "normal" | "shell") => {
     const text = inlineText(prompt).trim()
@@ -1972,6 +1982,7 @@ export function createPromptInputController(props: PromptInputProps) {
     noteAttachments,
     sessionAttachments,
     attachmentsUploading,
+    attachmentsFailed,
     selectedControlProfile,
     pendingPlan,
     clearPendingPlan: () => setPendingPlan(false),
@@ -2141,6 +2152,9 @@ export function createPromptInputController(props: PromptInputProps) {
             notes={noteAttachments}
             sessions={sessionAttachments}
             pending={pendingUploads.pending}
+            pendingFile={pendingUploads.file}
+            retryAttachment={retryAttachment}
+            order={() => prompt.current().flatMap((part) => ("id" in part ? [part.id] : []))}
             serverUrl={sdk.url}
             removeAttachment={removeAttachment}
           />

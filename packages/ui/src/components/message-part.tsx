@@ -1442,7 +1442,13 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
     <div data-component="user-message" data-variant={props.variant ?? "default"}>
       <Show when={attachments().length > 0 || noteAttachments().length > 0 || sessionAttachments().length > 0}>
         <div data-slot="user-message-attachments">
-          <AttachmentGallery files={attachments()} serverUrl={data.serverUrl} align="end" />
+          <AttachmentGallery
+            files={attachments()}
+            serverUrl={data.serverUrl}
+            align="end"
+            layout="rows"
+            compact="user"
+          />
           <For each={noteAttachments()}>{(file) => <SpecialFileAttachment file={file} kind="note" />}</For>
           <For each={sessionAttachments()}>{(file) => <SpecialFileAttachment file={file} kind="session" />}</For>
         </div>

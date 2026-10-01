@@ -93,6 +93,7 @@ type PromptSubmitInput = {
   noteAttachments: Accessor<NoteAttachmentPart[]>
   sessionAttachments: Accessor<SessionAttachmentPart[]>
   attachmentsUploading: Accessor<boolean>
+  attachmentsFailed?: Accessor<boolean>
   selectedControlProfile: Accessor<ControlProfileId>
   pendingPlan: Accessor<boolean>
   clearPendingPlan: () => void
@@ -238,6 +239,17 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         return
       }
       if (shouldBlockSubmitForUploadingAttachments({ uploading: input.attachmentsUploading(), intent: submitIntent })) {
+        if (input.attachmentsFailed?.()) {
+          showToast({
+            type: "warning",
+            title: i18n._({ id: "prompt.attachments.resolveFailed", message: "Review failed attachments" }),
+            description: i18n._({
+              id: "prompt.attachments.blocked",
+              message: "Retry or remove failed attachments above the editor before sending.",
+            }),
+          })
+          return
+        }
         showToast({
           type: "warning",
           title: i18n._(PI.submitWaitUploadsTitle),

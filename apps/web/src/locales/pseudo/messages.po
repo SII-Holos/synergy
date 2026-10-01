@@ -11396,6 +11396,30 @@ msgstr ""
 msgid "prompt.attach.waitRun"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "prompt.attachments.blocked"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.pendingSummary"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.resolveFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.untitled"
+msgstr ""
+
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
@@ -22945,6 +22969,14 @@ msgstr ""
 
 #. i18n descriptors for anchored tool cards
 msgid "ui.anchoredTool.viewFile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.attachment.collapseAll"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.attachment.expandAll"
 msgstr ""
 
 #. js-lingui-explicit-id

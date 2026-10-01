@@ -11396,6 +11396,30 @@ msgstr "请等待 Plan 完成后再启用 Blueprint。"
 msgid "prompt.attach.waitRun"
 msgstr "请等待当前会话运行结束后再启用 Blueprint。"
 
+#. js-lingui-explicit-id
+msgid "prompt.attachments.blocked"
+msgstr "发送前，请重试或移除输入框上方的失败附件。"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.failed"
+msgstr "上传失败"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.pendingSummary"
+msgstr "{uploading} 个上传中 · {failed} 个失败"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.resolveFailed"
+msgstr "处理失败附件"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.retry"
+msgstr "重试上传"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.untitled"
+msgstr "无标题"
+
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
@@ -22946,6 +22970,14 @@ msgstr "标签"
 #. i18n descriptors for anchored tool cards
 msgid "ui.anchoredTool.viewFile"
 msgstr "查看文件"
+
+#. js-lingui-explicit-id
+msgid "ui.attachment.collapseAll"
+msgstr "收起附件"
+
+#. js-lingui-explicit-id
+msgid "ui.attachment.expandAll"
+msgstr "展开全部 {count} 个附件"
 
 #. js-lingui-explicit-id
 msgid "ui.attachment.openAttachment"

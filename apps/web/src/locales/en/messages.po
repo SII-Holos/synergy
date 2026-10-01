@@ -11396,6 +11396,30 @@ msgstr "Wait for Plan to finish before equipping a Blueprint."
 msgid "prompt.attach.waitRun"
 msgstr "Wait for the current session run to finish before equipping a Blueprint."
 
+#. js-lingui-explicit-id
+msgid "prompt.attachments.blocked"
+msgstr "Retry or remove failed attachments above the editor before sending."
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.failed"
+msgstr "Upload failed"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.pendingSummary"
+msgstr "{uploading} uploading · {failed} failed"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.resolveFailed"
+msgstr "Review failed attachments"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.retry"
+msgstr "Retry upload"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.untitled"
+msgstr "Untitled"
+
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
@@ -22946,6 +22970,14 @@ msgstr "tag"
 #. i18n descriptors for anchored tool cards
 msgid "ui.anchoredTool.viewFile"
 msgstr "View File"
+
+#. js-lingui-explicit-id
+msgid "ui.attachment.collapseAll"
+msgstr "Collapse attachments"
+
+#. js-lingui-explicit-id
+msgid "ui.attachment.expandAll"
+msgstr "Expand all {count} attachments"
 
 #. js-lingui-explicit-id
 msgid "ui.attachment.openAttachment"
