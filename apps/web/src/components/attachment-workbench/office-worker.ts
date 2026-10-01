@@ -7,6 +7,11 @@ const workerScope = globalThis as unknown as {
 }
 workerScope.onmessage = async (event) => {
   try {
+    if (event.data.kind === "pptx") {
+      const { parseOfficePresentation } = await import("./pptx-parser")
+      workerScope.postMessage({ ok: true, kind: "pptx", value: await parseOfficePresentation(event.data.bytes) })
+      return
+    }
     if (event.data.kind === "xlsx") {
       const { parseOfficeSpreadsheet } = await import("./xlsx-parser")
       workerScope.postMessage({ ok: true, kind: "xlsx", value: parseOfficeSpreadsheet(event.data.bytes) })

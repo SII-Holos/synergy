@@ -52,6 +52,8 @@
     "@kobalte/core": "catalog:",
     "@lingui/core": "catalog:",
     "@lingui/solid": "catalog:",
+    "@office-kit/pptx": "0.21.0",
+    "@office-kit/pptx-preview": "0.12.0",
     "@pierre/diffs": "catalog:",
     "@shikijs/transformers": "3.9.2",
     "@solid-primitives/active-element": "2.1.3",

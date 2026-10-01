@@ -6,6 +6,8 @@ const DocxReader = lazy(() => import("./docx-reader").then((module) => ({ defaul
 
 const XlsxReader = lazy(() => import("./xlsx-reader").then((module) => ({ default: module.XlsxReader })))
 
+const PptxReader = lazy(() => import("./pptx-reader").then((module) => ({ default: module.PptxReader })))
+
 export function OfficePreview(props: { format: OfficeFormat; bytes: Uint8Array; filename?: string }) {
   return (
     <Suspense
@@ -21,6 +23,9 @@ export function OfficePreview(props: { format: OfficeFormat; bytes: Uint8Array; 
         </Match>
         <Match when={props.format === "xlsx"}>
           <XlsxReader bytes={props.bytes} filename={props.filename} />
+        </Match>
+        <Match when={props.format === "pptx"}>
+          <PptxReader bytes={props.bytes} filename={props.filename} />
         </Match>
       </Switch>
     </Suspense>

@@ -197,6 +197,13 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
               </Suspense>
             )}
           </Match>
+          <Match when={capability()?.kind === "pptx" ? safePayload() : undefined}>
+            {(bytes) => (
+              <Suspense fallback={<Spinner />}>
+                <OfficePreview format="pptx" bytes={bytes()} filename={props.file.filename} />
+              </Suspense>
+            )}
+          </Match>
           <Match when={capability()?.kind === "docx" ? safePayload() : undefined}>
             {(bytes) => (
               <Suspense fallback={<Spinner />}>

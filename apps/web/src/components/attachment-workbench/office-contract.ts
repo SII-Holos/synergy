@@ -10,3 +10,13 @@ export class OfficePreviewError extends Error {
     this.name = "OfficePreviewError"
   }
 }
+
+export interface OfficeRenderedPage {
+  html: string
+  text: string
+  width: number
+}
+export interface OfficeRenderedDocument {
+  pages: OfficeRenderedPage[]
+  css?: string
+}

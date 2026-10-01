@@ -916,6 +916,10 @@ msgid "app.attachment.office.corrupt"
 msgstr "This file is damaged or incomplete. Download the original to check it."
 
 #. js-lingui-explicit-id
+msgid "app.attachment.office.empty"
+msgstr "This document has no pages to preview."
+
+#. js-lingui-explicit-id
 msgid "app.attachment.office.encrypted"
 msgstr "Encrypted Office files cannot be previewed. Download the original to open it."
 

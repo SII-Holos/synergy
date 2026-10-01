@@ -916,6 +916,10 @@ msgid "app.attachment.office.corrupt"
 msgstr "文件已损坏或不完整，请下载原文件检查。"
 
 #. js-lingui-explicit-id
+msgid "app.attachment.office.empty"
+msgstr "此文档没有可预览的页面。"
+
+#. js-lingui-explicit-id
 msgid "app.attachment.office.encrypted"
 msgstr "暂不支持预览加密的 Office 文件，请下载原文件打开。"
 

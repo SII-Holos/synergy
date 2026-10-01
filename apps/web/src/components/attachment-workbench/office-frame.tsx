@@ -1,6 +1,7 @@
 import DOMPurify from "dompurify"
 import { createMemo } from "solid-js"
 
+const officePurify = DOMPurify(window)
 const officeCsp =
   "default-src 'none'; script-src 'none'; connect-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
 
@@ -16,9 +17,10 @@ function safeCss(css: string) {
 export function sanitizeOfficeMarkup(html: string) {
   const template = document.createElement("template")
   template.innerHTML = String(
-    DOMPurify.sanitize(html, {
+    officePurify.sanitize(html, {
       USE_PROFILES: { html: true, svg: true, svgFilters: true },
       ADD_TAGS: ["foreignObject"],
+      HTML_INTEGRATION_POINTS: { foreignobject: true },
       FORBID_TAGS: [
         "script",
         "iframe",
@@ -32,12 +34,17 @@ export function sanitizeOfficeMarkup(html: string) {
         "meta",
         "audio",
         "video",
+        "animate",
+        "animateMotion",
+        "animateTransform",
+        "set",
+        "discard",
       ],
       FORBID_ATTR: ["srcdoc"],
     }),
   )
   for (const element of template.content.querySelectorAll(
-    "script, iframe, object, embed, form, input, button, link, base, meta, audio, video",
+    "script, iframe, object, embed, form, input, button, link, base, meta, audio, video, animate, animateMotion, animateTransform, set, discard",
   ))
     element.remove()
   for (const element of template.content.querySelectorAll("*")) {
@@ -62,31 +69,50 @@ export function officePreviewDocument(html: string, css: string, scale = 1, sear
   const template = document.createElement("template")
   template.innerHTML = sanitizeOfficeMarkup(html)
   if (search.trim()) {
-    const needle = search.toLocaleLowerCase()
     const nodes: Text[] = []
     const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT)
     while (walker.nextNode())
       if (!walker.currentNode.parentElement?.closest("style")) nodes.push(walker.currentNode as Text)
+    const expression = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "giu")
+    const matches = Array.from(
+      nodes
+        .map((node) => node.data)
+        .join("")
+        .matchAll(expression),
+    )
+    let offset = 0,
+      matchIndex = 0
     for (const node of nodes) {
-      const source = node.data,
-        lower = source.toLocaleLowerCase()
+      const source = node.data
+      while (matches[matchIndex] && matches[matchIndex]!.index + matches[matchIndex]![0].length <= offset) matchIndex++
+      const ranges: { start: number; end: number }[] = []
+      for (let index = matchIndex; index < matches.length; index++) {
+        const match = matches[index]!
+        if (match.index >= offset + source.length) break
+        const start = Math.max(0, match.index - offset)
+        const end = Math.min(source.length, match.index + match[0].length - offset)
+        if (end > start) ranges.push({ start, end })
+      }
+      offset += source.length
+      if (!ranges.length) continue
       const fragment = document.createDocumentFragment()
-      let cursor = 0,
-        index = lower.indexOf(needle)
-      if (index < 0) continue
-      while (index >= 0) {
-        fragment.append(source.slice(cursor, index))
-        const mark = document.createElement("mark")
-        mark.textContent = source.slice(index, index + search.length)
+      let cursor = 0
+      for (const { start, end } of ranges) {
+        fragment.append(source.slice(cursor, start))
+        const svg = node.parentElement?.namespaceURI === "http://www.w3.org/2000/svg"
+        const mark = svg
+          ? document.createElementNS("http://www.w3.org/2000/svg", "tspan")
+          : document.createElement("mark")
+        if (svg) mark.setAttribute("class", "office-search-match")
+        mark.textContent = source.slice(start, end)
         fragment.append(mark)
-        cursor = index + search.length
-        index = lower.indexOf(needle, cursor)
+        cursor = end
       }
       fragment.append(source.slice(cursor))
       node.replaceWith(fragment)
     }
   }
-  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${officeCsp}"><style>${safeCss(css)}\nhtml{color-scheme:light}body{margin:0; padding:16px; box-sizing:border-box; overflow:auto;} .office-paper{zoom:${Math.max(0.1, Math.min(4, scale))};width:max-content;margin:auto;} mark{background:Highlight;color:HighlightText;}</style></head><body><div class="office-paper">${template.innerHTML}</div></body></html>`
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${officeCsp}"><style>${safeCss(css)}\nhtml{color-scheme:light}body{margin:0; padding:16px; box-sizing:border-box; overflow:auto;} .office-paper{zoom:${Math.max(0.1, Math.min(4, scale))};width:max-content;margin:auto;} mark{background:Highlight;color:HighlightText;} .office-search-match{fill:Highlight;}</style></head><body><div class="office-paper">${template.innerHTML}</div></body></html>`
 }
 
 export function OfficeDocumentFrame(props: {

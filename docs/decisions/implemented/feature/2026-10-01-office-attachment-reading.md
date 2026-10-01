@@ -14,7 +14,9 @@ DOCX uses pinned `docx-preview 0.4.1` and its stable `renderAsync` API. HTML alt
 
 XLSX uses the official SheetJS CE 0.20.3 release package, pinned by the lockfile SHA-512 integrity. Validation and parsing run in the disposable Worker; the main thread receives only a typed sparse workbook projection. The virtual grid preserves worksheet names, merged regions, row and column sizes, formatted cached values and formula text. It does not evaluate formulas or refresh data. Keyboard navigation, cell-range copy and text search operate on this same projection. Very large row canvases map physical scrolling to logical rows rather than allocating one DOM node per cell. Copy explicitly rejects selections above 100,000 cells instead of silently truncating content.
 
-The reading contract preserves content and primary structure. HTML cannot reproduce automatic Word pagination or every complex layout. The reader explicitly states that preview layout may differ from the original. Damaged, encrypted, oversized, unsupported and failed reads retain distinct states and the original download action. Closing or replacing a preview terminates its Worker and rejects late replies.
+PPTX uses pinned `@office-kit/pptx 0.21.0` and `@office-kit/pptx-preview 0.12.0`. The Worker loads the validated package and produces static SVG plus search text from shapes and table cells. Embedded images, text, tables and common shapes retain their primary structure. A reader-scoped sanitizer permits the generated SVG's HTML text integration points, strips active elements and animation, and confines the result to the opaque frame. DOCX and PPTX share page navigation, width fitting, zoom and literal text search; highlighting follows split text runs and preserves SVG namespaces.
+
+The reading contract preserves content and primary structure. HTML cannot reproduce automatic Word pagination or every complex layout; slide rendering is approximate. The reader explicitly states that preview layout may differ from the original. Damaged, encrypted, oversized, unsupported and failed reads retain distinct states and the original download action. Closing or replacing a preview terminates its Worker and rejects late replies.
 
 ## Alternatives considered
 
@@ -31,6 +33,8 @@ Office preview does not edit files, execute macros, refresh external data, chang
 - [DOCX stable rendering API and page-break limits](https://github.com/VolodymyrBaydalka/docxjs) define the DOM adapter and fidelity contract.
 - [fflate streaming ZIP API](https://github.com/101arrowz/fflate) provides decompression inside the bounded Worker.
 - [Saxes XML parser](https://github.com/lddubeau/saxes) handles relationships with namespace and entity decoding before resource filtering.
-
 - [SheetJS official installation source](https://docs.sheetjs.com/docs/getting-started/installation/frameworks/) supplies the versioned CE distribution.
 - [SheetJS cell model](https://docs.sheetjs.com/docs/csf/cell/) defines cached values, formatted text and formula ownership.
+
+- [Office Kit slide preview boundaries](https://github.com/office-kit/pptx#preview-and-text-overflow-checks) establish static rendering and approximation limits.
+- [DOMPurify configuration and sanitization](https://github.com/cure53/DOMPurify) define markup cleanup within the isolated document boundary.

@@ -916,6 +916,10 @@ msgid "app.attachment.office.corrupt"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.attachment.office.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.attachment.office.encrypted"
 msgstr ""
 

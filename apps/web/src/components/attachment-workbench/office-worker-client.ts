@@ -8,9 +8,11 @@ export interface CheckedOfficePackage {
 export type OfficeWorkerRequest =
   | { kind: "check"; format: OfficeFormat; bytes: Uint8Array }
   | { kind: "xlsx"; bytes: Uint8Array }
+  | { kind: "pptx"; bytes: Uint8Array }
 export type OfficeWorkerResponse =
   | { ok: true; kind: "check"; value: CheckedOfficePackage }
   | { ok: true; kind: "xlsx"; value: import("./xlsx-model").SpreadsheetPreview }
+  | { ok: true; kind: "pptx"; value: import("./office-contract").OfficeRenderedDocument }
   | { ok: false; code: OfficeErrorCode }
 
 type PreviewWorker = Pick<Worker, "postMessage" | "terminate" | "onmessage" | "onerror">
@@ -60,6 +62,11 @@ export function createOfficeWorkerReader(
     readSpreadsheet: async (bytes: Uint8Array) => {
       const result = await run({ kind: "xlsx", bytes })
       if (result.kind !== "xlsx") throw new OfficePreviewError("failed")
+      return result.value
+    },
+    readPresentation: async (bytes: Uint8Array) => {
+      const result = await run({ kind: "pptx", bytes })
+      if (result.kind !== "pptx") throw new OfficePreviewError("failed")
       return result.value
     },
   }
