@@ -12044,6 +12044,10 @@ msgid "prompt.lightLoop.waitStop"
 msgstr "请等待 Light Loop 停止后再启用 Blueprint。"
 
 #. js-lingui-explicit-id
+msgid "prompt.long.autoSize"
+msgstr "自动高度"
+
+#. js-lingui-explicit-id
 msgid "prompt.long.bold"
 msgstr "粗体"
 
@@ -12092,12 +12096,28 @@ msgid "prompt.long.quote"
 msgstr "引用"
 
 #. js-lingui-explicit-id
+msgid "prompt.long.releaseExpand"
+msgstr "松开以展开"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.resize"
+msgstr "调整编辑器高度"
+
+#. js-lingui-explicit-id
 msgid "prompt.long.shortcut"
 msgstr "Ctrl/⌘ + Enter 发送"
 
 #. js-lingui-explicit-id
+msgid "prompt.long.size"
+msgstr "编辑器尺寸"
+
+#. js-lingui-explicit-id
 msgid "prompt.long.strike"
 msgstr "删除线"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.tallSize"
+msgstr "加高编辑器"
 
 #. js-lingui-explicit-id
 msgid "prompt.long.view"

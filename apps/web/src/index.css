@@ -357,9 +357,76 @@ a {
 }
 
 .session-composer-editor {
-  min-height: min(96px, calc(var(--composer-available-height, 480px) * 0.4));
-  max-height: min(240px, calc(var(--composer-available-height, 480px) * 0.4));
+  height: var(--composer-body-height, auto);
+  min-height: min(
+    96px,
+    calc(var(--composer-available-height, 480px) * 0.4),
+    max(24px, calc(var(--composer-available-height, 480px) * 0.6 - var(--composer-chrome-height, 80px)))
+  );
+  max-height: max(
+    24px,
+    min(
+      var(--composer-body-height, 240px),
+      calc(var(--composer-available-height, 480px) * 0.6 - var(--composer-chrome-height, 80px))
+    )
+  );
   overscroll-behavior: contain;
+}
+
+.session-composer:not([data-expanded]):not([data-resized]) .session-composer-editor {
+  max-height: min(240px, calc(var(--composer-available-height, 480px) * 0.4));
+}
+.composer-resize-controls {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  min-height: 24px;
+  flex-shrink: 0;
+}
+.composer-resize-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 24px;
+  cursor: ns-resize;
+  touch-action: none;
+  border-radius: var(--radius-md);
+}
+.composer-resize-handle span {
+  width: 32px;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: var(--border-base);
+  pointer-events: none;
+}
+.composer-resize-handle:hover span {
+  background: var(--text-weak);
+}
+.composer-size-menu {
+  position: absolute;
+  right: 44px;
+  top: 6px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--text-weak);
+  cursor: pointer;
+}
+.composer-size-menu:hover {
+  background: var(--surface-raised-base-hover);
+}
+.composer-resize-cue {
+  position: absolute;
+  bottom: 100%;
+  font-size: 12px;
+  color: var(--text-base);
+  background: var(--surface-raised-base);
+  border-radius: var(--radius-md);
+  padding-inline: 8px;
 }
 
 .composer-expand-control {
@@ -449,6 +516,7 @@ a {
   min-height: 0;
   max-height: none;
   flex: 1;
+  height: auto;
 }
 .composer-long-content[data-expanded] [data-component="prompt-input"] {
   min-height: 100%;

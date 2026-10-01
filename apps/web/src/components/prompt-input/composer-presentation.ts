@@ -1,4 +1,3 @@
-import type { PluginInputService } from "@ericsanchezok/synergy-plugin"
 import type { TextRange, ComposerEdit } from "./composer-document"
 
 export type ComposerFormat = "heading" | "bold" | "italic" | "strike" | "list" | "quote" | "link" | "code"
@@ -6,6 +5,11 @@ export type ComposerFormat = "heading" | "bold" | "italic" | "strike" | "list" |
 export class ComposerPresentation {
   expanded = false
   view: "edit" | "preview" = "edit"
+  manualHeight?: number
+  setHeight(value: number | undefined) {
+    this.manualHeight = value
+    this.changed()
+  }
   readonly #listeners = new Set<() => void>()
   subscribe(listener: () => void) {
     this.#listeners.add(listener)
@@ -29,7 +33,27 @@ export class ComposerPresentation {
     this.changed()
   }
   accepted(unchanged: boolean) {
-    if (unchanged) this.collapse()
+    if (unchanged) {
+      this.manualHeight = undefined
+      this.collapse()
+    }
+  }
+}
+
+export function composerBodyLimits(available: number, chrome: number) {
+  const manual = Math.max(24, available * 0.6 - chrome)
+  const automatic = Math.max(24, Math.min(240, available * 0.4, manual))
+  return { minimum: Math.min(96, automatic), automatic, manual }
+}
+
+export class ComposerResizeGesture {
+  #expand = false
+  constructor(readonly initial: { y: number; height: number; maximum: number; minimum: number }) {}
+  move(y: number) {
+    const desired = this.initial.height + this.initial.y - y
+    if (desired >= this.initial.maximum + 32) this.#expand = true
+    if (desired <= this.initial.maximum) this.#expand = false
+    return { height: Math.min(this.initial.maximum, Math.max(this.initial.minimum, desired)), expand: this.#expand }
   }
 }
 
@@ -69,11 +93,11 @@ type ComposerPresentationBinding = {
     references: Array<{ start: number; end: number; path: string; mime?: string; filename?: string }>
   }
 }
-const presentations = new WeakMap<PluginInputService, ComposerPresentationBinding>()
-export function bindComposerPresentation(input: PluginInputService, binding: ComposerPresentationBinding) {
+const presentations = new WeakMap<object, ComposerPresentationBinding>()
+export function bindComposerPresentation(input: object, binding: ComposerPresentationBinding) {
   presentations.set(input, binding)
   return () => presentations.delete(input)
 }
-export function composerPresentation(input: PluginInputService) {
+export function composerPresentation(input: object) {
   return presentations.get(input)
 }

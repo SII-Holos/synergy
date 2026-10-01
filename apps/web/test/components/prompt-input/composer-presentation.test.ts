@@ -1,11 +1,23 @@
 import { describe, expect, test } from "bun:test"
 import {
+  ComposerResizeGesture,
+  composerBodyLimits,
   ComposerPresentation,
   expandedComposerKeyAction,
   formatComposerSelection,
 } from "../../../src/components/prompt-input/composer-presentation"
 
 describe("long message presentation", () => {
+  test("resize obeys measured chat height and uses a 32 pixel expansion hysteresis", () => {
+    expect(composerBodyLimits(500, 60)).toEqual({ minimum: 96, automatic: 200, manual: 240 })
+    const drag = new ComposerResizeGesture({ y: 300, height: 120, maximum: 240, minimum: 96 })
+    expect(drag.move(180)).toEqual({ height: 240, expand: false })
+    expect(drag.move(140)).toEqual({ height: 240, expand: true })
+    expect(drag.move(165).expand).toBe(true)
+    expect(drag.move(185).expand).toBe(false)
+    expect(drag.move(900).height).toBe(96)
+    expect(composerBodyLimits(120, 80).manual).toBeLessThan(96)
+  })
   test("acceptance collapses only the cleared draft that belongs to the receipt", () => {
     const state = new ComposerPresentation()
     state.expand()

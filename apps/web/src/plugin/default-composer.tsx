@@ -1,21 +1,27 @@
 import { DefaultComposerEditor } from "./default-composer-editor"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { PluginComponentProps, PluginInputService } from "@ericsanchezok/synergy-plugin"
-import { createSignal, createEffect, on, onCleanup, onMount } from "solid-js"
+import { createSignal, createMemo, createEffect, on, onCleanup, onMount } from "solid-js"
 import { ComposerLongEditor, ComposerExpandButton } from "@/components/prompt-input/composer-long-editor"
 import { composerPresentation } from "@/components/prompt-input/composer-presentation"
+import { ComposerResizeControls } from "@/components/prompt-input/composer-resize-controls"
 
 export function DefaultComposer(props: PluginComponentProps<{ input: PluginInputService }>) {
   const input = props.context.input
   const binding = composerPresentation(input)
   const [version, setVersion] = createSignal(0)
   if (binding) onCleanup(binding.state.subscribe(() => setVersion((value) => value + 1)))
-  const expanded = () => {
+  const expanded = createMemo(() => {
     version()
     return binding?.state.expanded && input.current().mode === "normal"
-  }
+  })
   let root!: HTMLDivElement
   const [availableHeight, setAvailableHeight] = createSignal(480)
+  const [chromeHeight, setChromeHeight] = createSignal(80)
+  const manualHeight = () => {
+    version()
+    return binding?.state.manualHeight
+  }
   onMount(() => {
     const pane = root.closest<HTMLElement>(".session-workbench-pane") ?? root.parentElement
     const measure = () => {
@@ -41,9 +47,14 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
             16,
         ),
       )
+      const form = root.querySelector("form")
+      const editor = root.querySelector(".session-composer-editor")
+      if (form && editor) setChromeHeight(form.getBoundingClientRect().height - editor.getBoundingClientRect().height)
     }
     const observer = new ResizeObserver(measure)
     if (pane) observer.observe(pane)
+    const form = root.querySelector("form")
+    if (form) observer.observe(form)
     measure()
     window.visualViewport?.addEventListener("resize", measure)
     window.addEventListener("resize", measure)
@@ -71,7 +82,12 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
       class="session-composer relative z-0 w-full flex flex-col overflow-visible"
       data-ui-part="composer"
       data-expanded={expanded() ? "" : undefined}
-      style={{ "--composer-available-height": `${availableHeight()}px` }}
+      data-resized={manualHeight() === undefined ? undefined : ""}
+      style={{
+        "--composer-available-height": `${availableHeight()}px`,
+        "--composer-chrome-height": `${chromeHeight()}px`,
+        "--composer-body-height": manualHeight() === undefined ? undefined : `${manualHeight()}px`,
+      }}
     >
       {input.render("leading")}
       <form
@@ -93,6 +109,7 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
         }}
         style={{ "z-index": 1 }}
       >
+        <ComposerResizeControls input={input} availableHeight={availableHeight()} />
         <div class="session-composer-context">{input.render("context")}</div>
         <ComposerExpandButton input={input} />
         <ComposerLongEditor input={input} report={report}>
