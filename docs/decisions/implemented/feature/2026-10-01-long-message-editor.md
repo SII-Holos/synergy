@@ -24,4 +24,4 @@ A pointer-captured resize separator follows the gesture immediately. Manual heig
 
 ## Consequences
 
-Long messages gain source formatting and consistent preview while submission, storage and retry retain plain Markdown. The host owns presentation state privately; integrations continue using the existing document API. Task details and inbox placement remain separate work.
+Long messages gain source formatting and consistent preview while submission, storage and retry retain plain Markdown. The host owns presentation state privately; integrations continue using the existing document API. Inputs without the built-in presentation binding retain the existing editor and do not mount the optional controls or their dependencies. Task details and inbox placement remain separate work.

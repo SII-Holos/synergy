@@ -33,6 +33,12 @@ render(() => {
       })}
     >
       <style>{"html,body,#root {margin:0;width:100%;height:100%}"}</style>
+      <button data-fixture type="button" onClick={() => setBytes(docxSample("单页替换文档", false))}>
+        Single page sample
+      </button>
+      <button data-fixture type="button" onClick={() => setBytes(docxSample())}>
+        Valid sample
+      </button>
       <button data-fixture type="button" onClick={() => setBytes(new Uint8Array([1, 2]))}>
         Corrupt sample
       </button>

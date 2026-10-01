@@ -4,7 +4,7 @@ import { useMarked } from "../context/marked"
 import { useResourceOpen } from "../context/resource-open"
 import { enhanceMarkdown } from "./markdown"
 import { sanitizeHtml } from "./markdown-sanitize"
-import { renderUserMarkdown, userMarkdownImageUrl, type UserMarkdownReference } from "./user-markdown-model"
+import type { UserMarkdownReference } from "./user-markdown-model"
 
 export function UserMarkdown(props: {
   text: string
@@ -16,16 +16,21 @@ export function UserMarkdown(props: {
   const { _ } = useLingui()
   let root!: HTMLDivElement
   const key = () => JSON.stringify([props.text, props.references ?? []])
-  const [rendered] = createResource(key, async (current) => ({
-    key: current,
-    html: sanitizeHtml(
-      await renderUserMarkdown(props.text, props.references ?? [], async (raw, inline) =>
-        String(await (inline ? marked.parseInline(raw) : marked.parse(raw))),
+  const [rendered] = createResource(key, async (current) => {
+    const text = props.text,
+      references = props.references ?? []
+    const { renderUserMarkdown } = await import("./user-markdown-model")
+    return {
+      key: current,
+      html: sanitizeHtml(
+        await renderUserMarkdown(text, references, async (raw, inline) =>
+          String(await (inline ? marked.parseInline(raw) : marked.parse(raw))),
+        ),
       ),
-    ),
-  }))
+    }
+  })
   createEffect(() => {
-    const value = rendered()
+    const value = rendered.error ? undefined : rendered()
     if (value?.key !== key()) {
       root.textContent = props.text
       return
@@ -39,7 +44,7 @@ export function UserMarkdown(props: {
       data-component="markdown"
       data-user-markdown
       ref={root}
-      onClick={(event) => {
+      onClick={async (event) => {
         const button = (event.target as Element).closest<HTMLButtonElement>(
           "button[data-user-reference], button[data-user-image]",
         )
@@ -50,6 +55,8 @@ export function UserMarkdown(props: {
           if (Number.isInteger(index) && props.references?.[index]) props.onOpenReference?.(index)
           return
         }
+        const { userMarkdownImageUrl } = await import("./user-markdown-model")
+        if (!root.isConnected || !root.contains(button)) return
         const url = userMarkdownImageUrl(button.dataset.userImage ?? "")
         if (url) resourceOpen?.open({ kind: "url", url, mime: "image/*", filename: button.textContent ?? undefined })
       }}

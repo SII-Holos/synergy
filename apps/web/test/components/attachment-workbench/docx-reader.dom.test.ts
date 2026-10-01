@@ -1,13 +1,18 @@
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import path from "node:path"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solidPlugin from "vite-plugin-solid"
 
 let browser: Browser, page: Page, server: ViteDevServer
+let cache: string
 beforeAll(async () => {
+  cache = await mkdtemp(path.join(tmpdir(), "composer-reader-test-"))
   server = await createServer({
+    cacheDir: cache,
     configFile: false,
     root: path.resolve(import.meta.dir, "../../fixtures/office"),
     plugins: [
@@ -39,6 +44,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close()
   await server?.close()
+  if (cache) await rm(cache, { recursive: true, force: true })
 })
 
 test("DOCX preserves pages, Chinese text, tables, embedded image and header/footer", async () => {
@@ -51,6 +57,16 @@ test("DOCX preserves pages, Chinese text, tables, embedded image and header/foot
   expect(await page.locator("iframe").getAttribute("sandbox")).toBe("")
   await page.getByRole("button", { name: "Next page", exact: true }).click()
   await frame.getByText("第二页面正文", { exact: true }).waitFor()
+})
+
+test("a replacement document resets page navigation before reading a shorter file", async () => {
+  await page.getByRole("button", { name: "Single page sample", exact: true }).click()
+  await page.frameLocator("iframe").getByText("单页替换文档", { exact: true }).waitFor()
+  expect(await page.locator(".office-reader-toolbar").textContent()).toContain("1 / 1")
+  expect(await page.getByRole("button", { name: "Previous page", exact: true }).isDisabled()).toBe(true)
+  expect(await page.getByRole("button", { name: "Next page", exact: true }).isDisabled()).toBe(true)
+  await page.getByRole("button", { name: "Valid sample", exact: true }).click()
+  await page.frameLocator("iframe").getByText("中文阅读验收", { exact: true }).waitFor()
 })
 
 test("DOCX search, fit and controls stay available in a 320px short viewport", async () => {

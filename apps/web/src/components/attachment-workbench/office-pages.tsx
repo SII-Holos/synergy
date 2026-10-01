@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, on, onCleanup, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -20,6 +20,12 @@ export function OfficePaginatedReader(props: {
     [scale, setScale] = createSignal(1),
     [query, setQuery] = createSignal("")
   const [width, setWidth] = createSignal(0)
+  createEffect(
+    on(
+      () => props.document,
+      () => setPage(0),
+    ),
+  )
   createEffect(() => {
     const observer = new ResizeObserver((entries) => setWidth(entries[0]?.contentRect.width ?? 0))
     observer.observe(stage)

@@ -1,13 +1,18 @@
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import path from "node:path"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solidPlugin from "vite-plugin-solid"
 
 let browser: Browser, page: Page, server: ViteDevServer
+let cache: string
 beforeAll(async () => {
+  cache = await mkdtemp(path.join(tmpdir(), "composer-reader-test-"))
   server = await createServer({
+    cacheDir: cache,
     configFile: false,
     root: path.resolve(import.meta.dir, "../../fixtures/office"),
     plugins: [
@@ -39,6 +44,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close()
   await server?.close()
+  if (cache) await rm(cache, { recursive: true, force: true })
 })
 
 test("XLSX reads cached formulas, merges, worksheets and copied selection", async () => {

@@ -18,6 +18,8 @@ The reader uses [mdast](https://github.com/syntax-tree/mdast-util-from-markdown)
 
 **Persist rendered HTML or a rich-text document.** This introduces another content authority and changes copy, retry and model-input semantics.
 
+The parser loads when the user reading surface is actually mounted. Importing shared message or composer components does not eagerly evaluate its parser dependencies. Loading or optional rendering failures retain readable source.
+
 ## Consequences
 
 Historical user text gains formatted reading without a migration. Original source remains accessible and copyable. Markdown parsing dependencies belong to shared UI; attachment policy and Agent streaming rendering remain unchanged.

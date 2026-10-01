@@ -1,7 +1,7 @@
 import { DefaultComposerEditor } from "./default-composer-editor"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { PluginComponentProps, PluginInputService } from "@ericsanchezok/synergy-plugin"
-import { createSignal, createMemo, createEffect, on, onCleanup, onMount } from "solid-js"
+import { createSignal, createMemo, createEffect, on, onCleanup, onMount, Show } from "solid-js"
 import { ComposerLongEditor, ComposerExpandButton } from "@/components/prompt-input/composer-long-editor"
 import { composerPresentation } from "@/components/prompt-input/composer-presentation"
 import { ComposerResizeControls } from "@/components/prompt-input/composer-resize-controls"
@@ -109,12 +109,16 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
         }}
         style={{ "z-index": 1 }}
       >
-        <ComposerResizeControls input={input} availableHeight={availableHeight()} />
+        <Show when={binding}>
+          <ComposerResizeControls input={input} availableHeight={availableHeight()} />
+        </Show>
         <div class="session-composer-context">{input.render("context")}</div>
-        <ComposerExpandButton input={input} />
-        <ComposerLongEditor input={input} report={report}>
-          <DefaultComposerEditor context={{ input }} onError={report} />
-        </ComposerLongEditor>
+        <Show when={binding} fallback={<DefaultComposerEditor context={{ input }} onError={report} />}>
+          <ComposerExpandButton input={input} />
+          <ComposerLongEditor input={input} report={report}>
+            <DefaultComposerEditor context={{ input }} onError={report} />
+          </ComposerLongEditor>
+        </Show>
         {input.render("toolbar")}
       </form>
       {input.render("trailing")}

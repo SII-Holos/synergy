@@ -3,6 +3,7 @@ import { useLingui } from "@lingui/solid"
 import { UserMarkdown } from "@ericsanchezok/synergy-ui/user-markdown"
 import { useResourceOpen } from "@ericsanchezok/synergy-ui/context/resource-open"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { translateDescriptor } from "@/locales/translate"
 import type { PluginInputService } from "@ericsanchezok/synergy-plugin"
@@ -218,7 +219,7 @@ export function ComposerExpandButton(props: { input: PluginInputService }) {
           aria-expanded={expanded()}
           onClick={() => (expanded() ? binding?.state.collapse() : binding?.state.expand())}
         >
-          <Icon name={expanded() ? "minimize-2" : "maximize"} size="small" />
+          <Icon name={getSemanticIcon(expanded() ? "window.restore" : "window.maximize")} size="small" />
         </button>
       </Tooltip>
     </Show>

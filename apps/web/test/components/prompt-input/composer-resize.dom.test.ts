@@ -1,6 +1,8 @@
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import path from "node:path"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solidPlugin from "vite-plugin-solid"
@@ -8,9 +10,12 @@ import solidPlugin from "vite-plugin-solid"
 let browser: Browser
 let page: Page
 let server: ViteDevServer
+let cache: string
 beforeAll(async () => {
+  cache = await mkdtemp(path.join(tmpdir(), "composer-reader-test-"))
   const root = path.resolve(import.meta.dir, "../../fixtures/plugin-ui5")
   server = await createServer({
+    cacheDir: cache,
     configFile: false,
     root,
     plugins: [
@@ -42,6 +47,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close()
   await server?.close()
+  if (cache) await rm(cache, { recursive: true, force: true })
 })
 
 test("pointer cancellation restores height and release crosses the expansion threshold", async () => {

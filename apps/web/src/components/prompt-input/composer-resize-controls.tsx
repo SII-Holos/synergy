@@ -1,6 +1,7 @@
 import { Show, createSignal, onCleanup } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { PluginInputService } from "@ericsanchezok/synergy-plugin"
 import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
 import { ComposerResizeGesture, composerBodyLimits, composerPresentation } from "./composer-presentation"
@@ -126,7 +127,7 @@ export function ComposerResizeControls(props: { input: Pick<PluginInputService, 
               class="composer-size-menu"
               aria-label={_({ id: "prompt.long.size", message: "Editor size" })}
             >
-              <Icon name="ellipsis" size="small" />
+              <Icon name={getSemanticIcon("action.more")} size="small" />
             </button>
           )}
         >
