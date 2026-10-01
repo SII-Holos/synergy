@@ -26,9 +26,13 @@ test("closing or replacing an Office read terminates workers and rejects late re
   })
   const first = reader.read(new Uint8Array([1]), "docx")
   const second = reader.read(new Uint8Array([2]), "docx")
-  workers[0]!.reply({ ok: true, value: { bytes: new Uint8Array([99]), expandedBytes: 1, entryCount: 1 } })
+  workers[0]!.reply({
+    ok: true,
+    kind: "check",
+    value: { bytes: new Uint8Array([99]), expandedBytes: 1, entryCount: 1 },
+  })
   await expect(first).rejects.toMatchObject({ name: "AbortError" })
-  workers[1]!.reply({ ok: true, value: { bytes: new Uint8Array([2]), expandedBytes: 1, entryCount: 1 } })
+  workers[1]!.reply({ ok: true, kind: "check", value: { bytes: new Uint8Array([2]), expandedBytes: 1, entryCount: 1 } })
   expect((await second).bytes[0]).toBe(2)
   expect(workers.map((worker) => worker.terminated)).toEqual([1, 1])
   const third = reader.read(new Uint8Array([3]), "docx")

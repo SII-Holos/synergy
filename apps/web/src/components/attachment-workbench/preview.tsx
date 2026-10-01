@@ -190,6 +190,13 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
               <span>{lingui._(A.loading)}</span>
             </div>
           </Match>
+          <Match when={capability()?.kind === "xlsx" ? safePayload() : undefined}>
+            {(bytes) => (
+              <Suspense fallback={<Spinner />}>
+                <OfficePreview format="xlsx" bytes={bytes()} filename={props.file.filename} />
+              </Suspense>
+            )}
+          </Match>
           <Match when={capability()?.kind === "docx" ? safePayload() : undefined}>
             {(bytes) => (
               <Suspense fallback={<Spinner />}>

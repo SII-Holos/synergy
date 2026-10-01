@@ -12,6 +12,8 @@ Office adapters load only after an attachment is opened. A disposable Worker val
 
 DOCX uses pinned `docx-preview 0.4.1` and its stable `renderAsync` API. HTML altChunks are disabled. Rendering occurs into a detached document, uses embedded data resources and publishes only for the current preview generation. Sanitized pages enter an opaque sandboxed frame with no scripts, connections, child frames, forms or external resource access. Existing file page breaks, text, tables, images, headers and footers are readable; navigation, zoom and text search remain in host controls.
 
+XLSX uses the official SheetJS CE 0.20.3 release package, pinned by the lockfile SHA-512 integrity. Validation and parsing run in the disposable Worker; the main thread receives only a typed sparse workbook projection. The virtual grid preserves worksheet names, merged regions, row and column sizes, formatted cached values and formula text. It does not evaluate formulas or refresh data. Keyboard navigation, cell-range copy and text search operate on this same projection. Very large row canvases map physical scrolling to logical rows rather than allocating one DOM node per cell. Copy explicitly rejects selections above 100,000 cells instead of silently truncating content.
+
 The reading contract preserves content and primary structure. HTML cannot reproduce automatic Word pagination or every complex layout. The reader explicitly states that preview layout may differ from the original. Damaged, encrypted, oversized, unsupported and failed reads retain distinct states and the original download action. Closing or replacing a preview terminates its Worker and rejects late replies.
 
 ## Alternatives considered
@@ -29,3 +31,6 @@ Office preview does not edit files, execute macros, refresh external data, chang
 - [DOCX stable rendering API and page-break limits](https://github.com/VolodymyrBaydalka/docxjs) define the DOM adapter and fidelity contract.
 - [fflate streaming ZIP API](https://github.com/101arrowz/fflate) provides decompression inside the bounded Worker.
 - [Saxes XML parser](https://github.com/lddubeau/saxes) handles relationships with namespace and entity decoding before resource filtering.
+
+- [SheetJS official installation source](https://docs.sheetjs.com/docs/getting-started/installation/frameworks/) supplies the versioned CE distribution.
+- [SheetJS cell model](https://docs.sheetjs.com/docs/csf/cell/) defines cached values, formatted text and formula ownership.

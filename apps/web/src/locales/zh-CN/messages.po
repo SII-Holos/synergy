@@ -984,6 +984,26 @@ msgid "app.attachment.unsupported"
 msgstr "此文件类型暂不支持预览。"
 
 #. js-lingui-explicit-id
+msgid "app.attachment.xlsx.cellValue"
+msgstr "单元格值或公式"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.xlsx.copyCells"
+msgstr "复制选中的单元格"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.xlsx.copyTooLarge"
+msgstr "请选择少于 100,000 个单元格后复制。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.xlsx.matches"
+msgstr "{count} 个匹配单元格"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.xlsx.worksheets"
+msgstr "工作表"
+
+#. js-lingui-explicit-id
 msgid "app.boss.assign.failed"
 msgstr "分配任务失败"
 

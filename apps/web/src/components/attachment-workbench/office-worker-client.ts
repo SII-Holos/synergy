@@ -5,12 +5,13 @@ export interface CheckedOfficePackage {
   expandedBytes: number
   entryCount: number
 }
-export interface OfficeWorkerRequest {
-  kind: "check"
-  format: OfficeFormat
-  bytes: Uint8Array
-}
-export type OfficeWorkerResponse = { ok: true; value: CheckedOfficePackage } | { ok: false; code: OfficeErrorCode }
+export type OfficeWorkerRequest =
+  | { kind: "check"; format: OfficeFormat; bytes: Uint8Array }
+  | { kind: "xlsx"; bytes: Uint8Array }
+export type OfficeWorkerResponse =
+  | { ok: true; kind: "check"; value: CheckedOfficePackage }
+  | { ok: true; kind: "xlsx"; value: import("./xlsx-model").SpreadsheetPreview }
+  | { ok: false; code: OfficeErrorCode }
 
 type PreviewWorker = Pick<Worker, "postMessage" | "terminate" | "onmessage" | "onerror">
 
@@ -24,32 +25,42 @@ export function createOfficeWorkerReader(
     active.reject(new DOMException("Cancelled", "AbortError"))
     active = undefined
   }
+  const run = (request: OfficeWorkerRequest) => {
+    cancel()
+    const worker = factory()
+    return new Promise<Extract<OfficeWorkerResponse, { ok: true }>>((resolve, reject) => {
+      const current = { worker, reject }
+      active = current
+      const finish = () => {
+        worker.terminate()
+        if (active === current) active = undefined
+      }
+      worker.onmessage = (event: MessageEvent<OfficeWorkerResponse>) => {
+        if (active !== current) return
+        finish()
+        if (event.data.ok) resolve(event.data)
+        else reject(new OfficePreviewError(event.data.code))
+      }
+      worker.onerror = () => {
+        if (active !== current) return
+        finish()
+        reject(new OfficePreviewError("failed"))
+      }
+      const copy = new Uint8Array(request.bytes)
+      worker.postMessage({ ...request, bytes: copy }, [copy.buffer])
+    })
+  }
   return {
     cancel,
-    read(bytes: Uint8Array, format: OfficeFormat) {
-      cancel()
-      const worker = factory()
-      return new Promise<CheckedOfficePackage>((resolve, reject) => {
-        const current = { worker, reject }
-        active = current
-        const finish = () => {
-          worker.terminate()
-          if (active === current) active = undefined
-        }
-        worker.onmessage = (event: MessageEvent<OfficeWorkerResponse>) => {
-          if (active !== current) return
-          finish()
-          if (event.data.ok) resolve(event.data.value)
-          else reject(new OfficePreviewError(event.data.code))
-        }
-        worker.onerror = () => {
-          if (active !== current) return
-          finish()
-          reject(new OfficePreviewError("failed"))
-        }
-        const copy = new Uint8Array(bytes)
-        worker.postMessage({ kind: "check", format, bytes: copy } satisfies OfficeWorkerRequest, [copy.buffer])
-      })
+    read: async (bytes: Uint8Array, format: OfficeFormat) => {
+      const result = await run({ kind: "check", format, bytes })
+      if (result.kind !== "check") throw new OfficePreviewError("failed")
+      return result.value
+    },
+    readSpreadsheet: async (bytes: Uint8Array) => {
+      const result = await run({ kind: "xlsx", bytes })
+      if (result.kind !== "xlsx") throw new OfficePreviewError("failed")
+      return result.value
     },
   }
 }

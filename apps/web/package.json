@@ -109,6 +109,7 @@
     "tiptap-extension-code-block-shiki": "1.0.0",
     "virtua": "catalog:",
     "web-vitals": "5.1.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "catalog:"
   }
 }
