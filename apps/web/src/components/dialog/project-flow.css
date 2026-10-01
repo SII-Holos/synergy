@@ -341,7 +341,15 @@
   gap: 10px;
   padding: 10px 12px;
   margin-bottom: 6px;
+  border-radius: 10px;
   color: var(--icon-weak-base);
+}
+.project-menu-search:has(:focus-visible) {
+  outline: 2px solid var(--border-selected);
+  outline-offset: -2px;
+}
+.project-menu-search [data-slot="input-wrapper"]:has(:focus-visible) {
+  outline: none;
 }
 .project-menu-search [data-component="input"] {
   flex: 1;
