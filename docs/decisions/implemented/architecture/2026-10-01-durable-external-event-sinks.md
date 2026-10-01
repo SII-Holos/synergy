@@ -12,6 +12,8 @@ Hosts explicitly register Runtime-owned StorageEventSinks. A pure capture callba
 
 Capture may await transaction-local reads to resolve persisted ownership. Its promise is awaited before the fact can commit, and a projection failure rolls the fact and queue back together. Network effects remain forbidden inside capture.
 
+An optional captured callback receives the allocated delivery identity and sequence inside that transaction. A host can retain the minimal receipt required by a synchronous admission handshake without inspecting queue keys or duplicating sequence allocation. Callback failure rolls back the fact, sequence, queue and host receipt together.
+
 ## Alternatives considered
 
 Replaying arbitrary Bus subscribers can duplicate external effects. Publishing from a subscriber loses events after a crash. A host-side queue written after the fact leaves a commit gap. An exactly-once network promise cannot resolve a lost response.
