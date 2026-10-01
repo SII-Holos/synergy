@@ -22,7 +22,7 @@
 .workspace-navigator-drawer {
   position: fixed;
   inset-block: 0;
-  inset-inline-end: 0;
+  inset-inline-start: 0;
   z-index: 100;
   max-width: calc(100vw - 24px);
   overscroll-behavior: contain;
@@ -61,7 +61,7 @@
 }
 @keyframes workspace-navigation-slide {
   from {
-    transform: translateX(24px);
+    transform: translateX(-24px);
     opacity: 0;
   }
 }

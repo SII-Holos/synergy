@@ -4870,10 +4870,6 @@ msgid "app.name.synergy"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.note.blueprint.pluginOwner"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "app.note.blueprint.runMode.active"
 msgstr ""
 
@@ -10861,6 +10857,18 @@ msgid "files.close.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "fileWorkbench.navigation.hide"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.navigation.show"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.options"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "list.for-label"
 msgstr ""
 
@@ -11029,6 +11037,10 @@ msgid "note.document.exportDraft"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "note.document.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "note.document.more"
 msgstr ""
 
@@ -11061,7 +11073,31 @@ msgid "note.document.unsaved"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "note.navigation.toggle"
+msgid "note.list.clearFilters"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.list.options"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.navigation.hide"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.navigation.show"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.scope.archived"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.scope.archivedProject"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.tag.remove"
 msgstr ""
 
 #. js-lingui-explicit-id

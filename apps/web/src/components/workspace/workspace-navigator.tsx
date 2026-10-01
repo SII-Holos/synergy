@@ -1,5 +1,14 @@
 import { Dialog } from "@kobalte/core/dialog"
-import { Show, createSignal, createMemo, createEffect, onCleanup, onMount, type ParentProps } from "solid-js"
+import {
+  Show,
+  createSignal,
+  createMemo,
+  createEffect,
+  createUniqueId,
+  onCleanup,
+  onMount,
+  type ParentProps,
+} from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
@@ -7,11 +16,18 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { workspaceNavigatorWidth } from "@/context/layout/workspace"
 import "./workspace-navigator.css"
 
-export type WorkspaceNavigatorController = { toggle: () => void; closeDrawer: () => void }
+export type WorkspaceNavigatorController = {
+  id: string
+  opened: () => boolean
+  toggle: () => void
+  close: () => void
+  closeDrawer: () => void
+}
 
 export function WorkspaceNavigator(
   props: ParentProps<{
     label: string
+    header?: boolean
     open: boolean
     width: number
     onResize: (width: number) => void
@@ -23,14 +39,21 @@ export function WorkspaceNavigator(
   const lingui = useLingui()
   const [width, setWidth] = createSignal(0)
   const [drawerOpen, setDrawerOpen] = createSignal(false)
+  const id = createUniqueId()
   let anchor!: HTMLSpanElement
   let returnFocus: HTMLElement | undefined
   const presentation = createMemo(() => workspaceNavigatorWidth(width(), props.width))
   const closeDrawer = () => setDrawerOpen(false)
   props.onReady?.({
+    id,
+    opened: () => props.open && width() > 0 && (!presentation().drawer || drawerOpen()),
     closeDrawer,
+    close: () => (presentation().drawer ? closeDrawer() : props.onClose()),
     toggle() {
       if (presentation().drawer) {
+        if (!drawerOpen()) {
+          returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+        }
         props.onOpen?.()
         setDrawerOpen((open) => !open)
       } else if (props.open) props.onClose()
@@ -53,6 +76,7 @@ export function WorkspaceNavigator(
       <span ref={anchor} hidden />
       <Show when={props.open && width() > 0 && !presentation().drawer}>
         <aside
+          id={id}
           class="workspace-navigator"
           data-workspace-navigation
           style={{ width: `${presentation().width}px` }}
@@ -82,30 +106,33 @@ export function WorkspaceNavigator(
         <Dialog.Portal>
           <Dialog.Overlay class="workspace-navigator-overlay" data-component="dialog-overlay" />
           <Dialog.Content
+            id={id}
             class="workspace-navigator-drawer"
             data-slot="dialog-content"
             data-workspace-navigation
             style={{ width: `${presentation().width}px` }}
             aria-label={props.label}
-            onOpenAutoFocus={() => {
-              returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
-            }}
             onCloseAutoFocus={(event) => {
-              if (returnFocus?.isConnected) {
+              const target = returnFocus?.isConnected
+                ? returnFocus
+                : document.querySelector<HTMLElement>(`[aria-controls="${id}"]`)
+              if (target) {
                 event.preventDefault()
-                returnFocus.focus()
+                target.focus({ preventScroll: true })
               }
             }}
           >
-            <div class="workspace-navigator-drawer-header">
-              <Dialog.Title>{props.label}</Dialog.Title>
-              <IconButton
-                icon={getSemanticIcon("action.close")}
-                variant="ghost"
-                onClick={closeDrawer}
-                aria-label={lingui._({ id: "workspace.navigation.close", message: "Close navigation" })}
-              />
-            </div>
+            <Show when={props.header !== false} fallback={<Dialog.Title class="sr-only">{props.label}</Dialog.Title>}>
+              <div class="workspace-navigator-drawer-header">
+                <Dialog.Title>{props.label}</Dialog.Title>
+                <IconButton
+                  icon={getSemanticIcon("action.close")}
+                  variant="ghost"
+                  onClick={closeDrawer}
+                  aria-label={lingui._({ id: "workspace.navigation.close", message: "Close navigation" })}
+                />
+              </div>
+            </Show>
             {props.children}
           </Dialog.Content>
         </Dialog.Portal>

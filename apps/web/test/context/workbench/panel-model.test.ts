@@ -408,6 +408,7 @@ describe("workbench tab updates", () => {
 
     expect(workbenchPanelMountKey(after)).toBe(workbenchPanelMountKey(before))
     expect(workbenchPanelMountKey({ id: "notes:2", panelId: "notes" })).not.toBe(workbenchPanelMountKey(before))
+    expect(workbenchPanelMountKey({ ...before, panelId: "resource-home" })).not.toBe(workbenchPanelMountKey(before))
   })
 
   test("moves a tab to the requested stable index", () => {

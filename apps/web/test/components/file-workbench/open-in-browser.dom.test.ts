@@ -227,9 +227,10 @@ describe("file workbench open-in-browser action", () => {
     expect(await owner.textContent()).toBe("demo")
   }, 60000)
 
-  test("renders the toolbar button for an HTML file and opens the raw content URL", async () => {
+  test("renders the menu action for an HTML file and opens the raw content URL", async () => {
     await page.goto(`${baseUrl}?path=docs%2Findex.html`)
-    const button = page.getByRole("button", { name: "Open in browser" })
+    await page.getByRole("button", { name: "File options" }).click()
+    const button = page.getByRole("menuitem", { name: "Open in browser" })
     await button.waitFor({ state: "visible", timeout: 30000 })
     await button.click()
     await page.waitForFunction(() => ((window as any).__openedUrls?.length ?? 0) > 0)
@@ -239,15 +240,17 @@ describe("file workbench open-in-browser action", () => {
 
   test("treats .htm files as HTML too", async () => {
     await page.goto(`${baseUrl}?path=index.htm`)
-    const button = page.getByRole("button", { name: "Open in browser" })
+    await page.getByRole("button", { name: "File options" }).click()
+    const button = page.getByRole("menuitem", { name: "Open in browser" })
     await button.waitFor({ state: "visible", timeout: 30000 })
   }, 60000)
 
-  test("hides the toolbar button for non-HTML files", async () => {
+  test("hides the menu action for non-HTML files", async () => {
     await page.goto(`${baseUrl}?path=README.md`)
     await page.waitForSelector(".file-workbench-toolbar", { timeout: 30000 })
     await page.waitForTimeout(300)
-    const count = await page.locator(".file-open-in-browser").count()
+    await page.getByRole("button", { name: "File options" }).click()
+    const count = await page.getByRole("menuitem", { name: "Open in browser" }).count()
     expect(count).toBe(0)
   }, 60000)
 })

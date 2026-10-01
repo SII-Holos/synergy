@@ -29,7 +29,7 @@
   min-width: 0;
   flex: 1;
   align-items: center;
-  overflow-x: auto;
+  overflow: hidden;
   scrollbar-width: none;
   white-space: nowrap;
 }
@@ -39,6 +39,9 @@
 }
 
 .file-breadcrumb button {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   height: 28px;
   padding: 0 3px;
   color: var(--text-weak);
@@ -50,6 +53,7 @@
 }
 
 .file-breadcrumb button.file-breadcrumb-current {
+  flex: 1 0 48px;
   color: var(--text-strong);
   font-weight: 600;
 }
@@ -61,6 +65,7 @@
 }
 
 .file-breadcrumb-root {
+  max-width: 25%;
   color: var(--text-weak);
   font-size: 13px;
   font-weight: 550;
@@ -159,6 +164,32 @@
 }
 
 .file-download svg {
+  flex-shrink: 0;
+}
+.file-options-popover [data-slot="popover-body"] {
+  padding: 6px;
+}
+.file-options-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  max-height: min(28rem, calc(100dvh - 80px));
+  overflow-y: auto;
+}
+.file-options-menu button,
+.file-options-menu a {
+  height: 32px;
+  justify-content: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+.file-options-menu button:focus-visible,
+.file-options-menu a:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}
+.file-breadcrumb-separator {
   flex-shrink: 0;
 }
 

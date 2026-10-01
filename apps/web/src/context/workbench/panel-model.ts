@@ -282,7 +282,7 @@ export function closeOtherWorkbenchPanelTabs(
 }
 
 export function workbenchPanelMountKey(tab?: WorkbenchPanelTab) {
-  return tab?.id
+  return tab ? JSON.stringify([tab.id, tab.panelId]) : undefined
 }
 
 /**

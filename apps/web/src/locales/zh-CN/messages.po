@@ -4870,10 +4870,6 @@ msgid "app.name.synergy"
 msgstr "Synergy"
 
 #. js-lingui-explicit-id
-msgid "app.note.blueprint.pluginOwner"
-msgstr "来自 {plugin}"
-
-#. js-lingui-explicit-id
 msgid "app.note.blueprint.runMode.active"
 msgstr "当前会话运行"
 
@@ -10861,6 +10857,18 @@ msgid "files.close.title"
 msgstr "保存文件更改？"
 
 #. js-lingui-explicit-id
+msgid "fileWorkbench.navigation.hide"
+msgstr "隐藏文件列表"
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.navigation.show"
+msgstr "显示文件列表"
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.options"
+msgstr "文件选项"
+
+#. js-lingui-explicit-id
 msgid "list.for-label"
 msgstr "用于"
 
@@ -11029,6 +11037,10 @@ msgid "note.document.exportDraft"
 msgstr "导出草稿"
 
 #. js-lingui-explicit-id
+msgid "note.document.loading"
+msgstr "加载中…"
+
+#. js-lingui-explicit-id
 msgid "note.document.more"
 msgstr "笔记选项"
 
@@ -11061,8 +11073,32 @@ msgid "note.document.unsaved"
 msgstr "未保存的更改"
 
 #. js-lingui-explicit-id
-msgid "note.navigation.toggle"
-msgstr "切换笔记导航"
+msgid "note.list.clearFilters"
+msgstr "清除筛选"
+
+#. js-lingui-explicit-id
+msgid "note.list.options"
+msgstr "笔记列表选项"
+
+#. js-lingui-explicit-id
+msgid "note.navigation.hide"
+msgstr "隐藏笔记列表"
+
+#. js-lingui-explicit-id
+msgid "note.navigation.show"
+msgstr "显示笔记列表"
+
+#. js-lingui-explicit-id
+msgid "note.scope.archived"
+msgstr "已归档"
+
+#. js-lingui-explicit-id
+msgid "note.scope.archivedProject"
+msgstr "已归档项目"
+
+#. js-lingui-explicit-id
+msgid "note.tag.remove"
+msgstr "移除标签 {tag}"
 
 #. js-lingui-explicit-id
 msgid "plugin.textAction.back"

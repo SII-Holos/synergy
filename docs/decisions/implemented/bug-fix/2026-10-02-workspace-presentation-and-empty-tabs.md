@@ -8,9 +8,11 @@ The resource strip placed creation controls in its scrolling region and shared v
 
 ## Decision
 
-The built-in Session owns the closed Workspace entry; the open resource strip owns collapse and presentation controls. Only document tabs scroll. An explicit new tab creates an independent empty slot, and choosing a resource fills that captured slot. Resource deduplication and document save protection retain their existing owners. A delayed request checks that the empty slot still exists before modifying the layout.
+The built-in Session owns the closed Workspace entry; the open resource strip owns collapse and presentation controls. Only document tabs scroll. An explicit new tab creates an independent empty slot, and choosing a resource fills that captured slot. Resource deduplication and document save protection retain their existing owners. A delayed request checks that the empty slot still exists before modifying the layout. Panel mount identity includes the tab and panel type, so filling an empty slot mounts the chosen implementation while metadata updates within a resource retain their controller.
 
-The side surface is anchored to the right within the built-in Session. Its width and the conversation margin use the shared structural transition. Fullscreen hides and makes the retained conversation and built-in navigation inert while preserving drafts and preferred sizes. Restore and fullscreen use paired size glyphs, and the empty view presents only available primary resource types.
+Document navigation uses compact Scope groups with secondary list actions in a text menu. The document title and body use the same reading measure. Files keep the filename and edit/view controls visible while secondary actions use a menu. Navigation stays mounted when Notes switch documents. Disclosure reports actual drawer visibility and returns focus to a replaced document trigger, and the child Explorer owns its only visible drawer heading and close action. Restored editor mounts initialize the new formatting element as hidden before reusing the retained editor, preserving selection and undo without exposing an unpositioned toolbar.
+
+The side surface is anchored to the right within the built-in Session. Its width and the conversation margin use the shared structural transition. Fullscreen hides and makes the retained conversation and built-in navigation inert through the plugin container, respects the native titlebar safe area while preserving drafts and preferred sizes. Restore and fullscreen use paired size glyphs, and the empty view presents only available primary resource types.
 
 ## Alternatives considered
 

@@ -63,13 +63,16 @@ describe("Note document editor", () => {
     const lateTransaction = previousView.state.tr.setMeta("decoration", true)
     unmountDocumentEditor(editor)
     expect(retained.hasHistory?.()).toBe(true)
+    const restoredBubble = document.createElement("div")
     editor = mountDocumentEditor({
       element: second,
-      config: { ...config, bubbleRef: document.createElement("div") },
+      config: { ...config, bubbleRef: restoredBubble },
       content: "<p>Ignored</p>",
       retained,
       onUpdate: () => {},
     })
+    expect(restoredBubble.style.visibility).toBe("hidden")
+    expect(restoredBubble.style.position).toBe("absolute")
     expect(editor.getText()).toBe("Base edited")
     expect(editor.state.selection.from).toBe(selection)
     expect(editor.commands.undo()).toBe(true)

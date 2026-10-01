@@ -26,9 +26,9 @@ beforeAll(async () => {
   await Bun.write(
     path.join(directory, "state.tsx"),
     `
-    import { createSignal } from "solid-js"
+    import { createSignal, Show } from "solid-js"
     export const [crash, setCrash] = createSignal(false)
-    window.mounts = { side: 0, bottom: 0 }
+    window.mounts = { side: 0, bottom: 0, extra: 0 }
     const entries = ["side", "bottom", "extra"].map(id => ({
       id, label: id, icon: "file", surfaces: ["side", "bottom"], cardinality: "multi",
       component: () => { window.mounts[id]++; return <div>
@@ -45,7 +45,7 @@ beforeAll(async () => {
       return [id, { opened, setOpened, close: () => setOpened(false), size, setSize, tabs, setTabs,
         fullscreen, setFullscreen, activeTab: () => tabs().find(tab => tab.id === active()), active, setActive }]
     }))
-    window.fixture = { open: id => states[id].setOpened(true), close: id => states[id].close(), crash: setCrash, resize: (id,size) => states[id].setSize(size), size: id => states[id].size(), populate: () => states.side.setTabs(Array.from({length:20}, (_,i) => ({ id: i ? 'tab-'+i : 'side', panelId:'side', title: 'Long document title ' + i }))) }
+    window.fixture = { retarget: () => states.side.setTabs([{id:"side",panelId:"extra"}]), open: id => states[id].setOpened(true), close: id => states[id].close(), crash: setCrash, resize: (id,size) => states[id].setSize(size), size: id => states[id].size(), populate: () => states.side.setTabs(Array.from({length:20}, (_,i) => ({ id: i ? 'tab-'+i : 'side', panelId:'side', title: 'Long document title ' + i }))) }
     export const useWorkbenchPanels = () => ({
       surface: id => states[id], panels: () => entries, panelForTab: tab => entries.find(x => x.id === tab?.panelId),
       interact() {}, activateTab(name, id) { states[name].setActive(id) }, getPanel: id => entries.find(entry => entry.id === id),
@@ -76,12 +76,14 @@ beforeAll(async () => {
     const i18n = setupI18n({ locale: "en", messages: { en } })
     function NavigatorProbe() {
       const [open, setOpen] = createSignal(true)
+      const [revision, setRevision] = createSignal(1)
       let navigation
       return <div data-ui-part="resource-panel" style="width:100vw;height:400px;display:flex">
-        <WorkspaceNavigator label="Documents" open={open()} width={320} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} onResize={() => {}} onReady={value => navigation = value}>
-          <button onClick={() => navigation.closeDrawer()}>Select document</button>
+        <WorkspaceNavigator label="Documents" header={location.search !== "?navigator-own-header"} open={open()} width={320} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} onResize={() => {}} onReady={value => navigation = value}>
+          <button onClick={() => {setRevision(value => value+1); navigation.closeDrawer()}}>Select document</button>
+          {location.search === "?navigator-own-header" && <button onClick={() => navigation.closeDrawer()}>Close documents</button>}
         </WorkspaceNavigator>
-        <button onClick={() => navigation.toggle()}>Toggle navigation</button>
+        <Show when={revision()} keyed>{() => <button aria-controls={navigation.id} aria-expanded={navigation.opened()} onClick={() => navigation.toggle()}>Toggle navigation</button>}</Show>
       </div>
     }
     function Fixture() {
@@ -89,7 +91,7 @@ beforeAll(async () => {
       if (location.search === "?navigator-nested") return <button onClick={() => dialog.push(() => <Dialog title="Workspace"><NavigatorProbe /></Dialog>)}>Open host</button>
       if (location.search === "?composed") return <div style="height:100dvh;display:flex;flex-direction:column">
         <DefaultShell context={{ shell: { render: part => part === "navigation" ?
-          <aside class="sb-integrated sb-collapsed" style="width:0px"><div class="sb-navigation"><button>Navigation</button></div></aside> : part === "route" ?
+          <div data-plugin-ui="synergy" style="display:contents"><aside class="sb-integrated sb-expanded" style="width:260px"><div class="sb-navigation"><button>Navigation</button></div></aside></div> : part === "route" ?
           <DefaultSession context={{ layout: { minimumWidth: () => 350, promptHeight: () => 120, render: view => view === "workbench.side" ? <WorkbenchSurface surface="side" /> : view === "conversation" ? <button onClick={() => window.fixture.open("side")}>Open side</button> : view === "composer" ? <div style="position:absolute;bottom:0;left:0;right:0;z-index:50"><input aria-label="Composer draft" /></div> : null } }} /> : null }}} />
       </div>
       if (location.search) return <NavigatorProbe />
@@ -116,7 +118,19 @@ beforeAll(async () => {
         { find: "@", replacement: source },
       ],
     },
-    optimizeDeps: { noDiscovery: true, include: ["solid-js", "solid-js/web", "@lingui/core", "@lingui/solid"] },
+    optimizeDeps: {
+      noDiscovery: true,
+      include: [
+        "solid-js",
+        "solid-js/web",
+        "@lingui/core",
+        "@lingui/solid",
+        "lucide-solid",
+        "@kobalte/core/dialog",
+        "@kobalte/core/popover",
+        "@kobalte/core/tooltip",
+      ],
+    },
     server: { host: "127.0.0.1", port: await fixturePort(), fs: { allow: [path.resolve(source, "../../..")] } },
   })
   await server.listen()
@@ -151,6 +165,7 @@ interface WorkbenchWindow extends Window {
     resize(id: string, size: number): void
     size(id: string): number
     populate(): void
+    retarget(): void
   }
 }
 
@@ -162,6 +177,16 @@ async function openSurfaces() {
   await page.getByRole("button", { name: "bottom action" }).waitFor()
 }
 
+test("converting a tab to another resource type mounts the corresponding panel", async () => {
+  await page.goto(baseUrl)
+  await page.getByRole("button", { name: "Open side", exact: true }).click()
+  await page.getByRole("button", { name: "side action", exact: true }).waitFor()
+  await page.evaluate(() => (window as unknown as WorkbenchWindow).fixture.retarget())
+  await page.getByRole("button", { name: "extra action", exact: true }).waitFor()
+  expect(await page.getByRole("tab").count()).toBe(1)
+  expect(await page.getByRole("button", { name: "side action", exact: true }).count()).toBe(0)
+})
+
 test("fullscreen owns display and hit testing without discarding the composer", async () => {
   await page.goto(baseUrl + "?composed")
   await page.getByRole("textbox", { name: "Composer draft" }).fill("Keep this unsent draft")
@@ -169,11 +194,21 @@ test("fullscreen owns display and hit testing without discarding the composer", 
   await page.getByRole("button", { name: "Expand workspace", exact: true }).click()
   expect(await page.getByRole("textbox", { name: "Composer draft" }).isVisible()).toBe(false)
   expect(await page.getByRole("button", { name: "Navigation", exact: true }).isVisible()).toBe(false)
+  expect((await page.locator(".sb-integrated").boundingBox())!.width).toBe(0)
   const tab = page.getByRole("tab", { name: "side", exact: true })
   await tab.click({ timeout: 2000 })
   await page.getByRole("button", { name: "Restore view", exact: true }).click()
   expect(await page.getByRole("textbox", { name: "Composer draft" }).inputValue()).toBe("Keep this unsent draft")
   expect(errors).toEqual([])
+})
+
+test("expanded resources respect the native titlebar safe area", async () => {
+  await page.goto(baseUrl + "?composed")
+  await page.evaluate(() => document.documentElement.style.setProperty("--workbench-native-inset", "88px"))
+  await page.getByRole("button", { name: "Open side", exact: true }).click()
+  await page.getByRole("button", { name: "Expand workspace", exact: true }).click()
+  const tab = await page.getByRole("tab", { name: "side", exact: true }).boundingBox()
+  expect(tab!.x).toBeGreaterThanOrEqual(88)
 })
 
 test("resource actions stay reachable when twenty long tabs overflow at 375px", async () => {
@@ -187,6 +222,44 @@ test("resource actions stay reachable when twenty long tabs overflow at 375px", 
   await add.click({ timeout: 2000 })
   await page.getByRole("button", { name: "Open a resource", exact: true }).click({ timeout: 2000 })
   await page.getByRole("menuitem", { name: "extra", exact: true }).waitFor()
+})
+
+test("navigation disclosure announces actual visibility and uses one close owner", async () => {
+  await page.setViewportSize({ width: 768, height: 900 })
+  await page.goto(baseUrl + "?navigator")
+  const trigger = page.getByRole("button", { name: "Toggle navigation", exact: true, includeHidden: true })
+  expect(await trigger.getAttribute("aria-expanded")).toBe("true")
+  await page.setViewportSize({ width: 375, height: 900 })
+  await page.getByRole("complementary").waitFor({ state: "detached" })
+  expect(await trigger.getAttribute("aria-expanded")).toBe("false")
+  await trigger.click()
+  expect(await trigger.getAttribute("aria-expanded")).toBe("true")
+  await page.keyboard.press("Escape")
+  await page.getByRole("dialog").waitFor({ state: "detached" })
+  expect(await trigger.getAttribute("aria-expanded")).toBe("false")
+  await page.goto(baseUrl + "?navigator-own-header")
+  await trigger.click()
+  await page.getByRole("dialog", { name: "Documents", exact: true }).waitFor()
+  expect(await page.getByRole("button", { name: "Close navigation", exact: true }).count()).toBe(0)
+  await page.getByRole("button", { name: "Close documents", exact: true }).click()
+  await page.getByRole("dialog").waitFor({ state: "detached" })
+  await page.waitForFunction(() => document.activeElement?.textContent === "Toggle navigation")
+  expect(await page.evaluate(() => document.activeElement?.textContent)).toBe("Toggle navigation")
+})
+
+test("resource menus support direction keys and return focus after Escape", async () => {
+  await page.goto(baseUrl)
+  await page.getByRole("button", { name: "Open side", exact: true }).click()
+  const trigger = page.getByRole("button", { name: "Open a resource", exact: true })
+  await trigger.click()
+  await page.getByRole("menu").waitFor()
+  await page.keyboard.press("End")
+  expect(await page.evaluate(() => document.activeElement?.textContent?.trim())).toBe("extra")
+  await page.keyboard.press("Home")
+  expect(await page.evaluate(() => document.activeElement?.textContent?.trim())).toBe("side")
+  await page.keyboard.press("Escape")
+  await page.getByRole("menu").waitFor({ state: "detached" })
+  expect(await trigger.evaluate((element) => element === document.activeElement)).toBe(true)
 })
 
 test("rapid reverse operations retain the mounted resource and its draft", async () => {
@@ -317,6 +390,7 @@ test("navigation drawers start closed and preserve the wide navigation preferenc
   await page.getByRole("dialog", { name: "Documents" }).waitFor()
   await page.getByRole("button", { name: "Select document" }).click()
   await page.getByRole("dialog").waitFor({ state: "detached" })
+  await page.waitForFunction(() => document.activeElement?.textContent === "Toggle navigation")
   expect(await page.evaluate(() => document.activeElement?.textContent)).toBe("Toggle navigation")
   await page.setViewportSize({ width: 768, height: 900 })
   await page.getByRole("complementary", { name: "Documents" }).waitFor()
@@ -333,6 +407,7 @@ test("Escape closes a nested navigation drawer and returns focus inside its work
   await page.keyboard.press("Escape")
   await page.getByRole("dialog", { name: "Documents", exact: true }).waitFor({ state: "detached" })
   expect(await page.getByRole("dialog", { name: "Workspace", exact: true }).count()).toBe(1)
+  await page.waitForFunction(() => document.activeElement?.textContent === "Toggle navigation")
   expect(await page.evaluate(() => document.activeElement?.textContent)).toBe("Toggle navigation")
   await page.keyboard.press("Escape")
   await page.getByRole("dialog").waitFor({ state: "detached" })

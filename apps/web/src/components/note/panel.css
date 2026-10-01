@@ -43,7 +43,9 @@
   min-width: 200px;
   max-width: calc(100vw - 24px);
   flex-direction: column;
-  padding: 6px;
+  padding: 0;
+  max-height: min(28rem, calc(100dvh - 80px));
+  overflow-y: auto;
   border: 1px solid var(--border-weak-base);
   border-radius: 10px;
   background: var(--surface-raised-base);
@@ -61,11 +63,163 @@
   color: var(--text-base);
   font-size: 12px;
 }
-.note-toolbar-menu button::after {
-  content: attr(aria-label);
+.note-toolbar-menu small {
+  margin-inline-start: auto;
+  color: var(--text-weak);
+}
+.note-toolbar-menu button[aria-checked="true"] {
+  background: var(--surface-raised-base-hover);
+}
+.note-toolbar-popover [data-slot="popover-body"] {
+  padding: 6px;
 }
 .note-toolbar-menu button:hover {
   background: var(--surface-raised-base-hover);
+}
+.note-toolbar-menu button:disabled {
+  color: var(--text-weaker);
+}
+.note-list-search {
+  display: flex;
+  height: 48px;
+  align-items: center;
+  gap: 8px;
+  margin-inline: 16px;
+  color: var(--icon-weak);
+  border-bottom: 1px solid var(--border-weak-base);
+}
+.note-list-search input {
+  min-width: 0;
+  flex: 1;
+  background: transparent;
+  color: var(--text-base);
+  font-size: 13px;
+}
+.note-list-filter-status {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 16px;
+  color: var(--text-weak);
+  font-size: 12px;
+}
+.note-resource-group {
+  padding-top: 8px;
+}
+.note-resource-group-header {
+  display: flex;
+  align-items: center;
+  height: 32px;
+}
+.note-resource-group-header > button:first-child {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  min-width: 0;
+  flex: 1;
+  color: var(--text-weak);
+  font-size: 12px;
+}
+.note-resource-group-header span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.note-resource-group-header > [data-component="icon-button"] {
+  opacity: 0;
+}
+.note-resource-group-header:hover > [data-component="icon-button"],
+.note-resource-group-header:focus-within > [data-component="icon-button"] {
+  opacity: 1;
+}
+@media (hover: none) {
+  .note-resource-group-header > [data-component="icon-button"] {
+    opacity: 1;
+  }
+}
+.note-resource-group-header small {
+  margin-inline-start: auto;
+  font-size: 11px;
+}
+.note-resource-row {
+  display: flex;
+  height: 32px;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding-inline: 8px;
+  border-radius: 6px;
+  color: var(--text-base);
+  font-size: 13px;
+  text-align: start;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+.note-resource-row--blueprint {
+  height: 48px;
+}
+.note-resource-row:hover,
+.note-resource-row[aria-pressed="true"] {
+  background: var(--surface-raised-base-hover);
+}
+.note-resource-row:focus-visible,
+.note-resource-group button:focus-visible,
+.note-list-search input:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}
+.note-resource-time {
+  flex-shrink: 0;
+  color: var(--text-weak);
+  font-size: 11px;
+}
+.note-resource-loading span {
+  display: block;
+  height: 20px;
+  margin-block: 12px;
+  width: 70%;
+  border-radius: 4px;
+  background: var(--surface-inset-base);
+}
+.note-document-heading,
+.note-document-tags {
+  width: 100%;
+  max-width: 760px;
+  padding-inline: 28px;
+  margin-inline: auto;
+}
+.note-document-heading {
+  flex-shrink: 0;
+  padding-top: 28px;
+}
+.note-document-heading input {
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 600;
+}
+.note-document-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.note-workspace-document .document-editor-core {
+  background: transparent;
+}
+.note-workspace-document .tiptap {
+  max-width: 704px;
+  margin-inline: auto;
+}
+.note-workspace-document .tiptap p {
+  font-size: 16px;
+  line-height: 1.5;
+}
+.note-document-tags {
+  padding-block: 8px 16px;
+}
+.note-workspace-document {
+  --document-editor-background: var(--background-base);
 }
 .note-navigation-search {
   display: flex;
@@ -779,7 +933,9 @@
   opacity: 0.5;
 }
 @media (prefers-reduced-motion: reduce) {
-  .note-card {
+  .note-card,
+  .note-resource-row,
+  .note-toolbar-menu button {
     transition: none;
   }
 

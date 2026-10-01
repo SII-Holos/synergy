@@ -46,12 +46,14 @@
   pointer-events: none;
 }
 
-[data-default-shell]:has([data-default-session] .workbench-surface--side.workbench-surface--overlay) > .sb-integrated {
+[data-default-shell]:has([data-default-session] .workbench-surface--side.workbench-surface--overlay) .sb-integrated {
   width: 0 !important;
   max-width: 0;
   border-right-width: 0;
   visibility: hidden;
   pointer-events: none;
+  overflow: hidden;
+  transition: none;
 }
 
 .workbench-surface--overlay {
@@ -106,6 +108,10 @@
     var(--workbench-card-bg, var(--surface-base))
   );
   padding: 0 8px;
+}
+
+.workbench-surface--side.workbench-surface--overlay .workbench-surface-tabs {
+  padding-inline-start: max(8px, var(--workbench-native-inset, 0px));
 }
 
 .workbench-surface-tab-run {
@@ -276,6 +282,8 @@
 .workbench-surface-add-list {
   display: flex;
   flex-direction: column;
+  max-height: min(28rem, calc(100dvh - 80px));
+  overflow-y: auto;
 }
 
 .workbench-surface-add-row {
@@ -290,6 +298,7 @@
   font-size: 13px;
   font-weight: 500;
   text-align: left;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
 .workbench-surface-add-row:hover {

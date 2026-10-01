@@ -1,4 +1,6 @@
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
+import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { resourceMenuKeyDown } from "../workspace/resource-menu"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { createMemo, createResource, createSignal, For, Show, createEffect, on, onCleanup, onMount } from "solid-js"
 import { useParams } from "@solidjs/router"
@@ -18,7 +20,6 @@ import { useSync } from "@/context/sync"
 import { TIPTAP_STYLES, DocumentEditorCore } from "@/components/note/document-editor-core"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { archiveNoteConfirm, unarchiveNoteConfirm, deleteArchivedNoteConfirm } from "@/components/dialog/confirm-copy"
-import { SelectionCheckbox } from "@/components/library/shared"
 import type {
   Agent,
   BlueprintLoopInfo,
@@ -178,13 +179,11 @@ function attachNoteDragData(e: DragEvent, note: NoteCardInfo) {
   setTimeout(() => document.body.removeChild(dragImage), 0)
 }
 
-type NoteCardVariant = "compact" | "balanced" | "featured"
 type NoteKindFilter = "all" | "note" | "blueprint"
 
 function NoteCard(props: {
   note: NoteCardInfo
   originName?: string
-  variant?: NoteCardVariant
   loops?: BlueprintLoopInfo[]
   onClick: (newTab?: boolean) => void
   selecting?: boolean
@@ -193,43 +192,23 @@ function NoteCard(props: {
   lingui: ReturnType<typeof useLingui>
 }) {
   const { fmt } = useLocale()
-  const previewHtml = createMemo(() => props.note.previewHtml ?? null)
-  const searchPreview = createMemo(() => props.note.searchText ?? "")
-  const hasContent = createMemo(() => (previewHtml() ?? searchPreview()).length > 0)
-  const variant = createMemo(() => props.variant ?? "balanced")
-  const isBlueprint = createMemo(() => isBlueprintNote(props.note))
-  const blueprintState = createMemo(() => getBlueprintVisualState(props.lingui, props.note, props.loops ?? []))
-  const pluginOwnerName = createMemo(() => {
-    const loops = props.loops ?? []
-    for (const loop of loops) {
-      if (loop.source === "plugin" && loop.pluginOwner) return loop.pluginOwner.pluginId
-    }
-    return undefined
-  })
-  const cardHeight = createMemo(() => {
-    if (variant() === "compact") return "h-[260px]"
-    if (variant() === "featured") return "h-[370px]"
-    return "h-[320px]"
-  })
-
+  const blueprint = () => isBlueprintNote(props.note)
+  const state = () => getBlueprintVisualState(props.lingui, props.note, props.loops ?? [])
+  const title = () => props.note.title || props.lingui._(N.untitled)
   return (
     <button
       type="button"
-      class={`group note-card relative flex w-full ${cardHeight()} flex-col overflow-hidden rounded-[0.95rem] border border-border-weaker-base bg-surface-raised-base/80 text-left hover:border-border-weak-hover hover:bg-surface-raised-base-hover active:scale-[0.99] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background-base`}
-      classList={{
-        "note-card--blueprint": isBlueprint(),
-        [`note-card--blueprint-${blueprintState().tone}`]: isBlueprint(),
-      }}
+      class="note-resource-row"
+      classList={{ "note-resource-row--blueprint": blueprint() }}
+      title={title()}
+      aria-pressed={props.selecting ? (props.selected ?? false) : undefined}
       draggable={!props.selecting}
-      onDragStart={(e) => {
-        if (!props.selecting) attachNoteDragData(e, props.note)
+      onDragStart={(event) => {
+        if (!props.selecting) attachNoteDragData(event, props.note)
       }}
-      onClick={(e) => {
-        if (props.selecting && props.onToggleSelect) {
-          props.onToggleSelect(props.note.id, e.shiftKey)
-        } else {
-          props.onClick(e.metaKey || e.ctrlKey)
-        }
+      onClick={(event) => {
+        if (props.selecting && props.onToggleSelect) props.onToggleSelect(props.note.id, event.shiftKey)
+        else props.onClick(event.metaKey || event.ctrlKey)
       }}
       onKeyDown={(event) => {
         if (!props.selecting && event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
@@ -238,164 +217,43 @@ function NoteCard(props: {
         }
       }}
     >
-      <Show when={props.selecting && props.onToggleSelect}>
-        <div class="absolute right-2 top-2 z-10" onClick={(e) => e.stopPropagation()}>
-          <SelectionCheckbox selected={props.selected ?? false} />
-        </div>
-      </Show>
-      <Show when={props.originName}>
-        <span class="sr-only">
-          {props.lingui._({
-            id: N.fromOrigin.id,
-            message: N.fromOrigin.message,
-            values: { name: props.originName ?? "" },
-          })}
-        </span>
-      </Show>
-
-      <Show when={isBlueprint()}>
-        <div class={`note-blueprint-card-header note-blueprint-card-header--${blueprintState().tone}`}>
-          <span class="note-blueprint-card-kicker">
-            <Icon name={getSemanticIcon("blueprint.main")} size="small" class="size-3.5" />
-            {props.lingui._({ id: N.blueprint.id, message: N.blueprint.message })}
-          </span>
-          <span class={`note-card-status note-card-status--${blueprintState().tone}`}>
-            <Icon name={blueprintState().icon} size="small" class="size-3" />
-            {blueprintState().label}
-          </span>
-        </div>
-      </Show>
-
-      <div class={isBlueprint() ? "px-3.5 pt-3" : "px-3.5 pt-3.5"}>
-        <span
-          classList={{
-            "line-clamp-2 text-text-strong": true,
-            "text-12-medium": variant() !== "featured",
-            "text-14-medium tracking-tight": variant() === "featured",
-          }}
-        >
-          {props.note.title || props.lingui._({ id: N.untitled.id, message: N.untitled.message })}
-        </span>
-      </div>
-
-      <Show
-        when={hasContent()}
-        fallback={
-          <div class="flex flex-1 items-center justify-center text-text-weaker opacity-35">
-            <Icon name={getSemanticIcon("notes.main")} size="large" />
-          </div>
-        }
-      >
-        <div class="note-card-preview min-h-0 flex-1 overflow-hidden px-3.5 pt-2">
-          <Show
-            when={previewHtml()}
-            fallback={
-              <div class="whitespace-pre-line text-[10.5px] leading-[1.35] text-text-weaker">{searchPreview()}</div>
-            }
-          >
-            <div
-              class="note-preview-content text-[10.5px] leading-[1.35] text-text-weaker"
-              innerHTML={previewHtml()!}
-            />
-          </Show>
-        </div>
-      </Show>
-
-      <div class="note-card-footer mt-auto shrink-0 px-3.5 py-2.5">
-        <Show
-          when={isBlueprint()}
-          fallback={
-            <div class="flex items-center gap-2">
-              <Show when={props.originName}>
-                <span class="note-card-origin">
-                  <Icon name={getSemanticIcon("notes.folder")} class="size-3 shrink-0" />
-                  <span class="truncate">
-                    {props.lingui._({
-                      id: N.fromOrigin.id,
-                      message: N.fromOrigin.message,
-                      values: { name: props.originName ?? "" },
-                    })}
-                  </span>
-                </span>
-              </Show>
-              <Show when={props.note.pinned}>
-                <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-raised-stronger-non-alpha text-text-weak">
-                  <Icon name={getSemanticIcon("notes.pin")} size="small" class="size-3" />
-                </span>
-              </Show>
-              <span class="flex-1" />
-              <span class="text-11-regular text-text-weak">{relativeTime(fmt, props.note.time.updated)}</span>
-            </div>
-          }
-        >
-          <div class="flex items-center gap-2">
-            <span class="min-w-0 truncate text-10-medium uppercase tracking-[0.08em] text-text-weaker">
-              {props.lingui._({ id: N.runHistory.id, message: N.runHistory.message })}
-            </span>
-            <span class="min-w-0 flex-1 truncate text-10-regular text-text-weaker">{blueprintState().detail}</span>
-            <Show when={props.note.pinned}>
-              <Icon name={getSemanticIcon("notes.pin")} size="small" class="size-3 shrink-0 text-text-weak" />
-            </Show>
-          </div>
-          <div class="mt-2 flex items-center gap-2 text-11-regular text-text-weak">
-            <Show when={props.originName}>
-              <span class="note-card-origin">
-                <Icon name={getSemanticIcon("notes.folder")} class="size-3 shrink-0" />
-                <span class="truncate">
-                  {props.lingui._({
-                    id: N.fromOrigin.id,
-                    message: N.fromOrigin.message,
-                    values: { name: props.originName ?? "" },
-                  })}
-                </span>
-              </span>
-            </Show>
-            <Show when={pluginOwnerName()}>
-              <span class="note-card-origin">
-                <Icon name={getSemanticIcon("plugins.main")} class="size-3 shrink-0" />
-                <span class="truncate">
-                  {props.lingui._({
-                    id: "app.note.blueprint.pluginOwner",
-                    message: "From {plugin}",
-                    values: { plugin: pluginOwnerName() ?? "" },
-                  })}
-                </span>
-              </span>
-            </Show>
-            <span class="truncate">
-              {getRunCount(props.note, props.loops ?? []) > 0
-                ? props.lingui._({
-                    id: N.runsCount.id,
-                    message: N.runsCount.message,
-                    values: { count: getRunCount(props.note, props.loops ?? []) },
-                  })
-                : props.lingui._({ id: N.noRunsYet.id, message: N.noRunsYet.message })}
-            </span>
-            <span class="flex-1" />
-            <span class="shrink-0">{relativeTime(fmt, getBlueprintActivityTime(props.note, props.loops ?? []))}</span>
-          </div>
+      <Icon
+        name={getSemanticIcon(
+          props.selecting && props.selected ? "state.success" : blueprint() ? "blueprint.main" : "notes.main",
+        )}
+        size="small"
+      />
+      <span class="note-navigation-copy">
+        <span>{title()}</span>
+        <Show when={blueprint()}>
+          <small>{state().label}</small>
         </Show>
-      </div>
+        <Show when={props.originName}>
+          <span class="sr-only">
+            {props.lingui._({
+              id: N.fromOrigin.id,
+              message: N.fromOrigin.message,
+              values: { name: props.originName ?? "" },
+            })}
+          </span>
+        </Show>
+      </span>
+      <Show when={props.note.pinned}>
+        <Icon name={getSemanticIcon("notes.pin")} size="small" />
+      </Show>
+      <time class="note-resource-time" dateTime={new Date(props.note.time.updated).toISOString()}>
+        {relativeTime(fmt, props.note.time.updated)}
+      </time>
     </button>
   )
 }
 
-/** Skeleton placeholder matching NoteCard shape, shown during list loading */
 function NoteCardSkeleton() {
   return (
-    <div class="flex w-full h-[320px] flex-col overflow-hidden rounded-[0.95rem] border border-border-weaker-base bg-surface-raised-base/70 animate-pulse">
-      <div class="px-3.5 pt-3.5 space-y-1.5">
-        <div class="h-3 w-3/4 rounded bg-surface-inset-base/70" />
-        <div class="h-3 w-1/2 rounded bg-surface-inset-base/70" />
-      </div>
-      <div class="flex-1 px-3.5 pt-2 space-y-1">
-        <div class="h-2 w-full rounded bg-surface-inset-base/70" />
-        <div class="h-2 w-5/6 rounded bg-surface-inset-base/70" />
-        <div class="h-2 w-2/3 rounded bg-surface-inset-base/70" />
-      </div>
-      <div class="note-card-footer shrink-0 px-3.5 py-2.5">
-        <div class="ml-auto h-3 w-1/4 rounded bg-surface-inset-base/70" />
-      </div>
+    <div class="note-resource-loading" aria-hidden="true">
+      <span />
+      <span />
+      <span />
     </div>
   )
 }
@@ -776,161 +634,47 @@ function ScopeSection(props: {
   selectedNotes?: Set<string>
   onToggleSelect?: (id: string, shiftKey?: boolean) => void
 }) {
-  const { fmt } = useLocale()
-  const [columns, setColumns] = createSignal(2)
-  const latestUpdated = createMemo(() => props.group.notes[0]?.time.updated)
-  const noteCountLabel = createMemo(() =>
-    props.lingui._({
-      id: N.noteCountLabel.id,
-      message: N.noteCountLabel.message,
-      values: { count: props.group.notes.length },
-    }),
-  )
-  const shelfNotes = createMemo(() => {
-    void props.selecting
-    void props.selectedNotes?.size
-    return props.group.notes.slice(0, columns())
-  })
-  const hasMore = createMemo(() => props.group.notes.length > columns())
-
-  let sectionRef!: HTMLElement
-
-  onMount(() => {
-    const ro = new ResizeObserver(([entry]) => {
-      const w = entry.contentRect.width
-      const cols = w < 380 ? 1 : w < 660 ? 2 : 3
-      setColumns(cols)
-    })
-    ro.observe(sectionRef)
-    onCleanup(() => ro.disconnect())
-  })
-
-  function getOriginName(note: NoteMetaInfo): string | undefined {
-    if (props.group.scopeType !== "home") return undefined
-    const origin = note.originScope
-    if (!origin) return undefined
-    return props.scopeLookup.get(origin)?.name ?? "Archived project"
-  }
-
+  const originName = (note: NoteMetaInfo) =>
+    props.group.scopeType === "home" && note.originScope
+      ? (props.scopeLookup.get(note.originScope)?.name ??
+        props.lingui._({ id: "note.scope.archivedProject", message: "Archived project" }))
+      : undefined
   return (
-    <section
-      ref={sectionRef}
-      class="note-scope-section"
-      classList={{
-        "note-scope-section--current": props.group.isCurrent,
-      }}
-    >
-      <div class="flex items-center gap-2">
-        <button
-          type="button"
-          class="note-scope-header"
-          aria-expanded={props.expanded}
-          aria-label={`${props.expanded ? "Collapse" : "Expand"} ${props.group.name} notes`}
-          onClick={props.onToggle}
-        >
-          <span
-            class="shrink-0 text-icon-weak-base transition-transform duration-150"
-            classList={{ "rotate-90": props.expanded }}
-          >
-            <Icon name={getSemanticIcon("navigation.expand")} size="small" />
-          </span>
-          <Show when={props.group.scopeType === "home"}>
-            <Icon name={getSemanticIcon("navigation.home")} size="small" class="text-icon-weak-base shrink-0" />
-          </Show>
-          <Show when={props.group.scopeType === "project" && !props.group.archived}>
-            <Icon name={getSemanticIcon("notes.folder")} size="small" class="text-icon-weak-base shrink-0" />
-          </Show>
-          <Show when={props.group.archived}>
-            <Icon name={getSemanticIcon("notes.archive")} size="small" class="text-icon-weak-base shrink-0" />
-          </Show>
-          <span class="min-w-0 truncate text-12-medium text-text-strong">{props.group.name}</span>
-          <Show when={props.group.isCurrent}>
-            <span class="note-scope-current-badge">
-              <span class="size-1.5 rounded-full bg-text-diff-add-base/80" />
-              {props.lingui._(N.current)}
-            </span>
-          </Show>
-          <span class="flex-1" />
-          <span class="shrink-0 text-11-regular text-text-weaker">{noteCountLabel()}</span>
-          <Show when={latestUpdated()}>
-            <span class="hidden shrink-0 text-11-regular text-text-weaker sm:inline">
-              · {relativeTime(fmt, latestUpdated()!)}
-            </span>
-          </Show>
+    <section class="note-resource-group">
+      <div class="note-resource-group-header">
+        <button type="button" aria-expanded={props.expanded} aria-label={props.group.name} onClick={props.onToggle}>
+          <Icon name={getSemanticIcon(props.expanded ? "navigation.collapse" : "navigation.expand")} size="small" />
+          <span>{props.group.name}</span>
+          <small>{props.group.notes.length}</small>
         </button>
         <Show when={!props.group.archived}>
-          <button
-            type="button"
-            class="note-scope-new-button"
+          <IconButton
+            icon={getSemanticIcon("action.add")}
+            variant="ghost"
             onClick={props.onCreateNote}
-            title={props.lingui._(N.newNote)}
-          >
-            <Icon name={getSemanticIcon("action.add")} size="small" />
-          </button>
+            aria-label={props.lingui._(N.newNote)}
+          />
         </Show>
       </div>
-
-      <Show
-        when={props.expanded}
-        fallback={
-          <Show when={shelfNotes().length > 0}>
-            <div
-              class="note-card-grid note-card-grid--shelf"
-              style={`grid-template-columns: repeat(${columns()}, minmax(0, 1fr))`}
-            >
-              <For each={shelfNotes()}>
-                {(note) => (
-                  <NoteCard
-                    note={note}
-                    originName={getOriginName(note)}
-                    loops={props.loopsByNote.get(note.id) ?? []}
-                    variant="compact"
-                    onClick={(newTab) => props.onOpenNote(note.id, newTab)}
-                    selecting={props.selecting}
-                    selected={props.selectedNotes?.has(note.id) ?? false}
-                    onToggleSelect={props.onToggleSelect}
-                    lingui={props.lingui}
-                  />
-                )}
-              </For>
-            </div>
-            <Show when={hasMore()}>
-              <button type="button" class="note-scope-view-all" onClick={props.onToggle}>
-                {props.lingui._({
-                  id: N.viewAllNotes.id,
-                  message: N.viewAllNotes.message,
-                  values: { count: props.group.notes.length },
-                })}
-                <Icon name={getSemanticIcon("navigation.expand")} size="small" class="size-3" />
-              </button>
-            </Show>
-          </Show>
-        }
-      >
+      <Show when={props.expanded}>
         <Show
           when={props.group.notes.length > 0}
-          fallback={<div class="py-4 text-center text-12-regular text-text-weaker">{props.lingui._(N.noNotes)}</div>}
+          fallback={<div class="note-navigation-message">{props.lingui._(N.noNotes)}</div>}
         >
-          <div
-            class="note-card-grid note-card-grid--expanded"
-            style={`grid-template-columns: repeat(${columns()}, minmax(0, 1fr))`}
-          >
-            <For each={props.group.notes}>
-              {(note) => (
-                <NoteCard
-                  note={note}
-                  originName={getOriginName(note)}
-                  loops={props.loopsByNote.get(note.id) ?? []}
-                  variant={note.pinned ? "featured" : "balanced"}
-                  onClick={(newTab) => props.onOpenNote(note.id, newTab)}
-                  selecting={props.selecting}
-                  selected={props.selectedNotes?.has(note.id) ?? false}
-                  onToggleSelect={props.onToggleSelect}
-                  lingui={props.lingui}
-                />
-              )}
-            </For>
-          </div>
+          <For each={props.group.notes}>
+            {(note) => (
+              <NoteCard
+                note={note}
+                originName={originName(note)}
+                loops={props.loopsByNote.get(note.id) ?? []}
+                onClick={(newTab) => props.onOpenNote(note.id, newTab)}
+                selecting={props.selecting}
+                selected={props.selectedNotes?.has(note.id) ?? false}
+                onToggleSelect={props.onToggleSelect}
+                lingui={props.lingui}
+              />
+            )}
+          </For>
         </Show>
       </Show>
     </section>
@@ -949,7 +693,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
 
   const noteDocuments = useNoteDocuments()
   const navigation = noteDocuments.navigation(directory() ?? HOME_SCOPE_KEY)
-  let navigator: WorkspaceNavigatorController | undefined
+  const [navigator, setNavigator] = createSignal<WorkspaceNavigatorController>()
 
   const [view, setView] = createSignal<"list" | "editor">("list")
   const [selectedNoteId, setSelectedNoteId] = createSignal<string | null>(null)
@@ -962,6 +706,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   const [lastClickedID, setLastClickedID] = createSignal<string | null>(null)
   const [batchBusy, setBatchBusy] = createSignal(false)
   const [showArchived, setShowArchived] = createSignal(false)
+  const [listOptionsOpen, setListOptionsOpen] = createSignal(false)
 
   const currentScopeID = createMemo(() => {
     const dir = directory()
@@ -1158,7 +903,11 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
           return {
             ...g,
             notes: activeMember,
-            name: meta?.name ?? (g.scopeID === "home" ? getScopeLabel(undefined, "home") : "Archived project"),
+            name:
+              meta?.name ??
+              (g.scopeID === "home"
+                ? getScopeLabel(undefined, "home")
+                : lingui._({ id: "note.scope.archivedProject", message: "Archived project" })),
             directory: groupDirectory,
             isCurrent,
           }
@@ -1168,7 +917,11 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
         return {
           ...g,
           notes: activeMember,
-          name: meta?.name ?? (g.scopeID === "home" ? getScopeLabel(undefined, "home") : "Archived project"),
+          name:
+            meta?.name ??
+            (g.scopeID === "home"
+              ? getScopeLabel(undefined, "home")
+              : lingui._({ id: "note.scope.archivedProject", message: "Archived project" })),
           directory: groupDirectory,
           isCurrent,
         }
@@ -1181,7 +934,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
         scopeID: "__archived__",
         scopeType: "project",
         notes: archived,
-        name: "Archived",
+        name: lingui._({ id: "note.scope.archived", message: "Archived" }),
         directory: directory() ?? "home",
         isCurrent: false,
         archived: true,
@@ -1202,7 +955,6 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
       })
   })
 
-  const totalNotes = createMemo(() => (rawGroups() ?? []).reduce((sum, g) => sum + g.notes.length, 0))
   const visibleNotes = createMemo(() => displayGroups().reduce((sum, g) => sum + g.notes.length, 0))
   const filterOptions = createMemo(() => [
     {
@@ -1238,9 +990,16 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
       const opened = await workbench.openPanel("notes", {
         replaceCurrent: !newTab,
         forceNew: newTab,
-        init: { resourceId: id, source: dir },
+        init: {
+          resourceId: id,
+          source: dir,
+          title:
+            rawGroups()
+              ?.flatMap((group) => group.notes)
+              .find((note) => note.id === id)?.title || lingui._(N.untitled),
+        },
       })
-      if (opened) navigator?.closeDrawer()
+      if (opened) navigator()?.closeDrawer()
       return
     }
     setSelectedNoteId(id)
@@ -1409,92 +1168,118 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
       <Show when={view() === "list"}>
         <div class="flex flex-col h-full">
           <div class="note-workspace-toolbar">
-            <span class="note-workspace-scope">{lingui._({ id: P.notes.id, message: P.notes.message })}</span>
+            <span class="note-workspace-owner">{lingui._(P.notes)}</span>
             <IconButton
               icon={getSemanticIcon("action.add")}
               variant="ghost"
               onClick={() => void createNoteInScope(directory() ?? HOME_SCOPE_KEY)}
-              aria-label={lingui._({ id: N.newNote.id, message: N.newNote.message })}
+              aria-label={lingui._(N.newNote)}
             />
-          </div>
-          <div class="shrink-0 px-4 pt-3 pb-2">
-            <div class="flex flex-wrap items-center gap-2.5 rounded-xl bg-surface-inset-base/60 px-3.5 py-2.5 transition-colors">
-              <Icon name={getSemanticIcon("notes.search")} size="small" class="text-icon-weak-base shrink-0" />
-              <input
-                type="text"
-                placeholder={lingui._({ id: N.searchNotes.id, message: N.searchNotes.message })}
-                class="min-w-32 flex-1 bg-transparent text-13-regular text-text-base placeholder:text-text-weak outline-none"
-                value={search()}
-                onInput={(e) => setSearch(e.currentTarget.value)}
-              />
-              <Show when={search()}>
-                <button
-                  type="button"
-                  class="flex items-center justify-center size-5 rounded-md text-icon-weak-base hover:text-icon-base transition-colors"
-                  aria-label={lingui._({ id: N.clearSearch.id, message: N.clearSearch.message })}
-                  onClick={() => setSearch("")}
-                >
-                  <Icon name={getSemanticIcon("action.close")} size="small" />
-                </button>
-              </Show>
-              <div class="note-kind-filter ml-1 flex shrink-0 items-center gap-0.5 rounded-lg bg-surface-base/62 p-0.5">
+            <Popover
+              open={listOptionsOpen()}
+              onOpenChange={setListOptionsOpen}
+              placement="bottom-end"
+              class="note-toolbar-popover"
+              triggerAs={(triggerProps) => (
+                <IconButton
+                  {...triggerProps}
+                  icon={getSemanticIcon("action.more")}
+                  variant="ghost"
+                  aria-label={lingui._({ id: "note.list.options", message: "Notes list options" })}
+                  aria-haspopup="menu"
+                />
+              )}
+            >
+              <div class="note-toolbar-menu" role="menu" onKeyDown={resourceMenuKeyDown}>
                 <For each={filterOptions()}>
                   {(option) => (
                     <button
                       type="button"
-                      classList={{
-                        "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-11-medium transition-colors": true,
-                        "bg-surface-raised-stronger-non-alpha text-text-base shadow-xs": kindFilter() === option.value,
-                        "text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
-                          kindFilter() !== option.value,
+                      role="menuitemradio"
+                      aria-checked={kindFilter() === option.value}
+                      onClick={() => {
+                        setKindFilter(option.value)
+                        setListOptionsOpen(false)
                       }}
-                      onClick={() => setKindFilter(option.value)}
                     >
                       <span>{option.label}</span>
-                      <span class="text-10-regular opacity-60">{option.count}</span>
+                      <small>{option.count}</small>
                     </button>
                   )}
                 </For>
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={showArchived()}
+                  onClick={() => {
+                    setShowArchived((value) => !value)
+                    setListOptionsOpen(false)
+                  }}
+                >
+                  <Icon name={getSemanticIcon("notes.archive")} size="small" />
+                  <span>{lingui._(showArchived() ? N.showActive : N.showArchived)}</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={selecting()}
+                  onClick={() => {
+                    setSelecting(true)
+                    setListOptionsOpen(false)
+                  }}
+                >
+                  <Icon name={getSemanticIcon("notes.select")} size="small" />
+                  <span>{lingui._(N.selectNotes)}</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    void refetch()
+                    setListOptionsOpen(false)
+                  }}
+                >
+                  <Icon name={getSemanticIcon("action.refresh")} size="small" />
+                  <span>{lingui._(N.refresh)}</span>
+                </button>
               </div>
-              <span class="mr-0.5 whitespace-nowrap text-11-regular text-text-weak">
-                {visibleNotes() === totalNotes() ? `${totalNotes()}` : `${visibleNotes()} / ${totalNotes()}`}
+            </Popover>
+          </div>
+          <div class="note-list-search">
+            <Icon name={getSemanticIcon("notes.search")} size="small" />
+            <input
+              type="search"
+              aria-label={lingui._(N.searchNotes)}
+              placeholder={lingui._(N.searchNotes)}
+              value={search()}
+              onInput={(event) => setSearch(event.currentTarget.value)}
+            />
+            <Show when={search()}>
+              <IconButton
+                icon={getSemanticIcon("action.close")}
+                variant="ghost"
+                aria-label={lingui._(N.clearSearch)}
+                onClick={() => setSearch("")}
+              />
+            </Show>
+          </div>
+          <Show when={kindFilter() !== "all" || showArchived()}>
+            <div class="note-list-filter-status">
+              <span>
+                {filterOptions().find((option) => option.value === kindFilter())?.label}
+                {showArchived() ? ` · ${lingui._({ id: "note.scope.archived", message: "Archived" })}` : ""}
               </span>
               <button
                 type="button"
-                classList={{
-                  "flex items-center justify-center size-7 rounded-lg transition-colors": true,
-                  "text-icon-base bg-surface-raised-stronger-non-alpha": showArchived(),
-                  "text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover": !showArchived(),
+                onClick={() => {
+                  setKindFilter("all")
+                  setShowArchived(false)
                 }}
-                onClick={() => setShowArchived((v) => !v)}
-                title={
-                  showArchived()
-                    ? lingui._({ id: N.showActive.id, message: N.showActive.message })
-                    : lingui._({ id: N.showArchived.id, message: N.showArchived.message })
-                }
               >
-                <Icon name={getSemanticIcon("notes.archive")} size="small" />
-              </button>
-              <Show when={!selecting()}>
-                <button
-                  type="button"
-                  class="flex items-center justify-center size-7 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
-                  onClick={() => setSelecting(true)}
-                  title={lingui._({ id: N.selectNotes.id, message: N.selectNotes.message })}
-                >
-                  <Icon name={getSemanticIcon("notes.select")} size="small" />
-                </button>
-              </Show>
-              <button
-                type="button"
-                class="flex items-center justify-center size-7 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
-                onClick={() => refetch()}
-                title={lingui._({ id: N.refresh.id, message: N.refresh.message })}
-              >
-                <Icon name={getSemanticIcon("action.refresh")} size="small" />
+                {lingui._({ id: "note.list.clearFilters", message: "Clear filters" })}
               </button>
             </div>
-          </div>
+          </Show>
 
           <Show when={selecting()}>
             <div class="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5 library-inner-surface">
@@ -1569,17 +1354,22 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
           </Show>
 
           <div class="flex-1 min-h-0 overflow-y-auto px-4 pb-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <Show when={rawGroups.error}>
+              <div role="alert" class="note-document-error">
+                <span>{requestErrorMessage(rawGroups.error)}</span>
+                <button type="button" onClick={() => void refetch()}>
+                  {lingui._({ id: "note.document.retry", message: "Retry" })}
+                </button>
+              </div>
+            </Show>
             <Show when={rawGroups.loading}>
-              <div
-                class="grid gap-3 py-4"
-                style="grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr))"
-              >
+              <div class="py-4">
                 <NoteCardSkeleton />
                 <NoteCardSkeleton />
                 <NoteCardSkeleton />
               </div>
             </Show>
-            <Show when={!rawGroups.loading}>
+            <Show when={!rawGroups.loading && !rawGroups.error}>
               <Show
                 when={displayGroups().length > 0}
                 fallback={
@@ -1616,20 +1406,15 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
         </div>
       </Show>
 
-      <Show
-        when={
-          view() === "editor" && selectedNoteId() ? JSON.stringify([selectedNoteDir(), selectedNoteId()]) : undefined
-        }
-        keyed
-      >
+      <Show when={view() === "editor" && selectedNoteId()}>
         {(_resource) => (
           <div class="note-workspace-editor-layout">
             <WorkspaceNavigator
-              label={lingui._({ id: N.searchNotes.id, message: N.searchNotes.message })}
+              label={lingui._(P.notes)}
               open={navigation.state.open}
               width={navigation.state.width}
               onResize={navigation.setWidth}
-              onReady={(value) => (navigator = value)}
+              onReady={setNavigator}
               onOpen={() => navigation.setOpen(true)}
               onClose={() => navigation.setOpen(false)}
             >
@@ -1663,7 +1448,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                 <For
                   each={displayGroups()}
                   fallback={
-                    <Show when={!rawGroups.loading}>
+                    <Show when={!rawGroups.loading && !rawGroups.error}>
                       <div class="note-navigation-message">
                         {lingui._({ id: N.noNotesFound.id, message: N.noNotesFound.message })}
                       </div>
@@ -1742,17 +1527,23 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                 </For>
               </div>
             </WorkspaceNavigator>
-            <NoteEditor
-              id={selectedNoteId()!}
-              directory={selectedNoteDir() ?? directory() ?? "home"}
-              onBack={() => navigator?.toggle()}
-              onDelete={() => {
-                if (props.tab) void workbench.closeTab(props.tab.id)
-                else showNoteList()
-              }}
-              loops={loopsByNote().get(selectedNoteId()!) ?? []}
-              tab={props.tab}
-            />
+            <Show when={JSON.stringify([selectedNoteDir(), selectedNoteId()])} keyed>
+              {(_resource) => (
+                <NoteEditor
+                  id={selectedNoteId()!}
+                  directory={selectedNoteDir() ?? directory() ?? "home"}
+                  onBack={() => navigator()?.toggle()}
+                  navigationOpen={navigator()?.opened}
+                  navigationId={navigator()?.id}
+                  onDelete={() => {
+                    if (props.tab) void workbench.closeTab(props.tab.id)
+                    else showNoteList()
+                  }}
+                  loops={loopsByNote().get(selectedNoteId()!) ?? []}
+                  tab={props.tab}
+                />
+              )}
+            </Show>
           </div>
         )}
       </Show>
@@ -1765,6 +1556,8 @@ function NoteEditor(props: {
   directory: string
   loops: BlueprintLoopInfo[]
   onBack: () => void
+  navigationOpen?: () => boolean
+  navigationId?: string
   onDelete: () => void
   tab?: WorkbenchPanelTab
 }) {
@@ -1876,8 +1669,8 @@ function NoteEditor(props: {
     instance.commands.setTextSelection({ from: Math.min(selection.from, size), to: Math.min(selection.to, size) })
   })
   createEffect(() => {
-    if (!tab) return
-    workbench.updateTab(tab.id, { title: title(), dirty: hasDirtyFields(doc.dirty()) })
+    if (!tab || !noteLoaded()) return
+    workbench.updateTab(tab.id, { title: title() || lingui._(N.untitled), dirty: hasDirtyFields(doc.dirty()) })
   })
   if (tab) onCleanup(workbench.beforeClose(tab.id, doc.flush))
   const unsubEditorNoteEvents = sdk.event.listen((entry: { name?: string; details: SynergyEvent }) => {
@@ -2149,7 +1942,13 @@ function NoteEditor(props: {
             type="button"
             class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
             onClick={handleBack}
-            aria-label={lingui._({ id: "note.navigation.toggle", message: "Toggle notes navigation" })}
+            aria-label={
+              props.navigationOpen?.()
+                ? lingui._({ id: "note.navigation.hide", message: "Hide notes list" })
+                : lingui._({ id: "note.navigation.show", message: "Show notes list" })
+            }
+            aria-expanded={props.navigationOpen?.() ?? false}
+            aria-controls={props.navigationId}
           >
             <Icon name={getSemanticIcon("notes.main")} size="small" />
           </button>
@@ -2160,13 +1959,15 @@ function NoteEditor(props: {
             )}
           </span>
           <span class="note-workspace-save" role="status">
-            {doc.deleted()
+            {doc.deleted() || (!noteLoaded() && note.error)
               ? lingui._({ id: "note.document.unavailable", message: "Unavailable" })
-              : saving()
-                ? lingui._({ id: "note.document.saving", message: "Saving…" })
-                : hasDirtyFields(doc.dirty())
-                  ? lingui._({ id: "note.document.unsaved", message: "Unsaved changes" })
-                  : lingui._({ id: "note.document.saved", message: "Saved" })}
+              : !noteLoaded()
+                ? lingui._({ id: "note.document.loading", message: "Loading…" })
+                : saving()
+                  ? lingui._({ id: "note.document.saving", message: "Saving…" })
+                  : hasDirtyFields(doc.dirty())
+                    ? lingui._({ id: "note.document.unsaved", message: "Unsaved changes" })
+                    : lingui._({ id: "note.document.saved", message: "Saved" })}
           </span>
           <Show when={isBlueprint()}>
             <button
@@ -2179,120 +1980,94 @@ function NoteEditor(props: {
               {lingui._({ id: N.run.id, message: N.run.message })}
             </button>
           </Show>
-          <KobaltePopover open={moreOpen()} onOpenChange={setMoreOpen} placement="bottom-end">
-            <KobaltePopover.Trigger
-              class="note-toolbar-more"
-              aria-label={lingui._({ id: "note.document.more", message: "Note options" })}
-            >
-              <Icon name={getSemanticIcon("action.more")} size="small" />
-            </KobaltePopover.Trigger>
-            <KobaltePopover.Portal>
-              <KobaltePopover.Content
-                class="note-toolbar-menu"
-                onClick={(event) => {
-                  if ((event.target as HTMLElement).closest("button")) setMoreOpen(false)
-                }}
+          <Popover
+            open={moreOpen()}
+            onOpenChange={setMoreOpen}
+            placement="bottom-end"
+            class="note-toolbar-popover"
+            triggerAs={(triggerProps) => (
+              <IconButton
+                {...triggerProps}
+                icon={getSemanticIcon("action.more")}
+                variant="ghost"
+                aria-label={lingui._({ id: "note.document.more", message: "Note options" })}
+                aria-haspopup="menu"
+              />
+            )}
+          >
+            <div class="note-toolbar-menu" role="menu" onKeyDown={resourceMenuKeyDown}>
+              <For
+                each={[
+                  { label: lingui._(N.downloadNote), icon: getSemanticIcon("action.download"), run: downloadNote },
+                  ...(hasDirtyFields(doc.dirty())
+                    ? [
+                        {
+                          label: lingui._({ id: "note.document.exportDraft", message: "Export draft" }),
+                          icon: getSemanticIcon("action.download"),
+                          run: downloadDraft,
+                        },
+                      ]
+                    : []),
+                  {
+                    label: lingui._(baseNote()?.pinned ? N.unpin : N.pin),
+                    icon: getSemanticIcon("notes.pin"),
+                    run: togglePin,
+                  },
+                  {
+                    label: lingui._(isBlueprint() ? N.convertToNote : N.convertToBlueprint),
+                    icon: getSemanticIcon("blueprint.main"),
+                    disabled: convertingBlueprint(),
+                    run: isBlueprint() ? convertToNote : convertToBlueprint,
+                  },
+                  ...(baseNote()?.global !== undefined
+                    ? [
+                        {
+                          label: lingui._(baseNote()?.global ? N.makeLocal : N.makeGlobal),
+                          icon: getSemanticIcon("navigation.home"),
+                          run: toggleGlobal,
+                        },
+                      ]
+                    : []),
+                  {
+                    label: lingui._({ id: "note.document.close", message: "Close note" }),
+                    icon: getSemanticIcon("action.close"),
+                    run: () => {
+                      if (isCurrent()) props.onDelete()
+                    },
+                  },
+                  {
+                    label: lingui._(isArchived() ? N.restore : N.archive),
+                    icon: getSemanticIcon("notes.archive"),
+                    run: isArchived() ? restoreNote : archiveNote,
+                  },
+                  ...(isArchived()
+                    ? [
+                        {
+                          label: lingui._(N.deletePermanently),
+                          icon: getSemanticIcon("action.remove"),
+                          run: deleteArchivedNote,
+                        },
+                      ]
+                    : []),
+                ]}
               >
-                <button
-                  type="button"
-                  class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
-                  onClick={() => void downloadNote()}
-                  aria-label={lingui._({ id: N.downloadNote.id, message: N.downloadNote.message })}
-                  title={lingui._({ id: N.downloadNote.id, message: N.downloadNote.message })}
-                >
-                  <Icon name={getSemanticIcon("action.download")} size="small" />
-                </button>
-                <Show when={hasDirtyFields(doc.dirty())}>
+                {(action) => (
                   <button
                     type="button"
-                    onClick={downloadDraft}
-                    aria-label={lingui._({ id: "note.document.exportDraft", message: "Export draft" })}
-                  >
-                    <Icon name={getSemanticIcon("action.download")} size="small" />
-                  </button>
-                </Show>
-                <button
-                  type="button"
-                  class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
-                  onClick={togglePin}
-                  aria-label={
-                    baseNote()?.pinned
-                      ? lingui._({ id: N.unpin.id, message: N.unpin.message })
-                      : lingui._({ id: N.pin.id, message: N.pin.message })
-                  }
-                >
-                  <Icon
-                    name={getSemanticIcon(baseNote()?.pinned ? "notes.pin" : "action.pin")}
-                    size="small"
-                    class={baseNote()?.pinned ? "text-icon-base" : "text-icon-weak-base"}
-                  />
-                </button>
-                <Show when={isBlueprint()}>
-                  <button
-                    type="button"
-                    class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
-                    onClick={convertToNote}
-                    disabled={convertingBlueprint()}
-                    aria-label={lingui._({ id: N.convertToNote.id, message: N.convertToNote.message })}
-                    title={lingui._({ id: N.convertToNote.id, message: N.convertToNote.message })}
-                  >
-                    <Icon name={getSemanticIcon("blueprint.main")} size="small" class="opacity-60" />
-                  </button>
-                </Show>
-                <Show when={!isBlueprint()}>
-                  <button
-                    type="button"
-                    class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
-                    onClick={convertToBlueprint}
-                    disabled={convertingBlueprint()}
-                    aria-label={lingui._({ id: N.convertToBlueprint.id, message: N.convertToBlueprint.message })}
-                    title={lingui._({ id: N.convertToBlueprint.id, message: N.convertToBlueprint.message })}
-                  >
-                    <Icon name={getSemanticIcon("blueprint.main")} size="small" />
-                  </button>
-                </Show>
-                <Show when={baseNote()?.global !== undefined}>
-                  <button
-                    type="button"
-                    class="flex size-7 items-center justify-center rounded-lg transition-colors"
-                    classList={{
-                      "text-icon-base bg-text-interactive-base/10": baseNote()?.global,
-                      "text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base":
-                        !baseNote()?.global,
+                    role="menuitem"
+                    disabled={action.disabled}
+                    onClick={() => {
+                      setMoreOpen(false)
+                      void action.run()
                     }}
-                    onClick={toggleGlobal}
-                    aria-label={
-                      baseNote()?.global
-                        ? lingui._({ id: N.makeLocal.id, message: N.makeLocal.message })
-                        : lingui._({ id: N.makeGlobal.id, message: N.makeGlobal.message })
-                    }
                   >
-                    <Icon name={getSemanticIcon("navigation.home")} size="small" />
+                    <Icon name={action.icon} size="small" />
+                    <span>{action.label}</span>
                   </button>
-                </Show>
-                <button
-                  type="button"
-                  class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
-                  onClick={() => isCurrent() && props.onDelete()}
-                  aria-label={lingui._({ id: "note.document.close", message: "Close note" })}
-                >
-                  <Icon name={getSemanticIcon("action.close")} size="small" />
-                </button>
-                <button
-                  type="button"
-                  onClick={isArchived() ? restoreNote : archiveNote}
-                  aria-label={lingui._(isArchived() ? N.restore : N.archive)}
-                >
-                  <Icon name={getSemanticIcon("notes.archive")} size="small" />
-                </button>
-                <Show when={isArchived()}>
-                  <button type="button" onClick={deleteArchivedNote} aria-label={lingui._(N.deletePermanently)}>
-                    <Icon name={getSemanticIcon("action.remove")} size="small" />
-                  </button>
-                </Show>
-              </KobaltePopover.Content>
-            </KobaltePopover.Portal>
-          </KobaltePopover>
+                )}
+              </For>
+            </div>
+          </Popover>
         </div>
 
         <Show when={conflict()}>
@@ -2334,7 +2109,11 @@ function NoteEditor(props: {
               <span class="h-3 w-px bg-border-weaker-base" />
               <span class="text-11-regular text-text-weak">
                 {getRunCount(baseNote()!, noteLoops()) > 0
-                  ? `${getRunCount(baseNote()!, noteLoops())} runs`
+                  ? lingui._({
+                      id: N.runsCount.id,
+                      message: N.runsCount.message,
+                      values: { count: getRunCount(baseNote()!, noteLoops()) },
+                    })
                   : "No runs yet"}
               </span>
               <span class="text-11-regular text-text-weak">
@@ -2412,7 +2191,7 @@ function NoteEditor(props: {
 
       <Show when={noteLoaded()}>
         <div class="flex min-h-0 flex-1 flex-col">
-          <div class="shrink-0 px-4 pt-4">
+          <div class="note-document-heading">
             <input
               type="text"
               class="w-full border-none bg-transparent text-16-medium text-text-strong outline-none placeholder:text-text-weaker"
@@ -2423,7 +2202,7 @@ function NoteEditor(props: {
             />
           </div>
 
-          <div class="flex min-h-0 flex-1 flex-col px-4 py-4">
+          <div class="note-document-body">
             <DocumentEditorCore
               content={doc.content()}
               retained={doc.view}
@@ -2440,7 +2219,7 @@ function NoteEditor(props: {
             />
           </div>
 
-          <div class="flex shrink-0 flex-wrap items-center gap-1.5 px-4 pb-4">
+          <div class="note-document-tags flex shrink-0 flex-wrap items-center gap-1.5">
             <For each={tags()}>
               {(tag) => (
                 <span class="inline-flex items-center gap-1 rounded-full bg-surface-inset-base px-2.5 py-1 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/35">
@@ -2449,7 +2228,7 @@ function NoteEditor(props: {
                     type="button"
                     class="flex size-3 items-center justify-center rounded-full text-text-weaker hover:text-text-base"
                     onClick={() => removeTag(tag)}
-                    aria-label={`Remove tag ${tag}`}
+                    aria-label={lingui._({ id: "note.tag.remove", message: "Remove tag {tag}", values: { tag } })}
                   >
                     <Icon name={getSemanticIcon("action.close")} size="small" class="size-2.5" />
                   </button>
@@ -2460,6 +2239,7 @@ function NoteEditor(props: {
               type="text"
               class="min-w-[80px] flex-1 border-none bg-transparent text-12-regular text-text-weak outline-none placeholder:text-text-weaker"
               placeholder={lingui._({ id: N.addTags.id, message: N.addTags.message })}
+              aria-label={lingui._(N.addTags)}
               value={tagInput()}
               onInput={(e) => setTagInput(e.currentTarget.value)}
               onKeyDown={handleTagKeyDown}
@@ -2471,7 +2251,7 @@ function NoteEditor(props: {
       <Show when={showRunMenu() && activeBlueprintRun() === undefined}>
         <RunMenu
           agents={sync.data.agent}
-          title={baseNote()?.title ?? "Untitled"}
+          title={baseNote()?.title ?? lingui._(N.untitled)}
           executionAgent={baseNote()?.blueprint?.defaultAgent}
           canRunInCurrentSession={canRunCurrentSession()}
           canCreateWorktree={canRunWorktreeSession()}

@@ -18,7 +18,7 @@ import { useLingui } from "@lingui/solid"
 import { docEditor as D } from "@/locales/messages"
 import { Video, Mermaid, CrossCellSelection, createFileUpload } from "@/components/note/extensions"
 import { createSlashCommands } from "@/components/note/slash-menu"
-import { createBubbleMenu, BubbleMenuContent } from "@/components/note/bubble-menu"
+import { createBubbleMenu, prepareBubbleMenuElement, BubbleMenuContent } from "@/components/note/bubble-menu"
 import type { SynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { registerSynergyShikiThemes, SYNERGY_SHIKI_DARK, SYNERGY_SHIKI_LIGHT } from "./shiki-theme"
 import Blockquote from "./blockquote-extension"
@@ -514,6 +514,7 @@ export function mountDocumentEditor(input: {
   if (retained?.editor) {
     const instance = retained.editor
     const bubble = instance.extensionManager.extensions.find((extension) => extension.name === "bubbleMenu")
+    prepareBubbleMenuElement(input.config.bubbleRef)
     if (bubble) bubble.options.element = input.config.bubbleRef
     instance.mount(input.element)
     return instance
@@ -616,7 +617,10 @@ export function DocumentEditorCore(props: DocumentEditorCoreProps) {
         />
         <div
           class="pointer-events-none absolute inset-x-0 bottom-0 h-14"
-          style={{ background: "linear-gradient(to top, var(--surface-raised-base), transparent)" }}
+          style={{
+            background:
+              "linear-gradient(to top, var(--document-editor-background, var(--surface-raised-base)), transparent)",
+          }}
         />
       </div>
       <div ref={bubbleRef} class="note-bubble-menu">

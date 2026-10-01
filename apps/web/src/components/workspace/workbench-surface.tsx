@@ -19,6 +19,7 @@ import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useWorkbenchPanels } from "@/context/workbench"
@@ -38,6 +39,7 @@ import type {
 } from "@/plugin/registries/workbench-panel-registry"
 import "./workbench-surface.css"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { resourceMenuKeyDown } from "./resource-menu"
 import { workspace as W } from "@/locales/messages"
 import {
   DragDropProvider,
@@ -215,6 +217,7 @@ function WorkbenchSortableTab(props: {
       <button
         type="button"
         class="workbench-surface-tab-close"
+        tabIndex={props.active ? 0 : -1}
         aria-label={lingui._({
           id: W.closeTab.id,
           message: W.closeTab.message,
@@ -240,6 +243,7 @@ function WorkbenchSortableTab(props: {
         <div
           class="workbench-surface-add-list"
           role="menu"
+          onKeyDown={resourceMenuKeyDown}
           aria-label={lingui._({
             id: W.tabContextMenu.id,
             message: W.tabContextMenu.message,
@@ -740,7 +744,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
                         />
                       )}
                     >
-                      <div class="workbench-surface-add-list" role="menu">
+                      <div class="workbench-surface-add-list" role="menu" onKeyDown={resourceMenuKeyDown}>
                         <For each={addablePanels()}>
                           {(panel) => (
                             <button
@@ -778,7 +782,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
                       />
                     )}
                   >
-                    <div class="workbench-surface-add-list" role="menu">
+                    <div class="workbench-surface-add-list" role="menu" onKeyDown={resourceMenuKeyDown}>
                       <For each={state().tabs()}>
                         {(tab) => (
                           <button
@@ -806,23 +810,33 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
               </Show>
 
               <Show when={isSide()}>
-                <IconButton
-                  icon={getSemanticIcon(state().fullscreen() ? "workspace.split" : "workspace.fullscreen")}
-                  variant="ghost"
-                  aria-label={
+                <Tooltip
+                  value={
                     state().fullscreen()
                       ? lingui._({ id: "workspace.fullscreen.exit", message: "Restore view" })
                       : lingui._({ id: "workspace.fullscreen.enter", message: "Expand workspace" })
                   }
-                  aria-pressed={state().fullscreen()}
-                  onClick={() => state().setFullscreen(!state().fullscreen())}
-                />
-                <IconButton
-                  icon={getSemanticIcon("workspace.collapse")}
-                  variant="ghost"
-                  onClick={() => state().close()}
-                  aria-label={lingui._({ id: "workspace.collapse", message: "Collapse workspace" })}
-                />
+                >
+                  <IconButton
+                    icon={getSemanticIcon(state().fullscreen() ? "workspace.split" : "workspace.fullscreen")}
+                    variant="ghost"
+                    aria-label={
+                      state().fullscreen()
+                        ? lingui._({ id: "workspace.fullscreen.exit", message: "Restore view" })
+                        : lingui._({ id: "workspace.fullscreen.enter", message: "Expand workspace" })
+                    }
+                    aria-pressed={state().fullscreen()}
+                    onClick={() => state().setFullscreen(!state().fullscreen())}
+                  />
+                </Tooltip>
+                <Tooltip value={lingui._({ id: "workspace.collapse", message: "Collapse workspace" })}>
+                  <IconButton
+                    icon={getSemanticIcon("workspace.collapse")}
+                    variant="ghost"
+                    onClick={() => state().close()}
+                    aria-label={lingui._({ id: "workspace.collapse", message: "Collapse workspace" })}
+                  />
+                </Tooltip>
               </Show>
             </div>
           </div>
