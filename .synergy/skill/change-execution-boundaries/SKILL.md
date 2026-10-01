@@ -52,6 +52,8 @@ Update the architecture document when the pipeline, profile semantics, capabilit
 
 ## Handoff
 
+For embedded tool admission, register ToolPolicySource before composition seals. Test catalog narrowing for visible and deferred tools, denial before resource acquisition, exact message/call identity, cancellation and independent Runtime instances. Keep host authority independent of permission and sandbox decisions; do not export the resolver, processor or scheduler to hosts.
+
 Report the capability and risk, classifier, profile decisions, bypassability, permission/SmartAllow behavior, sandbox policy and platform coverage, workspace effects, tests, and documentation synchronized.
 
 Sandbox helper preparation and discovery must use the canonical runtime home, including `SYNERGY_HOME` and test isolation. Verify copied assets and hash lookup together; do not change OS policy read/deny roots to the runtime home. Check source Cargo discovery separately from registered packaged assets.

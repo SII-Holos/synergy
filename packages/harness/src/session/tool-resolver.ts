@@ -14,6 +14,7 @@ import { ProviderTransform } from "../provider/transform"
 import { Provider } from "../provider/provider"
 import { Tool } from "../tool/tool"
 import { ToolRegistry } from "../tool/registry"
+import { ToolPolicySource } from "../tool/policy-source"
 import { ToolTimeout } from "../tool/timeout"
 import { ToolExposure } from "../tool/exposure"
 import type { ToolDisplay } from "@ericsanchezok/synergy-util/tool"
@@ -1337,7 +1338,28 @@ export namespace ToolResolver {
       visible.push(def)
     }
 
-    return { visible, diagnostics, autoExpandable }
+    const allowed = new Set(
+      await ToolPolicySource.select({
+        sessionID: input.sessionID,
+        session: input.session,
+        agent: input.agent,
+        model: input.model,
+        toolIDs: [...new Set([...visible.map((item) => item.id), ...autoExpandable])],
+      }),
+    )
+    for (const item of visible) {
+      if (allowed.has(item.id)) continue
+      diagnostics.set(
+        item.id,
+        SessionModePolicy.unavailable({
+          toolName: item.id,
+          reason: "permission",
+          session: input.session,
+        }),
+      )
+    }
+    for (const id of autoExpandable) if (!allowed.has(id)) autoExpandable.delete(id)
+    return { visible: visible.filter((item) => allowed.has(item.id)), diagnostics, autoExpandable }
   }
 
   function diagnosticRuntimeTool(input: Input, diagnostic: ToolDiagnosticInfo): AITool {
@@ -2214,7 +2236,24 @@ export namespace ToolResolver {
               tool: toolName,
               args: JSON.parse(JSON.stringify(toolInput)),
             },
-            async () => execute.call(runtimeTool, args, options),
+            async () => {
+              try {
+                await ToolPolicySource.authorize({
+                  toolID: toolName,
+                  sessionID: input.sessionID,
+                  messageID: input.processor.message.id,
+                  callID: options.toolCallId,
+                  args: toolInput,
+                  signal: options.abortSignal,
+                })
+              } catch (error) {
+                input.processor
+                  .beginExecution(options.toolCallId)
+                  .fail(toolInput, error instanceof Error ? error.message : "Host tool authorization failed")
+                throw error
+              }
+              return execute.call(runtimeTool, args, options)
+            },
             () => {
               SessionManager.signalAbort(input.sessionID, {
                 rootID: input.processor.message.rootID ?? input.processor.message.parentID,

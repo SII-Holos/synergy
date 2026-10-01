@@ -12,11 +12,15 @@ const runtimeState = RuntimeContext.state(() => ({
   registered: false,
 }))
 
+export function cortexTools() {
+  return [TaskTool, TaskListTool, TaskOutputTool, TaskCancelTool]
+}
+
 export function registerCortexTools(): void {
   const instanceState = runtimeState()
 
   if (instanceState.registered) return
   instanceState.registered = true
 
-  ToolRegistry.registerToolProvider("cortex", () => [TaskTool, TaskListTool, TaskOutputTool, TaskCancelTool])
+  ToolRegistry.registerToolProvider("cortex", cortexTools)
 }
