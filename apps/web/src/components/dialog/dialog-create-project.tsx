@@ -182,7 +182,7 @@ export function DialogCreateProject(props: {
           folders={selected().folders}
           main={selected().main}
           onChange={change}
-          onAdd={() => void add()}
+          onAdd={add}
           disabled={pending() || picking()}
           computer={
             <ComputerMenu

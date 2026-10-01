@@ -38,6 +38,7 @@ beforeAll(async () => {
     }}}
     export const useGlobalSDK=()=>({url:"http://computer.test",client})
     export const useGlobalSync=()=>({data:{paths:{home:"/projects"}}})
+    export const usePlatform=()=>({platform:"web"})
     export const serverDisplayName=()=>"Test computer"
   `,
   )
@@ -48,6 +49,7 @@ beforeAll(async () => {
   await Bun.write(
     path.join(fixture, "main.tsx"),
     `
+    import {createSignal} from "solid-js"
     import {render} from "solid-js/web"
     import {setupI18n} from "@lingui/core"
     import {I18nProvider} from "@lingui/solid"
@@ -55,8 +57,15 @@ beforeAll(async () => {
     import {Dialog} from "@ericsanchezok/synergy-ui/dialog"
     import {TextField} from "@ericsanchezok/synergy-ui/text-field"
     import {DialogSelectDirectory} from ${JSON.stringify(`/@fs/${source}/components/dialog/dialog-select-directory.tsx`)}
+    import {ProjectFolderFields} from ${JSON.stringify(`/@fs/${source}/components/dialog/project-folder-fields.tsx`)}
+    import {useProjectDirectoryPicker} from ${JSON.stringify(`/@fs/${source}/components/dialog/project-directory-picker.tsx`)}
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
-    function Parent(){const dialog=useDialog();return <Dialog title="New project"><TextField label="Project name" defaultValue="Draft project"/><button id="browse" onClick={()=>dialog.push(()=> <DialogSelectDirectory multiple={!location.search.includes("single")} onSelect={value=>window.fixture.selected.push(value)}/>)}>Browse folders</button></Dialog>}
+    function Parent(){
+      const dialog=useDialog();const picker=useProjectDirectoryPicker();const [folders,setFolders]=createSignal([]);const [picking,setPicking]=createSignal(false)
+      const browse=()=>dialog.push(()=> <DialogSelectDirectory multiple={!location.search.includes("single")} onSelect={value=>{window.fixture.selected.push(value);if(value)setFolders(Array.isArray(value.directory)?value.directory:[value.directory])}}/>)
+      const add=async()=>{setPicking(true);try{const result=await picker.pickProjectDirectories({title:"Choose folders",multiple:true});if(result){window.fixture.selected.push({directory:result.directoryPaths});setFolders(result.directoryPaths)}}finally{setPicking(false)}}
+      return <Dialog title="New project"><TextField label="Project name" defaultValue="Draft project"/>{location.search.includes("fields")?<ProjectFolderFields folders={folders()} main={folders()[0]} disabled={picking()} onChange={setFolders} onAdd={add}/>:<button id="browse" onClick={browse}>Browse folders</button>}</Dialog>
+    }
     function App(){const dialog=useDialog();return <button id="open" onClick={()=>dialog.show(()=><Parent/>)}>New project</button>}
     render(()=> <I18nProvider i18n={setupI18n({locale:"en",messages:{en:{}}})}><DialogProvider><App/></DialogProvider></I18nProvider>,document.getElementById("root"))
   `,
@@ -71,8 +80,8 @@ beforeAll(async () => {
         enforce: "pre",
         resolveId(id) {
           if (
-            ["@/context/global-sdk", "@/context/global-sync", "@/context/server"].includes(id) ||
-            /\/context\/(global-sdk|global-sync|server)(\.tsx)?$/.test(id)
+            ["@/context/global-sdk", "@/context/global-sync", "@/context/server", "@/context/platform"].includes(id) ||
+            /\/context\/(global-sdk|global-sync|server|platform)(\.tsx)?$/.test(id)
           )
             return stubs
         },
@@ -113,7 +122,8 @@ async function open(query = "") {
   await page.goto(base + query)
   await page.locator("#open").click()
   await page.getByRole("textbox", { name: "Project name", exact: true }).fill("Keep this draft")
-  await page.locator("#browse").click()
+  if (query.includes("fields")) await page.getByRole("button", { name: "Choose folders", exact: true }).click()
+  else await page.locator("#browse").click()
   await top().getByRole("button", { name: "alpha", exact: true }).waitFor()
   expect(errors).toEqual([])
 }
@@ -234,5 +244,27 @@ test("single selection keeps the current-folder action and the footer reachable 
   expect(await page.evaluate<DialogSelectDirectoryResult[]>("window.fixture.selected")).toEqual([
     { directory: "/projects" },
   ])
+  expect(errors).toEqual([])
+}, 20_000)
+
+test("confirming the first folders returns focus to the retained add-folder control", async () => {
+  await open("?fields")
+  expect(await page.locator(".project-folder-empty").isDisabled()).toBe(true)
+  await top().getByRole("button", { name: "alpha", exact: true }).click()
+  await top().getByRole("button", { name: "beta", exact: true }).click()
+  await top().getByRole("button", { name: "Use selected folders", exact: true }).click()
+  await page.locator(".directory-navigation").waitFor({ state: "detached" })
+  const add = page.getByRole("button", { name: "Add folder", exact: true })
+  await page.waitForFunction(() => document.activeElement?.textContent?.trim() === "Add folder")
+  expect(await page.getByRole("textbox", { name: "Project name" }).inputValue()).toBe("Keep this draft")
+  expect(await page.evaluate<DialogSelectDirectoryResult[]>("window.fixture.selected")).toEqual([
+    { directory: ["/projects/alpha", "/projects/beta"] },
+  ])
+  await add.press("Enter")
+  await top().getByRole("button", { name: "alpha", exact: true }).waitFor()
+  await page.keyboard.press("Escape")
+  await page.locator(".directory-navigation").waitFor({ state: "detached" })
+  await page.waitForFunction(() => document.activeElement?.textContent?.trim() === "Add folder")
+  expect(await page.locator(".project-folder-row").count()).toBe(2)
   expect(errors).toEqual([])
 }, 20_000)

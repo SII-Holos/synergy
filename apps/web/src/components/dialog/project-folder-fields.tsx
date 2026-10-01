@@ -5,6 +5,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { projectEntryCopy as copy } from "./project-entry-copy"
 
 export function ProjectFolderFields(props: {
@@ -13,24 +14,17 @@ export function ProjectFolderFields(props: {
   disabled?: boolean
   computer?: JSX.Element
   onChange: (folders: string[], main: string) => void
-  onAdd: () => void
+  onAdd: () => void | Promise<void>
 }) {
   const { _ } = useLingui()
+  const dialog = useDialog()
   return (
     <section class="project-folder-field">
       <div class="project-field-heading">
         <label>{_(copy.folders)}</label>
         {props.computer}
       </div>
-      <Show
-        when={props.folders.length}
-        fallback={
-          <button class="project-folder-empty" type="button" disabled={props.disabled} onClick={props.onAdd}>
-            <Icon name={getSemanticIcon("workspace.main")} size="small" />
-            {_(copy.chooseFolders)}
-          </button>
-        }
-      >
+      <Show when={props.folders.length}>
         <div class="project-folder-list">
           <For each={props.folders}>
             {(folder) => {
@@ -98,11 +92,23 @@ export function ProjectFolderFields(props: {
             }}
           </For>
         </div>
-        <button class="project-add-folder" type="button" disabled={props.disabled} onClick={props.onAdd}>
-          <Icon name={getSemanticIcon("action.add")} size="small" />
-          {_(copy.addFolder)}
-        </button>
       </Show>
+      <button
+        classList={{ "project-folder-empty": !props.folders.length, "project-add-folder": !!props.folders.length }}
+        type="button"
+        disabled={props.disabled}
+        onClick={async (event) => {
+          const button = event.currentTarget
+          const parent = dialog.active?.id
+          await props.onAdd()
+          requestAnimationFrame(() => {
+            if (button.isConnected && !button.disabled && dialog.active?.id === parent) button.focus()
+          })
+        }}
+      >
+        <Icon name={getSemanticIcon(props.folders.length ? "action.add" : "workspace.main")} size="small" />
+        {_(props.folders.length ? copy.addFolder : copy.chooseFolders)}
+      </button>
     </section>
   )
 }

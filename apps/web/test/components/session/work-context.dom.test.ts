@@ -267,6 +267,9 @@ test("a long computer name keeps the folder heading on one line and menu state p
   await open()
   await page.locator("[data-open-form]").click()
   const form = page.locator("[data-folder-form]")
+  await page.waitForFunction(() =>
+    document.querySelector("[data-folder-form]")?.closest('[role="dialog"]')?.contains(document.activeElement),
+  )
   const trigger = form.getByRole("button", { name: `Computer: ${computer}`, exact: true })
   await trigger.focus()
   await page.getByRole("tooltip").filter({ hasText: computer }).waitFor()
