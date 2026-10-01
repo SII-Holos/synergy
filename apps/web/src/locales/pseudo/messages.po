@@ -12043,6 +12043,66 @@ msgstr ""
 msgid "prompt.lightLoop.waitStop"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "prompt.long.bold"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.code"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.collapse"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.edit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.expand"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.format"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.heading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.italic"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.link"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.list"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.preview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.quote"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.shortcut"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.strike"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.view"
+msgstr ""
+
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or

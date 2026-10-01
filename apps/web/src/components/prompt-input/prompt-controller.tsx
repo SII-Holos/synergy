@@ -119,6 +119,7 @@ import { LightLoopSubmitControl } from "./light-loop-submit-control"
 import { resolveLightLoopActivity } from "./light-loop-control"
 import { WorktreeUnavailableDialog } from "./worktree-unavailable-dialog"
 import { ComposerDocumentController } from "./composer-document"
+import { ComposerPresentation, bindComposerPresentation, expandedComposerKeyAction } from "./composer-presentation"
 import { createAbortRequestController } from "./abort-request"
 import { ComposerExtensionOutlet } from "@/plugin/registries/composer-extension-registry"
 import { VoiceDictationButton } from "./use-voice-dictation"
@@ -237,6 +238,7 @@ export function createPromptInputController(props: PromptInputProps) {
   const idle = { type: "idle" as const }
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const sendShortcut = createMemo(() => input.sendShortcut())
+  const presentation = new ComposerPresentation()
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const activeWorkflow = createMemo(() => (params.id ? info()?.workflow : undefined))
   const backendLightLoopActive = createMemo(() =>
@@ -1681,6 +1683,7 @@ export function createPromptInputController(props: PromptInputProps) {
       () => {
         composerDocument.abortSubmit(new DOMException("Composer navigation changed", "AbortError"))
         composerDocument.changed()
+        if (!newSessionSubmitPending()) presentation.collapse()
       },
       { defer: true },
     ),
@@ -1688,7 +1691,10 @@ export function createPromptInputController(props: PromptInputProps) {
   createEffect(
     on(
       () => store.mode,
-      () => composerDocument.changed(),
+      () => {
+        composerDocument.changed()
+        if (store.mode === "shell") presentation.collapse()
+      },
       { defer: true },
     ),
   )
@@ -1877,6 +1883,7 @@ export function createPromptInputController(props: PromptInputProps) {
     }
 
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      if (presentation.expanded && store.mode === "normal") return
       if (event.altKey || event.ctrlKey || event.metaKey) return
       const { collapsed } = getCaretState()
       if (!collapsed) return
@@ -1909,6 +1916,25 @@ export function createPromptInputController(props: PromptInputProps) {
 
     const modEnter = event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
     const plainEnter = event.key === "Enter" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
+
+    if (event.key === "Escape" && store.popover) {
+      setStore("popover", null)
+      event.preventDefault()
+      return
+    }
+    if (presentation.expanded && store.mode === "normal") {
+      const action = expandedComposerKeyAction(event)
+      if (action === "send") handleSubmit(event)
+      if (action === "newline") {
+        addPart({ type: "text", content: "\n", start: 0, end: 0 })
+        event.preventDefault()
+      }
+      if (action === "collapse") {
+        presentation.collapse()
+        event.preventDefault()
+      }
+      return
+    }
 
     if (sendShortcut() === "enter") {
       if (plainEnter) {
@@ -1978,6 +2004,7 @@ export function createPromptInputController(props: PromptInputProps) {
       await props.onValidateLocation?.()
       await composerDocument!.beforeSubmit()
     },
+    onAccepted: (unchanged) => presentation.accepted(unchanged),
   })
   const handleSubmit = (event: Event) => {
     if (props.locationPending || abandonPending() || (continuePending() && !working())) {
@@ -2570,6 +2597,22 @@ export function createPromptInputController(props: PromptInputProps) {
       await handleDrop(event)
     },
   }
+  onCleanup(
+    bindComposerPresentation(composerInput, {
+      state: presentation,
+      preview() {
+        let offset = 0
+        const references: Array<{ start: number; end: number; path: string }> = []
+        for (const part of prompt.current()) {
+          if (part.type !== "text" && part.type !== "file") continue
+          if (part.type === "file")
+            references.push({ start: offset, end: offset + part.content.length, path: part.path })
+          offset += part.content.length
+        }
+        return { text: inlineText(prompt.current()), references }
+      },
+    }),
+  )
   return {
     input: composerInput,
     pickFiles() {

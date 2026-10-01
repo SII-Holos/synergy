@@ -1,13 +1,78 @@
 import { DefaultComposerEditor } from "./default-composer-editor"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { PluginComponentProps, PluginInputService } from "@ericsanchezok/synergy-plugin"
+import { createSignal, createEffect, on, onCleanup, onMount } from "solid-js"
+import { ComposerLongEditor, ComposerExpandButton } from "@/components/prompt-input/composer-long-editor"
+import { composerPresentation } from "@/components/prompt-input/composer-presentation"
 
 export function DefaultComposer(props: PluginComponentProps<{ input: PluginInputService }>) {
   const input = props.context.input
+  const binding = composerPresentation(input)
+  const [version, setVersion] = createSignal(0)
+  if (binding) onCleanup(binding.state.subscribe(() => setVersion((value) => value + 1)))
+  const expanded = () => {
+    version()
+    return binding?.state.expanded && input.current().mode === "normal"
+  }
+  let root!: HTMLDivElement
+  const [availableHeight, setAvailableHeight] = createSignal(480)
+  onMount(() => {
+    const pane = root.closest<HTMLElement>(".session-workbench-pane") ?? root.parentElement
+    const measure = () => {
+      const viewport = window.visualViewport
+      const rect = pane?.getBoundingClientRect()
+      const footer =
+        root
+          .closest(".session-prompt-dock-content")
+          ?.querySelector(".session-prompt-dock-footer")
+          ?.getBoundingClientRect().height ?? 0
+      const topbar =
+        pane?.querySelector('[data-ui-part="conversation"]')?.firstElementChild?.getBoundingClientRect().height ?? 0
+      setAvailableHeight(
+        Math.max(
+          96,
+          Math.min(
+            rect?.bottom ?? window.innerHeight,
+            viewport ? viewport.offsetTop + viewport.height : window.innerHeight,
+          ) -
+            Math.max(rect?.top ?? 0, viewport?.offsetTop ?? 0) -
+            topbar -
+            footer -
+            16,
+        ),
+      )
+    }
+    const observer = new ResizeObserver(measure)
+    if (pane) observer.observe(pane)
+    measure()
+    window.visualViewport?.addEventListener("resize", measure)
+    window.addEventListener("resize", measure)
+    onCleanup(() => {
+      observer.disconnect()
+      window.visualViewport?.removeEventListener("resize", measure)
+      window.removeEventListener("resize", measure)
+    })
+  })
+  createEffect(
+    on(
+      expanded,
+      () => {
+        const editor = root.querySelector<HTMLElement>('[data-component="prompt-input"]')
+        queueMicrotask(() => editor?.focus({ preventScroll: true }))
+      },
+      { defer: true },
+    ),
+  )
   const report = (error: unknown) =>
     showToast({ type: "error", description: error instanceof Error ? error.message : String(error) })
   return (
-    <div class="session-composer relative z-0 w-full flex flex-col overflow-visible" data-ui-part="composer">
+    <div
+      ref={root}
+      class="session-composer relative z-0 w-full flex flex-col overflow-visible"
+      data-ui-part="composer"
+      data-expanded={expanded() ? "" : undefined}
+      style={{ "--composer-available-height": `${availableHeight()}px` }}
+    >
       {input.render("leading")}
       <form
         onSubmit={(event) => {
@@ -29,7 +94,10 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
         style={{ "z-index": 1 }}
       >
         <div class="session-composer-context">{input.render("context")}</div>
-        <DefaultComposerEditor context={{ input }} onError={report} />
+        <ComposerExpandButton input={input} />
+        <ComposerLongEditor input={input} report={report}>
+          <DefaultComposerEditor context={{ input }} onError={report} />
+        </ComposerLongEditor>
         {input.render("toolbar")}
       </form>
       {input.render("trailing")}

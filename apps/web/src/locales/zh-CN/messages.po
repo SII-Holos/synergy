@@ -12043,6 +12043,66 @@ msgstr "切换 Light Loop 失败"
 msgid "prompt.lightLoop.waitStop"
 msgstr "请等待 Light Loop 停止后再启用 Blueprint。"
 
+#. js-lingui-explicit-id
+msgid "prompt.long.bold"
+msgstr "粗体"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.code"
+msgstr "代码"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.collapse"
+msgstr "收起编辑器"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.edit"
+msgstr "编辑"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.expand"
+msgstr "展开编辑器"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.format"
+msgstr "Markdown 格式"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.heading"
+msgstr "标题"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.italic"
+msgstr "斜体"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.link"
+msgstr "链接"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.list"
+msgstr "列表"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.preview"
+msgstr "预览"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.quote"
+msgstr "引用"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.shortcut"
+msgstr "Ctrl/⌘ + Enter 发送"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.strike"
+msgstr "删除线"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.view"
+msgstr "编辑视图"
+
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or

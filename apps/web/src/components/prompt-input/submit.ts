@@ -118,6 +118,7 @@ type PromptSubmitInput = {
   queueScroll: () => void
   onWorktreeUnavailable: () => void
   beforeSubmit: () => Promise<void>
+  onAccepted?: (unchanged: boolean) => void
 }
 
 export function usePromptSubmit(input: PromptSubmitInput) {
@@ -686,6 +687,9 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       }
 
       const finishNewSessionTransition = () => {
+        input.onAccepted?.(
+          prompt.revision() === restoreRevision && (binding.isCurrent() || params.id === activeSession.id),
+        )
         if (!createdSessionForSubmit) return
         const progress = worktreeWorkspaceSelection
           ? createNewSessionWorkspaceSuccessProgress({ selection: worktreeWorkspaceSelection })
@@ -1129,6 +1133,9 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         .then((result) => {
           const accepted = result.data
           if (!accepted) throw new Error("Session input returned no acceptance result")
+          input.onAccepted?.(
+            prompt.revision() === restoreRevision && (binding.isCurrent() || params.id === activeSession.id),
+          )
           if (accepted.status === "queued") {
             const item = accepted.item
             // Guard the mutation upsert: the backend may have already consumed

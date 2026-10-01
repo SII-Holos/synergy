@@ -48,6 +48,8 @@ Paginated result sets are identified by their owning resource plus the normalize
 
 User-authored messages support Markdown reading and a source view. Copy, retry and model input preserve the original source. File-reference controls use authoritative source ranges and resource bindings; ordinary paths do not become workspace links. User HTML displays literally and Markdown images require an explicit open action. Code and wide tables scroll locally, while long user messages retain an expand/collapse control.
 
+The composer keeps one editor and draft when expanded for long Markdown instructions. Source editing, revision-checked formatting and preview preserve native editing state. Expanded Enter inserts a line break; Control/Command+Enter submits. A successful server acceptance collapses only an unchanged cleared draft, while failure and subsequent edits preserve it. Preview waits 150 milliseconds between updates and pauses during composition. Wide composers provide a second preview column; narrow composers switch views.
+
 Treat the Holos agent as the Synergy account identity. Model subscriptions, API keys, quota windows, and provider logins belong to Providers and Usage, not Account.
 
 User-visible high-risk operations that archive, delete, cancel, overwrite, or uninstall product data must use the shared confirmation dialog. Browser page dialogs, permission review surfaces, and runtime controls with dedicated gesture semantics may keep specialized interfaces when the domain requires it.

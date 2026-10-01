@@ -357,8 +357,133 @@ a {
 }
 
 .session-composer-editor {
-  max-height: min(240px, 40dvh);
+  min-height: min(96px, calc(var(--composer-available-height, 480px) * 0.4));
+  max-height: min(240px, calc(var(--composer-available-height, 480px) * 0.4));
   overscroll-behavior: contain;
+}
+
+.composer-expand-control {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--text-weak);
+  cursor: pointer;
+  z-index: 2;
+}
+.composer-expand-control:hover {
+  background: var(--surface-raised-base-hover);
+}
+.session-composer[data-expanded] {
+  height: var(--composer-available-height);
+  background: var(--background-stronger);
+}
+.session-composer[data-expanded] .prompt-input-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.session-composer[data-expanded] .session-composer-context {
+  flex-shrink: 0;
+}
+.session-composer[data-expanded] .composer-expand-control {
+  top: 8px;
+}
+.composer-long-content[data-expanded] {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.composer-long-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px 48px 8px 12px;
+  border-bottom: 1px solid var(--border-weak-base);
+}
+.composer-long-tools button {
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: var(--radius-sm);
+  color: var(--text-weak);
+  cursor: pointer;
+}
+.composer-long-tools button:hover,
+.composer-long-tools button[aria-pressed="true"] {
+  background: var(--surface-raised-base-hover);
+  color: var(--text-strong);
+}
+.composer-long-views,
+.composer-long-format {
+  display: flex;
+  gap: 2px;
+}
+.composer-long-views button {
+  padding-inline: 8px;
+}
+.composer-long-shortcut {
+  font-size: 11px;
+  color: var(--text-weak);
+  margin-inline-start: auto;
+}
+.composer-long-content[data-expanded] .composer-long-panes {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+}
+.composer-long-content[data-expanded] .composer-long-source {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.composer-long-content[data-expanded] .session-composer-editor {
+  min-height: 0;
+  max-height: none;
+  flex: 1;
+}
+.composer-long-content[data-expanded] [data-component="prompt-input"] {
+  min-height: 100%;
+  padding-right: 16px;
+}
+.composer-long-preview {
+  display: none;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+}
+.composer-long-content[data-expanded][data-view="preview"] .composer-long-source {
+  display: none;
+}
+.composer-long-content[data-view="preview"] .composer-long-preview {
+  display: block;
+}
+@container session-composer (width >= 720px) {
+  .composer-long-content[data-expanded][data-view="edit"] .composer-long-panes {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .composer-long-content[data-expanded][data-view="edit"] .composer-long-preview {
+    display: block;
+    border-inline-start: 1px solid var(--border-weak-base);
+  }
+}
+.session-prompt-dock:has(.session-composer[data-expanded]) .session-prompt-dock-content {
+  max-width: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .session-composer,
+  .session-composer-editor {
+    transition: none;
+  }
 }
 
 .session-composer {

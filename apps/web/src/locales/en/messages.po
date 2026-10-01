@@ -12043,6 +12043,66 @@ msgstr "Failed to toggle Light Loop"
 msgid "prompt.lightLoop.waitStop"
 msgstr "Wait for Light Loop to stop before equipping a Blueprint."
 
+#. js-lingui-explicit-id
+msgid "prompt.long.bold"
+msgstr "Bold"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.code"
+msgstr "Code"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.collapse"
+msgstr "Collapse editor"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.edit"
+msgstr "Edit"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.expand"
+msgstr "Expand editor"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.format"
+msgstr "Markdown formatting"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.heading"
+msgstr "Heading"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.italic"
+msgstr "Italic"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.link"
+msgstr "Link"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.list"
+msgstr "List"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.preview"
+msgstr "Preview"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.quote"
+msgstr "Quote"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.shortcut"
+msgstr "Ctrl/⌘ + Enter to send"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.strike"
+msgstr "Strikethrough"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.view"
+msgstr "Editor view"
+
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
