@@ -10653,6 +10653,10 @@ msgid "directory.navigation.denied"
 msgstr "This service cannot read this folder. Check its access permissions or choose another path."
 
 #. js-lingui-explicit-id
+msgid "directory.navigation.editPath"
+msgstr "Edit path"
+
+#. js-lingui-explicit-id
 msgid "directory.navigation.empty"
 msgstr "This folder has no subfolders. You can use this folder."
 

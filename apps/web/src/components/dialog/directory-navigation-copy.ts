@@ -3,6 +3,7 @@ export const directoryCopy = {
   title: { id: "directory.navigation.title", message: "Choose a folder" },
   service: { id: "directory.navigation.service", message: "Browsing folders on {service}" },
   path: { id: "directory.navigation.path", message: "Folder path" },
+  editPath: { id: "directory.navigation.editPath", message: "Edit path" },
   current: { id: "directory.navigation.current", message: "Current folder" },
   home: { id: "directory.navigation.home", message: "Home folder" },
   up: { id: "directory.navigation.up", message: "Parent folder" },

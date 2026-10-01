@@ -10653,6 +10653,10 @@ msgid "directory.navigation.denied"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "directory.navigation.editPath"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "directory.navigation.empty"
 msgstr ""
 

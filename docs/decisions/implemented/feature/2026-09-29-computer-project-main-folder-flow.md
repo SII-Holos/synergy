@@ -16,6 +16,8 @@ The project Popover, two-field create dialog, independently saved settings and d
 
 Suppressing a Tooltip changes its open state without replacing its trigger. Menu-to-dialog handoffs restore the owning trigger before mounting the dialog, so returning focus does not target a removed menu item. Escape dismisses the topmost surface, including a focused path tooltip, before its parent.
 
+The service directory browser presents its current location as separated breadcrumbs, with direct path editing behind an explicit action. Escape cancels that edit within the picker and returns focus to its opener. Successful path submission restores navigation; failed requests and newer path edits remain editable. Navigation and search use quiet shared controls, while the reachable footer owns the primary selection confirmation.
+
 This refines the presentation from [project-first task entry](2026-09-29-project-first-task-entry.md), retaining its revisioned draft transfer, connection ownership and folder-picker distinction. The earlier round omitted the combined page's information density, shared-control finish and actual multi-directory semantics; those are required acceptance evidence here.
 
 ## Alternatives considered
@@ -27,6 +29,8 @@ This refines the presentation from [project-first task entry](2026-09-29-project
 **Store extra paths only in App state.** File trees would appear multi-root while command and editing authority still pointed at one directory.
 
 **Offer arbitrary execution/storage combinations by default.** This exposes unimplemented cross-machine file coordination; advanced API clients keep that capability without implying a complete cloud-computer product.
+
+**Keep the full-path field and breadcrumbs visible together.** This repeats one location and adds density. Explicit path editing retains direct navigation without competing with the breadcrumb hierarchy.
 
 ## Consequences
 

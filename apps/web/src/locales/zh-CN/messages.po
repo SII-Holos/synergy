@@ -10653,6 +10653,10 @@ msgid "directory.navigation.denied"
 msgstr "当前服务无权读取此文件夹。请检查访问权限或选择其他路径。"
 
 #. js-lingui-explicit-id
+msgid "directory.navigation.editPath"
+msgstr "编辑路径"
+
+#. js-lingui-explicit-id
 msgid "directory.navigation.empty"
 msgstr "这里没有子文件夹，可以使用当前文件夹。"
 
