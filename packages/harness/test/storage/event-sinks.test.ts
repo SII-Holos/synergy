@@ -63,14 +63,16 @@ for (const backend of storageTestBackends()) {
             const records = await Storage.query<StorageEventSinks.Delivery>({ kind: "event_delivery" })
             expect(records[0]!.value.partition).toBe("run-owned")
             expect(records[0]!.value.payload).toEqual({ run: "run-owned", value: { partition: "source", value: 2 } })
-            expect(await Storage.read(["host-event-receipt", records[0]!.value.eventID])).toEqual({ sequence: 1 })
+            expect(await Storage.read<{ sequence: number }>(["host-event-receipt", records[0]!.value.eventID])).toEqual(
+              { sequence: 1 },
+            )
             await expect(
               Storage.transaction(async () => {
                 await Storage.write(["test-owner"], { run: "reject-receipt" })
                 await Bus.publish(Changed, { partition: "source", value: 3 })
               }),
             ).rejects.toThrow("receipt rejected")
-            expect(await Storage.read(["test-owner"])).toEqual({ run: "run-owned" })
+            expect(await Storage.read<{ run: string }>(["test-owner"])).toEqual({ run: "run-owned" })
             expect(await Storage.query({ kind: "host-event-receipt" })).toHaveLength(1)
             expect(await Storage.query({ kind: "event_delivery" })).toHaveLength(1)
           },

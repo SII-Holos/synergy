@@ -5,6 +5,7 @@
   "private": false,
   "license": "MIT",
   "exports": {
+    "./session/rollout/events": "./src/session/rollout/events.ts",
     "./tool/policy-source": "./src/tool/policy-source.ts",
     "./config/source": "./src/config/source.ts",
     "./tool/output-source": "./src/tool/output-source.ts",

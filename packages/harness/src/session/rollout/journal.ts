@@ -6,6 +6,7 @@ import { RolloutPending } from "./pending"
 import type { RolloutSchema } from "./schema"
 import { record } from "./error"
 import { UsageLedger } from "../../usage/ledger"
+import { RolloutEvents } from "./events"
 
 export namespace RolloutJournal {
   const Revision = z.number().int().nonnegative().safe()
@@ -36,6 +37,17 @@ export namespace RolloutJournal {
   function eventKey(owner: RolloutSchema.Owner, seq: number) {
     return [...root(owner), "events", String(seq).padStart(12, "0")]
   }
+  function capture(owner: RolloutSchema.Owner, event: Extract<Event, { kind: "record" }>) {
+    return Storage.enqueue(
+      {
+        id: crypto.randomUUID(),
+        scopeID: owner.scopeID,
+        type: RolloutEvents.RecordCommitted.type,
+        payload: { properties: { owner, revision: event.seq, time: event.time, key: event.key, value: event.value } },
+      },
+      async () => {},
+    )
+  }
   export async function head(owner: RolloutSchema.Owner) {
     // Owner enumeration probes most owners without a journal; the miss is expected control flow.
     try {
@@ -64,6 +76,7 @@ export namespace RolloutJournal {
           await Storage.write([...RolloutArtifact.root(owner), ...event.key], event.value)
           await UsageLedger.capture(owner, seq, event.key, event.value)
           await UsageLedger.committed(owner, seq)
+          await capture(owner, event)
         } else {
           gaps.push(seq)
           await UsageLedger.captureGap(owner, seq, event.time)
@@ -109,6 +122,7 @@ export namespace RolloutJournal {
         await UsageLedger.capture(owner, seq, event.key, event.value)
         await UsageLedger.committed(owner, seq)
         await Storage.write([...root(owner), "head"], { allocated: seq, committed: seq })
+        await capture(owner, event)
       })
       return seq
     })
