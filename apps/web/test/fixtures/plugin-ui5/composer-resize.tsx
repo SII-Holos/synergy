@@ -33,6 +33,7 @@ function Fixture() {
             "prompt.long.expand": "Expand editor",
             "prompt.long.collapse": "Collapse editor",
             "prompt.long.releaseExpand": "Release to expand",
+            "prompt.long.continueExpand": "Continue dragging to expand",
           },
         },
       })}

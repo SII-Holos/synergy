@@ -420,11 +420,34 @@ a {
 .composer-resize-cue {
   position: absolute;
   bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 24px);
   font-size: 12px;
+  line-height: 20px;
   color: var(--text-base);
   background: var(--surface-raised-base);
-  border-radius: var(--radius-md);
-  padding-inline: 8px;
+  border: 1px solid var(--border-weak-base);
+  border-radius: var(--radius-full);
+  padding: 2px 10px;
+  opacity: 0;
+}
+.composer-resize-cue span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-resize-controls[data-pull] .composer-resize-cue {
+  opacity: 1;
+}
+.composer-resize-controls[data-pull] .composer-resize-handle span {
+  background: var(--text-interactive-base);
+}
+.composer-resize-controls[data-armed] .composer-resize-cue {
+  color: var(--text-interactive-base);
+  border-color: var(--border-interactive-base);
 }
 .composer-expand-region {
   position: absolute;
@@ -474,6 +497,14 @@ a {
 }
 @media (prefers-reduced-motion: no-preference) {
   .composer-expand-control {
+    transition: opacity 120ms cubic-bezier(0.2, 0, 0, 1);
+  }
+  .composer-resize-handle span {
+    transform: translateY(calc(-1 * var(--composer-expand-pull, 0px)))
+      scaleX(calc(1 + var(--composer-expand-progress, 0) * 0.6));
+  }
+  .composer-resize-cue {
+    transform: translateY(calc(-1 * var(--composer-expand-pull, 0px)));
     transition: opacity 120ms cubic-bezier(0.2, 0, 0, 1);
   }
 }

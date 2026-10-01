@@ -141,3 +141,75 @@ test("touch keeps the corner control visible and inside a 320px composer", async
     await context.close()
   }
 }, 30_000)
+
+async function pullPastLimit(distance: number) {
+  const handle = page.getByRole("separator", { name: "Resize editor" })
+  const box = await handle.boundingBox()
+  const height = await page
+    .locator(".session-composer-editor")
+    .evaluate((element) => element.getBoundingClientRect().height)
+  const maximum = Number(await handle.getAttribute("aria-valuemax"))
+  const x = box!.x + box!.width / 2
+  const boundary = box!.y + box!.height / 2 - (maximum - height)
+  await page.mouse.move(x, box!.y + box!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(x, boundary - distance, { steps: 8 })
+  return { x, boundary, maximum }
+}
+
+test("dragging past the cap previews expansion, continues pulling and expands only on release", async () => {
+  await page.reload()
+  const { x, boundary, maximum } = await pullPastLimit(12)
+  const cue = page.locator(".composer-resize-cue")
+  expect(await cue.textContent()).toBe("Continue dragging to expand")
+  const grip = page.locator(".composer-resize-handle span")
+  const first = await grip.evaluate((element) => getComputedStyle(element).transform)
+  expect(first).not.toBe("none")
+  await page.mouse.move(x, boundary - 40)
+  expect(await cue.textContent()).toBe("Release to expand")
+  expect(await grip.evaluate((element) => getComputedStyle(element).transform)).not.toBe(first)
+  expect(
+    await page.locator(".session-composer-editor").evaluate((element) => element.getBoundingClientRect().height),
+  ).toBe(maximum)
+  expect(await page.locator("#expanded").textContent()).toBe("false")
+  await page.mouse.up()
+  expect(await page.locator("#expanded").textContent()).toBe("true")
+})
+
+test("returning to the cap disarms expansion and Escape removes all pull feedback", async () => {
+  await page.reload()
+  const { x, boundary } = await pullPastLimit(40)
+  await page.mouse.move(x, boundary - 8)
+  expect(await page.locator(".composer-resize-cue").textContent()).toBe("Release to expand")
+  await page.mouse.move(x, boundary + 1)
+  expect(await page.locator(".composer-resize-cue").textContent()).toBe("")
+  await page.mouse.up()
+  expect(await page.locator("#expanded").textContent()).toBe("false")
+  await page.getByRole("separator", { name: "Resize editor" }).press("Home")
+  await pullPastLimit(16)
+  await page.keyboard.press("Escape")
+  await page.mouse.up()
+  expect(await page.locator(".composer-resize-cue").textContent()).toBe("")
+  expect(
+    await page.locator(".session-composer-editor").evaluate((element) => element.getBoundingClientRect().height),
+  ).toBe(96)
+})
+
+test("reduced motion keeps expansion instructions while disabling pull transforms", async () => {
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  try {
+    await page.reload()
+    await pullPastLimit(40)
+    expect(await page.locator(".composer-resize-cue").textContent()).toBe("Release to expand")
+    expect(
+      await page.locator(".composer-resize-handle span").evaluate((element) => getComputedStyle(element).transform),
+    ).toBe("none")
+    expect(
+      await page.locator(".composer-resize-cue").evaluate((element) => getComputedStyle(element).transitionDuration),
+    ).toBe("0s")
+    await page.mouse.up()
+    expect(await page.locator("#expanded").textContent()).toBe("true")
+  } finally {
+    await page.emulateMedia({ reducedMotion: "no-preference" })
+  }
+})

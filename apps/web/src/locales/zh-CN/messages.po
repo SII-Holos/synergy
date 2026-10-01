@@ -12140,6 +12140,10 @@ msgid "prompt.long.collapse"
 msgstr "收起编辑器"
 
 #. js-lingui-explicit-id
+msgid "prompt.long.continueExpand"
+msgstr "继续上拖以展开"
+
+#. js-lingui-explicit-id
 msgid "prompt.long.edit"
 msgstr "编辑"
 

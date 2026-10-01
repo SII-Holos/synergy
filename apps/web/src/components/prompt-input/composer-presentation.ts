@@ -53,7 +53,13 @@ export class ComposerResizeGesture {
     const desired = this.initial.height + this.initial.y - y
     if (desired >= this.initial.maximum + 32) this.#expand = true
     if (desired <= this.initial.maximum) this.#expand = false
-    return { height: Math.min(this.initial.maximum, Math.max(this.initial.minimum, desired)), expand: this.#expand }
+    const excess = Math.max(0, desired - this.initial.maximum)
+    return {
+      height: Math.min(this.initial.maximum, Math.max(this.initial.minimum, desired)),
+      expand: this.#expand,
+      progress: Math.min(1, excess / 32),
+      pull: (8 * excess) / (excess + 32),
+    }
   }
 }
 

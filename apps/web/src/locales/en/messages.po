@@ -12140,6 +12140,10 @@ msgid "prompt.long.collapse"
 msgstr "Collapse editor"
 
 #. js-lingui-explicit-id
+msgid "prompt.long.continueExpand"
+msgstr "Continue dragging to expand"
+
+#. js-lingui-explicit-id
 msgid "prompt.long.edit"
 msgstr "Edit"
 
