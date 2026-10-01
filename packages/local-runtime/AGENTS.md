@@ -32,4 +32,6 @@ Native release preparation builds and uploads each PTY target with its verified 
 
 Use `file/view` for selected Workspace paths and bounded content reads.
 
+Trusted transfer hosts use `workspace-file/service`: managed imports may carry a stable operation ID, and `serveFile` accepts an explicit byte limit. Streams retain their Runtime/resource context across request return and close on read completion, cancellation or Workspace disposal; keep SQLite/PG `managed-transfer.test.ts` and native lifetime verification.
+
 `environment/profiles` owns global profiles and local/S3/OSS factories. Snapshot settings, fail closed, and keep external mounts read-only. Test `test/environment/profiles.test.ts`; `SYNERGY_TEST_DOCKER_ENVIRONMENT_IMAGE` enables Docker integration.

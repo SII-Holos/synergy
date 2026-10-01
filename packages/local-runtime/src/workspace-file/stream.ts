@@ -5,6 +5,9 @@ import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { FileView } from "../file/view"
 import { FileMutation } from "../file/mutation"
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
+import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 
 export namespace WorkspaceFileStream {
   const log = Log.create({ service: "workspace-file-stream" })
@@ -38,11 +41,90 @@ export namespace WorkspaceFileStream {
       if (!stat.isFile()) throw new FileMutation.AccessDeniedError("Access denied: path is not a regular file")
       if (stat.size > input.limit)
         throw new TooLargeError(`File too large to stream (${stat.size} bytes, limit ${input.limit})`)
-      const bytes = await FileView.bytes(input.path, undefined, input.limit)
-      input.signal?.throwIfAborted()
-      if ((await FileView.stat(input.path))?.entryVersion !== before?.entryVersion)
-        throw new FileMutation.ConflictError()
-      return { stream: new Blob([new Uint8Array(bytes)]).stream(), stat }
+      const selected = EnvironmentResources.current()
+      if (!selected) throw new FileMutation.AccessDeniedError("Managed stream requires selected resources")
+      const runtime = RuntimeContext.current()
+      const withinResources = runtime.bind(async <T>(fn: () => Promise<T>) =>
+        EnvironmentResources.provide(selected, "managed-file-stream", fn),
+      )
+      const lease = selected?.environment
+        ? await Environment.acquire(selected.environment.id, {
+            scopeID: selected.environment.scopeID,
+            useID: `file-stream:${crypto.randomUUID()}`,
+            kind: "admission",
+            capabilities: ["files"],
+            signal: input.signal,
+          })
+        : undefined
+      const owned = resources()
+      let offset = 0
+      let controller: ReadableStreamDefaultController<Uint8Array> | undefined
+      let closing: Promise<void> | undefined
+      let reading: Promise<unknown> = Promise.resolve()
+      const close = runtime.bind((reason?: Error) => {
+        if (closing) return closing
+        if (reason) controller?.error(reason)
+        input.signal?.removeEventListener("abort", abort)
+        return (closing = reading
+          .catch(() => {})
+          .then(async () => {
+            try {
+              await lease?.release()
+            } finally {
+              owned.delete(resource)
+            }
+          }))
+      })
+      const abort = () => {
+        const reason = input.signal?.reason
+        void close(reason instanceof Error ? reason : new Error("File stream cancelled")).catch((error) =>
+          log.warn("cancelled managed stream cleanup failed", { error }),
+        )
+      }
+      const resource: Resource = { close }
+      owned.add(resource)
+      const stream = new ReadableStream<Uint8Array>(
+        {
+          start(value) {
+            controller = value
+          },
+          pull: (value) =>
+            withinResources(async () => {
+              if (closing) return
+              try {
+                input.signal?.throwIfAborted()
+                if ((await FileView.stat(input.path))?.entryVersion !== before?.entryVersion)
+                  throw new FileMutation.ConflictError()
+                if (offset >= stat.size) {
+                  await close()
+                  value.close()
+                  return
+                }
+                const pending = FileView.bytes(input.path, {
+                  offset,
+                  length: Math.min(4 * 1024 * 1024, stat.size - offset),
+                })
+                reading = pending
+                const bytes = await pending
+                if (closing) return
+                if (!bytes.length || (await FileView.stat(input.path))?.entryVersion !== before?.entryVersion)
+                  throw new FileMutation.ConflictError()
+                offset += bytes.length
+                value.enqueue(bytes)
+              } catch (error) {
+                if (!closing) {
+                  value.error(error)
+                  await close()
+                }
+              }
+            }),
+          cancel: () => close(),
+        },
+        { highWaterMark: 0 },
+      )
+      input.signal?.addEventListener("abort", abort, { once: true })
+      if (input.signal?.aborted) abort()
+      return { stream, stat }
     }
     const lease = await WorkspaceAccess.pin(input.signal)
     let file: Awaited<ReturnType<typeof fs.open>> | undefined

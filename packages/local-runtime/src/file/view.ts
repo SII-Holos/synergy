@@ -265,6 +265,7 @@ export namespace FileView {
     filename: string,
     capture: (store: BlobStore) => Promise<WorkspaceTree.Manifest>,
     signal?: AbortSignal,
+    operationID?: string,
   ) {
     const info = await selected()
     const files = info.activeMount ? await WorkspaceMounts.connect(info) : undefined
@@ -275,14 +276,19 @@ export namespace FileView {
     const bytes = WorkspaceTree.encode(tree)
     const manifest = WorkspaceTree.hash(bytes)
     await store.put(manifest, bytes)
-    await mutate({ kind: "import", to: relative(filename), manifest }, signal, true)
+    await mutate({ kind: "import", to: relative(filename), manifest }, signal, true, operationID)
   }
 
-  export async function mutate(change: WorkspaceProtocol.Change, signal?: AbortSignal, protectSensitive?: boolean) {
+  export async function mutate(
+    change: WorkspaceProtocol.Change,
+    signal?: AbortSignal,
+    protectSensitive?: boolean,
+    operationID?: string,
+  ) {
     const info = await selected()
     await WorkspaceOperations.mutate({
       ...selection(info),
-      id: EnvironmentResources.nextOperationID(),
+      id: operationID ?? EnvironmentResources.nextOperationID(),
       change,
       signal,
       protectSensitive,
