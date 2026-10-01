@@ -178,6 +178,42 @@ test("multi-selection stays distinct from navigation and restores the originatin
   expect(errors).toEqual([])
 }, 20_000)
 
+test("shrinking an open picker keeps the current folder visible without losing selection or the parent draft", async () => {
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await open()
+  await top().getByRole("button", { name: "alpha", exact: true }).click()
+  await edit().click()
+  await editor().fill("/projects/team/research/working-files/current-project-folder-with-a-long-name")
+  await editor().press("Enter")
+  await editor().waitFor({ state: "detached" })
+  await page.setViewportSize({ width: 375, height: 568 })
+  await page.waitForFunction(() => {
+    const navigation = document.querySelector('.directory-navigation [aria-label="Current folder"]')!
+    return (
+      navigation.querySelector('[aria-current="page"]')!.getBoundingClientRect().right <=
+      navigation.getBoundingClientRect().right + 1
+    )
+  })
+  const geometry = await top()
+    .getByRole("navigation", { name: "Current folder", exact: true })
+    .evaluate((element) => {
+      const current = element.querySelector('[aria-current="page"]')!.getBoundingClientRect()
+      const navigation = element.getBoundingClientRect()
+      return { left: current.left - navigation.left, right: current.right - navigation.right }
+    })
+  expect(geometry.left).toBeGreaterThanOrEqual(-1)
+  expect(geometry.right).toBeLessThanOrEqual(1)
+  const confirm = top().getByRole("button", { name: "Use selected folders", exact: true })
+  expect(await confirm.isDisabled()).toBe(false)
+  await confirm.click()
+  await page.locator(".directory-navigation").waitFor({ state: "detached" })
+  expect(await page.evaluate<DialogSelectDirectoryResult[]>("window.fixture.selected")).toEqual([
+    { directory: ["/projects/alpha"] },
+  ])
+  expect(await page.getByRole("textbox", { name: "Project name" }).inputValue()).toBe("Keep this draft")
+  expect(errors).toEqual([])
+}, 20_000)
+
 test("single selection keeps the current-folder action and the footer reachable in a narrow short window", async () => {
   await page.setViewportSize({ width: 375, height: 568 })
   await page.emulateMedia({ reducedMotion: "reduce" })

@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
+import { createResizeObserver } from "@solid-primitives/resize-observer"
 import type { DirectoryPage, SynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -49,7 +50,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   const [searched, setSearched] = createSignal(false)
   let pathInput: HTMLInputElement | undefined
   let pathEditButton: HTMLButtonElement | undefined
-  let pathNavigation: HTMLElement | undefined
+  const [pathNavigation, setPathNavigation] = createSignal<HTMLElement>()
   let request: AbortController | undefined
   onCleanup(() => request?.abort())
   createEffect(() => {
@@ -58,10 +59,17 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   createEffect(() => {
     path()
     editingPath()
+    const navigation = pathNavigation()
     queueMicrotask(() => {
-      if (pathNavigation?.isConnected) pathNavigation.scrollLeft = pathNavigation.scrollWidth
+      if (navigation?.isConnected) navigation.scrollLeft = navigation.scrollWidth
     })
   })
+  createResizeObserver(
+    () => (editingPath() ? undefined : pathNavigation()),
+    (_, navigation) => {
+      navigation.scrollLeft = navigation.scrollWidth
+    },
+  )
   const crumbs = createMemo(() => {
     const current = path()
     const separator = current.includes("\\") ? "\\" : "/"
@@ -229,7 +237,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
             fallback={
               <>
                 <nav
-                  ref={pathNavigation}
+                  ref={setPathNavigation}
                   class="directory-navigation-crumbs"
                   aria-label={_(copy.current)}
                   title={path()}
