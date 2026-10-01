@@ -374,7 +374,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
   })
   const showTabActions = createMemo(() => {
     const tabs = state().tabs()
-    return tabs.length > 1 && activeTab() !== undefined
+    return tabs.length > 1 && activeTab() !== undefined && local.overflow
   })
 
   const closeOtherTabs = () => {
@@ -389,10 +389,24 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
     menuTabId: undefined as string | undefined,
     resizing: false,
     initialized: false,
+    overflow: false,
   })
   let tabRun: HTMLDivElement | undefined
   let root: HTMLDivElement | undefined
   let returnFocus: HTMLElement | undefined
+  const measureOverflow = () => setLocal("overflow", Boolean(tabRun && tabRun.scrollWidth > tabRun.clientWidth + 1))
+  createEffect(() => {
+    state()
+      .tabs()
+      .forEach((tab) => workbench.panelTitle(tab))
+    queueMicrotask(measureOverflow)
+  })
+  onMount(() => {
+    const observer = new ResizeObserver(measureOverflow)
+    if (tabRun) observer.observe(tabRun)
+    measureOverflow()
+    onCleanup(() => observer.disconnect())
+  })
   const visited = new Set<string>()
   const [visitedVersion, setVisitedVersion] = createSignal(0)
   createEffect(() => {
@@ -422,9 +436,11 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
 
   const openPanel = (panel: WorkbenchPanelEntry, mode: "launcher" | "add") => {
     setLocal("addOpen", false)
+    const empty = activeTab()?.panelId === "resource-home" ? activeTab()?.id : undefined
     void workbench.openPanel(panel.id, {
-      forceNew: mode === "add" && panel.cardinality === "multi",
+      forceNew: !empty && mode === "add" && panel.cardinality === "multi",
       reuseExisting: mode === "launcher",
+      replaceTab: empty,
     })
   }
 
@@ -532,13 +548,34 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
   const displaySize = () => (isSide() ? presentation().width : Math.min(size(), maxBottomHeight()))
   createEffect(() => {
     if (!isSide() || !root) return
+    const container = root.closest<HTMLElement>("[data-default-session]")
+    if (!container) return
+    const previous = container.style.getPropertyValue("--workspace-side-width")
+    container.style.setProperty(
+      "--workspace-side-width",
+      state().opened() && !presentation().overlay ? `${displaySize()}px` : "0px",
+    )
+    onCleanup(() => {
+      if (previous) container.style.setProperty("--workspace-side-width", previous)
+      else container.style.removeProperty("--workspace-side-width")
+    })
+  })
+  createEffect(() => {
+    if (!isSide() || !root) return
     const pane = root.closest('[data-ui-part="session"]')?.querySelector<HTMLElement>(".session-workbench-pane")
     if (!pane || !state().opened() || !presentation().overlay) return
     const wasInert = pane.inert
     pane.inert = true
+    const navigation = root
+      .closest("[data-default-session]")
+      ?.closest("[data-default-shell]")
+      ?.querySelector<HTMLElement>(".sb-integrated")
+    const navigationInert = navigation?.inert
+    if (navigation) navigation.inert = true
     if (pane.contains(document.activeElement)) root.querySelector<HTMLButtonElement>("button")?.focus()
     onCleanup(() => {
       pane.inert = wasInert
+      if (navigation) navigation.inert = navigationInert ?? false
     })
   })
 
@@ -664,61 +701,15 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
                     )}
                   </For>
                 </SortableProvider>
-                <Show when={showTabActions()}>
-                  <div class="workbench-surface-actions-wrap">
-                    <Popover
-                      open={local.actionsOpen}
-                      onOpenChange={(open) => setLocal("actionsOpen", open)}
-                      placement="bottom-start"
-                      gutter={6}
-                      class="workbench-surface-add-menu"
-                      triggerAs={(triggerProps) => (
-                        <IconButton
-                          {...triggerProps}
-                          icon={getSemanticIcon("action.more")}
-                          variant="ghost"
-                          aria-label={lingui._({ id: W.tabActionsMenu.id, message: W.tabActionsMenu.message })}
-                          aria-haspopup="menu"
-                          aria-expanded={local.actionsOpen}
-                        />
-                      )}
-                    >
-                      <div class="workbench-surface-add-list" role="menu">
-                        <For each={state().tabs()}>
-                          {(tab) => (
-                            <button
-                              type="button"
-                              role="menuitem"
-                              class="workbench-surface-add-row"
-                              onClick={() => {
-                                workbench.activateTab(props.surface, tab.id)
-                                setLocal("actionsOpen", false)
-                              }}
-                            >
-                              {workbench.panelTitle(tab)}
-                            </button>
-                          )}
-                        </For>
-                        <button
-                          type="button"
-                          class="workbench-surface-add-row"
-                          role="menuitem"
-                          onClick={closeOtherTabs}
-                        >
-                          <Icon name={getSemanticIcon("action.close")} size="small" />
-                          <span>
-                            <Trans id={W.closeOtherTabs.id} message={W.closeOtherTabs.message} />
-                          </span>
-                        </button>
-                      </div>
-                    </Popover>
-                  </div>
-                </Show>
+              </div>
+            </DragDropProvider>
+            <div class="workbench-surface-controls">
+              <div class="workbench-surface-add-group">
                 <Show when={isSide()}>
                   <IconButton
                     icon={getSemanticIcon("action.add")}
                     variant="ghost"
-                    aria-label={lingui._({ id: "workspace.tab.new", message: "New resource tab" })}
+                    aria-label={lingui._({ id: "workspace.tab.new", message: "New tab" })}
                     onClick={() =>
                       void workbench.openPanel(workbench.getPanel("browser") ? "browser" : "resource-home", {
                         forceNew: true,
@@ -741,7 +732,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
                           variant="ghost"
                           aria-label={
                             isSide()
-                              ? lingui._({ id: W.addSidePanel.id, message: W.addSidePanel.message })
+                              ? lingui._({ id: "workspace.resource.open", message: "Open a resource" })
                               : lingui._({ id: W.addBottomPanel.id, message: W.addBottomPanel.message })
                           }
                           aria-haspopup="menu"
@@ -768,26 +759,72 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
                   </div>
                 </Show>
               </div>
-            </DragDropProvider>
-            <Show when={isSide()}>
-              <IconButton
-                icon={getSemanticIcon(state().fullscreen() ? "workspace.split" : "workspace.fullscreen")}
-                variant="ghost"
-                aria-label={
-                  state().fullscreen()
-                    ? lingui._({ id: "workspace.fullscreen.exit", message: "Exit fullscreen" })
-                    : lingui._({ id: "workspace.fullscreen.enter", message: "Expand workspace" })
-                }
-                aria-pressed={state().fullscreen()}
-                onClick={() => state().setFullscreen(!state().fullscreen())}
-              />
-              <IconButton
-                icon={getSemanticIcon("app.sideWorkspace")}
-                variant="ghost"
-                onClick={() => state().close()}
-                aria-label={lingui._({ id: "workspace.collapse", message: "Collapse workspace" })}
-              />
-            </Show>
+              <Show when={showTabActions()}>
+                <div class="workbench-surface-actions-wrap">
+                  <Popover
+                    open={local.actionsOpen}
+                    onOpenChange={(open) => setLocal("actionsOpen", open)}
+                    placement="bottom-start"
+                    gutter={6}
+                    class="workbench-surface-add-menu"
+                    triggerAs={(triggerProps) => (
+                      <IconButton
+                        {...triggerProps}
+                        icon={getSemanticIcon("action.more")}
+                        variant="ghost"
+                        aria-label={lingui._({ id: W.tabActionsMenu.id, message: W.tabActionsMenu.message })}
+                        aria-haspopup="menu"
+                        aria-expanded={local.actionsOpen}
+                      />
+                    )}
+                  >
+                    <div class="workbench-surface-add-list" role="menu">
+                      <For each={state().tabs()}>
+                        {(tab) => (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            class="workbench-surface-add-row"
+                            onClick={() => {
+                              workbench.activateTab(props.surface, tab.id)
+                              setLocal("actionsOpen", false)
+                            }}
+                          >
+                            {workbench.panelTitle(tab)}
+                          </button>
+                        )}
+                      </For>
+                      <button type="button" class="workbench-surface-add-row" role="menuitem" onClick={closeOtherTabs}>
+                        <Icon name={getSemanticIcon("action.close")} size="small" />
+                        <span>
+                          <Trans id={W.closeOtherTabs.id} message={W.closeOtherTabs.message} />
+                        </span>
+                      </button>
+                    </div>
+                  </Popover>
+                </div>
+              </Show>
+
+              <Show when={isSide()}>
+                <IconButton
+                  icon={getSemanticIcon(state().fullscreen() ? "workspace.split" : "workspace.fullscreen")}
+                  variant="ghost"
+                  aria-label={
+                    state().fullscreen()
+                      ? lingui._({ id: "workspace.fullscreen.exit", message: "Restore view" })
+                      : lingui._({ id: "workspace.fullscreen.enter", message: "Expand workspace" })
+                  }
+                  aria-pressed={state().fullscreen()}
+                  onClick={() => state().setFullscreen(!state().fullscreen())}
+                />
+                <IconButton
+                  icon={getSemanticIcon("workspace.collapse")}
+                  variant="ghost"
+                  onClick={() => state().close()}
+                  aria-label={lingui._({ id: "workspace.collapse", message: "Collapse workspace" })}
+                />
+              </Show>
+            </div>
           </div>
         </Show>
         <div class="workbench-surface-body">

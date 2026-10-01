@@ -2,50 +2,45 @@ import { For, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { useWorkbenchPanels } from "@/context/workbench"
-import { isWorkbenchPanelLaunchable } from "@/context/workbench/panel-model"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 
-export function ResourceHome() {
+export function ResourceHome(props: WorkbenchPanelContentProps) {
   const workbench = useWorkbenchPanels()
   const lingui = useLingui()
-  const recent = () =>
-    workbench
-      .surface("side")
-      .tabs()
-      .filter((tab) => tab.panelId !== "resource-home" && workbench.panelForTab(tab))
+  const resources = () => workbench.panels("side").filter((panel) => ["notes", "file", "browser"].includes(panel.id))
   return (
     <div class="resource-home">
-      <header class="resource-home-toolbar">
-        <h2>{lingui._({ id: "workspace.home.title", message: "Workspace" })}</h2>
-      </header>
       <div class="resource-home-content">
-        <Show when={recent().length}>
-          <h3>{lingui._({ id: "workspace.home.continue", message: "Continue viewing" })}</h3>
+        <div class="resource-home-heading">
+          <div class="resource-home-icon">
+            <Icon name={getSemanticIcon("workspace.newTab")} size="normal" />
+          </div>
+          <h2>{lingui._({ id: "workspace.home.newTab", message: "New tab" })}</h2>
+        </div>
+        <Show
+          when={resources().length}
+          fallback={
+            <p>
+              {lingui._({ id: "workspace.home.unavailable", message: "No resources are available in this project." })}
+            </p>
+          }
+        >
+          <div class="resource-home-grid">
+            <For each={resources()}>
+              {(panel) => (
+                <button
+                  type="button"
+                  class="resource-home-card"
+                onClick={() => void workbench.openPanel(panel.id, { replaceTab: props.tab.id })}
+                >
+                  <Icon name={panel.icon as IconName} size="small" />
+                  <span>{panel.label}</span>
+                </button>
+              )}
+            </For>
+          </div>
         </Show>
-        <For each={recent()}>
-          {(tab) => (
-            <button
-              type="button"
-              class="workbench-surface-launcher-row"
-              onClick={() => workbench.activateTab("side", tab.id)}
-            >
-              <Icon name={workbench.panelForTab(tab)!.icon as IconName} size="small" />
-              <span>{workbench.panelTitle(tab)}</span>
-            </button>
-          )}
-        </For>
-        <h3>{lingui._({ id: "workspace.home.available", message: "Open a resource" })}</h3>
-        <For each={workbench.panels("side").filter(isWorkbenchPanelLaunchable)}>
-          {(panel) => (
-            <button
-              type="button"
-              class="workbench-surface-launcher-row"
-              onClick={() => void workbench.openPanel(panel.id, { reuseExisting: true })}
-            >
-              <Icon name={panel.icon as IconName} size="small" />
-              <span>{panel.label}</span>
-            </button>
-          )}
-        </For>
       </div>
     </div>
   )

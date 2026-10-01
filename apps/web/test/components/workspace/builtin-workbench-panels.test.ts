@@ -79,8 +79,11 @@ describe("built-in workbench panels", () => {
       BuiltinWorkbenchPanelsProvider({ children: null })
       return done
     })
-    expect(listWorkbenchPanels().find((panel) => panel.id === "resource-home")?.cardinality).toBe("multi")
-    dispose()
+    try {
+      expect(listWorkbenchPanels().find((panel) => panel.id === "resource-home")?.cardinality).toBe("multi")
+    } finally {
+      dispose()
+    }
   })
 
   test("registers only selected optional panels and removes them after reconnection", async () => {

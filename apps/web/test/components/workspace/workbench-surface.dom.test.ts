@@ -40,15 +40,16 @@ beforeAll(async () => {
       const [opened, setOpened] = createSignal(false)
       const [size, setSize] = createSignal(id === "side" ? 360 : 200)
       const [fullscreen, setFullscreen] = createSignal(false)
-      const tabs = [{ id, panelId: id }]
-      return [id, { opened, setOpened, close: () => setOpened(false), size, setSize, tabs: () => tabs,
-        fullscreen, setFullscreen, activeTab: () => tabs[0], active: () => id, setActive: () => {} }]
+      const [tabs, setTabs] = createSignal([{ id, panelId: id }])
+      const [active, setActive] = createSignal(id)
+      return [id, { opened, setOpened, close: () => setOpened(false), size, setSize, tabs, setTabs,
+        fullscreen, setFullscreen, activeTab: () => tabs().find(tab => tab.id === active()), active, setActive }]
     }))
-    window.fixture = { open: id => states[id].setOpened(true), close: id => states[id].close(), crash: setCrash, resize: (id,size) => states[id].setSize(size), size: id => states[id].size() }
+    window.fixture = { open: id => states[id].setOpened(true), close: id => states[id].close(), crash: setCrash, resize: (id,size) => states[id].setSize(size), size: id => states[id].size(), populate: () => states.side.setTabs(Array.from({length:20}, (_,i) => ({ id: i ? 'tab-'+i : 'side', panelId:'side', title: 'Long document title ' + i }))) }
     export const useWorkbenchPanels = () => ({
       surface: id => states[id], panels: () => entries, panelForTab: tab => entries.find(x => x.id === tab?.panelId),
       interact() {}, activateTab(name, id) { states[name].setActive(id) }, getPanel: id => entries.find(entry => entry.id === id),
-      panelTitle: tab => tab.panelId, openPanel: () => {}, closeTab: () => {}, closeOtherTabs: () => {}, moveTab: () => {}
+      panelTitle: tab => tab.title ?? tab.panelId, openPanel: () => {}, closeTab: () => {}, closeOtherTabs: () => {}, moveTab: () => {}
     })
     export const useLayout = () => ({ isDesktop: () => true, sidebar: { opened: () => false, width: () => 250, occupiedWidth: () => 0 } })
   `,
@@ -63,6 +64,10 @@ beforeAll(async () => {
     import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
     import { WorkbenchSurface } from ${JSON.stringify(`/@fs/${source}/components/workspace/workbench-surface.tsx`)}
     import { WorkspaceNavigator } from ${JSON.stringify(`/@fs/${source}/components/workspace/workspace-navigator.tsx`)}
+    import { DefaultSession } from ${JSON.stringify(`/@fs/${source}/plugin/default-session.tsx`)}
+    import { DefaultShell } from ${JSON.stringify(`/@fs/${source}/plugin/default-shell.tsx`)}
+    import ${JSON.stringify(`/@fs/${source}/components/top-bar/session-top-bar.css`)}
+    import ${JSON.stringify(`/@fs/${source}/components/sidebar/sidebar.css`)}
     import { createSignal } from "solid-js"
     import { messages as en } from ${JSON.stringify(`/@fs/${source}/locales/en/messages.po`)}
     import "./state"
@@ -82,6 +87,11 @@ beforeAll(async () => {
     function Fixture() {
       const dialog = useDialog()
       if (location.search === "?navigator-nested") return <button onClick={() => dialog.push(() => <Dialog title="Workspace"><NavigatorProbe /></Dialog>)}>Open host</button>
+      if (location.search === "?composed") return <div style="height:100dvh;display:flex;flex-direction:column">
+        <DefaultShell context={{ shell: { render: part => part === "navigation" ?
+          <aside class="sb-integrated sb-collapsed" style="width:0px"><div class="sb-navigation"><button>Navigation</button></div></aside> : part === "route" ?
+          <DefaultSession context={{ layout: { minimumWidth: () => 350, promptHeight: () => 120, render: view => view === "workbench.side" ? <WorkbenchSurface surface="side" /> : view === "conversation" ? <button onClick={() => window.fixture.open("side")}>Open side</button> : view === "composer" ? <div style="position:absolute;bottom:0;left:0;right:0;z-index:50"><input aria-label="Composer draft" /></div> : null } }} /> : null }}} />
+      </div>
       if (location.search) return <NavigatorProbe />
       return <>
         <button onClick={() => window.fixture.open("side")}>Open side</button>
@@ -140,6 +150,7 @@ interface WorkbenchWindow extends Window {
     crash(value: boolean): void
     resize(id: string, size: number): void
     size(id: string): number
+    populate(): void
   }
 }
 
@@ -150,6 +161,33 @@ async function openSurfaces() {
   await page.getByRole("button", { name: "Open bottom", exact: true }).click()
   await page.getByRole("button", { name: "bottom action" }).waitFor()
 }
+
+test("fullscreen owns display and hit testing without discarding the composer", async () => {
+  await page.goto(baseUrl + "?composed")
+  await page.getByRole("textbox", { name: "Composer draft" }).fill("Keep this unsent draft")
+  await page.getByRole("button", { name: "Open side", exact: true }).click()
+  await page.getByRole("button", { name: "Expand workspace", exact: true }).click()
+  expect(await page.getByRole("textbox", { name: "Composer draft" }).isVisible()).toBe(false)
+  expect(await page.getByRole("button", { name: "Navigation", exact: true }).isVisible()).toBe(false)
+  const tab = page.getByRole("tab", { name: "side", exact: true })
+  await tab.click({ timeout: 2000 })
+  await page.getByRole("button", { name: "Restore view", exact: true }).click()
+  expect(await page.getByRole("textbox", { name: "Composer draft" }).inputValue()).toBe("Keep this unsent draft")
+  expect(errors).toEqual([])
+})
+
+test("resource actions stay reachable when twenty long tabs overflow at 375px", async () => {
+  await page.setViewportSize({ width: 375, height: 900 })
+  await page.goto(baseUrl)
+  await page.getByRole("button", { name: "Open side", exact: true }).click()
+  await page.evaluate(() => (window as unknown as WorkbenchWindow).fixture.populate())
+  const add = page.getByRole("button", { name: "New tab", exact: true })
+  const rect = await add.boundingBox()
+  expect(rect!.x + rect!.width).toBeLessThanOrEqual(375)
+  await add.click({ timeout: 2000 })
+  await page.getByRole("button", { name: "Open a resource", exact: true }).click({ timeout: 2000 })
+  await page.getByRole("menuitem", { name: "extra", exact: true }).waitFor()
+})
 
 test("rapid reverse operations retain the mounted resource and its draft", async () => {
   await page.setViewportSize({ width: 1200, height: 1000 })

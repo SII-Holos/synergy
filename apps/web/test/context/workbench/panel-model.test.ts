@@ -63,8 +63,12 @@ describe("openWorkbenchPanelTab", () => {
       { id: "note", panelId: "notes", resourceId: "one", source: "project" },
     ]
     const result = openWorkbenchPanelTab({
-      panelId: "notes", cardinality: "multi", tabs, replaceTab: "used",
-      init: { resourceId: "one", source: "project" }, createId: () => "unexpected",
+      panelId: "notes",
+      cardinality: "multi",
+      tabs,
+      replaceTab: "used",
+      init: { resourceId: "one", source: "project" },
+      createId: () => "unexpected",
     })
     expect(result.tabs).toEqual(tabs)
     expect(result.active).toBe("note")

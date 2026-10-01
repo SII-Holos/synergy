@@ -34,6 +34,7 @@ export interface OpenWorkbenchPanelOptions {
   reuseExisting?: boolean
   replaceEmpty?: boolean
   replaceCurrent?: boolean
+  replaceTab?: string
   intent?: "user" | "restore" | "output"
   init?: WorkbenchPanelTabInit
 }
@@ -149,6 +150,11 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       const requestedInit = options.init && entry.resolveTab ? await entry.resolveTab(options.init) : options.init
       if (options.init && entry.resolveTab && !requestedInit) return undefined
       const target = layout.surface(boundSession, entry.surface)
+      if (
+        options.replaceTab &&
+        !target.tabs().some((tab) => tab.id === options.replaceTab && tab.panelId === "resource-home")
+      )
+        return undefined
       const tabs = target.tabs()
       const shouldReuse = options.reuseExisting || (!options.forceNew && entry.cardinality !== "multi")
       const requestedResource = requestedInit?.resourceId ?? entry.defaultResource?.resourceId
@@ -179,6 +185,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         active: target.active(),
         replaceCurrent,
         replaceEmpty: options.replaceEmpty,
+        replaceTab: options.replaceTab,
       })
       if (replacement && replacement.resourceId !== undefined && !sameWorkbenchResource(replacement, panelId, init)) {
         if (!(await closePolicy.canClose(boundSession, replacement))) return undefined
@@ -204,6 +211,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         reuseExisting: options.reuseExisting && !options.forceNew,
         replaceEmpty: options.replaceEmpty,
         replaceCurrent,
+        replaceTab: options.replaceTab,
         active: replacement?.id ?? target.active(),
       })
 

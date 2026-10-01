@@ -209,6 +209,7 @@ const builtinIconNames = [
   "square-check",
   "square-pen",
   "square-play",
+  "square-plus",
   "square-x",
   "stamp",
   "stethoscope",

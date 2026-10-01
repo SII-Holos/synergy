@@ -23317,23 +23317,15 @@ msgstr "Expand workspace"
 
 #. js-lingui-explicit-id
 msgid "workspace.fullscreen.exit"
-msgstr "Exit fullscreen"
-
-#. js-lingui-explicit-id
-msgid "workspace.home.available"
-msgstr "Open a resource"
-
-#. js-lingui-explicit-id
-msgid "workspace.home.continue"
-msgstr "Continue viewing"
+msgstr "Restore view"
 
 #. js-lingui-explicit-id
 msgid "workspace.home.newTab"
 msgstr "New tab"
 
 #. js-lingui-explicit-id
-msgid "workspace.home.title"
-msgstr "Workspace"
+msgid "workspace.home.unavailable"
+msgstr "No resources are available in this project."
 
 #. js-lingui-explicit-id
 msgid "workspace.location.directory"
@@ -23380,5 +23372,9 @@ msgid "workspace.output.view"
 msgstr "View"
 
 #. js-lingui-explicit-id
+msgid "workspace.resource.open"
+msgstr "Open a resource"
+
+#. js-lingui-explicit-id
 msgid "workspace.tab.new"
-msgstr "New resource tab"
+msgstr "New tab"

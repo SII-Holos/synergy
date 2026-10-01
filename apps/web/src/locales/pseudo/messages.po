@@ -23320,19 +23320,11 @@ msgid "workspace.fullscreen.exit"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "workspace.home.available"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "workspace.home.continue"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "workspace.home.newTab"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "workspace.home.title"
+msgid "workspace.home.unavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -23377,6 +23369,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "workspace.output.view"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.resource.open"
 msgstr ""
 
 #. js-lingui-explicit-id

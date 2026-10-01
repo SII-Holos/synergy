@@ -339,7 +339,7 @@
   [data-default-session]:not(:has(.workbench-surface--side.workbench-surface--open)) .stb-root {
     padding-right: 64px;
   }
-  [data-default-session] .workbench-surface--side .workbench-surface-tabs {
-    padding-right: 64px;
+  [data-default-session]:has(.workbench-surface--side.workbench-surface--open) .session-workbench-controls {
+    display: none;
   }
 }

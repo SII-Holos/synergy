@@ -111,9 +111,9 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
       register({
         id: "resource-home",
         label: i18n._({ id: "workspace.home.newTab", message: "New tab" }),
-        icon: getSemanticIcon("navigation.home"),
+        icon: getSemanticIcon("workspace.newTab"),
         surface: "side",
-        cardinality: "singleton",
+        cardinality: "multi",
         pluginId: "builtin",
         launchable: false,
         loader: async () => ({ default: (await import("./resource-home")).ResourceHome }),

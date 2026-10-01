@@ -23317,23 +23317,15 @@ msgstr "展开工作区"
 
 #. js-lingui-explicit-id
 msgid "workspace.fullscreen.exit"
-msgstr "恢复分栏视图"
-
-#. js-lingui-explicit-id
-msgid "workspace.home.available"
-msgstr "打开资源"
-
-#. js-lingui-explicit-id
-msgid "workspace.home.continue"
-msgstr "继续查看"
+msgstr "还原视图"
 
 #. js-lingui-explicit-id
 msgid "workspace.home.newTab"
 msgstr "新标签页"
 
 #. js-lingui-explicit-id
-msgid "workspace.home.title"
-msgstr "工作区"
+msgid "workspace.home.unavailable"
+msgstr "此项目暂无可用资源。"
 
 #. js-lingui-explicit-id
 msgid "workspace.location.directory"
@@ -23380,5 +23372,9 @@ msgid "workspace.output.view"
 msgstr "查看"
 
 #. js-lingui-explicit-id
+msgid "workspace.resource.open"
+msgstr "打开资源"
+
+#. js-lingui-explicit-id
 msgid "workspace.tab.new"
-msgstr "新建资源标签页"
+msgstr "新建标签页"
