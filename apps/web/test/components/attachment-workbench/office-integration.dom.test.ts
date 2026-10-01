@@ -31,15 +31,19 @@ beforeAll(async () => {
         "dompurify",
       ],
     },
-    build: { outDir: path.join(cache, "dist"), emptyOutDir: true },
+    build: {
+      outDir: path.join(cache, "dist"),
+      emptyOutDir: true,
+      rollupOptions: { input: path.join(fixture, "integration.html") },
+    },
     server: { host: "127.0.0.1", port: await fixturePort(), fs: { allow: [path.resolve(appRoot, "../..")] } },
   }
   development = await createServer(config)
   await development.listen()
-  developmentUrl = development.resolvedUrls!.local[0]!
+  developmentUrl = new URL("integration.html", development.resolvedUrls!.local[0]!).href
   await build({ ...config, logLevel: "error" })
   production = await preview({ ...config, preview: { host: "127.0.0.1", port: await fixturePort() } })
-  productionUrl = production.resolvedUrls.local[0]!
+  productionUrl = new URL("integration.html", production.resolvedUrls!.local[0]!).href
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage()
 }, 90_000)
