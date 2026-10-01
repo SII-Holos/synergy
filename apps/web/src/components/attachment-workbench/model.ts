@@ -1,3 +1,4 @@
+import { OFFICE_INPUT_MAX_BYTES } from "./office-contract"
 import type { AttachmentPart, Part, ToolPart } from "@ericsanchezok/synergy-sdk"
 
 export const ATTACHMENT_TEXT_MAX_BYTES = 4 * 1024 * 1024
@@ -17,7 +18,18 @@ export interface AttachmentWorkbenchPanelInit {
   state: AttachmentResourceState
 }
 
-export type AttachmentPreviewKind = "image" | "pdf" | "markdown" | "html" | "source" | "video" | "audio" | "unsupported"
+export type AttachmentPreviewKind =
+  | "docx"
+  | "xlsx"
+  | "pptx"
+  | "image"
+  | "pdf"
+  | "markdown"
+  | "html"
+  | "source"
+  | "video"
+  | "audio"
+  | "unsupported"
 
 export interface AttachmentPreviewCapability {
   kind: AttachmentPreviewKind
@@ -114,6 +126,20 @@ function extension(filename: string | undefined) {
 export function classifyAttachmentPreview(mime: string, filename?: string): AttachmentPreviewCapability {
   mime = mime.split(";")[0]!.trim().toLowerCase()
   const ext = extension(filename)
+  const officeMime: Record<string, "docx" | "xlsx" | "pptx"> = {
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+  }
+  const officeKind =
+    officeMime[mime] ?? (["docx", "xlsx", "pptx"].includes(ext ?? "") ? (ext as "docx" | "xlsx" | "pptx") : undefined)
+  if (officeKind)
+    return {
+      kind: officeKind,
+      defaultMode: "preview",
+      dual: false,
+      maxBytes: OFFICE_INPUT_MAX_BYTES,
+    }
   if (mime.startsWith("image/")) return { kind: "image", defaultMode: "preview", dual: false }
   if (mime === "application/pdf" || ext === "pdf") {
     return { kind: "pdf", defaultMode: "preview", dual: false, maxBytes: ATTACHMENT_PDF_MAX_BYTES }

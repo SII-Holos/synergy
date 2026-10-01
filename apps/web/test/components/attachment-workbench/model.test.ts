@@ -217,8 +217,9 @@ describe("attachment preview classification", () => {
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "report.docx",
       ).kind,
-    ).toBe("unsupported")
+    ).toBe("docx")
     expect(classifyAttachmentPreview("application/zip", "bundle.zip").kind).toBe("unsupported")
+    expect(classifyAttachmentPreview("application/msword", "old.doc").kind).toBe("unsupported")
   })
 })
 

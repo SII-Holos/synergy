@@ -912,6 +912,34 @@ msgid "app.attachment.mode.source"
 msgstr "Source"
 
 #. js-lingui-explicit-id
+msgid "app.attachment.office.corrupt"
+msgstr "This file is damaged or incomplete. Download the original to check it."
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.encrypted"
+msgstr "Encrypted Office files cannot be previewed. Download the original to open it."
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.find"
+msgstr "Find in document"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.matches"
+msgstr "{count} matching pages"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.nextMatch"
+msgstr "Next match"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.notice"
+msgstr "Preview layout may differ from the original file."
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.unsupported"
+msgstr "This Office file uses an unsupported format. Download the original to open it."
+
+#. js-lingui-explicit-id
 msgid "app.attachment.pdf.fitWidth"
 msgstr "Fit width"
 

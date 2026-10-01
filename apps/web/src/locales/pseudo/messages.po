@@ -912,6 +912,34 @@ msgid "app.attachment.mode.source"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.attachment.office.corrupt"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.encrypted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.find"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.matches"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.nextMatch"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.notice"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.unsupported"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.attachment.pdf.fitWidth"
 msgstr ""
 

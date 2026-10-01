@@ -1,4 +1,15 @@
-import { createEffect, createMemo, createResource, createSignal, Match, onCleanup, Show, Switch } from "solid-js"
+import {
+  lazy,
+  Suspense,
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  Match,
+  onCleanup,
+  Show,
+  Switch,
+} from "solid-js"
 import { useLingui } from "@lingui/solid"
 import {
   formatAttachmentSize,
@@ -22,6 +33,8 @@ import {
 import { AttachmentPdfPreview } from "./pdf-preview"
 import { sanitizeAttachmentHtml } from "./html"
 import "./styles.css"
+
+const OfficePreview = lazy(() => import("./office-preview").then((module) => ({ default: module.OfficePreview })))
 
 function attachmentBytes(attachment: AttachmentFile) {
   const metadata = attachment.metadata?.attachment as Record<string, unknown> | undefined
@@ -74,8 +87,9 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
     if (!request || request.tooLarge) previewReader.cancel()
   })
   onCleanup(() => previewReader.cancel())
+  const safePayload = () => (payload.error ? undefined : payload())
   const text = createMemo(() => {
-    const bytes = payload()
+    const bytes = safePayload()
     return bytes ? new TextDecoder().decode(bytes) : undefined
   })
   const previewError = createMemo(() => {
@@ -176,10 +190,17 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
               <span>{lingui._(A.loading)}</span>
             </div>
           </Match>
+          <Match when={capability()?.kind === "docx" ? safePayload() : undefined}>
+            {(bytes) => (
+              <Suspense fallback={<Spinner />}>
+                <OfficePreview format="docx" bytes={bytes()} filename={props.file.filename} />
+              </Suspense>
+            )}
+          </Match>
           <Match when={capability()?.kind === "image" && url()}>
             {(href) => <AttachmentImagePreview url={href()} filename={props.file.filename} />}
           </Match>
-          <Match when={capability()?.kind === "pdf" ? payload() : undefined}>
+          <Match when={capability()?.kind === "pdf" ? safePayload() : undefined}>
             {(bytes) => <AttachmentPdfPreview bytes={bytes()} />}
           </Match>
           <Match when={displayMode() === "source" ? text() : undefined}>

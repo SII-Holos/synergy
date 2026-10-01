@@ -912,6 +912,34 @@ msgid "app.attachment.mode.source"
 msgstr "源文件"
 
 #. js-lingui-explicit-id
+msgid "app.attachment.office.corrupt"
+msgstr "文件已损坏或不完整，请下载原文件检查。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.encrypted"
+msgstr "暂不支持预览加密的 Office 文件，请下载原文件打开。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.find"
+msgstr "查找文档内容"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.matches"
+msgstr "{count} 页匹配"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.nextMatch"
+msgstr "下一个匹配"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.notice"
+msgstr "预览排版可能与原文件不同。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.unsupported"
+msgstr "此 Office 文件使用了暂不支持的格式，请下载原文件打开。"
+
+#. js-lingui-explicit-id
 msgid "app.attachment.pdf.fitWidth"
 msgstr "适应宽度"
 
