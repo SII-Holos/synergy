@@ -7,6 +7,27 @@ import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 
+test("historical executor limits remain evidence without becoming active runtime settings", () =>
+  runtime.run(() => {
+    const captured = Experiment.capture({ model: "test/historical" })
+    const recorded = { execution: { toolExecutorConcurrency: { file: 2, link: 3 } } }
+    const snapshot = Experiment.Snapshot.parse({ ...captured, runtime: recorded })
+    expect(snapshot.runtime).toEqual(recorded)
+    expect(Experiment.Runtime.safeParse(recorded).success).toBe(false)
+    expect(Experiment.File.safeParse({ version: 1, label: "retired", runtime: recorded }).success).toBe(false)
+    const current = { execution: { toolExecutorConcurrency: { file: 5 } } }
+    Experiment.provide(snapshot, () => {
+      expect(Experiment.apply(current).execution?.toolExecutorConcurrency).toEqual({ file: 5 })
+    })
+    for (const value of [0, -1, 1.5, 513, "3"])
+      expect(
+        Experiment.Snapshot.safeParse({
+          ...captured,
+          runtime: { execution: { toolExecutorConcurrency: { link: value } } },
+        }).success,
+      ).toBe(false)
+  }))
+
 test("sealed core experiments apply without enabling absent optional mechanisms", () => {
   const context = RuntimeContext.create(runtime.host)
   try {

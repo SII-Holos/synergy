@@ -78,6 +78,16 @@ export namespace Experiment {
     "explicit_command",
   ])
   export type Source = z.infer<typeof Source>
+  const RecordedRuntime = Runtime.extend({
+    execution: Runtime.shape.execution
+      .unwrap()
+      .extend({
+        toolExecutorConcurrency: z
+          .record(z.string().min(1), Execution.shape.toolExecutorConcurrency.unwrap().valueType)
+          .optional(),
+      })
+      .optional(),
+  }).meta({ ref: "ExperimentRecordedRuntime" })
   export const Snapshot = z
     .object({
       version: z.literal(1),
@@ -86,7 +96,7 @@ export namespace Experiment {
       fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
       effective: Overrides,
       overrides: Overrides,
-      runtime: Runtime,
+      runtime: RecordedRuntime,
       sources: z.record(z.string(), Source),
     })
     .strict()
