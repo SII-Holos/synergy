@@ -23088,6 +23088,14 @@ msgid "ui.turnChangeSummary.title"
 msgstr "已更改 {fileCount, plural, one {# 个文件} other {# 个文件}}"
 
 #. js-lingui-explicit-id
+msgid "ui.userMessage.markdown"
+msgstr "Markdown"
+
+#. js-lingui-explicit-id
+msgid "ui.userMessage.source"
+msgstr "查看源码"
+
+#. js-lingui-explicit-id
 msgid "window.close.aria"
 msgstr "关闭"
 

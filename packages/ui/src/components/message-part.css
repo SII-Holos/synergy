@@ -1084,3 +1084,23 @@
     transform: translateX(0);
   }
 }
+[data-user-markdown] {
+  white-space: normal;
+  min-width: 0;
+
+  button[data-user-reference],
+  button[data-user-image] {
+    display: inline;
+    color: var(--syntax-property);
+    text-align: start;
+    text-decoration: underline dotted;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+  }
+}
+
+[data-slot="user-message-source"] {
+  font-size: 11px;
+  color: var(--text-weak);
+  cursor: pointer;
+}

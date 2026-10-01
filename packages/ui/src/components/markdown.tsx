@@ -38,7 +38,7 @@ function formatLanguage(language: string) {
   return normalized.replaceAll(/[-_]+/g, " ")
 }
 
-function enhanceMarkdown(root: HTMLDivElement, _: (d: MessageDescriptor) => string) {
+export function enhanceMarkdown(root: HTMLDivElement, _: (d: MessageDescriptor) => string) {
   const disposers: Array<() => void> = []
 
   for (const table of root.querySelectorAll<HTMLTableElement>("table")) {

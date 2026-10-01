@@ -23088,6 +23088,14 @@ msgid "ui.turnChangeSummary.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "ui.userMessage.markdown"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.userMessage.source"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "window.close.aria"
 msgstr ""
 

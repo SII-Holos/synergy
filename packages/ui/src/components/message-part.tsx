@@ -37,6 +37,7 @@ import { Checkbox } from "./checkbox"
 import { DagGraph } from "./dag-graph"
 import { DiffChanges } from "./diff-changes"
 import { Markdown } from "./markdown"
+import { UserMarkdown } from "./user-markdown"
 import { AttachmentGallery } from "./attachment-card"
 import { getDirectory as _getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
@@ -1377,10 +1378,21 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
   const { _ } = useLingui()
   const data = useData()
   const [expanded, setExpanded] = createSignal(false)
+  const [sourceView, setSourceView] = createSignal(false)
+  const [renderedHeight, setRenderedHeight] = createSignal(0)
+  const resourceOpen = useResourceOpen()
+  const [messageBody, setMessageBody] = createSignal<HTMLDivElement>()
+  createEffect(() => {
+    const element = messageBody()
+    if (!element || typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(() => setRenderedHeight(element.scrollHeight))
+    observer.observe(element)
+    onCleanup(() => observer.disconnect())
+  })
 
   const text = createMemo(() => visibleUserMessageText(props.parts))
   const isTurnBubble = createMemo(() => props.variant === "turn-bubble")
-  const canCollapse = createMemo(() => isTurnBubble() && shouldCollapseUserMessage(text()))
+  const canCollapse = createMemo(() => isTurnBubble() && (shouldCollapseUserMessage(text()) || renderedHeight() > 320))
   const collapsed = createMemo(() => canCollapse() && !expanded())
   const timestamp = createMemo(() => {
     const created = props.message.time?.created
@@ -1441,7 +1453,30 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
           data-collapsed={collapsed() ? "" : undefined}
           data-collapsible={canCollapse() ? "" : undefined}
         >
-          <HighlightedText text={text()} references={inlineFiles()} />
+          <div ref={setMessageBody}>
+            <Show when={!sourceView()} fallback={<HighlightedText text={text()} references={inlineFiles()} />}>
+              <UserMarkdown
+                text={text()}
+                references={inlineFiles().map((file) => ({
+                  start: file.source!.text!.start,
+                  end: file.source!.text!.end,
+                }))}
+                onOpenReference={(index) => {
+                  const file = inlineFiles()[index]
+                  if (file)
+                    resourceOpen?.open(
+                      {
+                        kind: "workspace-file",
+                        path: fileReferencePath(file),
+                        mime: file.mime,
+                        filename: file.filename,
+                      },
+                      { prefer: "workspace" },
+                    )
+                }}
+              />
+            </Show>
+          </div>
           <Show when={collapsed()}>
             <div data-slot="user-message-fade">
               <button type="button" data-slot="user-message-expand" onClick={() => setExpanded(true)}>
@@ -1462,8 +1497,20 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
           </Show>
         </div>
       </Show>
-      <Show when={isTurnBubble() && hasVisibleContent()}>
+      <Show when={hasVisibleContent()}>
         <div data-slot="user-message-meta">
+          <Show when={text()}>
+            <button
+              type="button"
+              data-slot="user-message-source"
+              aria-pressed={sourceView()}
+              onClick={() => setSourceView(!sourceView())}
+            >
+              {sourceView()
+                ? _({ id: "ui.userMessage.markdown", message: "Markdown" })
+                : _({ id: "ui.userMessage.source", message: "View source" })}
+            </button>
+          </Show>
           <Show keyed when={timestamp()}>
             {(value) => <span data-slot="user-message-time">{value}</span>}
           </Show>
