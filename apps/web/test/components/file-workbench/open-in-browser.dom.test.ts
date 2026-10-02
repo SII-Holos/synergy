@@ -110,6 +110,7 @@ beforeAll(async () => {
       path.join(fixtureDirectory, "main.tsx"),
       `
         import { createComponent } from "solid-js"
+        import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
         import { render } from "solid-js/web"
         import { setupI18n } from "@lingui/core"
         import { I18nProvider } from "@lingui/solid"
@@ -122,9 +123,13 @@ beforeAll(async () => {
             createComponent(I18nProvider, {
               i18n,
               children: () =>
-                createComponent(FileWorkbenchContent, {
-                  tab: { id: "file", type: "file", title: file, resourceId: "wsp_demo@1/" + file, state: { workspace: { id: "wsp_demo", generation: 1, scopeID: "project", path: "/workspace/demo", type: "directory" } } },
-                  onRequestClose: () => {},
+                createComponent(DialogProvider, {
+                  get children() {
+                    return createComponent(FileWorkbenchContent, {
+                      tab: { id: "file", type: "file", title: file, resourceId: "wsp_demo@1/" + file, state: { workspace: { id: "wsp_demo", generation: 1, scopeID: "project", path: "/workspace/demo", type: "directory" } } },
+                      onRequestClose: () => {},
+                    })
+                  },
                 }),
             }),
           document.querySelector("#root"),

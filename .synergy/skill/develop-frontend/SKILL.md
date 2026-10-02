@@ -132,6 +132,8 @@ bun test --cwd apps/web test/testing/color-token-contract.test.ts
 
 ## Verify
 
+When a shared component gains a provider dependency, update every direct DOM fixture that mounts it and run those suites together. Mount the real shared UI provider and use getter-based children so Solid constructs descendants within its owner; file preview and menu fixtures must exercise the same navigation dependencies as the product page.
+
 1. Run the narrow component, model, or context test first.
 2. Run:
 
