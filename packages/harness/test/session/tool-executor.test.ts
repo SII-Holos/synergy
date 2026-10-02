@@ -8,7 +8,6 @@ describe("ToolExecutor", () => {
     expect(ToolExecutor.classify("scan_files")).toBe("file")
     expect(ToolExecutor.classify("resolve_conflicts")).toBe("file")
     expect(ToolExecutor.classify("browser_action")).toBe("browser")
-    expect(ToolExecutor.classify("link_invoke")).toBe("link")
     expect(
       ToolExecutor.classify("plugin__example__probe", {
         type: "plugin",

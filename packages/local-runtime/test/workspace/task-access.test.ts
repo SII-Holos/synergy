@@ -8,7 +8,7 @@ import { FileMutation } from "../../src/file/mutation"
 import { testRuntime } from "../support/runtime"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 
-test("Session turns serialize writes across files while reads and disjoint Workspaces proceed", async () => {
+test("Session turns allow independent file commits before another turn finishes", async () => {
   await using runtime = await testRuntime()
   await runtime.run(async () => {
     await using a = await tmpdir()
@@ -46,16 +46,17 @@ test("Session turns serialize writes across files while reads and disjoint Works
       await SessionManager.run(sessions[3]!.id, () =>
         FileMutation.write({ path: path.join(b.path, "other.txt"), content: "other", expectedVersion: null }),
       )
-      expect(order).toEqual(["first"])
+      await second
+      expect(order).toEqual(["first", "second"])
     } finally {
       release.resolve()
       await Promise.all([first, second])
     }
-    expect(order).toEqual(["first", "first-finished", "second"])
+    expect(order).toEqual(["first", "second", "first-finished"])
   })
 }, 10_000)
 
-test("a parent hands off its write reservation to a child in the same Workspace", async () => {
+test("a parent and child commit independently in the same Workspace", async () => {
   await using runtime = await testRuntime()
   await runtime.run(async () => {
     await using tmp = await tmpdir()
@@ -93,7 +94,6 @@ test("retirement can publish its own binding change without releasing native exc
     const scope = await directory.scope()
     const before = await WorkspaceBinding.register(scope.id, directory.path)
     await WorkspaceAccess.maintenance(async () => {
-      await WorkspaceAccess.reserveWrite(null)
       await WorkspaceAccess.retire([directory.path], async () => {
         const after = await WorkspaceBinding.rebind(before.id, {
           scopeID: scope.id,
@@ -121,15 +121,21 @@ test("retirement writes reuse their native exclusion and reject late reservation
     const timer = setTimeout(() => controller.abort(new Error("Retirement fixture deadline")), 1000)
     try {
       await WorkspaceAccess.maintenance(
-        () =>
-          WorkspaceAccess.retire([directory.path], async () => {
-            await FileMutation.write({
-              path: path.join(directory.path, "owned.txt"),
-              content: "owned",
-              expectedVersion: null,
-            })
-            await expect(WorkspaceAccess.reserveWrite(null)).rejects.toThrow("before retirement")
-            await expect(WorkspaceAccess.handoff(async () => {})).rejects.toThrow("retirement")
+        async () =>
+          ScopeContext.provide({
+            scope: await directory.scope(),
+            fn: () =>
+              WorkspaceAccess.retire([directory.path], async () => {
+                await FileMutation.write({
+                  path: path.join(directory.path, "owned.txt"),
+                  content: "owned",
+                  expectedVersion: null,
+                })
+                await expect(WorkspaceAccess.write([path.dirname(directory.path)], async () => {})).rejects.toThrow(
+                  "retirement ownership",
+                )
+                await expect(WorkspaceAccess.handoff(async () => {})).rejects.toThrow("retirement")
+              }),
           }),
         { signal: controller.signal },
       )

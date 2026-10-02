@@ -1,14 +1,24 @@
-import { SynergyLinkBash } from "@ericsanchezok/synergy-link-protocol"
 import type { Tool } from "./tool"
 import type { MessageV2 } from "../session/message-v2"
 import type { SandboxExecutionWrapper } from "../sandbox/types"
 
-export type BashParams = SynergyLinkBash.ExecutePayload & {
-  targetID?: string
-  linkID?: string
+export interface BashParams {
+  command: string
+  description: string
+  workdir?: string
+  background?: boolean
+  yieldSeconds?: number
 }
 
-export type BashMetadata = SynergyLinkBash.ResultMetadata
+export interface BashMetadata {
+  output?: string
+  description?: string
+  exit?: number | null
+  signal?: string | null
+  processId?: string
+  background?: boolean
+  durationMs?: number
+}
 
 export interface BashResult {
   title: string
@@ -24,7 +34,9 @@ export interface BashSandboxPrepareInput {
   extraReadRoots: string[]
 }
 
-export type BashSandboxPrepare = (input: BashSandboxPrepareInput) => Promise<SandboxExecutionWrapper>
+export type BashSandboxPrepare = (
+  input: BashSandboxPrepareInput,
+) => Promise<SandboxExecutionWrapper & { id?: string; intentDigest?: string; cleanup?: () => Promise<void> }>
 
 export const MAX_METADATA_LENGTH = 30_000
 

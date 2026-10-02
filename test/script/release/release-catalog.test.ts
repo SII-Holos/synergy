@@ -31,7 +31,6 @@ test("publishes the entire runtime closure and preserves the complete-product np
   expect(new Set(FIXED_REGISTRY_PACKAGES).size).toBe(FIXED_REGISTRY_PACKAGES.length)
   expect(RUNTIME_RELEASE_TARGETS.core.registry).toBe("@ericsanchezok/synergy-cli")
   expect(RUNTIME_RELEASE_TARGETS.full.registry).toBe("@ericsanchezok/synergy")
-  expect(RELEASE_CATALOG.link.registry).toBeNull()
 })
 
 test("both profiles use the canonical CLI launcher", () => {

@@ -1,3 +1,4 @@
+import { $ } from "bun"
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -6,6 +7,20 @@ import { ReadTool } from "@ericsanchezok/synergy-local-runtime/tools/read"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
+
+async function worktreeFixture(options?: { git?: boolean; init?(directory: string): Promise<void> }) {
+  const fixture = await tmpdir({
+    ...options,
+    git: true,
+    init: async (directory) => {
+      const workspace = path.join(directory, "worktree")
+      await $`git worktree add --detach ${workspace} HEAD`.quiet().cwd(directory)
+      await options?.init?.(workspace)
+      return workspace
+    },
+  })
+  return { ...fixture, path: fixture.extra, originalCheckout: fixture.path }
+}
 
 // ---------------------------------------------------------------------------
 // tool/workspace-boundary.test.ts
@@ -37,14 +52,14 @@ describe("workspace boundary — attach/read tools", () => {
     runtime.run(async () => {
       // Set up a worktree scenario: the scope is the worktree dir,
       // the workspace points to it, and originalCheckout is a separate path.
-      await using tmp = await tmpdir({
+      await using tmp = await worktreeFixture({
         git: true,
         init: async (dir) => {
           await Bun.write(path.join(dir, "in-scope.txt"), "workspace content")
         },
       })
 
-      const originalCheckout = path.resolve(tmp.path, "..", "original-checkout")
+      const originalCheckout = tmp.originalCheckout
 
       // Write a file in the "original checkout" path that should be blocked
       const originalFile = path.join(originalCheckout, "secret.txt")
@@ -70,14 +85,14 @@ describe("workspace boundary — attach/read tools", () => {
 
   test("read tool allows file access inside active workspace under git_worktree policy", () =>
     runtime.run(async () => {
-      await using tmp = await tmpdir({
+      await using tmp = await worktreeFixture({
         git: true,
         init: async (dir) => {
           await Bun.write(path.join(dir, "in-scope.txt"), "workspace content")
         },
       })
 
-      const originalCheckout = path.resolve(tmp.path, "..", "original-checkout")
+      const originalCheckout = tmp.originalCheckout
 
       await ScopeContext.provide({
         scope: await tmp.scope(),
@@ -105,14 +120,14 @@ describe("workspace boundary — attach/read tools", () => {
 
   test("read tool parent-traversal into original checkout triggers boundary gate", () =>
     runtime.run(async () => {
-      await using tmp = await tmpdir({
+      await using tmp = await worktreeFixture({
         git: true,
         init: async (dir) => {
           await Bun.write(path.join(dir, "in-scope.txt"), "ok")
         },
       })
 
-      const originalCheckout = path.resolve(tmp.path, "..", "original-checkout")
+      const originalCheckout = tmp.originalCheckout
 
       await ScopeContext.provide({
         scope: await tmp.scope(),
@@ -141,11 +156,11 @@ describe("workspace boundary — attach/read tools", () => {
 
   test("read tool absolute path outside workspace triggers boundary gate", () =>
     runtime.run(async () => {
-      await using tmp = await tmpdir({
+      await using tmp = await worktreeFixture({
         git: true,
       })
 
-      const originalCheckout = "/tmp/original-checkout-" + Math.random().toString(36).slice(2)
+      const originalCheckout = tmp.originalCheckout
 
       await ScopeContext.provide({
         scope: await tmp.scope(),
@@ -209,8 +224,8 @@ describe("workspace boundary — anchored tools (view_file, scan_files, parse_co
       // When the sandbox/enforcement modules are integrated, all file-access
       // tools must check the unified capability gate.
 
-      await using tmp = await tmpdir({ git: true })
-      const originalCheckout = path.resolve(tmp.path, "..", "original-checkout")
+      await using tmp = await worktreeFixture()
+      const originalCheckout = tmp.originalCheckout
 
       await ScopeContext.provide({
         scope: await tmp.scope(),

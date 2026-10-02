@@ -5,17 +5,21 @@ import { ExecutionCapacity } from "./execution-capacity"
 
 export namespace SessionWorkspaceRuntime {
   export interface Provider {
-    lockWorktree(directory: string): Promise<unknown>
-    unlockWorktree(directory: string): Promise<void>
     withWorktree<T>(directory: string, sessionID: string | undefined, fn: () => Promise<T>): Promise<T>
     createWorktree(input: {
       sessionID: string
       name?: string
+      sourceWorkspaceID?: string
       baseRef: "current" | "fresh"
       baseRevision?: string
       bind: boolean
     }): Promise<unknown>
-    enterWorktree(input: { sessionID: string; target: string; force?: boolean }): Promise<unknown>
+    enterWorktree(input: {
+      sessionID: string
+      target: string
+      force?: boolean
+      sourceWorkspaceID?: string
+    }): Promise<unknown>
     releaseSession(session: Pick<Info, "id" | "scope" | "workspace">): Promise<void>
   }
   type Transition = (session: Info, workspace: Info["workspace"]) => Promise<void>
@@ -55,9 +59,13 @@ export namespace SessionWorkspaceRuntime {
     state().transitions.set(id, transition)
   }
 
-  export async function beforeTransition(session: Info, workspace: Info["workspace"]) {
+  export async function beforeTransition(
+    session: Info,
+    workspace: Info["workspace"],
+    workspaceID = workspace?.id ?? null,
+  ) {
     if (
-      session.workspaceID === (workspace?.id ?? null) &&
+      session.workspaceID === workspaceID &&
       session.workspace?.generation === workspace?.generation &&
       session.workspace?.path === workspace?.path
     )
@@ -70,6 +78,9 @@ export namespace SessionWorkspaceRuntime {
     RuntimeContext.assertCompositionOpen("Session workspace runtime")
     if (current.provider) throw new Error("Session workspace runtime is already registered")
     current.provider = provider
+  }
+  export async function beforeEnvironmentTransition(session: Info) {
+    for (const transition of state().transitions.values()) await transition(session, session.workspace)
   }
   export async function releaseSession(session: Pick<Info, "id" | "scope" | "workspace">) {
     await state().provider?.releaseSession(session)

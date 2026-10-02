@@ -9,6 +9,10 @@
   user-select: none;
   cursor: default;
   outline: none;
+  transition:
+    background-color var(--motion-duration-fast),
+    color var(--motion-duration-fast),
+    border-color var(--motion-duration-fast);
   white-space: nowrap;
 
   &[data-variant="primary"] {
@@ -66,10 +70,10 @@
   }
 
   &[data-variant="secondary"] {
-    border: transparent;
+    border-color: var(--border-base);
     background-color: var(--workbench-control-bg, var(--button-secondary-base));
     color: var(--text-strong);
-    box-shadow: var(--shadow-xs-border);
+    box-shadow: none;
 
     &:hover:not(:disabled) {
       background-color: var(--workbench-control-bg-hover, var(--button-secondary-hover));
@@ -86,8 +90,6 @@
     }
     &:active:not(:disabled) {
       background-color: var(--workbench-selected-bg, var(--button-secondary-base));
-      scale: 0.99;
-      transition: all 150ms ease-out;
     }
     &:disabled {
       border-color: var(--border-disabled);
@@ -142,7 +144,7 @@
   }
 
   &[data-size="large"] {
-    height: 32px;
+    height: 40px;
     padding: 6px 12px;
 
     &[data-icon] {
@@ -163,4 +165,9 @@
   &:focus {
     outline: none;
   }
+}
+
+[data-component="button"]:focus-visible {
+  outline: 2px solid var(--border-selected);
+  outline-offset: 2px;
 }

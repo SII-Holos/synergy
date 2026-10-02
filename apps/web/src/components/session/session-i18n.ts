@@ -441,10 +441,10 @@ export const S = {
   worktreeStepPending: { id: "session.worktree.step.pending", message: "Pending" },
 
   // worktree-transition-card.tsx
-  worktreeCardMainCheckout: { id: "session.worktree.card.mainCheckout", message: "Main checkout" },
-  worktreeCardSessionWorktree: { id: "session.worktree.card.sessionWorktree", message: "Session worktree" },
+  worktreeCardMainCheckout: { id: "session.worktree.card.mainCheckout", message: "Main folder" },
+  worktreeCardSessionWorktree: { id: "session.worktree.card.sessionWorktree", message: "Worktree" },
   worktreeCardWorktreeSession: { id: "session.worktree.card.worktreeSession", message: "Worktree session" },
-  worktreeCardDismissAria: { id: "session.worktree.card.dismissAria", message: "Dismiss worktree status" },
+  worktreeCardDismissAria: { id: "session.worktree.card.dismissAria", message: "Dismiss copy status" },
   worktreeCardDismissTitle: { id: "session.worktree.card.dismissTitle", message: "Dismiss" },
   worktreeCardRetry: { id: "session.worktree.card.retry", message: "Retry" },
 
@@ -515,35 +515,35 @@ export const S = {
   worktreeDialogCreate: { id: "session.worktree.dialog.create", message: "Create worktree" },
 
   // worktree-session.ts — factory step labels
-  worktreeStepCreateCheckout: { id: "session.worktree.step.createCheckout", message: "Create checkout" },
-  worktreeStepBindWorktree: { id: "session.worktree.step.bindWorktree", message: "Bind worktree" },
+  worktreeStepCreateCheckout: { id: "session.worktree.step.createCheckout", message: "Create Worktree" },
+  worktreeStepBindWorktree: { id: "session.worktree.step.bindWorktree", message: "Use existing copy" },
   worktreeStepPrepareSession: { id: "session.worktree.step.prepareSession", message: "Prepare session" },
   worktreeStepSendPrompt: { id: "session.worktree.step.sendPrompt", message: "Send prompt" },
-  worktreeStepReturnCheckout: { id: "session.worktree.step.returnCheckout", message: "Return to main checkout" },
-  worktreeStepCreateBind: { id: "session.worktree.step.createBind", message: "Create and bind checkout" },
-  worktreeStepRefreshStatus: { id: "session.worktree.step.refreshStatus", message: "Refresh workspace status" },
+  worktreeStepReturnCheckout: { id: "session.worktree.step.returnCheckout", message: "Return to project files" },
+  worktreeStepCreateBind: { id: "session.worktree.step.createBind", message: "Create and use copy" },
+  worktreeStepRefreshStatus: { id: "session.worktree.step.refreshStatus", message: "Refresh file location" },
 
   // worktree-session.ts — factory detail strings
   worktreeDetailPreparingWorktree: {
     id: "session.worktree.detail.preparingWorktree",
-    message: "Preparing a new git worktree.",
+    message: "Preparing a Worktree of the project files.",
   },
-  worktreeDetailUsingCheckout: { id: "session.worktree.detail.usingCheckout", message: "Using the selected checkout." },
+  worktreeDetailUsingCheckout: { id: "session.worktree.detail.usingCheckout", message: "Using the selected copy." },
   worktreeDetailUpdatingWorkspace: {
     id: "session.worktree.detail.updatingWorkspace",
-    message: "Updating this session workspace.",
+    message: "Updating the files used by this task.",
   },
   worktreeDetailPreparingWorktreeBind: {
     id: "session.worktree.detail.preparingWorktreeBind",
-    message: "Preparing the worktree and updating this session workspace.",
+    message: "Preparing the copy for this task.",
   },
   worktreeDetailWorkspaceUpdated: {
     id: "session.worktree.detail.workspaceUpdated",
-    message: "Session workspace updated.",
+    message: "The task’s file location has been updated.",
   },
   worktreeDetailRefreshingStatus: {
     id: "session.worktree.detail.refreshingStatus",
-    message: "Loading the updated session workspace.",
+    message: "Loading the task’s updated file location.",
   },
   worktreeDetailCreatingConversation: {
     id: "session.worktree.detail.creatingConversation",
@@ -559,7 +559,7 @@ export const S = {
   },
   worktreeDetailWorkspaceSetupComplete: {
     id: "session.worktree.detail.workspaceSetupComplete",
-    message: "Workspace setup complete.",
+    message: "Worktree is ready.",
   },
   worktreeDetailPromptDispatched: {
     id: "session.worktree.detail.promptDispatched",
@@ -567,55 +567,58 @@ export const S = {
   },
 
   // worktree-session.ts — factory title/description strings
-  worktreeTitleLeaving: { id: "session.worktree.title.leaving", message: "Leaving worktree" },
+  worktreeTitleLeaving: { id: "session.worktree.title.leaving", message: "Returning to project files" },
   worktreeDescLeaving: {
     id: "session.worktree.desc.leaving",
-    message: "Returning this session to the main checkout.",
+    message: "Returning this task to the project files.",
   },
-  worktreeTitleMoving: { id: "session.worktree.title.moving", message: "Moving session to worktree" },
+  worktreeTitleMoving: { id: "session.worktree.title.moving", message: "Preparing a Worktree" },
   worktreeDescMoving: {
     id: "session.worktree.desc.moving",
-    message: "Creating an isolated checkout and binding this session to it.",
+    message: "Creating a Worktree for this task.",
   },
-  worktreeTitleMainActive: { id: "session.worktree.title.mainActive", message: "Main checkout active" },
+  worktreeTitleMainActive: { id: "session.worktree.title.mainActive", message: "Using project files" },
   worktreeDescMainActive: {
     id: "session.worktree.desc.mainActive",
-    message: "This session now runs from the main checkout. The worktree remains available.",
+    message: "This task now uses the project files. The Worktree remains available.",
   },
-  worktreeTitleWorktreeActive: { id: "session.worktree.title.worktreeActive", message: "Worktree active" },
+  worktreeTitleWorktreeActive: { id: "session.worktree.title.worktreeActive", message: "Using a Worktree" },
   worktreeDescWorktreeActive: {
     id: "session.worktree.desc.worktreeActive",
-    message: "This session now runs in the isolated checkout.",
+    message: "This task now uses the Worktree.",
   },
   worktreeTitleRefreshing: {
     id: "session.worktree.title.refreshing",
-    message: "Refreshing workspace status",
+    message: "Refreshing file location",
   },
   worktreeDescRefreshing: {
     id: "session.worktree.desc.refreshing",
-    message: "The workspace changed. Updating the session status.",
+    message: "The file location changed. Updating the task status.",
   },
   worktreeTitleRefreshFailed: {
     id: "session.worktree.title.refreshFailed",
-    message: "Workspace status refresh failed",
+    message: "Could not refresh file location",
   },
   worktreeDescRefreshFailed: {
     id: "session.worktree.desc.refreshFailed",
-    message: "The workspace changed successfully, but Synergy couldn’t refresh the session status. {message}",
+    message: "The file location changed, but the task status could not be refreshed. {message}",
   },
-  worktreeTitleLeaveFailed: { id: "session.worktree.title.leaveFailed", message: "Leave worktree failed" },
-  worktreeTitleMoveFailed: { id: "session.worktree.title.moveFailed", message: "Move to worktree failed" },
+  worktreeTitleLeaveFailed: { id: "session.worktree.title.leaveFailed", message: "Could not return to project files" },
+  worktreeTitleMoveFailed: { id: "session.worktree.title.moveFailed", message: "Could not use the Worktree" },
   worktreeTitleSetupFailed: { id: "session.worktree.title.setupFailed", message: "Worktree setup failed" },
-  worktreeSetupCommandFailed: { id: "session.worktree.setupCommandFailed", message: "Worktree setup command failed." },
-  worktreeTitleStarting: { id: "session.worktree.title.starting", message: "Starting worktree session" },
+  worktreeSetupCommandFailed: {
+    id: "session.worktree.setupCommandFailed",
+    message: "The Worktree setup command failed.",
+  },
+  worktreeTitleStarting: { id: "session.worktree.title.starting", message: "Starting task in a Worktree" },
   worktreeDescStarting: {
     id: "session.worktree.desc.starting",
-    message: "Preparing the workspace and submitting your first message.",
+    message: "Preparing the Worktree and sending your first message.",
   },
-  worktreeTitleStarted: { id: "session.worktree.title.started", message: "Worktree session request accepted" },
+  worktreeTitleStarted: { id: "session.worktree.title.started", message: "Worktree task accepted" },
   worktreeDescStarted: {
     id: "session.worktree.desc.started",
-    message: "The workspace is ready and your first message is queued for processing.",
+    message: "The Worktree is ready and your first message is queued.",
   },
   scopesNewSession: { id: "scopes.newSession", message: "New session" },
   scopesTasksRunning: { id: "scopes.tasksRunning", message: "{running}/{count} tasks running" },

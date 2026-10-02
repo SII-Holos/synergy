@@ -9,6 +9,8 @@ import { lazy } from "@ericsanchezok/synergy-harness/util/lazy"
 
 import { ZipReader, BlobReader, BlobWriter } from "@zip.js/zip.js"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { FileView } from "./view"
+import { FileScan } from "./scan"
 import { ProcessOutput } from "@ericsanchezok/synergy-harness/process/output"
 
 export namespace Ripgrep {
@@ -238,7 +240,11 @@ export namespace Ripgrep {
     maxRecordBytes?: number
     maxOutputBytes?: number
   }): AsyncGenerator<Match["data"]> {
-    const args = [await Ripgrep.filepath(), "--json", "--glob=!.git/*"]
+    if (!FileView.native()) {
+      yield* selectedMatches(input)
+      return
+    }
+    const args = [await Ripgrep.filepath(), "--json", "--no-require-git", "--glob=!.git/*"]
     if (input.fixedStrings) args.push("--fixed-strings")
     if (input.hidden) args.push("--hidden")
     if (input.follow) args.push("--follow")
@@ -278,6 +284,68 @@ export namespace Ripgrep {
     }
   }
 
+  async function* selectedMatches(input: Parameters<typeof matches>[0]): AsyncGenerator<Match["data"]> {
+    const candidates = new Set<string>()
+    for (const selected of input.paths?.length ? input.paths : ["."]) {
+      input.signal?.throwIfAborted()
+      const filename = FileView.resolve(selected, input.cwd)
+      const entry = await FileView.stat(filename, true)
+      if (!entry) throw Object.assign(new Error(`Workspace search path is absent: ${selected}`), { code: "ENOENT" })
+      if (entry.kind === "file") candidates.add(filename)
+      else if (entry.kind === "directory")
+        for await (const file of FileScan.files({
+          ...input,
+          cwd: filename,
+          hidden: input.hidden ?? false,
+          follow: input.follow ?? false,
+        }))
+          candidates.add(FileView.resolve(file, filename))
+      if (candidates.size > 100_000) throw new Error("Workspace search exceeds 100,000 files")
+    }
+    const files = [...candidates].sort()
+    if (input.sortModifiedDesc) {
+      const times = new Map<string, number>()
+      for (const file of files) times.set(file, (await FileView.stat(file, true))?.mtime ?? 0)
+      files.sort((a, b) => times.get(b)! - times.get(a)!)
+    }
+    const binary = await filepath()
+    const maximum = input.maxOutputBytes ?? 8 * 1024 * 1024
+    let output = 0
+    for (const filename of files.length ? files : [undefined]) {
+      input.signal?.throwIfAborted()
+      const args = [binary, "--json", "--no-config"]
+      if (input.fixedStrings) args.push("--fixed-strings")
+      if (input.maxCountPerFile !== undefined) args.push("--max-count", String(input.maxCountPerFile))
+      args.push("--", input.pattern, "-")
+      const data = filename === undefined ? new Uint8Array() : await FileView.bytes(filename)
+      input.signal?.throwIfAborted()
+      const proc = Bun.spawn(args, {
+        cwd: RuntimeContext.current().host.home,
+        env: RuntimeContext.current().host.env,
+        stdin: new Blob([new Uint8Array(data)]),
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const errors = ProcessOutput.drainText(proc.stderr, { signal: input.signal })
+      let ended = false
+      try {
+        for await (const line of ProcessOutput.lines(proc.stdout, { ...input, maxOutputBytes: maximum - output })) {
+          output += Buffer.byteLength(line) + 1
+          if (!line) continue
+          const result = Result.parse(JSON.parse(line))
+          if (result.type === "match" && filename !== undefined) yield { ...result.data, path: { text: filename } }
+        }
+        const [code, error] = await Promise.all([proc.exited, errors])
+        ended = true
+        if (code !== 0 && code !== 1) throw new Error(`ripgrep failed: ${error.text.trim() || `exit code ${code}`}`)
+      } finally {
+        if (!ended) await terminate(proc)
+        await errors.catch(() => undefined)
+      }
+    }
+    input.signal?.throwIfAborted()
+  }
+
   export async function* files(input: {
     cwd: string
     glob?: string[]
@@ -288,7 +356,11 @@ export namespace Ripgrep {
     maxRecordBytes?: number
     maxOutputBytes?: number
   }) {
-    const args = [await filepath(), "--files", "--glob=!.git/*"]
+    if (!FileView.native()) {
+      yield* FileScan.files(input)
+      return
+    }
+    const args = [await filepath(), "--files", "--no-require-git", "--glob=!.git/*"]
     if (input.follow !== false) args.push("--follow")
     if (input.hidden !== false) args.push("--hidden")
     if (input.maxDepth !== undefined) args.push(`--max-depth=${input.maxDepth}`)

@@ -7,7 +7,7 @@ export function createBrowserCommandId() {
 }
 
 export function shouldResumeBrowserSession(state: BrowserAPISessionState): boolean {
-  return state.status === "active" && state.page !== null && state.hostStatus !== "ready"
+  return state.pages.some((page) => page.status === "active") && state.hostStatus !== "ready"
 }
 
 export function browserControlCommandFromMessage(msg: Record<string, unknown>): Record<string, unknown> | null {
@@ -27,6 +27,9 @@ export function browserControlCommandFromMessage(msg: Record<string, unknown>): 
         width: Number(msg.width),
         height: Number(msg.height),
       }
+    case "download.accept":
+    case "download.cancel":
+      return { type: msg.type, id: String(msg.id ?? "") }
     case "resume":
       return { type: "resume" }
     case "close":

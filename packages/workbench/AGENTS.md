@@ -1,6 +1,6 @@
 # workbench Package
 
-Product Projects, statistics and performance read models, activity presentation and notifications. Keep product read models out of core execution accounting. Session and rollout evidence remain canonical in Harness. Read the root AGENTS.md and the owning architecture document before changes.
+Product Projects, statistics and performance read models, activity presentation and notifications. Keep product read models out of core execution accounting. Session, rollout and retained usage evidence remain canonical in Harness. Statistics routes and compatibility projections consume the public usage service; keep accounting formulas in that owner. Read the root AGENTS.md and the owning architecture document before changes.
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - Own configuration schemas, normalization, reference checks and secret handling in `src/config-schema.ts`; consumers use its typed reader and the host composes its registration.
@@ -8,6 +8,10 @@ Product Projects, statistics and performance read models, activity presentation 
 - Tests live under test/ and use isolated homes through the testing support package.
 
 Run bun run typecheck and the affected tests, then the root package and dependency checks.
+
+Project directory configuration, explicit sharing and the central migration belong to `src/project/directories.ts` and `src/project/migration.ts`. Preserve Scope identity and historical Worktree sources when changing the main folder. Run `bun test test/project/directories.test.ts` for creation, revision, busy-resource, migration and multi-repository behavior.
+
+Project task defaults belong to `src/project/task-defaults.ts` and its scoped HTTP adapter. Verify project-only writes and concurrent edits with `bun test test/project/task-defaults.test.ts`; regenerate the SDK after changing its schemas.
 
 The managed-worktree janitor schedules per Scope and drains active sweeps during disposal. Run `bun test test/project/worktree-janitor.test.ts` for scheduler ownership changes.
 

@@ -58,7 +58,9 @@ export async function selectDirectoryWithNativeDialog(
   }
   const result = await options.showOpenDialog(options.mainWindow, {
     title: request.title,
-    properties: request.multiple ? ["openDirectory", "multiSelections"] : ["openDirectory"],
+    properties: request.multiple
+      ? ["openDirectory", "createDirectory", "multiSelections"]
+      : ["openDirectory", "createDirectory"],
   })
   const directoryPaths = result.canceled ? [] : result.filePaths
   if (!request.multiple && directoryPaths.length > 1) {

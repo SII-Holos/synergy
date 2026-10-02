@@ -1,3 +1,4 @@
+import { LinuxSandboxProfile } from "./linux-profile"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { sandboxHelper } from "./helper-source"
 import * as path from "path"
@@ -9,9 +10,7 @@ import { detectPlatform } from "./detect"
 import {
   DEFAULT_PROTECTED_PATHS,
   defaultRuntimeReadRoots,
-  expandGitProtectedSubpaths,
   joinPathLike,
-  uniqueRoots,
   readDenyPathsFor,
 } from "@ericsanchezok/synergy-harness/sandbox/policy"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
@@ -565,23 +564,11 @@ export namespace LinuxBackend {
       }
     }
 
-    const homedir = os.homedir()
     const workspace = opts.workspace
-    const writableRoots = opts.sandboxMode === "workspace_write" ? [workspace, ...(opts.extraWritableRoots ?? [])] : []
-
-    // Aggregate protected paths: the platform defaults plus every protected
-    // path accumulated by the enforcement gate — which includes `<root>/.git`
-    // for every writable project root, closing the gap where additional
-    // project folders' git metadata would otherwise be writable. Whole-dir
-    // `.git` entries expand into `.git/hooks` + `.git/config` so git
-    // index/object/ref writes keep working while the tamper surface stays
-    // read-only. Only paths that exist on disk are passed to the helper:
-    // bwrap hard-fails when a --ro-bind source is missing, and the helper's
-    // ProtectedCreateMonitor covers the create-new-metadata vector for paths
-    // that do not exist yet.
-    const protectedPaths = expandGitProtectedSubpaths(
-      uniqueRoots([...DEFAULT_PROTECTED_PATHS(homedir, workspace), ...(opts.protectedPaths ?? [])]),
-    ).filter((p) => fs.existsSync(p))
+    const { profile, writableRoots } = LinuxSandboxProfile.compile(opts, {
+      home: os.homedir(),
+      readDenyPaths: readDenyPathsFor({ workspace, extraDenyPaths: opts.dataDenyRoots }),
+    })
 
     // Stage 2 re-reads the helper profile at the same absolute path inside
     // the sandbox. The plan's final controlled-tmp bind shadows every host
@@ -621,43 +608,6 @@ export namespace LinuxBackend {
           error: String(e),
         })
       }
-    }
-
-    // Read model: reads are allowed globally and only credential and sensitive
-    // paths stay unreadable — the same deny list macOS compiles into its
-    // Seatbelt profile, produced here by the shared `readDenyPathsFor` owner so
-    // the platforms cannot drift. Declaring "/" as the readable root makes the
-    // helper bind the host root read-only, which covers the workspace, the
-    // dynamic-linker entry points, the staged helper, and the network config
-    // paths in one bind; the deny list is what keeps credentials unreadable.
-    // Ordinary external reads therefore no longer depend on the enforcement
-    // gate predicting the paths a command will touch.
-    const readDenyPaths = readDenyPathsFor({
-      workspace,
-      extraDenyPaths: opts.dataDenyRoots,
-    })
-
-    // Build the sandbox permission profile JSON for the helper
-    const profile: Record<string, unknown> = {
-      fileSystem: {
-        workspace,
-        readableRoots: ["/"],
-        writableRoots,
-        readOnlySubpaths: protectedPaths,
-        protectedPaths,
-        // Without ".git" in the metadata names, the helper's per-root ro-bind
-        // loop and create-monitor no longer blanket-protect `.git` directories;
-        // the granular hooks/config read-only mounts above keep the tamper and
-        // code-execution surface protected while git writes work.
-        protectedMetadataNames: [".agents", ".codex"],
-        dataDenyRoots: readDenyPaths,
-        includePlatformDefaults: true,
-      },
-      network: {
-        mode: opts.networkMode ?? "restricted",
-        allowLocalBinding: false,
-        allowedUnixSockets: [],
-      },
     }
 
     // Stage the profile where stage 2 can re-read it at the same absolute

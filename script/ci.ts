@@ -1,41 +1,41 @@
 #!/usr/bin/env bun
+import {
+  distributionBuildIdentity,
+  distributionCommands,
+  publishDistribution,
+  rebindDistribution,
+} from "./ci/distributions"
+import { createIsolatedTestEnv } from "../packages/testing/src/env"
+import { verifyScenarios } from "./ci/junit"
 import { parseArgs } from "node:util"
 import { appendFile, mkdir, readFile } from "node:fs/promises"
 import { execFileSync } from "node:child_process"
 import path from "node:path"
-import { buildCacheIdentity, buildCommands, filesIn, publishBuild, restoreBuild } from "./ci/artifacts"
+import { buildCacheIdentity, buildCommands, publishBuild, restoreBuild } from "./ci/artifacts"
 import { catalog, changedFiles, OUTPUT, ROOT, workspaceInputs } from "./ci/catalog"
 import { verifyCoverage } from "./ci/coverage"
-import { verifyResults, type TaskResult } from "./ci/evidence"
+import { latestResults, readResults, verifyResults } from "./ci/evidence"
+import { downloadInput, workflowExecutions } from "./ci/github"
 import { createPlan, executionQueue, needsBuild, QUEUES, validatePlan, type Mode, type Plan } from "./ci/plan"
 import { executeUnit } from "./ci/run"
-import { policyIdentity, rolloutErrors, shadowEvidence, type ShadowEvidence } from "./ci/rollout"
+import { policyIdentity, shadowEvidence } from "./ci/rollout"
 
-const HELP = `Usage: bun script/ci.ts <plan|run|verify|prepare|restore|build-key|history|rollout-check> [options]
+const HELP = `Usage: bun script/ci.ts <plan|run|verify|prepare|restore|build-key|distribution-key|prepare-distributions> [options]
 plan --base SHA --head SHA --sha SHA --mode full|shadow|affected|diagnostic --only task[,task] --package workspace --file package/test/file.test.ts
 run --plan FILE --unit ID
 verify --plan FILE --results DIRECTORY --jobs JSON
 prepare / restore: produce or validate the input-addressed Linux build bundle.
 build-key: resolve the cache identity on the runner that will build the bundle.
-history: download full-run admission evidence from this repository's successful CI runs.
-rollout-check --history DIRECTORY: require 20 matching full-run samples before affected admission.
-Diagnostic plans never satisfy All checks passed. CI defaults to shadow mode.`
+prepare-distributions --profile core|full: produce only the selected distribution.
+distribution-key --profile core|full: resolve the distribution cache identity.
+Diagnostic plans never satisfy All checks passed. PRs default to affected mode; shared or unknown inputs select full verification.`
 
 export async function policyDigest(root = ROOT) {
   return policyIdentity(
     await Promise.all(
-      [
-        "script/ci/plan.ts",
-        "script/ci/catalog.ts",
-        "script/ci/evidence.ts",
-        "script/ci/coverage.ts",
-        "script/ci/run.ts",
-        "packages/testing/script/run.ts",
-        "packages/testing/script/batches.ts",
-        "script/coverage-exempt.json",
-        "script/workspace-dependencies.ts",
-        "script/workspace-manifest.ts",
-      ].map((file) => readFile(path.join(root, file), "utf8")),
+      ["script/ci/selection.ts", "script/ci/inputs.ts", "script/workspace-dependencies.ts"].map((file) =>
+        readFile(path.join(root, file), "utf8"),
+      ),
     ),
   )
 }
@@ -51,9 +51,9 @@ async function readPlan(file: string): Promise<Plan> {
   validatePlan(plan)
   if (
     process.env.GITHUB_RUN_ID &&
-    (plan.run !== process.env.GITHUB_RUN_ID || plan.attempt !== process.env.GITHUB_RUN_ATTEMPT)
+    (plan.run !== process.env.GITHUB_RUN_ID || Number(plan.attempt) > Number(process.env.GITHUB_RUN_ATTEMPT))
   )
-    throw new Error("Execution belongs to a different workflow attempt; rerun all jobs")
+    throw new Error("Execution belongs to a different workflow run or future plan attempt")
   if (revision("HEAD") !== plan.sha) throw new Error("Execution checkout differs from the planned commit")
   return plan
 }
@@ -62,78 +62,9 @@ export function requiresBuild(plan: Plan) {
   return plan.tasks.some((task) => plan.selected.includes(task.id) && needsBuild(task))
 }
 
-async function history(directory: string): Promise<ShadowEvidence[]> {
-  return Promise.all(
-    (await filesIn(directory))
-      .filter((file) => file.endsWith("shadow.json"))
-      .map(async (file) => JSON.parse(await readFile(file, "utf8")) as ShadowEvidence),
-  )
-}
-
 async function command(args: string[], cwd = ROOT) {
   const child = Bun.spawn(args, { cwd, stdout: "inherit", stderr: "inherit" })
   if ((await child.exited) !== 0) throw new Error(`CI preparation failed: ${args[0]}`)
-}
-
-async function fetchHistory(directory: string) {
-  const repository = process.env.GITHUB_REPOSITORY ?? ""
-  const token = process.env.GH_TOKEN
-  if (!repository || !token) throw new Error("CI history requires repository-scoped read access")
-  const headers = {
-    Authorization: `Bearer ${token}`,
-    Accept: "application/vnd.github+json",
-    "X-GitHub-Api-Version": "2022-11-28",
-  }
-  const response = await fetch(
-    `https://api.github.com/repos/${repository}/actions/workflows/ci.yml/runs?status=completed&per_page=100`,
-    { headers },
-  )
-  if (!response.ok) throw new Error(`Cannot read CI history: ${response.status}`)
-  const data = (await response.json()) as {
-    workflow_runs: Array<{
-      id: number
-      conclusion: string
-      event: string
-      head_branch: string
-      head_sha: string
-      run_attempt: number
-    }>
-  }
-  await mkdir(directory, { recursive: true })
-  const candidates = data.workflow_runs
-    .filter((run) => ["success", "failure"].includes(run.conclusion) && ["push", "pull_request"].includes(run.event))
-    .slice(0, 60)
-  async function download(run: (typeof candidates)[number]) {
-    const artifacts = await fetch(
-      `https://api.github.com/repos/${repository}/actions/runs/${run.id}/artifacts?per_page=100`,
-      { headers },
-    )
-    if (!artifacts.ok) return
-    const listing = (await artifacts.json()) as { artifacts: Array<{ id: number; name: string; expired: boolean }> }
-    const artifact = listing.artifacts.find(
-      (entry) => entry.name === `ci-admission-${run.run_attempt}` && !entry.expired,
-    )
-    if (!artifact) return
-    const destination = path.join(directory, String(run.id))
-    await command([
-      "gh",
-      "run",
-      "download",
-      String(run.id),
-      "--repo",
-      repository,
-      "--name",
-      artifact.name,
-      "--dir",
-      destination,
-    ])
-    const file = path.join(destination, "shadow.json")
-    const sample = (await Bun.file(file).json()) as ShadowEvidence
-    if (sample.run !== String(run.id) || (run.event === "push" && sample.sha !== run.head_sha))
-      throw new Error("CI admission artifact does not match its producing run")
-  }
-  for (let index = 0; index < candidates.length; index += 6)
-    await Promise.all(candidates.slice(index, index + 6).map(download))
 }
 
 async function main() {
@@ -155,7 +86,8 @@ async function main() {
       file: { type: "string" },
       results: { type: "string" },
       jobs: { type: "string" },
-      history: { type: "string" },
+      profile: { type: "string" },
+      cached: { type: "boolean" },
     },
   })
   if (values.help || !positionals.length) {
@@ -163,26 +95,11 @@ async function main() {
     return
   }
   const operation = positionals[0]
-  const historyRoot = values.history ?? path.join(ROOT, OUTPUT, "history")
-  if (operation === "history") {
-    await fetchHistory(historyRoot)
-    return
-  }
-  if (operation === "rollout-check") {
-    const errors = rolloutErrors(await history(historyRoot), await policyDigest())
-    if (errors.length) throw new Error(errors.join("\n"))
-    console.log("Affected admission evidence passed")
-    return
-  }
   if (operation === "plan") {
     const settings = (await Bun.file(path.join(ROOT, "script/ci/rollout.json")).json()) as { mode: Mode }
     const event = process.env.GITHUB_EVENT_NAME
     const mode = (values.mode ?? (["push", "schedule"].includes(event ?? "") ? "full" : settings.mode)) as Mode
     if (!["full", "shadow", "affected", "diagnostic"].includes(mode)) throw new Error("Unknown CI mode")
-    if (mode === "affected") {
-      const errors = rolloutErrors(await history(historyRoot), await policyDigest())
-      if (errors.length) throw new Error(errors.join("\n"))
-    }
     const sha = revision(values.sha ?? "HEAD")
     const head = revision(values.head ?? sha)
     const base = revision(values.base ?? `${head}^`)
@@ -230,6 +147,11 @@ async function main() {
       workspaceInputs(ROOT, base),
       workspaceInputs(ROOT, head),
     ])
+    const { taskInputs } = await import("./ci/inputs")
+    const [baseInputs, headInputs] = await Promise.all([
+      taskInputs(ROOT, base, tasks, baseWorkspaces),
+      taskInputs(ROOT, head, tasks, headWorkspaces),
+    ])
     const plan = createPlan({
       base,
       head,
@@ -240,6 +162,8 @@ async function main() {
       changed: changedFiles(ROOT, base, head),
       baseWorkspaces,
       headWorkspaces,
+      baseInputs,
+      headInputs,
       tasks,
       only: [...only],
     })
@@ -252,6 +176,9 @@ async function main() {
     const outputs: Record<string, string> = {
       sha,
       mode,
+      attempt: plan.attempt,
+      core: String(plan.tasks.some((task) => plan.selected.includes(task.id) && task.profile === "core")),
+      full: String(plan.tasks.some((task) => plan.selected.includes(task.id) && task.profile === "full")),
       build: String(requiresBuild(plan)),
       sandbox: sandbox ? "1" : "0",
       benchmark: String(plan.selected.includes("benchmark-prepare")),
@@ -306,27 +233,38 @@ async function main() {
     return
   }
   if (operation === "prepare") {
-    await command([process.execPath, "packages/local-runtime/script/build-watcher.ts"])
-    await command([process.execPath, "packages/local-runtime/script/build-pty.ts"])
-    for (const recipe of buildCommands()) await command(recipe.args, recipe.cwd)
-    if (process.env.SYNERGY_CI_SANDBOX_BUNDLE === "1") {
-      await command([
-        "cargo",
-        "build",
-        "--locked",
-        "--release",
-        "--manifest-path",
-        "packages/local-runtime/src/sandbox/helper-linux/Cargo.toml",
+    const native = async () => {
+      await Promise.all([
+        command([process.execPath, "packages/local-runtime/script/build-watcher.ts"]),
+        command([process.execPath, "packages/local-runtime/script/build-pty.ts"]),
       ])
-      await mkdir(path.join(ROOT, "packages/local-runtime/sandbox-assets/linux-x64"), { recursive: true })
-      await Bun.write(
-        path.join(ROOT, "packages/local-runtime/sandbox-assets/linux-x64/synergy-sandbox-linux"),
-        Bun.file(
-          path.join(ROOT, "packages/local-runtime/src/sandbox/helper-linux/target/release/synergy-sandbox-linux"),
-        ),
-      )
-      await command(["chmod", "+x", "packages/local-runtime/sandbox-assets/linux-x64/synergy-sandbox-linux"])
+      if (process.env.SYNERGY_CI_SANDBOX_BUNDLE === "1") {
+        await command([
+          "cargo",
+          "build",
+          "--locked",
+          "--release",
+          "--manifest-path",
+          "packages/local-runtime/src/sandbox/helper-linux/Cargo.toml",
+        ])
+        await mkdir(path.join(ROOT, "packages/local-runtime/sandbox-assets/linux-x64"), { recursive: true })
+        await Bun.write(
+          path.join(ROOT, "packages/local-runtime/sandbox-assets/linux-x64/synergy-sandbox-linux"),
+          Bun.file(
+            path.join(ROOT, "packages/local-runtime/src/sandbox/helper-linux/target/release/synergy-sandbox-linux"),
+          ),
+        )
+        await command(["chmod", "+x", "packages/local-runtime/sandbox-assets/linux-x64/synergy-sandbox-linux"])
+      }
     }
+    const web = async () => {
+      for (const recipe of buildCommands()) await command(recipe.args, recipe.cwd)
+      if (process.env.SYNERGY_CI_WEB_BUILD === "true")
+        await command([process.execPath, "run", "--cwd", "apps/web", "build", "--manifest"])
+    }
+    const prepared = await Promise.allSettled([native(), web()])
+    const failed = prepared.find((result) => result.status === "rejected")
+    if (failed?.status === "rejected") throw failed.reason
     await publishBuild()
     return
   }
@@ -335,19 +273,82 @@ async function main() {
     return
   }
   const plan = await readPlan(values.plan ?? path.join(ROOT, OUTPUT, "plan.json"))
+  if (operation === "distribution-key") {
+    if (values.profile !== "core" && values.profile !== "full") throw new Error("A distribution profile is required")
+    const key = await distributionBuildIdentity(ROOT, plan, values.profile)
+    if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `key=${key}\n`)
+    console.log(key)
+    return
+  }
+  if (operation === "prepare-distributions") {
+    const profiles = [
+      ...new Set(
+        plan.tasks
+          .filter((task) => plan.selected.includes(task.id))
+          .map((task) => task.profile)
+          .filter((profile): profile is "core" | "full" => !!profile),
+      ),
+    ]
+    if (values.profile && !profiles.includes(values.profile as "core" | "full"))
+      throw new Error("Unknown or unselected distribution profile")
+    for (const profile of profiles.filter((profile) => !values.profile || values.profile === profile)) {
+      const isolated = await createIsolatedTestEnv()
+      try {
+        if (values.cached) await rebindDistribution(ROOT, plan, profile)
+        else {
+          for (const recipe of distributionCommands(profile, ROOT)) {
+            const child = Bun.spawn(recipe.args, {
+              cwd: ROOT,
+              stdout: "inherit",
+              stderr: "inherit",
+              env: {
+                ...isolated.env,
+                SYNERGY_HOME: path.join(isolated.env.SYNERGY_TEST_ROOT!, "build-home"),
+                SYNERGY_BUILD_TARGETS: "linux-x64",
+                SYNERGY_REQUIRE_SANDBOX_ASSETS: "1",
+                SYNERGY_CI_WEB_MANIFEST: "1",
+                HUSKY: "0",
+              },
+            })
+            if (await child.exited) throw new Error(`Distribution preparation failed: ${recipe.name}`)
+          }
+          await publishDistribution(ROOT, plan, profile)
+        }
+        await command([
+          "tar",
+          "-I",
+          "zstd -T2 -3",
+          "-cf",
+          `.artifacts/ci/distributions/${profile}.tar.zst`,
+          "-C",
+          ".artifacts/ci/distributions",
+          profile,
+        ])
+      } finally {
+        await isolated.dispose()
+      }
+    }
+    return
+  }
   if (operation === "run") {
     if (!values.unit) throw new Error("Execution requires --unit")
-    const failures = await executeUnit(plan, values.unit)
+    const failures = await executeUnit(
+      plan,
+      values.unit,
+      ROOT,
+      process.env.GITHUB_RUN_ID && plan.mode !== "diagnostic"
+        ? (profile) => downloadInput(plan, ROOT, profile)
+        : undefined,
+      process.env.GITHUB_RUN_ATTEMPT ?? plan.attempt,
+    )
     if (failures.length) throw new Error(`CI tasks failed: ${failures.join(", ")}`)
     return
   }
   if (operation !== "verify") throw new Error(`Unknown CI operation: ${operation}`)
   const resultsRoot = values.results ?? path.join(ROOT, OUTPUT, "results")
-  const results = await Promise.all(
-    (await filesIn(resultsRoot))
-      .filter((file) => file.endsWith("/result.json"))
-      .map(async (file) => JSON.parse(await readFile(file, "utf8")) as TaskResult),
-  )
+  const history = await readResults(resultsRoot)
+  const executions = process.env.GITHUB_RUN_ID ? await workflowExecutions(plan) : undefined
+  const results = latestResults(plan, history, executions)
   const needs = JSON.parse(values.jobs ?? process.env.CI_NEEDS ?? "{}") as Record<string, { result: string }>
   const expected = new Set([
     "plan",
@@ -359,9 +360,15 @@ async function main() {
     ),
     ...(requiresBuild(plan) ? ["prepare"] : []),
     ...(plan.selected.includes("benchmark-prepare") ? ["benchmark-prepare"] : []),
+    ...new Set(
+      plan.tasks
+        .filter((task) => plan.selected.includes(task.id) && task.profile)
+        .map((task) => `prepare-${task.profile}`),
+    ),
   ])
   const jobs = [...expected].map((id) => needs[id]?.result ?? "missing")
-  const errors = verifyResults(plan, results, jobs)
+  const errors = verifyResults(plan, history, jobs, executions)
+  if (!errors.length) errors.push(...(await verifyScenarios(resultsRoot, plan, results)))
   const coverage = errors.length ? undefined : await verifyCoverage(ROOT, resultsRoot, plan, results)
   errors.push(...(coverage?.errors ?? []))
   const evidence = shadowEvidence(plan, results, errors.length === 0, await policyDigest())

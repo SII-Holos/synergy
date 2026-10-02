@@ -4,15 +4,13 @@
   "description": "AI-powered development tool",
   "private": true,
   "type": "module",
-  "packageManager": "bun@1.3.14",
+  "packageManager": "bun@1.4.2",
   "scripts": {
     "dev": "bun ./script/dev.ts",
     "desktop:build": "bun run --cwd apps/desktop desktop:build",
     "desktop:pack": "bun run --cwd apps/desktop desktop:pack",
     "desktop:dist": "bun run --cwd apps/desktop desktop:dist",
     "desktop:test": "bun run --cwd apps/desktop desktop:test",
-    "synergy-link": "bun run --cwd packages/synergy-link src/cli.ts",
-    "synergy-link:app": "bun run --cwd packages/synergy-link script/build-app.ts",
     "perf:load": "bun script/performance-load.ts",
     "perf:benchmark": "bun script/performance-benchmark.ts",
     "perf:memory": "bun script/session-memory-benchmark.ts",
@@ -54,7 +52,9 @@
     "ci:plan": "bun script/ci.ts plan",
     "ci:run": "bun script/ci.ts run",
     "ci:verify": "bun script/ci.ts verify",
-    "bench": "uv run --locked --project benchmark synergy-bench"
+    "bench": "uv run --locked --project benchmark synergy-bench",
+    "test:computer-native": "bun run --cwd apps/desktop test:computer-native",
+    "test:computer-acceptance": "bun run --cwd apps/desktop test:computer-acceptance"
   },
   "workspaces": {
     "packages": [
@@ -75,15 +75,12 @@
       "packages/formatter",
       "packages/acp",
       "packages/external-agents",
-      "packages/link-client",
       "packages/code-tools",
       "packages/media",
       "packages/plugin-host",
       "packages/testing",
       "packages/browser-core",
       "packages/computer-protocol",
-      "packages/synergy-link-protocol",
-      "packages/synergy-link",
       "packages/plugin",
       "packages/plugin-kit",
       "packages/sdk/js",
@@ -100,7 +97,7 @@
       "@babel/preset-typescript": "7.28.5",
       "@happy-dom/global-registrator": "20.0.11",
       "@types/babel__core": "7.20.5",
-      "@types/bun": "1.3.14",
+      "@types/bun": "1.4.2",
       "@octokit/rest": "22.0.0",
       "@hono/zod-validator": "0.4.2",
       "ulid": "3.0.1",
@@ -192,6 +189,7 @@
   "patchedDependencies": {
     "ghostty-web@0.3.0": "patches/ghostty-web@0.3.0.patch",
     "@pierre/diffs@1.3.3": "patches/@pierre%2Fdiffs@1.3.3.patch",
-    "@kobalte/core@0.13.11": "patches/@kobalte%2Fcore@0.13.11.patch"
+    "@kobalte/core@0.13.11": "patches/@kobalte%2Fcore@0.13.11.patch",
+    "@hey-api/openapi-ts@0.88.1": "patches/@hey-api%2Fopenapi-ts@0.88.1.patch"
   }
 }

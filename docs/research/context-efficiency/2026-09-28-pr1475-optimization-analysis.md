@@ -140,7 +140,7 @@ process 仍默认非阻塞，默认等待窗口和远程最多 25 秒的限制�
 
 通用截断恢复也从“必须交给子代理”改为可定向搜索或补读，只有独立分析工作有价值时才委派。减少被截断输出触发的机械委派，并不削弱 task 工具和委派权限检查。
 
-代码入口：[主提示](../../../packages/harness/src/agent/prompt/synergy-max/base.txt)、[process](../../../packages/local-runtime/src/tools/process.txt)、[Bash](../../../packages/local-runtime/src/tools/bash.txt)、[本地后台返回](../../../packages/local-runtime/src/tools/bash/local.ts)、[Link 后台返回](../../../packages/synergy-link/src/exec/process-registry.ts)、[截断恢复](../../../packages/harness/src/tool/truncation.ts)。机制取舍见[按证据选择等待](../../decisions/implemented/bug-fix/2026-09-24-evidence-based-process-guidance.md)。
+代码入口：[主提示](../../../packages/harness/src/agent/prompt/synergy-max/base.txt)、[process](../../../packages/local-runtime/src/tools/process.txt)、[Bash](../../../packages/local-runtime/src/tools/bash.txt)、[本地后台返回](../../../packages/local-runtime/src/tools/bash/local.ts)、[截断恢复](../../../packages/harness/src/tool/truncation.ts)。Link 后台返回的历史路径为 `packages/synergy-link/src/exec/process-registry.ts`，实现随 [Link 退役](../../decisions/implemented/simplification/2026-09-29-retire-synergy-link.md)移除。机制取舍见[按证据选择等待](../../decisions/implemented/bug-fix/2026-09-24-evidence-based-process-guidance.md)。
 
 ## 四、benchmark 改善的是测量条件与执行可靠性
 

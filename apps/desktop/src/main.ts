@@ -1,3 +1,4 @@
+import { configureDesktopUserData } from "./user-data.js"
 import { ComputerBrokerClient } from "./computer/broker-client.js"
 import {
   app,
@@ -11,17 +12,27 @@ import {
   powerMonitor,
   powerSaveBlocker,
   shell,
+  safeStorage,
   systemPreferences,
   Tray,
   type BrowserWindowConstructorOptions,
 } from "electron"
-import { readFile } from "node:fs/promises"
+import { readFile, writeFile } from "node:fs/promises"
 import { randomBytes } from "node:crypto"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { BrowserNativeViewManager } from "./browser-native-view.js"
 import { BrowserHostBrokerClient } from "./browser-host-broker.js"
 import { BrowserNativePagePool } from "./browser-native-page-pool.js"
+import { runBrowserPageAction } from "./browser-page-actions.js"
+import { BrowserDataStore } from "./browser-data-store.js"
+import { BrowserDataActions } from "./browser-data-actions.js"
+import {
+  BrowserFileActionSchema,
+  sanitizeBrowserFilename,
+  BROWSER_MAX_DOWNLOAD_BYTES,
+  BrowserPageActionRequestSchema,
+} from "@ericsanchezok/synergy-browser-core"
 import { BrowserNativeLease } from "@ericsanchezok/synergy-browser-core/native-lease"
 import {
   BROWSER_PROTOCOL_VERSION,
@@ -114,6 +125,19 @@ let mainRendererDelivery: DesktopRendererDelivery | null = null
 let startupOverlay: DesktopStartupOverlay | null = null
 let nativeViews: BrowserNativeViewManager | null = null
 let nativePagePool: BrowserNativePagePool | null = null
+let browserData: BrowserDataStore | undefined
+let browserDataActions: BrowserDataActions | undefined
+
+function localBrowserData() {
+  return (browserData ??= new BrowserDataStore(path.join(app.getPath("userData"), "browser-data"), {
+    async available() {
+      const available = await safeStorage.isAsyncEncryptionAvailable()
+      return available && !(process.platform === "linux" && safeStorage.getSelectedStorageBackend() === "basic_text")
+    },
+    encrypt: (text) => safeStorage.encryptStringAsync(text),
+    decrypt: async (data) => (await safeStorage.decryptStringAsync(data)).result,
+  }))
+}
 let computerBroker: ComputerBrokerClient | null = null
 let computerBrokerOrigin: string | null = null
 let browserBroker: BrowserHostBrokerClient | null = null
@@ -147,6 +171,8 @@ let desktopPowerWriteQueue: Promise<void> = Promise.resolve()
 const updateQuitApp = app as typeof app & {
   on(event: "before-quit-for-update", listener: () => void): typeof app
 }
+
+configureDesktopUserData(app, process.env)
 
 try {
   app.setAppUserModelId(desktopAppUserModelId(desktopChannel(app.isPackaged)))
@@ -313,7 +339,9 @@ async function createWindow() {
   if (process.platform !== "darwin") {
     mainWindow.setMenuBarVisibility(false)
   }
-  nativePagePool ??= new BrowserNativePagePool()
+  nativePagePool ??= new BrowserNativePagePool({
+    onVisit: (partition, url, title) => localBrowserData().visit(partition, url, title),
+  })
   nativeViews = new BrowserNativeViewManager(mainWindow, nativePagePool, (event) => {
     rendererDelivery.send("browser-native:event", event)
   })
@@ -601,6 +629,7 @@ async function syncLocalBrowserBroker(force = false): Promise<void> {
   browserBrokerOrigin = nextOrigin
   browserBrokerStatus = "connecting"
   browserBroker = new BrowserHostBrokerClient({
+    clearSavedData: (partition) => localBrowserData().clear(partition),
     serverUrl,
     token,
     nativePool: nativePagePool,
@@ -644,12 +673,9 @@ async function syncLocalComputerBroker(force = false) {
       path.join(app.isPackaged ? process.resourcesPath : path.resolve(dirname, "../build"), "computer", "cua-driver"),
     checkPermissions() {
       if (process.platform !== "darwin") return
-      if (!systemPreferences.isTrustedAccessibilityClient(false)) {
-        systemPreferences.isTrustedAccessibilityClient(true)
-        throw new Error("Enable Accessibility for Synergy in macOS System Settings, then retry Computer Use.")
-      }
-      if (systemPreferences.getMediaAccessStatus("screen") !== "granted") {
-        throw new Error("Enable Screen Recording for Synergy in macOS System Settings, then restart Synergy Desktop.")
+      return {
+        accessibility: systemPreferences.isTrustedAccessibilityClient(false),
+        screen: systemPreferences.getMediaAccessStatus("screen") === "granted",
       }
     },
   })
@@ -657,6 +683,94 @@ async function syncLocalComputerBroker(force = false) {
 }
 
 function registerIpcHandlers() {
+  registerNativeViewHandlers("browserNative.fileAction", async (input) => {
+    const request = BrowserFileActionSchema.parse(input)
+    if (request.data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(request.data))
+      throw new Error("File data is invalid.")
+    const data = Buffer.from(request.data, "base64")
+    if (data.length > BROWSER_MAX_DOWNLOAD_BYTES) throw new Error("File exceeds the supported size.")
+    if (request.operation === "copyImage") {
+      if (request.mime !== "image/png") throw new Error("Only PNG images can be copied.")
+      const image = nativeImage.createFromBuffer(data)
+      if (image.isEmpty()) throw new Error("Image could not be read.")
+      clipboard.writeImage(image)
+      return { cancelled: false }
+    }
+    const filename = sanitizeBrowserFilename(request.filename, "download")
+    const selected = await dialog.showSaveDialog(mainWindow!, {
+      defaultPath: path.join(app.getPath("downloads"), filename),
+    })
+    if (selected.canceled || !selected.filePath) return { cancelled: true }
+    await writeFile(selected.filePath, data)
+    if (request.operation === "open") {
+      if (/\.(app|bat|cmd|com|dmg|exe|msi|pkg|ps1|scr|sh|vbs)$/i.test(selected.filePath))
+        throw new Error("Saved. Open this file manually from your file manager.")
+      const error = await shell.openPath(selected.filePath)
+      if (error) throw new Error("Saved, but the file could not be opened. Open it from your file manager.")
+    }
+    return { cancelled: false }
+  })
+  registerNativeViewHandlers("browserNative.dataAction", async (input) => {
+    browserDataActions ??= new BrowserDataActions({
+      store: localBrowserData(),
+      target(ownerKey, pageId) {
+        const page = nativePagePool?.find(ownerKey, pageId)
+        if (!page || page.failed || page.closing) throw new Error("Page is unavailable. Resume it and retry.")
+        return { partition: page.input.profile.partition, contents: page.generation.contents }
+      },
+      async chooseFile(kind) {
+        const result = await dialog.showOpenDialog(mainWindow!, {
+          properties: ["openFile"],
+          filters: [
+            {
+              name: kind === "passwords" ? "CSV / Safari ZIP" : "Cookie JSON",
+              extensions: kind === "passwords" ? ["csv", "zip"] : ["json"],
+            },
+          ],
+        })
+        return result.canceled ? undefined : result.filePaths[0]
+      },
+    })
+    return browserDataActions.execute(input as import("@ericsanchezok/synergy-browser-core").BrowserDataRequest)
+  })
+  registerNativeViewHandlers("browserNative.pageAction", async (input) => {
+    const request = BrowserPageActionRequestSchema.parse(input)
+    const page = nativePagePool?.find(request.ownerKey, request.pageId)
+    if (!page || page.failed || page.closing) throw new Error("Page is unavailable. Resume it and retry.")
+    if (request.action.type === "capture") {
+      const contents = page.generation.contents
+      const url = contents.getURL(),
+        title = contents.getTitle()
+      let navigated = false
+      const changed = () => {
+        navigated = true
+      }
+      contents.on("did-start-navigation", changed)
+      let capture
+      try {
+        capture = await page.execute({ type: "screenshot", ...(request.action.fullPage ? { fullPage: true } : {}) })
+      } finally {
+        contents.off("did-start-navigation", changed)
+      }
+      if (
+        navigated ||
+        capture.type !== "screenshot" ||
+        contents !== page.generation.contents ||
+        contents.getURL() !== url
+      )
+        throw new Error("Page changed during capture. Retry the screenshot.")
+      return { ...capture, type: "capture", url, title, capturedAt: Date.now() }
+    }
+    return runBrowserPageAction(page.generation.contents, request.action, async (data) => {
+      const selected = await dialog.showSaveDialog(mainWindow!, {
+        defaultPath: path.join(app.getPath("downloads"), "page.pdf"),
+        filters: [{ name: "PDF", extensions: ["pdf"] }],
+      })
+      if (selected.canceled || !selected.filePath) return false
+      await writeFile(selected.filePath, data)
+      return true
+    })
+  })
   registerNativeViewHandlers("browserNative.attach", async (input) => {
     await nativeViews?.attach(parseBrowserNativeAttach(input))
   })

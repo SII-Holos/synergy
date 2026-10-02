@@ -61,6 +61,20 @@ synergy web --attach http://localhost:4097
 
 `web` does not start a server. It verifies `/global/health`, verifies that the target serves the Web application, and opens the authenticated attach URL. The default target is `http://localhost:4096`.
 
+## Workspace and Environment resources
+
+`synergy workspace` and `synergy environment` operate on an existing server through the generated SDK. Supply `--attach` and `--scope`; these commands do not open local Agent storage or acquire its writer lock. Results are JSON; HTTP errors retain their structured payload and set a nonzero exit status. Set `SYNERGY_SERVER_TOKEN` for authenticated servers, or select another variable with `--token-env`.
+
+Use `environment profiles`, `environment list`, `environment inspect`, and `workspace list` to inspect resources without starting compute. `environment create <profile> --request-id <stable-id>` selects a profile; reuse the request ID when reconciling a response that was lost. Session selection, reclamation and detachment require the observed IDs or revisions shown by inspection. `recover` reconciles an existing operation and retries saving; it never resubmits its command.
+
+```bash
+synergy environment profiles --attach http://localhost:4096 --scope home
+synergy workspace create files --name Research --attach http://localhost:4096 --scope home
+synergy environment create worker --request-id research-compute --attach http://localhost:4096 --scope home
+```
+
+Saved files can be moved with `workspace export <workspace-id> <new-file> --revision <observed-revision>` and `workspace import <file> <destination-profile>`. Use `workspace recover-saved <workspace-id> <profile> --revision <observed-revision>` to create a separate saved copy when a live view is unavailable. These commands do not include unsaved live changes or resolve unknown execution. All take the same explicit `--attach` and `--scope` options. See [Workspace file authority](../architecture/workspace-and-files.md).
+
 ## One-off Work with `send`
 
 ```bash
@@ -228,24 +242,9 @@ Use the data commands for supported relocation and merge workflows. Copying indi
 
 Channel and Holos connection models are described in [Connections](../product/connections.md).
 
-## Browser Installation and Diagnostics
+## Desktop Browser
 
-```bash
-synergy browser doctor
-synergy browser doctor --json
-synergy browser install
-synergy browser install --force --json
-synergy browser install --no-deps
-synergy browser install-deps
-```
-
-`browser doctor` checks Chromium discovery, executable version, and an actual headless launch using the same arguments as Browser tools. On Linux it also reports dynamic-loader diagnostics. The command exits with status 1 when Browser is not ready; `--json` emits the complete structured report.
-
-`browser install` downloads Chromium into Synergy-managed data without replacing system browsers. It accepts only a release manifest signed by Synergy, verifies the target, archive size, and SHA-256 digest, and installs atomically. Repeated installs reuse the current managed version; `--force` reinstalls it.
-
-On Linux, `browser install` also installs the distribution packages required by the release's pinned Playwright version. This system-package step can invoke `sudo` or `su`; run it from an account authorized to install packages. Use `--no-deps` when those packages are managed separately, or run `browser install-deps` to repair only the system dependencies. JSON install reports include `systemDependencies` with `installed`, `not-required`, or `skipped`.
-
-Local source builds do not have signed release manifests; use an installed release or set `CHROMIUM_PATH`. Unsupported platforms can also install Chrome or Chromium separately and set `CHROMIUM_PATH`.
+The built-in Browser uses Desktop's bundled Electron engine and local backend. CLI and Web do not install or host a browser; use their web search, fetch or MCP capabilities. See [Browser workspace](../product/browser.md) for pages, website identities and recovery.
 
 ## Diagnostics and Maintenance
 

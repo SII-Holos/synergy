@@ -30,7 +30,7 @@ export function isPromptEqual(promptA: Prompt, promptB: Prompt): boolean {
     if (partA.type === "file") {
       const fileA = partA as FileAttachmentPart
       const fileB = partB as FileAttachmentPart
-      if (fileA.path !== fileB.path) return false
+      if (fileA.path !== fileB.path || fileA.originScopeID !== fileB.originScopeID) return false
       if (!isSelectionEqual(fileA.selection, fileB.selection)) return false
     }
     if (partA.type === "attachment" && partA.id !== (partB as UploadedAttachmentPart).id) {

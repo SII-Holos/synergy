@@ -2,58 +2,49 @@ import { expect, test } from "bun:test"
 import { mkdtemp, rm, symlink } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { rolloutErrors, type ShadowEvidence } from "../../script/ci/rollout"
+import { shadowEvidence } from "../../script/ci/rollout"
 import { verifyReport } from "../../script/ci/evidence"
-import { hash } from "../../script/ci/plan"
+import { createPlan, hash } from "../../script/ci/plan"
 
-function samples(): ShadowEvidence[] {
-  const changed = [
-    "docs/research/ci.md",
-    "apps/web/src/app.ts",
-    "packages/harness/src/storage/storage.ts",
-    "benchmark/runtime/capture.mjs",
-    "script/ci.ts",
-  ]
-  return Array.from({ length: 20 }, (_, index) => ({
-    version: 1,
-    policy: "policy",
-    run: String(index),
-    sha: hash(index),
+test("shadow evidence exposes a missed failure without replacing current execution", () => {
+  const plan = createPlan({
     base: "base",
+    head: "head",
+    sha: "tested",
+    run: "fixture",
     mode: "shadow",
-    passed: true,
-    misses: [],
-    changed: [changed[index % changed.length]!],
-    taskSeconds: 100,
-    selectedSeconds: 20,
-  }))
-}
-
-test("affected admission needs 20 distinct full commits, change classes, and no unselected failures", () => {
-  expect(rolloutErrors(samples(), "policy")).toEqual([])
-  expect(rolloutErrors(samples().slice(1), "policy").length).toBeGreaterThan(0)
-  expect(rolloutErrors(samples(), "changed-policy").length).toBeGreaterThan(0)
-  expect(
-    rolloutErrors(
-      samples().map((sample) => ({ ...sample, sha: "same" })),
-      "policy",
-    ).length,
-  ).toBeGreaterThan(0)
-  expect(
-    rolloutErrors(
-      samples().map((sample) => ({ ...sample, mode: "diagnostic" })),
-      "policy",
-    ).length,
-  ).toBeGreaterThan(0)
-  expect(
-    rolloutErrors(
-      samples().map((sample) => ({ ...sample, changed: ["docs/research/ci.md"] })),
-      "policy",
-    ).length,
-  ).toBeGreaterThan(0)
-  expect(
-    rolloutErrors([...samples(), { ...samples()[0]!, passed: false, misses: ["downstream-test"] }], "policy"),
-  ).toContain("Shadow execution found unselected failures")
+    changed: ["README.md"],
+    baseWorkspaces: [],
+    headWorkspaces: [],
+    tasks: [
+      { id: "policy", kind: "policy", pool: "linux", seconds: 1, owners: [], needs: [] },
+      { id: "runtime", kind: "postgres", pool: "postgres", seconds: 1, owners: [], needs: [] },
+    ],
+  })
+  const result = {
+    version: 2 as const,
+    task: "runtime",
+    unit: plan.units.find((unit) => unit.tasks.includes("runtime"))!.id,
+    plan: plan.digest,
+    sha: plan.sha,
+    run: plan.run,
+    planAttempt: plan.attempt,
+    executionAttempt: plan.attempt,
+    mode: plan.mode,
+    status: "failure" as const,
+    exitCode: 1,
+    started: "2026-09-27T00:00:00Z",
+    completed: "2026-09-27T00:00:02Z",
+    reports: [],
+    steps: [],
+  }
+  const evidence = shadowEvidence(plan, [result], false, "selector")
+  expect(evidence.misses).toEqual(["runtime"])
+  expect(evidence.passed).toBe(false)
+  expect(evidence.taskSeconds).toBe(2)
+  expect(evidence.selectedSeconds).toBe(0)
+  expect(evidence.policy).toBe("selector")
+  expect(evidence.catalog).toBe(hash(plan.tasks))
 })
 
 test("report verification rejects changed bytes, traversal and escaped symlinks", async () => {

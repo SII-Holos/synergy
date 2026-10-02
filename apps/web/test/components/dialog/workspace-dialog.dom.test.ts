@@ -21,15 +21,18 @@ beforeAll(async () => {
     const record = (id, p, state="bound") => ({id,scopeID:"scope",type:"directory",revision:1,binding:{hostID:"host",path:p,generation:1,state,physicalID:state==="bound" ? "physical:"+id : undefined},metadata:{},sharedWritableWorkspaceIDs:[],lifecycle:"active",createdAt:1,updatedAt:1})
     const rows=[record("wsp_a","/first"),record("wsp_b","/second"),record("wsp_history","/foreign","unbound"),record("wsp_unverified","/unverified")]
     delete rows[3].binding.physicalID
+    rows.push({...record("wsp_objects",null), backend:{provider:"objects",spec:{}},type:"objects",metadata:{name:"Research"}})
     const listeners = new Set()
     const requests=[]
     const h=window.fixture={ requests, rows, selected:[], fail:false, pick:"/new", emit(record){listeners.forEach(fn=>fn({properties:record}))} }
-    export const useSDK=()=>({scopeID:"scope",client:{workspace:{
+    export const useSDK=()=>({scopeID:"scope",client:{environment:{async profiles(){return {data:{defaultEnvironment:"native",environments:[{name:"native",provider:"native"},{name:"remote",provider:"remote"}],stores:[{name:"local",provider:"local"}]}}}},workspace:{
+      async createObjects(input){requests.push({kind:"objects",...input});const next={...record("wsp_created",null),type:"objects",backend:{provider:"objects",spec:{}},metadata:{name:input.name}}; rows.push(next);return {data:next}},
       async list(){return {data:structuredClone(rows)}},
+      async recoverSaved(input){requests.push({kind:"recover-saved",...input});if(h.fail)throw new Error("Workspace changed before recovery");const next={...rows.find(row=>row.id===input.workspaceID),id:"wsp_recovered",activeMount:undefined,metadata:{name:"Recovered"}};rows.push(next);return {data:next}},
       async register(input){requests.push({kind:"register",...input});const next=record("wsp_new",input.path);rows.push(next);return {data:next}},
       async setSharing(input){requests.push({kind:"share",...input});if(h.fail)throw new Error("Workspace changed before sharing");const row=rows.find(row=>row.id===input.workspaceID);row.revision++;row.sharedWritableWorkspaceIDs=input.workspaceIDs;return {data:structuredClone(row)}},
       async rebind(input){requests.push({kind:"rebind",...input});const row=rows.find(row=>row.id===input.workspaceID);row.revision++;row.binding={...row.binding,state:"bound",path:input.path,physicalID:"physical:"+row.id,generation:row.binding.generation+1};return {data:structuredClone(row)}}},
-      session:{async selectWorkspace(input){requests.push({kind:"select",...input});if(h.fail)throw new Error("Session is busy");return {data:{}}}}},
+      session:{async list(){return {data:{data:[{id:"session",title:"Project task",workspaceID:"wsp_a"}],total:1}}},async selectWorkspace(input){requests.push({kind:"select",...input});if(h.fail)throw new Error("Session is busy");return {data:{}}}}},
       event:{on(type,fn){listeners.add(fn);return()=>listeners.delete(fn)}}})
     export const useSync=()=>({data:{path:{workspace:{id:"wsp_a"}}},session:{get:()=>({workspaceID:"wsp_a"})}})
     export const useProjectDirectoryPicker=()=>({async pickProjectDirectories(){return {directoryPaths:[h.pick],source:"server-browser"}}})
@@ -47,7 +50,7 @@ beforeAll(async () => {
     import {setupI18n} from "@lingui/core"
     import {DialogProvider,useDialog} from "@ericsanchezok/synergy-ui/context/dialog"
     import {DialogWorkspace} from ${JSON.stringify(`/@fs/${appSrc}/components/dialog/dialog-workspace.tsx`)}
-    function App(){const dialog=useDialog();return <button id="open" onClick={()=>dialog.show(()=><DialogWorkspace sessionID="session" onSelect={value=>window.fixture.selected.push(value)}/>)}>Open</button>}
+    function App(){const dialog=useDialog();return <><button id="select-remote" onClick={()=>dialog.show(()=><DialogWorkspace mode="select" environmentProfile="remote" onSelect={value=>window.fixture.selected.push(value)}/>)}>Remote files</button><button id="open" onClick={()=>dialog.show(()=><DialogWorkspace mode="manage" sessionID="session" onSelect={value=>window.fixture.selected.push(value)}/>)}>Open</button></>}
     render(()=><I18nProvider i18n={setupI18n({locale:"en",messages:{en:{}}})}><DialogProvider><App/></DialogProvider></I18nProvider>,document.getElementById("root"))
   `,
   )
@@ -121,6 +124,45 @@ test("selecting a Workspace preserves Scope and reports busy failures without di
   expect(errors).toEqual([])
 }, 20_000)
 
+test("reload and adding files ask before discarding unsaved sharing", async () => {
+  await open()
+  await page.locator('[data-slot="checkbox-checkbox-label"]').filter({ hasText: "/second" }).click()
+  for (const action of ["Reload", "Add directory"]) {
+    await page.getByRole("button", { name: action, exact: true }).click()
+    await page.getByRole("dialog").last().getByRole("button", { name: "Cancel", exact: true }).click()
+    expect(await page.getByRole("checkbox", { name: "/second", exact: true }).isChecked()).toBe(true)
+  }
+  expect(await page.getByRole("button", { name: "/new", exact: true }).count()).toBe(0)
+}, 20_000)
+
+test("lost file views recover a separate saved copy with the observed revision", async () => {
+  await open()
+  await page.evaluate(
+    "window.fixture.rows[4].activeMount={state:'unavailable'};window.fixture.emit(window.fixture.rows[4])",
+  )
+  await page
+    .getByRole("button", { name: /Research/ })
+    .first()
+    .click()
+  expect(await page.getByRole("button", { name: "Use Workspace", exact: true }).isDisabled()).toBe(true)
+  await page.evaluate("window.fixture.emit({...window.fixture.rows[4],revision:2});window.fixture.fail=true")
+  await page.getByRole("button", { name: "Recover saved copy", exact: true }).click()
+  await page.getByRole("alert").waitFor()
+  expect(await page.evaluate("window.fixture.requests.at(-1)")).toMatchObject({
+    kind: "recover-saved",
+    workspaceID: "wsp_objects",
+    expectedRevision: 1,
+    profile: "local",
+  })
+  await page.evaluate("window.fixture.fail=false")
+  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await page.getByRole("button", { name: "Recover saved copy", exact: true }).click()
+  await page.getByRole("button", { name: "Recovered", exact: true }).waitFor()
+  expect(await page.getByRole("button", { name: "Use Workspace", exact: true }).isEnabled()).toBe(true)
+  expect(await page.evaluate<string>("window.fixture.rows[4].activeMount.state")).toBe("unavailable")
+  expect(errors).toEqual([])
+}, 20_000)
+
 test("sharing keeps its original revision after an external update and new directories can be selected", async () => {
   await open()
   await page.locator('[data-slot="checkbox-checkbox-label"]').filter({ hasText: "/second" }).click()
@@ -136,6 +178,7 @@ test("sharing keeps its original revision after an external update and new direc
   expect(await page.getByRole("checkbox", { name: "/second", exact: true }).isChecked()).toBe(true)
   await page.evaluate("window.fixture.fail=false")
   await page.getByRole("button", { name: "Add directory", exact: true }).click()
+  await page.getByRole("dialog").last().getByRole("button", { name: "Discard changes", exact: true }).click()
   await page.getByRole("button", { name: "/new", exact: true }).waitFor()
   await page.getByRole("button", { name: "Use Workspace", exact: true }).click()
   await page.getByRole("dialog").waitFor({ state: "detached" })
@@ -151,10 +194,11 @@ test("unbound history needs an explicit rebind and Escape returns focus", async 
   await open()
   await page.getByRole("button", { name: /\/foreign/ }).click()
   expect(await page.getByRole("button", { name: "Use Workspace", exact: true }).isDisabled()).toBe(true)
-  await page.locator("summary").click()
+  await page.getByText("Change local binding", { exact: true }).click()
   await page.getByLabel("New local directory", { exact: true }).fill("/rebound")
   await page.evaluate("window.fixture.emit({...window.fixture.rows[2],revision:2})")
   await page.getByRole("button", { name: "Rebind Workspace", exact: true }).click()
+  await page.getByRole("dialog").last().getByRole("button", { name: "Rebind Workspace", exact: true }).click()
   await page.getByRole("button", { name: "/rebound", exact: true }).waitFor()
   expect(await page.getByRole("button", { name: "Use Workspace", exact: true }).isEnabled()).toBe(true)
   expect(await page.evaluate("window.fixture.requests.at(-1)")).toMatchObject({
@@ -176,9 +220,10 @@ test("a bound directory without a verified identity requires rebind before selec
   await page.getByRole("button", { name: /\/unverified/ }).click()
   expect(await page.getByRole("button", { name: "Use Workspace", exact: true }).isDisabled()).toBe(true)
   expect(await page.getByRole("button", { name: "Save sharing", exact: true }).count()).toBe(0)
-  await page.locator("summary").click()
+  await page.getByText("Change local binding", { exact: true }).click()
   await page.getByLabel("New local directory", { exact: true }).fill("/verified")
   await page.getByRole("button", { name: "Rebind Workspace", exact: true }).click()
+  await page.getByRole("dialog").last().getByRole("button", { name: "Rebind Workspace", exact: true }).click()
   await page.getByRole("button", { name: "/verified", exact: true }).waitFor()
   await page.getByRole("button", { name: "Use Workspace", exact: true }).click()
   await page.getByRole("dialog").waitFor({ state: "detached" })
@@ -187,4 +232,51 @@ test("a bound directory without a verified identity requires rebind before selec
     sessionWorkspaceSelection: { mode: "workspace", workspaceID: "wsp_unverified", workspaceGeneration: 2 },
   })
   expect(errors).toEqual([])
+}, 20_000)
+
+test("stored Workspaces can be selected and created without a directory picker", async () => {
+  await open()
+  await page.getByRole("button", { name: "Research", exact: true }).click()
+  expect(await page.getByRole("button", { name: "Use Workspace", exact: true }).isEnabled()).toBe(true)
+  expect(await page.getByText("Change local binding", { exact: true }).count()).toBe(0)
+  expect(await page.getByRole("button", { name: "Save sharing", exact: true }).count()).toBe(0)
+  await page.getByRole("button", { name: "Use Workspace", exact: true }).click()
+  await page.getByRole("dialog").waitFor({ state: "detached" })
+  expect(await page.evaluate("window.fixture.requests.at(-1)")).toMatchObject({
+    kind: "select",
+    sessionWorkspaceSelection: { mode: "workspace", workspaceID: "wsp_objects", workspaceGeneration: 1 },
+  })
+  await page.locator("#open").click()
+  await page.getByText("Create stored Workspace", { exact: true }).click()
+  await page.getByLabel("Workspace name", { exact: true }).fill("Experiment")
+  await page.getByRole("button", { name: "Create Workspace", exact: true }).click()
+  await page.getByRole("button", { name: "Experiment", exact: true }).waitFor()
+  expect(await page.evaluate("window.fixture.requests.at(-1)")).toMatchObject({
+    kind: "objects",
+    profile: "local",
+    name: "Experiment",
+  })
+  expect(
+    await page.evaluate(() => (window as any).fixture.requests.some((r: { kind: string }) => r.kind === "register")),
+  ).toBe(false)
+  expect(errors).toEqual([])
+}, 20_000)
+
+test("remote execution offers file collections without browsing the service's local folders", async () => {
+  await page.goto(base)
+  await page.locator("#select-remote").click()
+  const browse = page.getByRole("button", { name: "Browse folder", exact: true })
+  await browse.waitFor()
+  expect(await browse.isDisabled()).toBe(true)
+  expect(
+    await page
+      .getByText("Use a file collection for this execution location; its folders cannot be browsed here.", {
+        exact: true,
+      })
+      .isVisible(),
+  ).toBe(true)
+  await page.getByRole("button", { name: "Research", exact: true }).click()
+  await page.getByRole("button", { name: "Use these files", exact: true }).click()
+  await page.getByRole("dialog").waitFor({ state: "detached" })
+  expect(await page.evaluate("window.fixture.selected.at(-1)")).toMatchObject({ workspaceID: "wsp_objects" })
 }, 20_000)

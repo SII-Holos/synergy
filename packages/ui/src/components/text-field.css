@@ -86,13 +86,8 @@
       background: var(--workbench-input-bg, var(--input-base));
 
       &:focus-within {
-        /* border/shadow-xs/select */
-        box-shadow:
-          0 0 0 3px var(--border-weak-selected),
-          0 0 0 1px var(--border-selected),
-          0 1px 2px -1px var(--surface-overlay),
-          0 1px 2px 0 var(--surface-overlay),
-          0 1px 3px 0 var(--surface-overlay);
+        border-color: var(--border-selected);
+        box-shadow: none;
       }
 
       &:has([data-invalid]) {
@@ -109,7 +104,7 @@
       color: var(--text-strong);
 
       display: flex;
-      height: 32px;
+      height: 40px;
       padding: 2px 12px;
       align-items: center;
       flex: 1;
@@ -137,7 +132,7 @@
 
     textarea[data-slot="input-input"] {
       height: auto;
-      min-height: 32px;
+      min-height: 40px;
       padding: 6px 12px;
       resize: none;
     }
@@ -164,4 +159,9 @@
       letter-spacing: var(--letter-spacing-normal);
     }
   }
+}
+
+[data-component="input"] [data-slot="input-wrapper"]:has(:focus-visible) {
+  outline: 2px solid var(--border-selected);
+  outline-offset: -1px;
 }

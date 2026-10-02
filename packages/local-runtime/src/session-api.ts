@@ -18,11 +18,25 @@ import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Command } from "./command/command"
+import { Worktree } from "./workspace/worktree"
+import { ResourceProfiles } from "./environment/profiles"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
+import { NamedError } from "@ericsanchezok/synergy-util/error"
+import { z } from "zod"
 
 const log = Log.create({ service: "session-api" })
 
+export const SessionLocationError = NamedError.create(
+  "SessionLocationError",
+  z.object({
+    message: z.string(),
+    code: z.enum(["conflicting_selection", "incompatible_files"]),
+  }),
+)
+
 export async function submitInput(input: InvokeInput): Promise<SessionInbox.InputResult> {
-  await Session.assertWorkspaceAvailable(input.sessionID)
   if (input.model) await Provider.getModel(input.model.providerID, input.model.modelID)
   if (input.agent && !(await Agent.get(input.agent))) throw new Error(`Agent not found: ${input.agent}`)
   if (input.noReply === true && !SessionManager.isRunning(input.sessionID)) {
@@ -59,8 +73,8 @@ export async function submitInput(input: InvokeInput): Promise<SessionInbox.Inpu
 
 function scheduleInput(item: SessionInbox.Item, reason: string) {
   void SessionDrive.request(item.sessionID, reason).catch((error) => {
-    SessionInputProgress.schedulingFailure(item.sessionID, error, false)
     SessionManager.scheduleWake(item.sessionID, "durable-input-recovery")
+    SessionInputProgress.schedulingFailure(item.sessionID, error, false, { messageID: item.messageID, itemID: item.id })
     log.error("failed to schedule durable user input", {
       sessionID: item.sessionID,
       itemID: item.id,
@@ -71,7 +85,6 @@ function scheduleInput(item: SessionInbox.Item, reason: string) {
 }
 
 export async function retryInput(input: { sessionID: string; itemID: string }): Promise<SessionInbox.Item> {
-  await Session.assertWorkspaceAvailable(input.sessionID)
   let item: SessionInbox.Item
   {
     using control = await Lock.write(`session-control:${input.sessionID}`)
@@ -85,7 +98,6 @@ export async function retryInput(input: { sessionID: string; itemID: string }): 
 }
 
 export async function restoreInput(input: { sessionID: string; itemID: string }): Promise<void> {
-  await Session.assertWorkspaceAvailable(input.sessionID)
   using control = await Lock.write(`session-control:${input.sessionID}`)
   const result = await SessionInbox.restore(input)
   if (result.restored && result.item.status !== "failed") scheduleInput(result.item, "user-input-restored")
@@ -104,12 +116,94 @@ async function takeSessionBack(sessionID: string): Promise<void> {
 export async function createSession(
   input?: Omit<NonNullable<Parameters<typeof Session.create>[0]>, "workspace"> & {
     workspace?: Session.WorkspaceSelection
+    environmentProfile?: string
   },
 ) {
-  const { workspace, ...body } = input ?? {}
-  const session = await Session.create(body)
+  const { workspace, environmentProfile, ...body } = input ?? {}
+  if (environmentProfile !== undefined && body.environmentID !== undefined)
+    throw new SessionLocationError({
+      code: "conflicting_selection",
+      message: "environmentProfile and environmentID are mutually exclusive",
+    })
+  const isWorktree = workspace?.mode === "create" || workspace?.mode === "existing"
+  const environmentSelection =
+    environmentProfile !== undefined
+      ? await ResourceProfiles.resolveEnvironment(environmentProfile)
+      : isWorktree && body.environmentID === undefined && !body.parentID
+        ? await EnvironmentProviders.resolveDefault()
+        : undefined
+  const scope = body.scope ?? (body.parentID ? (await Session.get(body.parentID)).scope : ScopeContext.current.scope)
+  const selectedWorkspace =
+    workspace?.mode === "workspace" ? await WorkspaceCatalog.get(workspace.workspaceID, scope.id) : undefined
+  if (
+    selectedWorkspace &&
+    workspace?.mode === "workspace" &&
+    selectedWorkspace.binding.generation !== workspace.workspaceGeneration
+  )
+    throw new WorkspaceCatalog.BindingChanged({
+      workspaceID: selectedWorkspace.id,
+      message: "Workspace selection changed; choose the file location again",
+    })
+  if (
+    environmentSelection &&
+    environmentSelection.provider !== "native" &&
+    (workspace?.mode === "create" ||
+      workspace?.mode === "existing" ||
+      (workspace?.mode !== "none" &&
+        (selectedWorkspace ? selectedWorkspace.backend?.provider !== "objects" : !!scope.local)))
+  )
+    throw new SessionLocationError({
+      code: "incompatible_files",
+      message:
+        "This execution profile cannot use these project files. Choose a compatible file collection or project execution location.",
+    })
+  if (
+    isWorktree &&
+    (body.environmentID === null || (!environmentSelection && body.environmentID === undefined && !body.parentID))
+  )
+    throw new SessionLocationError({
+      code: "incompatible_files",
+      message: "An independent copy requires a native execution location. Choose the project execution location first.",
+    })
+  const deferredEnvironment =
+    environmentSelection?.reuse === "workspace" && (workspace?.mode === "create" || workspace?.mode === "existing")
+  const preparedWorktree =
+    deferredEnvironment && workspace?.mode === "create"
+      ? await Worktree.create({
+          name: workspace.name,
+          sourceWorkspaceID: workspace.sourceWorkspaceID,
+          baseRef: workspace.baseRef ?? "current",
+          baseRevision: workspace.baseRevision,
+          bind: false,
+        })
+      : deferredEnvironment && workspace?.mode === "existing"
+        ? await Worktree.withSource(workspace.sourceWorkspaceID, () => Worktree.resolve(workspace.target))
+        : undefined
+  if (preparedWorktree?.setupFailed)
+    throw new Worktree.StartCommandFailedError({
+      message: preparedWorktree.setupError ?? "Independent copy setup failed",
+    })
+  const session = await Session.create({
+    ...body,
+    ...(preparedWorktree ? { workspace: Worktree.workspace(preparedWorktree) } : {}),
+    ...(environmentSelection ? { environmentSelection } : {}),
+    ...(workspace?.mode === "workspace"
+      ? { workspaceID: workspace.workspaceID }
+      : workspace?.mode === "none"
+        ? { workspaceID: null }
+        : {}),
+  })
   try {
-    return await Session.applyWorkspaceSelection(session.id, workspace)
+    const result = await Session.applyWorkspaceSelection(
+      session.id,
+      preparedWorktree ? { mode: "existing", target: preparedWorktree.path } : workspace,
+    )
+    if (isWorktree && result.workspace?.type === "git_worktree") {
+      const copy = await Worktree.resolve(result.workspace.path)
+      if (copy.setupFailed)
+        throw new Worktree.StartCommandFailedError({ message: copy.setupError ?? "Independent copy setup failed" })
+    }
+    return result
   } catch (error) {
     await Session.remove(session.id)
     throw error
@@ -117,7 +211,6 @@ export async function createSession(
 }
 
 export async function submitCommand(input: Parameters<typeof SessionInvoke.command>[0]): Promise<void> {
-  await Session.assertWorkspaceAvailable(input.sessionID)
   const command = await Command.require(input.command)
   const messageID = input.messageID ?? Identifier.ascending("message")
   await RolloutLifecycle.configuration(

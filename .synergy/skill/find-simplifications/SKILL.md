@@ -58,7 +58,7 @@ Introducing a dependency is a valid simplification move, not a policy exception.
 Prove a dependency-swap candidate like any other, plus:
 
 - Read the hand-rolled implementation and name the exact surface the package covers; residual semantics the package does not cover count against the swap and stay in the decision record.
-- Check the package's health honestly (maintenance, adoption, transitive footprint) and prefer builtins when the runtime floor has them. Bun 1.3.14 is the current floor; the repo avoids inline coverage-ignore comments because that floor does not support them.
+- Check the package's health honestly (maintenance, adoption, transitive footprint) and prefer builtins when the runtime floor has them. The root manifest owns the Bun version; the repo declares coverage exclusions through its reviewed manifest.
 - Check the decision-record tree first: recorded seams and durable boundaries are settled — a swap that collapses one needs to beat the recorded rationale, not just cite the policy.
 - Weigh net deletion: implementation plus dedicated tests plus docs, minus the glue that remains. A wrapper that relocates the same complexity is not a win.
 

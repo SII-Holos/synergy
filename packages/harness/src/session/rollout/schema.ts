@@ -1,3 +1,4 @@
+import { InputImages } from "./input-images"
 import { RolloutProvenance } from "./provenance"
 import { JsonValue } from "../../util/json-value"
 import { RolloutAccounting } from "./accounting"
@@ -5,6 +6,7 @@ import { ProviderPricing } from "../../provider/pricing"
 import { RolloutUsage } from "./usage"
 import z from "zod"
 import { Experiment } from "../../config/experiment"
+import { RolloutTiming } from "./timing"
 
 export namespace RolloutSchema {
   const Segment = z.string().regex(/^[a-zA-Z0-9_-]+$/)
@@ -127,8 +129,18 @@ export namespace RolloutSchema {
     .object({
       providerID: z.string(),
       modelID: z.string(),
+      apiModelID: z.string().optional(),
       sdk: z.string(),
       pricing: ProviderPricing.Info.nullable(),
+      billingMode: ProviderPricing.BillingMode.optional(),
+      limits: z
+        .object({
+          context: z.number().nonnegative(),
+          input: z.number().nonnegative().optional(),
+          output: z.number().nonnegative(),
+        })
+        .strict()
+        .optional(),
     })
     .strict()
 
@@ -140,9 +152,11 @@ export namespace RolloutSchema {
       runID: Segment,
       owner: Owner,
       purpose: z.string(),
+      usageRole: z.enum(["conversation", "compaction", "auxiliary"]).optional(),
       kind: z.enum(["chat", "embedding", "rerank", "transcription", "speech"]).optional(),
       execution: z.enum(["provider", "local", "external"]).optional(),
       parentCallID: Segment.optional(),
+      retryIndex: z.number().int().nonnegative().optional(),
       agent: z.string().optional(),
       model: Model,
       started: z.number(),
@@ -151,6 +165,7 @@ export namespace RolloutSchema {
       request: ArtifactRef,
       response: ArtifactRef.optional(),
       sdkUsage: JsonValue.nullable(),
+      sdkEstimate: ProviderPricing.Estimate.optional(),
       transportCaptured: z.boolean(),
       error: z.string().optional(),
     })
@@ -174,7 +189,12 @@ export namespace RolloutSchema {
       request: ArtifactRef,
       response: ArtifactRef.optional(),
       httpStatus: z.number().int().optional(),
+      inputImages: InputImages.List.optional(),
+      requestImages: InputImages.Hashes.optional(),
+      responseModel: z.string().max(256).optional(),
       usage: RolloutUsage.Info.optional(),
+      timing: RolloutTiming.Info.optional(),
+      usageFinal: z.boolean().optional(),
       estimate: ProviderPricing.Estimate.optional(),
       responseHeaders: z.record(z.string(), z.string()).optional(),
       error: z.string().optional(),

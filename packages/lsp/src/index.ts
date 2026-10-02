@@ -5,7 +5,6 @@ import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { LSPClient } from "./client"
 import path from "path"
-import { fileURLToPath, pathToFileURL } from "url"
 import { LSPServer } from "./server"
 import { z } from "zod"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
@@ -15,6 +14,9 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 import { LSPPid } from "./pid"
 import { LSPSchema } from "./schema"
+import { FileView } from "@ericsanchezok/synergy-local-runtime/file/view"
+import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { LSPPaths } from "./paths"
 
 export namespace LSP {
   const log = Log.create({ service: "lsp" })
@@ -90,11 +92,10 @@ export namespace LSP {
       if (state.polling) return
       state.polling = RuntimeContext.exit(() =>
         runtime.run(async () => {
-          const waiting = new Set(await WorkspaceAccess.contendedProcesses())
           await Promise.all(
             [...state.clients].map(async (client) => {
               if (client.active || client.retiring) return
-              if (!waiting.has(client.process.claimID) && Date.now() - client.lastUsed < client.idleMs) return
+              if (!client.process.isContended() && Date.now() - client.lastUsed < client.idleMs) return
               await client.retire()
             }),
           )
@@ -114,7 +115,8 @@ export namespace LSP {
     async () => {
       const cfg = await Config.current()
       const servers: Record<string, LSPServer.Info> = {}
-      await LSPPid.cleanupOrphans()
+      const environmentServers: Record<string, LSPServer.Info> = {}
+      if (FileView.native()) await LSPPid.cleanupOrphans()
       if (cfg.lsp !== false) {
         for (const server of Object.values(LSPServer)) servers[server.id] = server
         if (cfg.lsp?.ty?.disabled !== false) delete servers.ty
@@ -142,7 +144,7 @@ export namespace LSP {
           servers[name] = {
             ...existing,
             id: name,
-            root: existing?.root ?? (async () => ScopeContext.current.directory),
+            root: existing?.root ?? (async () => FileView.directory()),
             extensions: item.extensions ?? existing?.extensions ?? [],
             async resolve(root) {
               return {
@@ -151,10 +153,12 @@ export namespace LSP {
               }
             },
           }
+          environmentServers[name] = { ...servers[name]!, root: async () => FileView.directory() }
         }
       }
       return {
         servers,
+        environmentServers,
         connections: new Map<string, Connection>(),
         broken: new Set<string>(),
         controller: new AbortController(),
@@ -210,7 +214,7 @@ export namespace LSP {
             {
               id: record.server.id,
               name: record.server.id,
-              root: path.relative(ScopeContext.current.directory, record.root),
+              root: FileView.relative(record.root),
               status: "connected",
             },
           ]
@@ -261,6 +265,7 @@ export namespace LSP {
         await client.notify
           .open({ path: file })
           .catch((error) => log.info("LSP document could not be reopened", { error }))
+      process.detachSignal()
       const owned = process
       const connected = client
       const registry = runtimeState()
@@ -273,7 +278,8 @@ export namespace LSP {
         lastUsed: Date.now(),
         idleMs: !s.idleReap
           ? Infinity
-          : ScopeContext.current.workspace?.type === "git_worktree"
+          : EnvironmentResources.current()?.environment?.ownership === "managed" ||
+              ScopeContext.current.workspace?.type === "git_worktree"
             ? LSP_WORKTREE_IDLE_MS
             : LSP_IDLE_MS,
         retire() {
@@ -341,7 +347,7 @@ export namespace LSP {
         await entry.retiring
         continue
       }
-      if (entry && !entry.active && (await WorkspaceAccess.contendedProcesses()).includes(entry.process.claimID)) {
+      if (entry && !entry.active && entry.process.isContended()) {
         await entry.retire()
         continue
       }
@@ -398,9 +404,10 @@ export namespace LSP {
 
   async function records(file: string) {
     const s = await state()
+    if (EnvironmentResources.current()?.kind === "objects") return { s, records: [] }
     const extension = path.parse(file).ext || file
     const result: Connection[] = []
-    for (const server of Object.values(s.servers)) {
+    for (const server of Object.values(FileView.native() ? s.servers : s.environmentServers)) {
       if (server.extensions.length && !server.extensions.includes(extension)) continue
       const root = await server.root(file)
       if (!root) continue
@@ -418,8 +425,9 @@ export namespace LSP {
 
   export async function hasClients(file: string) {
     const s = await state()
+    if (EnvironmentResources.current()?.kind === "objects") return false
     const extension = path.parse(file).ext || file
-    for (const server of Object.values(s.servers)) {
+    for (const server of Object.values(FileView.native() ? s.servers : s.environmentServers)) {
       if (server.extensions.length && !server.extensions.includes(extension)) continue
       const root = await server.root(file)
       if (!root) continue
@@ -458,7 +466,7 @@ export namespace LSP {
       return client.connection
         .sendRequest("textDocument/hover", {
           textDocument: {
-            uri: pathToFileURL(input.file).href,
+            uri: LSPPaths.url(input.file),
           },
           position: {
             line: input.line,
@@ -524,7 +532,7 @@ export namespace LSP {
   }
 
   export async function documentSymbol(uri: string) {
-    const file = fileURLToPath(uri)
+    const file = LSPPaths.path(uri)
     return run(file, (client) =>
       client.connection
         .sendRequest("textDocument/documentSymbol", {
@@ -542,7 +550,7 @@ export namespace LSP {
     return run(input.file, (client) =>
       client.connection
         .sendRequest("textDocument/definition", {
-          textDocument: { uri: pathToFileURL(input.file).href },
+          textDocument: { uri: LSPPaths.url(input.file) },
           position: { line: input.line, character: input.character },
         })
         .catch(() => null),
@@ -553,7 +561,7 @@ export namespace LSP {
     return run(input.file, (client) =>
       client.connection
         .sendRequest("textDocument/references", {
-          textDocument: { uri: pathToFileURL(input.file).href },
+          textDocument: { uri: LSPPaths.url(input.file) },
           position: { line: input.line, character: input.character },
           context: { includeDeclaration: true },
         })
@@ -565,7 +573,7 @@ export namespace LSP {
     return run(input.file, (client) =>
       client.connection
         .sendRequest("textDocument/implementation", {
-          textDocument: { uri: pathToFileURL(input.file).href },
+          textDocument: { uri: LSPPaths.url(input.file) },
           position: { line: input.line, character: input.character },
         })
         .catch(() => null),
@@ -576,7 +584,7 @@ export namespace LSP {
     return run(input.file, (client) =>
       client.connection
         .sendRequest("textDocument/prepareCallHierarchy", {
-          textDocument: { uri: pathToFileURL(input.file).href },
+          textDocument: { uri: LSPPaths.url(input.file) },
           position: { line: input.line, character: input.character },
         })
         .catch(() => []),
@@ -587,7 +595,7 @@ export namespace LSP {
     return run(input.file, async (client) => {
       const items = (await client.connection
         .sendRequest("textDocument/prepareCallHierarchy", {
-          textDocument: { uri: pathToFileURL(input.file).href },
+          textDocument: { uri: LSPPaths.url(input.file) },
           position: { line: input.line, character: input.character },
         })
         .catch(() => [])) as any[]
@@ -600,7 +608,7 @@ export namespace LSP {
     return run(input.file, async (client) => {
       const items = (await client.connection
         .sendRequest("textDocument/prepareCallHierarchy", {
-          textDocument: { uri: pathToFileURL(input.file).href },
+          textDocument: { uri: LSPPaths.url(input.file) },
           position: { line: input.line, character: input.character },
         })
         .catch(() => [])) as any[]

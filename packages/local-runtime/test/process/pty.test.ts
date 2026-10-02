@@ -160,25 +160,29 @@ test.skipIf(!["darwin", "linux"].includes(process.platform))(
             }
             expect(Pty.get(info.id)?.workspaceID).toBe(session.workspaceID!)
             expect(Pty.get(info.id)?.workspaceGeneration).toBe(workspace.binding.generation)
+            const mounted = await WorkspaceCatalog.get(workspace.id, scope.id)
             await expect(
               WorkspaceBinding.rebind(workspace.id, {
                 scopeID: scope.id,
-                expectedRevision: workspace.revision,
+                expectedRevision: mounted.revision,
                 path: next.path,
               }),
             ).rejects.toThrow("busy")
             await expect(
-              WorkspaceAccess.write([directory.path], async () => {}, AbortSignal.timeout(30)),
+              WorkspaceAccess.exclusive([directory.path], async () => {}, AbortSignal.timeout(30)),
             ).rejects.toMatchObject({ name: "TimeoutError" })
             await Pty.remove(info.id)
             expect(Pty.get(info.id)).toBeUndefined()
             const child = await Bun.file(ready).json()
             expect(() => process.kill(child.pid, 0)).toThrow()
-            await WorkspaceBinding.rebind(workspace.id, {
+            const rebound = await WorkspaceBinding.rebind(workspace.id, {
               scopeID: scope.id,
-              expectedRevision: workspace.revision,
+              expectedRevision: (await WorkspaceCatalog.get(workspace.id, scope.id)).revision,
               path: next.path,
             })
+            expect(rebound.binding.path).toBe(next.path)
+            expect(rebound.binding.generation).toBe(workspace.binding.generation + 1)
+            expect(rebound.activeMount).toBeUndefined()
           } finally {
             await Pty.remove(info.id)
           }
@@ -241,7 +245,7 @@ test.skipIf(!["darwin", "linux"].includes(process.platform))(
           const id = ScopeContext.current.workspace!.id!
           const entered = Promise.withResolvers<void>()
           const release = Promise.withResolvers<void>()
-          const writer = WorkspaceAccess.write(null, async () => {
+          const writer = WorkspaceAccess.exclusive([directory.path], async () => {
             entered.resolve()
             await release.promise
           })
@@ -271,3 +275,38 @@ test.skipIf(!["darwin", "linux"].includes(process.platform))(
 )
 
 afterRuntimeTests(() => runtime.close())
+
+test.skipIf(process.platform === "win32")(
+  "a terminal may use a selected Environment without a Workspace",
+  () =>
+    runtime.run(async () => {
+      await using directory = await tmpdir()
+      await ScopeContext.provide({
+        scope: await directory.scope(),
+        workspace: null,
+        async fn() {
+          const session = await Session.create({ workspace: null })
+          const terminal = await Pty.create({ sessionID: session.id, command: "/bin/cat" })
+          try {
+            expect(terminal.workspaceID).toBeUndefined()
+            const received = Promise.withResolvers<void>()
+            let output = ""
+            Pty.connect(terminal.id, {
+              readyState: 1,
+              send(data) {
+                output += data
+                if (output.includes("no-workspace")) received.resolve()
+              },
+              close() {},
+            })
+            Pty.write(terminal.id, "no-workspace\n")
+            await received.promise
+            expect(output).toContain("no-workspace")
+          } finally {
+            await Pty.remove(terminal.id)
+          }
+        },
+      })
+    }),
+  30_000,
+)

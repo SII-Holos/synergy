@@ -11,11 +11,18 @@ const root = path.resolve(import.meta.dir, "..")
 // These `mock.module`-heavy suites stub the same context modules under the same
 // specifiers; Bun's mocks are process-global, so each needs its own process.
 const playwrightIsolated = [
+  "test/components/session/workbench-navigation.render.test.ts",
+  "test/components/session/workbench-layout.dom.test.tsx",
+
+  "test/components/workspace/builtin-workbench-panels.test.ts",
+  "test/components/workspace/browser/browser-draft.test.ts",
+  "test/components/workspace/browser/browser-ws-reconnect.test.ts",
   "test/components/sidebar/sidebar-collections.dom.test.tsx",
   "test/components/agenda/series-list.dom.test.tsx",
   "test/components/app-shell/mobile-tools-drawer.dom.test.tsx",
   "test/components/library/library-interaction.dom.test.tsx",
   "test/components/workspace/browser/browser-interaction.dom.test.tsx",
+  "test/components/workspace/browser/browser-workbench-sync.dom.test.tsx",
   "test/components/session/session-recovery.dom.test.ts",
   "test/components/search/session-search-dialog.dom.test.ts",
   "test/components/toolbar-selector.dom.test.ts",
@@ -26,6 +33,7 @@ const playwrightIsolated = [
   "test/components/session/rollback-files.dom.test.ts",
   "test/components/session/session-review-workspace.dom.test.ts",
   "test/components/dialog/workspace-dialog.dom.test.ts",
+  "test/components/dialog/environment-dialog.dom.test.ts",
   "test/components/dialog/file-entry-dialog.dom.test.ts",
   "test/context/file/workspace.dom.test.ts",
   "test/components/kanban/full-access-ack.test.ts",
@@ -71,7 +79,7 @@ const playwrightIsolated = [
   "test/components/session/raw-messages-layout.test.ts",
   "test/components/session/session-progress-island-motion.test.ts",
   "test/components/session/session-progress-todo-layout.test.ts",
-  "test/components/session/session-transition-card-style.test.ts",
+  "test/components/settings/panels/interface-zoom.dom.test.ts",
   "test/components/session/session-inbox-anchor-layout.test.ts",
   "test/components/session/conversation-row-retention.test.ts",
   "test/components/session/dialog-fork-confirm.dom.test.tsx",
@@ -91,6 +99,7 @@ await runBatchedTests({
   isolated: playwrightIsolated,
   isolatedTimeoutMs: 120000,
   browserOnly: [
+    "test/components/session/workbench-navigation.render.test.ts",
     "test/components/session/request-submission.test.ts",
     "test/components/search/session-search.test.ts",
     "test/components/performance/use-performance.test.ts",

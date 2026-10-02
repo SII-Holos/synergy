@@ -1,16 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import {
-  browserHostArtifactName,
-  browserHostExecutablePath,
-  browserHostManifestName,
-  browserHostManifestSignatureName,
-  chromiumManifestName,
-  chromiumManifestSignatureName,
   desktopChecksumsName,
   desktopPortableArtifactNames,
   desktopPrimaryArtifactName,
-  expectedBrowserHostArtifacts,
-  expectedChromiumManifestArtifacts,
   expectedDesktopPrimaryArtifacts,
   isDesktopUpdateMetadata,
 } from "../src/release-assets.js"
@@ -47,28 +39,5 @@ describe("desktop release asset names", () => {
     expect(isDesktopUpdateMetadata("latest-mac.yml")).toBe(true)
     expect(isDesktopUpdateMetadata("notes.md")).toBe(false)
     expect(isDesktopUpdateMetadata("latest-linux-arm64.yml")).toBe(true)
-  })
-
-  test("names version-locked Browser Host artifacts and signed manifests", () => {
-    expect(browserHostArtifactName("1.2.3", "darwin", "arm64")).toBe("synergy-browser-host-darwin-arm64-1.2.3.zip")
-    expect(browserHostManifestName("1.2.3", "win32", "x64")).toBe("synergy-browser-host-win32-x64-1.2.3.manifest.json")
-    expect(browserHostManifestSignatureName("1.2.3", "linux", "arm64")).toBe(
-      "synergy-browser-host-linux-arm64-1.2.3.manifest.json.sig",
-    )
-    expect(expectedBrowserHostArtifacts("1.2.3")).toHaveLength(18)
-  })
-
-  test("keeps Browser Host executable paths aligned with packaged platform names", () => {
-    expect(browserHostExecutablePath("darwin")).toBe("Synergy Browser Host.app/Contents/MacOS/Synergy Browser Host")
-    expect(browserHostExecutablePath("win32")).toBe("Synergy Browser Host.exe")
-    expect(browserHostExecutablePath("linux")).toBe("synergy-browser-host")
-  })
-  test("names all supported signed Chromium manifests", () => {
-    expect(chromiumManifestName("1.2.3", "darwin", "arm64")).toBe("synergy-chromium-darwin-arm64-1.2.3.manifest.json")
-    expect(chromiumManifestSignatureName("1.2.3", "linux", "x64")).toBe(
-      "synergy-chromium-linux-x64-1.2.3.manifest.json.sig",
-    )
-    expect(expectedChromiumManifestArtifacts("1.2.3")).toHaveLength(10)
-    expect(expectedChromiumManifestArtifacts("1.2.3")).not.toContain("synergy-chromium-win32-arm64-1.2.3.manifest.json")
   })
 })

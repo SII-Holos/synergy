@@ -116,7 +116,7 @@ export namespace Rollup {
     const cost = digests.reduce((s, d) => s + d.cost, 0)
     const turns = digests.reduce((s, d) => s + d.turns, 0)
     const days = new Set(digests.map((d) => dayKey(d.created))).size || 1
-    const cacheTotal = tokens.input + tokens.cache.read
+    const cacheTotal = tokens.input + tokens.cache.read + tokens.cache.write
     const total = totalTokens(tokens)
 
     return {
@@ -253,25 +253,26 @@ export namespace Rollup {
 
   function computeTools(digests: SessionDigest[]): ToolStats {
     const map = new Map<string, ToolUsage>()
+    const timings = new Map<string, { duration: number; samples: number }>()
     for (const d of digests) {
       for (const [tool, usage] of Object.entries(d.toolUsage)) {
+        const timing = timings.get(tool) ?? { duration: 0, samples: 0 }
+        timing.duration += usage.totalDurationMs
+        timing.samples += usage.timedSamples ?? usage.calls
+        timings.set(tool, timing)
         const existing = map.get(tool)
         if (existing) {
           existing.calls += usage.calls
           existing.successes += usage.successes
           existing.errors += usage.errors
-          existing.avgDurationMs =
-            existing.calls > 0
-              ? (existing.avgDurationMs * (existing.calls - 1) + usage.totalDurationMs / Math.max(1, usage.calls)) /
-                existing.calls
-              : 0
+          existing.avgDurationMs = timing.samples > 0 ? timing.duration / timing.samples : 0
         } else {
           map.set(tool, {
             tool,
             calls: usage.calls,
             successes: usage.successes,
             errors: usage.errors,
-            avgDurationMs: usage.calls > 0 ? usage.totalDurationMs / usage.calls : 0,
+            avgDurationMs: timing.samples > 0 ? timing.duration / timing.samples : 0,
           })
         }
       }

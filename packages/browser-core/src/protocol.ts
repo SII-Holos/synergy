@@ -1,6 +1,8 @@
 import z from "zod"
 
-export const BROWSER_PROTOCOL_VERSION = 3 as const
+import { BrowserProfileIdSchema } from "./profile.js"
+
+export const BROWSER_PROTOCOL_VERSION = 4 as const
 export const BROWSER_HOST_INSTALL_TIMEOUT_MS = 120_000
 export const BROWSER_HOST_START_TIMEOUT_MS = 30_000
 export const BROWSER_HOST_WAIT_TIMEOUT_MS = 5_000
@@ -62,7 +64,7 @@ const settleResultFields = {
   inflightRequests: z.number().int().nonnegative().optional(),
 }
 
-export const BrowserSessionStatusSchema = z.enum(["empty", "suspended", "active", "migrating", "failed"])
+export const BrowserSessionStatusSchema = z.enum(["empty", "suspended", "active", "failed"])
 export type BrowserSessionStatus = z.infer<typeof BrowserSessionStatusSchema>
 
 export const BrowserHostStatusSchema = z.enum([
@@ -78,14 +80,13 @@ export const BrowserHostStatusSchema = z.enum([
 ])
 export type BrowserHostStatus = z.infer<typeof BrowserHostStatusSchema>
 
-export const BrowserPresentationKindSchema = z.enum(["native", "webrtc"])
+export const BrowserPresentationKindSchema = z.enum(["native"])
 export type BrowserPresentationKind = z.infer<typeof BrowserPresentationKindSchema>
 
 export type BrowserPresentationPreference = "auto" | BrowserPresentationKind
 
 export interface BrowserPresentationCapabilities {
   native: boolean
-  webrtc: boolean
 }
 
 export interface BrowserPresentationEnvironment {
@@ -96,7 +97,7 @@ export interface BrowserPresentationEnvironment {
 }
 
 export function parseBrowserPresentationPreference(value: string | null | undefined): BrowserPresentationPreference {
-  if (value === "native" || value === "webrtc") return value
+  if (value === "native") return value
   return "auto"
 }
 
@@ -185,8 +186,8 @@ export const BrowserPresentationSchema = z
   .object({
     protocolVersion,
     kind: BrowserPresentationKindSchema,
-    capabilities: z.object({ native: z.boolean(), webrtc: z.boolean() }).strict(),
-    reason: z.enum(["desktop-local", "remote-client", "requested"]),
+    capabilities: z.object({ native: z.boolean() }).strict(),
+    reason: z.enum(["desktop-local", "requested"]),
   })
   .strict()
 export type BrowserPresentation = z.infer<typeof BrowserPresentationSchema>
@@ -264,6 +265,26 @@ export const BrowserNativePresentationTicketResultSchema = z.discriminatedUnion(
 export type BrowserNativePresentationTicketResult = z.infer<typeof BrowserNativePresentationTicketResultSchema>
 
 export const BrowserNativeViewEventSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("native.cover"),
+      protocolVersion,
+      pageId,
+      url: browserURL,
+      dataUrl: z
+        .string()
+        .max(2 * 1024 * 1024)
+        .startsWith("data:image/jpeg;base64,"),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("native.shortcut"),
+      protocolVersion,
+      pageId,
+      action: z.enum(["newTab", "closeTab", "address", "find", "reload", "zoomIn", "zoomOut", "zoomReset", "print"]),
+    })
+    .strict(),
   z.object({ type: z.literal("native.loading"), protocolVersion, pageId, url: browserURL.optional() }).strict(),
   z
     .object({
@@ -290,34 +311,12 @@ export const BrowserNativeViewEventSchema = z.discriminatedUnion("type", [
 export type BrowserNativeViewEvent = z.infer<typeof BrowserNativeViewEventSchema>
 
 export function selectBrowserPresentation(input: BrowserPresentationEnvironment): BrowserPresentationSelection {
-  const requested = input.requested ?? "auto"
-  if (requested !== "auto") {
-    const available =
-      requested === "native"
-        ? input.capabilities.native && input.desktopLocalHost && !input.remote
-        : input.capabilities.webrtc
-    if (!available) return null
-    return {
-      protocolVersion: BROWSER_PROTOCOL_VERSION,
-      kind: requested,
-      capabilities: input.capabilities,
-      reason: "requested",
-    }
-  }
-  if (input.capabilities.native && input.desktopLocalHost && !input.remote) {
-    return {
-      protocolVersion: BROWSER_PROTOCOL_VERSION,
-      kind: "native",
-      capabilities: input.capabilities,
-      reason: "desktop-local",
-    }
-  }
-  if (!input.capabilities.webrtc) return null
+  if (!input.capabilities.native || !input.desktopLocalHost || input.remote) return null
   return {
     protocolVersion: BROWSER_PROTOCOL_VERSION,
-    kind: "webrtc",
+    kind: "native",
     capabilities: input.capabilities,
-    reason: "remote-client",
+    reason: input.requested === "native" ? "requested" : "desktop-local",
   }
 }
 
@@ -688,6 +687,9 @@ const BrowserFileChooserCommandSchema = z
   })
   .strict()
 
+const BrowserDownloadAcceptCommandSchema = z.object({ type: z.literal("download.accept"), id: nonEmpty }).strict()
+const BrowserDownloadCancelCommandSchema = z.object({ type: z.literal("download.cancel"), id: nonEmpty }).strict()
+
 const browserUserCommandSchemas = [
   BrowserUserNavigateCommandSchema,
   BrowserUserHistoryCommandSchema,
@@ -698,6 +700,8 @@ const browserUserCommandSchemas = [
   BrowserViewportCommandSchema,
   BrowserDialogResponseCommandSchema,
   BrowserFileChooserCommandSchema,
+  BrowserDownloadCancelCommandSchema,
+  BrowserDownloadAcceptCommandSchema,
 ] as const
 
 export const BrowserUserCommandSchema = z.discriminatedUnion("type", browserUserCommandSchemas)
@@ -894,7 +898,6 @@ const backendOnlyCommands = [
       if (value.action === "capture" && value.checkpoint)
         ctx.addIssue({ code: "custom", path: ["checkpoint"], message: "checkpoint is valid only for restore." })
     }),
-  z.object({ type: z.literal("download.cancel"), id: nonEmpty }).strict(),
 ] as const
 
 const BrowserBackendNavigateCommandSchema = z
@@ -916,6 +919,8 @@ export const BrowserBackendCommandSchema = z.discriminatedUnion("type", [
   BrowserViewportCommandSchema,
   BrowserDialogResponseCommandSchema,
   BrowserFileChooserCommandSchema,
+  BrowserDownloadCancelCommandSchema,
+  BrowserDownloadAcceptCommandSchema,
   ...backendOnlyCommands,
 ])
 export type BrowserBackendCommand = z.input<typeof BrowserBackendCommandSchema>
@@ -1016,7 +1021,7 @@ export const BrowserDownloadEntrySchema = z
     url: browserURL,
     fileName: z.string().min(1).max(1_024),
     mimeType: z.string().max(256),
-    state: z.enum(["in_progress", "completed", "cancelled", "interrupted", "blocked"]),
+    state: z.enum(["awaiting_approval", "in_progress", "completed", "cancelled", "interrupted", "blocked"]),
     totalBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     receivedBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     timestamp: z.number().int().nonnegative(),
@@ -1031,6 +1036,7 @@ export const BrowserHostDownloadEntrySchema = BrowserDownloadEntrySchema.extend(
 export type BrowserHostDownloadEntry = z.infer<typeof BrowserHostDownloadEntrySchema>
 
 export const BrowserHostPageEventSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("page.closed"), pageId }).strict(),
   z.object({ type: z.literal("host.status"), pageId, status: BrowserHostStatusSchema }).strict(),
   z.object({ type: z.literal("page.updated"), page: BrowserPageSchema }).strict(),
   z.object({ type: z.literal("page.loading"), pageId, url: browserURL }).strict(),
@@ -1061,6 +1067,7 @@ export type BrowserHostPageEvent = z.infer<typeof BrowserHostPageEventSchema>
 
 export const BrowserControlRequestSchema = z
   .object({
+    pageId,
     protocolVersion,
     command: BrowserUserCommandSchema,
     commandId: nonEmpty,
@@ -1069,32 +1076,6 @@ export const BrowserControlRequestSchema = z
   .strict()
   .meta({ ref: "BrowserControlRequest" })
 export type BrowserControlRequest = z.infer<typeof BrowserControlRequestSchema>
-
-export const BrowserIceServerSchema = z
-  .object({
-    urls: z.union([nonEmpty, z.array(nonEmpty).min(1)]),
-    username: z.string().max(20_000).optional(),
-    credential: z.string().max(20_000).optional(),
-  })
-  .strict()
-export type BrowserIceServer = z.infer<typeof BrowserIceServerSchema>
-
-export const BrowserViewerTicketRequestSchema = z
-  .object({ protocolVersion, pageId })
-  .strict()
-  .meta({ ref: "BrowserViewerTicketRequest" })
-export type BrowserViewerTicketRequest = z.infer<typeof BrowserViewerTicketRequestSchema>
-
-export const BrowserViewerTicketResponseSchema = z
-  .object({
-    protocolVersion,
-    ticket: nonEmpty,
-    expiresAt: z.number().int().positive(),
-    iceServers: z.array(BrowserIceServerSchema).max(100),
-  })
-  .strict()
-  .meta({ ref: "BrowserViewerTicketResponse" })
-export type BrowserViewerTicketResponse = z.infer<typeof BrowserViewerTicketResponseSchema>
 
 export const BrowserAnnotationRequestSchema = z
   .object({
@@ -1198,13 +1179,32 @@ export const BrowserProtocolErrorSchema = z
   .meta({ ref: "BrowserProtocolError" })
 export type BrowserProtocolErrorData = z.infer<typeof BrowserProtocolErrorSchema>
 
+export const BrowserSessionPageSchema = BrowserPageSchema.extend({
+  profileId: BrowserProfileIdSchema,
+  openerId: BrowserPageIdSchema.optional(),
+  status: z.enum(["active", "suspended", "failed"]),
+  error: BrowserProtocolErrorSchema.optional(),
+})
+  .strict()
+  .meta({ ref: "BrowserSessionPage" })
+export type BrowserSessionPage = z.infer<typeof BrowserSessionPageSchema>
+
+export const BrowserOpenPageSchema = z
+  .object({
+    requestId: nonEmpty,
+    url: z.string().max(20_000).optional(),
+    profileId: BrowserProfileIdSchema.optional(),
+  })
+  .strict()
+  .meta({ ref: "BrowserOpenPage" })
+
 export const BrowserSessionStateSchema = z
   .object({
     type: z.literal("session.state"),
     protocolVersion,
     ownerKey: nonEmpty,
     status: BrowserSessionStatusSchema,
-    page: BrowserPageSchema.nullable(),
+    pages: z.array(BrowserSessionPageSchema).max(64),
     presentation: BrowserPresentationSchema.nullable(),
     hostStatus: BrowserHostStatusSchema,
     seq: z.number().int().nonnegative(),
@@ -1219,8 +1219,12 @@ export const BrowserAPIErrorSchema = BrowserProtocolErrorSchema.omit({ locator: 
   .extend({ locator: z.unknown().optional() })
   .meta({ ref: "BrowserAPIError" })
 
-export const BrowserAPISessionStateSchema = BrowserSessionStateSchema.omit({ error: true })
+export const BrowserAPISessionPageSchema = BrowserSessionPageSchema.omit({ error: true })
   .extend({ error: BrowserAPIErrorSchema.optional() })
+  .meta({ ref: "BrowserAPISessionPage" })
+
+export const BrowserAPISessionStateSchema = BrowserSessionStateSchema.omit({ error: true, pages: true })
+  .extend({ error: BrowserAPIErrorSchema.optional(), pages: z.array(BrowserAPISessionPageSchema).max(64) })
   .meta({ ref: "BrowserAPISessionState" })
 export type BrowserAPISessionState = z.infer<typeof BrowserAPISessionStateSchema>
 
@@ -1232,7 +1236,7 @@ export const BrowserEventSchema = z.discriminatedUnion("type", [
       protocolVersion,
       seq: z.number().int().nonnegative(),
       epoch: nonEmpty,
-      page: BrowserPageSchema,
+      page: BrowserSessionPageSchema,
     })
     .strict(),
   z
@@ -1241,7 +1245,7 @@ export const BrowserEventSchema = z.discriminatedUnion("type", [
       protocolVersion,
       seq: z.number().int().nonnegative(),
       epoch: nonEmpty,
-      page: BrowserPageSchema,
+      page: BrowserSessionPageSchema,
     })
     .strict(),
   z
@@ -1269,7 +1273,7 @@ export const BrowserEventSchema = z.discriminatedUnion("type", [
       protocolVersion,
       seq: z.number().int().nonnegative(),
       epoch: nonEmpty,
-      page: BrowserPageSchema,
+      page: BrowserSessionPageSchema,
     })
     .strict(),
   z
@@ -1355,138 +1359,6 @@ export const BrowserEventSchema = z.discriminatedUnion("type", [
 ])
 export type BrowserEvent = z.infer<typeof BrowserEventSchema>
 
-const webRTCConnection = {
-  protocolVersion,
-  connectionId: nonEmpty,
-  generation: z.number().int().nonnegative(),
-  pageId,
-}
-const BrowserWebRTCOfferSchema = z
-  .object({ type: z.literal("webrtc.offer"), ...webRTCConnection, sdp: z.string().min(1).max(1_000_000) })
-  .strict()
-const BrowserWebRTCAnswerSchema = z
-  .object({ type: z.literal("webrtc.answer"), ...webRTCConnection, sdp: z.string().min(1).max(1_000_000) })
-  .strict()
-const BrowserWebRTCIceSchema = z
-  .object({
-    type: z.literal("webrtc.ice"),
-    ...webRTCConnection,
-    sequence: z.number().int().nonnegative(),
-    candidate: z
-      .object({
-        candidate: z.string().max(64_000),
-        sdpMid: z.string().max(1_000).nullable().optional(),
-        sdpMLineIndex: z.number().int().nonnegative().max(65_535).nullable().optional(),
-        usernameFragment: z.string().max(1_000).nullable().optional(),
-      })
-      .strict(),
-  })
-  .strict()
-const BrowserWebRTCCloseSchema = z.object({ type: z.literal("webrtc.close"), ...webRTCConnection }).strict()
-const BrowserWebRTCErrorSchema = z
-  .object({ type: z.literal("webrtc.error"), ...webRTCConnection, message: browserMessage })
-  .strict()
-
-const webRTCSignalSchemas = [
-  BrowserWebRTCOfferSchema,
-  BrowserWebRTCAnswerSchema,
-  BrowserWebRTCIceSchema,
-  BrowserWebRTCCloseSchema,
-  BrowserWebRTCErrorSchema,
-] as const
-
-export const BrowserWebRTCSignalSchema = z.discriminatedUnion("type", webRTCSignalSchemas)
-export type BrowserWebRTCSignal = z.infer<typeof BrowserWebRTCSignalSchema>
-
-const BrowserWebRTCViewerReadySchema = z
-  .object({
-    type: z.literal("webrtc.signaling.ready"),
-    protocolVersion,
-    presentation: BrowserPresentationSchema.nullable(),
-    session: BrowserSessionStateSchema,
-    pageId,
-  })
-  .strict()
-const BrowserWebRTCHostSignalingReadySchema = BrowserWebRTCViewerReadySchema.extend({
-  type: z.literal("webrtc.host.signaling.ready"),
-}).strict()
-const BrowserWebRTCHostReadySchema = z
-  .object({ type: z.literal("webrtc.host.ready"), protocolVersion, pageId })
-  .strict()
-const BrowserWebRTCHostPendingSchema = z
-  .object({ type: z.literal("webrtc.host.pending"), protocolVersion, pageId })
-  .strict()
-
-export const BrowserWebRTCMessageSchema = z.discriminatedUnion("type", [
-  ...webRTCSignalSchemas,
-  BrowserWebRTCViewerReadySchema,
-  BrowserWebRTCHostSignalingReadySchema,
-  BrowserWebRTCHostReadySchema,
-  BrowserWebRTCHostPendingSchema,
-  BrowserProtocolErrorSchema,
-])
-export type BrowserWebRTCMessage = z.infer<typeof BrowserWebRTCMessageSchema>
-
-const remoteInputBase = { protocolVersion, pageId }
-const remoteInputCoordinates = {
-  x: z.number().min(0).max(32_768),
-  y: z.number().min(0).max(32_768),
-  modifiers: z.array(BrowserModifierSchema).max(5).optional(),
-}
-export const BrowserRemoteInputSchema = z.union([
-  z
-    .object({
-      type: z.literal("input.mouse"),
-      action: z.enum(["move", "down", "up"]),
-      ...remoteInputBase,
-      ...remoteInputCoordinates,
-      button: z.enum(["left", "middle", "right"]).default("left"),
-      clickCount: z.number().int().min(1).max(3).default(1),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("input.mouse"),
-      action: z.literal("wheel"),
-      ...remoteInputBase,
-      ...remoteInputCoordinates,
-      deltaX: z.number().min(-1_000_000).max(1_000_000),
-      deltaY: z.number().min(-1_000_000).max(1_000_000),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("input.key"),
-      action: z.enum(["down", "up"]),
-      ...remoteInputBase,
-      key: z.string().min(1).max(100),
-      code: z.string().max(100).optional(),
-      autoRepeat: z.boolean().optional(),
-      modifiers: z.array(BrowserModifierSchema).max(5).optional(),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("input.text"),
-      ...remoteInputBase,
-      text: z
-        .string()
-        .min(1)
-        .max(1_000_000)
-        .refine((value) => new TextEncoder().encode(value).byteLength <= 1024 * 1024, "Remote text exceeds 1 MB."),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("input.resize"),
-      ...remoteInputBase,
-      width: z.number().int().min(1).max(16_384),
-      height: z.number().int().min(1).max(16_384),
-    })
-    .strict(),
-])
-export type BrowserRemoteInput = z.infer<typeof BrowserRemoteInputSchema>
-
 export const BrowserHostMessageSchema = z
   .discriminatedUnion("type", [
     z
@@ -1495,10 +1367,29 @@ export const BrowserHostMessageSchema = z
         protocolVersion,
         hostId: nonEmpty,
         token: BrowserRegistrationSecretSchema,
-        capabilities: z.object({ native: z.boolean(), webrtc: z.boolean() }).strict(),
+        capabilities: z.object({ native: z.boolean() }).strict(),
       })
       .strict(),
     z.object({ type: z.literal("host.registered"), protocolVersion, hostId: nonEmpty }).strict(),
+    z
+      .object({
+        type: z.literal("profile.clear"),
+        protocolVersion,
+        requestId: nonEmpty,
+        profileId: BrowserProfileIdSchema,
+        partition: z.string().min(1).max(250),
+        removeSavedData: z.boolean().optional(),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("page.opened"),
+        protocolVersion,
+        ownerKey: nonEmpty,
+        openerId: pageId,
+        page: BrowserPageSchema,
+      })
+      .strict(),
     z
       .object({
         type: z.literal("page.create"),
@@ -1516,18 +1407,15 @@ export const BrowserHostMessageSchema = z
         routeDirectory: nonEmpty,
         presentation: BrowserPresentationKindSchema,
         page: BrowserPageSchema,
+        profile: z
+          .object({
+            id: BrowserProfileIdSchema,
+            partition: z.string().min(1).max(250),
+            revision: z.number().int().nonnegative(),
+          })
+          .strict(),
         networkProxy: z.object({ server: nonEmpty, username: nonEmpty, password: nonEmpty }).strict(),
         downloadDir: nonEmpty,
-        signalingTicket: nonEmpty.optional(),
-      })
-      .strict(),
-    z
-      .object({
-        type: z.literal("page.signaling.ticket"),
-        protocolVersion,
-        ownerKey: nonEmpty,
-        pageId,
-        signalingTicket: nonEmpty,
       })
       .strict(),
     z
@@ -1586,20 +1474,6 @@ export const BrowserHostMessageSchema = z
           message: "Browser Host ownerKey does not match owner fields.",
         })
       }
-      if (message.presentation === "webrtc" && !message.signalingTicket) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["signalingTicket"],
-          message: "WebRTC page creation requires a Host ticket.",
-        })
-      }
-      if (message.presentation === "native" && message.signalingTicket !== undefined) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["signalingTicket"],
-          message: "Native page creation does not accept a signaling ticket.",
-        })
-      }
     }
     if (
       message.type === "page.result" &&
@@ -1617,3 +1491,5 @@ function decodedBase64Bytes(value: string): number | null {
   if (padding && (normalized.length % 4 !== 0 || normalized.length <= padding)) return null
   return Math.floor((normalized.length * 3) / 4) - padding
 }
+
+export type BrowserAPISessionPage = z.infer<typeof BrowserAPISessionPageSchema>

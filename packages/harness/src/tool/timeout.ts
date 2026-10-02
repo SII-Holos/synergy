@@ -20,7 +20,6 @@ export namespace ToolTimeout {
     browserDownloadsWaitMs: 30_000,
     browserHelperWaitMs: 30_000,
     browserLocatorMs: 5_000,
-    connectMs: 30_000,
     taskAutoBackgroundMs: 300_000,
     taskOutputWaitMs: 300_000,
     processPollWaitMs: 30_000,
@@ -159,9 +158,6 @@ export namespace ToolTimeout {
           timeoutMs: secondsToMs(args.timeoutSeconds, DEFAULTS.browserDownloadsWaitMs),
           source: "wait",
         }
-      case "connect":
-        if (args.action !== "open" && args.action !== "close") return undefined
-        return { timeoutMs: DEFAULTS.connectMs, source: "remote_connect" }
       case "task":
         return { timeoutMs: DEFAULTS.taskAutoBackgroundMs, source: "auto_background" }
       case "task_output":

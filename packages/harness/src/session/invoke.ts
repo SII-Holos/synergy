@@ -346,7 +346,6 @@ export namespace SessionInvoke {
     return SessionManager.run(
       input.sessionID,
       async (runLease) => {
-        await Session.assertWorkspaceAvailable(input.sessionID)
         const message = await createUserMessage(input)
         if (input.ephemeralTools?.length) {
           instanceState.ephemeralToolsByMessage.set(message.info.id, input.ephemeralTools)
@@ -387,7 +386,6 @@ export namespace SessionInvoke {
     return SessionManager.run(
       input.sessionID,
       async (runLease) => {
-        await Session.assertWorkspaceAvailable(input.sessionID)
         const item = await SessionInbox.getStored(input.sessionID, input.itemID)
         const message = await SessionInbox.materializeItem(item)
         if (!message || message.info.role !== "user") {
@@ -530,7 +528,6 @@ export namespace SessionInvoke {
     lease: SessionManager.LoopLease,
     segments: RolloutSchema.ExecutionSegment[],
   ): Promise<MessageV2.WithParts> {
-    await Session.assertWorkspaceAvailable(sessionID)
     ContinuationKernel.init()
     for (const kind of WorkflowPromptRegistry.kinds()) WorkflowPromptRegistry.get(kind)?.init?.()
     const abort = lease.signal
@@ -829,6 +826,17 @@ export namespace SessionInvoke {
               const toolDisplayByName = new Map<string, ToolDisplay>()
               const contextIdentity = SessionPromptContext.reserve()
               const processor = SessionProcessor.create({
+                imageAttachments: msgs.flatMap((message) =>
+                  message.parts.flatMap((part) => {
+                    if (part.type !== "tool" || part.state.status !== "completed") return []
+                    return (part.state.attachments ?? []).flatMap((attachment) => {
+                      const sha256 = attachment.metadata?.imageInput?.sha256
+                      return typeof sha256 === "string" && /^[a-f0-9]{64}$/.test(sha256)
+                        ? [{ messageID: message.info.id, partID: part.id, attachmentID: attachment.id, sha256 }]
+                        : []
+                    })
+                  }),
+                ),
                 assistantMessage: {
                   id: Identifier.ascending("message"),
                   parentID: R.id,

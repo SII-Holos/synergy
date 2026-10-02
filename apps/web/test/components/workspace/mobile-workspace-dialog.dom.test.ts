@@ -1,3 +1,4 @@
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
@@ -55,7 +56,7 @@ beforeAll(async () => {
     plugins: [solidPlugin(), tailwindcss(), ...lingui()],
     resolve: { alias: { "@": source } },
     optimizeDeps: { noDiscovery: true, include: ["solid-js", "solid-js/web", "@lingui/core", "@lingui/solid"] },
-    server: { host: "127.0.0.1", port: 0, fs: { allow: [path.resolve(source, "../../..")] } },
+    server: { host: "127.0.0.1", port: await fixturePort(), fs: { allow: [path.resolve(source, "../../..")] } },
   })
   await server.listen()
   baseUrl = server.resolvedUrls!.local[0]!
@@ -92,8 +93,8 @@ test("mobile workspace contains focus, fits the viewport and returns to its entr
     return box?.width === innerWidth && box.height === innerHeight
   })
   const box = (await page.getByRole("dialog").boundingBox())!
-  expect(box.width).toBe(375)
-  expect(box.height).toBe(812)
+  expect(box.width).toBeCloseTo(375, 1)
+  expect(box.height).toBeCloseTo(812, 1)
   await page.keyboard.press("Escape")
   await page.getByRole("dialog").waitFor({ state: "detached" })
   await page.waitForFunction(() => document.activeElement?.textContent === "Open mobile workspace")

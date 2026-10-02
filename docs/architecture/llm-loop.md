@@ -10,6 +10,8 @@ The loop is not an in-memory conversation object. Durable messages and session s
 
 New direct input is either materialized as a root user message or queued in `SessionInbox`. When a reply is required, the session enters `SessionManager.run()`. Sending new input is also how a paused session resumes, so the send path clears the pause latch through `SessionLifecycle.clear` rather than requiring a separate action.
 
+Input acceptance and model-loop entry preserve the selected Workspace identity without requiring its files to be available. Prompt assembly reports unavailable files; API-only tools can still run without allocating an Environment. File and execution tools resolve and validate their own resources at admission.
+
 `SessionManager.run()` acquires a generation-tagged lease synchronously, before session lookup or workspace setup can yield. The lease is the loop's owner identity and carries its abort signal. Its runtime phase moves from `starting` to `running`; cancellation moves it to `stopping` without clearing ownership. Only the exact owner lease can complete waiters or release the runtime, so a stale loop cannot abort, complete, or release a newer owner. Other callers attach waiters to the occupied runtime.
 
 During ownership:
@@ -376,3 +378,5 @@ Abort never publishes lifecycle idle by itself. The owner remains in `stopping` 
 Completion context contributions finish before the owning execution is settled. Their promises include nested encoding, retry and reward work; failures do not allow other registered contributions to escape drainage. Library owns these algorithms while Harness owns the await boundary and shared rollout accounting.
 
 Derived calls that retry or evaluate a historical task after its rollout is terminal use `AgentCall.text({ ownership: "operation" })`, retaining source Session and Message identity in metadata and propagating cancellation. That explicit ownership prevents ambient rollout inheritance. Encoding for the currently owned root continues to use its causal rollout; source envelopes omit root-only system and variant overrides.
+
+Retained consumption, transport timing, and historical coverage follow [Usage accounting](usage-accounting.md). Message accounting remains a compatibility projection; the independent ledger survives transcript deletion and response retention.

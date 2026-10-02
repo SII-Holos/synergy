@@ -133,8 +133,8 @@ describe("session transition progress model", () => {
     const expected = [
       ["new-session", "session.new", "New session"],
       ["new-worktree-session", "workspace.worktree", "Worktree session"],
-      ["enter-worktree", "workspace.enterWorktree", "Session worktree"],
-      ["leave-worktree", "workspace.leaveWorktree", "Main checkout"],
+      ["enter-worktree", "workspace.enterWorktree", "Worktree"],
+      ["leave-worktree", "workspace.leaveWorktree", "Main folder"],
     ] as const
 
     for (const [kind, icon, kicker] of expected) {

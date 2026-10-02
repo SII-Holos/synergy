@@ -360,8 +360,10 @@ describe("Browser Host diagnostics", () => {
     const tracked = await untilTrackedDownload(fixture)
 
     expect(fixture.item.savePath).toBeDefined()
+    expect(fixture.item.resumes).toBe(0)
+    expect(tracked.state).toBe("awaiting_approval")
+    await fixture.diagnostics.acceptDownload(tracked.id)
     expect(fixture.item.resumes).toBe(1)
-    expect(tracked.state).toBe("in_progress")
     expect(tracked.fileName).toBe("report.pdf")
 
     fixture.item.emit("updated", {} as never, "interrupted")
@@ -398,22 +400,41 @@ describe("Browser Host diagnostics", () => {
     expect(fixture.contents.debugger.listenerCount("message")).toBe(0)
   })
 
-  test("refuses unavailable or unsafe download roots", async () => {
-    const missingRoot = await createFixture({ downloadDir: path.join(import.meta.dir, "no-such-download-dir") })
-    fixtures.push(missingRoot)
-    missingRoot.session.emit("will-download", {} as never, missingRoot.item, missingRoot.contents)
-    const event = await untilDownloadEvent(missingRoot, (entry) => entry.state === "interrupted")
-    expect(event.entry.warning).toContain("ENOENT")
-
-    const fileRoot = await mkdtemp(path.join(import.meta.dir, ".diagnostics-file-"))
-    fixtures.push({ downloadDir: fileRoot })
-    const filePath = path.join(fileRoot, "not-a-dir")
+  test("refuses unavailable or unsafe download roots before subscribing", async () => {
+    const missing = await createFixture({
+      start: false,
+      downloadDir: path.join(import.meta.dir, "no-such-download-dir"),
+    })
+    await expect(missing.diagnostics.start()).rejects.toThrow("ENOENT")
+    expect(missing.session.listenerCount("will-download")).toBe(0)
+    const root = await mkdtemp(path.join(import.meta.dir, ".diagnostics-file-"))
+    fixtures.push({ downloadDir: root })
+    const filePath = path.join(root, "not-a-dir")
     await Bun.write(filePath, "x")
-    const fileFixture = await createFixture({ downloadDir: filePath })
-    fixtures.push(fileFixture)
-    fileFixture.session.emit("will-download", {} as never, fileFixture.item, fileFixture.contents)
-    const fileEvent = await untilDownloadEvent(fileFixture, (entry) => entry.state === "interrupted")
-    expect(fileEvent.entry.warning).toContain("unsafe")
+    const invalid = await createFixture({ start: false, downloadDir: filePath })
+    await expect(invalid.diagnostics.start()).rejects.toThrow("unsafe")
+  })
+
+  test("retains buffered downloads privately until accepted, cancelled, or disposed", async () => {
+    for (const decision of ["accept", "cancel", "dispose"] as const) {
+      const fixture = await createFixture()
+      fixtures.push(fixture)
+      fixture.session.emit("will-download", {} as never, fixture.item, fixture.contents)
+      const tracked = await untilTrackedDownload(fixture)
+      await Bun.write(tracked.path, "buffered response")
+      fixture.item.emit("done", {} as never, "completed")
+      expect(tracked.state).toBe("awaiting_approval")
+      if (decision === "accept") {
+        await fixture.diagnostics.acceptDownload(tracked.id)
+        expect(tracked.state).toBe("completed")
+        expect(await readFile(tracked.path, "utf8")).toBe("buffered response")
+        expect(fixture.item.resumes).toBe(0)
+      } else {
+        if (decision === "cancel") await fixture.diagnostics.cancelDownload(tracked.id)
+        else await fixture.diagnostics.dispose()
+        expect(await Bun.file(tracked.path).exists()).toBe(false)
+      }
+    }
   })
 
   test("stages an empty upload as an actual zero-byte file", async () => {

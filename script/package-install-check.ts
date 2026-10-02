@@ -114,20 +114,29 @@ if (import.meta.main) {
       env: {
         ...env,
         SYNERGY_HOME: path.join(directory, "home"),
-        SYNERGY_LINK_HOME: path.join(directory, "link"),
       },
     })
     if (await command.exited) throw new Error("Installed CLI failed")
-    const acceptance = Bun.spawn(["bun", "test", "test/cli/artifact.test.ts"], {
-      cwd: path.resolve(import.meta.dir, "../packages/cli"),
-      stdout: "inherit",
-      stderr: "inherit",
-      env: {
-        ...env,
-        SYNERGY_TEST_ARTIFACT_BIN: "",
-        SYNERGY_TEST_ARTIFACT_INSTALL: directory,
+    const acceptance = Bun.spawn(
+      [
+        "bun",
+        "test",
+        "test/cli/artifact.test.ts",
+        ...(process.env.SYNERGY_TEST_ARTIFACT_JUNIT
+          ? ["--reporter=junit", `--reporter-outfile=${process.env.SYNERGY_TEST_ARTIFACT_JUNIT}`]
+          : []),
+      ],
+      {
+        cwd: path.resolve(import.meta.dir, "../packages/cli"),
+        stdout: "inherit",
+        stderr: "inherit",
+        env: {
+          ...env,
+          SYNERGY_TEST_ARTIFACT_BIN: "",
+          SYNERGY_TEST_ARTIFACT_INSTALL: directory,
+        },
       },
-    })
+    )
     if (await acceptance.exited) throw new Error("Installed CLI behavioral acceptance failed")
     console.log("Installed CLI tarball closure passed outside the repository")
   })

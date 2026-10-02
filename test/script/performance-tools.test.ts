@@ -20,28 +20,9 @@ describe("optional performance tooling integration", () => {
     }
   })
 
-  test("documents k6 as optional and not a runtime dependency", async () => {
-    const docs = await Bun.file("docs/operations/performance-observability.md").text()
+  test("keeps k6 out of runtime dependencies", async () => {
     const rootPackage = await Bun.file("package.json").json()
-    expect(docs).toContain("k6")
-    expect(docs).toContain("not a runtime dependency")
     expect(JSON.stringify(rootPackage.dependencies ?? {})).not.toContain("k6")
-  })
-
-  test("documents the isolated cross-platform session memory benchmark", async () => {
-    const docs = await Bun.file("docs/operations/performance-observability.md").text()
-    expect(docs).toContain("perf:memory")
-    expect(docs).toContain("history-projection")
-    expect(docs).toContain("tool-stream")
-    expect(docs).toContain("runtime footprint")
-    expect(docs).toContain("perf:memory:runtime")
-    expect(docs).toContain("perf:memory:runtime:matrix")
-    expect(docs).toContain("deterministic local mock provider")
-    expect(docs).toContain("anonymized completed Synergy trajectory")
-    expect(docs).toContain("--scenario parallel")
-    expect(docs).toContain("--scenario sequential")
-    expect(docs).toContain("process-tree RSS")
-    expect(docs).toContain("workload fingerprint")
   })
 
   test("keeps the public trajectory fixture structural and source-data free", async () => {

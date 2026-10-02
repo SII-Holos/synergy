@@ -75,6 +75,8 @@ beforeAll(async () => {
           }
         }
 
+        export const FileWorkspaceProvider = (props) => props.children
+        export const useProjectFiles = () => ({ roots: () => [], search: async () => [], open: async () => {} })
         export const useFile = () => ({
           activePath: () => undefined,
           get: () => undefined,

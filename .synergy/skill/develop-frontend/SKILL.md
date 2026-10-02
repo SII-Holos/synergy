@@ -14,6 +14,8 @@ description: Implement or review Synergy Web and shared UI changes across apps/w
 
 ## Settings recovery
 
+Theme and color-scheme selections apply immediately, while fonts, locale and other staged preferences use the footer Save/Cancel flow. Verify both boundaries rather than assuming every appearance setting shares one commit policy. Test same-mode theme changes on already-mounted content and portals.
+
 Keep section resource dependencies explicit and lazy. Verify that a failing model or agent request cannot block unrelated sections, refresh failures preserve readable snapshots and staged fields, and retries only reload affected resources. Search indexes should reuse field descriptors; test real scrolling, focus and highlight cleanup after late mount or selection replacement. Route every dismissal through one guard, close the parent only after its discard confirmation has closed, and test server error responses through generated SDK calls with error propagation enabled.
 
 ## Library and statistics recovery
@@ -21,6 +23,8 @@ Keep section resource dependencies explicit and lazy. Verify that a failing mode
 Verify experience states through the persisted reward status and generated DTO, including a failed stub with no intent and an evaluated zero reward. Test detail failure, duplicate reads, local retry and disposal independently of encoding. Unified search keeps result ownership by query and content group. Test a pending group under the real Suspense owner: independent fetches alone do not prevent the parent fallback from hiding ready results. Do not infer timestamps absent from a public summary. For sparse daily statistics, cover skipped dates, month/year and leap-day boundaries, snapshot-relative ranges and local date labels; a successful refresh must publish one response without a second compute request.
 
 ## Preserve State and API Ownership
+
+Ordinary uploaded attachments leave model preparation policy to the server. Do not manufacture an explicit summary or exclusion policy from MIME type: that can suppress text and document extraction. Verify the actual composer payload through preparation and a provider request, including a random identifier present only inside the uploaded bytes; upload success and a file card alone do not prove delivery.
 
 For optional components, use `useGlobalSDK().capabilities` and the built-in surface requirements. Test a core server and one selected component, including eager resources and reconnecting to a different selection. Keep plugin-owned surfaces independent of the built-in map; configuration field ownership still comes from `/config/domains`.
 
@@ -70,7 +74,7 @@ Non-tool product UI expresses meaning through `packages/ui/src/components/semant
 1. Name the user-facing meaning before choosing a glyph.
 2. Reuse an existing token only when the new control has the same meaning. Similar appearance or location is not enough.
 3. Add a new token to `packages/ui/src/components/semantic-icon.tsx` before using an icon for a new product entity, navigation concept, state, setting, command, or action.
-4. Choose a built-in glyph that is not already mapped to another semantic token. Reuse the existing token when the meaning is truly identical; do not create a second token that aliases its glyph.
+4. Choose a built-in glyph that is not already mapped to another semantic token. Reuse the existing token when the meaning is truly identical; do not create a second token that aliases its glyph. Avoid repeating a control's outline inside its glyph unless the inner enclosure carries an independent meaning.
 5. When the glyph is new to the shared Icon component, register it in both `packages/ui/src/components/icon.tsx` and `packages/ui/src/plugin/builtin-icons.ts` before referencing it from the semantic map.
 6. Render through `getSemanticIcon(token)` and type stored metadata as `SemanticIconTokenName`.
 7. Keep raw icon names inside base icon controls, file-type/icon registries, tool-card plumbing, or plugin-provided icon paths. Built-in Plugin host UI still uses semantic tokens. Tool icons follow `add-tool`, not the product semantic-token registry.
@@ -79,6 +83,10 @@ Non-tool product UI expresses meaning through `packages/ui/src/components/semant
 Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It rejects duplicate glyph mappings, missing shared registrations, raw JSX icon literals, and raw icon object metadata outside the documented base/tool/plugin-data exceptions.
 
 ## Preserve Product Presentation
+
+For workbench visual changes, read the column, input anchor, surface and motion rules in [PRODUCT.md](../../../apps/web/PRODUCT.md) before changing a component. Compare the real new-task → first-send → reply → switch-and-return flow in both themes, with the same data and viewport. Check the actual computed surface after workbench overrides and portal scoping, not just the theme source. Reserve trailing action space and verify hover, focus and touch without changing the title's width. Keep greeting and Composer extension views mounted once.
+
+Use `test/components/session/workbench-layout.dom.test.tsx` for input anchoring, bounded growth and shared-column geometry, and the existing draft, submit-lock, attachment and editor tests for state ownership. Verify native paste → undo → redo with selected text, multiline input and literal markup; direct Range mutations can display correct text while bypassing the browser's edit history. Run DOM suites through the App runner or one file per process. Record real native IME separately from synthetic composition events; pasted Chinese text does not establish candidate-confirmation behavior. At 375px, short height, 200% zoom and reduced motion, verify the final action remains reachable. Update this workflow and the owning product rule when an accepted visual decision changes; do not copy a page-local palette or introduce a second layout constant to patch drift.
 
 For retained resource tabs, display the resource's owning Workspace independently of the Session's current selection. Keep encoded resource identifiers in persistence and routing; use the resolved panel title for visible labels, tooltips and accessible tab/close names. Verify the visible directory, file tree and recovered draft after switching and reloading.
 
@@ -98,18 +106,18 @@ Rewind and redo must converge through the server's effective message window, inc
 
 ## Preserve Loading Boundaries
 
-1. Register optional built-in workbench panels with `WorkbenchPanelEntry.loader`; do not statically import Notes, Files, Browser, Terminal, or Review implementations into the route shell.
+1. Register optional built-in workbench panels with `WorkbenchPanelEntry.loader`; do not statically import Notes, Files, Browser, Terminal, or Review implementations into the route shell. Browser pages are resource tabs in that same strip; follow [change-browser-runtime](../change-browser-runtime/SKILL.md) for page reconciliation and settings. Do not nest another Browser tab strip or expose backend profile terminology in the everyday toolbar.
 2. Keep heavyweight feature engines behind the interaction that needs them: Tiptap and Mermaid behind Notes, Monaco behind file Source view, and Ghostty behind Terminal.
 3. Do not evaluate JSX child getters to detect detail presence: use an explicit availability value or property presence, then instantiate children only inside the mounted disclosure. Test closed → open → closed imperative-renderer counts. Bound tool previews and retained expanded-render caches by capacity; use resource identity to open full content on demand. See [bounded tool rendering](../../../docs/decisions/implemented/bug-fix/2026-09-07-bound-tool-rendering-memory.md).
 4. Import only fonts used by the active product typography contract. A dormant family must not be emitted by the default App build.
-5. Preserve `apps/web/test/app-build-css-contract.test.ts` as the production build regression gate for initial module preloads, emitted product fonts, and core compiled CSS.
+5. Preserve `apps/web/test/app-build-css-contract.test.ts` as the production build regression gate for initial module preloads, emitted product fonts, and core compiled CSS. CI consumes the verified full-distribution Web build via `SYNERGY_WEB_BUILD_DIR`; standalone execution builds an isolated fixture. Share compiled UI test modules only with complete input/output validation and fresh processes and DOMs; settings regressions assert actual interaction and saved values rather than source strings.
 6. Keep the Web HTML entry in Tailwind's explicit source inputs when moving package roots. Validate the built HTML and CSS together in a browser with overflowing sidebar content and composer focus: the root must stay within the viewport and the list must scroll without moving the document or navigation header.
 
 ## Change Themes and Color Tokens
 
 Read `docs/reference/frontend-theming.md` before changing the color contract, adding a semantic token, integrating an imperative renderer, or authoring a selectable theme.
 
-1. Use `packages/ui/src/theme/tokens.ts` as the exhaustive color-token catalog and `resolve.ts` as the only palette resolver. A theme supplies light/dark seeds plus optional typed overrides; do not create a parallel CSS palette.
+1. Use `packages/plugin/src/theme/tokens.ts` as the exhaustive color-token catalog and its `resolve.ts` as the only palette resolver. The UI theme package re-exports the public contract and owns runtime application. A theme supplies light/dark seeds plus optional typed overrides; do not create a parallel CSS palette.
 2. Use a canonical token in Tailwind utilities and CSS variables. If the required meaning is absent, add it to the token catalog and resolver before using it. Do not invent consumer aliases such as `surface-*-soft`, `surface-muted`, or unregistered status text names.
 3. Edit `packages/ui/src/theme/themes/synergy.json` for Synergy-specific seed or override values. Run `bun run --cwd packages/ui generate:theme`; never hand-edit `theme.generated.css`, `tailwind/colors.css`, or `theme.schema.json`.
 4. Keep common text/background and status foreground/surface pairs at WCAG AA contrast in both modes. Preserve the product polarity rule independently of accent hue.
@@ -155,13 +163,15 @@ bun run localization:check
 
 ## Handoff
 
+When a menu suppresses its trigger Tooltip, preserve the trigger element and focus listeners. Exercise focus → open → Escape → focus return with the real composed controls. A menu action that opens a Dialog must hand off a connected return-focus target; an unmounted menu item is not one. Distinguish a visible path Tooltip consuming Escape from a parent dialog failing to close.
+
 Report state ownership, API path, semantic icon token, shared primitives, accessibility states, tests, visual checks, and any durable `PRODUCT.md` or Skill update.
 
 ## Replaceable plugin presentation
 
 Read [frontend plugin ownership](../../../docs/architecture/frontend-plugin-platform.md) before changing Shell, conversation, composer, resource or overlay composition. Keep domain owners above replaceable presentation and test their public services with native and external views. Capture draft identity before asynchronous work and restore only at an unchanged owning revision. Dispose DOM references, pending UI work and portals by surface identity; accepted server work keeps its domain lifetime.
 
-For UI API 5 changes, build the production App and run bun run plugin-ui:test. Its public preview helper installs extracted archives into an isolated real host. Also run the owning App/UI tests, private HTTP smoke, typecheck, localization and package gates. Browser fixtures must pre-discover their actual module entry so dependency optimization cannot reload the page during interaction assertions. Verify styles on ordinary inherited text and protected portals, not only elements that explicitly restate font variables.
+For UI API changes, build the production App and run bun run plugin-ui:test. Its public preview helper installs extracted archives into an isolated real host. Also run the owning App/UI tests, private HTTP smoke, typecheck, localization and package gates. Browser fixtures must pre-discover their actual module entry so dependency optimization cannot reload the page during interaction assertions. Verify styles on ordinary inherited text and protected portals, not only elements that explicitly restate font variables.
 
 Keep question and permission ownership above replaceable session pages. Native presentation may register an inline outlet; a missing outlet must retain an accessible host surface automatically. Bound the combined decision region, reset plugin style ownership, and verify both native and custom-page composition.
 
@@ -182,3 +192,31 @@ For file-draft changes, verify reload as well as component remount, original con
 For mobile drawers, use the shared modal stack instead of a document-wide keyboard listener. Test nested Settings and Escape, returning focus to each opener, releasing background isolation when the viewport widens, and keeping fixed actions reachable when collection content scrolls. A working-location summary must read the canonical session binding or explicit new-session choice; include null, missing binding, rebinding and pending creation cases rather than substituting the project directory.
 
 For collection navigation changes, verify every existing category against its own projection and preserve nested ownership and pagination. Check actual category controls and list bounds at the minimum sidebar width in both supported locales; full-width controls plus outer margins must not exceed their container. Keep intentional resize hit areas separate from content-overflow assertions, and verify fixed controls while the collection scrolls. For independent disclosures, verify simultaneous expansion, preserved nested state and keyboard exclusion while hidden. Exercise keyboard activation with the real session typing-autofocus handler mounted; it must not redirect a focused control’s Space or typeahead keys into the Composer.
+
+For Environment selection, test zero allocation when browsing profiles, conditional Session updates, stable creation request IDs after a lost reply, and draft restoration after startup failure. Activity recovery must address the original operation; never submit its command again.
+
+## Complete workbench acceptance
+
+Verify the complete built workbench from global and project new tasks through first send and an existing conversation. Follow [the product rules](../../../apps/web/PRODUCT.md) for task starters, working location and status. Keep their real controllers and status/detail components mounted in acceptance; a layout fixture with empty or substitute status is only a focused layout check. Test replacement cancellation, revision conflicts, attachment retention and editor focus after confirmation has restored modal focus. Select a valid fixture start mode and wait for the streamed reply and idle state; a new session URL alone does not prove successful submission. Exercise project and file entry buttons through their real dialogs and chooser.
+
+For native chrome, inspect actual macOS traffic lights, dragging, minimize, fullscreen and exit, including collapsed sidebar and narrow split panes. Keep host control protection outside replaceable Shells and test a non-built-in Shell reserve. Measure button and icon bounds across default, hover, focus and opened menus within 1 CSS px. Capture both themes and real menus, checking popup collision, Escape/focus return, 375px width, short windows and 200% zoom. Under reduced motion, inspect computed styles while the menu carries its open state: the media rule must override the state selector's specificity. Overall visible coherence is an acceptance requirement alongside automated results.
+
+For built-in navigation changes, verify the registered Shell in the production page, not only a manually constructed DefaultShell fixture. Registries may copy entries, so object equality cannot identify a built-in entry. Test full collapse, zero actual occupancy, retained width/scroll/disclosures, inert descendants and focused-control recovery on session and non-session routes. An ancestor’s `visibility: hidden` alone is insufficient when a disclosure explicitly restores visibility: inspect the rendered closed page. Keep restore/Search/New in the top row and preserve the mobile drawer and third-party Shell contract.
+
+Configuration density is role-based: only the primary model selector retains its chevron; toolbar thinking uses its optional presentation while form controls remain unchanged. Verify real Agent, permission and working-location menus after removing the entire arrow wrapper. Add comes first as a circular control, and existing section metadata must produce real groups with one keyboard-navigation owner. Exercise model search with no, few and many results, long names, bounded scrolling and footer reachability.
+
+Pin global workspace controls to the owner spanning both panes, not the pane that shrinks when opened. Compare the same button's viewport coordinates before/after toggling and resizing, preserve its focus, and verify tab hit areas remain unobstructed. For working-location typography, compare computed styles on the nested visible labels across new and existing sessions. Model selection markers need their own reserved trailing column; test badge alignment and long-name truncation before and after selecting a different row. Keyed lists compare selection by the supplied key rather than object identity; rebuilt catalog or search results must retain the selection marker.
+
+Native titlebar acceptance must include OS-level coordinate clicks on restore, Search, New and the workspace toggle, plus a window drag from the empty header. Renderer-injected clicks and accessibility activation can bypass native drag hit testing. Check actual drag rectangles against controls in sibling or portaled subtrees; `no-drag` on a button alone does not prove that an overlapping drag owner releases it. Repeat after sidebar collapse and with the side workspace open. See the [escaped native hit-test failure](../../../docs/postmortem/0035-native-titlebar-swallowed-controls.md).
+
+For project-entry changes, test the real Prompt provider and project picker together: destination-first merging, both revision checks, cancel, upload blocking, same-connection ownership and file-reference provenance. Verify independent section saves and unsaved dismissal in project settings. Inspect real computer/project/main-folder and Worktree controls at narrow and short viewports, 200% zoom, both themes and keyboard focus return. Folder selection must retain the underlying dialog state and distinguish the connected service from Desktop's machine.
+
+Use the shared Dialog footer for actions that must remain reachable while project forms or directory results scroll. Cover short windows and keyboard focus return. During directory loading, edit the path before the response arrives and verify that the response preserves the newer input.
+
+Project creation must remain a real two-field flow with a small computer selector. Verify per-connection directory staging, default-main creation, existing-project detection without renaming, failure retention and Composer focus after the modal closes. At least two actual repositories must participate in multi-folder acceptance: create from A with B shared, change main to B, and verify old tasks and A Worktrees still open, search, modify and clean up through their original bindings. Compare primary and additional roots in file tree, context picker, search and command tools rather than accepting a visual folder list as proof of access. New Worktree selection must allocate nothing until send. Exercise historical Worktrees with a non-Git or unavailable current main.
+
+Inspect the shared controls in the real project Popover, create form, settings and service directory browser. Required sizes and timing live in PRODUCT.md. Check single-border input focus, separate menu/dialog shadows, fixed trailing checks, stable loading widths, nested Escape and focus restoration. Capture complete screens in both themes, narrow/short viewports, 200% zoom and reduced motion; isolated component snapshots cannot establish the combined page's density.
+
+For Browser results, use the existing draft capture/retention API before asynchronous upload and reject a changed conversation. Screenshots and feedback remain editable until the person sends. Use Dialog size presets rather than competing max-width utilities; verify the footer and body scroll in a small Desktop window. Native overlay covers are bounded still images only, scoped to the selected page and cleared when native content resumes.
+
+Build shared UI DOM fixtures in a separate process with the test environment. Vite can set `NODE_ENV=production` in its caller; do not propagate that mutation to test batches, whose Lingui fixtures require runtime message compilation.

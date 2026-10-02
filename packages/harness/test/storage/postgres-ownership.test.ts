@@ -3,9 +3,12 @@ import { SQL } from "bun"
 import { createHash } from "node:crypto"
 import { TransactionalStore } from "../../src/storage/transactional-store"
 
+import { storageTestBackends } from "../support/storage-backends"
+
+const enabled = storageTestBackends().includes("postgres")
 const url = process.env.SYNERGY_TEST_POSTGRES_URL
 
-test.skipIf(!url)(
+test.skipIf(!enabled)(
   "PostgreSQL ownership loss rolls back work and requires explicit takeover",
   async () => {
     const namespace = crypto.randomUUID()

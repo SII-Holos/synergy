@@ -1,4 +1,4 @@
-import { dlopen } from "bun:ffi"
+import { openNativeLibrary } from "../native/ffi"
 import fs from "node:fs"
 import path from "node:path"
 import { randomBytes } from "node:crypto"
@@ -27,7 +27,7 @@ export namespace LinuxTree {
   function initialize() {
     if (process.platform !== "linux") throw new Error("Linux process ownership is unavailable")
     try {
-      return dlopen(NativePty.libraryPath(), {
+      return openNativeLibrary(NativePty.libraryPath(), {
         synergy_linux_subreaper: { args: [], returns: "i32" },
         synergy_linux_waitpid: { args: [], returns: "i32" },
         synergy_linux_pidfd_open: { args: ["i32"], returns: "i32" },
@@ -225,11 +225,25 @@ export namespace LinuxTree {
     } catch (cause) {
       throw new Error("Native Linux process supervision requires pidfd support", { cause })
     }
-    const child = spawn(command[0]!, command.slice(1), { cwd: directory, detached: true, stdio: "ignore" })
-    const exited = new Promise<void>((resolve, reject) => child.once("exit", () => resolve()).once("error", reject))
+    const child = spawn(command[0]!, command.slice(1), {
+      cwd: directory,
+      detached: true,
+      stdio: ["ignore", "ignore", "pipe"],
+    })
+    let stderr = Buffer.alloc(0)
+    child.stderr.on("data", (chunk: Buffer) => {
+      if (stderr.length < 4096) stderr = Buffer.concat([stderr, chunk.subarray(0, 4096 - stderr.length)])
+    })
+    const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null; stderr: string }>(
+      (resolve, reject) =>
+        child
+          .once("close", (code, signal) => resolve({ code, signal, stderr: stderr.toString() }))
+          .once("error", reject),
+    )
     void exited.catch(() => {})
     await once(child, "spawn")
     return {
+      exited,
       async remove() {
         if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM")
         await exited

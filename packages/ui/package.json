@@ -37,6 +37,7 @@
     "@lingui/solid": "catalog:"
   },
   "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
     "@lingui/core": "catalog:",
     "@lingui/solid": "catalog:",
     "@tailwindcss/vite": "catalog:",
@@ -52,6 +53,7 @@
     "vite-plugin-solid": "catalog:"
   },
   "dependencies": {
+    "@ericsanchezok/synergy-computer-protocol": "workspace:*",
     "@ericsanchezok/synergy-plugin": "workspace:*",
     "@ericsanchezok/synergy-sdk": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",

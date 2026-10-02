@@ -77,6 +77,7 @@ export async function fixture(
               providerID: "test",
               modelID: "test",
               sdk: "@ai-sdk/openai",
+              billingMode: "api",
               pricing: ProviderPricing.resolve({
                 providerID: "test",
                 modelID: "test",

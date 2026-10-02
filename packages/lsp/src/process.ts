@@ -2,7 +2,9 @@ import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
-import { OwnedProcess } from "@ericsanchezok/synergy-local-runtime/process/owned-process"
+import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
+import { randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 
@@ -11,6 +13,7 @@ export namespace LSPProcess {
     command: string
     args: string[]
     cwd: string
+    mutationRoots?: string[]
     env?: Record<string, string | undefined>
   }
   const context = RuntimeContext.createAsyncContext<{ signal: AbortSignal; directories: string[] }>()
@@ -34,13 +37,13 @@ export namespace LSPProcess {
     signal.throwIfAborted()
     return signal
   }
-  export function mutate<T>(fn: () => Promise<T>) {
-    return WorkspaceAccess.write(null, fn, signal())
+  export function mutate<T>(roots: string[], fn: () => Promise<T>) {
+    return WorkspaceAccess.write(roots, fn, signal())
   }
   export async function temporaryDirectory() {
     const resources = context.getStore()
     if (!resources) throw new Error("Language server temporary storage requires a preparation owner")
-    return mutate(async () => {
+    return mutate([Global.Path.cache], async () => {
       await fs.mkdir(Global.Path.cache, { recursive: true, mode: 0o700 })
       const directory = await fs.mkdtemp(path.join(Global.Path.cache, "lsp-"))
       resources.directories.push(directory)
@@ -54,32 +57,58 @@ export namespace LSPProcess {
     cooperative = true,
     cleanup?: () => Promise<void>,
   ) {
-    const lease = await WorkspaceAccess.process(null, signal, { cooperative, retainAfterExit: !!cleanup })
-    let owned: Awaited<ReturnType<typeof OwnedProcess.prepare>> | undefined
+    const selected = EnvironmentResources.current()
+    const scopeID = ScopeContext.current.scope.id
+    const workspaceID = selected?.workspace?.id ?? ScopeContext.tryWorkspace()?.id
+    const environmentID = selected?.environment?.id ?? selected?.selection?.environmentID
+    const resources = await (environmentID ? EnvironmentResources.resolve : EnvironmentResources.select)({
+      scopeID,
+      ownerID: `lsp:${workspaceID ?? scopeID}`,
+      workspaceID,
+      environmentID,
+      needs: { execution: "exec" },
+      signal,
+    })
     try {
-      owned = await OwnedProcess.prepare({
-        ...command,
-        env: { ...RuntimeContext.current().host.env, ...command.env },
-        lease: {
-          ...lease,
-          release: (beforeRelease) =>
-            lease.release(async () => {
-              await cleanup?.()
-              await beforeRelease?.()
-            }),
-        },
+      const owned = await EnvironmentProcess.prepare({
+        id: `lsp:${randomUUID()}`,
+        scopeID,
+        resources,
         signal,
+        command: {
+          ...command,
+          env: {
+            ...resources.runtime!.env,
+            ...Object.fromEntries(
+              Object.entries(command.env ?? {}).filter((entry): entry is [string, string] => entry[1] !== undefined),
+            ),
+          },
+          useRoots: [],
+          cooperative,
+        },
       })
-      return { ...owned, claimID: lease.id }
+      const completion = owned.completion.finally(async () => {
+        try {
+          await cleanup?.()
+        } finally {
+          await resources.release()
+        }
+      })
+      void completion.catch(() => {})
+      return { ...owned, completion }
     } catch (error) {
-      if (owned) await owned.stop()
-      else await lease.release(cleanup)
+      try {
+        await cleanup?.()
+      } finally {
+        await resources.release()
+      }
       throw error
     }
   }
   export async function run(input: {
     command: string[]
     cwd?: string
+    mutationRoots?: string[]
     env?: Record<string, string | undefined>
     check?: boolean
   }) {
@@ -91,6 +120,7 @@ export namespace LSPProcess {
         args: input.command.slice(1),
         cwd: input.cwd ?? ScopeContext.current.directory,
         env: input.env,
+        mutationRoots: input.mutationRoots,
       },
       abort,
       false,
@@ -130,11 +160,12 @@ export namespace LSPProcess {
   }
   export async function extractZip(archive: string, destination: string) {
     if (process.platform !== "win32") {
-      await run({ command: ["unzip", "-o", "-q", archive, "-d", destination] })
+      await run({ command: ["unzip", "-o", "-q", archive, "-d", destination], mutationRoots: [destination] })
       return
     }
     const quote = (value: string) => "'" + value.replaceAll("'", "''") + "'"
     await run({
+      mutationRoots: [destination],
       command: [
         "powershell",
         "-NoProfile",

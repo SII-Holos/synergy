@@ -1,4 +1,9 @@
+import { selectAffected, taskSelected } from "./selection"
+export { documentation, selectAffected } from "./selection"
 import { createHash } from "node:crypto"
+
+// Provenance: https://docs.github.com/en/actions/reference/limits
+// Local adaptation: use Free's shared 20-job capacity with bounded pools; preparation and concurrent PRs may still queue.
 
 export type Pool = "linux" | "docker" | "postgres" | "windows" | "macos"
 export type Mode = "full" | "shadow" | "affected" | "diagnostic"
@@ -22,12 +27,19 @@ export type TaskKind =
   | "benchmark-native"
   | "rollout"
   | "sandbox"
+  | "environment"
 
 export interface WorkspaceInput {
   directory: string
   name: string
   dependencies: string[]
   testDependencies: string[]
+}
+
+export interface TaskInputs {
+  files: string[]
+  packages: string[]
+  complete: boolean
 }
 
 export interface Task {
@@ -41,6 +53,10 @@ export interface Task {
   partition?: number
   variant?: string
   selection?: string
+  inputs?: string[]
+  scenarios?: string[]
+  scenarioPrefix?: string
+  profile?: "core" | "full"
   files?: string[]
   assets?: string[]
   prerequisites?: Array<"browser" | "desktop" | "sandbox">
@@ -59,6 +75,9 @@ export interface Unit {
   sandbox: boolean
   build: boolean
   policy: boolean
+  benchmark: boolean
+  core: boolean
+  full: boolean
 }
 
 export interface Plan {
@@ -78,12 +97,13 @@ export interface Plan {
   digest: string
 }
 
-export const LIMITS: Record<Pool, number> = { linux: 6, docker: 3, postgres: 2, windows: 1, macos: 1 }
+export const LIMITS: Record<Pool, number> = { linux: 12, docker: 8, postgres: 1, windows: 1, macos: 1 }
 export const QUEUES = [
   "contracts",
   "linux",
-  "docker-external",
-  "docker-ready",
+  "linux_core",
+  "linux_full",
+  "docker_direct",
   "docker",
   "postgres",
   "windows",
@@ -91,90 +111,18 @@ export const QUEUES = [
 ] as const
 
 export function needsBuild(task: Task): boolean {
-  return ["suite", "typecheck", "packages", "artifacts", "web", "desktop", "smoke", "sandbox", "rollout"].includes(
-    task.kind,
-  )
+  return ["suite", "typecheck", "artifacts", "web", "desktop", "smoke", "sandbox", "rollout"].includes(task.kind)
 }
 
-export function executionQueue(unit: Unit, tasks: Task[]): (typeof QUEUES)[number] {
+export function executionQueue(unit: Unit, _tasks?: Task[]): (typeof QUEUES)[number] {
   if (unit.id === "linux-contracts") return "contracts"
-  if (unit.pool !== "docker") return unit.pool
-  const prepared = tasks
-    .filter((task) => task.pool === "docker" && task.needs.includes("benchmark-prepare"))
-    .toSorted((a, b) => b.seconds - a.seconds || a.id.localeCompare(b.id))
-  if (unit.tasks.includes(prepared[0]?.id ?? "")) return "docker-ready"
-  return unit.tasks.some((id) => tasks.find((task) => task.id === id)?.needs.includes("benchmark-prepare"))
-    ? "docker"
-    : "docker-external"
+  if (unit.pool === "linux") return unit.full ? "linux_full" : unit.core ? "linux_core" : "linux"
+  if (unit.pool === "docker" && !unit.benchmark) return "docker_direct"
+  return unit.pool
 }
 
 export function hash(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex")
-}
-
-export function documentation(file: string): boolean {
-  return /^(README(?:\.[a-zA-Z-]+)?\.md|CONTRIBUTING\.md|LICENSE(?:\.md)?|docs\/(?:research|decisions|postmortem)\/.*\.md)$/.test(
-    file,
-  )
-}
-
-export function selectAffected(changed: string[], base: WorkspaceInput[], head: WorkspaceInput[]) {
-  const documentationOnly = changed.length > 0 && changed.every(documentation)
-  const all = [...base, ...head]
-  const names = new Set<string>()
-  let full = false
-  for (const file of changed) {
-    if (documentation(file)) continue
-    if (/^(?:\.github\/|\.synergy\/|script\/|test\/|patches\/|packages\/testing\/)/.test(file)) full = true
-    const owners = all.filter((entry) => file.startsWith(entry.directory + "/"))
-    if (!owners.length) full = true
-    for (const entry of owners) {
-      names.add(entry.name)
-      if (/\/(?:package\.json|bunfig\.toml|tsconfig[^/]*\.json)$/.test(file)) full = true
-    }
-  }
-  for (;;) {
-    const before = names.size
-    for (const entry of all) {
-      if ([...entry.dependencies, ...entry.testDependencies].some((name) => names.has(name))) names.add(entry.name)
-    }
-    if (before === names.size) break
-  }
-  return {
-    full,
-    documentationOnly,
-    packages: [...new Set(all.filter((entry) => full || names.has(entry.name)).map((entry) => entry.directory))].sort(),
-  }
-}
-
-function taskSelected(task: Task, packages: Set<string>, changed: string[], docs: boolean): boolean {
-  if (task.kind === "policy") return true
-  if (docs) return false
-  if (["static", "typecheck"].includes(task.kind)) return true
-  const adapterFiles: Record<string, string> = {
-    "benchmark/runtime/capture-pi.mjs": "pi",
-    "benchmark/runtime/capture-plugin.mjs": "opencode",
-  }
-  const code = changed.filter((file) => !documentation(file))
-  if (code.length && code.every((file) => adapterFiles[file])) {
-    return (
-      task.kind === "benchmark-pure" ||
-      (task.kind === "benchmark-native" && code.some((file) => adapterFiles[file] === task.variant))
-    )
-  }
-  if (task.owners.some((owner) => packages.has(owner))) return true
-  const storage = changed.some((file) =>
-    /^packages\/harness\/(?:src|test)\/(?:storage|migration|session|execution|permission|lifecycle)\//.test(file),
-  )
-  if (storage && ["postgres", "rollout", "artifacts", "smoke", "sandbox", "benchmark-docker"].includes(task.kind))
-    return true
-  const local = packages.has("packages/local-runtime")
-  if (local && ["windows", "sandbox", "artifacts", "benchmark-docker"].includes(task.kind)) return true
-  if (packages.has("apps/web") && ["web", "desktop"].includes(task.kind)) return true
-  const benchmark = changed.some((file) => file.startsWith("benchmark/"))
-  if (task.kind.startsWith("benchmark-") && benchmark) return true
-  if (task.kind === "benchmark-native") return task.variant === "synergy" && packages.has("packages/harness")
-  return false
 }
 
 export function buildUnits(tasks: Task[], mode: Mode): Unit[] {
@@ -194,37 +142,96 @@ export function buildUnits(tasks: Task[], mode: Mode): Unit[] {
         sandbox: false,
         build: false,
         policy: contracts.some((task) => task.kind === "policy"),
+        benchmark: false,
+        core: false,
+        full: false,
       })
     if (!entries.length) continue
-    // Docker and database cases retain independent job/process ownership.
-    const count =
-      pool === "linux" ? Math.min(mode === "diagnostic" ? 2 : LIMITS.linux - 1, entries.length) : entries.length
-    const bins = Array.from(
-      { length: count },
-      (_, index): Unit => ({
-        id: `${pool}-${index}`,
-        pool,
-        tasks: [],
-        seconds: 0,
-        browser: false,
-        desktop: false,
-        sandbox: false,
-        build: false,
-        policy: false,
-      }),
-    )
-    for (const task of entries.toSorted((a, b) => b.seconds - a.seconds || a.id.localeCompare(b.id))) {
-      const target = bins.toSorted((a, b) => a.seconds - b.seconds || a.id.localeCompare(b.id))[0]!
-      target.tasks.push(task.id)
-      target.seconds += task.seconds
-      target.browser ||= task.prerequisites?.includes("browser") ?? false
-      target.desktop ||= task.prerequisites?.includes("desktop") ?? false
-      target.sandbox ||= task.prerequisites?.includes("sandbox") ?? false
-      target.build ||= needsBuild(task)
-      target.policy ||= task.kind === "policy"
+    const ordinary = entries.filter((task) => !task.profile)
+    const core = entries.filter((task) => task.profile === "core")
+    const full = entries.filter((task) => task.profile === "full")
+    const direct = entries.filter((task) => !task.needs.includes("benchmark-prepare"))
+    const benchmark = entries.filter((task) => task.needs.includes("benchmark-prepare"))
+    const groups =
+      pool === "linux" && mode !== "diagnostic"
+        ? [
+            {
+              entries: ordinary,
+              count: Math.min(6, ordinary.length),
+              name: "linux",
+            },
+            { entries: core, count: Math.min(1, core.length), name: "linux-core" },
+            { entries: full, count: Math.min(4, full.length), name: "linux-full" },
+          ]
+        : pool === "docker" && mode !== "diagnostic"
+          ? [
+              {
+                entries: direct,
+                count: Math.min(2, direct.length),
+                name: "docker-direct",
+              },
+              {
+                entries: benchmark,
+                count: Math.min(6, benchmark.length),
+                name: "docker",
+              },
+            ]
+          : [
+              {
+                entries,
+                count: pool === "linux" || pool === "docker" ? Math.min(2, entries.length) : entries.length,
+                name: pool,
+              },
+            ]
+    for (const group of groups) {
+      const count = group.count
+      const bins = Array.from(
+        { length: count },
+        (_, index): Unit => ({
+          id: `${group.name}-${index}`,
+          pool,
+          tasks: [],
+          seconds: 0,
+          browser: false,
+          desktop: false,
+          sandbox: false,
+          build: false,
+          policy: false,
+          benchmark: false,
+          core: false,
+          full: false,
+        }),
+      )
+      for (const task of group.entries.toSorted(
+        (a, b) =>
+          (pool === "docker"
+            ? Number(a.needs.includes("benchmark-prepare")) - Number(b.needs.includes("benchmark-prepare"))
+            : 0) ||
+          b.seconds - a.seconds ||
+          a.id.localeCompare(b.id),
+      )) {
+        const eligible =
+          pool === "linux" && mode !== "diagnostic" && task.kind === "suite"
+            ? bins.filter((bin) =>
+                bin.tasks.every((id) => tasks.find((entry) => entry.id === id)!.package !== task.package),
+              )
+            : bins
+        const target = eligible.toSorted((a, b) => a.seconds - b.seconds || a.id.localeCompare(b.id))[0]!
+        target.tasks.push(task.id)
+        target.seconds += task.seconds
+        target.browser ||= task.prerequisites?.includes("browser") ?? false
+        target.desktop ||= task.prerequisites?.includes("desktop") ?? false
+        target.sandbox ||= task.prerequisites?.includes("sandbox") ?? false
+        target.build ||= needsBuild(task)
+        target.policy ||= task.kind === "policy"
+        target.benchmark ||= task.needs.includes("benchmark-prepare")
+        target.core ||= task.profile === "core"
+        target.full ||= task.profile === "full"
+      }
+      for (const bin of bins) bin.tasks.sort((a, b) => Number(b === "policy") - Number(a === "policy"))
+      if (pool !== "linux" && pool !== "docker") for (const bin of bins) bin.id = bin.tasks[0]!
+      units.push(...bins.toSorted((a, b) => b.seconds - a.seconds || a.id.localeCompare(b.id)))
     }
-    for (const bin of bins) bin.tasks.sort((a, b) => Number(b === "policy") - Number(a === "policy"))
-    units.push(...bins)
   }
   return units
 }
@@ -239,6 +246,8 @@ export function createPlan(input: {
   changed: string[]
   baseWorkspaces: WorkspaceInput[]
   headWorkspaces: WorkspaceInput[]
+  baseInputs?: Record<string, TaskInputs>
+  headInputs?: Record<string, TaskInputs>
   tasks: Task[]
   only?: string[]
 }): Plan {
@@ -257,11 +266,25 @@ export function createPlan(input: {
     visited.add(id)
   }
   for (const id of ids) visit(id)
-  const impact = selectAffected(input.changed, input.baseWorkspaces, input.headWorkspaces)
+  const knownTests = input.tasks
+    .flatMap((task) => task.files ?? [])
+    .filter((file) => file.startsWith("test/script/") && file.endsWith(".test.ts"))
+  const impact = selectAffected(input.changed, input.baseWorkspaces, input.headWorkspaces, knownTests)
   const affected = new Set(impact.packages)
   const proposed = new Set(
     input.tasks
-      .filter((task) => impact.full || taskSelected(task, affected, input.changed, impact.documentationOnly))
+      .filter(
+        (task) =>
+          impact.full ||
+          taskSelected(
+            task,
+            affected,
+            input.changed,
+            impact.documentationOnly,
+            input.baseInputs?.[task.id],
+            input.headInputs?.[task.id],
+          ),
+      )
       .map((task) => task.id),
   )
   function close(selection: Set<string>) {
@@ -294,7 +317,10 @@ export function createPlan(input: {
         impact.full
           ? "full: shared or unclassified input"
           : proposed.has(task.id)
-            ? "affected: owner, consumer, integration, or prerequisite"
+            ? `affected: ${input.changed
+                .filter((file) => !impact.documentationOnly || file.startsWith("docs/"))
+                .slice(0, 5)
+                .join(", ")} → ${task.owners.filter((owner) => affected.has(owner)).join(", ") || task.id}`
             : selected.has(task.id)
               ? `${input.mode}: complete verification`
               : "not affected by this change",
@@ -317,4 +343,11 @@ export function validatePlan(plan: Plan): void {
   if (new Set(assigned).size !== assigned.length || assigned.toSorted().join("\0") !== expected.toSorted().join("\0")) {
     throw new Error("CI units do not partition the selected tasks")
   }
+  const files = new Set<string>()
+  for (const task of plan.tasks.filter((task) => plan.selected.includes(task.id) && task.kind === "suite"))
+    for (const file of task.files ?? []) {
+      const key = `${task.package}/${file}`
+      if (files.has(key)) throw new Error(`Repeated test file in CI plan: ${key}`)
+      files.add(key)
+    }
 }

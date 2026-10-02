@@ -1,6 +1,7 @@
+import { FileView } from "../file/view"
 import { FileMutation } from "../file/mutation"
 import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
-import { lstat, realpath } from "node:fs/promises"
+import { realpath } from "node:fs/promises"
 import { z } from "zod"
 import { createTwoFilesPatch } from "diff"
 import DESCRIPTION from "./resolve-conflicts.txt"
@@ -46,7 +47,7 @@ const Resolution = z.discriminatedUnion("strategy", [
   }),
 ])
 
-async function readUtf8TextPreservingBom(file: ReturnType<typeof Bun.file>): Promise<string> {
+async function readUtf8TextPreservingBom(file: ReturnType<typeof FileView.file>): Promise<string> {
   return new TextDecoder("utf-8", { ignoreBOM: true }).decode(await file.arrayBuffer())
 }
 function staleTagError(title: string): Error {
@@ -56,6 +57,11 @@ function staleTagError(title: string): Error {
 }
 
 async function assertPathStaysWithinWorkspace(filePath: string, title: string): Promise<void> {
+  if (!FileView.native()) {
+    FileView.relative(filePath)
+    if (!(await FileView.stat(filePath, true))) throw new Error(`File not found: ${title}`)
+    return
+  }
   const physicalPath = await realpath(filePath).catch(() => undefined)
   if (!physicalPath) throw new Error(`File not found: ${title}`)
   const workspacePath = await realpath(ScopeContext.current.directory)
@@ -87,12 +93,13 @@ export const ResolveConflictsTool = Tool.define(
         filePath,
         async () => {
           await assertPathStaysWithinWorkspace(filePath, title)
-          const stats = await lstat(filePath).catch(() => undefined)
+          const stats = await FileView.stat(filePath).catch(() => undefined)
           if (!stats) throw new Error(`File not found: ${title}`)
-          if (stats.isSymbolicLink()) throw new Error(`Refusing to resolve conflicts through a symbolic link: ${title}`)
-          if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${title}`)
+          if (stats.kind === "symlink")
+            throw new Error(`Refusing to resolve conflicts through a symbolic link: ${title}`)
+          if (stats.kind === "directory") throw new Error(`Path is a directory, not a file: ${title}`)
 
-          const file = Bun.file(filePath)
+          const file = FileView.file(filePath)
 
           const oldContent = await readUtf8TextPreservingBom(file)
           const snapshots = SessionHashlineStore.get(ctx.sessionID)
@@ -136,12 +143,12 @@ export const ResolveConflictsTool = Tool.define(
           })
           ctx.abort.throwIfAborted()
           await assertPathStaysWithinWorkspace(filePath, title)
-          const currentStats = await lstat(filePath).catch(() => undefined)
+          const currentStats = await FileView.stat(filePath).catch(() => undefined)
           if (!currentStats) throw new Error(`File not found: ${title}`)
-          if (currentStats.isSymbolicLink())
+          if (currentStats.kind === "symlink")
             throw new Error(`Refusing to resolve conflicts through a symbolic link: ${title}`)
-          if (currentStats.isDirectory()) throw new Error(`Path is a directory, not a file: ${title}`)
-          const currentContent = await readUtf8TextPreservingBom(Bun.file(filePath))
+          if (currentStats.kind === "directory") throw new Error(`Path is a directory, not a file: ${title}`)
+          const currentContent = await readUtf8TextPreservingBom(FileView.file(filePath))
           if (currentContent !== oldContent) throw staleTagError(title)
 
           const beforeDiagnostics = await captureWriteDiagnosticsBefore()
@@ -154,7 +161,7 @@ export const ResolveConflictsTool = Tool.define(
           })
           await WorkspaceEvents.publish(File.Event.Edited, { file: filePath, contentVersion: written.contentVersion })
 
-          const finalContent = await readUtf8TextPreservingBom(Bun.file(filePath))
+          const finalContent = await readUtf8TextPreservingBom(FileView.file(filePath))
           const finalConflict = detectConflicts(finalContent)
           if (finalConflict.hasConflicts) {
             throw new Error(

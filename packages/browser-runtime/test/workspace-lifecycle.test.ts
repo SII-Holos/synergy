@@ -1,3 +1,5 @@
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
+import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
 import { afterAll, afterEach, expect, test, spyOn } from "bun:test"
 import {
   BROWSER_PROTOCOL_VERSION,
@@ -21,7 +23,17 @@ import { BrowserBroker, type BrowserBrokerSocket } from "../src/broker"
 import { BrowserEvent } from "../src/event"
 import { testRuntime } from "./support/runtime"
 
-const runtime = await testRuntime(registerLocalRuntime)
+const runtime = await testRuntime(() => {
+  registerLocalRuntime()
+  EnvironmentProviders.register({
+    id: "remote-fixture",
+    allocate: async () => {
+      throw Error("must not allocate")
+    },
+    inspect: async () => ({ state: "absent" }),
+    deallocate: async () => {},
+  })
+})
 afterAll(() => runtime.close())
 afterEach(() =>
   runtime.run(async () => {
@@ -50,8 +62,15 @@ test("switching Workspace retires the old browser before commit while preserving
         const session = await Session.create({})
         const original = owner(session)
         await BrowserStorage.save(original, {
-          status: "suspended",
-          page: { id: "preserved-page", url: "https://example.com/", title: "Preserved" },
+          pages: [
+            {
+              ...{ id: "preserved-page", url: "https://example.com/", title: "Preserved" },
+              profileId: "personal",
+              status: "suspended",
+              isLoading: false,
+              lastActiveAt: null,
+            },
+          ],
           timestamp: Date.now(),
         })
         BrowserBroker.attach(
@@ -61,10 +80,10 @@ test("switching Workspace retires the old browser before commit while preserving
             protocolVersion: BROWSER_PROTOCOL_VERSION,
             hostId: "workspace-test",
             token: BrowserBroker.secret(),
-            capabilities: { native: true, webrtc: true },
+            capabilities: { native: true },
           },
         )
-        BrowserBroker.prepare(original, first.path, "webrtc")
+        BrowserBroker.prepare(original, first.path, "native")
         const watermark = BrowserEvent.watermark(original)
         const browser = await BrowserRuntime.getOrCreateSession(original)
         const disposed = spyOn(browser, "dispose")
@@ -75,8 +94,8 @@ test("switching Workspace retires the old browser before commit while preserving
           const current = await BrowserRuntime.getOrCreateSession(owner(updated))
           expect(current).not.toBe(browser)
           expect(current.owner.directory).toBe(second.path)
-          expect(current.descriptor?.id).toBe("preserved-page")
-          expect(BrowserBroker.preference(original)).toEqual({ presentation: "webrtc", routeDirectory: first.path })
+          expect(current.pages[0]?.id).toBe("preserved-page")
+          expect(BrowserBroker.preference(original)).toEqual({ presentation: "native", routeDirectory: first.path })
           expect(BrowserEvent.watermark(original).epoch).toBe(watermark.epoch)
           await expect(BrowserRuntime.getOrCreateSession(original)).rejects.toThrow()
         } finally {
@@ -144,7 +163,7 @@ class WorkspaceHost implements BrowserBrokerSocket {
       protocolVersion: BROWSER_PROTOCOL_VERSION,
       hostId: "workspace-host",
       token: BrowserBroker.secret(),
-      capabilities: { native: true, webrtc: true },
+      capabilities: { native: true },
     })
   }
 }
@@ -160,7 +179,9 @@ test("dialog replies unblock a pending page command and retain response replay",
         const host = new WorkspaceHost()
         host.attach()
         BrowserBroker.prepare(original, directory.path, "native")
+        const pageId = (await (await BrowserRuntime.getOrCreateSession(original)).openPage({})).id
         await BrowserCommandService.execute(original, {
+          pageId,
           commandId: "open-for-dialog",
           command: { type: "navigate", url: "https://example.com/", source: "user" },
         })
@@ -175,6 +196,7 @@ test("dialog replies unblock a pending page command and retain response replay",
           if (message.command.type === "dialog.respond") finish.resolve()
         }
         const pending = BrowserCommandService.execute(original, {
+          pageId,
           commandId: "pending-prompt",
           command: { type: "evaluate", mode: "trusted", expression: "prompt('Name')" },
         })
@@ -183,6 +205,7 @@ test("dialog replies unblock a pending page command and retain response replay",
           BrowserCommandService.execute(
             { ...original, directory: `${directory.path}/stale` },
             {
+              pageId,
               commandId: "stale-prompt-answer",
               command: { type: "dialog.respond", requestId: "prompt-1", accept: true },
             },
@@ -190,11 +213,13 @@ test("dialog replies unblock a pending page command and retain response replay",
         ).rejects.toMatchObject({ code: "browser_workspace_changed" })
         await expect(
           BrowserCommandService.execute(original, {
+            pageId,
             commandId: "pending-prompt",
             command: { type: "dialog.respond", requestId: "prompt-1", accept: true },
           }),
         ).rejects.toMatchObject({ code: "browser_command_id_conflict" })
         const request = {
+          pageId,
           commandId: "prompt-answer",
           command: { type: "dialog.respond", requestId: "prompt-1", accept: true, promptText: "" },
         } as const
@@ -229,6 +254,7 @@ test("Workspace selection drains an active Host command and acknowledges page cl
         const host = new WorkspaceHost()
         host.attach()
         BrowserBroker.prepare(original, first.path, "native")
+        const pageId = (await (await BrowserRuntime.getOrCreateSession(original)).openPage({})).id
         const entered = Promise.withResolvers<void>(),
           finish = Promise.withResolvers<void>()
         const closing = Promise.withResolvers<void>(),
@@ -244,6 +270,7 @@ test("Workspace selection drains an active Host command and acknowledges page cl
           }
         }
         const command = BrowserCommandService.execute(original, {
+          pageId,
           commandId: "in-flight",
           command: { type: "navigate", url: "https://example.com/", source: "user" },
         })
@@ -252,6 +279,7 @@ test("Workspace selection drains an active Host command and acknowledges page cl
         const switching = Session.updateWorkspace(session.id, target)
         const cancel = new AbortController()
         const queued = BrowserCommandService.execute(original, {
+          pageId,
           commandId: "cancelled",
           command: { type: "close" },
           signal: cancel.signal,
@@ -272,7 +300,9 @@ test("Workspace selection drains an active Host command and acknowledges page cl
         const updated = await switching
         expect(updated.workspaceID).toBe(target!.id!)
         expect(host.pages.size).toBe(0)
+        const nextPageId = (await (await BrowserRuntime.getOrCreateSession(owner(updated))).openPage({})).id
         await BrowserCommandService.execute(owner(updated), {
+          pageId: nextPageId,
           commandId: "new-context",
           command: { type: "navigate", url: "https://example.com/next", source: "user" },
         })
@@ -294,10 +324,12 @@ test("a failed Host closure preserves the binding and a retry revokes the old lo
         const original = owner(session)
         const host = new WorkspaceHost()
         host.attach()
-        BrowserBroker.prepare(original, first.path, "webrtc")
+        BrowserBroker.prepare(original, first.path, "native")
+        const pageId = (await (await BrowserRuntime.getOrCreateSession(original)).openPage({})).id
         const filename = path.join(first.path, "index.html")
         await Bun.write(filename, "<h1>Workspace</h1>")
         await BrowserCommandService.execute(original, {
+          pageId,
           commandId: "local",
           command: { type: "navigate", url: pathToFileURL(filename).href, source: "user" },
         })
@@ -310,7 +342,11 @@ test("a failed Host closure preserves the binding and a retry revokes the old lo
         const updated = await Session.updateWorkspace(session.id, target)
         expect(host.pages.size).toBe(0)
         await expect(
-          BrowserCommandService.execute(owner(updated), { commandId: "resume-old-file", command: { type: "resume" } }),
+          BrowserCommandService.execute(owner(updated), {
+            pageId,
+            commandId: "resume-old-file",
+            command: { type: "resume" },
+          }),
         ).rejects.toThrow()
         expect(host.pages.size).toBe(0)
         expect(host.requests.filter((entry) => entry.type === "page.create")).toHaveLength(1)
@@ -328,9 +364,13 @@ test(
         async fn() {
           const session = await Session.create({})
           const original = owner(session)
+          const host = new WorkspaceHost()
+          host.attach()
+          BrowserBroker.prepare(original, tmp.path, "native")
           const browser = await BrowserRuntime.getOrCreateSession(original)
+          const pageId = (await browser.openPage({})).id
           const close = spyOn(browser, "closePage")
-          await BrowserCommandService.execute(original, { commandId: "repeat", command: { type: "close" } })
+          await BrowserCommandService.execute(original, { pageId, commandId: "repeat", command: { type: "close" } })
           const record = await WorkspaceCatalog.get(session.workspaceID!, session.scope.id)
           const deadline = Date.now() + 15000
           for (;;) {
@@ -350,9 +390,14 @@ test(
           const current = await BrowserRuntime.getOrCreateSession(updated)
           expect(current).not.toBe(browser)
           await expect(BrowserRuntime.getOrCreateSession(original)).rejects.toThrow()
+          const currentPageId = (await current.openPage({})).id
           const closeCurrent = spyOn(current, "closePage")
           try {
-            await BrowserCommandService.execute(updated, { commandId: "repeat", command: { type: "close" } })
+            await BrowserCommandService.execute(updated, {
+              pageId: currentPageId,
+              commandId: "repeat",
+              command: { type: "close" },
+            })
             expect(closeCurrent).toHaveBeenCalledTimes(1)
             expect(close).toHaveBeenCalledTimes(1)
           } finally {
@@ -364,3 +409,42 @@ test(
     }),
   20000,
 )
+
+test("changing Environment closes the local Browser and remote selection cannot use the controller", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ workspace: null })
+        const browser = await BrowserRuntime.getOrCreateSession(owner(session))
+        const disposed = spyOn(browser, "dispose")
+        const remote = await Environment.bind({
+          scopeID: session.scope.id,
+          ownerID: "remote-browser",
+          provider: "remote-fixture",
+          spec: {},
+        })
+        try {
+          const changed = await Session.updateEnvironment(session.id, {
+            environmentID: remote.id,
+            expectedEnvironmentID: session.environmentID!,
+          })
+          expect(disposed).toHaveBeenCalledTimes(1)
+          await expect(BrowserRuntime.getOrCreateSession(owner(changed))).rejects.toMatchObject({
+            code: "browser_environment_unavailable",
+          })
+          expect((await Environment.get(remote.id, session.scope.id)).state).toBe("idle")
+          const disabled = await Session.updateEnvironment(session.id, {
+            environmentID: null,
+            expectedEnvironmentID: remote.id,
+          })
+          await expect(BrowserRuntime.getOrCreateSession(owner(disabled))).rejects.toMatchObject({
+            code: "browser_environment_unavailable",
+          })
+        } finally {
+          disposed.mockRestore()
+        }
+      },
+    })
+  }))

@@ -1,3 +1,4 @@
+import { restoreDistribution } from "./distributions"
 import { cp, mkdir, readFile, rm } from "node:fs/promises"
 import path from "node:path"
 import { createIsolatedTestEnv } from "../../packages/testing/src/env"
@@ -47,6 +48,35 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
     env,
   })
   switch (task.kind) {
+    case "environment": {
+      const image = "synergy-execution-host:ci"
+      return [
+        bun("environment-dependencies", ["install", "--frozen-lockfile"], undefined, {
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1",
+        }),
+        bun("environment-native-pty", ["packages/local-runtime/script/build-pty.ts"]),
+        {
+          name: "environment-apparmor",
+          args: [
+            "sudo",
+            "apparmor_parser",
+            "-r",
+            "packages/local-runtime/src/environment/vendor/synergy-execution.apparmor",
+          ],
+        },
+        bun("environment-image", ["packages/local-runtime/script/build-execution-host.ts", "--image", image]),
+        test(
+          "environment-lifecycle",
+          [
+            "test/environment/docker.test.ts",
+            "test/environment/profiles.test.ts",
+            "test/environment/remote-docker.test.ts",
+          ],
+          "packages/local-runtime",
+          { SYNERGY_TEST_DOCKER_ENVIRONMENT_IMAGE: image, SYNERGY_TEST_DOCKER_APPARMOR: "1" },
+        ),
+      ]
+    }
     case "policy":
       return [
         ...[
@@ -93,11 +123,7 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
     case "suite": {
       const config = (await loadManifest(root)).packages[task.package!]
       if (!config) throw new Error("Unknown coverage owner")
-      const env: Record<string, string> =
-        task.partition === undefined
-          ? {}
-          : { SYNERGY_TEST_PARTITION: String(task.partition), SYNERGY_TEST_PARTITIONS: "4" }
-      if (task.variant === "file") Object.assign(env, { SYNERGY_TEST_FILES: JSON.stringify(task.files) })
+      const env: Record<string, string> = { SYNERGY_TEST_FILES: JSON.stringify(task.files) }
       // The policy owns the one executable coverage command; CI does not maintain a second package list.
       return [{ name: task.id, args: ["sh", "-c", config.command], cwd: task.package, env }]
     }
@@ -105,7 +131,9 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
       return [run("package:check")]
     case "web":
       return [
-        bun("web-build", ["run", "--cwd", "apps/web", "build"]),
+        test("web-build-contract", ["test/app-build-css-contract.test.ts"], "apps/web", {
+          SYNERGY_WEB_BUILD_DIR: path.join(root, "apps/web/dist"),
+        }),
         bun("private-http", ["apps/web/script/private-http-smoke.ts"]),
         ...(await collectTests("test/plugin-ui5", root)).map((file) =>
           test(`plugin-ui:${path.basename(file)}`, ["--config", "/dev/null", file]),
@@ -144,16 +172,18 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
       ]
     case "postgres":
       return [
-        test(task.id, ["test/storage"], "packages/harness", {
+        test(task.id, task.files!, "packages/harness", {
           SYNERGY_REQUIRE_POSTGRES_TESTS: "1",
+          SYNERGY_TEST_STORAGE_BACKEND: "postgres",
           SYNERGY_TEST_POSTGRES_URL: "postgres://postgres:storage-ci-only@127.0.0.1:5432/synergy_storage_test",
         }),
       ]
     case "windows":
+      if (task.variant === "desktop")
+        return [
+          test("windows-desktop", ["test/server-manager.test.ts", "test/windows-installer.test.ts"], "apps/desktop"),
+        ]
       return [
-        ...["packages/harness", "packages/local-runtime", "apps/desktop"].map((cwd) =>
-          bun(`windows-types:${cwd}`, ["run", "typecheck"], cwd),
-        ),
         {
           name: "windows-helper",
           args: [
@@ -169,7 +199,7 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
             "install_wfp_filters_for_account_stub_returns_ok_zero",
           ],
         },
-        ...["check", "build"].map((command) => ({
+        ...["build"].map((command) => ({
           name: `windows-helper-${command}`,
           args: [
             "cargo",
@@ -188,7 +218,6 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
         ),
         test("windows-util", ["test/fs-lock.test.ts", "test/process-identity.test.ts"], "packages/util"),
         test("windows-home-copy", ["test/cli/data-files.test.ts"], "packages/cli"),
-        test("windows-desktop", ["test/server-manager.test.ts", "test/windows-installer.test.ts"], "apps/desktop"),
       ]
     case "native-workspace":
       return [
@@ -245,14 +274,7 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
         },
       ]
     case "benchmark-docker":
-      return [
-        pytest(task.files!, benchmarkEnv, [
-          "-k",
-          task.variant === "normal"
-            ? "not faults_preserve_terminal_evidence_and_cleanup"
-            : "not real_synergy_paired_rollout",
-        ]),
-      ]
+      return [pytest(task.files!, benchmarkEnv, task.selection ? ["-k", task.selection] : [])]
     case "benchmark-native":
       return [
         pytest(
@@ -278,46 +300,56 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
           { SYNERGY_ROLLOUT_LONG_STREAM: "1", SYNERGY_CI_TIMING: "1" },
         ),
       ]
-    case "artifacts":
-      if (task.variant === "core")
+    case "artifacts": {
+      const owner = task.profile === "core" ? "cli" : "presets"
+      const scenarioPrefix = "installed runtime artifact preserves "
+      const scenarios = task.scenarios?.map((name) =>
+        name.slice(scenarioPrefix.length).replace(" outcome outside the repository", ""),
+      )
+      if (task.variant === "binary")
         return [
-          test("watcher-native", ["--config", "/dev/null", ...task.files!]),
-          bun("core-build", ["packages/cli/script/build.ts", "--single", "--skip-install"], undefined, {
-            SYNERGY_BUILD_TARGETS: "linux-x64",
-            SYNERGY_REQUIRE_SANDBOX_ASSETS: "1",
+          ...(task.files?.length ? [test("watcher-native", ["--config", "/dev/null", ...task.files])] : []),
+          test("installed-behavior", ["test/cli/artifact.test.ts"], "packages/cli", {
+            SYNERGY_TEST_ARTIFACT_PROFILE: task.profile!,
+            SYNERGY_TEST_ARTIFACT_BIN: path.join(root, `packages/${owner}/dist/synergy-linux-x64/bin/synergy`),
+            SYNERGY_TEST_ARTIFACT_SCENARIOS: JSON.stringify(scenarios),
           }),
-          test("core-installed", ["test/cli/artifact.test.ts"], "packages/cli", {
-            SYNERGY_TEST_ARTIFACT_PROFILE: "core",
-            SYNERGY_TEST_ARTIFACT_BIN: path.join(root, "packages/cli/dist/synergy-linux-x64/bin/synergy"),
-          }),
-          bun("core-pack", ["script/pack-workspace.ts", "packages/cli", path.join(root, OUTPUT, "core-packages")]),
-          bun("core-install", ["script/package-install-check.ts", path.join(root, OUTPUT, "core-packages")]),
         ]
-      if (task.variant === "full")
+      if (task.variant === "package")
         return [
-          bun("product-build", ["packages/presets/script/build.ts", "--single", "--skip-install"], undefined, {
-            SYNERGY_BUILD_TARGETS: "linux-x64",
-            SYNERGY_REQUIRE_SANDBOX_ASSETS: "1",
-          }),
-          test("product-installed", ["test/cli/artifact.test.ts"], "packages/cli", {
-            SYNERGY_TEST_ARTIFACT_PROFILE: "full",
-            SYNERGY_TEST_ARTIFACT_BIN: path.join(root, "packages/presets/dist/synergy-linux-x64/bin/synergy"),
-          }),
+          bun(
+            "core-install",
+            ["script/package-install-check.ts", path.join(root, OUTPUT, "core-packages")],
+            undefined,
+            {
+              SYNERGY_TEST_ARTIFACT_PROFILE: "core",
+              SYNERGY_TEST_ARTIFACT_SCENARIOS: JSON.stringify(scenarios),
+              SYNERGY_TEST_ARTIFACT_JUNIT: path.join(root, OUTPUT, "raw", task.id, "installed.xml"),
+            },
+          ),
+        ]
+      if (task.variant === "composition")
+        return [
           bun("product-composition", [
             "script/runtime-composition-check.ts",
             path.join(root, "packages/presets/dist/modules-packages"),
           ]),
+        ]
+      if (task.variant === "components" || task.variant === "company" || task.variant === "web")
+        return [
           bun("installation-composition", [
             "script/installation-composition-check.ts",
             path.join(root, "packages/presets/dist/modules-packages"),
+            task.variant,
           ]),
         ]
-      throw new Error(`Unknown installed runtime profile: ${task.variant}`)
+      throw new Error(`Unknown installed runtime control: ${task.id}`)
+    }
   }
 }
 
 function nativeCoverageDirectory(task: Task, root: string): string | undefined {
-  if (task.kind !== "native-workspace" && task.kind !== "windows") return undefined
+  if (task.kind !== "native-workspace" && !(task.kind === "windows" && task.variant !== "desktop")) return undefined
   return path.join(root, task.package!, "coverage/shards", task.pool === "windows" ? "1000001" : "1000000")
 }
 
@@ -371,7 +403,12 @@ async function captureReports(task: Task, root: string, output: string): Promise
   return reports
 }
 
-export async function executeTask(task: Task, plan: Plan, root = ROOT): Promise<TaskResult> {
+export async function executeTask(
+  task: Task,
+  plan: Plan,
+  root = ROOT,
+  executionAttempt = plan.attempt,
+): Promise<TaskResult> {
   const output = path.join(root, OUTPUT, "results")
   await rm(path.join(output, task.id), { recursive: true, force: true })
   const raw = path.join(root, OUTPUT, "raw", task.id)
@@ -382,12 +419,14 @@ export async function executeTask(task: Task, plan: Plan, root = ROOT): Promise<
   const native = nativeCoverageDirectory(task, root)
   if (native) await rm(native, { recursive: true, force: true })
   const result: TaskResult = {
-    version: 1,
+    version: 2,
     task: task.id,
+    unit: plan.units.find((unit) => unit.tasks.includes(task.id))?.id ?? task.id,
     plan: plan.digest,
     sha: plan.sha,
     run: plan.run,
-    attempt: plan.attempt,
+    planAttempt: plan.attempt,
+    executionAttempt,
     mode: plan.mode,
     status: "failure",
     exitCode: 1,
@@ -456,15 +495,64 @@ export async function executeTask(task: Task, plan: Plan, root = ROOT): Promise<
   return result
 }
 
-export async function executeUnit(plan: Plan, id: string, root = ROOT) {
+export async function executeUnit(
+  plan: Plan,
+  id: string,
+  root = ROOT,
+  prepareInput?: (profile: "core" | "full" | "benchmark") => Promise<void>,
+  executionAttempt = plan.attempt,
+) {
   validatePlan(plan)
   const unit = plan.units.find((entry) => entry.id === id)
   const ids = unit?.tasks ?? (id === "benchmark-prepare" && plan.selected.includes(id) ? [id] : undefined)
   if (!ids) throw new Error(`Unknown execution unit: ${id}`)
-  const failures = []
-  for (const taskID of ids) {
-    const result = await executeTask(plan.tasks.find((entry) => entry.id === taskID)!, plan, root)
+  const prepared = new Map<string, Promise<void>>()
+  const failures: string[] = []
+  const ordered = ids.toSorted(
+    (a, b) =>
+      Number(
+        !!plan.tasks.find((task) => task.id === a)!.profile ||
+          plan.tasks.find((task) => task.id === a)!.needs.includes("benchmark-prepare"),
+      ) -
+      Number(
+        !!plan.tasks.find((task) => task.id === b)!.profile ||
+          plan.tasks.find((task) => task.id === b)!.needs.includes("benchmark-prepare"),
+      ),
+  )
+  async function execute(taskID: string) {
+    const task = plan.tasks.find((entry) => entry.id === taskID)!
+    const profile = task.profile ?? (task.needs.includes("benchmark-prepare") ? "benchmark" : undefined)
+    if (profile) {
+      if (!prepared.has(profile))
+        prepared.set(
+          profile,
+          (async () => {
+            await prepareInput?.(profile)
+            if (profile !== "benchmark") await restoreDistribution(root, plan, profile)
+          })(),
+        )
+      await prepared.get(profile)
+    }
+    const result = await executeTask(task, plan, root, executionAttempt)
     if (result.status !== "success") failures.push(taskID)
   }
-  return failures
+  let cursor = 0
+  const workers = await Promise.allSettled(
+    Array.from(
+      {
+        length:
+          unit?.pool === "docker"
+            ? 2
+            : unit?.pool === "linux" && unit.id !== "linux-contracts" && plan.mode !== "diagnostic"
+              ? 2
+              : 1,
+      },
+      async () => {
+        while (cursor < ordered.length) await execute(ordered[cursor++]!)
+      },
+    ),
+  )
+  const rejected = workers.find((worker) => worker.status === "rejected")
+  if (rejected?.status === "rejected") throw rejected.reason
+  return failures.sort()
 }

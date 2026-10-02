@@ -2,13 +2,13 @@ import { describe, expect, test } from "bun:test"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ desktop: true })
 
 describe("MigrationRegistry", () => {
   test("registers all domains", () =>
     runtime.run(() => {
       const domainCount = MigrationRegistry.list().size
-      expect(domainCount).toBe(16)
+      expect(domainCount).toBe(20)
     }))
 
   test("has expected domain names", () =>
@@ -20,6 +20,7 @@ describe("MigrationRegistry", () => {
         "browser",
         "channel",
         "config",
+        "environment",
         "holos",
         "installation",
         "lattice",
@@ -30,7 +31,10 @@ describe("MigrationRegistry", () => {
         "scope",
         "session",
         "storage",
+        "usage",
+        "workbench-projects",
         "workflows-session",
+        "workspace",
       ])
     }))
 

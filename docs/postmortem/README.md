@@ -1,6 +1,6 @@
 # Postmortems
 
-Postmortems explain failures that reached users, merged code or releases: what broke, why safeguards missed it, and the guardrails added.
+Postmortems explain escaped failures, their causes, missed safeguards and added guardrails.
 
 ## When to write one
 
@@ -10,7 +10,7 @@ Write a postmortem only when **all three** criteria hold:
 - **Systemic** — the bug escaped because of a gap in tests, tooling, or conventions, not a one-off typo.
 - **Costly to rediscover** — it cost real debugging time, and it would cost it again.
 
-A bug that fails any of these criteria is a bug fix with tests, not a postmortem.
+Otherwise, write a bug fix with tests.
 
 ## Placement
 
@@ -30,7 +30,9 @@ Name files `NNNN-kebab-case-title.md` using the next available number. Use these
 
 ## Index
 
-Add entries only for qualifying incidents.
+Qualifying incidents:
+
+- [0035: Titlebar controls](0035-native-titlebar-swallowed-controls.md)
 
 | Number | Title                                                                      | Status      | Date       |
 | ------ | -------------------------------------------------------------------------- | ----------- | ---------- |
@@ -87,6 +89,12 @@ Add entries only for qualifying incidents.
 | 0023 | Benchmark exhausted Docker network addresses | implemented | 2026-09-23 |
 | 0024 | Benchmark observer imposed a stream idle timeout | implemented | 2026-09-23 |
 | 0025 | Benchmark verifier dependencies and missing results | implemented | 2026-09-23 |
+
+| 0032 | [Workspace-free attachment preparation](0032-workspace-free-attachment-preparation.md) | implemented | 2026-09-28 |
+
+| 0033 | [Completed terminal blocked Runtime shutdown](0033-completed-terminal-blocked-runtime-shutdown.md) | implemented | 2026-09-28 |
+
+| 0034 | [Composer uploads suppressed attachment content](0034-composer-upload-suppressed-content.md) | implemented | 2026-09-28 |
 
 ## History rules
 

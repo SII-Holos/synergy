@@ -423,7 +423,7 @@ test("cancelled turns and native background processes release Git locks after ow
             { sessionID: session.id, workspace: session.workspace, signal: controller.signal },
             async () => {
               await Worktree.lock(created.path)
-              const lease = await WorkspaceAccess.process(null)
+              const lease = await WorkspaceAccess.process([created.path])
               owned = await OwnedProcess.prepare({
                 command: process.execPath,
                 args: ["-e", "await Bun.sleep(700)"],

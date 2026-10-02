@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto"
+import { EnvironmentResources } from "../environment/resources"
+import { WorkspaceState } from "../workspace/state"
 import { ScopeContext } from "../scope/context"
 import { Scope } from "../scope"
 import type { RolloutProcess } from "../session/rollout/process"
@@ -45,6 +48,9 @@ export namespace Tool {
     agent: string
     abort: AbortSignal
     callID?: string
+    environmentID?: string | null
+    resources?: import("../environment/resources").EnvironmentResources.Resolved
+    inputImages?(): Promise<import("../session/rollout/input-images").InputImages.Receipt | undefined>
     captureResult?(result: unknown): Promise<void>
     openProcessEvidence?(id: string): Promise<RolloutProcess.Writer>
     extra?: { [key: string]: any }
@@ -54,6 +60,7 @@ export namespace Tool {
   export interface Info<Parameters extends z.ZodType = z.ZodType, M extends Metadata = Metadata> {
     id: string
     requiresWorkspace?: boolean
+    requiresExecution?: "exec" | "pty"
     exposure?: ToolExposure.Info
     display?: ToolDisplay
     source?: Source
@@ -70,6 +77,46 @@ export namespace Tool {
 
   export type InferParameters<T extends Info> = T extends Info<infer P> ? z.infer<P> : never
   export type InferMetadata<T extends Info> = T extends Info<any, infer M> ? M : never
+
+  export async function withWorkspace<T>(
+    required: boolean | undefined,
+    ctx: { sessionID?: string; messageID?: string; callID?: string; resources?: EnvironmentResources.Resolved },
+    fn: () => Promise<T>,
+  ) {
+    const resources = ctx.resources
+    const run = async () => {
+      const selected = resources?.workspace
+      if (!required && !selected) return fn()
+      const workspace = ScopeContext.current.workspace
+      if (!workspace && !selected)
+        throw new Scope.WorkspaceRequiredError({
+          message: "This tool requires a Workspace.",
+          scopeID: ScopeContext.current.scope.id,
+        })
+      const { WorkspaceRuntime } = await import("../workspace/runtime")
+      const execute = () =>
+        workspace && (!selected || (selected.id === workspace.id && selected.binding.path === resources?.directory))
+          ? WorkspaceRuntime.withUse(ScopeContext.current.scope, workspace, ctx.sessionID, fn)
+          : WorkspaceRuntime.ensure(ScopeContext.current.scope, {
+              id: selected!.id,
+              generation: selected!.binding.generation,
+              scopeID: selected!.scopeID,
+            }).then(fn)
+      return selected
+        ? WorkspaceState.provide(
+            { id: selected.id, generation: selected.binding.generation, scopeID: selected.scopeID },
+            execute,
+          )
+        : execute()
+    }
+    return resources
+      ? EnvironmentResources.provide(
+          resources,
+          JSON.stringify([ctx.sessionID, ctx.messageID, ctx.callID || randomUUID()]),
+          run,
+        )
+      : run()
+  }
 
   export function validateAttachmentResult(
     tool: string,
@@ -101,6 +148,7 @@ export namespace Tool {
     init: Info<Parameters, Result>["init"] | Awaited<ReturnType<Info<Parameters, Result>["init"]>>,
     options?: {
       requiresWorkspace?: boolean
+      requiresExecution?: "exec" | "pty"
       exposure?: ToolExposure.Info
       display?: ToolDisplay
     },
@@ -120,15 +168,16 @@ export namespace Tool {
     return {
       id,
       requiresWorkspace: options?.requiresWorkspace,
+      requiresExecution: options?.requiresExecution,
       exposure: options?.exposure,
       display: options?.display,
       init: async (initCtx) => {
         const toolInfo = { ...(init instanceof Function ? await init(initCtx) : init) }
         const execute = originalExecute ?? toolInfo.execute
         toolInfo.execute = async (args, ctx) => {
-          if (options?.requiresWorkspace && !ScopeContext.current.workspace)
+          if (options?.requiresWorkspace && !ctx.resources?.workspace && !ScopeContext.current.workspace)
             throw new Scope.WorkspaceRequiredError({
-              message: "This tool requires a local workspace.",
+              message: "This tool requires a Workspace.",
               scopeID: ScopeContext.current.scope.id,
             })
           let parsed: typeof args
@@ -143,7 +192,7 @@ export namespace Tool {
               { cause: error },
             )
           }
-          const result = await execute(parsed, ctx)
+          const result = await withWorkspace(options?.requiresWorkspace, ctx, () => execute(parsed, ctx))
           await ctx.captureResult?.(result)
           validateAttachmentResult(id, result)
           if (result.metadata.truncated !== undefined) {

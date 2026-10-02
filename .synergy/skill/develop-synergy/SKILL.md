@@ -14,15 +14,14 @@ Read [Development reference](../../../docs/reference/development.md) before choo
 ## Prepare an Isolated Home
 
 1. Choose a dedicated parent directory and explicit free ports. Check listeners with `lsof -nP -iTCP -sTCP:LISTEN` or the platform equivalent; do not assume `4097` and `3001` are free.
-2. Create the required `.synergy` parent and copy configuration:
+2. Create the required `.synergy` parent:
 
 ```bash
 DEV_HOME=/tmp/synergy-dev-<short-name>
 mkdir -p "$DEV_HOME/.synergy"
-cp -R ~/.synergy/config "$DEV_HOME/.synergy/config"
 ```
 
-3. Copying configuration preserves provider settings but does not copy the separate credential store. Do not copy sessions, daemon state, locks, logs, cache, or Library data — the two model catalog files in step 4 are the sole cache exception. Seed only the fixture credentials a test requires inside the isolated home; never copy or overwrite the live credential store implicitly.
+3. Start with minimal fixture configuration. Select only the provider configuration and credential needed for an explicit real-provider check; never copy the entire live configuration or credential store implicitly. Do not copy sessions, daemon state, locks, logs, cache, or Library data — the two model catalog files in step 4 are the sole cache exception. Seed only the fixture credentials a test requires inside the isolated home; never copy or overwrite the live credential store implicitly.
 4. Copy model catalog data from the main home when the isolated environment cannot reach models.dev (offline or restricted-network debugging machines), so the isolated model list does not depend on a live models.dev fetch:
 
 ```bash
@@ -57,6 +56,21 @@ Development process lifecycle is owned by the root orchestrator. Both serial bui
 
 Managed Desktop captures the user's login-shell `PATH` once and passes only its normalized value to the managed server, preserving inherited absolute entries as fallbacks. It does not import arbitrary profile variables. Verify the effective value and fixed command resolutions in developer-mode Settings → Observability; a Desktop-process source indicates that the login-shell probe safely fell back. Do not replace this startup boundary by making Bash tool execution use a login shell: Bash remains ordinary `shell -c` under the sandbox environment allowlist.
 
+## Reproducible Workbench Acceptance
+
+With the isolated server and App running, seed synthetic projects and tasks through the generated SDK. The local provider replaces only inference; the real server, submission, synchronization and UI still run.
+
+```bash
+bun apps/web/test/fixtures/workbench/provider.ts "$DEV_HOME" http://127.0.0.1:4097 4098
+bun apps/web/test/fixtures/workbench/seed.ts "$DEV_HOME" http://127.0.0.1:4097
+bun run --cwd apps/desktop build
+bun apps/desktop/test/fixture/isolated-desktop.ts "$DEV_HOME" http://127.0.0.1:3001
+```
+
+Choose free ports first. Both Web fixtures validate the server's actual Home before mutation; seeding refuses an existing manifest. The provider records chat, auxiliary and embedding calls separately at `/journal`, and `[long]` selects a delayed long response. Keep the manifest and logs private. The Desktop helper sets isolated Electron `userData` before importing main and acquiring the single-instance lock, writes its child PID/log under the selected Home, and forwards termination only to that child. Reuse that Home for restart/persistence checks. A real-provider check and native IME check remain separate evidence.
+
+For final acceptance, build Web and point Desktop at the isolated server's production Web origin. Record source revision, lockfile hash, viewport/zoom/theme, fixture manifest and observed result. Exercise the same built origin in Web and Desktop, including real status details on new tasks, project context, task starters, draft/attachment preservation, native chrome and split-pane menus. Save light/dark screenshots and a short hover/menu/split recording; isolated component tests do not establish whole-page visual acceptance. Stop only the helper/server/provider processes whose PID and Home were recorded, then verify their ports are free.
+
 ## Preserve Desktop Renderer Lifecycle
 
 Route main-process broadcasts for the application renderer through `DesktopRendererDelivery`. A live `BrowserWindow` or `WebContents` does not prove that its current main frame can receive IPC during startup, document navigation, reload, renderer exit, or shutdown.
@@ -65,9 +79,12 @@ Route main-process broadcasts for the application renderer through `DesktopRende
 - Use `sendLatest()` for replaceable snapshots such as window, theme, and update state; use `enqueue()` for one-shot messages such as deep links; use `send()` for transient events that should be dropped while the renderer is unavailable.
 - Keep startup-overlay updates on the overlay's own `WebContentsView`; it is not the application renderer.
 - Cover pre-ready, main-frame reload, post-ready convergence, destroyed/detached frame, and renderer-exit behavior before running an isolated Desktop cold-start and reload check.
+- Use Electron Window Controls Overlay geometry for native control exclusion; fullscreen clears the inset. Verify ordinary/fullscreen × expanded/collapsed, then repeat with a side workspace, after reload and at 200% zoom. Do not infer fullscreen from dimensions or replace the geometry with fixed offsets.
 - Keep renderer window-state broadcasts disabled on macOS. Native fullscreen moves the window across Spaces asynchronously and can emit unstable focus/fullscreen transitions; macOS uses native chrome and should query state explicitly when needed.
 
 ## Verify and Diagnose
+
+Load [testing-guide](../testing-guide/SKILL.md#review-test-value-and-ci-cost) before changing automated verification. Review affected existing tests together with new coverage, and include consolidation or removal when behavior is obsolete or duplicated. Select the smallest relevant check locally; use the [CI cost policy](../../../docs/operations/ci.md#维护验证成本) for measured changes to expensive preparation or full workflows.
 
 1. Confirm health on the selected server port before opening dependent clients. After workspace or startup entry changes, run `bun test --config /dev/null test/script/dev-entrypoints.test.ts` against the real checkout, start the root development command in an isolated home, and verify Web rendering in a browser. For managed Desktop changes, verify source backend startup, restart and shutdown separately from packaged startup; serving HTML alone does not establish that the UI rendered.
 2. Reproduce the behavior with a new isolated Scope/session. Record only redacted IDs and project-relative evidence in shareable output.
@@ -95,7 +112,7 @@ Report the isolated home label without exposing secrets, chosen mode and ports, 
 
 ## Native Computer Verification
 
-For macOS Computer changes, use an isolated Desktop user-data directory as well as `SYNERGY_HOME`. `SYNERGY_COMPUTER_DRIVER_PATH` may point to a verified development binary; production builds use the pinned driver. Exercise discovery, observation, a background action in a disposable native app, image delivery, profile denial, cancellation, and reconnect. Check the target app state and frontmost app independently; a successful input dispatch alone is insufficient. Never replace a missing OS grant with another application's authority.
+For macOS Computer changes, load [change-computer-runtime](../change-computer-runtime/SKILL.md) for native and real-model fixtures, packaged candidate acceptance and visual checks. Use an isolated Desktop user-data directory as well as `SYNERGY_HOME`. The full `bun dev desktop` orchestrator registers the Computer host; `--attach` alone does not. `SYNERGY_COMPUTER_DRIVER_PATH` may select a verified development binary; candidate acceptance must use its bundled worker. Never replace a missing OS grant with another application's authority.
 
 For OS permission verification, launch the isolated app through macOS LaunchServices and inspect its actual permission state. A terminal-spawned Electron can inherit the terminal host's TCC responsibility, so a successful preflight does not establish that the standalone Desktop app has its own grants. Use a clearly named isolated app bundle; never modify another app's identity or reuse its grants to make a test pass.
 
@@ -110,3 +127,15 @@ Keep a native operation's result and errno in the same native call. Capture erro
 Build and load native assets with the same libc selector. Cover source glibc/musl detection, compiled overrides, non-Linux defaults and explicit cross-build targets through `test/process/native-library.test.ts`. Temporary asset selection tests can replace system inputs; they do not establish actual musl compilation or execution.
 
 For modular release changes, verify a packed core and Web selection outside the checkout, then validate the whole release and Desktop inventories. Runtime resources belong to their package; update the shared release layout and installer upgrade/removal contracts together. Preserve checksum validation for filenames containing spaces and reject unlisted module files.
+
+For frontend navigation acceptance, build Web and Desktop from the same checkout, run `bun apps/web/test/fixtures/workbench/verify-navigation.ts "$DEV_HOME" "$APP_ORIGIN"`, and run `bun apps/web/test/fixtures/workbench/verify-native-chrome.ts "$DEV_HOME" "$APP_ORIGIN"` on macOS after closing only that isolated Desktop. The native verifier runs Playwright's Electron inspector through Node, uses the isolated userData wrapper and production server, and selects the application URL rather than the temporary startup overlay. It exercises actual fullscreen/minimize/restore, waits for native transition completion and writes local screenshots and video. At non-default Electron zoom, use native capture and DOM geometry together. Follow with direct native drag/Spaces inspection; record automation limits separately instead of treating a dispatched command as proof. Never substitute synthetic CSS values for the final native check or report simulated input as native IME evidence.
+
+Project-entry acceptance includes the same built Web bundle in managed Desktop and Web, plus external Desktop. Confirm that only a running managed Desktop connection to its own server opens the OS folder dialog; Web localhost and external Desktop localhost must open the service directory browser. Verify native Cancel, return focus and retained unsaved project fields. Capture computer/project selection and draft merge, main-folder/Worktree choices, project settings and folder errors/paging/multi-selection. Merely opening these surfaces must not allocate an Environment; compare resource state before and after preview, then verify first-send binding.
+
+Use disposable real directories for project-flow acceptance, including two Git roots and a plain folder. Record the main-folder transition and verify Worktree source metadata before and after changing main. Preserve source fixtures and evidence until handoff. When native automation is unavailable (for example, a locked screen), continue Web and Desktop renderer checks but report OS-level picker, drag and Spaces coverage separately; an IPC call or renderer click is not native hit-test evidence.
+
+## Isolate native Browser acceptance
+
+Electron userData owns persistent browser partitions and is separate from the backend home. For an isolated source acceptance run, build Desktop and launch a task-owned `.mjs` entry which imports `{ app }` from the workspace Electron package, calls `app.setPath("userData", isolatedDirectory)`, then dynamically imports the absolute `apps/desktop/dist/main.js` path. Set `SYNERGY_HOME` to the isolated home, use the dev channel and explicit alternate server/Web ports, and connect only that local broker. Keep the entry and any registration secret outside the repository. Do not reuse the user's real Electron profile or copy browser credentials.
+
+Launch the actual executable named by Electron's `path.txt` when recording the owned PID; killing a Node package shim may leave Electron running. Check the command line and port before stopping it. For CDP-based UI acceptance, connect Node Playwright to an explicitly enabled local debugging port and disconnect the client after each check; do not change the installed product's debugging settings. Rebuild and restart only the isolated main process after native changes. Use the same isolated userData across a controlled restart when testing login persistence.

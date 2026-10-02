@@ -1,10 +1,4 @@
 import { describe, expect, test } from "bun:test"
-import type {
-  SynergyLinkBash,
-  SynergyLinkClient,
-  SynergyLinkProcess,
-  SynergyLinkSession,
-} from "@ericsanchezok/synergy-link-protocol"
 import { mkdir, readdir, stat } from "node:fs/promises"
 import path from "node:path"
 import { NoteMarkdown, NoteStore } from "@ericsanchezok/synergy-note"
@@ -13,11 +7,12 @@ import { ProcessRegistry } from "@ericsanchezok/synergy-harness/process/registry
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { BashTool } from "@ericsanchezok/synergy-local-runtime/tools/bash"
 import { BashVirtualFile } from "@ericsanchezok/synergy-local-runtime/tools/bash/virtual-file"
-import { SynergyLinkExecution } from "@ericsanchezok/synergy-local-runtime/tools/synergy-link-execution"
 import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
+import { NativeExecutor } from "@ericsanchezok/synergy-local-runtime/environment/native-executor"
+import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/workspace/coordinator"
 const runtime = await testRuntime()
 
 const baseContext = {
@@ -138,7 +133,8 @@ describe("bash note virtual paths", () => {
           )
 
           expect(result.metadata.exit).toBe(0)
-          expect(result.output).toBe("ok")
+          expect(result.output).toBe("ok\n\nShell exited with code 0.")
+          expect(result.metadata.output).toBe("ok")
         },
       })
     }))
@@ -165,12 +161,21 @@ describe("bash note virtual paths", () => {
           expect(await Bun.file(marker).exists()).toBe(false)
 
           const command = "/synergy/note/nte_missing"
+          await using executor = await NativeExecutor.open({
+            target: { environmentID: "test", allocationID: "allocation", generation: 1 },
+            directory: path.join(tmp.path, "receipts"),
+            inputsRoot: tempRoot,
+            coordinator: new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") }),
+          })
           await expect(
             BashVirtualFile.materialize({
               command,
               references: [{ startIndex: 0, endIndex: command.length, provider: "note", id: "nte_missing" }],
               scopeID: ScopeContext.current.scope.id,
-              tempRoot,
+              executor,
+              executionID: "missing",
+              shell: Shell.acceptable(),
+              platform: process.platform,
             }),
           ).rejects.toThrow("Note not found: nte_missing")
           expect(await readdir(tempRoot)).toEqual([])
@@ -203,6 +208,12 @@ describe("bash note virtual paths", () => {
         await mkdir(tempRoot)
         const virtualPath = `/synergy/note/${noteID}`
         const command = `cat ${virtualPath}`
+        await using executor = await NativeExecutor.open({
+          target: { environmentID: "test", allocationID: "allocation", generation: 1 },
+          directory: path.join(root, "receipts"),
+          inputsRoot: tempRoot,
+          coordinator: new WorkspaceCoordinator({ directory: path.join(root, "claims") }),
+        })
         const materialized = await BashVirtualFile.materialize({
           command,
           references: [
@@ -214,7 +225,10 @@ describe("bash note virtual paths", () => {
             },
           ],
           scopeID: ScopeContext.current.scope.id,
-          tempRoot,
+          executor,
+          executionID: "quoted",
+          shell: Shell.acceptable(),
+          platform: process.platform,
         })
         try {
           const result = Bun.spawnSync([Shell.acceptable(), "-c", materialized.command], {
@@ -226,7 +240,7 @@ describe("bash note virtual paths", () => {
           expect(result.exitCode).toBe(0)
           expect(result.stdout.toString()).toContain("reviewed")
         } finally {
-          materialized.cleanup()
+          await materialized.cleanup()
         }
       })
     }))
@@ -384,64 +398,6 @@ describe("bash note virtual paths", () => {
 
         expect(stagingRoot).toBeString()
         expect(await Bun.file(stagingRoot!).exists()).toBe(false)
-      })
-    }))
-
-  test("leaves remote Link commands virtual and does not materialize local files", () =>
-    runtime.run(async () => {
-      let forwarded: SynergyLinkBash.ExecutePayload | undefined
-      let prepared = false
-      const client: SynergyLinkClient.ExecutionClient = {
-        async executeBash(_linkID, input) {
-          forwarded = input
-          return { title: "Remote", metadata: { backend: "remote", exit: 0 }, output: "remote" }
-        },
-        async executeProcess(): Promise<SynergyLinkProcess.Result> {
-          throw new Error("unexpected process execution")
-        },
-        async executeSession(): Promise<SynergyLinkSession.Result> {
-          throw new Error("unexpected session execution")
-        },
-      }
-      SynergyLinkExecution.setClient(client)
-      SynergyLinkExecution.upsertSession({
-        linkID: "link_test",
-        targetAgentID: "remote-agent",
-        sourceAgent: "test-strategist",
-        sessionID: "session_test",
-        status: "opened",
-        openedAt: Date.now(),
-        lastUsedAt: Date.now(),
-        lastVerifiedAt: Date.now(),
-      })
-
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          try {
-            const bash = await BashTool.init()
-            const command = "cat /synergy/note/nte_remote"
-            const result = await bash.execute(
-              { command, description: "Read remote note path", linkID: "link_test" },
-              {
-                ...baseContext,
-                extra: {
-                  sandboxPrepare: async () => {
-                    prepared = true
-                    throw new Error("local sandbox should not be prepared")
-                  },
-                },
-              },
-            )
-
-            expect(result.metadata.backend).toBe("remote")
-            expect(forwarded?.command).toBe(command)
-            expect(prepared).toBe(false)
-          } finally {
-            SynergyLinkExecution.setClient(null)
-          }
-        },
       })
     }))
 })

@@ -1,7 +1,6 @@
 import z from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BrowserBroker } from "../broker"
-import { BrowserHostBrokerProcess } from "../host-broker-process"
 
 const parameters = z
   .object({
@@ -26,7 +25,7 @@ export const BrowserViewTool = Tool.define<typeof parameters, BrowserViewMetadat
     "Control the Browser Side Workspace panel. Show or hide the Browser UI, switch focus to the browser page, or query the Side Workspace open state. This does not affect CDP or the running browser — only the frontend view.",
   parameters,
   async execute(params) {
-    const hostStatus = BrowserBroker.ready() ? "ready" : BrowserHostBrokerProcess.status()
+    const hostStatus = BrowserBroker.ready() ? "ready" : "unavailable"
 
     switch (params.action) {
       case "show":

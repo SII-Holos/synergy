@@ -1,4 +1,5 @@
-import { dlopen, FFIType, ptr } from "bun:ffi"
+import { openNativeLibrary } from "../native/ffi"
+import { FFIType, ptr } from "bun:ffi"
 import { existsSync } from "node:fs"
 import path from "node:path"
 import { Readable, Writable } from "node:stream"
@@ -30,7 +31,7 @@ export namespace NativePty {
   }
 
   function load(filename: string) {
-    const library = dlopen(filename, {
+    const library = openNativeLibrary(filename, {
       synergy_pty_version: { args: [], returns: FFIType.i32 },
       synergy_pty_spawn: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i32 },
       synergy_pty_read: { args: [FFIType.i32, FFIType.ptr, FFIType.u64], returns: FFIType.i32 },

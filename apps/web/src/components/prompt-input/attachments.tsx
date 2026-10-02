@@ -75,6 +75,7 @@ export function PromptAttachments(props: {
             <button
               type="button"
               onClick={(event) => remove(event, entry.attachment.id)}
+              aria-label={i18n._({ ...PI.attachRemoveButton, values: { filename: entry.attachment.filename } })}
               class="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-raised-base-hover"
             >
               <Icon name={getSemanticIcon("action.close")} class="size-3 text-text-weak" />

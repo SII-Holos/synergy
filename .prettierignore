@@ -29,3 +29,6 @@ packages/ui/test/components/.tooltip-fixture-*/
 # Disposable generated hosts used during concurrent DOM tests
 apps/web/test/**/.*-fixture-*/
 packages/ui/test/**/.*-fixture-*/
+
+# Pinned upstream seccomp profile, retained byte-for-byte with its license.
+packages/local-runtime/src/environment/vendor/moby-seccomp.json

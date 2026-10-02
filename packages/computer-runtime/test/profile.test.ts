@@ -1,3 +1,5 @@
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
+import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
 import { afterAll, expect, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -5,7 +7,20 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 import { ComputerAppsTool } from "../src/tools"
 
-const runtime = await testRuntime()
+const runtime = await testRuntime({
+  register: () => {
+    for (const id of ["native", "remote-fixture"])
+      EnvironmentProviders.register({
+        id,
+        allocate: async () => {
+          throw Error("must not allocate")
+        },
+        inspect: async () => ({ state: "absent" }),
+        deallocate: async () => {},
+      })
+    EnvironmentProviders.setDefault({ provider: "native", spec: {} })
+  },
+})
 
 test("native dispatch rechecks a profile downgraded after tool initialization", () =>
   runtime.run(async () => {
@@ -50,8 +65,13 @@ test("successful observation stores screenshots as durable attachments for a tex
     const execute = spyOn(computerBroker(), "execute").mockResolvedValue({
       output: "Window observed",
       observationId: "observation-1",
-      images: [{ mimeType: "image/png", data: Buffer.from("image-content").toString("base64") }],
-      metadata: {},
+      images: [
+        {
+          mimeType: "image/png",
+          data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6j8AAAAASUVORK5CYII=",
+        },
+      ],
+      metadata: { deliveryMode: "foreground" },
     })
     await using tmp = await tmpdir({ git: true })
     try {
@@ -83,11 +103,18 @@ test("successful observation stores screenshots as durable attachments for a tex
             },
           )
           expect(result.output).toBe("Window observed")
-          expect(result.metadata).toMatchObject({ observationId: "observation-1", deliveryMode: "background" })
+          expect(result.attachments![0]!.model).toMatchObject({
+            mode: "summary",
+            summary: expect.stringContaining("Pixel actions are unavailable"),
+          })
+          expect(result.metadata).toMatchObject({ observationId: "observation-1", deliveryMode: "foreground" })
           expect(result.attachments).toHaveLength(1)
           expect(result.attachments![0]!.url).toStartWith("asset://")
           expect(result.attachments![0]!.model?.mode).toBe("summary")
-          expect(await Bun.file(result.attachments![0]!.localPath!).text()).toBe("image-content")
+          expect(new Uint8Array(await Bun.file(result.attachments![0]!.localPath!).arrayBuffer()).slice(0, 4)).toEqual(
+            new Uint8Array([137, 80, 78, 71]),
+          )
+          expect(result.attachments![0]!.metadata?.imageInput?.stage).toBe("omitted")
           expect(execute.mock.calls[0]?.[1]).toEqual({ type: "observe", pid: 12, windowId: 34 })
           await Session.remove(session.id)
         },
@@ -98,3 +125,39 @@ test("successful observation stores screenshots as durable attachments for a tex
   }))
 
 afterAll(() => runtime.close())
+
+test("Full Access cannot redirect a remote Environment Computer operation to the controller", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const remote = await Environment.bind({
+          scopeID: ScopeContext.current.scope.id,
+          ownerID: "remote-computer",
+          provider: "remote-fixture",
+          spec: {},
+        })
+        const tool = await ComputerAppsTool.init()
+        for (const environmentID of [remote.id, null]) {
+          const session = await Session.create({ environmentID, controlProfile: "full_access", workspace: null })
+          await expect(
+            tool.execute(
+              {},
+              {
+                sessionID: session.id,
+                messageID: "msg_missing",
+                agent: "synergy",
+                abort: new AbortController().signal,
+                metadata() {},
+                async ask() {
+                  throw Error("must not ask")
+                },
+              },
+            ),
+          ).rejects.toMatchObject({ code: "computer_environment_unavailable" })
+          await Session.remove(session.id)
+        }
+      },
+    })
+  }))

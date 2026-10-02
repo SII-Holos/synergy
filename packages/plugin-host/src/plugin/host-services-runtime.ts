@@ -1,8 +1,10 @@
 import { PluginInvocationWorkspace } from "./invocation-workspace"
+import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
+import { FileView } from "@ericsanchezok/synergy-local-runtime/file/view"
 import { WorkspaceFileService } from "@ericsanchezok/synergy-local-runtime/workspace-file/service"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
-import path from "path"
 import { createHash } from "node:crypto"
 import Ajv2020 from "ajv/dist/2020"
 import {
@@ -361,18 +363,62 @@ async function inScope<T>(input: PluginHostServiceInvocationInput, fn: () => Pro
       selected.invocation.sessionId !== input.invocation.sessionId
     )
       throw new Error("Plugin invocation binding mismatch")
-    return ScopeContext.provide({ scope: selected.scope, workspace: selected.workspace, fn })
+    return ScopeContext.provide({
+      scope: selected.scope,
+      workspace: selected.workspace,
+      fn: () => inResources(input, selected.selection, fn),
+    })
   }
   const scope = await Scope.fromID(input.invocation.scopeId)
   if (!scope) throw new Error(`Plugin invocation scope not found: ${input.invocation.scopeId}`)
   return ScopeContext.provide({
     scope,
     fn: async () => {
-      if (!input.invocation.sessionId) return fn()
+      if (!input.invocation.sessionId)
+        return inResources(
+          input,
+          {
+            scopeID: scope.id,
+            workspaceID: ScopeContext.current.workspace?.id,
+            workspaceGeneration: ScopeContext.current.workspace?.generation,
+          },
+          fn,
+        )
       const session = await sessionInInvocationScope(input, input.invocation.sessionId)
-      return ScopeContext.provide({ scope, workspace: session.workspace, fn })
+      return ScopeContext.provide({
+        scope,
+        workspace: session.workspace,
+        fn: () =>
+          inResources(
+            input,
+            {
+              scopeID: scope.id,
+              workspaceID: session.workspaceID,
+              workspaceGeneration: session.workspace?.generation,
+              environmentID: session.environmentID,
+            },
+            fn,
+          ),
+      })
     },
   })
+}
+
+async function inResources<T>(
+  input: PluginHostServiceInvocationInput,
+  selection: EnvironmentResources.Selection,
+  fn: () => Promise<T>,
+) {
+  const workspace = input.method.startsWith("workspace.")
+  const execution = input.method === "shell.run" ? ("exec" as const) : undefined
+  if (!workspace && !execution) return fn()
+  await using resources = await EnvironmentResources.select({
+    ...selection,
+    ownerID: input.invocation.sessionId ?? `plugin:${input.pluginId}`,
+    needs: { workspace, execution },
+    signal: input.signal,
+  })
+  return await Tool.withWorkspace(workspace, { resources, sessionID: input.invocation.sessionId }, fn)
 }
 
 async function sessionInInvocationScope(input: PluginHostServiceInvocationInput, sessionId: string) {
@@ -388,8 +434,9 @@ async function sessionInInvocationScope(input: PluginHostServiceInvocationInput,
 
 function workspacePath(directory: string, requested: unknown): string {
   if (typeof requested !== "string" || !requested.trim()) throw new Error("Workspace path must be a non-empty string")
-  const resolved = path.resolve(directory, requested)
-  if (!isPathContained(directory, resolved)) throw new Error(`Workspace path escapes the active Scope: ${requested}`)
+  const resolved = FileView.resolve(requested)
+  if (FileView.native() && !isPathContained(directory, resolved))
+    throw new Error(`Workspace path escapes the active Scope: ${requested}`)
   return resolved
 }
 
@@ -648,46 +695,37 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
   input.signal.throwIfAborted()
   const session = input.invocation.sessionId ? await Session.get(input.invocation.sessionId) : undefined
   const profileId = await Session.resolveEffectiveControlProfile({ sessionID: session?.id })
-  const directory = ScopeContext.current.directory
+  const resources = EnvironmentResources.current()!
+  const directory = resources.directory!
   const workspace = ScopeContext.current.workspace
-  const trustedRoots = await Scope.Root.executionRoots(ScopeContext.current.scope, workspace)
+  const local = FileView.native()
+  const trustedRoots = local ? await Scope.Root.executionRoots(ScopeContext.current.scope, workspace) : []
   const gate = await EnforcementGate.create({
     activeWorkspace: directory,
+    pathMode: local ? "native" : resources.runtime?.platform === "win32" ? "win32" : "posix",
     workspaceType: workspace?.type === "git_worktree" ? "worktree" : "main",
-    originalCheckout: (workspace as { originalCheckout?: string } | undefined)?.originalCheckout,
+    originalCheckout: local ? (workspace as { originalCheckout?: string } | undefined)?.originalCheckout : undefined,
     profileId,
-    readRoots: [Global.Path.root, ...trustedRoots, ...SkillSourceProfile.allRootPaths(directory)],
+    readRoots: local ? [Global.Path.root, ...trustedRoots, ...SkillSourceProfile.allRootPaths(directory)] : [],
     trustedRoots,
-    synergyRoot: Global.Path.root,
+    synergyRoot: local ? Global.Path.root : undefined,
     sessionKey: input.invocation.sessionId,
   })
-  const envelope = await gate.evaluateIsolated(
-    "bash",
-    { command: renderShellCommand(command), workdir: directory },
-    input.signal,
-  )
-  if (envelope.decision !== "allow") {
-    const reason =
-      envelope.refusal?.reason ??
-      (envelope.decision === "ask"
-        ? `Profile "${profileId}" requires approval for shell.run, but plugin Host Service calls cannot request interactive approval`
-        : `Profile "${profileId}" denies shell.run`)
-    throw new EnforcementError.PolicyDenied(
-      reason,
-      envelope.capabilities.map((capability) => capability.class),
-      profileId,
-    )
-  }
+
   const sandbox = gate.getSandbox()
   const sandboxPolicy = gate.getSandboxPolicy()
-  const wrapper = SandboxBackend.prepareWrapper({
+  const wrapper = await EnvironmentResources.prepareSandbox(resources, {
     command: command[0],
     args: command.slice(1),
     workspace: directory,
     executionCwd: directory,
     sandboxMode: sandbox.mode,
     extraReadRoots: [
-      ...new Set([...(sandboxPolicy?.fileSystem.readableRoots ?? []), Global.Path.root, ...trustedRoots]),
+      ...new Set([
+        ...(sandboxPolicy?.fileSystem.readableRoots ?? []),
+        ...(local ? [Global.Path.root] : []),
+        ...trustedRoots,
+      ]),
     ],
     extraWritableRoots: sandboxPolicy?.fileSystem.writableRoots ?? [],
     protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
@@ -696,13 +734,42 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
     networkMode: sandboxPolicy?.network.mode,
     backend: sandbox.backend,
   })
-  const executed = await SandboxBackend.executeAsync(wrapper, {
-    cwd: directory,
-    fallbackPolicy: sandbox.fallback,
-    signal: input.signal,
-    timeoutMs: Number(timeoutMs),
-  })
-  return { stdout: executed.stdout, stderr: executed.stderr, exitCode: executed.exitCode }
+  try {
+    const envelope = await gate.evaluateIsolated(
+      "bash",
+      { command: renderShellCommand(command), workdir: directory },
+      input.signal,
+      { contained: wrapper.sandboxed && !wrapper.skipReason, skipReason: wrapper.skipReason },
+    )
+    if (envelope.decision !== "allow") {
+      const reason =
+        envelope.refusal?.reason ??
+        (envelope.decision === "ask"
+          ? `Profile "${profileId}" requires approval for shell.run, but plugin Host Service calls cannot request interactive approval`
+          : `Profile "${profileId}" denies shell.run`)
+      throw new EnforcementError.PolicyDenied(
+        reason,
+        envelope.capabilities.map((capability) => capability.class),
+        profileId,
+      )
+    }
+    const executed = await SandboxBackend.executeAsync(wrapper, {
+      cwd: directory,
+      fallbackPolicy: sandbox.fallback,
+      signal: input.signal,
+      timeoutMs: Number(timeoutMs),
+      execution: {
+        resources,
+        scopeID: input.invocation.scopeId,
+        id: EnvironmentResources.nextOperationID(),
+        sandboxID: "id" in wrapper ? wrapper.id : undefined,
+        intentDigest: "intentDigest" in wrapper ? wrapper.intentDigest : undefined,
+      },
+    })
+    return { stdout: executed.stdout, stderr: executed.stderr, exitCode: executed.exitCode }
+  } finally {
+    if ("cleanup" in wrapper) await wrapper.cleanup()
+  }
 }
 
 export async function executePluginHostService(input: PluginHostServiceInvocationInput): Promise<unknown> {
@@ -738,10 +805,10 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
       return
     }
     if (input.method === "workspace.metadata") {
-      return { scopeId: input.invocation.scopeId, directory: ScopeContext.current.directory }
+      return { scopeId: input.invocation.scopeId, directory: FileView.directory() }
     }
     if (input.method === "workspace.read") {
-      const target = workspacePath(ScopeContext.current.directory, value.path)
+      const target = workspacePath(FileView.directory(), value.path)
       const { stream } = await WorkspaceFileService.serveFile({ path: target, signal: input.signal })
       const bytes = new Uint8Array(await new Response(stream).arrayBuffer())
       const content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes)
@@ -753,7 +820,7 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
     }
     if (input.method === "workspace.write") {
       if (typeof value.content !== "string") throw new Error("workspace.write requires string content")
-      const target = workspacePath(ScopeContext.current.directory, value.path)
+      const target = workspacePath(FileView.directory(), value.path)
       const versions = PluginInvocationWorkspace.current()?.versions
       const expectedVersion = versions?.get(target)
       const result = await WorkspaceFileService.write(

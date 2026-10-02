@@ -1,3 +1,4 @@
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
@@ -46,7 +47,7 @@ beforeAll(async () => {
       surface: id => states[id], panels: () => entries, panelForTab: tab => entries.find(x => x.id === tab?.panelId),
       panelTitle: tab => tab.panelId, openPanel: () => {}, closeTab: () => {}, closeOtherTabs: () => {}, moveTab: () => {}
     })
-    export const useLayout = () => ({ isDesktop: () => true, sidebar: { opened: () => false, width: () => 250 } })
+    export const useLayout = () => ({ isDesktop: () => true, sidebar: { opened: () => false, width: () => 250, occupiedWidth: () => 0 } })
   `,
   )
   await Bun.write(
@@ -89,7 +90,7 @@ beforeAll(async () => {
       ],
     },
     optimizeDeps: { noDiscovery: true, include: ["solid-js", "solid-js/web", "@lingui/core", "@lingui/solid"] },
-    server: { host: "127.0.0.1", port: 0, fs: { allow: [path.resolve(source, "../../..")] } },
+    server: { host: "127.0.0.1", port: await fixturePort(), fs: { allow: [path.resolve(source, "../../..")] } },
   })
   await server.listen()
   baseUrl = server.resolvedUrls!.local[0]!
@@ -214,7 +215,7 @@ test("resizing available space constrains both panels without overwriting prefer
   const bottom = page.locator(".workbench-surface--bottom")
   await page.setViewportSize({ width: 850, height: 600 })
   await page.waitForFunction(
-    () => parseFloat((document.querySelector(".workbench-surface--side") as HTMLElement).style.width) <= 452,
+    () => parseFloat((document.querySelector(".workbench-surface--side") as HTMLElement).style.width) === 500,
   )
   expect(await bottom.evaluate((node) => parseFloat((node as HTMLElement).style.height))).toBeLessThanOrEqual(360)
   expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).fixture.size("side"))).toBe(640)

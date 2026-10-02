@@ -7,7 +7,59 @@ type PartID = Identifier.PartID
 type HistoryID = Identifier.HistoryID
 
 export namespace StoragePath {
+  export const projectDirectories = (scopeID: string) => ["project_directories", scopeID]
+  export const environmentCredential = (provider: string, requestID: string) => [
+    "environment_credential",
+    provider,
+    requestID,
+  ]
+  export const environmentAllocationReceipt = (provider: string, requestID: string) => [
+    "environment_allocation_receipt",
+    provider,
+    requestID,
+  ]
+  export const environmentExecution = (scopeID: string, id: string) => ["environment_execution", scopeID, id]
+  export const environmentExecutionActive = (scopeID?: string, id?: string) => [
+    "environment_execution_active",
+    ...(scopeID ? [scopeID] : []),
+    ...(id ? [id] : []),
+  ]
+  export const environmentOutput = (scopeID: string, id: string, cursor: number) => [
+    "environment_output",
+    scopeID,
+    id,
+    String(cursor),
+  ]
+  export const environment = (id: string) => ["environment", id]
+  export const environmentScope = (scopeID: string, id?: string) =>
+    id ? ["environment_scope", scopeID, id] : ["environment_scope", scopeID]
+  export const environmentBinding = (scopeID: string, ownerID: string) => ["environment_binding", scopeID, ownerID]
+  export const environmentActive = (id?: string) => (id ? ["environment_active", id] : ["environment_active"])
+  export const environmentUses = (id: string) => ["environment_use", id]
+  export const environmentUse = (id: string, useID: string) => [...environmentUses(id), useID]
+  export const workspaceCheckpoint = (scopeID: string, workspaceID: string, id: string) => [
+    "workspace_checkpoint",
+    scopeID,
+    workspaceID,
+    id,
+  ]
+  export const workspaceOperation = (scopeID: string, id: string) => ["workspace_operation", scopeID, id]
+  export const workspaceOperationActive = (scopeID?: string, id?: string) => [
+    "workspace_operation_active",
+    ...(scopeID ? [scopeID] : []),
+    ...(id ? [id] : []),
+  ]
   export const workspace = (id: string) => ["workspace", id]
+  export const workspaceEnvironment = (environmentID: string, workspaceID?: string) => [
+    "workspace_environment",
+    environmentID,
+    ...(workspaceID ? [workspaceID] : []),
+  ]
+  export const workspaceContent = (id: string, revision?: number) => [
+    "workspace_content",
+    id,
+    ...(revision === undefined ? [] : [String(revision)]),
+  ]
   export const workspaceScope = (scopeID: string, id?: string) => ["workspace_scope", scopeID, ...(id ? [id] : [])]
   export const workspaceLocation = (scopeID: string, hostID: string, locationHash: string) => [
     "workspace_location",
@@ -39,6 +91,19 @@ export namespace StoragePath {
   export const metaMigrationLog = () => ["meta", "migration", "log"]
   export const metaMigrationLogDomain = (domain: string) => ["meta", "migration", `log-${domain}`]
   export const rolloutRecoveryPending = () => ["meta", "rollout", "recovery-pending"]
+  export const usageState = () => ["meta", "usage", "state"]
+  export const usageRebuild = () => ["meta", "usage", "rebuild-v1"]
+  export const usageOwner = (scopeID: string, owner: string) => ["usage", scopeID, owner]
+  export const usageRun = (scopeID: string, owner: string, runID: string) => [...usageOwner(scopeID, owner), runID]
+  export const usageRecord = (scopeID: string, owner: string, runID: string, kind: string, id: string) => [
+    ...usageRun(scopeID, owner, runID),
+    kind,
+    id,
+  ]
+  export const usageSuppressed = (id: string) => ["usage_suppressed", id]
+  export const usageTime = (scopeID: string, owner: string, order: string) => ["usage_time", scopeID, owner, order]
+  export const usageOwnerCheckpoint = (scopeID: string, owner: string) => ["usage_owner", scopeID, owner]
+  export const usageLink = (scopeID: string, owner: string, runID: string) => ["usage_link", scopeID, owner, runID]
 
   export const scopeRoot = () => ["projects"]
   export const scope = (scopeID: ScopeID) => ["projects", scopeID as string]
@@ -296,9 +361,6 @@ export namespace StoragePath {
     contactId,
     messageId,
   ]
-
-  export const synergyLinkTargetsRoot = () => ["synergy_link", "targets"]
-  export const synergyLinkTarget = (id: string) => ["synergy_link", "targets", id]
 
   export const channelManagedOwnership = (identityHash: string) => ["channel", "managed_ownership", identityHash]
   export const channelManagedOwnershipReverse = (scopeID: string) => ["channel", "managed_ownership_reverse", scopeID]

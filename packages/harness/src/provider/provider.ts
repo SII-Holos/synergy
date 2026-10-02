@@ -1,3 +1,4 @@
+import { ProviderBilling } from "./billing"
 import { RuntimeContext } from "../lifecycle/context"
 import { Flag } from "../flag/flag"
 import { parseModelID } from "./model-id"
@@ -427,6 +428,7 @@ export namespace Provider {
         ]),
       }),
       pricing: ProviderPricing.Info.nullable().optional(),
+      billingMode: ProviderPricing.BillingMode.optional(),
       cost: z.object({
         input: z.number(),
         output: z.number(),
@@ -1078,6 +1080,11 @@ export namespace Provider {
       const configProvider = config.provider?.[providerID]
 
       for (const [modelID, model] of Object.entries(provider.models)) {
+        model.billingMode = ProviderBilling.resolve({
+          model: configProvider?.models?.[modelID]?.billingMode,
+          connection: configProvider?.billingMode,
+          profile: ProviderProfile.resolve(providerID, provider.profileID)?.billingMode,
+        })
         model.api.id = model.api.id ?? model.id ?? modelID
         if (modelID === "gpt-5-chat-latest" || (providerID === "openrouter" && modelID === "openai/gpt-5-chat"))
           delete provider.models[modelID]

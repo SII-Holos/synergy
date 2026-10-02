@@ -78,7 +78,7 @@ describe("ToolTimeout", () => {
     })
   })
 
-  test("uses operation timeout for browser, connect, and MCP waits", () => {
+  test("uses operation timeout for browser and MCP waits", () => {
     expect(metadata("browser_wait").operationTimeoutMs).toBe(10_000)
     expect(metadata("browser_wait", { timeoutSeconds: 45 }).operationTimeoutMs).toBe(45_000)
     expect(metadata("browser_wait", { timeout: 45 }).operationTimeoutMs).toBe(10_000)
@@ -89,8 +89,6 @@ describe("ToolTimeout", () => {
     expect(metadata("browser_navigation").operationTimeoutMs).toBe(30_000)
     expect(metadata("browser_navigation", { settleTimeoutMs: 15_000 }).operationTimeoutMs).toBe(15_000)
     expect(metadata("browser_downloads", { action: "wait" }).operationTimeoutMs).toBe(30_000)
-    expect(metadata("connect", { action: "open" }).operationTimeoutMs).toBe(30_000)
-    expect(metadata("connect", { action: "list" }).operationTimeoutMs).toBeUndefined()
     expect(metadata("mcp_server_tool", {}, 20_000)).toMatchObject({
       operationTimeoutMs: 20_000,
       displayMs: 20_000,

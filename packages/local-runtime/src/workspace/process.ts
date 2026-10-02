@@ -1,5 +1,8 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
+import type { ProcessHandle } from "@ericsanchezok/synergy-harness/process/handle"
 import { OwnedProcess } from "../process/owned-process"
 
 export namespace WorktreeProcess {
@@ -10,7 +13,7 @@ export namespace WorktreeProcess {
   interface Input {
     command: string[] | (() => Promise<string[]>)
     directory: string
-    roots: string[] | null
+    roots: string[]
     env?: Record<string, string | undefined>
     metadata?: boolean
     signal?: AbortSignal
@@ -30,11 +33,14 @@ export namespace WorktreeProcess {
       ...(input.signal ? [input.signal] : []),
     ])
     let lease: WorkspaceAccess.Lease | undefined
-    let owned: Awaited<ReturnType<typeof OwnedProcess.prepare>> | undefined
+    let owned:
+      | { child: ProcessHandle; activate(): Promise<void>; completion: Promise<void>; stop(): Promise<void> }
+      | undefined
     const stdout: Buffer[] = []
     const stderr: Buffer[] = []
     let bytes = 0
     let overflow = false
+    let failure: Error | undefined
     const collect = (chunks: Buffer[]) => (chunk: Buffer) => {
       const size = Math.min(chunk.length, 1024 * 1024 - bytes)
       if (size) chunks.push(Buffer.from(chunk.subarray(0, size)))
@@ -42,24 +48,55 @@ export namespace WorktreeProcess {
       if (size < chunk.length) overflow = true
     }
     try {
-      const acquire = () => WorkspaceAccess.process(input.roots, signal, { transient: input.metadata })
-      lease = input.metadata ? await WorkspaceAccess.observeWrites(undefined, acquire) : await acquire()
+      const resources = EnvironmentResources.current()
+      const remote = !EnvironmentResources.localFiles()
+      if (remote && (!resources?.runtime || !resources.workspace))
+        throw new Error("Workspace command requires a live Environment")
+      if (remote && (typeof input.command === "function" || input.beforeStart))
+        throw new Error("Remote Workspace commands cannot run controller preparation callbacks")
+      if (!remote) {
+        const acquire = () =>
+          WorkspaceAccess.process([input.directory], signal, { transient: input.metadata, mutationRoots: input.roots })
+        lease = input.metadata ? await WorkspaceAccess.observeWrites(undefined, acquire) : await acquire()
+      }
       if (input.beforeStart && !(await input.beforeStart()))
         return { exitCode: 0, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), skipped: true }
       const command = typeof input.command === "function" ? await input.command() : input.command
       if (!command.length) throw new Error("Worktree command is empty")
-      owned = await OwnedProcess.prepare({
-        command: command[0]!,
-        args: command.slice(1),
-        cwd: input.directory,
-        env: { ...RuntimeContext.current().host.env, ...input.env },
-        lease,
-        signal,
+      owned = remote
+        ? await EnvironmentProcess.prepare({
+            id: EnvironmentResources.nextOperationID(),
+            scopeID: resources!.workspace!.scopeID,
+            resources: resources!,
+            signal,
+            command: {
+              command: command[0]!,
+              args: command.slice(1),
+              cwd: input.directory,
+              env: Object.fromEntries(
+                Object.entries({ ...resources!.runtime!.env, ...input.env }).filter(
+                  (entry): entry is [string, string] => entry[1] !== undefined,
+                ),
+              ),
+              useRoots: [input.directory],
+              mutationRoots: input.roots,
+            },
+          })
+        : await OwnedProcess.prepare({
+            command: command[0]!,
+            args: command.slice(1),
+            cwd: input.directory,
+            env: { ...RuntimeContext.current().host.env, ...input.env },
+            lease: lease!,
+            signal,
+          })
+      owned.child.on("error", (error: Error) => {
+        failure ??= error
       })
-      owned.child.stdout.on("data", collect(stdout))
-      owned.child.stderr.on("data", collect(stderr))
+      owned.child.stdout!.on("data", collect(stdout))
+      owned.child.stderr!.on("data", collect(stderr))
       await owned.activate()
-      owned.child.stdin.end()
+      owned.child.stdin!.end()
       const cancelled = Promise.withResolvers<never>()
       const abort = () => cancelled.reject(signal.reason)
       signal.addEventListener("abort", abort, { once: true })
@@ -67,6 +104,7 @@ export namespace WorktreeProcess {
         signal.throwIfAborted()
         await Promise.race([owned.completion, cancelled.promise])
         signal.throwIfAborted()
+        if (failure) throw failure
       } finally {
         signal.removeEventListener("abort", abort)
       }

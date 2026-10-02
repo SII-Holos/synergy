@@ -1,13 +1,12 @@
+import { FileView } from "../file/view"
 import { FileMutation } from "../file/mutation"
 import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
 import { z } from "zod"
-import * as path from "path"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { createTwoFilesPatch } from "diff"
 import DESCRIPTION from "./write.txt"
 import { File } from "../file/index"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
-import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { trimDiff } from "./edit"
 import { RuntimeReloadPath } from "@ericsanchezok/synergy-harness/config/reload-path"
 import { RuntimeReloadExecutor } from "@ericsanchezok/synergy-harness/config/reload-executor"
@@ -25,15 +24,13 @@ export const WriteTool = Tool.define(
       content: z.string().describe("The content to write to the file"),
     }),
     async execute(params, ctx) {
-      const filepath = path.isAbsolute(params.filePath)
-        ? params.filePath
-        : path.join(ScopeContext.current.directory, params.filePath)
-      const displayPath = path.relative(ScopeContext.current.directory, filepath)
+      const filepath = FileView.resolve(params.filePath)
+      const displayPath = FileView.display(filepath)
 
       return FileTime.withLock(
         filepath,
         async () => {
-          const file = Bun.file(filepath)
+          const file = FileView.file(filepath)
           const exists = await file.exists()
           const contentOld = exists ? await FileMutation.readText(filepath) : ""
           if (exists) FileTime.assert(ctx.sessionID, filepath, contentOld)

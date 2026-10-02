@@ -1,3 +1,4 @@
+import { fileWorkspaceLabel, type FileWorkspace } from "@/context/file/workspace"
 import { useLingui } from "@lingui/solid"
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
@@ -7,7 +8,7 @@ import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { VList, type VListHandle } from "virtua/solid"
-import { useFile } from "@/context/file"
+import { useFile, useProjectFiles, FileWorkspaceProvider } from "@/context/file"
 import { fileExplorer as X, fileEntries as A } from "@/locales/messages"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { FileEntryDialog, type FileEntryOperation } from "./entry-dialog"
@@ -26,13 +27,41 @@ function gitStatus(status: string | undefined) {
 }
 
 export function FileExplorer(props: { onClose: () => void }) {
+  const project = useProjectFiles()
   const file = useFile()
+  const [chosen, setChosen] = createSignal<string>()
+  const root = createMemo(
+    () =>
+      project.roots().find((item) => item.id === chosen()) ??
+      project.roots().find((item) => item.id === file.workspace?.id) ??
+      project.roots()[0],
+  )
+  return (
+    <Show when={root()} keyed fallback={<SingleFileExplorer onClose={props.onClose} />}>
+      {(workspace) => (
+        <FileWorkspaceProvider workspace={workspace}>
+          <SingleFileExplorer onClose={props.onClose} folders={project.roots()} onFolderChange={setChosen} />
+        </FileWorkspaceProvider>
+      )}
+    </Show>
+  )
+}
+
+function SingleFileExplorer(props: {
+  onClose: () => void
+  folders?: FileWorkspace[]
+  onFolderChange?: (id: string) => void
+}) {
+  const file = useFile()
+  const project = useProjectFiles()
   const lingui = useLingui()
   const dialog = useDialog()
   const [query, setQuery] = createSignal("")
   const [searching, setSearching] = createSignal(false)
   const [searchError, setSearchError] = createSignal<string>()
-  const [searchResults, setSearchResults] = createSignal<Array<{ path: string; name: string }>>([])
+  const [searchResults, setSearchResults] = createSignal<
+    Array<{ path: string; name: string; workspace: FileWorkspace }>
+  >([])
   const [focusedPath, setFocusedPath] = createSignal<string>()
   let searchController: AbortController | undefined
   let debounce: number | undefined
@@ -85,15 +114,10 @@ export function FileExplorer(props: { onClose: () => void }) {
       searchController = controller
       setSearching(true)
       setSearchError(undefined)
-      void file
-        .searchFiles(value, { signal: controller.signal, limit: 100 })
-        .then((response) => {
-          if (controller.signal.aborted) return
-          setSearchResults(
-            (response?.items ?? []).flatMap((item) =>
-              item.kind === "file" && item.type === "file" ? [{ path: item.path, name: item.name }] : [],
-            ),
-          )
+      void project
+        .search(value, controller.signal)
+        .then((results) => {
+          if (!controller.signal.aborted) setSearchResults(results)
         })
         .catch((error) => {
           if (!controller.signal.aborted) setSearchError(error instanceof Error ? error.message : String(error))
@@ -121,8 +145,8 @@ export function FileExplorer(props: { onClose: () => void }) {
   const openActions = (path = focusedPath() ?? selectedPath(), operation?: FileEntryOperation) => {
     const node = path ? (file.explorer.node(path) ?? file.get(path)?.node) : undefined
     const actions = file.entries
-    const workspacePath = file.workspace?.path
-    if (!workspacePath) return
+    if (!file.workspace) return
+    const workspacePath = fileWorkspaceLabel(file.workspace)
     const dirty = path ? file.draft.within(path) : false
     dialog.show(() => (
       <FileEntryDialog
@@ -225,6 +249,16 @@ export function FileExplorer(props: { onClose: () => void }) {
           />
         </div>
       </div>
+      <Show when={(props.folders?.length ?? 0) > 1}>
+        <select
+          class="file-explorer-folder"
+          aria-label={lingui._({ id: "project.entry.folders", message: "Folders" })}
+          value={file.workspace?.id}
+          onChange={(event) => props.onFolderChange?.(event.currentTarget.value)}
+        >
+          <For each={props.folders}>{(folder) => <option value={folder.id}>{fileWorkspaceLabel(folder)}</option>}</For>
+        </select>
+      </Show>
       <div class="file-explorer-search">
         <Icon name={getSemanticIcon("action.search")} size="small" />
         <input
@@ -373,12 +407,16 @@ export function FileExplorer(props: { onClose: () => void }) {
                     type="button"
                     class="file-search-result"
                     role="option"
-                    onClick={() => void file.openWorkspaceFile(result.path)}
+                    onClick={() => void project.open(result.workspace, result.path)}
                   >
                     <FileIcon node={{ path: result.path, type: "file" }} class="file-tree-icon" />
                     <span class="file-search-copy">
                       <span class="file-search-name">{result.name}</span>
-                      <span class="file-search-parent">{result.path.split("/").slice(0, -1).join("/")}</span>
+                      <span class="file-search-parent">
+                        {[fileWorkspaceLabel(result.workspace), result.path.split("/").slice(0, -1).join("/")]
+                          .filter(Boolean)
+                          .join("/")}
+                      </span>
                     </span>
                   </button>
                 )}

@@ -5,7 +5,9 @@ This private package owns deterministic test environments, the pinned model cata
 - Load `testing-guide` before changing isolation or fixture behavior.
 - `preload` establishes a positive `SYNERGY_TEST_HOME` and fixture root before any core import. It does not initialize core or install a provider hook.
 - Harness initialization and in-process AgentTurn hooks belong to harness test support. Shared fixtures receive their Scope and configuration bindings explicitly and never import the harness.
+- `fixturePort()` in `fixture` selects a released loopback port for browser fixtures; pass its nonzero value to Vite, whose zero port selects its default port.
 - Spawn-based orchestrators use `createIsolatedTestEnv()` and pass its environment to every child. Never bypass TestHomeGuard or use the running product home.
+- Keep Bun's inherited no-orphans watchdog out of test batches: process ownership, detachment and crash recovery must be performed by the implementation being tested. Fixtures remain responsible for draining their owned processes.
 - Suites that own Runtime startup use the shared preload without harness initialization. Register them in the batch planner so test and coverage commands keep the same isolated composition and write reports under the source package.
 - Fixtures stay under `SYNERGY_TEST_ROOT` until owned asynchronous work settles. Dispose child processes, timers, and runtimes before deleting the process fixture root.
 - The shared `script/run.ts` executor owns stable batches, per-batch isolation, JUnit/lcov/timing reports and diagnostic file selection. `test-ci.ts` and `coverage-run.ts` preserve the package command entry points.

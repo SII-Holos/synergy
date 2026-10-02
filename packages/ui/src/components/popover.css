@@ -5,12 +5,12 @@
 [data-component="popover-content"] {
   z-index: 50;
   min-width: 200px;
-  max-width: 320px;
-  border-radius: var(--radius-xl);
+  max-width: min(320px, calc(100vw - 24px));
+  border-radius: 12px;
   background-color: var(--workbench-popover-bg, var(--surface-raised-stronger-non-alpha));
 
-  border: 1px solid color-mix(in oklch, var(--border-base) 25%, transparent);
-  box-shadow: var(--workbench-popover-shadow, var(--shadow-lg));
+  border: 1px solid var(--border-weak-base);
+  box-shadow: var(--workbench-popover-shadow, var(--shadow-popover));
 
   transform-origin: var(--kb-popover-content-transform-origin);
 
@@ -19,11 +19,11 @@
   }
 
   &[data-closed] {
-    animation: popover-close 0.15s ease-out;
+    animation: popover-close var(--motion-duration-fast) var(--motion-ease-standard);
   }
 
   &[data-expanded] {
-    animation: popover-open 0.15s ease-out;
+    animation: popover-open var(--motion-duration-base) var(--motion-ease-emphasized);
   }
 
   [data-slot="popover-header"] {
@@ -74,10 +74,47 @@
   }
 }
 
+[data-component="popover-content"][data-variant="menu"] {
+  display: flex;
+  flex-direction: column;
+  max-height: min(320px, var(--kb-popper-content-available-height, calc(100dvh - 24px)));
+  overflow: hidden;
+  outline: none;
+
+  [data-slot="popover-body"] {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: auto;
+    padding: 4px;
+  }
+
+  [data-slot="popover-header"] {
+    padding: 0;
+  }
+
+  [data-component="list"] {
+    min-height: 0;
+    padding: 0;
+  }
+
+  [data-slot="list-item"] {
+    min-height: 36px;
+    padding: 7px 10px;
+    border-radius: 8px;
+  }
+}
+
+@media (pointer: coarse) {
+  [data-component="popover-content"][data-variant="menu"] [data-slot="list-item"] {
+    min-height: 44px;
+  }
+}
+
 @keyframes popover-open {
   from {
     opacity: 0;
-    transform: scale(0.96);
+    transform: scale(0.98);
   }
   to {
     opacity: 1;
@@ -92,6 +129,13 @@
   }
   to {
     opacity: 0;
-    transform: scale(0.96);
+    transform: scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-component="popover-content"][data-expanded],
+  [data-component="popover-content"][data-closed] {
+    animation: none;
   }
 }

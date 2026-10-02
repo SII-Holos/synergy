@@ -1,6 +1,6 @@
 import { fileURLToPath } from "url"
 import fuzzysort from "fuzzysort"
-import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { FileView } from "../file/view"
 import { Ripgrep } from "../file/ripgrep"
 import { WorkspaceFileSymbolSource } from "./symbol-source"
 import { WorkspaceFile } from "./types"
@@ -143,7 +143,7 @@ async function searchContent(input: {
   let pageLimited = false
   try {
     for await (const data of Ripgrep.matches({
-      cwd: ScopeContext.current.directory,
+      cwd: FileView.directory(),
       pattern: input.query,
       glob: [...(input.include ?? []), ...(input.exclude ?? []).map((glob) => `!${glob}`)],
       fixedStrings: true,

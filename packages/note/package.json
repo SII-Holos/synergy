@@ -39,7 +39,6 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@ericsanchezok/synergy-link-protocol": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-testing": "workspace:*",
     "@tsconfig/bun": "catalog:",

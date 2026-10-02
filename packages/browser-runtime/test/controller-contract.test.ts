@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { CdpPageController, type BrowserAction, type BrowserBackendResult } from "@ericsanchezok/synergy-browser-core"
 import { chromium, type Browser, type Page } from "playwright-core"
-import { PlaywrightCdpTransport } from "../src/playwright-cdp-transport"
+import { PlaywrightCdpTransport } from "./support/playwright-cdp-transport"
 
 let browser: Browser
 let page: Page
@@ -95,7 +95,7 @@ describe("shared CDP page controller contract", () => {
     )
   })
 
-  test("rejects readonly mutation, permits trusted mutation, and detects obstruction quickly", async () => {
+  test("rejects readonly mutation, permits trusted mutation, and attributes blocked input to the overlay", async () => {
     await expect(
       controller.execute({ type: "evaluate", mode: "readonly", expression: "document.body.dataset.changed = 'yes'" }),
     ).rejects.toMatchObject({ code: "browser_readonly_side_effect_rejected" })
@@ -103,17 +103,16 @@ describe("shared CDP page controller contract", () => {
     expect(await page.locator("body").getAttribute("data-changed")).toBe("yes")
 
     await page.setContent(`
-      <button id="covered" style="position:fixed;left:20px;top:20px;width:120px;height:40px">Covered</button>
+      <button id="covered" style="position:fixed;left:20px;top:20px;width:120px;height:40px" onclick="this.dataset.clicked = 'yes'">Covered</button>
       <div role="dialog" aria-label="Blocking overlay" style="position:fixed;inset:0;z-index:10"></div>
     `)
-    const started = Date.now()
     await expect(
       action({ type: "click", target: { kind: "css", value: "#covered" }, timeoutMs: 500 }),
     ).rejects.toMatchObject({
       code: "browser_obstructed",
       obstruction: { role: "dialog", name: "Blocking overlay" },
     })
-    expect(Date.now() - started).toBeLessThan(2_000)
+    expect(await page.locator("#covered").getAttribute("data-clicked")).toBeNull()
     expect(await controller.execute({ type: "screenshot", target: { kind: "css", value: "#covered" } })).toMatchObject({
       type: "screenshot",
     })

@@ -1,3 +1,4 @@
+import { SessionLocationError } from "@ericsanchezok/synergy-local-runtime/session-api"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
 import { timingSafeEqual } from "node:crypto"
@@ -52,6 +53,8 @@ import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { ScopePath } from "./scope-path"
 import { WorkspaceFilesRoute } from "./workspace-files"
 import { WorkspacesRoute } from "./workspaces"
+import { EnvironmentsRoute } from "./environments"
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { File as SynergyFile } from "@ericsanchezok/synergy-local-runtime/file"
 import { ConfigRoute } from "./config-route"
 import { SecretsRoute } from "./secrets-route"
@@ -568,13 +571,17 @@ export namespace Server {
             err instanceof Worktree.UnavailableError ||
             err instanceof WorkspaceCatalog.Unavailable ||
             err instanceof WorkspaceCatalog.BindingChanged ||
+            err instanceof Environment.Busy ||
+            err instanceof Environment.Stale ||
             err instanceof Scope.WorkspaceUnavailableError ||
             err instanceof Session.ForkPointMissingError ||
             err.name === "SessionModelSelectionConflictError"
           )
             status = 409
+          else if (err instanceof Environment.Unavailable) status = 503
           else if (err instanceof ConfigImport.SourceTooLargeError) status = 413
           else if (
+            err instanceof SessionLocationError ||
             err instanceof WorkspaceCatalog.Invalid ||
             err instanceof Scope.RequiredError ||
             err instanceof Scope.WorkspaceRequiredError ||
@@ -888,6 +895,40 @@ export namespace Server {
             cache: Global.Path.cache,
             log: Global.Path.log,
           })
+        },
+      )
+      .get(
+        "/global/filesystem/directories",
+        describeRoute({
+          summary: "List server directory children",
+          operationId: "global.filesystem.directories",
+          responses: {
+            200: {
+              description: "Directory page",
+              content: { "application/json": { schema: resolver(SynergyFile.DirectoryPage) } },
+            },
+            400: {
+              description: "Directory could not be listed",
+              content: { "application/json": { schema: resolver(SynergyFile.DirectoryError.Schema) } },
+            },
+          },
+        }),
+        validator(
+          "query",
+          z.object({
+            path: z.string(),
+            hidden: z.preprocess((value) => (value === "false" ? false : value), z.coerce.boolean()).optional(),
+            cursor: z.string().optional(),
+            limit: z.coerce.number().int().min(1).max(200).optional(),
+          }),
+        ),
+        async (c) => {
+          try {
+            return c.json(await SynergyFile.directories(c.req.valid("query")))
+          } catch (error) {
+            if (error instanceof SynergyFile.DirectoryError) return c.json(error.toObject(), 400)
+            throw error
+          }
         },
       )
       .get(
@@ -1391,6 +1432,7 @@ export namespace Server {
       .route("/skill", SkillRoute())
       .route("/workspace/files", WorkspaceFilesRoute())
       .route("/workspace", WorkspacesRoute())
+      .route("/environment", EnvironmentsRoute())
       .route("", contributionRoutes("scoped-before-assets"))
       .route("/asset", AssetRoute())
       .route("", contributionRoutes("scoped-after-assets"))

@@ -1,4 +1,6 @@
+import { InputImages } from "./input-images"
 import z from "zod"
+import { RolloutTiming } from "./timing"
 
 export namespace RolloutTransportSchema {
   export const CHUNK_BYTES = 256 * 1024
@@ -12,6 +14,16 @@ export namespace RolloutTransportSchema {
         url: z.string(),
         method: z.string(),
         mediaType: z.string(),
+        inputImages: InputImages.List.optional(),
+        timing: RolloutTiming.Info.optional(),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("attempt-sent"),
+        ...identity,
+        timing: RolloutTiming.Info,
+        requestImages: InputImages.Hashes.optional(),
       })
       .strict(),
     z
@@ -21,6 +33,7 @@ export namespace RolloutTransportSchema {
         status: z.number().int(),
         mediaType: z.string(),
         headers: z.record(z.string(), z.string()),
+        timing: RolloutTiming.Info.optional(),
       })
       .strict(),
     z
@@ -32,6 +45,7 @@ export namespace RolloutTransportSchema {
           (value) => value instanceof Uint8Array && value.byteLength > 0 && value.byteLength <= CHUNK_BYTES,
           "Invalid rollout transport chunk",
         ),
+        timing: RolloutTiming.Info.optional(),
       })
       .strict(),
     z.object({ type: z.literal("body-end"), ...identity, channel, complete: z.boolean() }).strict(),
@@ -41,6 +55,7 @@ export namespace RolloutTransportSchema {
         ...identity,
         status: z.enum(["completed", "failed", "cancelled"]),
         error: z.string().optional(),
+        timing: RolloutTiming.Info.optional(),
       })
       .strict(),
   ])

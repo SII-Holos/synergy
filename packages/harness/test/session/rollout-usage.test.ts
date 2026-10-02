@@ -1,6 +1,37 @@
 import { expect, test } from "bun:test"
 import { RolloutUsage } from "../../src/session/rollout/usage"
 
+test("invalid cache subsets cannot produce a hit ratio above one", () => {
+  const usage = RolloutUsage.normalize("openai", {
+    prompt_tokens: 100,
+    completion_tokens: 10,
+    prompt_cache_hit_tokens: 200,
+  })
+  expect(usage.input.total).toBe(100)
+  expect(usage.input.cacheRead).toBeNull()
+  expect(usage.issues).toContain("input_breakdown_mismatch")
+})
+
+test("SDK omitted cache counters remain unknown while exact totals survive", () => {
+  const usage = RolloutUsage.normalizeSdk({ inputTokens: 100, outputTokens: 10 }, "@ai-sdk/openai")!
+  expect(usage.input.total).toBe(100)
+  expect(usage.input.cacheRead).toBeNull()
+})
+
+test("contradictory provider totals are explicitly untrusted", () => {
+  const usage = RolloutUsage.normalize("openai", { prompt_tokens: 100, completion_tokens: 10, total_tokens: 150 })
+  expect(usage.complete).toBe(false)
+  expect(usage.input.total).toBeNull()
+  expect(usage.issues).toContain("total_mismatch")
+})
+
+test("embedding SDK fallback reports input tokens without inventing output", () => {
+  expect(RolloutUsage.normalizeSdk({ tokens: 42 }, "@ai-sdk/openai-compatible", "embedding")).toMatchObject({
+    input: { total: 42, uncached: 42, cacheRead: 0, cacheWrite: 0 },
+    output: { total: 0, reasoning: 0 },
+  })
+})
+
 test("OpenAI output includes reasoning and separates cached input", () => {
   const usage = RolloutUsage.normalize("openai", {
     input_tokens: 1000,
@@ -121,4 +152,25 @@ test("Google SDK fallback leaves output unknown when thinking and aggregate are 
   const usage = RolloutUsage.normalizeSdk({ inputTokens: 100, outputTokens: 20 }, "@ai-sdk/google")
   expect(usage!.output.total).toBeNull()
   expect(usage!.complete).toBe(false)
+})
+
+test("Google wire usage retains exact output from the reported aggregate without inventing a thinking split", () => {
+  const usage = RolloutUsage.normalize("google", {
+    promptTokenCount: 100,
+    candidatesTokenCount: 20,
+    totalTokenCount: 200,
+  })
+  expect(usage.input.total).toBe(100)
+  expect(usage.output).toEqual({ total: 100, reasoning: null })
+  expect(usage.input.cacheRead).toBeNull()
+})
+
+test("Google SDK fallback rejects conflicting complete output components and aggregate", () => {
+  const usage = RolloutUsage.normalizeSdk(
+    { inputTokens: 100, outputTokens: 20, reasoningTokens: 80, totalTokens: 150 },
+    "@ai-sdk/google",
+  )
+  expect(usage!.issues).toContain("total_mismatch")
+  expect(usage!.input.total).toBeNull()
+  expect(usage!.output.total).toBeNull()
 })

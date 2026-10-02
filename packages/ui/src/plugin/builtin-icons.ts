@@ -5,6 +5,8 @@ import { registerIcon } from "./icon-registry"
 
 const builtinIconNames = [
   "activity",
+  "laptop",
+  "briefcase-business",
   "alert-triangle",
   "align-right",
   "archive",
@@ -57,6 +59,7 @@ const builtinIconNames = [
   "clock",
   "cloud-upload",
   "code",
+  "code-xml",
   "compass",
   "contact-round",
   "copy",
@@ -161,6 +164,7 @@ const builtinIconNames = [
   "panel-right-close",
   "panel-right-open",
   "paperclip",
+  "pause",
   "pen",
   "pen-line",
   "pencil",

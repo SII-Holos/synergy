@@ -17,6 +17,7 @@ async function record(providerID = "openai", sdk = "@ai-sdk/openai") {
     request: {},
     model: {
       providerID,
+      billingMode: providerID === "openai-codex" ? "subscription" : "api",
       modelID: "test",
       sdk,
       pricing: ProviderPricing.resolve({

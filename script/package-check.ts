@@ -28,7 +28,7 @@ async function main() {
       if (!archive) throw new Error(`Missing publishable package: ${entry.registry}`)
       console.log(`\n=== package check: ${archive.name} ===\n`)
       await runPublint(archive.archive)
-      if (!runtimePackages.has(entry.directory) && id !== "linkProtocol") await runAttw(archive.archive)
+      if (!runtimePackages.has(entry.directory)) await runAttw(archive.archive)
     }
     await validateSynergyWrapper(tempDir)
   } finally {

@@ -1,4 +1,4 @@
-import z from "zod"
+import { z } from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BrowserToolHelper, formatBrowserJSON } from "./browser-shared"
 
@@ -7,6 +7,7 @@ export const BrowserConsoleTool = Tool.define("browser_console", {
     "Read or clear redacted Chromium console logs and page errors, including source and stack information. For debugging, clear immediately before reproducing, then list entries and get a specific id for full details.",
   parameters: z
     .object({
+      pageId: z.string().min(1).max(200).describe("Page ID from browser_navigation."),
       action: z.enum(["list", "get", "clear"]).default("list"),
       id: z.string().max(20_000).optional().describe("Required only for get."),
       level: z.string().max(1_000).optional().describe("Optional console level filter for list."),
@@ -27,8 +28,8 @@ export const BrowserConsoleTool = Tool.define("browser_console", {
         }
       }
     }),
-  async execute(params, ctx) {
-    const browserPage = await BrowserToolHelper.resolvePage(ctx)
+  async execute({ pageId, ...params }, ctx) {
+    const browserPage = await BrowserToolHelper.resolvePage(ctx, pageId)
     return BrowserToolHelper.withActivity(
       ctx,
       browserPage,
@@ -36,7 +37,7 @@ export const BrowserConsoleTool = Tool.define("browser_console", {
       "browser_console",
       `${params.action} console`,
       async () => {
-        const result = await BrowserToolHelper.execute(ctx, { type: "console", ...params })
+        const result = await BrowserToolHelper.execute(ctx, pageId, { type: "console", ...params })
         if (result.type !== "data") throw new Error("Browser console returned an unexpected result.")
         const formatted = formatBrowserJSON(result.data)
         return {

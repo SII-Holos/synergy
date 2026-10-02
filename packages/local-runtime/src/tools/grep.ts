@@ -4,8 +4,7 @@ import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { Ripgrep } from "../file/ripgrep"
 
 import DESCRIPTION from "./grep.txt"
-import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import path from "path"
+import { FileView } from "../file/view"
 import { ProcessOutput } from "@ericsanchezok/synergy-harness/process/output"
 
 const MAX_LINE_LENGTH = 2000
@@ -17,7 +16,10 @@ export const GrepTool = Tool.define(
     description: DESCRIPTION,
     parameters: z.object({
       pattern: z.string().describe("The regex pattern to search for in file contents"),
-      path: z.string().optional().describe("The directory to search in. Defaults to the current working directory."),
+      path: z
+        .string()
+        .optional()
+        .describe("The directory to search in. Defaults to the task’s main and shared project folders."),
       include: z.string().optional().describe('File pattern to include in the search (e.g. "*.js", "*.{ts,tsx}")'),
     }),
     async execute(params, ctx) {
@@ -35,20 +37,16 @@ export const GrepTool = Tool.define(
         },
       })
 
-      const searchPath = params.path
-        ? path.isAbsolute(params.path)
-          ? params.path
-          : path.resolve(ScopeContext.current.directory, params.path)
-        : ScopeContext.current.directory
+      const searchPaths = await FileView.searchRoots(params.path)
 
       const matches: Array<{ path: string; lineNum: number; lineText: string }> = []
       let truncated = false
       let truncatedReason: ProcessOutput.LimitReason | "max_matches" | undefined
       try {
         for await (const match of Ripgrep.matches({
-          cwd: ScopeContext.current.directory,
+          cwd: FileView.directory(),
           pattern: params.pattern,
-          paths: [searchPath],
+          paths: searchPaths,
           glob: params.include ? [params.include] : undefined,
           sortModifiedDesc: true,
           signal: ctx.abort,

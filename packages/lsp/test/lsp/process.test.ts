@@ -3,6 +3,7 @@ import path from "node:path"
 import { LSPProcess } from "../../src/process"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -15,26 +16,34 @@ test("LSP preparation drains bounded binary output and reports failed native com
       scope: await tmp.scope(),
       fn: () =>
         WorkspaceAccess.withinTask(async () => {
-          const result = await LSPProcess.resolving(AbortSignal.timeout(10000), () =>
-            LSPProcess.run({
-              command: [
-                process.execPath,
-                "-e",
-                "process.stdout.write(Buffer.alloc(1500000,255));process.stderr.write(Buffer.alloc(1500000,0))",
-              ],
-            }),
-          )
-          expect(result.value.exitCode).toBe(0)
-          expect(result.value.stdout.length + result.value.stderr.length).toBe(1024 * 1024)
-          expect(result.value.stdout.every((byte) => byte === 255)).toBe(true)
-          await result.dispose()
-          await expect(
-            LSPProcess.resolving(AbortSignal.timeout(10000), () =>
+          const controller = new AbortController()
+          try {
+            const result = await LSPProcess.resolving(controller.signal, () =>
+              LSPProcess.run({
+                command: [
+                  process.execPath,
+                  "-e",
+                  "process.stdout.write(Buffer.alloc(1500000,255));process.stderr.write(Buffer.alloc(1500000,0))",
+                ],
+              }),
+            )
+            expect(result.value.exitCode).toBe(0)
+            expect(result.value.stdout.length + result.value.stderr.length).toBe(1024 * 1024)
+            expect(result.value.stdout.every((byte) => byte === 255)).toBe(true)
+            await result.dispose()
+            const failure = await LSPProcess.resolving(controller.signal, () =>
               LSPProcess.run({
                 command: [process.execPath, "-e", "process.stderr.write('fixture failure');process.exit(7)"],
               }),
-            ),
-          ).rejects.toThrow("7: fixture failure")
+            ).then(
+              () => undefined,
+              (error: unknown) => error,
+            )
+            expect(failure).toBeInstanceOf(Error)
+            expect(failure).toMatchObject({ message: "Language server preparation exited with 7: fixture failure" })
+          } finally {
+            controller.abort()
+          }
         }),
     })
   }))
@@ -71,7 +80,7 @@ test(
                 if (Date.now() >= until) throw new Error("Preparation did not start")
                 await Bun.sleep(10)
               }
-              controller.abort()
+              RuntimeContext.exit(() => controller.abort())
               expect(await failure).toMatchObject({ name: "AbortError" })
               expect(
                 await import("node:fs/promises").then((fs) =>

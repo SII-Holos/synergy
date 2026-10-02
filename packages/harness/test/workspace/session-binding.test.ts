@@ -2,6 +2,10 @@ import { expect, test } from "bun:test"
 import { SessionWorkspaceRuntime } from "../../src/session/workspace-runtime"
 import { ExecutionCapacity } from "../../src/session/execution-capacity"
 import { testRuntime } from "../support/runtime"
+import { Session } from "../../src/session"
+import { SessionManager } from "../../src/session/manager"
+import { Scope } from "../../src/scope"
+import { ScopeContext } from "../../src/scope/context"
 
 test("Session binding waits release their lock when execution capacity cannot resume", async () => {
   await using runtime = await testRuntime()
@@ -55,4 +59,37 @@ test("Session binding leases serialize one owner, permit reentrancy and cancel q
     await holding
     expect(await SessionWorkspaceRuntime.withBinding("same", async () => "released")).toBe("released")
   })
+})
+
+test("turn admission waits for an in-flight resource selection before reading Session state", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const session = await Session.create({ environmentID: null })
+        const entered = Promise.withResolvers<void>(),
+          release = Promise.withResolvers<void>()
+        const changing = SessionWorkspaceRuntime.withBinding(session.id, async () => {
+          entered.resolve()
+          await release.promise
+          await Session.update(session.id, (draft) => {
+            draft.title = "committed selection"
+          })
+        })
+        await entered.promise
+        let started = false
+        const turn = SessionManager.run(session.id, async () => {
+          started = true
+          return (await Session.get(session.id)).title
+        })
+        await Bun.sleep(20)
+        expect(started).toBe(false)
+        release.resolve()
+        await changing
+        expect(await turn).toBe("committed selection")
+      },
+    }),
+  )
 })

@@ -1,56 +1,93 @@
 import { z } from "zod"
 
-export const COMPUTER_PROTOCOL_VERSION = 1
+import { ComputerObservationSchema } from "./observation.js"
+export { ComputerObservationSchema, type ComputerObservation } from "./observation.js"
+
+export const COMPUTER_PROTOCOL_VERSION = 3
 export const COMPUTER_MAX_MESSAGE_BYTES = 12 * 1024 * 1024
 const Ref = z.string().min(1).max(200)
 const Pid = z.number().int().positive().max(2_147_483_647)
 const WindowId = z.number().int().positive().max(4_294_967_295)
 const Point = z.number().finite().min(0).max(32_768)
+const Coordinates = z.object({ x: Point, y: Point }).strict()
+const Element = z.object({ elementIndex: z.number().int().nonnegative().max(100_000) }).strict()
+const Target = z.union([Element, Coordinates])
 const observation = { observationId: Ref }
+const delivery = { ...observation, foreground: z.boolean().optional() }
 
 export const ComputerActionSchema = z.discriminatedUnion("action", [
   z
-    .object({ ...observation, action: z.literal("click"), elementIndex: z.number().int().nonnegative().max(100_000) })
+    .object({
+      ...delivery,
+      action: z.literal("click"),
+      target: Target,
+      button: z.enum(["left", "right", "middle"]).optional(),
+      count: z.union([z.literal(1), z.literal(2)]).optional(),
+    })
     .strict(),
-  z.object({ ...observation, action: z.literal("point"), x: Point, y: Point }).strict(),
-  z.object({ ...observation, action: z.literal("type"), text: z.string().min(1).max(20_000) }).strict(),
+  z.object({ ...delivery, action: z.literal("type"), target: Target, text: z.string().min(1).max(20_000) }).strict(),
   z
     .object({
-      ...observation,
+      ...delivery,
       action: z.literal("key"),
-      key: z.enum([
-        "return",
-        "tab",
-        "escape",
-        "up",
-        "down",
-        "left",
-        "right",
-        "space",
-        "delete",
-        "home",
-        "end",
-        "pageup",
-        "pagedown",
-      ]),
+      key: z.string().trim().min(1).max(50),
+      modifiers: z
+        .array(z.enum(["cmd", "ctrl", "alt", "shift"]))
+        .min(1)
+        .max(4)
+        .optional(),
+      target: Target.optional(),
     })
     .strict(),
   z
     .object({
-      ...observation,
+      ...delivery,
       action: z.literal("scroll"),
+      target: Target.optional(),
       direction: z.enum(["up", "down", "left", "right"]),
       amount: z.number().int().min(1).max(10).default(3),
     })
     .strict(),
+  z
+    .object({
+      ...delivery,
+      action: z.literal("drag"),
+      from: Coordinates,
+      to: Coordinates,
+      durationSeconds: z.number().finite().min(0.1).max(10).optional(),
+    })
+    .strict(),
+  z.object({ ...observation, action: z.literal("set_value"), target: Element, value: z.string().max(20_000) }).strict(),
 ])
 export type ComputerAction = z.infer<typeof ComputerActionSchema>
 
-export const ComputerObserveSchema = z.object({ pid: Pid, windowId: WindowId }).strict()
+export function computerActionPoints(action: ComputerAction) {
+  if (action.action === "drag") return [action.from, action.to]
+  return action.target && "x" in action.target ? [action.target] : []
+}
+
+export const ComputerAppsSchema = z.object({ query: z.string().trim().min(1).max(200).optional() }).strict()
+export const ComputerObserveSchema = z
+  .object({
+    pid: Pid,
+    windowId: WindowId,
+    query: z.string().trim().min(1).max(200).optional(),
+    foreground: z.boolean().optional(),
+  })
+  .strict()
 export const ComputerCommandSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("apps") }).strict(),
+  ComputerAppsSchema.extend({ type: z.literal("apps") }),
   ComputerObserveSchema.extend({ type: z.literal("observe") }),
-  z.object({ type: z.literal("action"), input: ComputerActionSchema }).strict(),
+  z
+    .object({
+      type: z.literal("action"),
+      input: ComputerActionSchema,
+      imageReceipt: z
+        .object({ sha256: z.array(z.string().regex(/^[a-f0-9]{64}$/)).max(128), callID: Ref })
+        .strict()
+        .optional(),
+    })
+    .strict(),
   z.object({ type: z.literal("release") }).strict(),
 ])
 export type ComputerCommand = z.infer<typeof ComputerCommandSchema>
@@ -59,6 +96,7 @@ export const ComputerResultSchema = z
   .object({
     output: z.string().max(1_000_000),
     observationId: Ref.optional(),
+    observation: ComputerObservationSchema.optional(),
     images: z
       .array(
         z.object({ mimeType: z.enum(["image/png", "image/jpeg"]), data: z.string().max(8 * 1024 * 1024) }).strict(),

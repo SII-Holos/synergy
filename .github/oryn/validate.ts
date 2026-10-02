@@ -13,7 +13,6 @@ export function validationEnv(
     SYNERGY_HOME: home,
     SYNERGY_TEST_HOME: path.join(home, "test-home"),
     SYNERGY_TEST_ROOT: path.join(home, "test-fixtures"),
-    SYNERGY_LINK_HOME: path.join(home, "link-home"),
     SYNERGY_DISABLE_MODELS_FETCH: "1",
     SYNERGY_DISABLE_AUTOUPDATE: "1",
     PLAYWRIGHT_BROWSERS_PATH: "/opt/oryn-browsers",

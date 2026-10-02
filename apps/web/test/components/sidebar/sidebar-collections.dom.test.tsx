@@ -1,3 +1,4 @@
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test, setDefaultTimeout } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
@@ -40,7 +41,7 @@ beforeAll(async () => {
     const background = [entry("background-one","background","Background session")]
     const scope = {id:"project-one",directory:"/fixture/project",name:"Project one",worktree:"/fixture/project",get expanded(){return expanded()},time:{created:1,updated:1}}
     export const useLayout = () => ({
-      sidebar:{opened,width,resize,close:()=>setOpened(false),toggle:()=>setOpened(!opened())},
+      sidebar:{opened,width,resize,setOccupiedWidth:()=>{},close:()=>setOpened(false),toggle:()=>setOpened(!opened())},
       nav:{recentEntries:()=>recent,hasMoreRecent:()=>!loaded(),loadMoreNav:()=>setLoaded(true),
         rootNavEntries:kind=>({home,channel,background})[kind]||[],hasMoreRootNavSection:()=>false,
         scopeIndexLoaded:()=>true,navEntries:()=>({"project-one":{items:[]}}),
@@ -58,6 +59,7 @@ beforeAll(async () => {
     export const usePlatform = () => ({platform:"web"})
     export const useTheme = () => ({mode:()=>query.get("mode")||"dark"})
     export const useDialog = () => ({show:()=>{}})
+    export const useCommand = () => ({ trigger() {} })
     export const useConfirm = () => async()=>false
     export const useHolosAgentActions = () => ({})
     export const useProjectDirectoryPicker = () => ({pickProjectDirectories:async()=>undefined})
@@ -101,6 +103,7 @@ beforeAll(async () => {
     "@/context/global-sdk",
     "@/context/holos",
     "@/context/platform",
+    "@/context/command",
     "@/context/product-update",
     "@/components/holos/agent-actions",
     "@/components/dialog/project-directory-picker",
@@ -129,8 +132,11 @@ beforeAll(async () => {
         { find: "@", replacement: source },
       ],
     },
-    optimizeDeps: { noDiscovery: true, include: ["solid-js", "solid-js/web", "@lingui/core", "@lingui/solid"] },
-    server: { host: "127.0.0.1", port: 0, fs: { allow: [path.resolve(source, "../../..")] } },
+    optimizeDeps: {
+      noDiscovery: true,
+      include: ["solid-js", "solid-js/web", "@lingui/core", "@lingui/solid", "fuzzysort"],
+    },
+    server: { host: "127.0.0.1", port: await fixturePort(), fs: { allow: [path.resolve(source, "../../..")] } },
   })
   await server.listen()
   url = server.resolvedUrls!.local[0]!

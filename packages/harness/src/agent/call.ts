@@ -197,6 +197,7 @@ export namespace AgentCall {
         try {
           abort.throwIfAborted()
           const starting = AgentTurn.stream({
+            retryIndex: attempt,
             agent,
             user,
             toolDefinitions: [],

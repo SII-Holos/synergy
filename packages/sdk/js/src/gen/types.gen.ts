@@ -26,6 +26,144 @@ export type GlobalPaths = {
   log: string
 }
 
+export type DirectoryPage = {
+  path: string
+  parent: string | null
+  entries: Array<{
+    name: string
+    path: string
+  }>
+  nextCursor?: string
+}
+
+export type DirectoryBrowseError = {
+  name: "DirectoryBrowseError"
+  data: {
+    code: "not_found" | "not_directory" | "permission_denied" | "invalid_cursor" | "unavailable"
+    path: string
+    message: string
+  }
+}
+
+export type Scope = {
+  type: "project"
+  id: string
+  local: {
+    directory: string
+    worktree: string
+    vcs?: "git"
+    sandboxes: Array<string>
+  } | null
+  name?: string
+  icon?: {
+    url?: string
+    color?: string
+  }
+  pinned?: number
+  time: {
+    created: number
+    updated: number
+    initialized?: number
+    archived?: number
+  }
+}
+
+export type ProjectFolder = {
+  workspaceID: string
+  generation: number
+  path: string
+  available: boolean
+  git: boolean
+}
+
+export type ProjectDirectories = {
+  version: 1
+  scopeID: string
+  revision: number
+  mainWorkspaceID: string | null
+  additionalWorkspaceIDs: Array<string>
+  folders: Array<ProjectFolder>
+}
+
+export type ProjectCreated = {
+  scope: Scope
+  directories: ProjectDirectories
+  existing: boolean
+}
+
+export type ProjectDirectoriesInvalid = {
+  name: "ProjectDirectoriesInvalid"
+  data: {
+    message: string
+  }
+}
+
+export type ProjectDirectoriesConflict = {
+  name: "ProjectDirectoriesConflict"
+  data: {
+    message: string
+  }
+}
+
+export type ProjectCreateInput = {
+  directories: Array<string>
+  mainDirectory: string
+  name: string
+}
+
+export type ProjectDirectoriesUpdate = {
+  directories: Array<string>
+  mainDirectory: string
+  revision: number
+}
+
+export type Worktree = {
+  id: string
+  name: string
+  branch?: string
+  path: string
+  scopeID: string
+  sourceWorkspaceID?: string
+  sourceDirectory?: string
+  head?: string
+  baseRef?: string
+  baseRevision?: string
+  resolvedBaseCommit?: string
+  detached?: boolean
+  bare?: boolean
+  isMain?: boolean
+  managed?: boolean
+  stale?: boolean
+  dirty?: boolean
+  diskBytes?: number
+  owner?:
+    | {
+        type: "session"
+        sessionID: string
+      }
+    | {
+        type: "superplan"
+        runID: string
+        nodeID?: string
+        mergeID?: string
+      }
+    | {
+        type: "user"
+      }
+    | {
+        type: "external"
+      }
+  bindings?: Array<string>
+  lifecycle?: "active" | "detached" | "gc_candidate" | "deleted"
+  createdAt?: number
+  updatedAt?: number
+  lastUsedAt?: number
+  setupFailed?: boolean
+  setupError?: string
+  locked?: string
+  prunable?: boolean
+}
+
 export type BadRequestError = {
   data: unknown
   errors: Array<{
@@ -93,6 +231,11 @@ export type RolloutAccountingSummary = {
     unknown: number
     total: number | null
   }
+  unclassifiedEquivalent?: {
+    known: number
+    unknown: number
+    total: number | null
+  }
   reported: {
     currencies: {
       [key: string]: number
@@ -113,6 +256,931 @@ export type RolloutAccountingSummary = {
       total: number | null
     }
   }
+}
+
+export type UsageSummary = {
+  version: 1
+  revision: number
+  computedAt: number
+  scope: {
+    scopeID?: string
+    sessionID?: string
+    runID?: string
+    providerID?: string
+    modelID?: string
+    agent?: string
+    purpose?: string
+    from?: number
+    to?: number
+    includeDescendants?: boolean
+    timezone?: string
+    kind?: "run" | "call" | "attempt" | "tool" | "legacy" | "gap"
+  }
+  timezone: string
+  accounting: RolloutAccountingSummary
+  provisional: RolloutAccountingSummary
+  cache: {
+    ratio: number | null
+    observedRatio: number | null
+    read: number
+    input: number
+    samples: number
+    excluded: number
+  }
+  rates: {
+    generation: {
+      value: number | null
+      tokens: number
+      milliseconds: number
+      samples: number
+      excluded: number
+      reasons?: {
+        [key: string]: number
+      }
+    }
+    endToEnd: {
+      value: number | null
+      tokens: number
+      milliseconds: number
+      samples: number
+      excluded: number
+      reasons?: {
+        [key: string]: number
+      }
+    }
+  }
+  latency: {
+    headers: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+    firstByte: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+    ttft: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+    request: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+    generation: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+  }
+  scheduling: {
+    source: "wall_clock"
+    dispatch: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+    betweenAttempts: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+  }
+  outcomes: {
+    completed: number
+    failed: number
+    cancelled: number
+    interrupted: number
+    running: number
+    retries: number
+    transportRetries: number
+    logicalRetries: number
+    rootTasks: number
+  }
+  coverage: {
+    records: number
+    imported: number
+    legacy: number
+    active: number
+    unclassified: number
+    unsent: number
+    external: number
+    migration: {
+      version: 1
+      status: "pending" | "running" | "completed" | "failed"
+      phase: "indexes" | "sessions" | "operations" | "completed"
+      after?: Array<string>
+      ownerAfter?: Array<string>
+      owners: number
+      records: number
+      updatedAt: number
+      failures: number
+    } | null
+  }
+  tools: Array<{
+    tool: string
+    calls: number
+    completed: number
+    failed: number
+    cancelled: number
+    interrupted: number
+    running: number
+    durationMs: number
+    timedSamples: number
+    averageMs: number | null
+  }>
+  phases: Array<{
+    recordID: string
+    runID: string
+    owner:
+      | {
+          kind: "session"
+          scopeID: string
+          sessionID: string
+        }
+      | {
+          kind: "operation"
+          scopeID: string
+          operationID: string
+        }
+    phase: "queued" | "request" | "generating" | "tool" | "terminal"
+    elapsedMs: number | null
+    retries: number
+  }>
+  latestRequest: {
+    version: 1
+    id: string
+    entityID: string
+    owner:
+      | {
+          kind: "session"
+          scopeID: string
+          sessionID: string
+        }
+      | {
+          kind: "operation"
+          scopeID: string
+          operationID: string
+        }
+    runID: string
+    revision: number
+    sourceRevision: number
+    started: number
+    ended?: number
+    status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+    source: "local" | "imported" | "legacy"
+    purpose: string
+    usageRole?: "conversation" | "compaction" | "auxiliary"
+    retryIndex?: number
+    agent?: string
+    model: {
+      providerID: string
+      modelID: string
+      apiModelID?: string
+      sdk: string
+      pricing: {
+        version: 1
+        currency: "USD"
+        unitTokens: 1000000
+        source: {
+          kind: "catalog" | "configuration" | "mixed"
+          providerID: string
+          modelID: string
+        }
+        capturedAt: number
+        rates: {
+          input: number | null
+          output: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+          cacheWrite1h: number | null
+        }
+        over200K?: {
+          input: number | null
+          output: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+          cacheWrite1h: number | null
+        }
+        contextTiers?: Array<{
+          above: number
+          rates: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+        }>
+        units?: {
+          audio_seconds?: {
+            price: number
+            per: number
+          }
+          audio_input_tokens?: {
+            price: number
+            per: number
+          }
+          audio_output_tokens?: {
+            price: number
+            per: number
+          }
+          characters?: {
+            price: number
+            per: number
+          }
+        }
+        raw: unknown
+      } | null
+      /**
+       * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+       */
+      billingMode?: "api" | "subscription" | "local" | "unknown"
+      limits?: {
+        context: number
+        input?: number
+        output: number
+      }
+    }
+    execution: "provider" | "local" | "external"
+    callKind: "chat" | "embedding" | "rerank" | "transcription" | "speech"
+    kind: "attempt"
+    callID: string
+    index: number
+    usage?: {
+      version: 1
+      protocol: "openai" | "anthropic" | "google" | "unknown"
+      raw: unknown | null
+      input: {
+        total: number | null
+        uncached: number | null
+        cacheRead: number | null
+        cacheWrite: number | null
+      }
+      output: {
+        total: number | null
+        reasoning: number | null
+      }
+      cacheWrites: {
+        [key: string]: number | null
+      }
+      units: Array<{
+        unit: "audio_input_tokens" | "audio_output_tokens" | "audio_seconds" | "characters"
+        quantity: number | null
+      }>
+      billing: "tokens" | "units" | "unknown"
+      serviceTier?: string
+      reported: {
+        amount: number
+        currency: string
+        source: string
+      } | null
+      complete: boolean
+      issues?: Array<"input_breakdown_mismatch" | "reasoning_subset_mismatch" | "total_mismatch">
+    }
+    estimate?: {
+      version: 1
+      currency: "USD" | null
+      basis: "api_price_estimate" | "subscription_api_equivalent" | "unclassified_api_equivalent" | "local"
+      total: number | null
+      known: number
+      missing: Array<string>
+    }
+    timing?: {
+      source: "transport"
+      sentAt?: number
+      headersAt?: number
+      firstByteAt?: number
+      firstContentAt?: number
+      lastContentAt?: number
+      endedAt?: number
+      detectedAt?: number
+      headersMs?: number
+      firstByteMs?: number
+      ttftMs?: number
+      generationMs?: number
+      requestMs?: number
+      contentEvents: number
+      reasoningObserved: boolean
+      streaming: boolean
+      backpressured?: boolean
+    }
+    usageFinal: boolean
+    httpStatus?: number
+    responseModel?: string
+  } | null
+  context: {
+    attemptID: string
+    callID: string
+    modelID: string
+    inputTokens: number | null
+    limit: number | null
+    ratio: number | null
+    stale: boolean
+    observedAt: number
+  } | null
+  daily: Array<{
+    date: string
+    accounting: RolloutAccountingSummary
+    toolCalls: number
+  }>
+  own: RolloutAccountingSummary
+  descendants: RolloutAccountingSummary
+  purposes: {
+    [key: string]: RolloutAccountingSummary
+  }
+  models: Array<{
+    providerID: string
+    modelID: string
+    accounting: RolloutAccountingSummary
+  }>
+  agents: {
+    [key: string]: RolloutAccountingSummary
+  }
+}
+
+export type UsageRecord =
+  | {
+      version: 1
+      id: string
+      entityID: string
+      owner:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+      runID: string
+      revision: number
+      sourceRevision: number
+      started: number
+      ended?: number
+      status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+      source: "local" | "imported" | "legacy"
+      kind: "run"
+      parent?: {
+        owner:
+          | {
+              kind: "session"
+              scopeID: string
+              sessionID: string
+            }
+          | {
+              kind: "operation"
+              scopeID: string
+              operationID: string
+            }
+        runID: string | null
+        messageID: string
+      }
+      parentOwner?:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+    }
+  | {
+      version: 1
+      id: string
+      entityID: string
+      owner:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+      runID: string
+      revision: number
+      sourceRevision: number
+      started: number
+      ended?: number
+      status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+      source: "local" | "imported" | "legacy"
+      purpose: string
+      usageRole?: "conversation" | "compaction" | "auxiliary"
+      retryIndex?: number
+      agent?: string
+      model: {
+        providerID: string
+        modelID: string
+        apiModelID?: string
+        sdk: string
+        pricing: {
+          version: 1
+          currency: "USD"
+          unitTokens: 1000000
+          source: {
+            kind: "catalog" | "configuration" | "mixed"
+            providerID: string
+            modelID: string
+          }
+          capturedAt: number
+          rates: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          over200K?: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          contextTiers?: Array<{
+            above: number
+            rates: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+          }>
+          units?: {
+            audio_seconds?: {
+              price: number
+              per: number
+            }
+            audio_input_tokens?: {
+              price: number
+              per: number
+            }
+            audio_output_tokens?: {
+              price: number
+              per: number
+            }
+            characters?: {
+              price: number
+              per: number
+            }
+          }
+          raw: unknown
+        } | null
+        /**
+         * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+         */
+        billingMode?: "api" | "subscription" | "local" | "unknown"
+        limits?: {
+          context: number
+          input?: number
+          output: number
+        }
+      }
+      execution: "provider" | "local" | "external"
+      callKind: "chat" | "embedding" | "rerank" | "transcription" | "speech"
+      kind: "call"
+      parentCallID?: string
+      usage?: {
+        version: 1
+        protocol: "openai" | "anthropic" | "google" | "unknown"
+        raw: unknown | null
+        input: {
+          total: number | null
+          uncached: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+        }
+        output: {
+          total: number | null
+          reasoning: number | null
+        }
+        cacheWrites: {
+          [key: string]: number | null
+        }
+        units: Array<{
+          unit: "audio_input_tokens" | "audio_output_tokens" | "audio_seconds" | "characters"
+          quantity: number | null
+        }>
+        billing: "tokens" | "units" | "unknown"
+        serviceTier?: string
+        reported: {
+          amount: number
+          currency: string
+          source: string
+        } | null
+        complete: boolean
+        issues?: Array<"input_breakdown_mismatch" | "reasoning_subset_mismatch" | "total_mismatch">
+      }
+      estimate?: {
+        version: 1
+        currency: "USD" | null
+        basis: "api_price_estimate" | "subscription_api_equivalent" | "unclassified_api_equivalent" | "local"
+        total: number | null
+        known: number
+        missing: Array<string>
+      }
+      hasAttempts: boolean
+    }
+  | {
+      version: 1
+      id: string
+      entityID: string
+      owner:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+      runID: string
+      revision: number
+      sourceRevision: number
+      started: number
+      ended?: number
+      status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+      source: "local" | "imported" | "legacy"
+      purpose: string
+      usageRole?: "conversation" | "compaction" | "auxiliary"
+      retryIndex?: number
+      agent?: string
+      model: {
+        providerID: string
+        modelID: string
+        apiModelID?: string
+        sdk: string
+        pricing: {
+          version: 1
+          currency: "USD"
+          unitTokens: 1000000
+          source: {
+            kind: "catalog" | "configuration" | "mixed"
+            providerID: string
+            modelID: string
+          }
+          capturedAt: number
+          rates: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          over200K?: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          contextTiers?: Array<{
+            above: number
+            rates: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+          }>
+          units?: {
+            audio_seconds?: {
+              price: number
+              per: number
+            }
+            audio_input_tokens?: {
+              price: number
+              per: number
+            }
+            audio_output_tokens?: {
+              price: number
+              per: number
+            }
+            characters?: {
+              price: number
+              per: number
+            }
+          }
+          raw: unknown
+        } | null
+        /**
+         * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+         */
+        billingMode?: "api" | "subscription" | "local" | "unknown"
+        limits?: {
+          context: number
+          input?: number
+          output: number
+        }
+      }
+      execution: "provider" | "local" | "external"
+      callKind: "chat" | "embedding" | "rerank" | "transcription" | "speech"
+      kind: "attempt"
+      callID: string
+      index: number
+      usage?: {
+        version: 1
+        protocol: "openai" | "anthropic" | "google" | "unknown"
+        raw: unknown | null
+        input: {
+          total: number | null
+          uncached: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+        }
+        output: {
+          total: number | null
+          reasoning: number | null
+        }
+        cacheWrites: {
+          [key: string]: number | null
+        }
+        units: Array<{
+          unit: "audio_input_tokens" | "audio_output_tokens" | "audio_seconds" | "characters"
+          quantity: number | null
+        }>
+        billing: "tokens" | "units" | "unknown"
+        serviceTier?: string
+        reported: {
+          amount: number
+          currency: string
+          source: string
+        } | null
+        complete: boolean
+        issues?: Array<"input_breakdown_mismatch" | "reasoning_subset_mismatch" | "total_mismatch">
+      }
+      estimate?: {
+        version: 1
+        currency: "USD" | null
+        basis: "api_price_estimate" | "subscription_api_equivalent" | "unclassified_api_equivalent" | "local"
+        total: number | null
+        known: number
+        missing: Array<string>
+      }
+      timing?: {
+        source: "transport"
+        sentAt?: number
+        headersAt?: number
+        firstByteAt?: number
+        firstContentAt?: number
+        lastContentAt?: number
+        endedAt?: number
+        detectedAt?: number
+        headersMs?: number
+        firstByteMs?: number
+        ttftMs?: number
+        generationMs?: number
+        requestMs?: number
+        contentEvents: number
+        reasoningObserved: boolean
+        streaming: boolean
+        backpressured?: boolean
+      }
+      usageFinal: boolean
+      httpStatus?: number
+      responseModel?: string
+    }
+  | {
+      version: 1
+      id: string
+      entityID: string
+      owner:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+      runID: string
+      revision: number
+      sourceRevision: number
+      started: number
+      ended?: number
+      status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+      source: "local" | "imported" | "legacy"
+      kind: "tool"
+      tool: string
+      durationMs: number | null
+    }
+  | {
+      version: 1
+      id: string
+      entityID: string
+      owner:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+      runID: string
+      revision: number
+      sourceRevision: number
+      started: number
+      ended?: number
+      status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+      source: "local" | "imported" | "legacy"
+      kind: "legacy"
+      purpose: string
+      usageRole?: "conversation" | "compaction" | "auxiliary"
+      retryIndex?: number
+      agent?: string
+      model: {
+        providerID: string
+        modelID: string
+        apiModelID?: string
+        sdk: string
+        pricing: {
+          version: 1
+          currency: "USD"
+          unitTokens: 1000000
+          source: {
+            kind: "catalog" | "configuration" | "mixed"
+            providerID: string
+            modelID: string
+          }
+          capturedAt: number
+          rates: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          over200K?: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          contextTiers?: Array<{
+            above: number
+            rates: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+          }>
+          units?: {
+            audio_seconds?: {
+              price: number
+              per: number
+            }
+            audio_input_tokens?: {
+              price: number
+              per: number
+            }
+            audio_output_tokens?: {
+              price: number
+              per: number
+            }
+            characters?: {
+              price: number
+              per: number
+            }
+          }
+          raw: unknown
+        } | null
+        /**
+         * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+         */
+        billingMode?: "api" | "subscription" | "local" | "unknown"
+        limits?: {
+          context: number
+          input?: number
+          output: number
+        }
+      }
+      execution: "provider" | "local" | "external"
+      callKind: "chat" | "embedding" | "rerank" | "transcription" | "speech"
+      usage: {
+        version: 1
+        protocol: "openai" | "anthropic" | "google" | "unknown"
+        raw: unknown | null
+        input: {
+          total: number | null
+          uncached: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+        }
+        output: {
+          total: number | null
+          reasoning: number | null
+        }
+        cacheWrites: {
+          [key: string]: number | null
+        }
+        units: Array<{
+          unit: "audio_input_tokens" | "audio_output_tokens" | "audio_seconds" | "characters"
+          quantity: number | null
+        }>
+        billing: "tokens" | "units" | "unknown"
+        serviceTier?: string
+        reported: {
+          amount: number
+          currency: string
+          source: string
+        } | null
+        complete: boolean
+        issues?: Array<"input_breakdown_mismatch" | "reasoning_subset_mismatch" | "total_mismatch">
+      }
+      legacyCost: number
+      accounting?: RolloutAccountingSummary
+    }
+  | {
+      version: 1
+      id: string
+      entityID: string
+      owner:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+      runID: string
+      revision: number
+      sourceRevision: number
+      started: number
+      ended?: number
+      status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+      source: "local" | "imported" | "legacy"
+      kind: "gap"
+      sequence: number
+    }
+
+export type UsageRecordsPage = {
+  version: 1
+  revision: number
+  computedAt: number
+  scope: {
+    scopeID?: string
+    sessionID?: string
+    runID?: string
+    providerID?: string
+    modelID?: string
+    agent?: string
+    purpose?: string
+    from?: number
+    to?: number
+    includeDescendants?: boolean
+    timezone?: string
+    kind?: "run" | "call" | "attempt" | "tool" | "legacy" | "gap"
+  }
+  timezone: string
+  items: Array<UsageRecord>
+  nextCursor: string | null
 }
 
 export type StatsSnapshot = {
@@ -1304,197 +2372,6 @@ export type StorageSnapshotCompactInput = {
   prune?: boolean
 }
 
-export type HolosLoginResponse = {
-  url: string
-}
-
-export type HolosAgentProfileInput = {
-  name: string
-  description?: string
-  avatarUrl?: string
-}
-
-export type HolosAgentProfile = {
-  name: string
-  description: string
-  avatarUrl: string | null
-}
-
-export type HolosCredentialsResponse = {
-  success: true
-  agentId: string
-  profile: HolosAgentProfile
-}
-
-export type HolosLogoutResponse = {
-  success: true
-}
-
-export type HolosReconnectResponse = {
-  success: true
-}
-
-export type SynergyLinkHostObservation = {
-  type: "synergy_link.host.hello"
-  /**
-   * Synergy Link target identifier
-   */
-  linkID: string
-  /**
-   * Synergy Link host session identifier
-   */
-  hostSessionID: string
-  capabilities: {
-    platform: string
-    arch: string
-    hostname?: string
-    runtime: "node" | "bun" | "unknown"
-    defaultShell: "none" | "sh" | "cmd" | "powershell" | "pwsh"
-    supportedShells: Array<"none" | "sh" | "cmd" | "powershell" | "pwsh">
-    supportsPty: boolean
-    supportsSendKeys: boolean
-    supportsSoftKill: boolean
-    supportsProcessGroups: boolean
-    supportsBashDetach?: boolean
-    envCaseInsensitive: boolean
-    lineEndings: "lf" | "crlf"
-  }
-  observedAt: number
-}
-
-export type SynergyLinkProbe = {
-  status: "reachable" | "refused" | "busy" | "failed"
-  checkedAt: number
-}
-
-export type SynergyLinkTargetView = {
-  id: string
-  name: string
-  enabled: boolean
-  targetAgentID: string
-  /**
-   * Synergy Link target identifier
-   */
-  linkID: string
-  allowedAgents: Array<string>
-  authorization: "unverified" | "approved" | "revoked"
-  host?: SynergyLinkHostObservation
-  lastProbe?: SynergyLinkProbe
-  createdAt: number
-  updatedAt: number
-  availability: "unknown" | "unreachable" | "reachable" | "connected"
-  /**
-   * Synergy Link session identifier
-   */
-  sessionID?: string
-}
-
-export type SynergyLinkTarget = {
-  id: string
-  name: string
-  enabled: boolean
-  targetAgentID: string
-  /**
-   * Synergy Link target identifier
-   */
-  linkID: string
-  allowedAgents: Array<string>
-  authorization: "unverified" | "approved" | "revoked"
-  host?: SynergyLinkHostObservation
-  lastProbe?: SynergyLinkProbe
-  createdAt: number
-  updatedAt: number
-}
-
-export type SynergyLinkTargetCreateInput = {
-  name: string
-  targetAgentID: string
-  /**
-   * Synergy Link target identifier
-   */
-  linkID: string
-  enabled?: boolean
-  allowedAgents?: Array<string>
-}
-
-export type NotFoundError = {
-  name: "NotFoundError"
-  data: {
-    message: string
-  }
-}
-
-export type SynergyLinkTargetPatchMetadata =
-  | {
-      kind: "metadata"
-      name: string
-    }
-  | {
-      kind: "metadata"
-      enabled: boolean
-    }
-  | {
-      kind: "metadata"
-      allowedAgents: Array<string>
-    }
-  | {
-      kind: "metadata"
-      name: string
-      enabled: boolean
-    }
-  | {
-      kind: "metadata"
-      name: string
-      allowedAgents: Array<string>
-    }
-  | {
-      kind: "metadata"
-      enabled: boolean
-      allowedAgents: Array<string>
-    }
-  | {
-      kind: "metadata"
-      name: string
-      enabled: boolean
-      allowedAgents: Array<string>
-    }
-
-export type SynergyLinkTargetPatchRelink = {
-  kind: "relink"
-  name?: string
-  enabled?: boolean
-  allowedAgents?: Array<string>
-  targetAgentID: string
-  /**
-   * Synergy Link target identifier
-   */
-  linkID: string
-}
-
-export type SynergyLinkTargetPatchInput = SynergyLinkTargetPatchMetadata | SynergyLinkTargetPatchRelink
-
-export type SynergyLinkTargetRemoveResult = {
-  success: true
-}
-
-export type PushVapidKey = {
-  publicKey: string
-}
-
-export type PushCategories = {
-  completion: boolean
-  error: boolean
-  input: boolean
-}
-
-export type PushSubscriptionInfo = {
-  id: string
-  endpoint: string
-  deviceLabel?: string
-  created: number
-  categories: PushCategories
-}
-
 export type AgendaTriggerAt = {
   type: "at"
   /**
@@ -1800,6 +2677,54 @@ export type AgendaItem = {
   }
 }
 
+export type HolosLoginResponse = {
+  url: string
+}
+
+export type HolosAgentProfileInput = {
+  name: string
+  description?: string
+  avatarUrl?: string
+}
+
+export type HolosAgentProfile = {
+  name: string
+  description: string
+  avatarUrl: string | null
+}
+
+export type HolosCredentialsResponse = {
+  success: true
+  agentId: string
+  profile: HolosAgentProfile
+}
+
+export type HolosLogoutResponse = {
+  success: true
+}
+
+export type HolosReconnectResponse = {
+  success: true
+}
+
+export type PushVapidKey = {
+  publicKey: string
+}
+
+export type PushCategories = {
+  completion: boolean
+  error: boolean
+  input: boolean
+}
+
+export type PushSubscriptionInfo = {
+  id: string
+  endpoint: string
+  deviceLabel?: string
+  created: number
+  categories: PushCategories
+}
+
 export type GlobalActivity = {
   active: boolean
   sessions: number
@@ -1916,29 +2841,6 @@ export type AgendaWebhookResult = {
   accepted: boolean
 }
 
-export type Scope = {
-  type: "project"
-  id: string
-  local: {
-    directory: string
-    worktree: string
-    vcs?: "git"
-    sandboxes: Array<string>
-  } | null
-  name?: string
-  icon?: {
-    url?: string
-    color?: string
-  }
-  pinned?: number
-  time: {
-    created: number
-    updated: number
-    initialized?: number
-    archived?: number
-  }
-}
-
 export type ScopeNavEntry = {
   scopeID: string
   scopeType: "home" | "project"
@@ -1955,6 +2857,13 @@ export type ScopeNavEntry = {
     accountId: string
     externalProjectId: string
     remoteState: "active" | "paused" | "stale" | "archived"
+  }
+}
+
+export type NotFoundError = {
+  name: "NotFoundError"
+  data: {
+    message: string
   }
 }
 
@@ -2063,6 +2972,10 @@ export type Model = {
     }
     raw: unknown
   } | null
+  /**
+   * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+   */
+  billingMode?: "api" | "subscription" | "local" | "unknown"
   cost: {
     input: number
     output: number
@@ -2573,8 +3486,16 @@ export type ProviderConfig = {
           [key: string]: unknown | boolean | undefined
         }
       }
+      /**
+       * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+       */
+      billingMode?: "api" | "subscription" | "local" | "unknown"
     }
   }
+  /**
+   * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+   */
+  billingMode?: "api" | "subscription" | "local" | "unknown"
   /**
    * Canonical provider profile whose runtime behavior this account connection uses
    */
@@ -2907,6 +3828,95 @@ export type WorktreeConfig = {
   janitor?: boolean
 }
 
+export type ResourcesConfig = {
+  /**
+   * Environment profile selected for new Sessions; null disables automatic selection
+   */
+  defaultEnvironment?: string | null
+  environments?: {
+    [key: string]:
+      | {
+          provider: "native"
+          spec?: {
+            [key: string]: never
+          }
+          idleTimeoutMs?: number
+          reuse?: "session" | "workspace" | "scope"
+        }
+      | {
+          provider: "docker"
+          spec: {
+            image: string
+            memoryBytes?: number
+            cpus?: number
+            pids?: number
+            mounts?: Array<{
+              type: "bind" | "volume"
+              source: string
+              target: string
+              /**
+               * External mounts are read-only; writable files use a coordinated Workspace
+               */
+              readOnly?: true
+            }>
+            host: {
+              endpoint: string
+              engineTLS?: {
+                certRef: string
+                keyRef: string
+                caRef?: string
+              }
+              executionHostname?: string
+              publishHostIP?: string
+              executionTLS?: {
+                certRef: string
+                keyRef: string
+                caRef?: string
+              }
+            }
+          }
+          idleTimeoutMs?: number
+          reuse?: "session" | "workspace" | "scope"
+        }
+  }
+  stores?: {
+    [key: string]:
+      | {
+          provider: "local"
+          spec: {
+            namespace?: string
+          }
+        }
+      | {
+          provider: "s3"
+          spec: {
+            bucket: string
+            region: string
+            endpoint?: string
+            prefix?: string
+            /**
+             * Secret Vault ID containing accessKeyId, secretAccessKey and optional sessionToken as JSON
+             */
+            credentialsRef: string
+          }
+        }
+      | {
+          provider: "oss"
+          spec: {
+            bucket: string
+            region: string
+            endpoint?: string
+            prefix?: string
+            /**
+             * Secret Vault ID containing accessKeyId, secretAccessKey and optional sessionToken as JSON
+             */
+            credentialsRef: string
+            cname?: boolean
+          }
+        }
+  }
+}
+
 export type MemoryConfig = {
   /**
    * Enable agent-initiated memory curation via chronicler (default: true)
@@ -3121,6 +4131,10 @@ export type LocalEmbeddingConfig = {
  */
 export type EmbeddingConfig = {
   /**
+   * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+   */
+  billingMode?: "api" | "subscription" | "local" | "unknown"
+  /**
    * Explicit model prices in USD: token rates per million, unit rates per declared quantity
    */
   cost?: {
@@ -3185,6 +4199,10 @@ export type EmbeddingConfig = {
  * Rerank model for memory retrieval refinement. Disabled when not configured.
  */
 export type RerankConfig = {
+  /**
+   * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+   */
+  billingMode?: "api" | "subscription" | "local" | "unknown"
   /**
    * Explicit model prices in USD: token rates per million, unit rates per declared quantity
    */
@@ -3922,6 +4940,10 @@ export type McpDefaultsConfig = {
  */
 export type VoiceSttConfig = {
   /**
+   * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+   */
+  billingMode?: "api" | "subscription" | "local" | "unknown"
+  /**
    * Explicit model prices in USD: token rates per million, unit rates per declared quantity
    */
   cost?: {
@@ -3989,6 +5011,10 @@ export type VoiceSttConfig = {
  * Text-to-speech service configuration
  */
 export type VoiceTtsConfig = {
+  /**
+   * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+   */
+  billingMode?: "api" | "subscription" | "local" | "unknown"
   /**
    * Explicit model prices in USD: token rates per million, unit rates per declared quantity
    */
@@ -4808,6 +5834,7 @@ export type Config = {
   }
   skills?: SkillsConfig
   worktree?: WorktreeConfig
+  resources?: ResourcesConfig
   library?: LibraryConfig
   embedding?: EmbeddingConfig
   rerank?: RerankConfig
@@ -4957,6 +5984,10 @@ export type Config = {
    * Default workspace for new sessions started from the Web composer: main = run in the main checkout, worktree = start each new session in an isolated git worktree (default: main). Programmatic session creation (API, channels, Cortex) always uses the main checkout.
    */
   defaultSessionWorkspace?: "main" | "worktree"
+  /**
+   * Execution profile for new Web/Desktop composer sessions. Omitted follows the global resource default; null disables execution selection. References an existing global profile without defining hosts or credentials.
+   */
+  defaultSessionEnvironmentProfile?: string | null
   keybinds?: KeybindsConfig
   /**
    * Show live reasoning in a compact single-line viewport
@@ -4999,6 +6030,12 @@ export type Path = {
   workspace: SessionWorkspace | null
 }
 
+export type EnvironmentTarget = {
+  environmentID: string
+  allocationID: string
+  generation: number
+}
+
 export type WorkspaceInfo = {
   id: string
   scopeID: string
@@ -5010,6 +6047,25 @@ export type WorkspaceInfo = {
     path: string | null
     physicalID?: string
     generation: number
+  }
+  backend?: {
+    provider: string
+    spec: {
+      [key: string]: unknown
+    }
+  }
+  content?: {
+    revision: number
+    manifest: string | null
+  }
+  mountGeneration?: number
+  activeMount?: {
+    id: string
+    generation: number
+    target: EnvironmentTarget
+    path: string
+    state: "preparing" | "active" | "saving" | "unavailable"
+    readOnly?: boolean
   }
   importedFrom?: {
     workspaceID: string
@@ -5032,6 +6088,25 @@ export type WorkspaceInfo = {
         path: string | null
         physicalID?: string
         generation: number
+      }
+    | {
+        provider: string
+        spec: {
+          [key: string]: unknown
+        }
+      }
+    | {
+        revision: number
+        manifest: string | null
+      }
+    | number
+    | {
+        id: string
+        generation: number
+        target: EnvironmentTarget
+        path: string
+        state: "preparing" | "active" | "saving" | "unavailable"
+        readOnly?: boolean
       }
     | {
         workspaceID: string
@@ -5098,6 +6173,7 @@ export type SnapshotWorkspace = {
   id: string
   generation: number
   root: string
+  pathKind?: "workspace"
 }
 
 export type FileDiff = {
@@ -5421,6 +6497,7 @@ export type Session = {
   working?: SessionWorkingInfo
   workspace: SessionWorkspace | null
   workspaceID?: string | null
+  environmentID?: string | null
   workspaceError?: string
   workflow?: SessionWorkflowInfo
   agenda?: {
@@ -5621,12 +6698,12 @@ export type ScopeBootstrapResponse = {
   _errors?: {
     [key: string]: ScopeBootstrapFieldError
   }
+  agenda?: Array<AgendaItem>
   lsp?: Array<LspStatus>
   mcp?: {
     [key: string]: McpStatus
   }
   vcs?: VcsInfo
-  agenda?: Array<AgendaItem>
 }
 
 export type Pty = {
@@ -5636,10 +6713,11 @@ export type Pty = {
   command: string
   args: Array<string>
   cwd: string
-  workspaceID: string
-  workspaceGeneration: number
+  environmentID: string
+  workspaceID?: string
+  workspaceGeneration?: number
   status: "running" | "exited"
-  pid: number
+  pid?: number
 }
 
 export type ConfigIssue = {
@@ -5705,6 +6783,7 @@ export type ConfigDomainSummary = {
     | "permissions"
     | "runtime"
     | "storage"
+    | "resources"
     | "skills"
     | "worktree"
     | "library"
@@ -5763,6 +6842,7 @@ export type ConfigExportResult = {
     | "permissions"
     | "runtime"
     | "storage"
+    | "resources"
     | "skills"
     | "worktree"
     | "library"
@@ -5823,6 +6903,7 @@ export type ConfigDomainImportDomainPlan = {
     | "permissions"
     | "runtime"
     | "storage"
+    | "resources"
     | "skills"
     | "worktree"
     | "library"
@@ -5878,6 +6959,7 @@ export type ConfigDomainImportPlanInput = {
     | "permissions"
     | "runtime"
     | "storage"
+    | "resources"
     | "skills"
     | "worktree"
     | "library"
@@ -5963,6 +7045,7 @@ export type ConfigImportRevisionConflictError = {
       | "permissions"
       | "runtime"
       | "storage"
+      | "resources"
       | "skills"
       | "worktree"
       | "library"
@@ -5996,6 +7079,7 @@ export type ConfigDomainImportApplyInput = {
     | "permissions"
     | "runtime"
     | "storage"
+    | "resources"
     | "skills"
     | "worktree"
     | "library"
@@ -6123,53 +7207,9 @@ export type ToolListItem = {
 
 export type ToolList = Array<ToolListItem>
 
-export type Worktree = {
-  id: string
-  name: string
-  branch?: string
-  path: string
-  scopeID: string
-  head?: string
-  baseRef?: string
-  baseRevision?: string
-  resolvedBaseCommit?: string
-  detached?: boolean
-  bare?: boolean
-  isMain?: boolean
-  managed?: boolean
-  stale?: boolean
-  dirty?: boolean
-  diskBytes?: number
-  owner?:
-    | {
-        type: "session"
-        sessionID: string
-      }
-    | {
-        type: "superplan"
-        runID: string
-        nodeID?: string
-        mergeID?: string
-      }
-    | {
-        type: "user"
-      }
-    | {
-        type: "external"
-      }
-  bindings?: Array<string>
-  lifecycle?: "active" | "detached" | "gc_candidate" | "deleted"
-  createdAt?: number
-  updatedAt?: number
-  lastUsedAt?: number
-  setupFailed?: boolean
-  setupError?: string
-  locked?: string
-  prunable?: boolean
-}
-
 export type WorktreeCreateInput = {
   name?: string
+  sourceWorkspaceID?: string
   sessionID?: string
   baseRef?: "current" | "fresh"
   baseRevision?: string
@@ -6183,6 +7223,7 @@ export type WorktreeEnterInput = {
 
 export type WorktreeRemoveInput = {
   target: string
+  sourceWorkspaceID?: string
   force?: boolean
 }
 
@@ -6239,6 +7280,36 @@ export type SessionAgendaResponse = {
   limit: number
   total: number
   hasMore: boolean
+}
+
+export type ProjectTaskDefaults = {
+  defaultSessionWorkspace?: "main" | "worktree"
+  defaultSessionEnvironmentProfile?: string | null
+}
+
+export type ProjectTaskDefaultsResult = {
+  defaults: ProjectTaskDefaults
+  effective: ProjectTaskDefaults
+  editable: boolean
+}
+
+export type ProjectTaskDefaultsInvalid = {
+  name: "ProjectTaskDefaultsInvalid"
+  data: {
+    message: string
+  }
+}
+
+export type ProjectTaskDefaultsConflict = {
+  name: "ProjectTaskDefaultsConflict"
+  data: {
+    message: string
+  }
+}
+
+export type ProjectTaskDefaultsInput = {
+  defaults: ProjectTaskDefaults
+  expected: ProjectTaskDefaults
 }
 
 export type SessionNavResponse = {
@@ -6652,13 +7723,16 @@ export type RolloutCallRecord = {
         operationID: string
       }
   purpose: string
+  usageRole?: "conversation" | "compaction" | "auxiliary"
   kind?: "chat" | "embedding" | "rerank" | "transcription" | "speech"
   execution?: "provider" | "local" | "external"
   parentCallID?: string
+  retryIndex?: number
   agent?: string
   model: {
     providerID: string
     modelID: string
+    apiModelID?: string
     sdk: string
     pricing: {
       version: 1
@@ -6714,6 +7788,15 @@ export type RolloutCallRecord = {
       }
       raw: unknown
     } | null
+    /**
+     * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+     */
+    billingMode?: "api" | "subscription" | "local" | "unknown"
+    limits?: {
+      context: number
+      input?: number
+      output: number
+    }
   }
   started: number
   ended?: number
@@ -6721,6 +7804,14 @@ export type RolloutCallRecord = {
   request: RolloutArtifactRef
   response?: RolloutArtifactRef
   sdkUsage: unknown | null
+  sdkEstimate?: {
+    version: 1
+    currency: "USD" | null
+    basis: "api_price_estimate" | "subscription_api_equivalent" | "unclassified_api_equivalent" | "local"
+    total: number | null
+    known: number
+    missing: Array<string>
+  }
   transportCaptured: boolean
   error?: string
 }
@@ -6750,6 +7841,13 @@ export type RolloutAttemptRecord = {
   request: RolloutArtifactRef
   response?: RolloutArtifactRef
   httpStatus?: number
+  inputImages?: Array<{
+    sha256: string
+    status: "included" | "omitted"
+    reason?: string
+  }>
+  requestImages?: Array<string>
+  responseModel?: string
   usage?: {
     version: 1
     protocol: "openai" | "anthropic" | "google" | "unknown"
@@ -6779,11 +7877,32 @@ export type RolloutAttemptRecord = {
       source: string
     } | null
     complete: boolean
+    issues?: Array<"input_breakdown_mismatch" | "reasoning_subset_mismatch" | "total_mismatch">
   }
+  timing?: {
+    source: "transport"
+    sentAt?: number
+    headersAt?: number
+    firstByteAt?: number
+    firstContentAt?: number
+    lastContentAt?: number
+    endedAt?: number
+    detectedAt?: number
+    headersMs?: number
+    firstByteMs?: number
+    ttftMs?: number
+    generationMs?: number
+    requestMs?: number
+    contentEvents: number
+    reasoningObserved: boolean
+    streaming: boolean
+    backpressured?: boolean
+  }
+  usageFinal?: boolean
   estimate?: {
     version: 1
     currency: "USD" | null
-    basis: "api_price_estimate" | "subscription_api_equivalent"
+    basis: "api_price_estimate" | "subscription_api_equivalent" | "unclassified_api_equivalent" | "local"
     total: number | null
     known: number
     missing: Array<string>
@@ -6963,6 +8082,21 @@ export type DagNode = {
   result?: string
 }
 
+export type SessionLocationError = {
+  name: "SessionLocationError"
+  data: {
+    message: string
+    code: "conflicting_selection" | "incompatible_files"
+  }
+}
+
+export type WorktreeStartCommandFailedError = {
+  name: "WorktreeStartCommandFailedError"
+  data: {
+    message: string
+  }
+}
+
 export type SessionWorkspaceSelection =
   | {
       mode: "none"
@@ -6978,14 +8112,21 @@ export type SessionWorkspaceSelection =
   | {
       mode: "existing"
       target: string
+      sourceWorkspaceID?: string
       force?: boolean
     }
   | {
       mode: "create"
+      sourceWorkspaceID?: string
       name?: string
       baseRef?: "current" | "fresh"
       baseRevision?: string
     }
+
+export type SessionEnvironmentSelection = {
+  environmentID: string | null
+  expectedEnvironmentID: string | null
+}
 
 export type SessionModelSelectionInput = {
   model: {
@@ -8460,6 +9601,7 @@ export type WorkspaceFileSearchResponse = {
 }
 
 export type WorkspaceFileStatusSummary = {
+  capability?: WorkspaceSearchCapability
   files: Array<{
     path: string
     status: "added" | "deleted" | "modified" | "renamed" | "untracked"
@@ -8524,6 +9666,145 @@ export type WorkspaceFileDeleteInput = {
   path: string
   recursive?: boolean
   expectedVersion: string
+}
+
+export type WorkspaceOperationSummary = {
+  id: string
+  scopeID: string
+  workspaceID: string
+  generation: number
+  target?: EnvironmentTarget
+  state: "submitted" | "unknown" | "unsaved" | "completed" | "failed"
+  error?: string
+  failure?: {
+    name: string
+    message: string
+    code?: string
+    completed?: Array<string>
+  }
+  createdAt: number
+  updatedAt: number
+}
+
+export type ServiceUnavailableError = {
+  message: string
+}
+
+export type RuntimeShuttingDownError = {
+  name: "RuntimeShuttingDown"
+  data: {
+    message: string
+  }
+}
+
+export type ResourceProfiles = {
+  defaultEnvironment: string | null
+  bindings?: {
+    [key: string]: Array<string>
+  }
+  environments: Array<{
+    name: string
+    provider: string
+    reuse: "session" | "workspace" | "scope"
+  }>
+  stores: Array<{
+    name: string
+    provider: string
+  }>
+}
+
+export type EnvironmentInfo = {
+  id: string
+  scopeID: string
+  provider: string
+  spec: {
+    [key: string]: unknown
+  }
+  ownership: "borrowed" | "managed"
+  state: "idle" | "allocating" | "ready" | "releasing" | "unavailable"
+  generation: number
+  allocation?: {
+    requestID: string
+    id?: string
+    capabilities?: Array<string>
+  }
+  idleTimeoutMs: number
+  createdAt: number
+  updatedAt: number
+  lastUsedAt: number
+}
+
+export type EnvironmentExecutionStatus = {
+  id: string
+  target: EnvironmentTarget
+  digest: string
+  state: "accepted" | "running" | "exited" | "cancelled" | "unknown"
+  cursor: number
+  exitCode?: number | null
+  signal?: string | null
+  treeDrained?: boolean
+  streamsDrained?: boolean
+  error?: string
+  failure?: {
+    name: string
+    message: string
+    code?: string
+    completed?: Array<string>
+  }
+  outputTruncated?: boolean
+  effectsStarted?: boolean
+  contended?: boolean
+  before?: Array<{
+    id: string
+    workspaceID: string
+    generation: number
+    manifest: string
+  }>
+}
+
+export type EnvironmentExecutionInfo = {
+  id: string
+  scopeID: string
+  target: EnvironmentTarget
+  workspaces?: Array<{
+    id: string
+    workspaceID: string
+    generation: number
+    readOnly?: boolean
+  }>
+  evidence?: Array<{
+    workspaceID: string
+    reference: {
+      scopeID: string
+      sessionID: string
+      messageID: string
+      toolCallID: string
+      partID: string
+    }
+  }>
+  digest: string
+  intentDigest?: string
+  state: "submitted" | "running" | "cancel_requested" | "unknown" | "exited" | "unsaved" | "saved" | "completed"
+  status?: EnvironmentExecutionStatus
+  saved?: {
+    [key: string]: unknown
+  }
+  outputCursor: number
+  createdAt: number
+  updatedAt: number
+}
+
+export type EnvironmentActivity = {
+  environment: EnvironmentInfo
+  uses: Array<{
+    id: string
+    target: EnvironmentTarget
+    createdAt: number
+    kind?: "operation" | "admission"
+    ownerEpoch?: string
+  }>
+  executions: Array<EnvironmentExecutionInfo>
+  files: Array<WorkspaceOperationSummary>
 }
 
 export type EmbeddingStatus =
@@ -9493,6 +10774,388 @@ export type AssetInfo = {
   size: number
 }
 
+export type BrowserApiError = {
+  type: "error"
+  code: string
+  message: string
+  retryable: boolean
+  pageId?: string
+  commandId?: string
+  url?: string
+  snapshotId?: string
+  obstruction?: {
+    tag?: string
+    role?: string | null
+    name?: string
+    id?: string
+    class?: string
+    ref?: string
+    visible?: boolean
+    bounds?: {
+      x: number
+      y: number
+      width: number
+      height: number
+    }
+    frame?: string
+    receivesEvents?: boolean
+    candidates?: Array<{
+      tag?: string
+      role?: string | null
+      name?: string
+      id?: string
+      class?: string
+      ref?: string
+      visible?: boolean
+      bounds?: {
+        x: number
+        y: number
+        width: number
+        height: number
+      }
+      frame?: string
+      receivesEvents?: boolean
+    }>
+  }
+  suggestedAction?: string
+  locator?: unknown
+}
+
+export type BrowserApiSessionPage = {
+  id: string
+  url: string
+  title: string
+  isLoading: boolean
+  lastActiveAt: number | null
+  profileId: string
+  openerId?: string
+  status: "active" | "suspended" | "failed"
+  error?: BrowserApiError
+}
+
+export type BrowserOpenPage = {
+  requestId: string
+  url?: string
+  profileId?: string
+}
+
+export type BrowserProfile = {
+  id: string
+  name: string
+  kind: "persistent" | "temporary"
+  enabled: boolean
+  revision: number
+  createdAt: number
+  origins: {
+    [key: string]: {
+      access?: "inherit" | "allow" | "ask" | "deny"
+      downloads?: "inherit" | "allow" | "ask" | "deny"
+      uploads?: "inherit" | "allow" | "ask" | "deny"
+    }
+  }
+}
+
+export type BrowserProfileList = {
+  defaultProfileId: string | null
+  profiles: Array<BrowserProfile>
+}
+
+export type BrowserProfileCreate = {
+  name: string
+  kind?: "persistent" | "temporary"
+}
+
+export type BrowserProfileUpdate = {
+  name?: string
+  enabled?: boolean
+}
+
+export type BrowserManageProfile =
+  | {
+      action: "update"
+      changes: BrowserProfileUpdate
+    }
+  | {
+      action: "default"
+    }
+  | {
+      action: "remove"
+    }
+  | {
+      action: "clear"
+    }
+  | {
+      action: "policy"
+      origin: string
+      policy: {
+        access?: "inherit" | "allow" | "ask" | "deny"
+        downloads?: "inherit" | "allow" | "ask" | "deny"
+        uploads?: "inherit" | "allow" | "ask" | "deny"
+      } | null
+    }
+
+export type BrowserAnnotationResponse = {
+  protocolVersion: 4
+  annotation: {
+    id: string
+    pageURL: string
+    pageID: string
+    element?: string
+    comment: string
+    styleFeedback?: {
+      [key: string]: string
+    }
+    resolved: boolean
+    createdAt: number
+  }
+}
+
+export type BrowserAnnotationRequest = {
+  protocolVersion: 4
+  pageId: string
+  x: number
+  y: number
+  comment: string
+  styleFeedback?: {
+    [key: string]: string
+  }
+}
+
+export type BrowserDiagnosticsResponse = {
+  protocolVersion: 4
+  pageId: string
+  action: string
+  data: unknown
+}
+
+export type BrowserDiagnosticsRequest = {
+  protocolVersion: 4
+  pageId: string
+  commandId: string
+  action: "console" | "network" | "elements" | "assets" | "downloads" | "clear"
+  limit?: number
+}
+
+export type BrowserApiSessionState = {
+  type: "session.state"
+  protocolVersion: 4
+  ownerKey: string
+  status: "empty" | "suspended" | "active" | "failed"
+  presentation: {
+    protocolVersion: 4
+    kind: "native"
+    capabilities: {
+      native: boolean
+    }
+    reason: "desktop-local" | "requested"
+  } | null
+  hostStatus:
+    | "unavailable"
+    | "installing"
+    | "starting"
+    | "pending"
+    | "ready"
+    | "detached"
+    | "restarting"
+    | "idle"
+    | "failed"
+  seq: number
+  epoch: string
+  error?: BrowserApiError
+  pages: Array<BrowserApiSessionPage>
+}
+
+export type BrowserControlResponse = {
+  type: "control.result"
+  protocolVersion: 4
+  result:
+    | {
+        type: "void"
+      }
+    | {
+        type: "page"
+        page: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
+      }
+    | {
+        type: "navigation"
+        page: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
+        snapshot?: unknown
+        settled?: boolean
+        settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
+        settleElapsedMs?: number
+        inflightRequests?: number
+      }
+    | {
+        type: "snapshot"
+        pageId: string
+        snapshotId: string
+        elements: Array<{
+          ref: string
+          role: string
+          name: string
+          value?: string
+          description?: string
+          depth: number
+        }>
+        truncated: boolean
+      }
+    | {
+        type: "action"
+        pageId: string
+        action: string
+        snapshot?: unknown
+        page?: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
+        settled?: boolean
+        settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
+        settleElapsedMs?: number
+        inflightRequests?: number
+      }
+    | {
+        type: "wait"
+        pageId: string
+        matched: boolean
+        elapsedMs?: number
+        page?: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
+      }
+    | {
+        type: "evaluation"
+        pageId: string
+        value: unknown
+      }
+    | {
+        type: "screenshot"
+        pageId: string
+        dataUrl: string
+        width: number
+        height: number
+      }
+    | {
+        type: "data"
+        pageId: string
+        data: unknown
+      }
+}
+
+export type BrowserControlRequest = {
+  pageId: string
+  protocolVersion: 4
+  command:
+    | {
+        type: "navigate"
+        url: string
+        source?: "user"
+        /**
+         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         */
+        settleMode?: "networkquiet" | "load" | "none"
+        /**
+         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
+         */
+        settleTimeoutMs?: number
+        /**
+         * Return a fresh accessibility snapshot after the navigation settles (default true).
+         */
+        includeSnapshot?: boolean
+      }
+    | {
+        type: "history"
+        direction: "back" | "forward"
+        source?: "user"
+        /**
+         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         */
+        settleMode?: "networkquiet" | "load" | "none"
+        /**
+         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
+         */
+        settleTimeoutMs?: number
+        /**
+         * Return a fresh accessibility snapshot after the navigation settles (default true).
+         */
+        includeSnapshot?: boolean
+      }
+    | {
+        type: "reload"
+        ignoreCache?: boolean
+        source?: "user"
+        /**
+         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         */
+        settleMode?: "networkquiet" | "load" | "none"
+        /**
+         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
+         */
+        settleTimeoutMs?: number
+        /**
+         * Return a fresh accessibility snapshot after the navigation settles (default true).
+         */
+        includeSnapshot?: boolean
+      }
+    | {
+        type: "stop"
+      }
+    | {
+        type: "resume"
+      }
+    | {
+        type: "close"
+      }
+    | {
+        type: "setViewport"
+        width: number
+        height: number
+      }
+    | {
+        type: "dialog.respond"
+        requestId: string
+        accept: boolean
+        promptText?: string
+      }
+    | {
+        type: "filechooser.select"
+        requestId: string
+        files: Array<{
+          name: string
+          mimeType: string
+          dataBase64: string
+        }>
+      }
+    | {
+        type: "download.cancel"
+        id: string
+      }
+    | {
+        type: "download.accept"
+        id: string
+      }
+  commandId: string
+  traceId?: string
+}
+
 export type GlobalThemeContribution = {
   pluginId: string
   name: string
@@ -9517,17 +11180,6 @@ export type GlobalThemeContribution = {
 
 export type ForbiddenError = {
   message: string
-}
-
-export type ServiceUnavailableError = {
-  message: string
-}
-
-export type RuntimeShuttingDownError = {
-  name: "RuntimeShuttingDown"
-  data: {
-    message: string
-  }
 }
 
 export type PluginConfigUpdate = {
@@ -9873,329 +11525,6 @@ export type RegistryPublishInput = {
   yankedVersions?: Array<string>
 }
 
-export type BrowserViewerTicketResponse = {
-  protocolVersion: 3
-  ticket: string
-  expiresAt: number
-  iceServers: Array<{
-    urls: string | Array<string>
-    username?: string
-    credential?: string
-  }>
-}
-
-export type BrowserApiError = {
-  type: "error"
-  code: string
-  message: string
-  retryable: boolean
-  pageId?: string
-  commandId?: string
-  url?: string
-  snapshotId?: string
-  obstruction?: {
-    tag?: string
-    role?: string | null
-    name?: string
-    id?: string
-    class?: string
-    ref?: string
-    visible?: boolean
-    bounds?: {
-      x: number
-      y: number
-      width: number
-      height: number
-    }
-    frame?: string
-    receivesEvents?: boolean
-    candidates?: Array<{
-      tag?: string
-      role?: string | null
-      name?: string
-      id?: string
-      class?: string
-      ref?: string
-      visible?: boolean
-      bounds?: {
-        x: number
-        y: number
-        width: number
-        height: number
-      }
-      frame?: string
-      receivesEvents?: boolean
-    }>
-  }
-  suggestedAction?: string
-  locator?: unknown
-}
-
-export type BrowserViewerTicketRequest = {
-  protocolVersion: 3
-  pageId: string
-}
-
-export type BrowserAnnotationResponse = {
-  protocolVersion: 3
-  annotation: {
-    id: string
-    pageURL: string
-    pageID: string
-    element?: string
-    comment: string
-    styleFeedback?: {
-      [key: string]: string
-    }
-    resolved: boolean
-    createdAt: number
-  }
-}
-
-export type BrowserAnnotationRequest = {
-  protocolVersion: 3
-  pageId: string
-  x: number
-  y: number
-  comment: string
-  styleFeedback?: {
-    [key: string]: string
-  }
-}
-
-export type BrowserDiagnosticsResponse = {
-  protocolVersion: 3
-  pageId: string
-  action: string
-  data: unknown
-}
-
-export type BrowserDiagnosticsRequest = {
-  protocolVersion: 3
-  pageId: string
-  commandId: string
-  action: "console" | "network" | "elements" | "assets" | "downloads" | "clear"
-  limit?: number
-}
-
-export type BrowserApiSessionState = {
-  type: "session.state"
-  protocolVersion: 3
-  ownerKey: string
-  status: "empty" | "suspended" | "active" | "migrating" | "failed"
-  page: {
-    id: string
-    url: string
-    title: string
-    isLoading: boolean
-    lastActiveAt: number | null
-  } | null
-  presentation: {
-    protocolVersion: 3
-    kind: "native" | "webrtc"
-    capabilities: {
-      native: boolean
-      webrtc: boolean
-    }
-    reason: "desktop-local" | "remote-client" | "requested"
-  } | null
-  hostStatus:
-    | "unavailable"
-    | "installing"
-    | "starting"
-    | "pending"
-    | "ready"
-    | "detached"
-    | "restarting"
-    | "idle"
-    | "failed"
-  seq: number
-  epoch: string
-  error?: BrowserApiError
-}
-
-export type BrowserControlResponse = {
-  type: "control.result"
-  protocolVersion: 3
-  result:
-    | {
-        type: "void"
-      }
-    | {
-        type: "page"
-        page: {
-          id: string
-          url: string
-          title: string
-          isLoading: boolean
-          lastActiveAt: number | null
-        }
-      }
-    | {
-        type: "navigation"
-        page: {
-          id: string
-          url: string
-          title: string
-          isLoading: boolean
-          lastActiveAt: number | null
-        }
-        snapshot?: unknown
-        settled?: boolean
-        settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
-        settleElapsedMs?: number
-        inflightRequests?: number
-      }
-    | {
-        type: "snapshot"
-        pageId: string
-        snapshotId: string
-        elements: Array<{
-          ref: string
-          role: string
-          name: string
-          value?: string
-          description?: string
-          depth: number
-        }>
-        truncated: boolean
-      }
-    | {
-        type: "action"
-        pageId: string
-        action: string
-        snapshot?: unknown
-        page?: {
-          id: string
-          url: string
-          title: string
-          isLoading: boolean
-          lastActiveAt: number | null
-        }
-        settled?: boolean
-        settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
-        settleElapsedMs?: number
-        inflightRequests?: number
-      }
-    | {
-        type: "wait"
-        pageId: string
-        matched: boolean
-        elapsedMs?: number
-        page?: {
-          id: string
-          url: string
-          title: string
-          isLoading: boolean
-          lastActiveAt: number | null
-        }
-      }
-    | {
-        type: "evaluation"
-        pageId: string
-        value: unknown
-      }
-    | {
-        type: "screenshot"
-        pageId: string
-        dataUrl: string
-        width: number
-        height: number
-      }
-    | {
-        type: "data"
-        pageId: string
-        data: unknown
-      }
-}
-
-export type BrowserControlRequest = {
-  protocolVersion: 3
-  command:
-    | {
-        type: "navigate"
-        url: string
-        source?: "user"
-        /**
-         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
-         */
-        settleMode?: "networkquiet" | "load" | "none"
-        /**
-         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
-         */
-        settleTimeoutMs?: number
-        /**
-         * Return a fresh accessibility snapshot after the navigation settles (default true).
-         */
-        includeSnapshot?: boolean
-      }
-    | {
-        type: "history"
-        direction: "back" | "forward"
-        source?: "user"
-        /**
-         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
-         */
-        settleMode?: "networkquiet" | "load" | "none"
-        /**
-         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
-         */
-        settleTimeoutMs?: number
-        /**
-         * Return a fresh accessibility snapshot after the navigation settles (default true).
-         */
-        includeSnapshot?: boolean
-      }
-    | {
-        type: "reload"
-        ignoreCache?: boolean
-        source?: "user"
-        /**
-         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
-         */
-        settleMode?: "networkquiet" | "load" | "none"
-        /**
-         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
-         */
-        settleTimeoutMs?: number
-        /**
-         * Return a fresh accessibility snapshot after the navigation settles (default true).
-         */
-        includeSnapshot?: boolean
-      }
-    | {
-        type: "stop"
-      }
-    | {
-        type: "resume"
-      }
-    | {
-        type: "close"
-      }
-    | {
-        type: "setViewport"
-        width: number
-        height: number
-      }
-    | {
-        type: "dialog.respond"
-        requestId: string
-        accept: boolean
-        promptText?: string
-      }
-    | {
-        type: "filechooser.select"
-        requestId: string
-        files: Array<{
-          name: string
-          mimeType: string
-          dataBase64: string
-        }>
-      }
-  commandId: string
-  traceId?: string
-}
-
 export type HolosCredentialsStatusResponse = {
   exists: boolean
   agentId?: string
@@ -10504,11 +11833,9 @@ export type EventScopeRuntimeDisposed = {
   }
 }
 
-export type EventProviderAuthUpdated = {
-  type: "provider.auth.updated"
-  properties: {
-    health: ProviderAuthHealth
-  }
+export type EventEnvironmentUpdated = {
+  type: "environment.updated"
+  properties: EnvironmentInfo
 }
 
 export type EventInstallationUpdated = {
@@ -10557,6 +11884,21 @@ export type EventMessagePartRemoved = {
   }
 }
 
+export type EventProviderAuthUpdated = {
+  type: "provider.auth.updated"
+  properties: {
+    health: ProviderAuthHealth
+  }
+}
+
+export type EventConfigUpdated = {
+  type: "config.updated"
+  properties: {
+    scope: "global" | "project"
+    changedFields: Array<string>
+  }
+}
+
 export type EventPermissionAsked = {
   type: "permission.asked"
   properties: PermissionRequest
@@ -10571,20 +11913,27 @@ export type EventPermissionReplied = {
   }
 }
 
-export type EventDagUpdated = {
-  type: "dag.updated"
+export type EventUsageUpdated = {
+  type: "usage.updated"
   properties: {
-    sessionID: string
-    nodes: Array<DagNode>
-    ready: Array<string>
-  }
-}
-
-export type EventConfigUpdated = {
-  type: "config.updated"
-  properties: {
-    scope: "global" | "project"
-    changedFields: Array<string>
+    revision: number
+    owner:
+      | {
+          kind: "session"
+          scopeID: string
+          sessionID: string
+        }
+      | {
+          kind: "operation"
+          scopeID: string
+          operationID: string
+        }
+    runID: string
+    recordID: string
+    kind: "run" | "call" | "attempt" | "tool" | "legacy" | "gap"
+    status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+    phase: "queued" | "request" | "generating" | "tool" | "terminal"
+    record: UsageRecord
   }
 }
 
@@ -10681,76 +12030,14 @@ export type EventSessionCompacted = {
   }
 }
 
-export type EventCommandExecuted = {
-  type: "command.executed"
+export type EventChannelCommandExecuted = {
+  type: "channel.command.executed"
   properties: {
     name: string
-    sessionID: string
-    arguments: string
-    messageID: string
-  }
-}
-
-export type EventFileWatcherUpdated = {
-  type: "file.watcher.updated"
-  properties: {
-    workspaceID: string
-    workspaceGeneration: number
-    file: string
-    event: "added" | "changed" | "deleted" | "renamed"
-    absolute?: string
-    oldPath?: string
-    oldAbsolute?: string
-    parent?: string
-    node?: WorkspaceFileNode
-    resync?: boolean
-  }
-}
-
-export type EventFileEdited = {
-  type: "file.edited"
-  properties: {
-    workspaceID: string
-    workspaceGeneration: number
-    file: string
-    contentVersion: string
-  }
-}
-
-export type EventTodoUpdated = {
-  type: "todo.updated"
-  properties: {
-    sessionID: string
-    todos: Array<Todo>
-  }
-}
-
-export type EventPtyCreated = {
-  type: "pty.created"
-  properties: {
-    info: Pty
-  }
-}
-
-export type EventPtyUpdated = {
-  type: "pty.updated"
-  properties: {
-    info: Pty
-  }
-}
-
-export type EventPtyExited = {
-  type: "pty.exited"
-  properties: {
-    id: string
-    exitCode: number
-  }
-}
-
-export type EventPtyDeleted = {
-  type: "pty.deleted"
-  properties: {
-    id: string
+    channelType: string
+    accountId: string
+    chatId: string
+    userId?: string
   }
 }
 
@@ -10781,69 +12068,6 @@ export type EventQuestionTimedOut = {
   properties: {
     sessionID: string
     requestID: string
-  }
-}
-
-export type EventCortexTaskCreated = {
-  type: "cortex.task.created"
-  properties: {
-    task: CortexTask
-  }
-}
-
-export type EventCortexTaskCompleted = {
-  type: "cortex.task.completed"
-  properties: {
-    task: CortexTask
-  }
-}
-
-export type EventCortexTasksUpdated = {
-  type: "cortex.tasks.updated"
-  properties: {
-    tasks: Array<CortexTask>
-  }
-}
-
-export type EventRuntimeReloaded = {
-  type: "runtime.reloaded"
-  properties: {
-    executed: Array<RuntimeReloadTarget>
-    cascaded: Array<RuntimeReloadTarget>
-    changedFields: Array<string>
-  }
-}
-
-export type EventPluginUiUpdated = {
-  type: "plugin.ui.updated"
-  properties: {
-    scopeId: string
-  }
-}
-
-export type EventPluginEvent = {
-  type: "plugin.event"
-  properties: {
-    pluginId: string
-    pluginVersion: string
-    generation: string
-    eventId: string
-    scopeId: string
-    sessionId?: string
-    sequence: number
-    timestamp: number
-    payload: unknown
-  }
-}
-
-export type EventChannelCommandExecuted = {
-  type: "channel.command.executed"
-  properties: {
-    name: string
-    channelType: string
-    accountId: string
-    chatId: string
-    userId?: string
   }
 }
 
@@ -10930,24 +12154,81 @@ export type EventAgendaItemDeleted = {
   }
 }
 
-export type EventSynergyLinkTargetCreated = {
-  type: "synergy_link.target.created"
+export type EventPluginUiUpdated = {
+  type: "plugin.ui.updated"
   properties: {
-    target: SynergyLinkTarget
+    scopeId: string
   }
 }
 
-export type EventSynergyLinkTargetUpdated = {
-  type: "synergy_link.target.updated"
+export type EventPluginEvent = {
+  type: "plugin.event"
   properties: {
-    target: SynergyLinkTarget
+    pluginId: string
+    pluginVersion: string
+    generation: string
+    eventId: string
+    scopeId: string
+    sessionId?: string
+    sequence: number
+    timestamp: number
+    payload: unknown
   }
 }
 
-export type EventSynergyLinkTargetRemoved = {
-  type: "synergy_link.target.removed"
+export type EventFileWatcherUpdated = {
+  type: "file.watcher.updated"
   properties: {
-    id: string
+    workspaceID: string
+    workspaceGeneration: number
+    file: string
+    event: "added" | "changed" | "deleted" | "renamed"
+    absolute?: string
+    oldPath?: string
+    oldAbsolute?: string
+    parent?: string
+    node?: WorkspaceFileNode
+    resync?: boolean
+  }
+}
+
+export type EventDagUpdated = {
+  type: "dag.updated"
+  properties: {
+    sessionID: string
+    nodes: Array<DagNode>
+    ready: Array<string>
+  }
+}
+
+export type EventCortexTaskCreated = {
+  type: "cortex.task.created"
+  properties: {
+    task: CortexTask
+  }
+}
+
+export type EventCortexTaskCompleted = {
+  type: "cortex.task.completed"
+  properties: {
+    task: CortexTask
+  }
+}
+
+export type EventCortexTasksUpdated = {
+  type: "cortex.tasks.updated"
+  properties: {
+    tasks: Array<CortexTask>
+  }
+}
+
+export type EventFileEdited = {
+  type: "file.edited"
+  properties: {
+    workspaceID: string
+    workspaceGeneration: number
+    file: string
+    contentVersion: string
   }
 }
 
@@ -11129,6 +12410,53 @@ export type EventLatticeEventAppended = {
   }
 }
 
+export type EventCommandExecuted = {
+  type: "command.executed"
+  properties: {
+    name: string
+    sessionID: string
+    arguments: string
+    messageID: string
+  }
+}
+
+export type EventTodoUpdated = {
+  type: "todo.updated"
+  properties: {
+    sessionID: string
+    todos: Array<Todo>
+  }
+}
+
+export type EventPtyCreated = {
+  type: "pty.created"
+  properties: {
+    info: Pty
+  }
+}
+
+export type EventPtyUpdated = {
+  type: "pty.updated"
+  properties: {
+    info: Pty
+  }
+}
+
+export type EventPtyExited = {
+  type: "pty.exited"
+  properties: {
+    id: string
+    exitCode: number
+  }
+}
+
+export type EventPtyDeleted = {
+  type: "pty.deleted"
+  properties: {
+    id: string
+  }
+}
+
 export type EventServerConnected = {
   type: "server.connected"
   properties: {
@@ -11143,22 +12471,32 @@ export type EventGlobalDisposed = {
   }
 }
 
+export type EventRuntimeReloaded = {
+  type: "runtime.reloaded"
+  properties: {
+    executed: Array<RuntimeReloadTarget>
+    cascaded: Array<RuntimeReloadTarget>
+    changedFields: Array<string>
+  }
+}
+
 export type Event =
   | EventWorkspaceUpdated
   | EventScopeUpdated
   | EventScopeRemoved
   | EventScopeRuntimeDisposed
-  | EventProviderAuthUpdated
+  | EventEnvironmentUpdated
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
+  | EventProviderAuthUpdated
+  | EventConfigUpdated
   | EventPermissionAsked
   | EventPermissionReplied
-  | EventDagUpdated
-  | EventConfigUpdated
+  | EventUsageUpdated
   | EventSessionInputProgress
   | EventSessionUpdated
   | EventSessionDeleted
@@ -11171,25 +12509,11 @@ export type Event =
   | EventSessionTurnEnd
   | EventSessionInboxUpdated
   | EventSessionCompacted
-  | EventCommandExecuted
-  | EventFileWatcherUpdated
-  | EventFileEdited
-  | EventTodoUpdated
-  | EventPtyCreated
-  | EventPtyUpdated
-  | EventPtyExited
-  | EventPtyDeleted
+  | EventChannelCommandExecuted
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
   | EventQuestionTimedOut
-  | EventCortexTaskCreated
-  | EventCortexTaskCompleted
-  | EventCortexTasksUpdated
-  | EventRuntimeReloaded
-  | EventPluginUiUpdated
-  | EventPluginEvent
-  | EventChannelCommandExecuted
   | EventChannelConnected
   | EventChannelDisconnected
   | EventHolosContactAdded
@@ -11201,9 +12525,14 @@ export type Event =
   | EventAgendaItemCreated
   | EventAgendaItemUpdated
   | EventAgendaItemDeleted
-  | EventSynergyLinkTargetCreated
-  | EventSynergyLinkTargetUpdated
-  | EventSynergyLinkTargetRemoved
+  | EventPluginUiUpdated
+  | EventPluginEvent
+  | EventFileWatcherUpdated
+  | EventDagUpdated
+  | EventCortexTaskCreated
+  | EventCortexTaskCompleted
+  | EventCortexTasksUpdated
+  | EventFileEdited
   | EventLspClientDiagnostics
   | EventLspUpdated
   | EventMcpToolsChanged
@@ -11227,8 +12556,15 @@ export type Event =
   | EventLatticeRunCreated
   | EventLatticeRunUpdated
   | EventLatticeEventAppended
+  | EventCommandExecuted
+  | EventTodoUpdated
+  | EventPtyCreated
+  | EventPtyUpdated
+  | EventPtyExited
+  | EventPtyDeleted
   | EventServerConnected
   | EventGlobalDisposed
+  | EventRuntimeReloaded
 
 export type GlobalCapabilitiesData = {
   body?: never
@@ -11316,6 +12652,42 @@ export type GlobalPathsGetResponses = {
 
 export type GlobalPathsGetResponse = GlobalPathsGetResponses[keyof GlobalPathsGetResponses]
 
+export type GlobalFilesystemDirectoriesData = {
+  body?: never
+  path?: never
+  query: {
+    path: string
+    hidden?: boolean
+    cursor?: string
+    limit?: number
+  }
+  url: "/global/filesystem/directories"
+}
+
+export type GlobalFilesystemDirectoriesErrors = {
+  /**
+   * Directory could not be listed
+   */
+  400: DirectoryBrowseError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalFilesystemDirectoriesError =
+  GlobalFilesystemDirectoriesErrors[keyof GlobalFilesystemDirectoriesErrors]
+
+export type GlobalFilesystemDirectoriesResponses = {
+  /**
+   * Directory page
+   */
+  200: DirectoryPage
+}
+
+export type GlobalFilesystemDirectoriesResponse =
+  GlobalFilesystemDirectoriesResponses[keyof GlobalFilesystemDirectoriesResponses]
+
 export type GlobalFilesystemBrowseData = {
   body?: never
   path?: never
@@ -11345,6 +12717,129 @@ export type GlobalFilesystemBrowseResponses = {
 }
 
 export type GlobalFilesystemBrowseResponse = GlobalFilesystemBrowseResponses[keyof GlobalFilesystemBrowseResponses]
+
+export type ProjectCreateData = {
+  body?: ProjectCreateInput
+  path?: never
+  query?: never
+  url: "/global/project"
+}
+
+export type ProjectCreateErrors = {
+  /**
+   * Project folders
+   */
+  400: ProjectDirectoriesInvalid
+  /**
+   * Project folders
+   */
+  409: ProjectDirectoriesConflict
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectCreateError = ProjectCreateErrors[keyof ProjectCreateErrors]
+
+export type ProjectCreateResponses = {
+  /**
+   * Project folders
+   */
+  200: ProjectCreated
+}
+
+export type ProjectCreateResponse = ProjectCreateResponses[keyof ProjectCreateResponses]
+
+export type ProjectDirectoriesData = {
+  body?: never
+  path: {
+    scopeID: string
+  }
+  query?: never
+  url: "/global/project/{scopeID}/directories"
+}
+
+export type ProjectDirectoriesErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectDirectoriesError = ProjectDirectoriesErrors[keyof ProjectDirectoriesErrors]
+
+export type ProjectDirectoriesResponses = {
+  /**
+   * Project folders
+   */
+  200: ProjectDirectories
+}
+
+export type ProjectDirectoriesResponse = ProjectDirectoriesResponses[keyof ProjectDirectoriesResponses]
+
+export type ProjectUpdateDirectoriesData = {
+  body?: ProjectDirectoriesUpdate
+  path: {
+    scopeID: string
+  }
+  query?: never
+  url: "/global/project/{scopeID}/directories"
+}
+
+export type ProjectUpdateDirectoriesErrors = {
+  /**
+   * Project folders
+   */
+  400: ProjectDirectoriesInvalid
+  /**
+   * Project folders
+   */
+  409: ProjectDirectoriesConflict
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectUpdateDirectoriesError = ProjectUpdateDirectoriesErrors[keyof ProjectUpdateDirectoriesErrors]
+
+export type ProjectUpdateDirectoriesResponses = {
+  /**
+   * Project folders
+   */
+  200: ProjectDirectories
+}
+
+export type ProjectUpdateDirectoriesResponse =
+  ProjectUpdateDirectoriesResponses[keyof ProjectUpdateDirectoriesResponses]
+
+export type ProjectWorktreesData = {
+  body?: never
+  path: {
+    scopeID: string
+  }
+  query?: never
+  url: "/global/project/{scopeID}/worktrees"
+}
+
+export type ProjectWorktreesErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectWorktreesError = ProjectWorktreesErrors[keyof ProjectWorktreesErrors]
+
+export type ProjectWorktreesResponses = {
+  /**
+   * Project folders
+   */
+  200: Array<Worktree>
+}
+
+export type ProjectWorktreesResponse = ProjectWorktreesResponses[keyof ProjectWorktreesResponses]
 
 export type GlobalGitInitData = {
   body?: {
@@ -11384,6 +12879,185 @@ export type GlobalGitInitResponses = {
 }
 
 export type GlobalGitInitResponse = GlobalGitInitResponses[keyof GlobalGitInitResponses]
+
+export type GlobalStatsUsageData = {
+  body?: never
+  path?: never
+  query?: {
+    scopeID?: string
+    sessionID?: string
+    runID?: string
+    providerID?: string
+    modelID?: string
+    agent?: string
+    purpose?: string
+    from?: number
+    to?: number
+    includeDescendants?: "true" | "false"
+    timezone?: string
+    kind?: "run" | "call" | "attempt" | "tool" | "legacy" | "gap"
+  }
+  url: "/global/stats/usage"
+}
+
+export type GlobalStatsUsageErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalStatsUsageError = GlobalStatsUsageErrors[keyof GlobalStatsUsageErrors]
+
+export type GlobalStatsUsageResponses = {
+  /**
+   * Canonical usage summary
+   */
+  200: UsageSummary
+}
+
+export type GlobalStatsUsageResponse = GlobalStatsUsageResponses[keyof GlobalStatsUsageResponses]
+
+export type GlobalStatsUsageClearData = {
+  body?: {
+    scope: {
+      scopeID?: string
+      sessionID?: string
+      runID?: string
+      providerID?: string
+      modelID?: string
+      agent?: string
+      purpose?: string
+      from?: number
+      to?: number
+      includeDescendants?: boolean
+      timezone?: string
+      kind?: "run" | "call" | "attempt" | "tool" | "legacy" | "gap"
+    }
+    throughRevision: number
+  }
+  path?: never
+  query?: never
+  url: "/global/stats/usage/records"
+}
+
+export type GlobalStatsUsageClearErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalStatsUsageClearError = GlobalStatsUsageClearErrors[keyof GlobalStatsUsageClearErrors]
+
+export type GlobalStatsUsageClearResponses = {
+  /**
+   * Cleared and retained record counts
+   */
+  200: {
+    removed: number
+    activeRetained: number
+    newerRetained: number
+    /**
+     * Owner-level gaps retained because the clear selects a specific run
+     */
+    unattributedRetained: number
+    revision: number
+  }
+}
+
+export type GlobalStatsUsageClearResponse = GlobalStatsUsageClearResponses[keyof GlobalStatsUsageClearResponses]
+
+export type GlobalStatsUsageRecordsData = {
+  body?: never
+  path?: never
+  query?: {
+    scopeID?: string
+    sessionID?: string
+    runID?: string
+    providerID?: string
+    modelID?: string
+    agent?: string
+    purpose?: string
+    from?: number
+    to?: number
+    includeDescendants?: "true" | "false"
+    timezone?: string
+    kind?: "run" | "call" | "attempt" | "tool" | "legacy" | "gap"
+    cursor?: string
+    limit?: number
+  }
+  url: "/global/stats/usage/records"
+}
+
+export type GlobalStatsUsageRecordsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalStatsUsageRecordsError = GlobalStatsUsageRecordsErrors[keyof GlobalStatsUsageRecordsErrors]
+
+export type GlobalStatsUsageRecordsResponses = {
+  /**
+   * Usage records
+   */
+  200: UsageRecordsPage
+}
+
+export type GlobalStatsUsageRecordsResponse = GlobalStatsUsageRecordsResponses[keyof GlobalStatsUsageRecordsResponses]
+
+export type GlobalStatsUsageRebuildData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/stats/usage/rebuild"
+}
+
+export type GlobalStatsUsageRebuildErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalStatsUsageRebuildError = GlobalStatsUsageRebuildErrors[keyof GlobalStatsUsageRebuildErrors]
+
+export type GlobalStatsUsageRebuildResponses = {
+  /**
+   * Durable rebuild job
+   */
+  200: {
+    version: 1
+    status: "pending" | "running" | "completed" | "failed"
+    phase: "indexes" | "sessions" | "operations" | "completed"
+    after?: Array<string>
+    ownerAfter?: Array<string>
+    owners: number
+    records: number
+    updatedAt: number
+    failures: number
+  }
+}
+
+export type GlobalStatsUsageRebuildResponse = GlobalStatsUsageRebuildResponses[keyof GlobalStatsUsageRebuildResponses]
 
 export type GlobalStatsGetData = {
   body?: never
@@ -12461,6 +14135,35 @@ export type GlobalDisposeResponses = {
 
 export type GlobalDisposeResponse = GlobalDisposeResponses[keyof GlobalDisposeResponses]
 
+export type GlobalAgendaListData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/agenda"
+}
+
+export type GlobalAgendaListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalAgendaListError = GlobalAgendaListErrors[keyof GlobalAgendaListErrors]
+
+export type GlobalAgendaListResponses = {
+  /**
+   * List of agenda items from all scopes
+   */
+  200: Array<AgendaItem>
+}
+
+export type GlobalAgendaListResponse = GlobalAgendaListResponses[keyof GlobalAgendaListResponses]
+
 export type HolosLoginData = {
   body?: {
     callbackUrl?: string
@@ -12600,161 +14303,6 @@ export type HolosReconnectResponses = {
 }
 
 export type HolosReconnectResponse2 = HolosReconnectResponses[keyof HolosReconnectResponses]
-
-export type SynergyLinkTargetsData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/synergy-link/targets"
-}
-
-export type SynergyLinkTargetsErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SynergyLinkTargetsError = SynergyLinkTargetsErrors[keyof SynergyLinkTargetsErrors]
-
-export type SynergyLinkTargetsResponses = {
-  /**
-   * Persisted Synergy Link targets
-   */
-  200: Array<SynergyLinkTargetView>
-}
-
-export type SynergyLinkTargetsResponse = SynergyLinkTargetsResponses[keyof SynergyLinkTargetsResponses]
-
-export type SynergyLinkTargetCreateData = {
-  body?: SynergyLinkTargetCreateInput
-  path?: never
-  query?: never
-  url: "/synergy-link/targets"
-}
-
-export type SynergyLinkTargetCreateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SynergyLinkTargetCreateError = SynergyLinkTargetCreateErrors[keyof SynergyLinkTargetCreateErrors]
-
-export type SynergyLinkTargetCreateResponses = {
-  /**
-   * Created target
-   */
-  200: SynergyLinkTarget
-}
-
-export type SynergyLinkTargetCreateResponse = SynergyLinkTargetCreateResponses[keyof SynergyLinkTargetCreateResponses]
-
-export type SynergyLinkTargetRemoveData = {
-  body?: never
-  path: {
-    id: string
-  }
-  query?: never
-  url: "/synergy-link/targets/{id}"
-}
-
-export type SynergyLinkTargetRemoveErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SynergyLinkTargetRemoveError = SynergyLinkTargetRemoveErrors[keyof SynergyLinkTargetRemoveErrors]
-
-export type SynergyLinkTargetRemoveResponses = {
-  /**
-   * Target removed
-   */
-  200: SynergyLinkTargetRemoveResult
-}
-
-export type SynergyLinkTargetRemoveResponse = SynergyLinkTargetRemoveResponses[keyof SynergyLinkTargetRemoveResponses]
-
-export type SynergyLinkTargetUpdateData = {
-  body?: SynergyLinkTargetPatchInput
-  path: {
-    id: string
-  }
-  query?: never
-  url: "/synergy-link/targets/{id}"
-}
-
-export type SynergyLinkTargetUpdateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SynergyLinkTargetUpdateError = SynergyLinkTargetUpdateErrors[keyof SynergyLinkTargetUpdateErrors]
-
-export type SynergyLinkTargetUpdateResponses = {
-  /**
-   * Updated target
-   */
-  200: SynergyLinkTarget
-}
-
-export type SynergyLinkTargetUpdateResponse = SynergyLinkTargetUpdateResponses[keyof SynergyLinkTargetUpdateResponses]
-
-export type SynergyLinkTargetProbeData = {
-  body?: never
-  path: {
-    id: string
-  }
-  query?: never
-  url: "/synergy-link/targets/{id}/probe"
-}
-
-export type SynergyLinkTargetProbeErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SynergyLinkTargetProbeError = SynergyLinkTargetProbeErrors[keyof SynergyLinkTargetProbeErrors]
-
-export type SynergyLinkTargetProbeResponses = {
-  /**
-   * Observed target
-   */
-  200: SynergyLinkTargetView
-}
-
-export type SynergyLinkTargetProbeResponse = SynergyLinkTargetProbeResponses[keyof SynergyLinkTargetProbeResponses]
 
 export type PushGetVapidKeyData = {
   body?: never
@@ -12953,35 +14501,6 @@ export type PushUpdateCategoriesResponses = {
 }
 
 export type PushUpdateCategoriesResponse = PushUpdateCategoriesResponses[keyof PushUpdateCategoriesResponses]
-
-export type GlobalAgendaListData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/global/agenda"
-}
-
-export type GlobalAgendaListErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type GlobalAgendaListError = GlobalAgendaListErrors[keyof GlobalAgendaListErrors]
-
-export type GlobalAgendaListResponses = {
-  /**
-   * List of agenda items from all scopes
-   */
-  200: Array<AgendaItem>
-}
-
-export type GlobalAgendaListResponse = GlobalAgendaListResponses[keyof GlobalAgendaListResponses]
 
 export type GlobalActivityData = {
   body?: never
@@ -14018,6 +15537,7 @@ export type ConfigDomainGetData = {
       | "permissions"
       | "runtime"
       | "storage"
+      | "resources"
       | "skills"
       | "worktree"
       | "library"
@@ -14070,6 +15590,7 @@ export type ConfigDomainUpdateData = {
       | "permissions"
       | "runtime"
       | "storage"
+      | "resources"
       | "skills"
       | "worktree"
       | "library"
@@ -14122,6 +15643,7 @@ export type ConfigDomainOpenData = {
       | "permissions"
       | "runtime"
       | "storage"
+      | "resources"
       | "skills"
       | "worktree"
       | "library"
@@ -14182,6 +15704,7 @@ export type ConfigExportData = {
       | "permissions"
       | "runtime"
       | "storage"
+      | "resources"
       | "skills"
       | "worktree"
       | "library"
@@ -14201,6 +15724,7 @@ export type ConfigExportData = {
           | "permissions"
           | "runtime"
           | "storage"
+          | "resources"
           | "skills"
           | "worktree"
           | "library"
@@ -15039,34 +16563,6 @@ export type WorktreeRemoveResponses = {
 
 export type WorktreeRemoveResponse = WorktreeRemoveResponses[keyof WorktreeRemoveResponses]
 
-export type VcsGetData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/vcs"
-}
-
-export type VcsGetErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type VcsGetError = VcsGetErrors[keyof VcsGetErrors]
-
-export type VcsGetResponses = {
-  /**
-   * VCS info
-   */
-  200: VcsInfo
-}
-
-export type VcsGetResponse = VcsGetResponses[keyof VcsGetResponses]
-
 export type SessionAgendaData = {
   body?: never
   path: {
@@ -15109,6 +16605,99 @@ export type SessionAgendaResponses = {
 }
 
 export type SessionAgendaResponse2 = SessionAgendaResponses[keyof SessionAgendaResponses]
+
+export type ProjectTaskDefaultsGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/project/task-defaults"
+}
+
+export type ProjectTaskDefaultsGetErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectTaskDefaultsGetError = ProjectTaskDefaultsGetErrors[keyof ProjectTaskDefaultsGetErrors]
+
+export type ProjectTaskDefaultsGetResponses = {
+  /**
+   * Project task defaults
+   */
+  200: ProjectTaskDefaultsResult
+}
+
+export type ProjectTaskDefaultsGetResponse = ProjectTaskDefaultsGetResponses[keyof ProjectTaskDefaultsGetResponses]
+
+export type ProjectTaskDefaultsUpdateData = {
+  body?: ProjectTaskDefaultsInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/project/task-defaults"
+}
+
+export type ProjectTaskDefaultsUpdateErrors = {
+  /**
+   * Invalid defaults
+   */
+  400: ProjectTaskDefaultsInvalid
+  /**
+   * Concurrent project edit
+   */
+  409: ProjectTaskDefaultsConflict
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectTaskDefaultsUpdateError = ProjectTaskDefaultsUpdateErrors[keyof ProjectTaskDefaultsUpdateErrors]
+
+export type ProjectTaskDefaultsUpdateResponses = {
+  /**
+   * Project task defaults
+   */
+  200: ProjectTaskDefaultsResult
+}
+
+export type ProjectTaskDefaultsUpdateResponse =
+  ProjectTaskDefaultsUpdateResponses[keyof ProjectTaskDefaultsUpdateResponses]
+
+export type VcsGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/vcs"
+}
+
+export type VcsGetErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type VcsGetError = VcsGetErrors[keyof VcsGetErrors]
+
+export type VcsGetResponses = {
+  /**
+   * VCS info
+   */
+  200: VcsInfo
+}
+
+export type VcsGetResponse = VcsGetResponses[keyof VcsGetResponses]
 
 export type SessionIndexData = {
   body?: never
@@ -15332,6 +16921,8 @@ export type SessionCreateData = {
     id?: string
     controlProfile?: "guarded" | "autonomous" | "full_access"
     workspace?: SessionWorkspaceSelection
+    environmentID?: string | null
+    environmentProfile?: string
     completionNotice?: {
       silent?: boolean
     }
@@ -15346,9 +16937,20 @@ export type SessionCreateData = {
 
 export type SessionCreateErrors = {
   /**
-   * Bad request
+   * Invalid working location
    */
-  400: BadRequestError
+  400: BadRequestError | SessionLocationError | WorktreeStartCommandFailedError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
   /**
    * Runtime shutting down
    */
@@ -15654,6 +17256,51 @@ export type SessionDagResponses = {
 }
 
 export type SessionDagResponse = SessionDagResponses[keyof SessionDagResponses]
+
+export type SessionSetEnvironmentData = {
+  body?: SessionEnvironmentSelection
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/environment"
+}
+
+export type SessionSetEnvironmentErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionSetEnvironmentError = SessionSetEnvironmentErrors[keyof SessionSetEnvironmentErrors]
+
+export type SessionSetEnvironmentResponses = {
+  /**
+   * Updated Session
+   */
+  200: Session
+}
+
+export type SessionSetEnvironmentResponse = SessionSetEnvironmentResponses[keyof SessionSetEnvironmentResponses]
 
 export type SessionSetModelSelectionData = {
   body?: SessionModelSelectionInput
@@ -18482,6 +20129,7 @@ export type WorkspaceFilesChildrenData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
     path?: string
     limit?: number
     cursor?: string
@@ -18536,6 +20184,7 @@ export type WorkspaceFilesReadData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
     path: string
     range?: string
     offset?: number
@@ -18591,6 +20240,7 @@ export type WorkspaceFilesStatData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
     path: string
   }
   url: "/workspace/files/stat"
@@ -18641,6 +20291,7 @@ export type WorkspaceFilesSearchData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
     query: string
     kind?: "files" | "content" | "symbol"
     limit?: number
@@ -18677,6 +20328,7 @@ export type WorkspaceFilesStatusData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
   }
   url: "/workspace/files/status"
 }
@@ -18707,6 +20359,7 @@ export type WorkspaceFilesContentData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
     path: string
   }
   url: "/workspace/files/content"
@@ -18755,6 +20408,7 @@ export type WorkspaceFilesWriteData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
   }
   url: "/workspace/files/write"
 }
@@ -18801,6 +20455,7 @@ export type WorkspaceFilesCreateDirectoryData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
   }
   url: "/workspace/files/directory"
 }
@@ -18849,6 +20504,7 @@ export type WorkspaceFilesCopyData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
   }
   url: "/workspace/files/copy"
 }
@@ -18895,6 +20551,7 @@ export type WorkspaceFilesMoveData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
   }
   url: "/workspace/files/move"
 }
@@ -18941,6 +20598,7 @@ export type WorkspaceFilesRemoveData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
   }
   url: "/workspace/files/delete"
 }
@@ -18978,6 +20636,319 @@ export type WorkspaceFilesRemoveResponses = {
 }
 
 export type WorkspaceFilesRemoveResponse = WorkspaceFilesRemoveResponses[keyof WorkspaceFilesRemoveResponses]
+
+export type WorkspaceExportSavedData = {
+  body?: never
+  path: {
+    workspaceID: string
+  }
+  query: {
+    directory?: string
+    scopeID?: string
+    expectedRevision: number
+  }
+  url: "/workspace/{workspaceID}/export"
+}
+
+export type WorkspaceExportSavedErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceExportSavedError = WorkspaceExportSavedErrors[keyof WorkspaceExportSavedErrors]
+
+export type WorkspaceExportSavedResponses = {
+  /**
+   * Versioned Workspace archive
+   */
+  200: Blob | File
+}
+
+export type WorkspaceExportSavedResponse = WorkspaceExportSavedResponses[keyof WorkspaceExportSavedResponses]
+
+export type WorkspaceImportSavedData = {
+  body?: {
+    file: Blob | File
+  }
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    profile: string
+    name?: string
+  }
+  url: "/workspace/import"
+}
+
+export type WorkspaceImportSavedErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceImportSavedError = WorkspaceImportSavedErrors[keyof WorkspaceImportSavedErrors]
+
+export type WorkspaceImportSavedResponses = {
+  /**
+   * Imported Workspace
+   */
+  200: WorkspaceInfo
+}
+
+export type WorkspaceImportSavedResponse = WorkspaceImportSavedResponses[keyof WorkspaceImportSavedResponses]
+
+export type WorkspaceRecoverSavedData = {
+  body?: {
+    expectedRevision: number
+    profile: string
+    name?: string
+  }
+  path: {
+    workspaceID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workspace/{workspaceID}/recover-saved"
+}
+
+export type WorkspaceRecoverSavedErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceRecoverSavedError = WorkspaceRecoverSavedErrors[keyof WorkspaceRecoverSavedErrors]
+
+export type WorkspaceRecoverSavedResponses = {
+  /**
+   * New Workspace from saved content
+   */
+  200: WorkspaceInfo
+}
+
+export type WorkspaceRecoverSavedResponse = WorkspaceRecoverSavedResponses[keyof WorkspaceRecoverSavedResponses]
+
+export type WorkspaceCreateObjectsData = {
+  body?: {
+    profile: string
+    name?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workspace/objects"
+}
+
+export type WorkspaceCreateObjectsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceCreateObjectsError = WorkspaceCreateObjectsErrors[keyof WorkspaceCreateObjectsErrors]
+
+export type WorkspaceCreateObjectsResponses = {
+  /**
+   * Created Workspace
+   */
+  200: WorkspaceInfo
+}
+
+export type WorkspaceCreateObjectsResponse = WorkspaceCreateObjectsResponses[keyof WorkspaceCreateObjectsResponses]
+
+export type WorkspaceOperationsData = {
+  body?: never
+  path: {
+    workspaceID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workspace/{workspaceID}/operations"
+}
+
+export type WorkspaceOperationsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceOperationsError = WorkspaceOperationsErrors[keyof WorkspaceOperationsErrors]
+
+export type WorkspaceOperationsResponses = {
+  /**
+   * Unfinished file operations
+   */
+  200: Array<WorkspaceOperationSummary>
+}
+
+export type WorkspaceOperationsResponse = WorkspaceOperationsResponses[keyof WorkspaceOperationsResponses]
+
+export type WorkspaceRecoverOperationData = {
+  body?: never
+  path: {
+    workspaceID: string
+    operationID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workspace/{workspaceID}/operations/{operationID}/recover"
+}
+
+export type WorkspaceRecoverOperationErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | RuntimeShuttingDownError
+}
+
+export type WorkspaceRecoverOperationError = WorkspaceRecoverOperationErrors[keyof WorkspaceRecoverOperationErrors]
+
+export type WorkspaceRecoverOperationResponses = {
+  /**
+   * File operation outcome
+   */
+  200: WorkspaceOperationSummary
+}
+
+export type WorkspaceRecoverOperationResponse =
+  WorkspaceRecoverOperationResponses[keyof WorkspaceRecoverOperationResponses]
+
+export type WorkspaceDetachData = {
+  body?: {
+    expectedRevision: number
+  }
+  path: {
+    workspaceID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workspace/{workspaceID}/detach"
+}
+
+export type WorkspaceDetachErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | RuntimeShuttingDownError
+}
+
+export type WorkspaceDetachError = WorkspaceDetachErrors[keyof WorkspaceDetachErrors]
+
+export type WorkspaceDetachResponses = {
+  /**
+   * Workspace after saving
+   */
+  200: WorkspaceInfo
+}
+
+export type WorkspaceDetachResponse = WorkspaceDetachResponses[keyof WorkspaceDetachResponses]
 
 export type WorkspaceListData = {
   body?: never
@@ -19155,6 +21126,425 @@ export type WorkspaceRebindResponses = {
 }
 
 export type WorkspaceRebindResponse = WorkspaceRebindResponses[keyof WorkspaceRebindResponses]
+
+export type EnvironmentProfilesData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/environment/profiles"
+}
+
+export type EnvironmentProfilesErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type EnvironmentProfilesError = EnvironmentProfilesErrors[keyof EnvironmentProfilesErrors]
+
+export type EnvironmentProfilesResponses = {
+  /**
+   * Available profiles without credentials
+   */
+  200: ResourceProfiles
+}
+
+export type EnvironmentProfilesResponse = EnvironmentProfilesResponses[keyof EnvironmentProfilesResponses]
+
+export type EnvironmentListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/environment"
+}
+
+export type EnvironmentListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type EnvironmentListError = EnvironmentListErrors[keyof EnvironmentListErrors]
+
+export type EnvironmentListResponses = {
+  /**
+   * Environment catalog
+   */
+  200: Array<EnvironmentInfo>
+}
+
+export type EnvironmentListResponse = EnvironmentListResponses[keyof EnvironmentListResponses]
+
+export type EnvironmentCreateData = {
+  body?: {
+    profile: string
+    requestID: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/environment"
+}
+
+export type EnvironmentCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type EnvironmentCreateError = EnvironmentCreateErrors[keyof EnvironmentCreateErrors]
+
+export type EnvironmentCreateResponses = {
+  /**
+   * Logical Environment
+   */
+  200: EnvironmentInfo
+}
+
+export type EnvironmentCreateResponse = EnvironmentCreateResponses[keyof EnvironmentCreateResponses]
+
+export type EnvironmentGetData = {
+  body?: never
+  path: {
+    environmentID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/environment/{environmentID}"
+}
+
+export type EnvironmentGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type EnvironmentGetError = EnvironmentGetErrors[keyof EnvironmentGetErrors]
+
+export type EnvironmentGetResponses = {
+  /**
+   * Environment
+   */
+  200: EnvironmentInfo
+}
+
+export type EnvironmentGetResponse = EnvironmentGetResponses[keyof EnvironmentGetResponses]
+
+export type EnvironmentActivityData = {
+  body?: never
+  path: {
+    environmentID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/environment/{environmentID}/activity"
+}
+
+export type EnvironmentActivityErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type EnvironmentActivityError = EnvironmentActivityErrors[keyof EnvironmentActivityErrors]
+
+export type EnvironmentActivityResponses = {
+  /**
+   * Activity and unfinished operations
+   */
+  200: EnvironmentActivity
+}
+
+export type EnvironmentActivityResponse = EnvironmentActivityResponses[keyof EnvironmentActivityResponses]
+
+export type EnvironmentReconcileData = {
+  body?: never
+  path: {
+    environmentID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/environment/{environmentID}/reconcile"
+}
+
+export type EnvironmentReconcileErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | RuntimeShuttingDownError
+}
+
+export type EnvironmentReconcileError = EnvironmentReconcileErrors[keyof EnvironmentReconcileErrors]
+
+export type EnvironmentReconcileResponses = {
+  /**
+   * Reconciled Environment
+   */
+  200: EnvironmentInfo
+}
+
+export type EnvironmentReconcileResponse = EnvironmentReconcileResponses[keyof EnvironmentReconcileResponses]
+
+export type EnvironmentReleaseData = {
+  body?: {
+    expectedGeneration: number
+  }
+  path: {
+    environmentID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/environment/{environmentID}/release"
+}
+
+export type EnvironmentReleaseErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | RuntimeShuttingDownError
+}
+
+export type EnvironmentReleaseError = EnvironmentReleaseErrors[keyof EnvironmentReleaseErrors]
+
+export type EnvironmentReleaseResponses = {
+  /**
+   * Released Environment
+   */
+  200: EnvironmentInfo
+}
+
+export type EnvironmentReleaseResponse = EnvironmentReleaseResponses[keyof EnvironmentReleaseResponses]
+
+export type EnvironmentRecoverExecutionData = {
+  body?: never
+  path: {
+    environmentID: string
+    operationID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/environment/{environmentID}/execution/{operationID}/recover"
+}
+
+export type EnvironmentRecoverExecutionErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | RuntimeShuttingDownError
+}
+
+export type EnvironmentRecoverExecutionError =
+  EnvironmentRecoverExecutionErrors[keyof EnvironmentRecoverExecutionErrors]
+
+export type EnvironmentRecoverExecutionResponses = {
+  /**
+   * Existing execution outcome
+   */
+  200: EnvironmentExecutionInfo
+}
+
+export type EnvironmentRecoverExecutionResponse =
+  EnvironmentRecoverExecutionResponses[keyof EnvironmentRecoverExecutionResponses]
+
+export type EnvironmentCancelExecutionData = {
+  body?: never
+  path: {
+    environmentID: string
+    operationID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/environment/{environmentID}/execution/{operationID}/cancel"
+}
+
+export type EnvironmentCancelExecutionErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | RuntimeShuttingDownError
+}
+
+export type EnvironmentCancelExecutionError = EnvironmentCancelExecutionErrors[keyof EnvironmentCancelExecutionErrors]
+
+export type EnvironmentCancelExecutionResponses = {
+  /**
+   * Durable cancellation status
+   */
+  200: EnvironmentExecutionInfo
+}
+
+export type EnvironmentCancelExecutionResponse =
+  EnvironmentCancelExecutionResponses[keyof EnvironmentCancelExecutionResponses]
+
+export type EnvironmentRecoverFileData = {
+  body?: never
+  path: {
+    environmentID: string
+    operationID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/environment/{environmentID}/file/{operationID}/recover"
+}
+
+export type EnvironmentRecoverFileErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | RuntimeShuttingDownError
+}
+
+export type EnvironmentRecoverFileError = EnvironmentRecoverFileErrors[keyof EnvironmentRecoverFileErrors]
+
+export type EnvironmentRecoverFileResponses = {
+  /**
+   * File operation outcome
+   */
+  200: WorkspaceOperationSummary
+}
+
+export type EnvironmentRecoverFileResponse = EnvironmentRecoverFileResponses[keyof EnvironmentRecoverFileResponses]
 
 export type LibraryEmbeddingStatusData = {
   body?: never
@@ -22029,6 +24419,411 @@ export type AssetGetResponses = {
   200: unknown
 }
 
+export type BrowserOpenPageData = {
+  body?: BrowserOpenPage
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/pages"
+}
+
+export type BrowserOpenPageErrors = {
+  /**
+   * Page could not open
+   */
+  400: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserOpenPageError = BrowserOpenPageErrors[keyof BrowserOpenPageErrors]
+
+export type BrowserOpenPageResponses = {
+  /**
+   * New page
+   */
+  200: BrowserApiSessionPage
+}
+
+export type BrowserOpenPageResponse = BrowserOpenPageResponses[keyof BrowserOpenPageResponses]
+
+export type BrowserProfilesData = {
+  body?: never
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/profiles"
+}
+
+export type BrowserProfilesErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserProfilesError = BrowserProfilesErrors[keyof BrowserProfilesErrors]
+
+export type BrowserProfilesResponses = {
+  /**
+   * Identities
+   */
+  200: BrowserProfileList
+}
+
+export type BrowserProfilesResponse = BrowserProfilesResponses[keyof BrowserProfilesResponses]
+
+export type BrowserCreateProfileData = {
+  body?: BrowserProfileCreate
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/profiles"
+}
+
+export type BrowserCreateProfileErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserCreateProfileError = BrowserCreateProfileErrors[keyof BrowserCreateProfileErrors]
+
+export type BrowserCreateProfileResponses = {
+  /**
+   * Identity
+   */
+  200: BrowserProfile
+}
+
+export type BrowserCreateProfileResponse = BrowserCreateProfileResponses[keyof BrowserCreateProfileResponses]
+
+export type BrowserManageProfileData = {
+  body?: BrowserManageProfile
+  path: {
+    directory: string
+    profileId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/profiles/{profileId}/manage"
+}
+
+export type BrowserManageProfileErrors = {
+  /**
+   * Identity operation failed
+   */
+  400: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserManageProfileError = BrowserManageProfileErrors[keyof BrowserManageProfileErrors]
+
+export type BrowserManageProfileResponses = {
+  /**
+   * Updated identities
+   */
+  200: BrowserProfileList
+}
+
+export type BrowserManageProfileResponse = BrowserManageProfileResponses[keyof BrowserManageProfileResponses]
+
+export type BrowserCreateAnnotationData = {
+  body?: BrowserAnnotationRequest
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/annotations"
+}
+
+export type BrowserCreateAnnotationErrors = {
+  /**
+   * Annotation request rejected
+   */
+  400: BrowserApiError
+  /**
+   * Browser request payload is too large
+   */
+  413: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserCreateAnnotationError = BrowserCreateAnnotationErrors[keyof BrowserCreateAnnotationErrors]
+
+export type BrowserCreateAnnotationResponses = {
+  /**
+   * Created Browser annotation
+   */
+  200: BrowserAnnotationResponse
+}
+
+export type BrowserCreateAnnotationResponse = BrowserCreateAnnotationResponses[keyof BrowserCreateAnnotationResponses]
+
+export type BrowserDiagnosticsData = {
+  body?: BrowserDiagnosticsRequest
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/diagnostics"
+}
+
+export type BrowserDiagnosticsErrors = {
+  /**
+   * Diagnostics request rejected
+   */
+  400: BrowserApiError
+  /**
+   * Browser request payload is too large
+   */
+  413: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserDiagnosticsError = BrowserDiagnosticsErrors[keyof BrowserDiagnosticsErrors]
+
+export type BrowserDiagnosticsResponses = {
+  /**
+   * Browser diagnostics result
+   */
+  200: BrowserDiagnosticsResponse
+}
+
+export type BrowserDiagnosticsResponse2 = BrowserDiagnosticsResponses[keyof BrowserDiagnosticsResponses]
+
+export type BrowserDownloadArtifactData = {
+  body?: {
+    id: string
+  }
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/download-artifact"
+}
+
+export type BrowserDownloadArtifactErrors = {
+  /**
+   * Download is unavailable
+   */
+  400: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserDownloadArtifactError = BrowserDownloadArtifactErrors[keyof BrowserDownloadArtifactErrors]
+
+export type BrowserDownloadArtifactResponses = {
+  /**
+   * Managed attachment
+   */
+  200: {
+    id: string
+    url: string
+    filename: string
+    mime: string
+    size: number
+  }
+}
+
+export type BrowserDownloadArtifactResponse = BrowserDownloadArtifactResponses[keyof BrowserDownloadArtifactResponses]
+
+export type BrowserSessionData = {
+  body?: never
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/session"
+}
+
+export type BrowserSessionErrors = {
+  /**
+   * Browser session error
+   */
+  500: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserSessionError = BrowserSessionErrors[keyof BrowserSessionErrors]
+
+export type BrowserSessionResponses = {
+  /**
+   * Browser session state
+   */
+  200: BrowserApiSessionState
+}
+
+export type BrowserSessionResponse = BrowserSessionResponses[keyof BrowserSessionResponses]
+
+export type BrowserControlData = {
+  body?: BrowserControlRequest
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/control"
+}
+
+export type BrowserControlErrors = {
+  /**
+   * Invalid browser command
+   */
+  400: BrowserApiError
+  /**
+   * Retryable browser error
+   */
+  409: BrowserApiError
+  /**
+   * Browser request payload is too large
+   */
+  413: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserControlError = BrowserControlErrors[keyof BrowserControlErrors]
+
+export type BrowserControlResponses = {
+  /**
+   * Browser control result
+   */
+  200: BrowserControlResponse
+}
+
+export type BrowserControlResponse2 = BrowserControlResponses[keyof BrowserControlResponses]
+
+export type ComputerHostBrokerData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/computer/host/broker"
+}
+
+export type ComputerHostBrokerErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ComputerHostBrokerError = ComputerHostBrokerErrors[keyof ComputerHostBrokerErrors]
+
 export type PluginListGlobalThemeContributionsData = {
   body?: never
   path?: never
@@ -23019,251 +25814,6 @@ export type RegistryPluginsPublishResponses = {
 }
 
 export type RegistryPluginsPublishResponse = RegistryPluginsPublishResponses[keyof RegistryPluginsPublishResponses]
-
-export type BrowserCreateViewerTicketData = {
-  body?: BrowserViewerTicketRequest
-  path: {
-    directory: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-    mode?: "session" | "scope"
-    sessionID?: string
-    presentation?: "auto" | "native" | "webrtc"
-    protocolVersion?: number
-    sinceSeq?: number
-    epoch?: string
-    nativeTicket?: string
-  }
-  url: "/{directory}/browser/webrtc/ticket"
-}
-
-export type BrowserCreateViewerTicketErrors = {
-  /**
-   * Ticket request rejected
-   */
-  400: BrowserApiError
-  /**
-   * Browser request payload is too large
-   */
-  413: BrowserApiError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BrowserCreateViewerTicketError = BrowserCreateViewerTicketErrors[keyof BrowserCreateViewerTicketErrors]
-
-export type BrowserCreateViewerTicketResponses = {
-  /**
-   * Browser viewer ticket
-   */
-  200: BrowserViewerTicketResponse
-}
-
-export type BrowserCreateViewerTicketResponse =
-  BrowserCreateViewerTicketResponses[keyof BrowserCreateViewerTicketResponses]
-
-export type BrowserCreateAnnotationData = {
-  body?: BrowserAnnotationRequest
-  path: {
-    directory: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-    mode?: "session" | "scope"
-    sessionID?: string
-    presentation?: "auto" | "native" | "webrtc"
-    protocolVersion?: number
-    sinceSeq?: number
-    epoch?: string
-    nativeTicket?: string
-  }
-  url: "/{directory}/browser/annotations"
-}
-
-export type BrowserCreateAnnotationErrors = {
-  /**
-   * Annotation request rejected
-   */
-  400: BrowserApiError
-  /**
-   * Browser request payload is too large
-   */
-  413: BrowserApiError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BrowserCreateAnnotationError = BrowserCreateAnnotationErrors[keyof BrowserCreateAnnotationErrors]
-
-export type BrowserCreateAnnotationResponses = {
-  /**
-   * Created Browser annotation
-   */
-  200: BrowserAnnotationResponse
-}
-
-export type BrowserCreateAnnotationResponse = BrowserCreateAnnotationResponses[keyof BrowserCreateAnnotationResponses]
-
-export type BrowserDiagnosticsData = {
-  body?: BrowserDiagnosticsRequest
-  path: {
-    directory: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-    mode?: "session" | "scope"
-    sessionID?: string
-    presentation?: "auto" | "native" | "webrtc"
-    protocolVersion?: number
-    sinceSeq?: number
-    epoch?: string
-    nativeTicket?: string
-  }
-  url: "/{directory}/browser/diagnostics"
-}
-
-export type BrowserDiagnosticsErrors = {
-  /**
-   * Diagnostics request rejected
-   */
-  400: BrowserApiError
-  /**
-   * Browser request payload is too large
-   */
-  413: BrowserApiError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BrowserDiagnosticsError = BrowserDiagnosticsErrors[keyof BrowserDiagnosticsErrors]
-
-export type BrowserDiagnosticsResponses = {
-  /**
-   * Browser diagnostics result
-   */
-  200: BrowserDiagnosticsResponse
-}
-
-export type BrowserDiagnosticsResponse2 = BrowserDiagnosticsResponses[keyof BrowserDiagnosticsResponses]
-
-export type BrowserSessionData = {
-  body?: never
-  path: {
-    directory: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-    mode?: "session" | "scope"
-    sessionID?: string
-    presentation?: "auto" | "native" | "webrtc"
-    protocolVersion?: number
-    sinceSeq?: number
-    epoch?: string
-    nativeTicket?: string
-  }
-  url: "/{directory}/browser/session"
-}
-
-export type BrowserSessionErrors = {
-  /**
-   * Browser session error
-   */
-  500: BrowserApiError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BrowserSessionError = BrowserSessionErrors[keyof BrowserSessionErrors]
-
-export type BrowserSessionResponses = {
-  /**
-   * Browser session state
-   */
-  200: BrowserApiSessionState
-}
-
-export type BrowserSessionResponse = BrowserSessionResponses[keyof BrowserSessionResponses]
-
-export type BrowserControlData = {
-  body?: BrowserControlRequest
-  path: {
-    directory: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-    mode?: "session" | "scope"
-    sessionID?: string
-    presentation?: "auto" | "native" | "webrtc"
-    protocolVersion?: number
-    sinceSeq?: number
-    epoch?: string
-    nativeTicket?: string
-  }
-  url: "/{directory}/browser/control"
-}
-
-export type BrowserControlErrors = {
-  /**
-   * Invalid browser command
-   */
-  400: BrowserApiError
-  /**
-   * Retryable browser error
-   */
-  409: BrowserApiError
-  /**
-   * Browser request payload is too large
-   */
-  413: BrowserApiError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BrowserControlError = BrowserControlErrors[keyof BrowserControlErrors]
-
-export type BrowserControlResponses = {
-  /**
-   * Browser control result
-   */
-  200: BrowserControlResponse
-}
-
-export type BrowserControlResponse2 = BrowserControlResponses[keyof BrowserControlResponses]
-
-export type ComputerHostBrokerData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/computer/host/broker"
-}
-
-export type ComputerHostBrokerErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type ComputerHostBrokerError = ComputerHostBrokerErrors[keyof ComputerHostBrokerErrors]
 
 export type HolosCredentialsStatusData = {
   body?: never

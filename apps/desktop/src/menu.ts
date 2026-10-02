@@ -33,6 +33,8 @@ export function installAppMenu(options: {
   const viewMenu: MenuItemConstructorOptions = {
     label: "View",
     submenu: [
+      { role: "togglefullscreen" },
+      { type: "separator" },
       {
         label: "Actual Size",
         accelerator: "CmdOrCtrl+0",

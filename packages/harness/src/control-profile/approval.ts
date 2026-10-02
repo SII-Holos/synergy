@@ -141,8 +141,20 @@ export namespace ApprovalPolicy {
   ): ApprovalDecision {
     const capability = String(metadata?.capability ?? permissionCapability(permission))
     const risk = metadata?.nonBypassable || metadata?.opaque ? "high" : riskForCapability(capability)
+    const base = actionForProfile(profile, risk, [capability])
+    const restriction = metadata?.resourcePolicy
+    const action =
+      profile.approval.mode === "full_access"
+        ? "allow"
+        : base === "deny" || restriction === "deny"
+          ? "deny"
+          : restriction === "ask"
+            ? profile.approval.mode === "autonomous"
+              ? "deny"
+              : "ask"
+            : base
     return {
-      action: actionForProfile(profile, risk, [capability]),
+      action,
       source: "profile",
       risk,
       reason: reasonFor(profile.approval, risk, [capability]),

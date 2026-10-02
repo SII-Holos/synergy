@@ -1,9 +1,8 @@
 import z from "zod"
-import path from "path"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import DESCRIPTION from "./glob.txt"
 import { Ripgrep } from "../file/ripgrep"
-import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { FileView } from "../file/view"
 import { ToolTimeout } from "@ericsanchezok/synergy-harness/tool/timeout"
 
 export const GlobTool = Tool.define(
@@ -16,7 +15,7 @@ export const GlobTool = Tool.define(
         .string()
         .optional()
         .describe(
-          `The directory to search in. If not specified, the current working directory will be used. IMPORTANT: Omit this field to use the default directory. DO NOT enter "undefined" or "null" - simply omit it for the default behavior. Must be a valid directory path if provided.`,
+          `The directory to search in. If not specified, the task’s main and shared project folders will be searched. IMPORTANT: Omit this field to use the default directory. DO NOT enter "undefined" or "null" - simply omit it for the default behavior. Must be a valid directory path if provided.`,
         ),
     }),
     async execute(params, ctx) {
@@ -29,8 +28,8 @@ export const GlobTool = Tool.define(
         },
       })
 
-      let search = params.path ?? ScopeContext.current.directory
-      search = path.isAbsolute(search) ? search : path.resolve(ScopeContext.current.directory, search)
+      const roots = await FileView.searchRoots(params.path)
+      const search = roots[0]
 
       const TIMEOUT_MS = ToolTimeout.DEFAULTS.globMs
       const limit = 100
@@ -43,32 +42,37 @@ export const GlobTool = Tool.define(
       const combinedSignal = ctx.abort ? AbortSignal.any([ctx.abort, timeoutSignal]) : timeoutSignal
 
       try {
-        for await (const file of Ripgrep.files({
-          cwd: search,
-          glob: [params.pattern],
-          signal: combinedSignal,
-        })) {
-          if (files.length >= limit) {
-            truncated = true
-            break
+        for (const root of roots) {
+          for await (const file of Ripgrep.files({
+            cwd: root,
+            glob: [params.pattern],
+            signal: combinedSignal,
+          })) {
+            if (files.length >= limit) {
+              truncated = true
+              break
+            }
+            const full = FileView.resolve(file, root)
+            const stats = await FileView.file(full)
+              .stat()
+              .then((x) => x.mtimeMs)
+              .catch(() => 0)
+            files.push({
+              path: full,
+              mtime: stats,
+            })
           }
-          const full = path.resolve(search, file)
-          const stats = await Bun.file(full)
-            .stat()
-            .then((x) => x.mtime.getTime())
-            .catch(() => 0)
-          files.push({
-            path: full,
-            mtime: stats,
-          })
+          if (truncated) break
         }
-      } catch {
+      } catch (error) {
+        if (!timeoutSignal.aborted) throw error
         // Subprocess was killed — check if it was our timeout
         if (timeoutSignal.aborted && !ctx.abort?.aborted) {
           timedOut = true
         }
       }
 
+      ctx.abort?.throwIfAborted()
       if (timedOut) {
         throw new Error(
           `glob stopped after ${TIMEOUT_MS / 1_000}s before completing the search.\n` +
@@ -89,7 +93,7 @@ export const GlobTool = Tool.define(
       }
 
       return {
-        title: path.relative(ScopeContext.current.directory, search),
+        title: FileView.relative(search),
         metadata: {
           count: files.length,
           truncated,

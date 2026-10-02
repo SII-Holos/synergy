@@ -25,18 +25,27 @@ test("Browser registration creates suspended owner state and disposes without la
       directory: null,
     }
     await BrowserStorage.save(owner, {
-      status: "suspended",
-      page: { id: "page-registration", url: "https://example.com/", title: "Research" },
+      pages: [
+        {
+          id: "page-registration",
+          url: "https://example.com/",
+          title: "Research",
+          profileId: "personal",
+          status: "suspended",
+          isLoading: false,
+          lastActiveAt: null,
+        },
+      ],
       timestamp: Date.now(),
     })
     const session = await BrowserRuntime.getOrCreateSession(owner)
     expect(session.status).toBe("suspended")
-    expect(session.page).toBeNull()
+    expect(session.getPage("page-registration")).toBeUndefined()
     expect(BrowserRuntime.resourceStats()).toMatchObject({ ownerCount: 1, activePageCount: 0, processCount: 0 })
     await disposeBrowser()
     await disposeBrowser()
     expect(BrowserRuntime.resourceStats()).toMatchObject({ ownerCount: 0, activePageCount: 0, processCount: 0 })
-    expect((await BrowserStorage.load(owner))?.page?.title).toBe("Research")
+    expect((await BrowserStorage.load(owner))?.pages[0]?.title).toBe("Research")
   }))
 
 afterRuntimeTests(() => runtime.close())

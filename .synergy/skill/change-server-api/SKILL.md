@@ -31,6 +31,7 @@ description: Add or modify a Synergy HTTP route, request/response schema, OpenAP
 ## Verify
 
 1. Test validation, success, domain error, Scope ownership, and event behavior at the narrowest route/domain level.
+   For nested Hono routers, test `generateSpecs()` on the mounted parent and assert the new operation IDs. A child router's custom `onError` can wrap middleware and hide `describeRoute` metadata while HTTP tests still pass; map domain errors inside handlers or at the owning server boundary instead.
 2. Typecheck the runtime, SDK, and affected client.
 3. Run the affected frontend context/component test when response identity or event reconciliation changes.
 4. Inspect the generated diff; do not hand-edit generated SDK files. Use `bun run --cwd packages/sdk/js build --compile-only` to validate the existing client concurrently with source readers. Full generation cleans and rewrites `src/gen`, so reserve it for explicit generation work, not read-only package checks.
@@ -39,6 +40,7 @@ description: Add or modify a Synergy HTTP route, request/response schema, OpenAP
 7. File response bodies can outlive their HTTP handlers. Capture native file identity before returning and retain the Workspace binding until body completion or cancellation. Exercise unread bodies, caller abort, Workspace disposal and atomic pathname replacement; returning a lazy path-based stream does not establish resource ownership.
 8. Native WebSocket callbacks do not inherit the upgrading request's Scope. Capture the owning request context for callbacks that read scoped state or emit scoped telemetry, and test an actual server socket alongside an unrelated Scope request. Directly calling a route or domain callback inside a test Scope hides this boundary.
 9. Optional APIs follow the runtime component selection exposed by `global.capabilities`; installing a package must not claim that it is active before restart. Managed SDK startup uses the public `runtime-ready` protocol, explicit executable/version/home, private credentials and owned-process cleanup. Verify a real Node.js caller as well as Bun fixtures, including timeout, abort, attach ownership and Scope headers retaining caller authentication.
+10. Resource APIs select catalog identities without allocating compute. Test stale selection/generation conflicts, Scope mismatches, retained uses and save retry without command replay. Keep file-operation payloads out of activity responses. Session turn admission must wait for resource binding changes before reading its execution context.
 
 Update [Frontend data sync](../../../docs/architecture/frontend-data-sync.md) when snapshot/event/replay semantics change, and update API/help/product docs when the route is a public or user-facing contract.
 

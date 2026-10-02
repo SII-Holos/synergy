@@ -1,3 +1,4 @@
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test, setDefaultTimeout } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
@@ -35,6 +36,7 @@ beforeAll(async () => {
     import { WorkspaceLocationButton } from ${JSON.stringify(`/@fs/${components}/top-bar/workspace-location-button.tsx`)}
     import { RequestSubmissionNotice } from ${JSON.stringify(`/@fs/${components}/session/request-submission-notice.tsx`)}
     import { PromptAddMenu } from ${JSON.stringify(`/@fs/${components}/prompt-input/add-menu.tsx`)}
+    import { PromptStartModeSelector } from ${JSON.stringify(`/@fs/${components}/prompt-input/start-options.tsx`)}
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${components}/../index.css`)}
     import { render } from "solid-js/web"
@@ -57,6 +59,9 @@ beforeAll(async () => {
           {close => <button onClick={close}>Choose agent</button>}
         </ToolbarSelectorPopover>
         <button>After toolbar</button>
+        <div class="synergy-workbench-canvas" style="width:400px;container-type:inline-size;container-name:prompt-input">
+          <PromptStartModeSelector groups={[{id:"location",label:"Location",options:[{id:"global",label:"Global",icon:"folder",selected:true,onSelect:()=>{}}]}]}/>
+        </div>
         <PromptAddMenu sections={[
           {id:"context",label:"Context",items:[item("files","Add files")]},
           {id:"workflow",label:"Workflow",items:[item("light-loop","Light Loop"),item("plan","Plan",{ariaDisabled:true}),item("lattice","Lattice",{disabled:true}),item("boss","Boss")]}
@@ -90,7 +95,11 @@ beforeAll(async () => {
       include: ["solid-js", "solid-js/web", "solid-js/jsx-runtime", "@lingui/core", "@lingui/solid", "fuzzysort"],
       noDiscovery: true,
     },
-    server: { host: "127.0.0.1", port: 0, fs: { allow: [path.resolve(import.meta.dir, "../../../..")] } },
+    server: {
+      host: "127.0.0.1",
+      port: await fixturePort(),
+      fs: { allow: [path.resolve(import.meta.dir, "../../../..")] },
+    },
   })
   await server.listen()
   await server.warmupRequest("/main.tsx")
@@ -152,11 +161,21 @@ test("sidebar disclosure supports native Enter and Space and announces its state
   expect(errors).toEqual([])
 })
 
-test("Add menu is continuous while preserving action guards and keyboard dismissal", async () => {
+test("Add menu preserves sections, action guards and keyboard dismissal", async () => {
   const trigger = page.getByRole("button", { name: "Add", exact: true })
   await trigger.click()
   const list = page.locator('[data-component="list"]')
   await list.waitFor()
+  const surface = page.getByRole("dialog", { name: "Add", exact: true })
+  const appearance = await surface.evaluate((el) => {
+    const style = getComputedStyle(el)
+    return { radius: style.borderRadius, animation: style.animationName }
+  })
+  expect(appearance).toEqual({ radius: "12px", animation: "popover-open" })
+  const rowHeights = await list
+    .locator('[data-slot="list-item"]')
+    .evaluateAll((items) => items.map((item) => item.getBoundingClientRect().height))
+  expect(Math.max(...rowHeights)).toBeLessThanOrEqual(38)
   expect(await list.locator('[data-slot="list-item"]').allTextContents()).toEqual([
     "Add files",
     "Light Loop",
@@ -164,8 +183,8 @@ test("Add menu is continuous while preserving action guards and keyboard dismiss
     "Lattice",
     "Boss",
   ])
-  expect(await list.getByText("Context", { exact: true }).count()).toBe(0)
-  expect(await list.getByText("Workflow", { exact: true }).count()).toBe(0)
+  expect(await list.getByText("Context", { exact: true }).count()).toBe(1)
+  expect(await list.getByText("Workflow", { exact: true }).count()).toBe(1)
   const gaps = await list
     .locator('[data-slot="list-item"]')
     .evaluateAll((items) =>
@@ -173,7 +192,7 @@ test("Add menu is continuous while preserving action guards and keyboard dismiss
         .slice(1)
         .map((item, index) => item.getBoundingClientRect().top - items[index]!.getBoundingClientRect().bottom),
     )
-  expect(Math.max(...gaps) - Math.min(...gaps)).toBeLessThan(1)
+  expect(gaps[0]).toBeGreaterThan(gaps[1]! + 4)
   for (const name of ["Plan", "Lattice"]) {
     await list.getByText(name, { exact: true }).click()
     expect(await page.locator("output").textContent()).toBe("None")
@@ -187,6 +206,46 @@ test("Add menu is continuous while preserving action guards and keyboard dismiss
   await page.keyboard.press("Escape")
   await list.waitFor({ state: "detached" })
   await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Add")
+  expect(errors).toEqual([])
+})
+
+test("compact start selector keeps its icon centered through hover, focus and opening", async () => {
+  const trigger = page.getByRole("button", { name: "Start mode", exact: true })
+  const geometry = () =>
+    trigger.evaluate((button) => {
+      const bounds = button.getBoundingClientRect()
+      const icon = button.querySelector('[data-component="icon"]')!.getBoundingClientRect()
+      return {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        offset: icon.x + icon.width / 2 - bounds.x - bounds.width / 2,
+      }
+    })
+  const baseline = await geometry()
+  expect(Math.abs(baseline.offset)).toBeLessThanOrEqual(1)
+  expect(baseline.width).toBe(baseline.height)
+  await trigger.hover()
+  expect(await geometry()).toEqual(baseline)
+  await trigger.focus()
+  expect(await geometry()).toEqual(baseline)
+  await trigger.click()
+  await page.getByRole("dialog", { name: "Start mode", exact: true }).waitFor()
+  expect(await geometry()).toEqual(baseline)
+  expect(await page.getByRole("tooltip").count()).toBe(0)
+  await page.keyboard.press("Escape")
+  expect(errors).toEqual([])
+})
+
+test("reduced motion disables the actual open menu animation", async () => {
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.getByRole("button", { name: "Add", exact: true }).click()
+  const surface = page.getByRole("dialog", { name: "Add", exact: true })
+  await surface.waitFor()
+  expect(await surface.evaluate((el) => getComputedStyle(el).animationName)).toBe("none")
+  await page.keyboard.press("Escape")
+  await surface.waitFor({ state: "detached" })
   expect(errors).toEqual([])
 })
 
@@ -237,4 +296,17 @@ test("submission notices distinguish pending, failed, unknown and settled decisi
   await page.getByRole("button", { name: "State idle", exact: true }).click()
   expect(await page.locator('div[role="status"]').count()).toBe(0)
   expect(await page.getByRole("alert").count()).toBe(0)
+})
+
+test("Add is a circular standalone control with stable geometry", async () => {
+  const trigger = page.getByRole("button", { name: "Add", exact: true })
+  const before = await trigger.boundingBox()
+  expect(before?.width).toBe(32)
+  expect(before?.height).toBe(32)
+  expect(await trigger.evaluate((element) => getComputedStyle(element).borderRadius)).toBe("50%")
+  await trigger.hover()
+  expect(await trigger.boundingBox()).toEqual(before)
+  await trigger.click()
+  expect(await trigger.boundingBox()).toEqual(before)
+  expect(await page.getByRole("tooltip").count()).toBe(0)
 })

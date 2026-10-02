@@ -11,6 +11,11 @@ type FixtureWindow = typeof window & {
     selectTarget(): void
     selectFirst(): void
     unmount(): void
+    setInteractive(value: boolean): void
+    setLocale(locale: "en" | "zh-CN"): void
+    showLoading(): void
+    finishLoading(): void
+    setEmptyMessage(value: string): void
   }
 }
 
@@ -50,12 +55,17 @@ beforeAll(async () => {
     const [current,setCurrent]=createSignal()
     const [selected,setSelected]=createSignal()
     const [mounted,setMounted]=createSignal(true)
+    const [interactive,setInteractive]=createSignal(true)
+    const [emptyMessage,setEmptyMessage]=createSignal()
+    const [state,setState]=createSignal("rows")
+    let finishLoading=()=>{}
+    const loading=new Promise(resolve=>{finishLoading=()=>resolve([])})
     const first={id:"row-0",label:"First"}
     const target=()=>({id:key(),label:"Target"})
-    const items=()=>[first,...Array.from({length:7},(_,i)=>({id:"row-"+(i+1),label:"Row "+(i+1)})),target(),{id:"last",label:"Last"}]
-    window.listKeyFixture={setKey,selectTarget:()=>setCurrent(target()),selectFirst:()=>setCurrent(first),unmount:()=>setMounted(false)}
-    const i18n=setupI18n({locale:"en",messages:{en:{}}})
-    render(()=><I18nProvider i18n={i18n}><Show when={mounted()}><List items={items()} key={item=>item.id} current={current()} search={{placeholder:"Find item"}} onSelect={setSelected}>{item=>item.label}</List></Show><output data-testid="selection">{selected()?.label}</output></I18nProvider>,document.getElementById("root"))
+    const items=()=>state()==="loading"?()=>loading:state()==="empty"?[]:[first,...Array.from({length:7},(_,i)=>({id:"row-"+(i+1),label:"Row "+(i+1)})),target(),{id:"last",label:"Last"}]
+    const i18n=setupI18n({locale:"en",messages:{en:{"ui.list.loading":"Loading","ui.list.noResults":"No results","list.for-label":"for"},"zh-CN":{"ui.list.loading":"加载中","ui.list.noResults":"无结果","list.for-label":"匹配"}}})
+    window.listKeyFixture={setKey,setInteractive,setEmptyMessage,setLocale:locale=>i18n.activate(locale),selectTarget:()=>setCurrent(target()),selectFirst:()=>setCurrent(first),unmount:()=>setMounted(false),showLoading:()=>{setMounted(false);setState("loading");setMounted(true)},finishLoading:()=>{finishLoading();setState("empty")}}
+    render(()=><I18nProvider i18n={i18n}><Show when={mounted()}><List items={items()} interactive={interactive()} emptyMessage={emptyMessage()} key={item=>item.id} current={current()} filterKeys={["label"]} search={{placeholder:"Find item"}} onSelect={setSelected}>{item=>item.label}</List></Show><output data-testid="selection">{selected()?.label}</output></I18nProvider>,document.getElementById("root"))
     `,
   )
   await build({
@@ -171,4 +181,55 @@ test("a newer selection supersedes the pending scroll", async () => {
   await settleFrames()
   expect(errors).toEqual([])
   expect(await page.locator('[data-slot="list-scroll"]').evaluate((element) => element.scrollTop)).toBe(0)
+})
+
+test("selection follows stable keys across refreshed objects and search", async () => {
+  const selected = page.locator('[data-slot="list-item"][data-selected="true"]')
+  await page.evaluate(() => (window as FixtureWindow).listKeyFixture.selectTarget())
+  await settleFrames()
+  expect(await selected.count()).toBe(1)
+  expect(await selected.getAttribute("data-key")).toBe("target")
+  expect(await selected.locator('[data-slot="list-item-selected-icon"]').count()).toBe(1)
+  await page.getByPlaceholder("Find item").fill("Target")
+  await settleFrames()
+  expect(await selected.getAttribute("data-key")).toBe("target")
+  await page.getByPlaceholder("Find item").fill("")
+  await page.evaluate(() => (window as FixtureWindow).listKeyFixture.selectFirst())
+  await settleFrames()
+  expect(await selected.count()).toBe(1)
+  expect(await selected.getAttribute("data-key")).toBe("row-0")
+  expect(await page.locator('[data-slot="list-item-selected-icon"]').count()).toBe(1)
+})
+
+test("non-interactive rows cannot select through pointer or keyboard input", async () => {
+  await page.evaluate(() => (window as FixtureWindow).listKeyFixture.setInteractive(false))
+  const target = page.locator('[data-slot="list-item"]').filter({ hasText: /^Target$/ })
+  expect(await target.evaluate((element) => element.tagName)).toBe("DIV")
+  expect(await page.getByRole("button", { name: "Target", exact: true }).count()).toBe(0)
+  await target.click()
+  await page.getByPlaceholder("Find item").press("Enter")
+  expect(await page.getByTestId("selection").textContent()).toBe("")
+  await page.evaluate(() => (window as FixtureWindow).listKeyFixture.setInteractive(true))
+  await page.getByRole("button", { name: "Target", exact: true }).click()
+  expect(await page.getByTestId("selection").textContent()).toBe("Target")
+  expect(errors).toEqual([])
+})
+
+test("loading and empty copy react to locale changes while custom messages pass through", async () => {
+  await page.evaluate(() => (window as FixtureWindow).listKeyFixture.showLoading())
+  const message = page.locator('[data-slot="list-message"]')
+  await page.getByText("Loading", { exact: false }).waitFor()
+  await page.evaluate(() => (window as FixtureWindow).listKeyFixture.setLocale("zh-CN"))
+  await page.getByText("加载中", { exact: false }).waitFor()
+  expect(await message.textContent()).not.toContain("Loading")
+  await page.evaluate(() => (window as FixtureWindow).listKeyFixture.finishLoading())
+  await page.getByText("无结果", { exact: false }).waitFor()
+  await page.evaluate(() => (window as FixtureWindow).listKeyFixture.setLocale("en"))
+  await page.getByText("No results", { exact: false }).waitFor()
+  const custom = "用户内容 /custom/path 🤖"
+  await page.evaluate((value) => (window as FixtureWindow).listKeyFixture.setEmptyMessage(value), custom)
+  expect(await message.textContent()).toContain(custom)
+  await page.evaluate(() => (window as FixtureWindow).listKeyFixture.setLocale("zh-CN"))
+  expect(await message.textContent()).toContain(custom)
+  expect(errors).toEqual([])
 })

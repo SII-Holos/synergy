@@ -1,12 +1,52 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { randomUUID } from "node:crypto"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
 import { OwnedProcess } from "../../src/process/owned-process"
+import { OwnedProtocol } from "../../src/process/owned-protocol"
+import type { Socket } from "node:net"
 
 const nativeTest = test.skipIf(process.platform !== "linux")
+
+nativeTest(
+  "binding failure waits for worker cancellation readiness after stream greetings",
+  async () => {
+    await using directory = await tmpdir()
+    const child = Bun.spawn(
+      [process.execPath, path.join(import.meta.dir, "fixtures/owned-startup-binding.ts"), directory.path],
+      { cwd: directory.path, env: process.env, stdout: "pipe", stderr: "pipe" },
+    )
+    const [code, output, error] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    expect(code, error).toBe(0)
+    expect(JSON.parse(output)).toEqual({ error: "binding unavailable", activated: false, claims: 0 })
+  },
+  10000,
+)
+
+nativeTest(
+  "a Linux supervisor startup exit retains its cause and releases an unactivated claim",
+  async () => {
+    await using directory = await tmpdir()
+    const child = Bun.spawn(
+      [process.execPath, path.join(import.meta.dir, "fixtures/owned-startup-exit.ts"), directory.path],
+      { cwd: directory.path, env: process.env, stdout: "pipe", stderr: "pipe" },
+    )
+    const [code, output, error] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    expect(code, error).toBe(0)
+    expect(JSON.parse(output)).toEqual({ error: "supervisor-init-failed", code: 27, activated: false, claims: 0 })
+  },
+  10000,
+)
 
 async function errnoFixture(mode: string, jit = "0") {
   await using directory = await tmpdir()
@@ -70,15 +110,21 @@ nativeTest(
       kind: "process",
       roots: [directory.path],
     })
-    const script = `await Bun.write(${JSON.stringify(marker)},String(process.pid)); setInterval(() => {},1000)`
+    const script = `import {rename} from 'node:fs/promises'; const marker=${JSON.stringify(marker)}; await Bun.write(marker+'.tmp',String(process.pid)); await rename(marker+'.tmp',marker); setInterval(() => {},1000)`
     const root = `import {spawn} from 'node:child_process'; const c=spawn(process.execPath,['-e',${JSON.stringify(script)}],{env:{},stdio:'ignore',detached:true}); c.unref()`
+    let control: Socket | undefined
+    const messages = OwnedProtocol.messages
+    const protocol = spyOn(OwnedProtocol, "messages").mockImplementation((socket, receive, failed) => {
+      control = socket
+      return messages(socket, receive, failed)
+    })
     const owned = await OwnedProcess.prepare({
       command: process.execPath,
       args: ["-e", root],
       cwd: directory.path,
       env: {},
       lease,
-    })
+    }).finally(() => protocol.mockRestore())
     owned.child.stdout.resume()
     owned.child.stderr.resume()
     let descendant: number | undefined
@@ -90,9 +136,21 @@ nativeTest(
         if (Date.now() >= until) throw new Error("Descendant did not start")
         await Bun.sleep(10)
       }
-      descendant = Number(await Bun.file(marker).text())
+      const pid = Number(await Bun.file(marker).text())
+      expect(Number.isSafeInteger(pid)).toBe(true)
+      expect(pid).toBeGreaterThan(0)
+      descendant = pid
       process.kill(claim.pid, "SIGKILL")
-      await expect(owned.completion).rejects.toThrow("ownership remains uncertain")
+      const transport = Object.assign(new Error("control connection reset"), { code: "ECONNRESET" })
+      control!.emit("error", transport)
+      const failure = await owned.completion.then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      expect(failure).toMatchObject({
+        message: expect.stringContaining("ownership remains uncertain"),
+        cause: transport,
+      })
       await lease.release()
       expect(await coordinator.inspect()).toHaveLength(1)
       const compete = () =>

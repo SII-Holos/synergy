@@ -73,6 +73,7 @@ export const FileSearchTool = Tool.define(
               : listing,
           metadata: {
             query: params.query,
+            contentError: undefined as string | undefined,
             pathCount: items.length,
             contentCount: 0,
             symbolCount: 0,
@@ -98,6 +99,13 @@ export const FileSearchTool = Tool.define(
       }
 
       const [contentSettled, symbolSettled] = await Promise.allSettled([contentSearch(), symbolSearch()])
+      signal?.throwIfAborted()
+      const contentError =
+        contentSettled.status === "rejected"
+          ? contentSettled.reason instanceof Error
+            ? contentSettled.reason.message
+            : "Content search failed"
+          : undefined
 
       const contentItems =
         contentSettled.status === "fulfilled"
@@ -145,7 +153,9 @@ export const FileSearchTool = Tool.define(
 
       const output = merged.length
         ? merged.join("\n")
-        : `No results found for "${query}".
+        : contentError
+          ? `Path search found no results. Content search could not finish: ${contentError}`
+          : `No results found for "${query}".
 
 Tips:
 - Check for typos and try again
@@ -153,6 +163,7 @@ Tips:
 - For content searches, try fewer words
 - New files may still be indexing — try searching again`
       const guidance = [
+        contentError && merged.length ? `[Content search could not finish: ${contentError}]` : "",
         resultLimited ? "[Results omitted by the result limit. Increase limit or narrow the query or scope.]" : "",
         budgetLimited ? "[Results omitted by the shared budget. Narrow the query or scope for more evidence.]" : "",
       ]
@@ -165,6 +176,7 @@ Tips:
         metadata: {
           query: params.query,
           pathCount: pathItems.length,
+          contentError,
           contentCount: contentItems.length,
           symbolCount: symbolItems.length,
           count: merged.length,

@@ -66,6 +66,8 @@ See the main repository README for the full worktree workflow, setup file format
 
 ## Documentation
 
+Local architecture acceptance uses `bun run acceptance --help` from this package. `plan` requires explicit scenario IDs and an external private evidence directory; `run` uses frozen settings, `resume` leaves completed or interrupted attempts untouched unless a retry is explicitly named with a reason, and `report` independently checks recorded evidence. Live scenarios make real provider requests. See the [testing workflow](../../.synergy/skill/testing-guide/SKILL.md#local-joint-acceptance).
+
 For full setup instructions, configuration, development workflow, and the complete package map, see the [main repository README](https://github.com/SII-Holos/synergy).
 
 ## License

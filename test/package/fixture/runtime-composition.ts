@@ -9,7 +9,7 @@ await assertInstalledPackageBoundaries()
 const mode = process.argv[2]!
 const prefix = "@ericsanchezok/synergy-"
 const full = mode === "full"
-const enabled = (domain: string) => full || mode === domain
+const enabled = (domain: string) => (domain === "browser" ? mode === "browser" : full || mode === domain)
 const { createLocalHost } = await import("@ericsanchezok/synergy-local-runtime")
 const { openAgentRuntime } = await import("@ericsanchezok/synergy-agent-runtime")
 const host = createLocalHost()
@@ -188,23 +188,37 @@ try {
         }
         if (enabled("browser")) {
           const { BrowserRuntime } = await import("@ericsanchezok/synergy-browser-runtime/runtime")
+          const { BrowserMigration } = await import("@ericsanchezok/synergy-browser-runtime/migration")
           const { browserOwnerKey } = await import("@ericsanchezok/synergy-browser-core")
           const { Storage } = await import("@ericsanchezok/synergy-harness/storage/storage")
           const owner = { mode: "session" as const, scopeID: scope.id, sessionID: session.id, directory }
-          const stateKey = ["browser", "sessions-v4", createHash("sha256").update(browserOwnerKey(owner)).digest("hex")]
-          await Storage.write(stateKey, {
+          const digest = createHash("sha256").update(browserOwnerKey(owner)).digest("hex")
+          await Storage.write(["browser", "sessions-v4", digest], {
             version: 4,
             status: "suspended",
             page: { id: "page-installed", url: "https://example.com/research", title: "Installed Browser" },
             timestamp: Date.now(),
           })
+          assert.equal((await BrowserMigration.run(owner)).changed, true)
           const browser = await BrowserRuntime.getOrCreateSession(owner)
           assert.equal(browser.status, "suspended")
-          assert.equal(browser.page, null)
+          assert.equal(browser.pages.length, 1)
+          const page = browser.pages[0]!
+          assert.equal(page.id, "page-installed")
+          assert.equal(page.title, "Installed Browser")
+          assert.ok(page.profileId)
+          assert.equal(browser.getPage(page.id), undefined)
           assert.equal(BrowserRuntime.resourceStats().ownerCount, 1)
           assert.equal(BrowserRuntime.resourceStats().processCount, 0)
           await browser.save()
-          assert.equal((await Storage.read<{ page?: { title: string } }>(stateKey)).page?.title, "Installed Browser")
+          const stored = await Storage.read<{ version: number; pages: typeof browser.pages }>([
+            "browser",
+            "sessions-v5",
+            digest,
+          ])
+          assert.equal(stored.version, 5)
+          assert.deepEqual(stored.pages, browser.pages)
+          assert.equal((await BrowserMigration.run(owner)).changed, false)
         }
         if (enabled("library")) {
           const { LibraryDB } = await import("@ericsanchezok/synergy-library")

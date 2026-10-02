@@ -30,7 +30,7 @@ export function batchArgs(files: string[], shard: number, shardCount: number, re
   if (!Number.isInteger(shard) || shard < 1 || shard > shardCount) {
     throw new Error(`Shard must be between 1 and ${shardCount}.`)
   }
-  const args = ["test", "--timeout", "30000", "--no-orphans", ...files]
+  const args = ["test", "--timeout", "30000", ...files]
   if (!reporterDirectory) return args
   return [
     ...args,

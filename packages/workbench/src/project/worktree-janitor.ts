@@ -3,6 +3,7 @@ import type { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { readWorktreeConfig } from "@ericsanchezok/synergy-local-runtime/config-schema"
+import { ProjectWorktrees } from "./worktrees"
 import { Worktree } from "@ericsanchezok/synergy-local-runtime/workspace/worktree"
 
 const log = Log.create({ service: "worktree-janitor" })
@@ -35,7 +36,7 @@ export async function startWorktreeJanitor(scope: Scope.Project) {
   // The cap owner asks for a sweep after each creation; routing that request back
   // here keeps one implementation of the timing, config, and mutual exclusion.
   Worktree.setSweepRequester(requestScopeSweep)
-  if (scope.local?.vcs !== "git" || instanceState.schedules.has(scope.id)) return
+  if (!scope.local || instanceState.schedules.has(scope.id)) return
   const config = await readWorktreeConfig().catch(() => undefined)
   if (config?.janitor === false) {
     log.info("worktree janitor disabled by config", { scopeID: scope.id })
@@ -80,7 +81,7 @@ export function requestScopeSweep(scope: Scope.Project) {
   // installed process-wide by the first scope that starts one, so without this
   // guard a creation in any other scope would run a background sweep it never
   // opted into — cancelling registrations that scope is still using.
-  if (scope.local?.vcs !== "git" || !instanceState.schedules.has(scope.id)) return
+  if (!scope.local || !instanceState.schedules.has(scope.id)) return
   if (instanceState.sweeping.has(scope.id)) {
     instanceState.rerunRequested.add(scope.id)
     return
@@ -112,7 +113,28 @@ async function runSweep(scope: Scope.Project) {
     // so a read failure falls back to the cap default rather than skipping.
     const config = await readWorktreeConfig().catch(() => undefined)
     if (config?.janitor === false || !instanceState.schedules.has(scope.id)) return
-    const report = await ScopeContext.provide({ scope, fn: () => Worktree.sweep({ maxManaged: config?.maxManaged }) })
+    const report = await ScopeContext.provide({
+      scope,
+      workspace: null,
+      fn: async () => {
+        const { ids } = await ProjectWorktrees.sources(scope.id)
+        const results = await Promise.allSettled(
+          ids.map((id) => Worktree.withSource(id, () => Worktree.sweep({ maxManaged: config?.maxManaged }))),
+        )
+        const reports = results.flatMap((result, index) => {
+          if (result.status === "fulfilled") return [result.value]
+          log.warn("Worktree source sweep failed", { scopeID: scope.id, workspaceID: ids[index], error: result.reason })
+          return []
+        })
+        return {
+          scanned: reports.reduce((total, item) => total + item.scanned, 0),
+          maxManaged: config?.maxManaged,
+          removed: reports.flatMap((item) => item.removed),
+          reconciled: reports.flatMap((item) => item.reconciled),
+          skipped: reports.flatMap((item) => item.skipped),
+        }
+      },
+    })
     // Reasons are reported rather than swallowed: a cap that cannot converge is
     // the signal that worktrees are blocked on unpushed work, not a silent
     // pile-up.

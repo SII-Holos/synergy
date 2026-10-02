@@ -1,7 +1,6 @@
 export const SemanticIconToken = {
   // Product entities
   "holos.main": "satellite",
-  "synergyLink.main": "plug-zap",
   "mcp.main": "cable",
   "lsp.main": "braces",
   "cortex.main": "workflow",
@@ -28,6 +27,8 @@ export const SemanticIconToken = {
   "plugins.permission.shell": "crosshair",
   "plugins.permission.hostUi": "building-2",
   "plugins.permission.diff": "diff",
+  "computer.main": "laptop",
+  "project.main": "briefcase-business",
   "workspace.main": "folder",
   "workspace.worktree": "git-fork",
   "workspace.enterWorktree": "worktree-enter",
@@ -49,11 +50,14 @@ export const SemanticIconToken = {
   // Session runtime
   "session.default": "message-square",
   "session.new": "square-pen",
+  "task.develop": "code-xml",
+  "task.research": "telescope",
+  "task.write": "pen",
   "session.running": "loader-circle",
   "session.idle": "circle",
   "session.waiting": "hourglass",
   "session.retry": "rotate-ccw",
-  "session.pause": "circle-pause",
+  "session.pause": "pause",
   "session.continue": "play",
   "session.child": "arrow-down-from-line",
   "session.background": "calendar-days",

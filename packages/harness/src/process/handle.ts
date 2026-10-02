@@ -8,6 +8,7 @@ export interface ProcessHandle extends EventEmitter {
   readonly stderr: Readable | null
   readonly exitCode: number | null
   readonly signalCode: NodeJS.Signals | null
+  readonly completion?: Promise<void>
   alive?(): boolean | undefined
   stop?(): Promise<void>
   kill(signal?: NodeJS.Signals | number): boolean

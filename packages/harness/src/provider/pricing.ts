@@ -2,8 +2,10 @@ import { JsonValue } from "../util/json-value"
 import z from "zod"
 import { Decimal } from "decimal.js"
 import type { RolloutUsage } from "../session/rollout/usage"
+import { ProviderBilling } from "./billing"
 
 export namespace ProviderPricing {
+  export const BillingMode = ProviderBilling.Mode
   const Rate = z.number().finite().nonnegative().nullable()
   const Rates = z.object({ input: Rate, output: Rate, cacheRead: Rate, cacheWrite: Rate, cacheWrite1h: Rate }).strict()
   const UnitRate = z.object({ price: z.number().finite().nonnegative(), per: z.number().finite().positive() }).strict()
@@ -66,7 +68,7 @@ export namespace ProviderPricing {
     .object({
       version: z.literal(1),
       currency: z.literal("USD").nullable(),
-      basis: z.enum(["api_price_estimate", "subscription_api_equivalent"]),
+      basis: z.enum(["api_price_estimate", "subscription_api_equivalent", "unclassified_api_equivalent", "local"]),
       total: z.number().finite().nonnegative().nullable(),
       known: z.number().finite().nonnegative(),
       missing: z.array(z.string()),
@@ -126,12 +128,23 @@ export namespace ProviderPricing {
     }
   }
 
-  export function estimate(pricing: Info | null, usage: RolloutUsage.Info | undefined, providerID: string): Estimate {
+  export function estimate(
+    pricing: Info | null,
+    usage: RolloutUsage.Info | undefined,
+    mode: ProviderBilling.Mode,
+  ): Estimate {
+    if (mode === "local") return { version: 1, currency: null, basis: "local", total: 0, known: 0, missing: [] }
+    const basis =
+      mode === "subscription"
+        ? "subscription_api_equivalent"
+        : mode === "api"
+          ? "api_price_estimate"
+          : "unclassified_api_equivalent"
     if (usage?.serviceTier && !["default", "standard", "auto"].includes(usage.serviceTier))
       return {
         version: 1,
         currency: pricing?.currency ?? null,
-        basis: providerID === "openai-codex" ? "subscription_api_equivalent" : "api_price_estimate",
+        basis,
         total: null,
         known: 0,
         missing: [`service_tier.${usage.serviceTier}.price`],
@@ -214,7 +227,7 @@ export namespace ProviderPricing {
     return {
       version: 1,
       currency: pricing?.currency ?? null,
-      basis: providerID === "openai-codex" ? "subscription_api_equivalent" : "api_price_estimate",
+      basis,
       total: missing.length ? null : known.toNumber(),
       known: known.toNumber(),
       missing,

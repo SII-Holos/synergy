@@ -102,7 +102,7 @@ test(
               await Bun.sleep(10)
             }
             await expect(
-              WorkspaceAccess.write([directory.path], async () => {}, AbortSignal.timeout(100)),
+              WorkspaceAccess.exclusive([directory.path], async () => {}, AbortSignal.timeout(100)),
             ).rejects.toMatchObject({ name: "TimeoutError" })
             expect(await Bun.file(done).exists()).toBe(false)
             await Bun.write(stop, "stop")
@@ -130,7 +130,7 @@ test(
         async fn() {
           const session = await Session.create()
           const marker = path.join(directory.path, "must-not-start")
-          const blocker = await WorkspaceAccess.process(null)
+          const blocker = await WorkspaceAccess.hostClaim({ id: crypto.randomUUID(), kind: "process", roots: null })
           const running = shell({
             sessionID: session.id,
             agent: "synergy",
@@ -211,3 +211,31 @@ test.skipIf(process.platform === "win32")("user shell records full output before
 )
 
 afterRuntimeTests(() => runtime.close())
+
+test.skipIf(process.platform === "win32")(
+  "user shell uses its Environment without requiring files",
+  () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        workspace: null,
+        async fn() {
+          const session = await Session.create({ workspace: null })
+          const result = await shell({
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test", modelID: "test" },
+            command: "printf environment-shell",
+          })
+          expect(
+            result.parts.some(
+              (part) =>
+                part.type === "tool" && part.state.status === "completed" && part.state.output === "environment-shell",
+            ),
+          ).toBe(true)
+        },
+      })
+    }),
+  20_000,
+)

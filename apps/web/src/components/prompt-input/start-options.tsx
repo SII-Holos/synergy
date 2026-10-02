@@ -28,7 +28,7 @@ function PromptStartModeItem(props: { option: PromptStartOption }) {
   const row = (
     <div
       title={props.option.tooltip}
-      classList={{ "flex items-center justify-between gap-3 px-2 py-1.5": true, "opacity-45": disabled() }}
+      classList={{ "flex items-center justify-between gap-3": true, "opacity-45": disabled() }}
     >
       <div class="flex min-w-0 items-center gap-2">
         <Icon name={props.option.icon} size="small" class="shrink-0 text-icon-base" />
@@ -43,7 +43,11 @@ function PromptStartModeItem(props: { option: PromptStartOption }) {
   )
 }
 
-export function PromptStartModeSelector(props: { groups: PromptStartOptionGroup[] }) {
+export function PromptStartModeSelector(props: {
+  groups: PromptStartOptionGroup[]
+  label?: string
+  disabled?: boolean
+}) {
   const { i18n } = useLocale()
   const options = () => props.groups.flatMap((group) => group.options)
   const selectedOption = () => props.groups.flatMap((group) => group.options).find((option) => option.selected)
@@ -52,18 +56,22 @@ export function PromptStartModeSelector(props: { groups: PromptStartOptionGroup[
     <Show when={props.groups.length > 0}>
       <ToolbarSelectorPopover
         triggerAs={(triggerProps) => (
-          <Tooltip placement="top" value={i18n._(PI.startMode)}>
+          <Tooltip
+            placement="top"
+            value={i18n._(PI.startMode)}
+            open={String(triggerProps["aria-expanded"]) === "true" ? false : undefined}
+          >
             <button
               {...triggerProps}
               type="button"
               aria-label={i18n._(PI.startMode)}
+              disabled={props.disabled}
               class="prompt-input-toolbar-button prompt-input-compact-control flex items-center gap-1.5 transition-colors"
             >
               <Icon name={selectedOption()?.icon ?? "circle"} size="small" class="shrink-0 text-icon-base" />
               <span class="prompt-input-compact-label text-12-medium whitespace-nowrap text-text-base">
-                {selectedOption()?.label ?? i18n._(PI.startDefault)}
+                {props.label ?? selectedOption()?.label ?? i18n._(PI.startDefault)}
               </span>
-              <Icon name="chevron-down" size="small" class="prompt-input-compact-chevron opacity-70 shrink-0" />
             </button>
           </Tooltip>
         )}

@@ -7,14 +7,13 @@ import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { z } from "zod"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
-import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
-import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
 import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
-import { NativePty } from "./native-pty"
-import { OwnedProcess } from "./owned-process"
+import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
+import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { once } from "node:events"
 import { ObservabilityMetrics } from "@ericsanchezok/synergy-harness/observability/metrics"
 import { ObservabilityRedaction } from "@ericsanchezok/synergy-harness/observability/redaction"
@@ -31,32 +30,43 @@ export namespace Pty {
   const BUFFER_LIMIT = 1024 * 1024 * 2
   const BUFFER_CHUNK = 64 * 1024
 
-  async function spawn(input: NativePty.Input, signal: AbortSignal) {
-    signal.throwIfAborted()
-    const library = NativePty.libraryPath()
-    const lease = await WorkspaceAccess.process(null, signal)
-    let owned: Awaited<ReturnType<typeof OwnedProcess.prepare>>
-    try {
-      owned = await OwnedProcess.prepare({
-        ...input,
-        lease,
-        signal,
-        pty: { cols: input.cols ?? 80, rows: input.rows ?? 24, library },
-      })
-    } catch (error) {
-      await lease.release()
-      throw error
-    }
+  async function spawn(
+    input: {
+      id: string
+      scopeID: string
+      command: string
+      args: string[]
+      cwd: string
+      env: Record<string, string>
+      resources: EnvironmentResources.Resolved
+    },
+    signal: AbortSignal,
+  ) {
+    const owned = await EnvironmentProcess.prepare({
+      id: input.id,
+      scopeID: input.scopeID,
+      resources: input.resources,
+      signal,
+      command: {
+        command: input.command,
+        args: input.args,
+        cwd: input.cwd,
+        env: input.env,
+        useRoots: [],
+        pty: { cols: 80, rows: 24 },
+      },
+    })
     owned.child.stderr.resume()
     try {
       await owned.activate()
       signal.throwIfAborted()
     } catch (error) {
-      await owned.stop()
+      await owned.stop().catch(() => {})
       throw error
     }
+    owned.detachSignal()
     return {
-      pid: owned.child.pid!,
+      pid: owned.child.pid,
       input: owned.child.stdin,
       output: owned.child.stdout,
       completed: owned.completion.then(() => owned.child.exitCode ?? 1),
@@ -73,10 +83,11 @@ export namespace Pty {
       command: z.string(),
       args: z.array(z.string()),
       cwd: z.string(),
-      workspaceID: z.string().startsWith("wsp_"),
-      workspaceGeneration: z.number().int().positive(),
+      environmentID: z.string(),
+      workspaceID: z.string().startsWith("wsp_").optional(),
+      workspaceGeneration: z.number().int().positive().optional(),
       status: z.enum(["running", "exited"]),
-      pid: z.number(),
+      pid: z.number().optional(),
     })
     .meta({ ref: "Pty" })
 
@@ -158,54 +169,61 @@ export namespace Pty {
     const session = await Session.get(input.sessionID)
     const scope = ScopeContext.current.scope
     if (session.scope.id !== scope.id) throw new Storage.NotFoundError({ message: "Session not found in this Scope" })
-    await Session.assertWorkspaceAvailable(session.id)
     return ScopeContext.provide({
       scope,
       workspace: session.workspace,
       fn: () =>
-        WorkspaceAccess.task({ sessionID: session.id, workspace: session.workspace, signal }, () =>
-          createInWorkspace(input, signal),
+        WorkspaceAccess.task({ sessionID: session.id, workspace: session.workspace, signal, lazy: true }, () =>
+          createInWorkspace(input, signal, {
+            environmentID: session.environmentID ?? null,
+            workspaceID: session.workspaceID,
+          }),
         ),
     })
   }
 
-  async function createInWorkspace(input: CreateInput, signal?: AbortSignal): Promise<Info> {
+  async function createInWorkspace(
+    input: CreateInput,
+    signal?: AbortSignal,
+    selection?: Pick<EnvironmentResources.Selection, "workspaceID" | "environmentID">,
+  ): Promise<Info> {
     const workspace = ScopeContext.current.workspace
-    if (!workspace?.id || workspace.generation === undefined)
-      throw new Scope.WorkspaceRequiredError({
-        message: "A resolved Workspace is required for a terminal",
-        scopeID: ScopeContext.current.scope.id,
-      })
-    const workspaceDirectory = workspace.path
+    const scopeID = ScopeContext.current.scope.id
     const id = Identifier.create("pty", false)
-    const command = input.command || Shell.preferred()
-    const args = [...(input.args ?? [])]
-    if (command.endsWith("sh")) {
-      args.push("-l")
-    }
-
-    const cwd = input.cwd || workspaceDirectory
-    const env = Object.fromEntries(
-      Object.entries({ ...RuntimeContext.current().host.env, ...input.env, TERM: "xterm-256color" }).filter(
-        (entry): entry is [string, string] => entry[1] !== undefined,
-      ),
-    )
-    log.info("creating session", { id, cmd: command, args, cwd })
-
     const scopeOwner = state()
-    const workspaceOwner = owners()
-    if (scopeOwner.closing || workspaceOwner.closing) throw new Error("Terminal owner is closing")
+    const workspaceOwner = workspace
+      ? owners()
+      : selection?.workspaceID
+        ? await WorkspaceCatalog.get(selection.workspaceID, scopeID).then((info) =>
+            WorkspaceState.provide({ id: info.id, generation: info.binding.generation, scopeID }, owners),
+          )
+        : undefined
+    if (scopeOwner.closing || workspaceOwner?.closing) throw new Error("Terminal owner is closing")
     const scopeSessions = scopeOwner.sessions
-    const workspaceSessions = workspaceOwner.sessions
+    const workspaceSessions = workspaceOwner?.sessions
     const abort = new AbortController()
     const finished = Promise.withResolvers<void>()
     const launch = { abort, done: finished.promise }
     scopeOwner.pending.add(launch)
-    workspaceOwner.pending.add(launch)
+    workspaceOwner?.pending.add(launch)
     const cancelled = signal ? AbortSignal.any([signal, abort.signal]) : abort.signal
     let started: Awaited<ReturnType<typeof spawn>> | undefined
     try {
-      const ptyProcess = await spawn({ command, args, cwd, env }, cancelled)
+      await using resources = await EnvironmentResources.select({
+        scopeID,
+        ownerID: input.sessionID ?? id,
+        workspaceID: selection ? selection.workspaceID : workspace?.id,
+        environmentID: selection?.environmentID,
+        needs: { execution: "pty" },
+        signal: cancelled,
+      })
+      const command = input.command || resources.runtime!.shell
+      const args = [...(input.args ?? [])]
+      if (command.endsWith("sh")) args.push("-l")
+      const cwd = input.cwd || resources.directory!
+      const env = { ...resources.runtime!.env, ...input.env, TERM: "xterm-256color" }
+      log.info("creating session", { id, cmd: command, args, cwd })
+      const ptyProcess = await spawn({ id, scopeID, command, args, cwd, env, resources }, cancelled)
       started = ptyProcess
       cancelled.throwIfAborted()
 
@@ -217,8 +235,9 @@ export namespace Pty {
         command,
         args,
         cwd,
-        workspaceID: workspace.id,
-        workspaceGeneration: workspace.generation,
+        environmentID: resources.environment!.id,
+        workspaceID: resources.workspace?.id,
+        workspaceGeneration: resources.workspace?.binding.generation,
         status: "running",
         pid: ptyProcess.pid,
       } as const
@@ -243,7 +262,7 @@ export namespace Pty {
         },
       })
       scopeSessions.set(id, session)
-      workspaceSessions.set(id, session)
+      workspaceSessions?.set(id, session)
       ptyProcess.output.setEncoding("utf8")
       ptyProcess.output.on(
         "data",
@@ -341,7 +360,7 @@ export namespace Pty {
           for (const ws of session.subscribers) ws.close()
           session.subscribers.clear()
           scopeSessions.delete(id)
-          workspaceSessions.delete(id)
+          workspaceSessions?.delete(id)
         })
       void session.ended.catch((error) => log.error("PTY completion failed", { id, error }))
       Bus.publish(Event.Created, { info })
@@ -349,11 +368,11 @@ export namespace Pty {
     } catch (error) {
       await started?.stop()
       scopeSessions.delete(id)
-      workspaceSessions.delete(id)
+      workspaceSessions?.delete(id)
       throw error
     } finally {
       scopeOwner.pending.delete(launch)
-      workspaceOwner.pending.delete(launch)
+      workspaceOwner?.pending.delete(launch)
       finished.resolve()
     }
   }
@@ -365,7 +384,7 @@ export namespace Pty {
       session.info.title = input.title
     }
     if (input.size) {
-      session.process.resize(input.size.cols, input.size.rows)
+      await session.process.resize(input.size.cols, input.size.rows)
     }
     Bus.publish(Event.Updated, { info: session.info })
     return session.info
@@ -391,7 +410,7 @@ export namespace Pty {
   export function resize(id: string, cols: number, rows: number) {
     const session = state().sessions.get(id)
     if (session && session.info.status === "running") {
-      session.process.resize(cols, rows)
+      void session.process.resize(cols, rows).catch((error) => log.warn("PTY resize failed", { id, error }))
     }
   }
 

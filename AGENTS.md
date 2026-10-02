@@ -85,14 +85,14 @@ Read the owning architecture document before changing these areas:
 - capability classification, control profiles, permissions, and sandbox: `execution-boundaries.md`
 - Cortex child sessions and task outputs: `cortex.md`
 - Plan, Blueprints, BlueprintLoop, Light Loop, and Lattice: `workflows.md`
-- Browser native/WebRTC presentation and one-session/one-page ownership: `browser-runtime.md`
+- Browser Desktop-native presentation, page collections and identity ownership: `browser-runtime.md`
 - Channels, managed Projects, provider lifecycle, and Native Clarus tasks: `channels.md`
 
 Do not create compatibility paths that violate those contracts. In particular:
 
 - `guarded` is the only standard interactive profile; `autonomous` never asks; `full_access` silently allows permission-system capabilities but cannot suppress ordinary runtime failures.
 - Worktree isolation permits ordinary external reads while protecting sensitive paths and blocking unapproved external writes/execution.
-- Browser keeps desktop-native `WebContentsView` and Web WebRTC/data-channel presentation as first-class modes. Do not add iframe, screenshot-stream, pseudo-tab, or multi-page session fallbacks.
+- Browser is Desktop-local and uses real `WebContentsView` pages with immutable identities and explicit Agent page targets. Keep human selection independent; do not add WebRTC, headless, iframe or screenshot-stream fallbacks.
 
 ## Tool, Agent, and Plugin Changes
 
@@ -120,7 +120,7 @@ bun run test:coverage
 
 Frontend suites run via `bun run --cwd apps/web test` and `bun run --cwd packages/ui test`, both part of the Turbo test graph. Browser capability or App bootstrap changes also run the browser crypto contract and the production-build private HTTP browser smoke in `apps/web/AGENTS.md`.
 
-Coverage has a floor: `bun run coverage:check` enforces per-package thresholds via `script/coverage-exempt.json` (Bun 1.3.14 has no ignore comments; exclusions only through that manifest; every entry carries a reason; broad ones rejected). Run the narrowest relevant check locally and let CI own the full matrix — never default to the full suite for a commit or push. `bun run quality:quick` runs the local static cluster; pre-commit hooks run staged fast checks; pre-push adds `doc:check`/`decision:check`.
+Coverage has a floor: `bun run coverage:check` enforces per-package thresholds via `script/coverage-exempt.json` (exclusions only through that manifest; every entry carries a reason; broad ones rejected). Run the narrowest relevant check locally and let CI own the full matrix — never default to the full suite for a commit or push. `bun run quality:quick` runs the local static cluster; pre-commit hooks run staged fast checks; pre-push adds `doc:check`/`decision:check`.
 
 Never raw `bun test --coverage`/`--parallel` on `packages/harness` — workers drop preload env, writing into the real home. `TestHomeGuardError` blocks without `SYNERGY_TEST_HOME` unless `SYNERGY_ALLOW_REAL_HOME=1`.
 
@@ -144,4 +144,4 @@ Review at least `README.md`, relevant setup/help text, and the owning Skill when
 
 ## Repository Skills
 
-`development-standards` (route changes, capture rules), `architecture` (trace ownership), `develop-frontend`/`integrate-llm` (Web UI, model-backed), `change-server-api`/`change-persistence` (API, durable state), `change-execution-boundaries` (permissions, sandboxing), `change-browser-runtime` (Browser/Desktop presentation), `change-channel-runtime` (Channels, providers, Clarus), `change-plugin-runtime` (Plugin API), `develop-synergy` (isolated instance), `testing-guide` (fixtures), `develop-benchmark` (evaluation infrastructure), `git-guide` (worktrees, PRs), `add-agent`/`add-cli-command`/`add-tool` (workflows), `find-logs`/`inspect-sessions` (diagnostics), `report-bug` (issue drafting), `find-simplifications` (surface audits), `release-log-workflow` (notes).
+`development-standards` (route changes, capture rules), `architecture` (trace ownership), `develop-frontend`/`integrate-llm` (Web UI, model-backed), `change-server-api`/`change-persistence` (API, durable state), `change-execution-boundaries` (permissions, sandboxing), `change-browser-runtime` (Browser/Desktop presentation), `change-computer-runtime` (native Computer), `change-channel-runtime` (Channels, providers, Clarus), `change-plugin-runtime` (Plugin API), `develop-synergy` (isolated instance), `testing-guide` (fixtures), `develop-benchmark` (evaluation infrastructure), `git-guide` (worktrees, PRs), `add-agent`/`add-cli-command`/`add-tool` (workflows), `find-logs`/`inspect-sessions` (diagnostics), `report-bug` (issue drafting), `find-simplifications` (surface audits), `release-log-workflow` (notes).

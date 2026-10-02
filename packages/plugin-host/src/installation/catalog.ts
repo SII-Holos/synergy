@@ -5,14 +5,12 @@ export type PresetID = (typeof PRESET_IDS)[number]
 
 export const FULL_COMPONENTS = [
   "acp",
-  "browser-runtime",
   "code-tools",
   "computer-runtime",
   "connections",
   "external-agents",
   "formatter",
   "library",
-  "link-client",
   "lsp",
   "mcp",
   "media",
@@ -30,7 +28,7 @@ export function presetPackage(id: PresetID, version: string) {
     core: [],
     full: FULL_COMPONENTS.map(packageName),
     web: [packageName("full"), packageName("web-app")],
-    desktop: [packageName("web"), packageName("desktop-app")],
+    desktop: [packageName("web"), packageName("desktop-app"), packageName("browser-runtime")],
   }
   const packages = Object.fromEntries(selections[id].map((name) => [name, version]))
   return {
@@ -51,7 +49,7 @@ export function presetPackage(id: PresetID, version: string) {
 }
 
 export function resolveBuiltinPackage(spec: string, version: string) {
-  const id = spec === "browser" ? "browser-runtime" : spec === "computer" ? "computer-runtime" : spec
+  const id = spec === "browser" ? "desktop" : spec === "computer" ? "computer-runtime" : spec
   return ([...PRESET_IDS, ...FULL_COMPONENTS] as readonly string[]).includes(id)
     ? `@ericsanchezok/synergy-${id}@${version}`
     : spec

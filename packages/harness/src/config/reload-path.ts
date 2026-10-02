@@ -1,3 +1,4 @@
+import { EnvironmentResources } from "../environment/resources"
 import path from "path"
 import { ConfigDomain } from "./domain"
 import { Global } from "../global"
@@ -119,6 +120,7 @@ export namespace RuntimeReloadPath {
   }
 
   export function detectScopeForFile(filePath: string): Scope | undefined {
+    if (!EnvironmentResources.localFiles()) return undefined
     const normalized = absolutePath(filePath)
     const comparison = comparisonPath(normalized)
 
@@ -148,6 +150,7 @@ export namespace RuntimeReloadPath {
   }
 
   export function detectTargetsForFile(filePath: string): Target[] {
+    if (!EnvironmentResources.localFiles()) return []
     const normalized = absolutePath(filePath)
     const comparison = comparisonPath(normalized)
     const targets: Target[] = []
@@ -190,6 +193,7 @@ export namespace RuntimeReloadPath {
     return [...new Set(targets)]
   }
   export function builtinSourceEditWarning(filePath: string) {
+    if (!EnvironmentResources.localFiles()) return undefined
     const normalized = path.resolve(filePath)
     const builtinRoot = path.resolve(ScopeContext.current.directory, "packages")
     if (!isPathContained(builtinRoot, normalized)) return undefined

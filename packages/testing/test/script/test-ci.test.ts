@@ -9,7 +9,6 @@ describe("Synergy CI test runner", () => {
       "test",
       "--timeout",
       "30000",
-      "--no-orphans",
       "test/a.test.ts",
       "test/b.test.ts",
     ])
@@ -20,7 +19,6 @@ describe("Synergy CI test runner", () => {
       "test",
       "--timeout",
       "30000",
-      "--no-orphans",
       "test/a.test.ts",
       "--reporter=junit",
       `--reporter-outfile=${path.join("coverage/ci-tests", "synergy-test-shard-2-of-3.xml")}`,

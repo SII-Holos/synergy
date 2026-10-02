@@ -71,8 +71,8 @@ const rootRuleContracts: CssRuleContract[] = [
     declarations: [
       "z-index:50",
       "min-width:200px",
-      "max-width:320px",
-      "border-radius:var(--radius-xl)",
+      "max-width:min(320px,100vw - 24px)",
+      "border-radius:12px",
       "background-color:var(--workbench-popover-bg",
       "transform-origin:var(--kb-popover-content-transform-origin)",
     ],
@@ -394,7 +394,7 @@ async function expectPromptDockKeepsReadableWidth(css: string) {
         ${css}
       </style>
       <main data-frame style="display: flex; justify-content: center; width: 100%;">
-        <div data-prompt class="session-prompt-dock-content w-full" style="height: 80px;"></div>
+        <div data-prompt class="session-prompt-dock-content session-content-column" style="height: 80px;"></div>
       </main>
     `)
 
@@ -414,7 +414,7 @@ async function expectPromptDockKeepsReadableWidth(css: string) {
       })
 
     const desktop = await measure()
-    expect(desktop.promptWidth).toBe(864)
+    expect(desktop.promptWidth).toBe(800)
     expect(Math.abs(desktop.leftInset - desktop.rightInset)).toBeLessThanOrEqual(1)
 
     await page.setViewportSize({ width: 640, height: 240 })
@@ -629,18 +629,12 @@ async function expectAttachmentToolbarFitsNarrowPanel(css: string) {
 }
 
 type PromptDockLayoutTokens = {
-  bandClass: string
   clearanceClass: string
   floatLayerClass: string
 }
 
 async function readPromptDockLayoutTokens(): Promise<PromptDockLayoutTokens> {
   const sessionDir = new URL("../src/components/session/", import.meta.url)
-  const promptDock = await Bun.file(new URL("prompt-dock.tsx", sessionDir)).text()
-  const bandLine = promptDock.split("\n").find((line) => line.includes("pt-12") && line.includes("isNewSession()"))
-  const bandMatch = bandLine?.match(/"((?:md:)?pt-12)"/)
-  if (!bandMatch) throw new Error("prompt-dock.tsx must scope its top band class to !props.isNewSession()")
-
   const conversation = await Bun.file(new URL("conversation.tsx", sessionDir)).text()
   const clearanceLine = conversation
     .split("\n")
@@ -663,18 +657,18 @@ async function readPromptDockLayoutTokens(): Promise<PromptDockLayoutTokens> {
     throw new Error("prompt-dock-float-layer.tsx must flow in normal mode on mobile and overlay on desktop")
   }
 
-  return { bandClass: bandMatch[1]!, clearanceClass: clearanceMatch[1]!, floatLayerClass }
+  return { clearanceClass: clearanceMatch[1]!, floatLayerClass }
 }
 
-async function expectPromptDockBandAndMobileFloatFlow(css: string) {
-  const { bandClass, clearanceClass, floatLayerClass } = await readPromptDockLayoutTokens()
+async function expectPromptDockAndMobileFloatFlow(css: string) {
+  const { clearanceClass, floatLayerClass } = await readPromptDockLayoutTokens()
   const browserType = process.env.SYNERGY_APP_LAYOUT_BROWSER === "webkit" ? webkit : chromium
   const browser = await browserType.launch({ headless: true })
   try {
     const page = await browser.newPage({ viewport: { width: 1200, height: 400 } })
     await page.setContent(`
       <style>*, ::before, ::after { box-sizing: border-box; } ${css}</style>
-      <div data-dock class="${bandClass}" style="width: 100%; display: flex; flex-direction: column; background: #111;">
+      <div data-dock class="session-prompt-dock" style="width: 100%; display: flex; flex-direction: column; background: #111;">
         <div data-float class="${floatLayerClass}">
           <div data-busy style="height: 40px; width: 100%;"></div>
         </div>
@@ -700,13 +694,11 @@ async function expectPromptDockBandAndMobileFloatFlow(css: string) {
         }
       })
 
-    // Desktop (>= 48rem): the dock keeps its 48 px reserved band and the float
-    // layer overlays above the composer (bottom-full), so a busy island never
-    // changes the composer height.
+    // Floating desktop controls do not move the stable input anchor.
     const desktop = await measure()
-    expect(desktop.dockPaddingTop).toBe("48px")
+    expect(desktop.dockPaddingTop).toBe("0px")
     expect(desktop.floatPosition).toBe("absolute")
-    expect(desktop.composerOffset).toBe(48)
+    expect(desktop.composerOffset).toBe(0)
     expect(desktop.contentPaddingBottom).toBe("256px")
 
     // Mobile: the band collapses to zero, the float layer flows in normal
@@ -818,9 +810,9 @@ async function runAppBuild(outDir: string) {
 
 describe("app production build contract", () => {
   test("preserves core styles and keeps optional workbench resources off the initial route", async () => {
-    const outDir = await mkdtemp(path.join(os.tmpdir(), "synergy-app-dist-"))
+    const outDir = process.env.SYNERGY_WEB_BUILD_DIR ?? (await mkdtemp(path.join(os.tmpdir(), "synergy-app-dist-")))
     try {
-      await runAppBuild(outDir)
+      if (!process.env.SYNERGY_WEB_BUILD_DIR) await runAppBuild(outDir)
       const [css, index, assets, javascript, manifest] = await Promise.all([
         readBuiltCss(outDir),
         readBuiltIndex(outDir),
@@ -933,13 +925,13 @@ describe("app production build contract", () => {
       await expectSessionWorkbenchPaneTracksBottomSurface(css)
       await expectSessionInboxBadgePreservesIconCenter(css)
       await expectPromptDockKeepsReadableWidth(css)
-      await expectPromptDockBandAndMobileFloatFlow(css)
+      await expectPromptDockAndMobileFloatFlow(css)
       await expectStatusbarSubsessionContentFillsBody(css)
       await expectFileWorkbenchExplorerResizeMatchesMode(css)
       await expectAttachmentToolbarFitsNarrowPanel(attachmentWorkbenchCss)
       expect((await stat(path.join(outDir, "assets", markdownChunk!))).size).toBeLessThan(200_000)
     } finally {
-      await rm(outDir, { recursive: true, force: true })
+      if (!process.env.SYNERGY_WEB_BUILD_DIR) await rm(outDir, { recursive: true, force: true })
     }
   }, 120_000)
 })

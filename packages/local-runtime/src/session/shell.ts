@@ -1,4 +1,4 @@
-import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { StringDecoder } from "node:string_decoder"
 import { Experiment } from "@ericsanchezok/synergy-harness/config/experiment"
 import { RolloutContext } from "@ericsanchezok/synergy-harness/session/rollout/context"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
@@ -6,7 +6,7 @@ import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/le
 import { RolloutTool } from "@ericsanchezok/synergy-harness/session/rollout/tool"
 import { findRecordingError } from "@ericsanchezok/synergy-harness/session/rollout/error"
 import path from "path"
-import z from "zod"
+import { z } from "zod"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -14,12 +14,11 @@ import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { ulid } from "ulid"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
-import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
 import { lastModel } from "@ericsanchezok/synergy-harness/session/input"
 import { SessionUserMessageMaterialization } from "@ericsanchezok/synergy-harness/session/user-message-materialization"
 import { ChildProcessClose } from "@ericsanchezok/synergy-harness/process/child-process-close"
-import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
-import { OwnedProcess } from "../process/owned-process"
+import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
 
 function deriveShellAbortReason(reason: unknown): string {
   if (reason instanceof DOMException) {
@@ -51,8 +50,9 @@ export async function shell(input: ShellInput) {
 }
 
 async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease) {
-  const directory = ScopeContext.current.directory
   const abort = lease.signal
+  const session = await Session.get(input.sessionID)
+  const directory = session.workspace?.path ?? ""
 
   const agent = await Agent.get(input.agent)
   const model = input.model ?? (await Agent.getAvailableModel(agent)) ?? (await lastModel(input.sessionID))
@@ -130,7 +130,6 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
     },
   }
   await Session.updatePart(part)
-  const session = await Session.get(input.sessionID)
   const owner = RolloutLifecycle.owner(session)
   const configuration = await RolloutLifecycle.configuration(session, userMsg.id, undefined, model)
   const segment = await RolloutLifecycle.start(session, userMsg, [userPart])
@@ -150,10 +149,19 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
             args: { command: input.command },
           },
           async () => {
+            await using resources = await EnvironmentResources.resolve({
+              scopeID: session.scope.id,
+              environmentID: session.environmentID ?? null,
+              workspaceID: session.workspaceID,
+              needs: { execution: "exec" },
+              signal: abort,
+            })
+            const directory = resources.directory!
+            msg.path = { cwd: directory, root: directory }
             const evidence = await RolloutTool.openProcess(crypto.randomUUID())
-            const sh = Shell.preferred()
+            const sh = resources.runtime!.shell
             const shellName = (
-              process.platform === "win32" ? path.win32.basename(sh, ".exe") : path.basename(sh)
+              resources.runtime!.platform === "win32" ? path.win32.basename(sh, ".exe") : path.basename(sh)
             ).toLowerCase()
 
             const invocations: Record<string, { args: string[] }> = {
@@ -207,30 +215,29 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
             const matchingInvocation = invocations[shellName] ?? invocations[""]
             const args = matchingInvocation?.args
 
-            const processEnv = {
-              ...RuntimeContext.current().host.env,
-              TERM: "dumb",
-            }
-            let processLease: WorkspaceAccess.Lease | undefined
-            let owned: Awaited<ReturnType<typeof OwnedProcess.prepare>>
+            let owned: Awaited<ReturnType<typeof EnvironmentProcess.prepare>>
             try {
-              processLease = await WorkspaceAccess.process(null, abort)
-              owned = await OwnedProcess.prepare({
-                command: sh,
-                args: args ?? [],
-                cwd: directory,
-                env: processEnv,
-                lease: processLease,
+              owned = await EnvironmentProcess.prepare({
+                id: part.callID,
+                scopeID: session.scope.id,
+                resources,
                 signal: abort,
+                command: {
+                  command: sh,
+                  args: args ?? [],
+                  cwd: directory,
+                  env: { ...resources.runtime!.env, TERM: "dumb" },
+                  useRoots: [],
+                },
               })
             } catch (error) {
-              await processLease?.release()
               await evidence.finish({ interrupted: true, exitCode: null, signal: null })
               throw error
             }
             const proc = owned.child
 
             let output = ""
+            const decoders = { stdout: new StringDecoder("utf8"), stderr: new StringDecoder("utf8") }
 
             let pending = Promise.resolve()
             let recordingFailure: unknown
@@ -243,7 +250,7 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
                 .then(async () => {
                   if (recordingFailure) return
                   await evidence.append(channel, chunk)
-                  output = (output + chunk.toString()).slice(-32_000)
+                  output = (output + decoders[channel].write(chunk)).slice(-32_000)
                   if (part.state.status === "running") {
                     part.state.metadata = { ...part.state.metadata, output, description: "" }
                     await Session.updatePart(part)
@@ -299,6 +306,7 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
               completion = await closed
               await pending
               if (recordingFailure) throw recordingFailure
+              output = (output + decoders.stdout.end() + decoders.stderr.end()).slice(-32_000)
             } finally {
               try {
                 await pending
@@ -348,7 +356,7 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
       ),
     )
   } catch (error) {
-    failure = findRecordingError(error) ?? error
+    failure = findRecordingError(error) ?? (abort.aborted ? abort.reason : error)
     if (abort.aborted) status = "cancelled"
     if (part.state.status === "running") {
       part.state = {

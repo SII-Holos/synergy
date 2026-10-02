@@ -588,7 +588,7 @@ export class GithubProvider
     const result = await WorktreeProcess.run({
       command: args,
       directory: options.cwd,
-      roots: null,
+      roots: [options.cwd],
       env: options.env,
       signal: options.signal,
     })

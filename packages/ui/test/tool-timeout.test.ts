@@ -22,16 +22,7 @@ describe("tool timeout helper", () => {
       "auto_background",
     )
     expect(toolCountdown(md({ displayMs: 30_000, source: "tool_timeout" }), { start: 1 })?.kind).toBe("timeout")
-    for (const source of [
-      "wait",
-      "search",
-      "fetch",
-      "download",
-      "question",
-      "vision",
-      "remote_connect",
-      "document_extract",
-    ]) {
+    for (const source of ["wait", "search", "fetch", "download", "question", "vision", "document_extract"]) {
       expect(toolCountdown(md({ displayMs: 30_000, source }), { start: 1 })?.kind).toBe("remaining")
     }
   })

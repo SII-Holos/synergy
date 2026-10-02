@@ -25,7 +25,7 @@ export type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 
 export async function openAgentRuntime(options: AgentRuntimeOptions) {
   const components = RuntimeComponents.resolve([
-    localRuntime({ workers: false }),
+    localRuntime({ workers: false, environment: options.environment }),
     plugins(),
     ...(options.components ?? []),
   ])

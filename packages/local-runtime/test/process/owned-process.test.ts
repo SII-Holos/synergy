@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import { buffer, text } from "node:stream/consumers"
 import { randomUUID } from "node:crypto"
@@ -6,8 +6,201 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ChildProcessClose } from "@ericsanchezok/synergy-harness/process/child-process-close"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
 import { OwnedProcess } from "../../src/process/owned-process"
+import { OwnedProtocol } from "../../src/process/owned-protocol"
 
 const nativeTest = test.skipIf(!["darwin", "linux"].includes(process.platform))
+
+nativeTest(
+  "late stdin EOF retains a drained command's output and native completion",
+  async () => {
+    await using tmp = await tmpdir()
+    const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })
+    const lease = await coordinator.acquire({
+      id: randomUUID(),
+      owner: "owner",
+      ancestors: [],
+      kind: "process",
+      roots: [tmp.path],
+    })
+    const streamsDrained = Promise.withResolvers<void>()
+    const drainControl = Promise.withResolvers<() => void>()
+    const injected = Object.assign(new Error("Completed command no longer accepts stdin controls"), { code: "EPIPE" })
+    const messages = OwnedProtocol.messages
+    const send = OwnedProtocol.send
+    let drained = false
+    using protocol = spyOn(OwnedProtocol, "messages").mockImplementation((socket, receive, failed) =>
+      messages(
+        socket,
+        (raw) => {
+          receive(raw)
+          const event = OwnedProtocol.Event.parse(raw)
+          if (event.type === "stage" && event.stage === "streams-drained") {
+            drained = true
+            streamsDrained.resolve()
+          }
+        },
+        failed,
+      ),
+    )
+    using input = spyOn(OwnedProtocol, "send").mockImplementation((socket, value) => {
+      const control = OwnedProtocol.Control.parse(value)
+      if (control.type === "drained") {
+        drainControl.resolve(() => send(socket, value))
+        return
+      }
+      if (control.type === "stdin-end" && drained) {
+        socket.emit("error", injected)
+        return
+      }
+      send(socket, value)
+    })
+    const owned = await OwnedProcess.prepare({
+      command: process.execPath,
+      args: [
+        "-e",
+        "process.stdout.write('retained output'); process.stderr.write('retained error'); process.exitCode=7",
+      ],
+      cwd: tmp.path,
+      env: {},
+      lease,
+    })
+    const stdout = text(owned.child.stdout)
+    const stderr = text(owned.child.stderr)
+    const closed = ChildProcessClose.wait(owned.child).catch((error: unknown) => error)
+    try {
+      await owned.activate()
+      await streamsDrained.promise
+      const release = await drainControl.promise
+      owned.child.stdin.emit("end")
+      release()
+      expect(await closed).toMatchObject({ code: 7, signal: null, drainTimedOut: false })
+      await owned.completion
+      expect(await stdout).toBe("retained output")
+      expect(await stderr).toBe("retained error")
+      expect(await coordinator.inspect()).toHaveLength(0)
+    } finally {
+      await owned.stop()
+      await Promise.allSettled([closed, stdout, stderr])
+    }
+  },
+  20000,
+)
+
+nativeTest.each([
+  ["ready", "ECONNRESET"],
+  ["exit", "ECONNRESET"],
+  ["ready", "EPIPE"],
+  ["exit", "EPIPE"],
+])("control failure at %s with %s preserves the native completion boundary", async (stage, code) => {
+  await using tmp = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })
+  const lease = await coordinator.acquire({
+    id: randomUUID(),
+    owner: "owner",
+    ancestors: [],
+    kind: "process",
+    roots: [tmp.path],
+  })
+  const injected = Object.assign(new Error("control connection failed"), { code })
+  const messages = OwnedProtocol.messages
+  let resets = 0
+  const protocol = spyOn(OwnedProtocol, "messages").mockImplementation((socket, receive, failed) =>
+    messages(
+      socket,
+      (raw) => {
+        receive(raw)
+        if (OwnedProtocol.Event.parse(raw).type !== stage) return
+        resets++
+        socket.emit("error", injected)
+      },
+      failed,
+    ),
+  )
+  try {
+    const owned = await OwnedProcess.prepare({
+      command: process.execPath,
+      args: [
+        "-e",
+        "process.stdout.write('retained output'); process.stderr.write('retained error'); process.exitCode=7",
+      ],
+      cwd: tmp.path,
+      env: {},
+      lease,
+    })
+    const stdout = text(owned.child.stdout)
+    const stderr = text(owned.child.stderr)
+    const closed = ChildProcessClose.wait(owned.child).then(
+      (result) => result,
+      (error: unknown) => error,
+    )
+    try {
+      await owned.activate()
+      const result = await closed
+      await owned.completion
+      expect(resets).toBe(1)
+      if (stage === "ready") expect(result).toBe(injected)
+      else {
+        expect(result).toMatchObject({ code: 7, signal: null, drainTimedOut: false })
+        expect(await stdout).toBe("retained output")
+        expect(await stderr).toBe("retained error")
+      }
+      expect(await coordinator.inspect()).toHaveLength(0)
+    } finally {
+      await owned.stop()
+      await Promise.allSettled([closed, stdout, stderr])
+    }
+  } finally {
+    protocol.mockRestore()
+  }
+})
+
+nativeTest(
+  "closing stdin with unread input does not terminate the command or truncate its remaining output",
+  async () => {
+    await using tmp = await tmpdir()
+    const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })
+    const ready = path.join(tmp.path, "ready")
+    const close = path.join(tmp.path, "close-input")
+    const lease = await coordinator.acquire({
+      id: randomUUID(),
+      owner: "owner",
+      ancestors: [],
+      kind: "process",
+      roots: [tmp.path],
+    })
+    const owned = await OwnedProcess.prepare({
+      command: process.execPath,
+      args: [
+        "-e",
+        "import fs from 'node:fs'; await Bun.write(process.argv[1], 'ready'); while (!(await Bun.file(process.argv[2]).exists())) await Bun.sleep(10); fs.closeSync(0); process.stdout.write('after-stdin-close'); await Bun.sleep(100); process.stderr.write('remaining-stderr')",
+        ready,
+        close,
+      ],
+      cwd: tmp.path,
+      env: {},
+      lease,
+    })
+    const stdout = text(owned.child.stdout)
+    const stderr = text(owned.child.stderr)
+    const closed = ChildProcessClose.wait(owned.child)
+    void closed.catch(() => {})
+    try {
+      await owned.activate()
+      while (!(await Bun.file(ready).exists())) await Bun.sleep(10)
+      owned.child.stdin.write(Buffer.alloc(4 * 1024 * 1024))
+      await Bun.write(close, "close")
+      expect(await closed).toMatchObject({ code: 0, signal: null, drainTimedOut: false })
+      await owned.completion
+      expect(await stdout).toBe("after-stdin-close")
+      expect(await stderr).toBe("remaining-stderr")
+      expect(await coordinator.inspect()).toHaveLength(0)
+    } finally {
+      await owned.stop()
+      await Promise.allSettled([closed, stdout, stderr])
+    }
+  },
+  20000,
+)
 
 nativeTest(
   "activation records ownership before any command runs and preserves bytes, cwd, env and exit",

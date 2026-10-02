@@ -1,4 +1,4 @@
-import z from "zod"
+import { z } from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BrowserToolHelper, formatSnapshotText } from "./browser-shared"
 
@@ -7,6 +7,7 @@ export const BrowserSnapshotTool = Tool.define("browser_snapshot", {
     "Capture the current accessibility and interactive DOM snapshot. Returned opaque refs are valid only with the returned snapshotId and current document generation.",
   parameters: z
     .object({
+      pageId: z.string().min(1).max(200).describe("Page ID from browser_navigation."),
       query: z
         .string()
         .max(20_000)
@@ -17,8 +18,8 @@ export const BrowserSnapshotTool = Tool.define("browser_snapshot", {
       maxDepth: z.number().int().min(0).max(100).optional(),
     })
     .strict(),
-  async execute(params, ctx) {
-    const page = await BrowserToolHelper.resolvePage(ctx)
+  async execute({ pageId, ...params }, ctx) {
+    const page = await BrowserToolHelper.resolvePage(ctx, pageId)
     return BrowserToolHelper.withActivity(
       ctx,
       page,
@@ -26,7 +27,7 @@ export const BrowserSnapshotTool = Tool.define("browser_snapshot", {
       "browser_snapshot",
       "Reading page structure",
       async () => {
-        const result = await BrowserToolHelper.execute(ctx, {
+        const result = await BrowserToolHelper.execute(ctx, pageId, {
           type: "snapshot",
           query: params.query,
           maxNodes: params.maxNodes,

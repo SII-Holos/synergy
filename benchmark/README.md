@@ -29,34 +29,37 @@ bun bench compare /absolute/path/to/run-a /absolute/path/to/run-b --left-harness
 bun bench oracle benchmark/suites/local-24.json --output /absolute/path/to/oracle-runs --cache /absolute/path/to/cache
 bun bench debug /absolute/path/to/run --trial 0
 bun bench recover-export /absolute/path/to/run --trial 0 --attempt 1
+bun bench recover-archive-validation /absolute/path/to/run --trial 0 --attempt 1
 bun bench cache /absolute/path/to/cache
 bun bench cache /absolute/path/to/cache --collect
 bun bench clean /absolute/path/to/run
 ```
 
-`debug` 创建独立 attempt；`recover-export` 在 retained Home 副本中重新导出，不调用模型、不替换评分或原失败状态。`clean` 明确删除指定实验的证据及所属容器、网络和卷，并释放缓存引用。所有操作遵循实验所有权锁，不执行全局 Docker prune。
+`debug` 创建独立 attempt；`recover-export` 在 retained Home 副本中重新导出；`recover-archive-validation` 使用原运行中冻结的验证器，仅对原验证超时的同一份 ZIP 续验，结果另存为派生记录。两者均不调用模型、不替换原评分或失败状态。`clean` 明确删除指定实验的证据及所属容器、网络和卷，并释放缓存引用。所有操作遵循实验所有权锁，不执行全局 Docker prune。
+
+`recover-export` 的导出超时与校验超时独立：校验沿用原计划的 `archive_validation_timeout_seconds`，外层容器预算包含两个阶段及清理余量。
 
 ## 配置与实验条件
 
 相对路径以 YAML 所在目录为基准。未知字段、不支持的模型参数、缺失的凭据引用和无法表示的原生配置均报错。
 
-| 字段                                         | 含义                                                                                 |
-| -------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `harnesses.<name>`                           | 原生 `kind`、固定 package version 或源码、Synergy runtime/config/experiment          |
-| `harnesses.<name>.bun_jit`                   | Synergy / OpenCode 可选布尔值；省略使用原生默认值，false 显式关闭 Bun JIT            |
-| `models.<name>`                              | 模型 ID、协议、端点、凭据环境变量名、上下文/输出限制、采样与推理参数                 |
-| `matrix.include` / `exclude`                 | 指定或排除 harness/model 组合；省略 include 时展开完整矩阵                           |
-| `suite`                                      | 锁定的题目清单、上游 revision 和内容摘要                                             |
-| `selection.tasks` / `tags` / `limit`         | 明确任务、必须同时满足的标签、按 ID 排序后的数量上限                                 |
-| `selection.cells`                            | 精确选择 task/harness/model/repeat 单元，保留原矩阵的冻结优先顺序                    |
-| `repeat` / `task_repeats`                    | 默认每题重复次数及逐题覆盖                                                           |
-| `seed` / `concurrency`                       | 固定调度与分析 seed；默认 `auto` 按可用资源调度；正整数手动设置执行并发上限，包括 48 |
-| `resources`                                  | Docker 配额预留、构建并发、缓存预算和磁盘余量                                        |
-| `platform`                                   | 默认 `linux/amd64`；原始镜像也必须支持该架构                                         |
-| `request_idle_timeout_seconds`               | 网关等待上游数据的期限，默认 null，不额外限制；正整数显式启用并冻结为实验条件        |
-| `cleanup_seconds` / `export_timeout_seconds` | 独立清理与导出期限，默认 60 / 300 秒                                                 |
-| `preparation_timeout_seconds`                | 准备期限，默认 1800 秒                                                               |
-| `startup_timeout_seconds`                    | harness 启动到首个实际模型请求的期限，默认 120 秒；正式解题时钟从首次派发开始        |
+| 字段                                                                                | 含义                                                                                 |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `harnesses.<name>`                                                                  | 原生 `kind`、固定 package version 或源码、Synergy runtime/config/experiment          |
+| `harnesses.<name>.bun_jit`                                                          | Synergy / OpenCode 可选布尔值；省略使用原生默认值，false 显式关闭 Bun JIT            |
+| `models.<name>`                                                                     | 模型 ID、协议、端点、凭据环境变量名、上下文/输出限制、采样与推理参数                 |
+| `matrix.include` / `exclude`                                                        | 指定或排除 harness/model 组合；省略 include 时展开完整矩阵                           |
+| `suite`                                                                             | 锁定的题目清单、上游 revision 和内容摘要                                             |
+| `selection.tasks` / `tags` / `limit`                                                | 明确任务、必须同时满足的标签、按 ID 排序后的数量上限                                 |
+| `selection.cells`                                                                   | 精确选择 task/harness/model/repeat 单元，保留原矩阵的冻结优先顺序                    |
+| `repeat` / `task_repeats`                                                           | 默认每题重复次数及逐题覆盖                                                           |
+| `seed` / `concurrency`                                                              | 固定调度与分析 seed；默认 `auto` 按可用资源调度；正整数手动设置执行并发上限，包括 48 |
+| `resources`                                                                         | Docker 配额预留、构建并发、缓存预算和磁盘余量                                        |
+| `platform`                                                                          | 默认 `linux/amd64`；原始镜像也必须支持该架构                                         |
+| `request_idle_timeout_seconds`                                                      | 网关等待上游数据的期限，默认 null，不额外限制；正整数显式启用并冻结为实验条件        |
+| `cleanup_seconds` / `export_timeout_seconds` / `archive_validation_timeout_seconds` | 独立清理、导出和归档验证期限，默认 60 / 300 / 300 秒                                 |
+| `preparation_timeout_seconds`                                                       | 准备期限，默认 1800 秒                                                               |
+| `startup_timeout_seconds`                                                           | harness 启动到首个实际模型请求的期限，默认 120 秒；正式解题时钟从首次派发开始        |
 
 正式解题、oracle 参考解执行和判题分别统一使用 10800 秒上限，由配置模块中的唯一常量定义。题目清单不接受逐题期限，实验配置不接受 `timeout_seconds` 或 verifier 期限覆盖；旧字段会报错，必须删除后才能准备新的实验。冻结 `plan.json` 的 `task_timeout_seconds` 记录同一预算，每次启动的 `inputs/options.json` 与 Pier 解题、判题参数均由它的唯一实现来源产生。所有预设和新增 YAML 走同一执行逻辑，[传播测试](test/test_experiment_presets.py)自动发现预设，真实 Docker 回归验证短时限任务仍可完成解题和判题。原始任务文件、旧计划及失败记录保持完整；它们不为新执行提供时限。历史实验只使用其已封存的报告。
 
@@ -214,9 +217,9 @@ SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/t
 SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/test/test_docker.py
 ```
 
-普通测试不启动 Docker 或付费模型；Docker 接入使用确定性 provider。故障注入在测试进程中缩短时钟或修改一次性 TrialConfig，不向生产配置暴露短期限入口。30 MiB / 30,720 checkpoint 的长流成功、取消和失败测试分别运行，允许 20 分钟测试期限，不改变正式任务的三小时上限。实际 provider 验收留在隔离本地环境。新 CI runner 必须安装自己的执行和构建依赖。
+普通测试不启动 Docker 或付费模型；Docker 接入使用确定性 provider。故障注入在测试进程中缩短时钟或修改一次性 TrialConfig，不向生产配置暴露短期限入口。长流完成态保留 30 MiB / 30,720 checkpoint 的完整性验证；取消与失败使用小数据核对终态、已接收字节、用量与清理，不改变正式任务的三小时上限。实际 provider 验收留在隔离本地环境。新 CI runner 必须安装自己的执行和构建依赖。
 
-Synergy 长会话控制的覆盖范围、确定性 provider 请求体容量与 CI 编排期限见[矩阵决策](../docs/decisions/implemented/architecture/2026-09-14-benchmark-native-harness-matrix.md)。CI job 的总期限不改变单个用例或正式评测的三小时期限。
+Synergy 原生控制验证真实读取、修改、原生压缩、压缩后继续、磁盘结果、导出和用量；四组短控制验证两个确定性模型、协议与 JIT 条件。完成跟随业务事件，执行上限防止挂死。四组 120 轮压力复现通过 `SYNERGY_BENCH_LONG_DIAGNOSTIC=1` 与 `test_synergy_diagnostic_120_rounds` 显式诊断。测试分配见[业务 CI 决策](../docs/decisions/implemented/testing/2026-09-30-business-ci-feedback.md)，provider 请求体容量与执行边界见[矩阵决策](../docs/decisions/implemented/architecture/2026-09-14-benchmark-native-harness-matrix.md)。CI job 的总期限不改变单个用例或正式评测的三小时期限。
 
 原生 Pi 压缩测试通过多次真实工具输出构造足够历史，并提供明确的确定性 usage 触发其原生阈值；要求会话记录包含 compaction、工具任务通过，且主调用与压缩调用均逐条核对。精确 token 差值要求全部请求关联覆盖和总量核对都完整，不能只靠累计用量相等。
 
@@ -255,4 +258,4 @@ CI 的生命周期和矩阵任务共用 `benchmark/src/synergy_bench/ci_evidence
 
 缺失终态证据或 native attempt 对应的 wire 记录时，用途分组与总体摘要的 `total_tokens` 都保持未知，已观察到的 token 下界仍保留；用途未知的缺口不能据此断言其他用途已完整。
 
-CI 的任务选择与诊断入口见 [CI 验证](../docs/operations/ci.md)。正常生命周期和故障恢复分别执行，共享只读准备产物，写入环境各自隔离。`SYNERGY_BENCH_TIMINGS=/隔离目录/timing.jsonl` 记录 prepare、verify、preflight、publish、cleanup 的耗时；`stages.json`、`export.json` 与 JUnit 分别保留场景执行、导出和用例耗时。完整性验证每次读取全部记录字节，在单次操作内复用同一 inventory 派生摘要。修改 evaluator 后必须冻结新实验，不能用新 evaluator 继续历史运行。
+CI 的任务选择与诊断入口见 [CI 验证](../docs/operations/ci.md)。正常生命周期、各故障与 native 套件按独立场景组执行，消费者仅等待其所需只读准备产物，写入环境各自隔离。`SYNERGY_BENCH_TIMINGS=/隔离目录/timing.jsonl` 记录 prepare、verify、preflight、publish、cleanup 的耗时；`stages.json`、`export.json` 与 JUnit 分别保留场景执行、导出和用例耗时。完整性验证每次读取全部记录字节，在单次操作内复用同一 inventory 派生摘要。修改 evaluator 后必须冻结新实验，不能用新 evaluator 继续历史运行。

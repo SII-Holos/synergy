@@ -2,6 +2,7 @@ import {
   abandonSession,
   continueSession,
   createSession,
+  SessionLocationError,
   submitInput,
   retryInput,
   restoreInput,
@@ -35,6 +36,7 @@ import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout
 import { RolloutSchema } from "@ericsanchezok/synergy-harness/session/rollout/schema"
 import { RolloutQuery } from "@ericsanchezok/synergy-harness/session/rollout/query"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { ObservabilityRedaction } from "@ericsanchezok/synergy-harness/observability/redaction"
 import { BusyError } from "@ericsanchezok/synergy-harness/session/error"
@@ -394,7 +396,17 @@ export const SessionRoute = () =>
         description: "Create a new Synergy session for interacting with AI assistants and managing conversations.",
         operationId: "session.create",
         responses: {
-          ...errors(400),
+          ...errors(404, 409),
+          400: {
+            description: "Invalid working location",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.union([BadRequestError, SessionLocationError.Schema, Worktree.StartCommandFailedError.Schema]),
+                ),
+              },
+            },
+          },
           200: {
             description: "Successfully created session",
             content: {
@@ -415,6 +427,8 @@ export const SessionRoute = () =>
             id: z.string().optional(),
             controlProfile: ControlProfileId.optional(),
             workspace: Session.WorkspaceSelection.optional(),
+            environmentID: z.string().min(1).nullable().optional(),
+            environmentProfile: z.string().min(1).optional(),
             completionNotice: z
               .object({
                 silent: z.boolean().optional(),
@@ -422,10 +436,33 @@ export const SessionRoute = () =>
               .strict()
               .optional(),
           })
+          .refine((input) => input.environmentProfile === undefined || input.environmentID === undefined, {
+            message: "environmentProfile and environmentID are mutually exclusive",
+          })
           .optional(),
       ),
       async (c) => {
         return c.json(await createSession(c.req.valid("json")))
+      },
+    )
+    .post(
+      "/:sessionID/environment",
+      describeRoute({
+        summary: "Change an idle Session's Environment selection",
+        operationId: "session.setEnvironment",
+        responses: {
+          200: { description: "Updated Session", content: { "application/json": { schema: resolver(Session.Info) } } },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("param", z.object({ sessionID: Identifier.schema("session") })),
+      validator("json", Session.EnvironmentSelection),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const session = await Session.get(sessionID)
+        if (session.scope.id !== ScopeContext.current.scope.id)
+          throw new Storage.NotFoundError({ message: "Session not found in this Scope" })
+        return c.json(await Session.updateEnvironment(sessionID, c.req.valid("json")))
       },
     )
     .delete(

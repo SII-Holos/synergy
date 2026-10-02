@@ -70,3 +70,7 @@ Current prompt assembly and compaction contracts live in [LLM loop and compactio
 [PR #1475 优化分析](context-efficiency/2026-09-28-pr1475-optimization-analysis.md) 对照最终合并实现，解释工具输出、编辑证据、固定提示、等待行为、benchmark 调度和原生可靠性的变化，并区分确定性收益与模型实验观察。
 
 [上下文效率研究索引](context-efficiency/README.md) 按问题和实验顺序组织原始报告及数据，包含早期失败、来源选择、两题定向验证和最后候选 24 题覆盖；历史证据保持原样。
+
+[等待提示后续诊断](context-efficiency/2026-09-24-process-waiting-followup.md) 区分子进程交互等待、命令失败、工具目录和缓存成本，并说明定向验证与完整 24 题覆盖分别回答的问题。
+
+[八题双臂契约验证](context-efficiency/2026-09-28-quality-contract-diagnostic-study.md) 记录统一 evaluator 下的原生正确率、真实测试、逐请求用量及归档续验证据，区分一题净胜与双方仍失败题目的实际断言差异。

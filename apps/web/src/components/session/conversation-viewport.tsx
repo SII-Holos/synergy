@@ -1,3 +1,4 @@
+import { useLingui } from "@lingui/solid"
 import type { JSX } from "solid-js"
 import { Show, onCleanup } from "solid-js"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
@@ -18,6 +19,7 @@ export function ConversationViewport(props: {
   onScrollContainer?: (el: HTMLDivElement) => void
   children: JSX.Element
 }) {
+  const { _ } = useLingui()
   // Keyed session-tree swaps mount the successor viewport before this
   // owner's cleanup runs. Releasing with the element this viewport bound
   // lets holders ignore the stale cleanup instead of dropping the
@@ -34,13 +36,13 @@ export function ConversationViewport(props: {
       <Show when={props.scrolledUp}>
         <div
           class={`absolute right-4 md:right-6 z-20 pointer-events-auto ${props.scrollButtonOffsetClass ?? "bottom-16 md:bottom-[calc(var(--prompt-height,8rem)+16px)]"}`}
-          style={{ animation: "scroll-btn-enter 250ms cubic-bezier(0.34, 1.56, 0.64, 1) both" }}
         >
           <IconButton
             icon={getSemanticIcon("navigation.collapse")}
             variant="primary"
             size="large"
-            class="rounded-full! size-10 hover:scale-105 active:scale-95 transition-transform"
+            class="rounded-full! size-10 transition-colors"
+            aria-label={_({ id: "session.conversation.latest", message: "Back to latest" })}
             onClick={() => {
               props.autoScroll.forceScrollToBottom()
               props.onScrolledUpChange(false)

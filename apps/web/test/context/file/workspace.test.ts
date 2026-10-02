@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  selectedFileWorkspace,
   fileWorkspaceKey,
   fileWorkspace,
   workspaceFileOwner,
@@ -35,4 +36,47 @@ describe("Workspace file identity", () => {
     expect(workspaceFileOwner({ ...tab, state: { workspace: { ...workspace, generation: 2 } } })).toBeUndefined()
     expect(workspaceFileOwner({ resourceId: "same.txt" })).toBeUndefined()
   })
+})
+
+const objects = {
+  id: "wsp_objects",
+  scopeID: "scope",
+  type: "objects",
+  revision: 1,
+  binding: { state: "bound" as const, hostID: "host", path: null, generation: 3 },
+  backend: { provider: "objects", spec: {} },
+  metadata: { name: "Research" },
+  sharedWritableWorkspaceIDs: [],
+  lifecycle: "active" as const,
+  createdAt: 1,
+  updatedAt: 1,
+}
+test("logical file ownership needs no local path and cannot inherit a missing session's directory", () => {
+  const selected = selectedFileWorkspace({ workspaceID: objects.id, workspace: null }, [objects])
+  expect(selected).toMatchObject({ id: objects.id, path: "", generation: 3, name: "Research" })
+  expect(selectedFileWorkspace({ workspaceID: objects.id, workspace: null }, [])).toBeUndefined()
+  expect(selectedFileWorkspace({ workspaceID: null, workspace: null }, [objects])).toBeUndefined()
+  expect(
+    selectedFileWorkspace({ workspaceID: objects.id, workspace: null }, [{ ...objects, lifecycle: "deleted" }]),
+  ).toBeUndefined()
+  expect(workspaceFileOwner({ state: { workspace: selected } })).toEqual(selected)
+})
+
+test("project file roots follow explicit shared bindings and preserve a Worktree's own primary", async () => {
+  const { projectFileWorkspaces } = await import("../../../src/context/file/workspace")
+  const main = {
+    ...objects,
+    id: "wsp_tree",
+    type: "git_worktree",
+    binding: { ...objects.binding, path: "/tree" },
+    sharedWritableWorkspaceIDs: ["wsp_extra"],
+  }
+  const extra = { ...objects, id: "wsp_extra", type: "directory", binding: { ...objects.binding, path: "/extra" } }
+  const unrelated = { ...objects, id: "wsp_other", type: "directory", binding: { ...objects.binding, path: "/other" } }
+  expect(
+    projectFileWorkspaces({ ...workspace, id: main.id, path: "/tree" }, [main, extra, unrelated]).map(
+      (item) => item.path,
+    ),
+  ).toEqual(["/tree", "/extra"])
+  expect(projectFileWorkspaces(undefined, [main, extra])).toEqual([])
 })

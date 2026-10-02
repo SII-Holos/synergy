@@ -26,6 +26,8 @@ export namespace ConfigDomain {
     reloadTargets: string[]
     uiSection: string
     importable: boolean
+    globalOnly?: boolean
+    failClosed?: boolean
   }
 
   const builtinDefinitions: Definition[] = [

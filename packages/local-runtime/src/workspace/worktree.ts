@@ -1,4 +1,8 @@
+import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
+import { SessionWorkspaceRuntime } from "@ericsanchezok/synergy-harness/session/workspace-runtime"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { FileMutation } from "../file/mutation"
@@ -44,6 +48,8 @@ export namespace Worktree {
       branch: z.string().optional(),
       path: z.string(),
       scopeID: z.string(),
+      sourceWorkspaceID: z.string().optional(),
+      sourceDirectory: z.string().optional(),
       head: z.string().optional(),
       baseRef: z.string().optional(),
       baseRevision: z.string().optional(),
@@ -81,6 +87,7 @@ export namespace Worktree {
   export const PublicCreateInput = z
     .object({
       name: z.string().optional(),
+      sourceWorkspaceID: z.string().optional(),
       sessionID: z.string().optional(),
       baseRef: z.enum(["current", "fresh"]).optional().default("current"),
       baseRevision: z.string().min(1).optional(),
@@ -98,6 +105,7 @@ export namespace Worktree {
     .object({
       sessionID: z.string(),
       target: z.string().min(1),
+      sourceWorkspaceID: z.string().optional(),
       force: z.boolean().optional().default(false),
     })
     .meta({ ref: "WorktreeTargetInput" })
@@ -106,6 +114,7 @@ export namespace Worktree {
   export const RemoveInput = z
     .object({
       target: z.string().min(1),
+      sourceWorkspaceID: z.string().optional(),
       force: z.boolean().optional().default(false),
     })
     .meta({ ref: "WorktreeRemoveInput" })
@@ -379,8 +388,13 @@ export namespace Worktree {
     )
   }
 
-  async function gitMutation(repoRoot: string, args: string[], roots: string[] | null = null) {
-    return WorktreeProcess.run({ command: ["git", ...args], directory: repoRoot, roots, metadata: true })
+  async function gitMutation(repoRoot: string, args: string[], roots?: string[]) {
+    return WorktreeProcess.run({
+      command: ["git", ...args],
+      directory: repoRoot,
+      roots: roots ?? [await gitMetadataRoot(repoRoot)],
+      metadata: true,
+    })
   }
 
   async function gitMetadataRoot(repoRoot: string) {
@@ -431,12 +445,53 @@ export namespace Worktree {
     return [outputText(result.stderr), outputText(result.stdout)].filter(Boolean).join("\n")
   }
 
+  const sourceContext = RuntimeContext.createAsyncContext<{
+    scopeID: string
+    workspace: WorkspaceCatalog.Info
+    directory: string
+  }>()
+
+  export async function withSource<T>(sourceWorkspaceID: string | undefined, action: () => Promise<T>): Promise<T> {
+    if (!sourceWorkspaceID) return action()
+    const scope = ScopeContext.current.scope
+    const workspace = await WorkspaceCatalog.get(sourceWorkspaceID, scope.id)
+    const location = await WorkspaceBinding.validate(sourceWorkspaceID, scope.id)
+    const git = await $`git rev-parse --show-toplevel`.cwd(location.path).quiet().nothrow()
+    if (git.exitCode !== 0 || canonicalDirectory(outputText(git.stdout)) !== location.path)
+      throw new NotGitError({ message: "The selected main folder is not a Git repository." })
+    return sourceContext.run({ scopeID: scope.id, workspace, directory: location.path }, action)
+  }
+
+  async function withTarget<T>(target: string, action: () => Promise<T>): Promise<T> {
+    if (sourceContext.getStore()) return action()
+    const records = await WorkspaceCatalog.list(ScopeContext.current.scope.id)
+    const record = records.find(
+      (item) =>
+        item.type === "git_worktree" &&
+        [item.binding.path, item.metadata.worktreeID, item.metadata.name, item.metadata.branch].includes(target),
+    )
+    const sourceID =
+      typeof record?.metadata.sourceWorkspaceID === "string"
+        ? record.metadata.sourceWorkspaceID
+        : records.find((item) => item.binding.path === record?.metadata.originalCheckout)?.id
+    if (record && !sourceID)
+      throw new NotGitError({
+        message: "The original repository for this Worktree is unavailable. Restore its folder before continuing.",
+      })
+    return withSource(sourceID, action)
+  }
+
   function ensureGitScope() {
     const scope = ScopeContext.current.scope
-    if (scope.type !== "project" || scope.local?.vcs !== "git") {
+    if (!sourceContext.getStore() && !EnvironmentResources.localFiles())
+      throw new NotGitError({ message: "Git worktree management requires a native directory Workspace." })
+    const source = sourceContext.getStore()
+    if (source && source.scopeID !== scope.id)
+      throw new NotGitError({ message: "Worktree source belongs to another project." })
+    if (scope.type !== "project" || (!source && scope.local?.vcs !== "git")) {
       throw new NotGitError({ message: "Current scope is not a Git repository; git worktree is unavailable." })
     }
-    return { scope, repoRoot: canonicalDirectory(ScopeContext.current.worktree) }
+    return { scope, repoRoot: source?.directory ?? canonicalDirectory(ScopeContext.current.worktree) }
   }
 
   function canonicalDirectory(directory: string): string {
@@ -589,6 +644,8 @@ export namespace Worktree {
       branch: registry?.branch ?? entry.branch,
       path: resolved,
       scopeID,
+      sourceDirectory: registry?.sourceDirectory ?? repoRoot,
+      sourceWorkspaceID: registry?.sourceWorkspaceID ?? sourceContext.getStore()?.workspace.id,
       head: entry.head,
       baseRef: registry?.baseRef,
       baseRevision: registry?.baseRevision,
@@ -775,7 +832,7 @@ export namespace Worktree {
         command: process.platform === "win32" ? ["cmd", "/c", command] : ["bash", "-lc", command],
         directory,
         env,
-        roots: null,
+        roots: [],
       })
       if (result.exitCode !== 0) {
         throw new StartCommandFailedError({ message: errorText(result) || `Worktree setup command failed: ${command}` })
@@ -866,7 +923,7 @@ export namespace Worktree {
         const removed = await gitMutation(
           repoRoot,
           ["worktree", "remove", "--force", info.directory],
-          [repoRoot, info.directory],
+          [await gitMetadataRoot(repoRoot), info.directory],
         )
         if (removed.exitCode !== 0)
           throw new CreateFailedError({ message: errorText(removed) || "Failed to remove unfinished worktree" })
@@ -879,12 +936,36 @@ export namespace Worktree {
         if (deleted.exitCode !== 0)
           throw new CreateFailedError({ message: errorText(deleted) || "Unfinished worktree branch was retained" })
       },
-      { writeRoots: null },
+      { writeRoots: [await gitMetadataRoot(repoRoot), registryRoot(repoRoot)] },
     )
   }
 
   export const create = fn(CreateInput.optional(), async (input) => {
     const parsed = CreateInput.parse(input ?? {})
+    return withSource(parsed.sourceWorkspaceID, () =>
+      parsed.sessionID
+        ? SessionWorkspaceRuntime.withBinding(parsed.sessionID, () => createBound(parsed), WorkspaceAccess.signal())
+        : createBound(parsed),
+    )
+  })
+
+  async function nativeSession(sessionID: string) {
+    const session = await Session.get(sessionID)
+    const environment = session.environmentID
+      ? await Environment.get(session.environmentID, session.scope.id)
+      : undefined
+    if (session.scope.id !== ScopeContext.current.scope.id || environment?.provider !== "native")
+      throw new Environment.Unavailable({
+        environmentID: session.environmentID ?? "",
+        message: "Git worktree management requires the native Environment in this Scope.",
+      })
+    if (session.workspaceID && !session.workspace?.path)
+      throw new NotGitError({ message: "Git worktree management requires a native directory Workspace." })
+    return session
+  }
+
+  async function createBound(parsed: z.infer<typeof CreateInput>) {
+    const session = parsed.sessionID ? await nativeSession(parsed.sessionID) : undefined
     const { scope, repoRoot } = ensureGitScope()
     WorkspaceAccess.signal()?.throwIfAborted()
     await ensureExclude(repoRoot)
@@ -892,7 +973,6 @@ export namespace Worktree {
       fs.mkdir(worktreesRoot(repoRoot), { recursive: true }),
     )
 
-    const session = parsed.sessionID ? await Session.get(parsed.sessionID) : undefined
     const titleName = session?.title && !isDefaultTitle(session.title) ? session.title : undefined
     const plan: { selection?: Creation } = {}
     try {
@@ -916,7 +996,7 @@ export namespace Worktree {
           ]
         },
         directory: repoRoot,
-        roots: null,
+        roots: [await gitMetadataRoot(repoRoot), worktreesRoot(repoRoot)],
       })
       if (created.exitCode !== 0)
         throw new CreateFailedError({ message: errorText(created) || "Failed to create git worktree" })
@@ -931,6 +1011,8 @@ export namespace Worktree {
         name: info.name,
         path: path.resolve(info.directory),
         scopeID: scope.id,
+        sourceDirectory: repoRoot,
+        sourceWorkspaceID: sourceContext.getStore()?.workspace.id,
         baseRef: parsed.baseRef,
         baseRevision: parsed.baseRevision,
         resolvedBaseCommit: base.resolvedCommit,
@@ -942,6 +1024,17 @@ export namespace Worktree {
         updatedAt: now,
         lastUsedAt: now,
       })
+      const adopted = await WorkspaceBinding.adopt(workspace(registry), scope.id)
+      const sourceID = sourceContext.getStore()?.workspace.id
+      const shared = sourceID ? (await WorkspaceCatalog.get(sourceID, scope.id)).sharedWritableWorkspaceIDs : []
+      if (adopted?.id && shared.length) {
+        const record = await WorkspaceCatalog.get(adopted.id, scope.id)
+        await WorkspaceBinding.setSharing(record.id, {
+          scopeID: scope.id,
+          expectedRevision: record.revision,
+          workspaceIDs: shared,
+        })
+      }
       const result = await withUse(registry.path, parsed.sessionID, async () => {
         const setup = await setupInfo(repoRoot)
         try {
@@ -982,13 +1075,17 @@ export namespace Worktree {
         }
       throw error
     }
-  })
+  }
 
   function match(info: Info, target: string) {
     return info.id === target || info.name === target || info.branch === target || info.path === target
   }
 
-  async function find(target: string) {
+  export async function resolve(target: string): Promise<Info> {
+    return withTarget(target, () => resolveBound(target))
+  }
+
+  async function resolveBound(target: string) {
     const { items } = await inventory()
     const found = items.find((item) => match(item, target))
     if (!found) throw new NotFoundError({ message: `Worktree not found: ${target}` })
@@ -1020,10 +1117,10 @@ export namespace Worktree {
     })
   }
 
-  async function bindSession(sessionID: string, info: Info) {
+  export function workspace(info: Info) {
     const { repoRoot } = ensureGitScope()
-    const workspace = {
-      type: "git_worktree",
+    return {
+      type: "git_worktree" as const,
       path: info.path,
       scopeID: info.scopeID,
       worktreeID: info.id,
@@ -1032,11 +1129,17 @@ export namespace Worktree {
       baseRef: info.baseRef,
       baseRevision: info.baseRevision,
       resolvedBaseCommit: info.resolvedBaseCommit,
-      originalCheckout: path.resolve(repoRoot),
+      originalCheckout: info.sourceDirectory ?? path.resolve(repoRoot),
+      sourceWorkspaceID: info.sourceWorkspaceID,
     }
+  }
+
+  async function bindSession(sessionID: string, info: Info) {
+    const { repoRoot } = ensureGitScope()
+    const selected = workspace(info)
     await updateBinding(info, sessionID, "add")
     try {
-      const session = await Session.updateWorkspace(sessionID, workspace)
+      const session = await Session.updateWorkspace(sessionID, selected)
       ScopeContext.refreshWorkspace(session.workspace)
     } catch (error) {
       await updateBinding(info, sessionID, "remove").catch(() => undefined)
@@ -1045,12 +1148,23 @@ export namespace Worktree {
   }
 
   export async function enter(input: TargetInput) {
-    const info = await find(input.target)
-    return withUse(info.path, input.sessionID, async () => {
-      const current = await find(input.target)
-      await bindSession(input.sessionID, current)
-      return current
-    })
+    return withSource(input.sourceWorkspaceID, () => withTarget(input.target, () => enterBound(input)))
+  }
+
+  async function enterBound(input: TargetInput) {
+    return SessionWorkspaceRuntime.withBinding(
+      input.sessionID,
+      async () => {
+        await nativeSession(input.sessionID)
+        const info = await resolve(input.target)
+        return withUse(info.path, input.sessionID, async () => {
+          const current = await resolve(input.target)
+          await bindSession(input.sessionID, current)
+          return current
+        })
+      },
+      WorkspaceAccess.signal(),
+    )
   }
 
   async function leaveSession(sessionID: string, options?: { preserveActivityAt?: boolean }) {
@@ -1069,17 +1183,26 @@ export namespace Worktree {
   }
 
   export async function leave(sessionID: string) {
-    const session = await Session.get(sessionID)
-    const workspace = session.workspace
-    if (workspace?.type !== "git_worktree") return leaveSession(sessionID)
-    return withUse(workspace.path, sessionID, () => leaveSession(sessionID))
+    return SessionWorkspaceRuntime.withBinding(
+      sessionID,
+      async () => {
+        await nativeSession(sessionID)
+        const session = await Session.get(sessionID)
+        const workspace = session.workspace
+        if (workspace?.type !== "git_worktree") return leaveSession(sessionID)
+        return withUse(workspace.path, sessionID, () => leaveSession(sessionID))
+      },
+      WorkspaceAccess.signal(),
+    )
   }
 
   export async function status(sessionID: string) {
     const session = await Session.get(sessionID)
     const workspace = session.workspace
     const item =
-      workspace?.type === "git_worktree" && workspace.worktreeID ? await find(String(workspace.worktreeID)) : undefined
+      workspace?.type === "git_worktree" && workspace.worktreeID
+        ? await resolve(String(workspace.worktreeID))
+        : undefined
     const directory = workspace?.path ?? null
     return {
       workspace,
@@ -1132,16 +1255,20 @@ export namespace Worktree {
   }
 
   export async function remove(input: RemoveInput & { sessionID?: string }, options?: { insideCallerTurn?: boolean }) {
+    return withSource(input.sourceWorkspaceID, () => withTarget(input.target, () => removeBound(input, options)))
+  }
+
+  async function removeBound(input: RemoveInput & { sessionID?: string }, options?: { insideCallerTurn?: boolean }) {
     const sessionID = input.sessionID
     // Internal fact, never a wire field: only the caller that owns the running
     // turn may exclude itself from the guards below.
     const excludeSessionID = options?.insideCallerTurn ? sessionID : undefined
     const parsed = RemoveInput.parse(input)
-    const initial = await find(parsed.target)
+    const initial = await resolve(parsed.target)
     if (initial.isMain) throw new CreateFailedError({ message: "Cannot remove the main worktree" })
     const finishRemoval = beginRemoval(initial, excludeSessionID)
     try {
-      const info = await find(parsed.target)
+      const info = await resolve(parsed.target)
       if (info.stale) {
         await leaveBoundSessions(info, sessionID, { excludeRunning: excludeSessionID })
         if (info.managed) await removeRegistry(info.id)
@@ -1250,8 +1377,12 @@ export namespace Worktree {
    * removal, the janitor, and Cortex cleanup so all three honour the same lock
    * and branch rules.
    */
-  async function removeWorktree(info: Info, options: { force: boolean; reason: string }) {
-    return WorkspaceAccess.retire(
+  async function removeWorktree(
+    info: Info,
+    options: { force: boolean; reason: string; afterRemove?: () => Promise<void> },
+  ) {
+    const { repoRoot } = ensureGitScope()
+    await WorkspaceAccess.retire(
       [info.path],
       async () => {
         const { repoRoot } = ensureGitScope()
@@ -1270,17 +1401,18 @@ export namespace Worktree {
         const removed = await gitMutation(
           repoRoot,
           ["worktree", "remove", ...(options.force ? ["--force"] : []), info.path],
-          [repoRoot, info.path],
+          [await gitMetadataRoot(repoRoot), info.path],
         )
         if (removed.exitCode !== 0) {
           throw new CreateFailedError({ message: errorText(removed) || "Failed to remove git worktree" })
         }
-        if (info.managed) await removeRegistry(info.id)
-        await deleteBranchIfLanded(repoRoot, info.branch ?? "")
-        log.info("worktree removed", { id: info.id, name: info.name, reason: options.reason })
       },
-      { writeRoots: null },
+      { writeRoots: [await gitMetadataRoot(repoRoot), registryRoot(repoRoot)] },
     )
+    await options.afterRemove?.()
+    if (info.managed) await removeRegistry(info.id)
+    await deleteBranchIfLanded(repoRoot, info.branch ?? "")
+    log.info("worktree removed", { id: info.id, name: info.name, reason: options.reason })
   }
 
   const LOCK_MARKER_PREFIX = "synergy:v1:"
@@ -1309,6 +1441,10 @@ export namespace Worktree {
   )
 
   export async function lock(directory: string, sessionID?: string): Promise<LockResult> {
+    return withTarget(directory, () => lockBound(directory, sessionID))
+  }
+
+  async function lockBound(directory: string, sessionID?: string): Promise<LockResult> {
     const instanceState = runtimeState()
     const resolved = canonicalDirectory(directory)
     let state = instanceState.activeLocks.get(resolved)
@@ -1428,6 +1564,10 @@ export namespace Worktree {
   }
 
   export async function unlock(directory: string) {
+    return withTarget(directory, () => unlockBound(directory))
+  }
+
+  async function unlockBound(directory: string) {
     const instanceState = runtimeState()
     const resolved = canonicalDirectory(directory)
     const state = instanceState.activeLocks.get(resolved)
@@ -1462,6 +1602,10 @@ export namespace Worktree {
    * from one a user wrote by hand, so it is reported instead of guessed at.
    */
   export async function releaseLockForRemoval(directory: string): Promise<boolean> {
+    return withTarget(directory, () => releaseLockForRemovalBound(directory))
+  }
+
+  async function releaseLockForRemovalBound(directory: string): Promise<boolean> {
     const instanceState = runtimeState()
 
     const resolved = canonicalDirectory(directory)
@@ -1589,7 +1733,13 @@ export namespace Worktree {
     const { repoRoot } = ensureGitScope()
     const maxManaged = options?.maxManaged ?? DEFAULT_MAX_MANAGED
     const { items } = await inventory()
-    const report: SweepReport = { scanned: items.length, maxManaged, removed: [], skipped: [], reconciled: [] }
+    const report: SweepReport = {
+      scanned: items.length,
+      maxManaged,
+      removed: [],
+      skipped: [],
+      reconciled: [],
+    }
 
     async function running(info: Info) {
       for (const sessionID of info.bindings ?? []) {
@@ -1613,7 +1763,7 @@ export namespace Worktree {
       let finishRemoval: (() => void) | undefined
       try {
         finishRemoval = beginRemoval(item)
-        const current = await find(item.id)
+        const current = await resolve(item.id)
         const lock = lockOwner(current.locked)
         if (lock !== "none" || (await running(current))) {
           report.skipped.push({
@@ -1639,11 +1789,11 @@ export namespace Worktree {
               const removed = await gitMutation(
                 repoRoot,
                 ["worktree", "remove", "--force", current.path],
-                [repoRoot, current.path],
+                [await gitMetadataRoot(repoRoot), current.path],
               )
               if (removed.exitCode !== 0) throw new CreateFailedError({ message: errorText(removed) })
             },
-            { writeRoots: null },
+            { writeRoots: [await gitMetadataRoot(repoRoot), registryRoot(repoRoot)] },
           )
         }
         await removeRegistry(current.id, repoRoot)
@@ -1663,20 +1813,28 @@ export namespace Worktree {
     for (const item of oldestFirst) {
       let finishRemoval: (() => void) | undefined
       try {
-        if (report.removed.length >= excess) {
+        const overCap = report.removed.length < excess
+        if (!overCap) {
           const decision = await probe(item)
           if (!decision.eligible) report.skipped.push({ id: item.id, name: item.name, reason: decision.reason })
           continue
         }
         finishRemoval = beginRemoval(item)
-        const current = await find(item.id)
+        const current = await resolve(item.id)
         const decision = await probe(current)
         if (!decision.eligible) {
           report.skipped.push({ id: item.id, name: item.name, reason: decision.reason })
           continue
         }
-        await leaveBoundSessions(current, undefined, { preserveActivityAt: true })
-        await removeWorktree(current, { force: false, reason: "managed cap" })
+        await WorkspaceAccess.maintenance(
+          () =>
+            removeWorktree(current, {
+              force: false,
+              reason: "managed cap",
+              afterRemove: () => leaveBoundSessions(current, undefined, { preserveActivityAt: true }),
+            }),
+          { signal: WorkspaceAccess.signal() },
+        )
         report.removed.push(current.id)
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
@@ -1697,6 +1855,10 @@ export namespace Worktree {
   }
 
   export async function markLifecycle(id: string, lifecycle: RegistryInfo["lifecycle"]) {
+    return withTarget(id, () => markLifecycleBound(id, lifecycle))
+  }
+
+  async function markLifecycleBound(id: string, lifecycle: RegistryInfo["lifecycle"]) {
     const { repoRoot } = ensureGitScope()
     const current = await readJson(registryPath({ id }, repoRoot), RegistryInfo)
     if (!current) return

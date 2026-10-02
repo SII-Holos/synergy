@@ -17,7 +17,7 @@ import {
   isWorkbenchPanelLaunchable,
   workbenchPanelMountKey,
 } from "@/context/workbench/panel-model"
-import { sidebarOccupancy, WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
+import { WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
 import { useLayout } from "@/context/layout"
 import type {
   WorkbenchPanelContentProps,
@@ -137,6 +137,7 @@ function WorkbenchSortableTab(props: {
   onActivate: () => void
   onClose: () => void
   onCloseOthers: () => void
+  onCloseRight: () => void
   onContextMenu: () => void
   onContextMenuOpenChange: (open: boolean) => void
   menuOpen: boolean
@@ -227,9 +228,25 @@ function WorkbenchSortableTab(props: {
           aria-label={lingui._({
             id: W.tabContextMenu.id,
             message: W.tabContextMenu.message,
-            values: { title: props.tab.resourceId ?? props.title },
+            values: { title: props.title },
           })}
         >
+          <For each={props.entry?.tabActions?.(props.tab)}>
+            {(action) => (
+              <button
+                type="button"
+                role="menuitem"
+                class="workbench-surface-add-row"
+                disabled={action.disabled}
+                onClick={() => {
+                  props.onContextMenuOpenChange(false)
+                  void action.run()
+                }}
+              >
+                <span>{action.label}</span>
+              </button>
+            )}
+          </For>
           <button
             type="button"
             class="workbench-surface-add-row"
@@ -256,6 +273,18 @@ function WorkbenchSortableTab(props: {
             <span>
               <Trans id={W.closeOtherTabs.id} message={W.closeOtherTabs.message} />
             </span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            class="workbench-surface-add-row"
+            disabled={currentIndex() === props.tabs.length - 1}
+            onClick={() => {
+              props.onContextMenuOpenChange(false)
+              props.onCloseRight()
+            }}
+          >
+            <span>{lingui._({ id: "workbench.closeRight", message: "Close tabs to the right" })}</span>
           </button>
         </div>
       </Popover>
@@ -431,9 +460,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
     })
   })
   const maxSideWidth = () => {
-    const width =
-      available.width -
-      (available.container ? 0 : sidebarOccupancy(layout.isDesktop(), layout.sidebar.opened(), layout.sidebar.width()))
+    const width = available.width - (available.container ? 0 : layout.sidebar.occupiedWidth())
     return Math.max(0, width - WORKSPACE_SESSION_MIN_WIDTH)
   }
   const maxBottomHeight = () => Math.max(0, available.height * 0.6)
@@ -538,6 +565,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
                         onActivate={() => state().setActive(tab.id)}
                         onClose={() => void workbench.closeTab(tab.id)}
                         onCloseOthers={() => void workbench.closeOtherTabsOnSurface(props.surface, tab.id)}
+                        onCloseRight={() => void workbench.closeOtherTabsOnSurface(props.surface, tab.id, "right")}
                         onContextMenu={() => setLocal("menuTabId", tab.id)}
                         onContextMenuOpenChange={(open) => {
                           if (!open) setLocal("menuTabId", undefined)

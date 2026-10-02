@@ -1,3 +1,4 @@
+import { DialogIndependentCopy } from "../dialog/dialog-independent-copy"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { DialogWorkspace } from "@/components/dialog/dialog-workspace"
 import { workspaceCopy } from "@/components/dialog/workspace-dialog-copy"
@@ -27,7 +28,7 @@ import { ModelSelectorPopover } from "@/components/dialog/dialog-select-model"
 import { topBar } from "@/locales/messages"
 import { useInput, type ControlProfileId } from "@/context/input"
 import { useFullAccessAcknowledgement } from "@/composables/use-full-access-acknowledgement"
-import { useFile } from "@/context/file"
+import { useFile, useProjectFiles } from "@/context/file"
 import {
   DEFAULT_PROMPT,
   isPromptEqual,
@@ -67,7 +68,6 @@ import { computeWorkingPhrase, titlecaseStatusLabel } from "@ericsanchezok/syner
 import { SessionAgendaWakeIndicator } from "@/components/session/wake-indicator"
 import { FILE_INPUT_ACCEPT } from "@/components/prompt-input/files"
 import { permissionModeVisual } from "@/components/prompt-input/permission-modes"
-import { PLACEHOLDERS, PLACEHOLDERS_GLOBAL } from "@/components/prompt-input/placeholders"
 import type {
   AtOption,
   BlueprintSlot,
@@ -79,7 +79,10 @@ import { PromptAttachments } from "@/components/prompt-input/attachments"
 import { PromptPopover } from "@/components/prompt-input/popover"
 import { PermissionModeSelector } from "@/components/prompt-input/permission-selector"
 import { PromptAddMenu, type PromptAddMenuSection } from "@/components/prompt-input/add-menu"
-import { PromptStartModeSelector, type PromptStartOptionGroup } from "@/components/prompt-input/start-options"
+import type { PromptStartOptionGroup } from "@/components/prompt-input/start-options"
+import { projectFlowCopy } from "../dialog/project-flow-copy"
+import { locationCopy } from "../dialog/task-location-copy"
+import { SessionWorkContext } from "@/components/session/work-context"
 import { usePromptSubmit } from "@/components/prompt-input/submit"
 import { usePromptAttachments } from "@/components/prompt-input/attachments-hook"
 import { usePromptEditor } from "@/components/prompt-input/editor-hook"
@@ -106,7 +109,7 @@ import {
   resolveBlueprintSlotDisplay,
   type BlueprintSlotDisplay,
 } from "@/components/prompt-input/blueprint-slot"
-import { isWorktreeWorkspaceSelection, worktreeOptionSelection } from "@/components/session/worktree-session"
+import { isWorktreeWorkspaceSelection } from "@/components/session/worktree-session"
 import { restoreNewSessionRecovery } from "@/components/session/new-session-recovery"
 import { PlanBlueprintOfferControl } from "@/components/prompt-input/plan-blueprint-offer"
 import { emptyPlanBlueprintOfferState, shouldDisplayPlanBlueprintOffer } from "@/context/plan-blueprint-offer"
@@ -207,6 +210,7 @@ export function createPromptInputController(props: PromptInputProps) {
   const input = useInput()
   const local = useLocal()
   const files = useFile()
+  const projectFiles = useProjectFiles()
   const prompt = usePrompt()
   const layout = useLayout()
   const workbench = useWorkbenchPanels()
@@ -228,7 +232,6 @@ export function createPromptInputController(props: PromptInputProps) {
     popover: null,
     historyIndex: -1,
     savedPrompt: null,
-    placeholder: Math.floor(Math.random() * PLACEHOLDERS.length),
     dragging: false,
     mode: "normal",
     applyingHistory: false,
@@ -536,7 +539,7 @@ export function createPromptInputController(props: PromptInputProps) {
   onCleanup(() => pendingUploads.clear())
   const attachmentsUploading = createMemo(() => pendingUploads.uploading())
   const canSubmit = createMemo(() => {
-    if (props.readOnly || submitPending()) return false
+    if (props.readOnly || props.locationPending || submitPending()) return false
     const intent = resolvePromptSubmitIntent({
       text: promptText(),
       working: working(),
@@ -1182,7 +1185,7 @@ export function createPromptInputController(props: PromptInputProps) {
     if (params.id) return []
 
     const workspaceSelection = props.newSessionWorkspaceSelection ?? { mode: "current" as const }
-    const worktreeSelected = isWorktreeWorkspaceSelection(workspaceSelection)
+    const worktreeSelected = workspaceSelection.mode === "create"
     const canCreateWorktree = props.newSessionCanCreateWorktree ?? (!sdk.isHome && !!sdk.directory)
     const mainLabel = isHomeScope(sdk.scopeKey) ? i18n._(PI.wsLabelHome) : i18n._(PI.wsLabelMainCheckout)
     const localDescription = isHomeScope(sdk.scopeKey) ? i18n._(PI.wsDescGlobal) : i18n._(PI.wsDescCurrent)
@@ -1214,7 +1217,13 @@ export function createPromptInputController(props: PromptInputProps) {
             selected: workspaceSelection.mode === "workspace" || workspaceSelection.mode === "none",
             onSelect: () =>
               workflowDialog.show(() => (
-                <DialogWorkspace selection={workspaceSelection} onSelect={props.onNewSessionWorkspaceSelectionChange} />
+                <DialogWorkspace
+                  environmentProfile={props.newSessionEnvironmentProfile}
+                  environmentID={props.newSessionEnvironmentID}
+                  mode="select"
+                  selection={workspaceSelection}
+                  onSelect={props.onNewSessionWorkspaceSelectionChange}
+                />
               )),
           },
           {
@@ -1226,14 +1235,37 @@ export function createPromptInputController(props: PromptInputProps) {
             disabled: !canCreateWorktree,
             tooltip: canCreateWorktree ? i18n._(PI.wsWorktreeTooltipCan) : i18n._(PI.wsWorktreeTooltipCannot),
             onSelect: () =>
-              props.onNewSessionWorkspaceSelectionChange?.(
-                worktreeOptionSelection({
-                  currentDirectory: props.newSessionCurrentDirectory,
-                  canonicalDirectory: props.newSessionCanonicalDirectory,
-                }),
-              ),
+              workflowDialog.show(() => (
+                <DialogIndependentCopy
+                  deferred
+                  source={props.newSessionCanonicalDirectory ?? sdk.directory ?? ""}
+                  onConfirm={(name) => props.onNewSessionWorkspaceSelectionChange?.({ mode: "create", name })}
+                />
+              )),
           },
-        ],
+          {
+            id: "workspace.existing",
+            label: i18n._(locationCopy.continueCopy),
+            icon: getSemanticIcon("workspace.worktree"),
+            selected:
+              workspaceSelection.mode === "existing" ||
+              (workspaceSelection.mode === "workspace" &&
+                sync.data.workspaces.some(
+                  (item) => item.id === workspaceSelection.workspaceID && item.type === "git_worktree",
+                )),
+            onSelect: () =>
+              workflowDialog.show(() => (
+                <DialogWorkspace
+                  environmentProfile={props.newSessionEnvironmentProfile}
+                  environmentID={props.newSessionEnvironmentID}
+                  mode="select"
+                  copiesOnly
+                  selection={workspaceSelection}
+                  onSelect={props.onNewSessionWorkspaceSelectionChange}
+                />
+              )),
+          },
+        ].filter((option) => option.id !== "workspace.worktree" || canCreateWorktree),
       },
     ]
   })
@@ -1429,11 +1461,6 @@ export function createPromptInputController(props: PromptInputProps) {
   createEffect(() => {
     params.id
     editorElement()?.focus()
-    if (params.id) return
-    const interval = setInterval(() => {
-      setStore("placeholder", (prev) => (prev + 1) % PLACEHOLDERS.length)
-    }, 6500)
-    onCleanup(() => clearInterval(interval))
   })
 
   const [composing, setComposing] = createSignal(false)
@@ -1460,8 +1487,11 @@ export function createPromptInputController(props: PromptInputProps) {
     onKeyDown: atOnKeyDown,
   } = useFilteredList<AtOption>({
     items: async (query) => {
-      const paths = await files.searchFilesAndDirectories(query)
-      return paths.map((path): AtOption => ({ type: "file", path, display: path }))
+      const results = await projectFiles.search(query)
+      return results.map(({ path, workspace }): AtOption => {
+        const absolute = workspace.path ? `${workspace.path.replace(/[\\/]$/, "")}/${path}` : path
+        return { type: "file", path: absolute, display: absolute }
+      })
     },
     deferInitialLoad: true,
     key: atKey,
@@ -1947,10 +1977,13 @@ export function createPromptInputController(props: PromptInputProps) {
     editor: editorElement,
     queueScroll,
     onWorktreeUnavailable: () => workflowDialog.show(() => <WorktreeUnavailableDialog />),
-    beforeSubmit: () => composerDocument!.beforeSubmit(),
+    beforeSubmit: async () => {
+      await props.onValidateLocation?.()
+      await composerDocument!.beforeSubmit()
+    },
   })
   const handleSubmit = (event: Event) => {
-    if (abandonPending() || (continuePending() && !working())) {
+    if (props.locationPending || abandonPending() || (continuePending() && !working())) {
       event.preventDefault()
       return
     }
@@ -1972,6 +2005,8 @@ export function createPromptInputController(props: PromptInputProps) {
         requireEditable()
         setStore("mode", mode)
       },
+      setEnvironment: (id) => props.onNewSessionEnvironmentChange?.(id),
+      setEnvironmentProfile: (profile) => props.onNewSessionEnvironmentProfileChange?.(profile),
       setWorkspaceSelection: (selection) => props.onNewSessionWorkspaceSelectionChange?.(selection),
       setControlProfile: input.setControlProfile,
       setPlan: setPendingPlan,
@@ -2015,18 +2050,6 @@ export function createPromptInputController(props: PromptInputProps) {
   const views: Record<PluginInputViewPart, () => import("solid-js").JSX.Element> = {
     leading: () => (
       <>
-        <Show when={params.id}>
-          <div class="absolute -top-3 right-5 z-20 hidden md:flex items-center gap-1.5">
-            <SessionAgendaWakeIndicator sessionID={params.id!} />
-            <QuickActions
-              class="relative"
-              onCommand={(id) => command.trigger(id)}
-              onRuntimeCommand={runRuntimeCommand}
-              commandsDisabled={working()}
-              commands={command.options}
-            />
-          </div>
-        </Show>
         <Show when={store.popover}>
           <PromptPopover
             mode={() => store.popover}
@@ -2042,6 +2065,36 @@ export function createPromptInputController(props: PromptInputProps) {
           />
         </Show>
         <ComposerSlotOutlet slot="composer.above" sessionId={params.id} class="flex min-w-0 flex-col gap-2" />
+        <SessionWorkContext
+          directories={props.projectDirectories}
+          directoryError={props.projectDirectoryError}
+          onRefresh={props.onProjectDirectoriesRefresh}
+          onSelect={props.onNewSessionWorkspaceSelectionChange}
+          uploading={attachmentsUploading()}
+          onWorkspaceTransition={props.onWorkspaceTransition}
+          running={working()}
+          environmentID={props.newSessionEnvironmentID}
+          environmentProfile={props.newSessionEnvironmentProfile}
+          onEnvironmentProfileChange={props.onNewSessionEnvironmentProfileChange}
+          workspaceSelection={props.newSessionWorkspaceSelection}
+          onEnvironmentChange={props.onNewSessionEnvironmentChange}
+          startOptions={newSessionStartOptions()}
+          disabled={!!props.readOnly || composerSubmitting() || !!props.sessionTransitionPending}
+        >
+          {" "}
+          <Show when={params.id}>
+            <div class="relative z-20 ml-auto hidden md:flex items-center gap-1.5">
+              <SessionAgendaWakeIndicator sessionID={params.id!} />
+              <QuickActions
+                class="relative"
+                onCommand={(id) => command.trigger(id)}
+                onRuntimeCommand={runRuntimeCommand}
+                commandsDisabled={working()}
+                commands={command.options}
+              />
+            </div>
+          </Show>
+        </SessionWorkContext>
       </>
     ),
     context: () => (
@@ -2053,6 +2106,15 @@ export function createPromptInputController(props: PromptInputProps) {
               <span class="text-14-regular">{i18n._(PI.dropZone)}</span>
             </div>
           </div>
+        </Show>
+        <Show
+          when={[...prompt.current(), ...prompt.context.items()].some(
+            (part) => part.type === "file" && part.originScopeID && part.originScopeID !== sdk.scopeID,
+          )}
+        >
+          <p role="alert" class="px-3 pt-3 text-small text-text-error">
+            {i18n._(projectFlowCopy.unavailableReference)}
+          </p>
         </Show>
         <Show when={prompt.context.items().length > 0}>
           <div class="flex flex-wrap items-center gap-2 px-3 pt-3">
@@ -2111,24 +2173,27 @@ export function createPromptInputController(props: PromptInputProps) {
                 </div>
               </Match>
               <Match when={store.mode === "normal"}>
+                <PromptAddMenu sections={addMenuSections()} />
                 <Show when={!props.hideAgentSelector}>
                   <div class="min-w-0 shrink-0">
                     <ToolbarSelectorPopover
                       triggerAs={(triggerProps) => (
-                        <button
-                          {...triggerProps}
-                          type="button"
-                          class="prompt-input-toolbar-button flex items-center gap-1.5"
+                        <Tooltip
+                          value={i18n._(PI.selectAgent)}
+                          placement="top"
+                          open={String(triggerProps["aria-expanded"]) === "true" ? false : undefined}
                         >
-                          <span class="text-12-medium text-text-base whitespace-nowrap">
-                            {translateDescriptor(getAgentVisual(local.agent.current()).label, i18n)}
-                          </span>
-                          <Icon
-                            name={getSemanticIcon("navigation.collapse")}
-                            size="small"
-                            class="text-icon-weak-base shrink-0"
-                          />
-                        </button>
+                          <button
+                            {...triggerProps}
+                            type="button"
+                            aria-label={`${i18n._(PI.selectAgent)}: ${translateDescriptor(getAgentVisual(local.agent.current()).label, i18n)}`}
+                            class="prompt-input-toolbar-button flex items-center gap-1.5"
+                          >
+                            <span class="text-12-medium text-text-base whitespace-nowrap">
+                              {translateDescriptor(getAgentVisual(local.agent.current()).label, i18n)}
+                            </span>
+                          </button>
+                        </Tooltip>
                       )}
                       title={i18n._(PI.selectAgent)}
                       contentClass="w-52 max-h-80"
@@ -2158,7 +2223,7 @@ export function createPromptInputController(props: PromptInputProps) {
                               >
                                 <div
                                   classList={{
-                                    "flex items-center justify-between gap-3 px-2 py-1.5": true,
+                                    "flex items-center justify-between gap-3": true,
                                     "opacity-45": sessionHasMessages() && !!agent.external,
                                   }}
                                 >
@@ -2177,7 +2242,7 @@ export function createPromptInputController(props: PromptInputProps) {
                   </div>
                 </Show>
                 <Show when={sessionMeta().canSelectModel}>
-                  <div class="min-w-0 max-w-full md:hidden">
+                  <div class="prompt-input-mobile-model min-w-0 max-w-full md:hidden">
                     <Show
                       when={!modelLocked()}
                       fallback={
@@ -2268,9 +2333,7 @@ export function createPromptInputController(props: PromptInputProps) {
                   />
                 </Show>
                 <ComposerSlotOutlet slot="composer.add-menu" sessionId={params.id} class="contents" />
-                <PromptAddMenu sections={addMenuSections()} />
                 <ComposerSlotOutlet slot="composer.start-option" sessionId={params.id} class="contents" />
-                <PromptStartModeSelector groups={newSessionStartOptions()} />
               </Match>
             </Switch>
           </div>
@@ -2442,12 +2505,7 @@ export function createPromptInputController(props: PromptInputProps) {
         if (prompt.dirty()) return
         if (store.mode === "shell") return i18n._(PI.placeholderShell)
         if (planActive()) return i18n._(PI.placeholderPlan)
-        return isHomeScope(sdk.scopeKey)
-          ? i18n._({
-              ...PI.placeholderExampleGlobal,
-              values: { example: i18n._(PLACEHOLDERS_GLOBAL[store.placeholder % PLACEHOLDERS_GLOBAL.length]) },
-            })
-          : i18n._({ ...PI.placeholderExampleProject, values: { example: i18n._(PLACEHOLDERS[store.placeholder]) } })
+        return i18n._({ id: "prompt.placeholder.task", message: "Describe a task, or type / for commands" })
       },
     },
     readOnly: () => !!props.readOnly,
@@ -2553,6 +2611,10 @@ export function createPromptInputController(props: PromptInputProps) {
   }
   return {
     input: composerInput,
+    pickFiles() {
+      requireEditable()
+      fileInputRef.click()
+    },
     extensions: () => <ComposerExtensionOutlet controller={composerDocument} sessionId={params.id} />,
   }
 }

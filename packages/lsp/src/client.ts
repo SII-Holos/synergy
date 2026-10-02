@@ -1,7 +1,6 @@
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import path from "path"
-import { pathToFileURL, fileURLToPath } from "url"
 import { createMessageConnection, StreamMessageReader, StreamMessageWriter } from "vscode-jsonrpc/node"
 import type { Diagnostic as VSCodeDiagnostic } from "vscode-languageserver-types"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
@@ -10,9 +9,10 @@ import z from "zod"
 import type { LSPServer } from "./server"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { withTimeout } from "@ericsanchezok/synergy-harness/util/timeout"
-import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Filesystem } from "@ericsanchezok/synergy-harness/util/filesystem"
 import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
+import { FileView } from "@ericsanchezok/synergy-local-runtime/file/view"
+import { LSPPaths } from "./paths"
 
 const DIAGNOSTICS_DEBOUNCE_MS = 150
 
@@ -58,7 +58,7 @@ export namespace LSPClient {
 
     const diagnostics = new Map<string, Diagnostic[]>()
     connection.onNotification("textDocument/publishDiagnostics", (params) => {
-      const filePath = Filesystem.normalizePath(fileURLToPath(params.uri))
+      const filePath = Filesystem.normalizePath(LSPPaths.path(params.uri))
       l.info("textDocument/publishDiagnostics", {
         path: filePath,
         count: params.diagnostics.length,
@@ -81,7 +81,7 @@ export namespace LSPClient {
     connection.onRequest("workspace/workspaceFolders", async () => [
       {
         name: "workspace",
-        uri: pathToFileURL(input.root).href,
+        uri: LSPPaths.url(input.root),
       },
     ])
     connection.listen()
@@ -92,12 +92,12 @@ export namespace LSPClient {
     l.info("sending initialize")
     await withTimeout(
       connection.sendRequest("initialize", {
-        rootUri: pathToFileURL(input.root).href,
+        rootUri: LSPPaths.url(input.root),
         processId: input.server.process.pid,
         workspaceFolders: [
           {
             name: "workspace",
-            uri: pathToFileURL(input.root).href,
+            uri: LSPPaths.url(input.root),
           },
         ],
         initializationOptions: {
@@ -165,11 +165,8 @@ export namespace LSPClient {
       },
       notify: {
         async open(input: { path: string }) {
-          input.path = path.isAbsolute(input.path)
-            ? input.path
-            : path.resolve(ScopeContext.current.directory, input.path)
-          const file = Bun.file(input.path)
-          const text = await file.text()
+          input.path = FileView.resolve(input.path)
+          const text = new TextDecoder().decode(await FileView.bytes(input.path))
           const extension = path.extname(input.path)
           const languageId = LANGUAGE_EXTENSIONS[extension] ?? "plaintext"
 
@@ -179,7 +176,7 @@ export namespace LSPClient {
             await connection.sendNotification("workspace/didChangeWatchedFiles", {
               changes: [
                 {
-                  uri: pathToFileURL(input.path).href,
+                  uri: LSPPaths.url(input.path),
                   type: 2, // Changed
                 },
               ],
@@ -193,7 +190,7 @@ export namespace LSPClient {
             })
             await connection.sendNotification("textDocument/didChange", {
               textDocument: {
-                uri: pathToFileURL(input.path).href,
+                uri: LSPPaths.url(input.path),
                 version: next,
               },
               contentChanges: [{ text }],
@@ -205,7 +202,7 @@ export namespace LSPClient {
           await connection.sendNotification("workspace/didChangeWatchedFiles", {
             changes: [
               {
-                uri: pathToFileURL(input.path).href,
+                uri: LSPPaths.url(input.path),
                 type: 1, // Created
               },
             ],
@@ -215,7 +212,7 @@ export namespace LSPClient {
           diagnostics.delete(input.path)
           await connection.sendNotification("textDocument/didOpen", {
             textDocument: {
-              uri: pathToFileURL(input.path).href,
+              uri: LSPPaths.url(input.path),
               languageId,
               version: 0,
               text,
@@ -229,9 +226,7 @@ export namespace LSPClient {
         return diagnostics
       },
       async waitForDiagnostics(input: { path: string }) {
-        const normalizedPath = Filesystem.normalizePath(
-          path.isAbsolute(input.path) ? input.path : path.resolve(ScopeContext.current.directory, input.path),
-        )
+        const normalizedPath = Filesystem.normalizePath(FileView.resolve(input.path))
         log.info("waiting for diagnostics", { path: normalizedPath })
         let unsub: () => void
         let debounceTimer: ReturnType<typeof setTimeout> | undefined

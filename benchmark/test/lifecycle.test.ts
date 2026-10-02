@@ -173,6 +173,7 @@ test("export deadlines and failures remain independent from agent success", asyn
         env: process.env,
         identity: { sessionID: "s", runID: "r" },
         timeoutSeconds: fault === "export-timeout" ? 0.4 : 3,
+        validationTimeoutSeconds: fault === "validation-timeout" ? 0.4 : 3,
       })
       expect(result.status).toBe(fault === "success" ? "completed" : "failed")
       expect(await Bun.file(path.join(logs, "export.json")).json()).toEqual(result)
@@ -181,7 +182,23 @@ test("export deadlines and failures remain independent from agent success", asyn
       if (fault === "export-timeout") expect(result.process.timed_out).toBe(true)
       if (fault === "validation-exit") expect(result.validation.exit_code).toBe(6)
       if (fault === "validation-timeout") expect(result.validation.timed_out).toBe(true)
+      if (fault === "validation-timeout") expect(await Bun.file(path.join(logs, "rollout.zip")).exists()).toBe(true)
     }
+
+    await Bun.write(path.join(root, "entry.ts"), 'await Bun.write(process.argv.at(-1)!, "retained archive")')
+    await Bun.write(path.join(root, "verify.ts"), "await Bun.sleep(700)")
+    const logs = path.join(root, "independent-deadlines")
+    await mkdir(logs)
+    const independentlyBounded = await exportRollout({
+      logs,
+      runtime: "core",
+      env: process.env,
+      identity: { sessionID: "s", runID: "r" },
+      timeoutSeconds: 0.4,
+      validationTimeoutSeconds: 2,
+    })
+    expect(independentlyBounded.status).toBe("completed")
+    expect(independentlyBounded.validation_timeout_seconds).toBe(2)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

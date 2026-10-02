@@ -29,9 +29,13 @@ A project Scope can declare multiple project folders — the main worktree plus 
 
 The selected Workspace defines the default writable directory. Declaring another project folder does not grant write access: additional writable Workspaces must be shared explicitly. Ordinary non-sensitive files outside that boundary remain readable under the active execution policy.
 
+## Starting a project task
+
+Web and Desktop let users choose a project, enter a task and send. The project selector keeps the draft and stays on the new-task page; sidebar project navigation still opens project history. Files and execution are summarized beside the project. Their detailed choices live in Working location, with advanced resource operations separated from routine selection. See the [Web product rules](../../apps/web/PRODUCT.md#project-first-task-entry) for draft merging, native folder selection and dialog behavior.
+
 ## Workspace Binding
 
-A session belongs to a Scope and references a stable Workspace identity, or has no local files. The default Workspace is the Scope directory. The composer and Session status bar can select another existing directory; a code task can also enter or create a managed worktree while retaining its Scope identity.
+A session belongs to a Scope and references a stable Workspace identity, or has no local files. The default Workspace is the Scope directory. The Composer working-location panel can select another existing directory; a code task can also enter or create a managed worktree while retaining its Scope identity.
 
 Sessions can share a Workspace. Explicitly changing its local binding updates every referencing Session and requires idle file resources. Imported history remains unavailable for local execution until deliberately rebound. Open file tabs retain the directory version they were opened against, so rebinding cannot silently redirect a pending edit.
 
@@ -128,7 +132,7 @@ The durable message history remains available. Compaction is a model-context ope
 
 ## Browser Ownership
 
-The default Browser owner is the session. A session has at most one page, and both the user surface and Browser tools operate on that page. The Browser therefore behaves like a workspace alongside files and Notes, not like an unrelated browser application with its own task history.
+Desktop Browser pages belong to their task. A task can keep multiple real pages with independent immutable identities; human selection and Agent targets are separate. Persistent identities can reuse website logins across tasks without transferring page ownership.
 
 See [Browser workspace](browser.md).
 

@@ -492,6 +492,7 @@ export type AttachmentConfig = z.infer<typeof AttachmentConfig>
 
 export const Provider = ModelsDev.Provider.partial()
   .extend({
+    billingMode: ProviderPricing.BillingMode.optional(),
     profile: z
       .string()
       .min(1)
@@ -508,6 +509,7 @@ export const Provider = ModelsDev.Provider.partial()
       .record(
         z.string(),
         ModelsDev.Model.partial().extend({
+          billingMode: ProviderPricing.BillingMode.optional(),
           cost: ProviderPricing.ModelConfigCost.optional(),
           variants: z
             .record(
@@ -860,7 +862,7 @@ export const CoreInfo = z
           .describe("Grace period for active ToolTasks during runtime shutdown (default: 3000)"),
         toolExecutorConcurrency: z
           .partialRecord(
-            z.enum(["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]),
+            z.enum(["local_process", "file", "plugin", "mcp", "browser", "control_plane"]),
             z.number().int().positive().max(512),
           )
           .optional()

@@ -41,9 +41,19 @@ describe("CI impact planning", () => {
   test("only explicitly classified documentation bypasses runtime checks", () => {
     expect(selectAffected(["docs/research/ci.md", "README.md"], workspaces, workspaces).documentationOnly).toBe(true)
     expect(selectAffected(["packages/core/src/prompt.md"], workspaces, workspaces).packages).toContain("packages/core")
-    expect(selectAffected([".synergy/skill/testing-guide/SKILL.md"], workspaces, workspaces).documentationOnly).toBe(
-      false,
-    )
+    for (const file of [
+      "docs/architecture/session-and-messages.md",
+      "docs/reference/configuration.md",
+      ".synergy/skill/testing-guide/SKILL.md",
+      ".synergy/skill/testing-guide/agents/openai.yaml",
+    ]) {
+      expect(selectAffected([file], workspaces, workspaces).documentationOnly).toBe(true)
+      const mixed = selectAffected([file, "packages/core/src/value.ts"], workspaces, workspaces)
+      expect(mixed.full).toBe(false)
+      expect(mixed.packages).toContain("packages/consumer")
+    }
+    for (const file of [".synergy/config.json", ".synergy/skill/example/run.ts", "packages/core/src/prompt.md"])
+      expect(selectAffected([file], workspaces, workspaces).documentationOnly).toBe(false)
   })
 
   test("shadow and push modes execute every task even when the proposed selection is small", () => {
@@ -72,6 +82,53 @@ describe("CI impact planning", () => {
     expect(plan.proposed).toEqual(["web"])
     expect(createPlan({ ...input, mode: "full" }).selected).toEqual(["core", "web"])
   })
+
+  test("integration inputs take precedence over broad owners and fail closed when unresolved", () => {
+    const input = {
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "affected" as const,
+      changed: ["packages/core/src/value.ts"],
+      baseWorkspaces: workspaces,
+      headWorkspaces: workspaces,
+      tasks: [
+        {
+          id: "core",
+          pool: "linux" as const,
+          owners: ["packages/core"],
+          needs: [],
+          seconds: 1,
+          kind: "suite" as const,
+        },
+        {
+          id: "database",
+          pool: "postgres" as const,
+          owners: ["packages/core"],
+          needs: [],
+          seconds: 1,
+          kind: "postgres" as const,
+          inputs: ["packages/core/test/storage.test.ts"],
+        },
+      ],
+      baseInputs: { database: { complete: true, files: ["packages/core/src/storage.ts"], packages: [] } },
+      headInputs: { database: { complete: true, files: ["packages/core/src/storage.ts"], packages: [] } },
+    }
+    expect(createPlan(input).selected).toEqual(["core"])
+    expect(createPlan({ ...input, changed: ["packages/core/src/storage.ts"] }).selected).toContain("database")
+    expect(createPlan({ ...input, headInputs: {} }).selected).toContain("database")
+    expect(
+      createPlan({ ...input, headInputs: { database: { ...input.headInputs.database, complete: false } } }).selected,
+    ).toContain("database")
+    expect(
+      createPlan({ ...input, baseInputs: { database: { ...input.baseInputs.database, files: input.changed } } })
+        .selected,
+    ).toContain("database")
+    expect(createPlan({ ...input, tasks: input.tasks.map((task) => ({ ...task, seconds: 999 })) }).selected).toEqual([
+      "core",
+    ])
+  })
 })
 
 describe("CI completion evidence", () => {
@@ -87,12 +144,14 @@ describe("CI completion evidence", () => {
     tasks: [{ id: "postgres-18", pool: "postgres", owners: [], needs: [], seconds: 10, kind: "postgres" }],
   })
   const result: TaskResult = {
-    version: 1,
+    version: 2,
     task: "postgres-18",
+    unit: plan.units.find((unit) => unit.tasks.includes("postgres-18"))!.id,
     plan: plan.digest,
     sha: plan.sha,
     run: plan.run,
-    attempt: plan.attempt,
+    planAttempt: plan.attempt,
+    executionAttempt: plan.attempt,
     mode: "full",
     status: "success",
     exitCode: 0,
@@ -112,7 +171,7 @@ describe("CI completion evidence", () => {
   test.each([
     { sha: "d".repeat(40) },
     { run: "41" },
-    { attempt: "0" },
+    { executionAttempt: "0" },
     { plan: "old-plan" },
     { mode: "diagnostic" },
     { status: "failure", exitCode: 1 },

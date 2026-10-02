@@ -33,16 +33,17 @@
 
 AI agent work often outlives a single conversation. Synergy treats it as durable workspace state. A task can move between Web, Desktop, CLI, background execution, and specialist agents while preserving its project, history, files, tools, and operating context.
 
-Synergy runs as a standalone local workspace. Connecting a Holos agent adds account identity, messaging, presence, and Synergy Link remote execution without replacing local projects, providers, sessions, or data.
+Synergy runs as a standalone local workspace. Connecting a Holos agent adds account identity, messaging, and presence without replacing local projects, providers, sessions, or data.
 
 ## What makes Synergy different
 
 - **Durable by default** — Keep recoverable sessions attached to an explicit home or project Scope, with complete history even when older model context is compacted.
 - **One runtime, every surface** — Use the same sessions and state from the Web workbench, Desktop app, CLI, server API, and SDK.
 - **First-class agent coordination** — Delegate to specialist subagents, plan durable Blueprints, run independently reviewed BlueprintLoops, keep focused work moving with Light Loop, or orchestrate a tree of persistent specialist workers with Boss Mode.
-- **Files and Browser stay in context** — Browse, edit, create, copy, move and delete Workspace files alongside a session-owned Browser page without moving the task into a separate tool or disposable environment. Review and restore file changes against their original Workspace.
+- **Files and Browser stay in context** — Browse, edit, create, copy, move and delete Workspace files alongside Desktop browser pages with saved website logins without moving the task into a separate tool or disposable environment. Review and restore file changes against their original Workspace.
+- **Compute starts when needed** — Select native or Docker execution independently of durable Workspace files. API-only work allocates no container; local, S3 and OSS object stores preserve files across compute reclamation. See [resource configuration](docs/reference/configuration-layout.md).
 - **Knowledge compounds** — Retain reusable memory and learned experience in Library while authoring Notes and Blueprints as durable documents.
-- **Local-first and extensible** — Add providers, tools, Skills, commands, MCP servers, plugins, Channels, and remote Synergy Link targets while keeping local ownership of projects and data.
+- **Local-first and extensible** — Add providers, tools, Skills, commands, MCP servers, plugins and Channels while keeping local ownership of projects and data.
 
 Read the [product overview](docs/product/overview.md) for the complete product model, including Lattice Pathways, Agenda, Channels, Library, Holos, and extension boundaries.
 
@@ -85,6 +86,8 @@ Methodology: official leaderboard numbers from deepswe.datacurve.ai (v1.1, fetch
 ## Quick Start
 
 ### Desktop
+
+Choose a project in the task composer or start without project files. See [project task entry](docs/product/workspaces-and-sessions.md#starting-a-project-task) for file locations and independent copies.
 
 Download the latest installer from [GitHub Releases](https://github.com/SII-Holos/synergy/releases/latest). Desktop installers include the app and expose the packaged runtime as the `synergy` CLI.
 
@@ -135,7 +138,7 @@ Upgrade with `synergy upgrade`, or install a specific version by passing `--vers
 
 `synergy uninstall` keeps its existing defaults and removes data, cache, config, and state unless you pass `--keep-data` or `--keep-config`. To remove only one installation channel while preserving shared data, cache, config, and state, run `synergy uninstall --installation-only --method <channel>`; standalone removal deletes only installer-owned files under `~/.synergy/` and the exact shell PATH entries the installer wrote.
 
-Headless Browser tools require Chromium. Run `synergy browser install` to install the verified managed version and `synergy browser doctor` to check readiness, or set `CHROMIUM_PATH` to a separately installed executable. Desktop Browser presentation uses Electron's bundled Chromium. macOS Desktop also supports native application Computer Use in Full Access mode, with Accessibility and Screen Recording permissions. See [Native Computer Use](docs/architecture/computer-use.md).
+The built-in Browser is Desktop-local and uses Electron's bundled Chromium, with peer workbench page tabs and reusable website logins; separate and temporary profiles live in Browser settings. CLI and Web use search, fetch and MCP integrations. macOS Desktop also supports native application Computer Use in Full Access mode, with independently checked Accessibility and Screen Recording permissions. Native observations report image quality and action availability; coordinate actions require a verified image submitted to the selecting model request. Computer Use prefers background delivery. The agent can explicitly request foreground observation or input when needed; actions never automatically escalate or replay, and a fresh observation verifies the result. See [Native Computer Use](docs/architecture/computer-use.md).
 
 Holos is optional. Connect an agent from the Web account surface or run `synergy holos login`.
 
@@ -147,7 +150,7 @@ For headless tasks, versioned experiment settings, durable execution evidence an
 
 | Surface            | Purpose                                                                                                                                                         |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Web                | Primary workbench for sessions, project files, Browser, Notes, Library, Agenda, plugins, settings, and operational views.                                       |
+| Web                | Primary workbench for sessions, project files, Notes, Library, Agenda, plugins, settings, and operational views.                                                |
 | Desktop            | Electron product with a managed packaged server, native Browser presentation, local folder selection, protocol handling, keep-awake while running, and updates. |
 | CLI                | Runtime management, one-off `send` execution, configuration, sessions, integrations, diagnostics, and development workflows.                                    |
 | Server API and SDK | Shared contract used by first-party clients and integrations.                                                                                                   |
@@ -217,7 +220,7 @@ bun run --cwd apps/web build
 bun apps/web/script/private-http-smoke.ts
 ```
 
-CI planning, bounded execution and diagnostics are documented in [CI verification](docs/operations/ci.md).
+CI planning, bounded execution, diagnostics and justified runtime growth are documented in [CI verification](docs/operations/ci.md). Review new and affected existing tests with [testing-guide](.synergy/skill/testing-guide/SKILL.md#review-test-value-and-ci-cost).
 
 Tests live under each package's `test/` directory; repository-level tests live under the root `test/` directory. `bun run quality:quick` enforces this layout.
 
@@ -242,7 +245,7 @@ synergy-plugin build
 synergy-plugin validate --runtime-discovery
 ```
 
-UI API 5 supports replaceable workbenches, typed frontend services and structured Skins. `synergy-plugin preview` runs an isolated production host for authoring.
+UI API 6 supports replaceable workbenches, typed frontend services and structured Skins. `synergy-plugin preview` runs an isolated production host for authoring.
 
 Start with the [plugin documentation](docs/plugins/README.md) and the [`@ericsanchezok/synergy-plugin` API reference](packages/plugin/README.md).
 

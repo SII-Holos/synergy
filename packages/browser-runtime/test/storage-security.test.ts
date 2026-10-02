@@ -40,7 +40,7 @@ describe("Browser storage owner isolation", () => {
       expect(new Set(paths.map((key) => JSON.stringify(key))).size).toBe(3)
       for (const filepath of paths) {
         expect(filepath[2]).toMatch(/^[a-f0-9]{64}$/)
-        expect(filepath.slice(0, 2)).toEqual(["browser", "sessions-v4"])
+        expect(filepath.slice(0, 2)).toEqual(["browser", "sessions-v5"])
       }
       expect(BrowserOwner.key(first)).not.toBe(BrowserOwner.key(second))
     }))

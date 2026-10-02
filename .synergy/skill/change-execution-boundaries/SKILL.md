@@ -5,6 +5,14 @@ description: Add, modify, or review Synergy capability classification, control p
 
 # Change Execution Boundaries
 
+For Environment execution, retain selected Workspace use until checkpoint publication. Verify Linux completion evidence before supervisor cleanup removes its receipt, then persist that proof in the coordinator. Test container destruction and reallocation after a failed upload, cancellation before activation, and file-host shutdown while writes are queued. Native provider tests must inject an isolated coordinator into both Workspace access and the Environment provider; never migrate the host-wide coordination ledger from a test fixture.
+
+Declare execution needs separately from Workspace needs. Resolve the target before requesting its containment verdict, and use the common process completion promise through saving. Test queued cancellation before activation and background ownership after foreground abort listeners detach. Real Bash resolver fixtures must carry the execution declaration so they exercise target-side preparation. Local Runtime's fixture supplies one private coordinator to both file admission and native execution.
+
+Native stream greetings do not prove cancellation readiness. Wait for the worker's prepared acknowledgement before binding its process claim, and send it only after cancellation and activation handlers are installed. Exercise a binding failure with a real worker delayed after its greetings; verify the original cause, no command effects and released ownership.
+
+Do not forward a queued stdin EOF after the native worker confirms whole-tree drainage. Exercise a late EOF against a real drained worker, retaining output bytes, exit status and lease release; keep pre-completion transport failures observable and preserve byte-counted EOF for live readers.
+
 ## Trace the Whole Decision
 
 1. Read [Execution boundaries](../../../docs/architecture/execution-boundaries.md) and `packages/presets/AGENTS.md`.
@@ -48,9 +56,17 @@ Report the capability and risk, classifier, profile decisions, bypassability, pe
 
 Sandbox helper preparation and discovery must use the canonical runtime home, including `SYNERGY_HOME` and test isolation. Verify copied assets and hash lookup together; do not change OS policy read/deny roots to the runtime home. Check source Cargo discovery separately from registered packaged assets.
 
-Native process admission consumes the compiler's write-footprint receipt after final sandbox preparation. Test every implicit host write grant, including temporary mounts and imported platform defaults. Unknown or bypassed containment requires host-wide exclusion; command text and cwd cannot establish disjoint writes. Changing bindings or sharing must exclude active use before publication, with both stale-request and concurrent-turn tests.
+Keep permission resolution and containment separate from resource coordination. Never convert a Sandbox write-footprint receipt, missing containment or `full_access` into host-wide exclusion. Test real concurrent commands in sibling and shared Workspaces, selected-resource lifetime, bounded managed mutations, and exact formatter preconditions. Changes to bindings still exclude active users. For saving retries, freeze the base version before capture and never reuse an old snapshot against a newer base.
 
 For native process ownership changes, test the preactivation barrier and recovery after both caller and supervisor death. Keep command exit, stream drainage and whole-tree exit distinct. Empty environments, double forks, detached sessions and closed inherited pipes must not release a live writer. Exercise unconfined commands that install their own sandbox, binary backpressure, unread-output cancellation, and source/core/full worker entrypoints. Verify ownership without borrowing another application's OS permission identity.
+
+For Environment execution, also read [Environments](../../../docs/architecture/environments.md). Test lost allocation and execution acknowledgements, operation identity conflicts, old allocation generations, failed checkpoints and owner restart. A durable physical writer must remain occupied until saving is acknowledged; recovery cannot repeat the command or infer saving from process exit.
+
+Bind cancellation callbacks to their composing Runtime. Drive a real owned process's abort outside every Runtime context and verify the original cancellation reason, process drainage, temporary cleanup and later writer admission; an in-context controller alone cannot detect detached timer or transport callbacks losing storage ownership.
+
+Resource configuration must fail closed before default selection: test malformed profile files, missing providers and credentials, and project overrides. Persist storage locations and execution settings at resource creation; profile edits must not retarget existing resources. External mutable mounts need physical coordination before being exposed as writable Workspaces.
+
+Trace resource acquisition through input acceptance, Session loops, tool authorization and actual dispatch. Exercise a real resolved API tool with an unavailable selected directory, an imported file-tool handle, parent/fork Environment inheritance and an embedded host with no native default. Tool classification must not validate or allocate an unused physical resource; resource-dependent entrypoints must still acquire their own use before effects.
 
 For physical-root exclusion, include an occupied-directory rename followed by admission against its new descendant path. Root equality and lexical path ancestry alone cannot establish overlap after an external rename; compare root and ancestor filesystem identities without conflating disjoint siblings.
 

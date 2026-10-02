@@ -1,16 +1,21 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
+import fs from "node:fs/promises"
 import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { openLocalRuntime } from "../src"
 
-for (const workspace of ["project", "none"] as const)
+for (const workspace of ["project", "none", "missing", "missing-inbox"] as const)
   test(`a real agent worker completes and persists a task with ${workspace} workspace`, async () => {
     await using fixture = await runtimeHome()
-    const file = path.join(fixture.host.home, "evidence.txt")
+    const directory = path.join(fixture.host.home, "project")
+    const file = path.join(directory, "evidence.txt")
     await Bun.write(file, "isolated evidence")
     let sessionID = ""
     const authorizations: Array<string | null> = []
@@ -95,14 +100,22 @@ for (const workspace of ["project", "none"] as const)
     await using runtime = await openLocalRuntime({ host, mode: "oneshot" })
     await runtime.run(async () =>
       ScopeContext.provide({
-        scope: workspace === "project" ? (await Scope.fromDirectory(fixture.host.home)).scope : Scope.home(),
+        scope: workspace === "none" ? Scope.home() : (await Scope.fromDirectory(directory)).scope,
         fn: async () => {
           const session = await Session.create({ title: "Worker round trip" })
           sessionID = session.id
-          const response = await SessionInvoke.invoke({
+          if (workspace.startsWith("missing")) await fs.rm(directory, { recursive: true })
+          const input = {
             sessionID: session.id,
-            parts: [{ type: "text", text: "Read the evidence" }],
-          })
+            parts: [{ type: "text" as const, text: "Read the evidence" }],
+          }
+          const response =
+            workspace === "missing-inbox"
+              ? await SessionManager.run(session.id, async (lease) => {
+                  const item = await SessionInbox.enqueueUser(input)
+                  return SessionInvoke.invokeInboxWithLease({ sessionID: session.id, itemID: item.id }, lease)
+                })
+              : await SessionInvoke.invoke(input)
           expect(response.parts.some((part) => part.type === "text" && part.text === "Read isolated evidence")).toBe(
             true,
           )
@@ -111,7 +124,8 @@ for (const workspace of ["project", "none"] as const)
             .flatMap((message) => message.parts)
             .find((part) => part.type === "tool" && part.tool === (workspace === "project" ? "read" : "session_read"))
           expect(toolPart?.type === "tool" ? toolPart.state : undefined).toMatchObject({ status: "completed" })
-          expect((await Session.get(session.id)).workspace).toEqual(workspace === "project" ? session.workspace : null)
+          expect((await Session.get(session.id)).workspace).toEqual(session.workspace)
+          expect((await Environment.get(session.environmentID!, session.scope.id)).state).toBe("idle")
         },
       }),
     )

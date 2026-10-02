@@ -71,6 +71,8 @@ For snapshot lease changes, test metadata-gate contention separately from active
 
 ## Verify
 
+When adding a migration domain, update the complete-product registry contract in `packages/presets/test/migration/registry.test.ts` and run the Presets migration suite alongside the owning domain's upgrade tests.
+
 For hierarchical deletion, measure missing-key and batched-key cleanup beside a large unrelated namespace, and inspect real engine plans for namespace-only probes. Distinguish records, derived nodes and artifact references when admitting online retention. Exercise wide trees, deep ancestors, a newly active owner, a refreshed record and cancellation after deletion begins; a count of deleted records cannot establish that a bounded node traversal is exhausted. Pair SQLite format 2/3 fixtures with PostgreSQL. Keep whole-owner offline deletion atomic and require exclusive ownership after closing runtime admission.
 
 For storage queues and worker changes, hold the preceding operation past the waiter's deadline and verify it never executes later. Check inherited cancellation, caller context and shutdown drain. Suspend or terminate owned reader and writer processes independently; two connections in a shared synchronous process do not establish read availability. Preserve the distinct ordinary-work and maintenance budgets.
@@ -96,6 +98,8 @@ Test:
 - a clone or fixture of the latest released state for startup-blocking migrations
 
 Use real temporary `SYNERGY_HOME`, Scope, storage, or SQLite fixtures instead of broad mocks. Run the narrow domain test, migration tests, recovery/integration tests, typecheck, and `bun run quality:quick`.
+
+Configuration schema changes, including optional domain extensions and descriptions, must refresh the shipped core/full schemas through `generateSchema()` in `script/release/shared/build-runtime.ts`. Run `bun test --config /dev/null test/script/release/runtime-schema.test.ts`; OpenAPI/SDK generation does not refresh these configuration artifacts.
 
 Update [Storage and paths](../../../docs/reference/storage-and-paths.md) for durable layout changes and the owning architecture document for new invariants. Keep historical narratives in `docs/migrations/`, not current-state docs.
 
@@ -144,3 +148,9 @@ For Windows link snapshots, change only the native link kind while retaining its
 Temporary SQLite inventories must finalize prepared statements before closing and removing their directory. Exercise successful and failed archive transfer on Windows without forcing garbage collection or suppressing cleanup errors.
 
 For whole-subtree logical deletion, tombstone records and enqueue artifact GC inside the existing transaction before deleting the now-empty derived nodes as a materialized set. Prune only the addressed ancestor chain afterward. Keep individual/batched record deletion separate because other descendants can remain live. Verify bounded statement count on wide/deep trees, indexed plans with unrelated history, rollback, delayed-write fences, shared packs, SQLite formats 2/3 and PostgreSQL. Do not add a persisted format merely to optimize derived-node deletion.
+
+For retained usage, exercise deletion and retention independently from explicit usage clearing. Preserve compact evidence before pruning, persist bounded journal/message-page progress, and verify replay and portable Home transfer honor suppression identities. Repairing a derived time index must invalidate revision-keyed read caches. Keep parent relationships independent of cleared counters so active descendants remain queryable. See [Usage accounting](../../../docs/architecture/usage-accounting.md).
+
+Test unknown-attribution records with unrelated owners and descendants together. Selection must preserve uncertainty from the selected owners without importing another owner's gaps; a narrower clear must not erase uncertainty shared by unselected work.
+
+Cross multiple runs under one owner with exact, owner-only and null-run ancestry at successive levels. A run filter needs a proven parent run at every edge, while Session-wide selection may retain owner-only relationships. Exercise reporting and revision-bounded clearing against the same real records, and verify unrelated record identities survive; a correct aggregate alone cannot prove safe deletion. Keep uncertainty records out of evidence-coverage counts.
