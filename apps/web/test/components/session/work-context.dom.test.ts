@@ -273,6 +273,10 @@ test("a long computer name keeps the folder heading on one line and menu state p
   const trigger = form.getByRole("button", { name: `Computer: ${computer}`, exact: true })
   await trigger.focus()
   await page.getByRole("tooltip").filter({ hasText: computer }).waitFor()
+  await form.evaluate(async (element) => {
+    const dialog = element.closest('[role="dialog"]')!
+    await Promise.all(dialog.getAnimations().map((animation) => animation.finished))
+  })
   const bounds = () =>
     form.locator(".project-field-heading").evaluate((element) => {
       const row = element.getBoundingClientRect()

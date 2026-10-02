@@ -90,6 +90,8 @@ Use `test/components/session/workbench-layout.dom.test.tsx` for input anchoring,
 
 For floating composer sizing controls, load the actual App CSS in the gesture fixture and measure both visual geometry and pointer targets. Verify corner hover, keyboard focus, touch visibility and overlap with the attachment row before accepting a density change. Attachment focus recovery must resolve the current element by attachment identity after removal; a previously captured sibling can be replaced by the keyed projection.
 
+For editor expansion motion, capture the live visible geometry before changing layout, including an interrupted transition. Animate the original editing surface rather than scaling text or cloning the editor. Test intermediate size, the bottom action anchor, reversal, native selection/undo and scrolling in a real browser. Wait for ancestor surface entrance motion before comparing control geometry. Retain exiting chrome only for the transition and make it inert immediately. Manual dragging stays synchronous; typing, viewport changes, reduced-motion changes and unmount must cancel obsolete animations and release owned work.
+
 For retained resource tabs, display the resource's owning Workspace independently of the Session's current selection. Keep encoded resource identifiers in persistence and routing; use the resolved panel title for visible labels, tooltips and accessible tab/close names. Verify the visible directory, file tree and recovered draft after switching and reloading.
 
 Derive activity steps and counts from canonical tool parts. Display preferences must not schedule background inference or make session completion depend on presentation work; historical derived summary metadata does not control grouping.

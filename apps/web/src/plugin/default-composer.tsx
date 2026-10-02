@@ -6,12 +6,28 @@ import { ComposerLongEditor } from "@/components/prompt-input/composer-long-edit
 import { ComposerExpandButton } from "@/components/prompt-input/composer-expand-button"
 import { composerPresentation } from "@/components/prompt-input/composer-presentation"
 import { ComposerResizeControls } from "@/components/prompt-input/composer-resize-controls"
+import { createComposerMotion } from "@/components/prompt-input/composer-motion"
 
 export function DefaultComposer(props: PluginComponentProps<{ input: PluginInputService }>) {
   const input = props.context.input
   const binding = composerPresentation(input)
   const [version, setVersion] = createSignal(0)
-  if (binding) onCleanup(binding.state.subscribe(() => setVersion((value) => value + 1)))
+  const [animating, setAnimating] = createSignal(false)
+  let motion: ReturnType<typeof createComposerMotion> | undefined
+  let measure = () => {}
+  let previousExpanded = !!binding?.state.expanded && input.current().mode === "normal"
+  if (binding)
+    onCleanup(
+      binding.state.subscribe(() => {
+        const next = binding.state.expanded && input.current().mode === "normal"
+        const changed = next !== previousExpanded
+        const token = changed ? motion?.capture() : undefined
+        if (!changed) motion?.cancel()
+        previousExpanded = next
+        setVersion((value) => value + 1)
+        if (token !== undefined) queueMicrotask(() => motion?.play(next, token, measure))
+      }),
+    )
   const expanded = createMemo(() => {
     version()
     return binding?.state.expanded && input.current().mode === "normal"
@@ -24,8 +40,10 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
     return binding?.state.manualHeight
   }
   onMount(() => {
+    motion = createComposerMotion(root, setAnimating)
     const pane = root.closest<HTMLElement>(".session-workbench-pane") ?? root.parentElement
-    const measure = () => {
+    let paneWidth: number | undefined
+    measure = () => {
       const viewport = window.visualViewport
       const rect = pane?.getBoundingClientRect()
       const footer =
@@ -35,19 +53,21 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
           ?.getBoundingClientRect().height ?? 0
       const topbar =
         pane?.querySelector('[data-ui-part="conversation"]')?.firstElementChild?.getBoundingClientRect().height ?? 0
-      setAvailableHeight(
-        Math.max(
-          96,
-          Math.min(
-            rect?.bottom ?? window.innerHeight,
-            viewport ? viewport.offsetTop + viewport.height : window.innerHeight,
-          ) -
-            Math.max(rect?.top ?? 0, viewport?.offsetTop ?? 0) -
-            topbar -
-            footer -
-            16,
-        ),
+      const height = Math.max(
+        96,
+        Math.min(
+          rect?.bottom ?? window.innerHeight,
+          viewport ? viewport.offsetTop + viewport.height : window.innerHeight,
+        ) -
+          Math.max(rect?.top ?? 0, viewport?.offsetTop ?? 0) -
+          topbar -
+          footer -
+          16,
       )
+      if (Math.abs(height - availableHeight()) > 0.5 || (paneWidth !== undefined && paneWidth !== rect?.width))
+        motion?.cancel()
+      paneWidth = rect?.width
+      setAvailableHeight(height)
       const form = root.querySelector("form")
       const editor = root.querySelector(".session-composer-editor")
       if (form && editor) setChromeHeight(form.getBoundingClientRect().height - editor.getBoundingClientRect().height)
@@ -63,8 +83,16 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
       observer.disconnect()
       window.visualViewport?.removeEventListener("resize", measure)
       window.removeEventListener("resize", measure)
+      motion?.dispose()
     })
   })
+  createEffect(
+    on(
+      () => input.current().revision,
+      () => motion?.cancel(),
+      { defer: true },
+    ),
+  )
   createEffect(
     on(
       expanded,
@@ -116,7 +144,7 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
         <div class="session-composer-context">{input.render("context")}</div>
         <Show when={binding} fallback={<DefaultComposerEditor context={{ input }} onError={report} />}>
           <ComposerExpandButton input={input} />
-          <ComposerLongEditor input={input} report={report}>
+          <ComposerLongEditor input={input} report={report} animating={animating()}>
             <DefaultComposerEditor context={{ input }} onError={report} />
           </ComposerLongEditor>
         </Show>

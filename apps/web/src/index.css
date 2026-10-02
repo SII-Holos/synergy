@@ -512,7 +512,8 @@ a {
   height: var(--composer-available-height);
   background: var(--background-stronger);
 }
-.session-composer[data-expanded] .prompt-input-shell {
+.session-composer[data-expanded] .prompt-input-shell,
+.session-composer[data-motion] .prompt-input-shell {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -521,11 +522,26 @@ a {
 .session-composer[data-expanded] .session-composer-context {
   flex-shrink: 0;
 }
-.composer-long-content[data-expanded] {
+.composer-long-content[data-expanded],
+.session-composer[data-motion] .composer-long-content {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
+}
+.composer-long-tools-presence {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  flex-shrink: 0;
+}
+.composer-long-content[data-expanded] .composer-long-tools-presence {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.composer-long-tools-clip {
+  min-height: 0;
+  overflow: hidden;
 }
 .composer-long-tools {
   display: flex;
@@ -560,18 +576,24 @@ a {
   color: var(--text-weak);
   margin-inline-start: auto;
 }
-.composer-long-content[data-expanded] .composer-long-panes {
+.composer-long-panes {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0fr);
+}
+.composer-long-content[data-expanded] .composer-long-panes,
+.session-composer[data-motion] .composer-long-panes {
   flex: 1;
   min-height: 0;
 }
-.composer-long-content[data-expanded] .composer-long-source {
+.composer-long-content[data-expanded] .composer-long-source,
+.session-composer[data-motion] .composer-long-source {
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
 }
-.composer-long-content[data-expanded] .session-composer-editor {
+.composer-long-content[data-expanded] .session-composer-editor,
+.session-composer[data-motion] .session-composer-editor {
   min-height: 0;
   max-height: none;
   flex: 1;
@@ -587,12 +609,14 @@ a {
   overflow: auto;
   overscroll-behavior: contain;
   padding: 16px;
+  opacity: 0;
 }
 .composer-long-content[data-expanded][data-view="preview"] .composer-long-source {
   display: none;
 }
 .composer-long-content[data-view="preview"] .composer-long-preview {
   display: block;
+  opacity: 1;
 }
 @container session-composer (width >= 720px) {
   .composer-long-content[data-expanded][data-view="edit"] .composer-long-panes {
@@ -600,7 +624,11 @@ a {
   }
   .composer-long-content[data-expanded][data-view="edit"] .composer-long-preview {
     display: block;
+    opacity: 1;
     border-inline-start: 1px solid var(--border-weak-base);
+  }
+  .session-composer[data-motion="collapsing"] .composer-long-preview {
+    display: block;
   }
 }
 .session-prompt-dock:has(.session-composer[data-expanded]) .session-prompt-dock-content {

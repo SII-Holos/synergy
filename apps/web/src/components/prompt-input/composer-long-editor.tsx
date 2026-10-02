@@ -22,6 +22,7 @@ export function ComposerLongEditor(props: {
   input: PluginInputService
   children: JSX.Element
   report(error: unknown): void
+  animating?: boolean
 }) {
   const binding = composerPresentation(props.input)
   const { _, i18n } = useLingui()
@@ -108,69 +109,75 @@ export function ComposerLongEditor(props: {
         }
       }}
     >
-      <Show when={expanded()}>
-        <div class="composer-long-tools">
-          <div
-            class="composer-long-views"
-            role="group"
-            aria-label={_({ id: "prompt.long.view", message: "Editor view" })}
-          >
-            <button
-              type="button"
-              aria-pressed={view() === "edit"}
-              onPointerDown={remember}
-              onClick={() => changeView("edit")}
-            >
-              {_({ id: "prompt.long.edit", message: "Edit" })}
-            </button>
-            <button
-              type="button"
-              aria-pressed={view() === "preview"}
-              onPointerDown={remember}
-              onClick={() => changeView("preview")}
-            >
-              {_({ id: "prompt.long.preview", message: "Preview" })}
-            </button>
-          </div>
-          <Show when={view() === "edit"}>
-            <div
-              class="composer-long-format"
-              role="group"
-              aria-label={_({ id: "prompt.long.format", message: "Markdown formatting" })}
-            >
-              <For each={formats}>
-                {(item) => (
-                  <Tooltip value={translateDescriptor(item.label, i18n())}>
-                    <button
-                      type="button"
-                      aria-label={translateDescriptor(item.label, i18n())}
-                      disabled={props.input.composing() || props.input.readOnly()}
-                      onPointerDown={(event) => {
-                        remember()
-                        event.preventDefault()
-                      }}
-                      onClick={() => void format(item.id).catch(props.report)}
-                    >
-                      {item.symbol}
-                    </button>
-                  </Tooltip>
-                )}
-              </For>
+      <div class="composer-long-tools-presence" inert={!expanded()} aria-hidden={!expanded()}>
+        <div class="composer-long-tools-clip">
+          <Show when={expanded() || props.animating}>
+            <div class="composer-long-tools">
+              <div
+                class="composer-long-views"
+                role="group"
+                aria-label={_({ id: "prompt.long.view", message: "Editor view" })}
+              >
+                <button
+                  type="button"
+                  aria-pressed={view() === "edit"}
+                  onPointerDown={remember}
+                  onClick={() => changeView("edit")}
+                >
+                  {_({ id: "prompt.long.edit", message: "Edit" })}
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={view() === "preview"}
+                  onPointerDown={remember}
+                  onClick={() => changeView("preview")}
+                >
+                  {_({ id: "prompt.long.preview", message: "Preview" })}
+                </button>
+              </div>
+              <Show when={view() === "edit"}>
+                <div
+                  class="composer-long-format"
+                  role="group"
+                  aria-label={_({ id: "prompt.long.format", message: "Markdown formatting" })}
+                >
+                  <For each={formats}>
+                    {(item) => (
+                      <Tooltip value={translateDescriptor(item.label, i18n())}>
+                        <button
+                          type="button"
+                          aria-label={translateDescriptor(item.label, i18n())}
+                          disabled={props.input.composing() || props.input.readOnly()}
+                          onPointerDown={(event) => {
+                            remember()
+                            event.preventDefault()
+                          }}
+                          onClick={() => void format(item.id).catch(props.report)}
+                        >
+                          {item.symbol}
+                        </button>
+                      </Tooltip>
+                    )}
+                  </For>
+                </div>
+              </Show>
+              <span class="composer-long-shortcut">
+                {_({ id: "prompt.long.shortcut", message: "Ctrl/⌘ + Enter to send" })}
+              </span>
             </div>
           </Show>
-          <span class="composer-long-shortcut">
-            {_({ id: "prompt.long.shortcut", message: "Ctrl/⌘ + Enter to send" })}
-          </span>
         </div>
-      </Show>
+      </div>
       <div class="composer-long-panes">
         <div class="composer-long-source" inert={expanded() && view() === "preview"}>
           {props.children}
         </div>
-        <Show when={expanded()}>
+        <Show when={expanded() || props.animating}>
           <div
             class="composer-long-preview"
             tabIndex={0}
+            inert={!expanded()}
+            aria-hidden={!expanded()}
             aria-label={_({ id: "prompt.long.preview", message: "Preview" })}
           >
             <UserMarkdown
