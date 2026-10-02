@@ -11,6 +11,7 @@ import { RolloutSchema } from "./schema"
 import { record, RolloutRecordingError } from "./error"
 import { ProviderPricing } from "../../provider/pricing"
 import { RolloutUsage } from "./usage"
+import { SessionActivityEvent } from "../activity-events"
 
 export namespace RolloutLedger {
   type Owner = RolloutSchema.Owner
@@ -105,6 +106,7 @@ export namespace RolloutLedger {
       recording: "partial",
     })
     await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], reopened))
+    await SessionActivityEvent.execution(owner, runID)
     return reopened
   }
 
@@ -144,6 +146,7 @@ export namespace RolloutLedger {
       cancelRequestedAt: undefined,
     })
     await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], resumed))
+    await SessionActivityEvent.execution(owner, runID)
     return resumed
   }
 
@@ -222,6 +225,7 @@ export namespace RolloutLedger {
     await record(() =>
       RolloutJournal.write(input.owner, [...root(input.owner, input.runID), "segments", segment.id], segment),
     )
+    await SessionActivityEvent.execution(input.owner, input.runID)
     return segment
   }
 
@@ -532,6 +536,7 @@ export namespace RolloutLedger {
           : "partial",
     }
     await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], completed))
+    await SessionActivityEvent.execution(owner, runID)
     instanceState.recordingFailures.delete(lockKey(owner, runID))
     return completed
   }

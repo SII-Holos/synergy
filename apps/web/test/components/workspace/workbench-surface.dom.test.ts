@@ -93,6 +93,7 @@ beforeAll(async () => {
     import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
     import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
     import { Popover } from "@ericsanchezok/synergy-ui/popover"
+    import { MobileWorkspaceDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/mobile-workspace-dialog.tsx`)}
     import { WorkbenchSurface } from ${JSON.stringify(`/@fs/${source}/components/workspace/workbench-surface.tsx`)}
     import { WorkspaceNavigator } from ${JSON.stringify(`/@fs/${source}/components/workspace/workspace-navigator.tsx`)}
     import { DefaultSession } from ${JSON.stringify(`/@fs/${source}/plugin/default-session.tsx`)}
@@ -137,6 +138,16 @@ beforeAll(async () => {
     window.navigationPanel = () => <NavigatorProbe width="100%" layers />
     function Fixture() {
       const dialog = useDialog()
+      const [mobileOpen, setMobileOpen] = createSignal(false)
+      if (new URLSearchParams(location.search).has("modal")) return <>
+        <button onClick={() => { window.fixture.open("side"); setMobileOpen(true) }}>Open modal workspace</button>
+        <Show when={mobileOpen()}>
+          <MobileWorkspaceDialog onClose={() => { window.fixture.close("side"); setMobileOpen(false) }}>
+            <WorkbenchSurface surface="side" modalHost />
+          </MobileWorkspaceDialog>
+        </Show>
+      </>
+
       const [resourceRevision, setResourceRevision] = createSignal(1)
       if (location.search === "?navigator-remount") return <Show when={resourceRevision()} keyed>{() => <NavigatorProbe remount={() => setResourceRevision(value => value+1)} />}</Show>
       if (location.search === "?navigator-new-tab") return <div class="workbench-surface"><Show when={resourceRevision()} keyed>{revision => <NavigatorProbe navigationId={"file-navigation-" + revision} remount={() => setResourceRevision(value => value+1)} />}</Show></div>
@@ -1048,3 +1059,34 @@ test("the automatic workspace overlay contains keyboard focus and restores the p
   )
   expect(Math.round((await panel.boundingBox())!.width)).toBe(360)
 }, 30000)
+
+test("modal workspace stays accessible and focusable below the dock width limit", async () => {
+  errors.length = 0
+  try {
+    await page.setViewportSize({ width: 375, height: 812 })
+    await page.goto(`${baseUrl}?modal`)
+    await page.getByRole("button", { name: "Open modal workspace", exact: true }).click()
+    const modal = page.getByRole("dialog", { name: "Workspace", exact: true })
+    await modal.getByRole("button", { name: "side action", exact: true }).waitFor({ timeout: 3000 })
+    await modal.getByRole("textbox", { name: "side draft" }).fill("modal draft")
+    await page.setViewportSize({ width: 320, height: 568 })
+    const surface = modal.locator(".workbench-surface")
+    expect(await surface.getAttribute("aria-hidden")).toBe("false")
+    expect(await surface.getAttribute("inert")).toBeNull()
+    expect(await surface.getByRole("separator").count()).toBe(0)
+    expect(await modal.getByRole("textbox", { name: "side draft" }).inputValue()).toBe("modal draft")
+    await modal.getByRole("button", { name: "side action", exact: true }).focus()
+    expect(await page.evaluate(() => document.activeElement?.textContent)).toBe("side action")
+    for (let i = 0; i < 6; i++) {
+      await page.keyboard.press(i < 3 ? "Tab" : "Shift+Tab")
+      expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true)
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.keyboard.press("Escape")
+    await modal.waitFor({ state: "detached" })
+    await page.waitForFunction(() => document.activeElement?.textContent === "Open modal workspace")
+    expect(errors).toEqual([])
+  } finally {
+    await page.setViewportSize({ width: 1200, height: 1000 })
+  }
+}, 20000)

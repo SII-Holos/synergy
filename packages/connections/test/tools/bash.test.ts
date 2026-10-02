@@ -105,9 +105,8 @@ describe("tool.bash", () => {
           const result = await bash.execute(
             {
               command: "echo 'test'",
-              description: "Echo test message",
             },
-            ctx,
+            { ...ctx, workBrief: "Echo test message" },
           )
           expect(result.metadata.exit).toBe(0)
           expect(result.metadata.output).toContain("test")
@@ -193,10 +192,10 @@ describe("tool.bash", () => {
         const result = await bash.execute(
           {
             command: sleepCommand(2000),
-            description: "Sleep briefly",
+
             yieldSeconds: 0.05,
           },
-          ctx,
+          { ...ctx, workBrief: "Sleep briefly" },
         )
         expect(result.metadata.background).toBe(true)
         expect(result.metadata.processId).toBeString()
@@ -212,10 +211,10 @@ describe("tool.bash", () => {
         const result = await bash.execute(
           {
             command: "echo foreground",
-            description: "Echo foreground",
+
             yieldSeconds: 1,
           },
-          ctx,
+          { ...ctx, workBrief: "Echo foreground" },
         )
         expect(result.metadata.background).toBeUndefined()
         expect(result.metadata.exit).toBe(0)
@@ -233,10 +232,10 @@ describe("tool.bash", () => {
         const result = await LocalBashBackend.execute(
           {
             command: "(sleep 0.05; printf late-tail) &",
-            description: "Emit output after the parent exits",
+
             yieldSeconds: 0,
           },
-          allowedCtx,
+          { ...allowedCtx, workBrief: "Emit output after the parent exits" },
         )
 
         expect(result.metadata.exit).toBe(0)
@@ -251,10 +250,10 @@ describe("tool.bash", () => {
         const result = await LocalBashBackend.execute(
           {
             command: sleepCommand(100),
-            description: "Close tracked process",
+
             yieldSeconds: 0.01,
           },
-          ctx,
+          { ...ctx, workBrief: "Close tracked process" },
         )
         const processId = result.metadata.processId!
         const tracked = ProcessRegistry.get(processId)!
@@ -277,8 +276,8 @@ describe("tool.bash", () => {
       await withProjectScope(async () => {
         const bash = await BashTool.init()
         const [left, right] = await Promise.all([
-          bash.execute({ command: "echo left", description: "Echo left" }, ctx),
-          bash.execute({ command: "echo right", description: "Echo right" }, ctx),
+          bash.execute({ command: "echo left" }, { ...ctx, workBrief: "Echo left" }),
+          bash.execute({ command: "echo right" }, { ...ctx, workBrief: "Echo right" }),
         ])
         expect(left.metadata.exit).toBe(0)
         expect(right.metadata.exit).toBe(0)
@@ -308,9 +307,8 @@ describe("tool.bash", () => {
           LocalBashBackend.execute(
             {
               command: "nohup echo hi > daemon.log 2>&1 &",
-              description: "Launch detached daemon",
             },
-            ctx,
+            { ...ctx, workBrief: "Launch detached daemon" },
           ),
         ).rejects.toThrow("Blocked detached daemon launch pattern")
       })
@@ -327,9 +325,8 @@ describe("tool.bash", () => {
         const result = await LocalBashBackend.execute(
           {
             command: "echo allowed",
-            description: "Allowed daemon",
           },
-          allowedCtx,
+          { ...allowedCtx, workBrief: "Allowed daemon" },
         )
         expect(result.metadata.exit).toBe(0)
       })
@@ -345,9 +342,8 @@ describe("tool.bash", () => {
         const result = await LocalBashBackend.execute(
           {
             command: "echo allowed",
-            description: "full_access daemon",
           },
-          fullAccessCtx,
+          { ...fullAccessCtx, workBrief: "full_access daemon" },
         )
         expect(result.metadata.exit).toBe(0)
       })
@@ -378,11 +374,13 @@ describe("tool.bash", () => {
   console.log(process.cwd().replace(/\\\\/g, "/") + "/contact-sheet.png")
 })`,
               ),
-              description: "Create contact sheet",
             },
             {
-              ...ctx,
-              messageID: "message_test",
+              ...{
+                ...ctx,
+                messageID: "message_test",
+              },
+              workBrief: "Create contact sheet",
             },
           )
 
@@ -415,9 +413,8 @@ describe("tool.bash permissions", () => {
           await bash.execute(
             {
               command: "echo hello",
-              description: "Echo hello",
             },
-            testCtx,
+            { ...testCtx, workBrief: "Echo hello" },
           )
           expect(requests.length).toBe(1)
           expect(requests[0].permission).toBe("bash")
@@ -443,9 +440,8 @@ describe("tool.bash permissions", () => {
           await bash.execute(
             {
               command: "ls -la 2>/dev/null; head -5 package.json",
-              description: "Inspect files",
             },
-            testCtx,
+            { ...testCtx, workBrief: "Inspect files" },
           )
           expect(requests.length).toBe(1)
           expect(requests[0].permission).toBe("bash")
@@ -473,9 +469,8 @@ describe("tool.bash permissions", () => {
           await bash.execute(
             {
               command: "echo foo && echo bar",
-              description: "Echo twice",
             },
-            testCtx,
+            { ...testCtx, workBrief: "Echo twice" },
           )
           expect(requests.length).toBe(1)
           expect(requests[0].permission).toBe("bash")
@@ -502,9 +497,8 @@ describe("tool.bash permissions", () => {
           await bash.execute(
             {
               command: "cd ../",
-              description: "Change to parent directory",
             },
-            testCtx,
+            { ...testCtx, workBrief: "Change to parent directory" },
           )
           expect(requests.find((r) => r.permission === "external_directory")).toBeUndefined()
         },
@@ -529,9 +523,8 @@ describe("tool.bash permissions", () => {
             {
               command: "ls",
               workdir: "/tmp",
-              description: "List /tmp",
             },
-            testCtx,
+            { ...testCtx, workBrief: "List /tmp" },
           )
           expect(requests.find((r) => r.permission === "external_directory")).toBeUndefined()
           expect(requests.find((r) => r.permission === "bash")).toBeDefined()
@@ -559,9 +552,8 @@ describe("tool.bash permissions", () => {
           await bash.execute(
             {
               command: "rm tmpfile",
-              description: "Remove tmpfile",
             },
-            testCtx,
+            { ...testCtx, workBrief: "Remove tmpfile" },
           )
 
           const extDirReq = requests.find((r) => r.permission === "external_directory")
@@ -587,9 +579,8 @@ describe("tool.bash permissions", () => {
           await bash.execute(
             {
               command: "git log --oneline -5",
-              description: "Git log",
             },
-            testCtx,
+            { ...testCtx, workBrief: "Git log" },
           )
           expect(requests.length).toBe(1)
           expect(requests[0].patterns.length).toBeGreaterThan(0)
@@ -614,9 +605,8 @@ describe("tool.bash permissions", () => {
           await bash.execute(
             {
               command: "cd .",
-              description: "Stay in current directory",
             },
-            testCtx,
+            { ...testCtx, workBrief: "Stay in current directory" },
           )
           const bashReq = requests.find((r) => r.permission === "bash")
           expect(bashReq).toBeUndefined()
@@ -643,9 +633,8 @@ describe("tool.bash permissions", () => {
           const result = await bash.execute(
             {
               command: "echo approved",
-              description: "Approved shell",
             },
-            testCtx,
+            { ...testCtx, workBrief: "Approved shell" },
           )
           expect(result.metadata.exit).toBe(0)
           expect(result.output).toContain("approved")
@@ -665,9 +654,8 @@ describe("tool.bash truncation", () => {
           const result = await bash.execute(
             {
               command: bunEval(`for (let i = 1; i <= ${lineCount}; i++) console.log(i)`),
-              description: "Generate lines exceeding limit",
             },
-            ctx,
+            { ...ctx, workBrief: "Generate lines exceeding limit" },
           )
           expect((result.metadata as any).truncated).toBe(true)
           expect(result.output).toContain("truncated")
@@ -686,9 +674,8 @@ describe("tool.bash truncation", () => {
           const result = await bash.execute(
             {
               command: bunEval(`process.stdout.write("a".repeat(${byteCount}))`),
-              description: "Generate bytes exceeding limit",
             },
-            ctx,
+            { ...ctx, workBrief: "Generate bytes exceeding limit" },
           )
           expect((result.metadata as any).truncated).toBe(true)
           expect(result.output).toContain("truncated")
@@ -706,9 +693,8 @@ describe("tool.bash truncation", () => {
           const result = await bash.execute(
             {
               command: bunEval(`console.log("hello")`),
-              description: "Echo hello",
             },
-            ctx,
+            { ...ctx, workBrief: "Echo hello" },
           )
           expect((result.metadata as any).truncated).toBe(false)
           expect(result.output.replace(/\r\n/g, "\n")).toBe("hello\n\nShell exited with code 0.")
@@ -727,9 +713,8 @@ describe("tool.bash truncation", () => {
           const result = await bash.execute(
             {
               command: bunEval(`for (let i = 1; i <= ${lineCount}; i++) console.log(i)`),
-              description: "Generate lines for file check",
             },
-            ctx,
+            { ...ctx, workBrief: "Generate lines for file check" },
           )
           expect((result.metadata as any).truncated).toBe(true)
 
@@ -758,9 +743,8 @@ describe("tool.bash output cap", () => {
           const result = await bash.execute(
             {
               command: bunEval(`process.stdout.write("x".repeat(300000))`),
-              description: "Generate 300KB output",
             },
-            ctx,
+            { ...ctx, workBrief: "Generate 300KB output" },
           )
           // truncateMetadataOutput caps at 30K; metadata.output should not exceed that
           expect((result.metadata.output ?? "").length).toBeLessThanOrEqual(30_000 + 100) // small margin for truncation marker
@@ -779,9 +763,8 @@ describe("tool.bash output cap", () => {
             {
               command: bunEval(`process.stdout.write("x".repeat(300000))`),
               yieldSeconds: 0.05,
-              description: "Generate 300KB output with auto-background",
             },
-            ctx,
+            { ...ctx, workBrief: "Generate 300KB output with auto-background" },
           )
           // On a fast machine 300K of "x" may complete before auto-background
           // fires, returning via the foreground path without processId. Verify the
@@ -834,9 +817,8 @@ describe("tool.bash metadata throttling", () => {
             await bash.execute(
               {
                 command: `i=0; while [ $i -lt 100 ]; do echo "line $i"; i=$((i + 1)); done`,
-                description: "Rapid output test",
               },
-              tracker.ctx,
+              { ...tracker.ctx, workBrief: "Rapid output test" },
             )
 
             expect(tracker.calls.length).toBeGreaterThanOrEqual(2)
@@ -858,9 +840,8 @@ describe("tool.bash metadata throttling", () => {
           await bash.execute(
             {
               command: `echo "final output"`,
-              description: "Exit flush test",
             },
-            tracker.ctx,
+            { ...tracker.ctx, workBrief: "Exit flush test" },
           )
 
           // The last metadata call should contain the final output
@@ -891,9 +872,8 @@ describe("tool.bash workspace boundary enforcement", () => {
             {
               command: "echo 'direct backend'",
               workdir: originalCheckout,
-              description: "Direct backend original checkout path",
             },
-            ctx,
+            { ...ctx, workBrief: "Direct backend original checkout path" },
           )
           expect(result.output).toContain("direct backend")
         },
@@ -918,9 +898,8 @@ describe("tool.bash workspace boundary enforcement", () => {
             {
               command: "echo 'should work'",
               workdir: tmp.path,
-              description: "Test in-workspace command",
             },
-            ctx,
+            { ...ctx, workBrief: "Test in-workspace command" },
           )
           expect(result.metadata.exit).toBe(0)
           expect(result.metadata.output).toContain("should work")
@@ -953,9 +932,8 @@ describe("tool.bash workspace boundary enforcement", () => {
           await bash.execute(
             {
               command: "cd ../original-checkout && echo 'escaped'",
-              description: "Navigate to original checkout",
             },
-            testCtx,
+            { ...testCtx, workBrief: "Navigate to original checkout" },
           )
           expect(requests.find((r) => r.permission === "external_directory")).toBeUndefined()
         },
@@ -988,9 +966,8 @@ describe("tool.bash workspace boundary enforcement", () => {
               {
                 command: "ls",
                 workdir: outsideDir,
-                description: "List outside directory",
               },
-              testCtx,
+              { ...testCtx, workBrief: "List outside directory" },
             )
             .catch(() => undefined)
           expect(requests.find((r) => r.permission === "external_directory")).toBeUndefined()
@@ -1016,9 +993,8 @@ describe("tool.bash workspace boundary enforcement", () => {
             {
               command: "echo 'test'",
               workdir: "/tmp",
-              description: "Direct backend invocation",
             },
-            ctx,
+            { ...ctx, workBrief: "Direct backend invocation" },
           )
           expect(result.output).toContain("test")
         },

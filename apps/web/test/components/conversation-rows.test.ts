@@ -92,3 +92,47 @@ test("structural Parts create no empty rows and tool and reasoning slots remain 
   expect(bodies.filter((row) => row.beforeReasoning)).toHaveLength(1)
   expect(bodies.find((row) => row.beforeTool)?.before).toBe(false)
 })
+
+test("virtualized processes have one entrance and bounded batches without hiding the final answer", () => {
+  const answer = { ...parts[0], id: "answer", type: "text" } as SessionPartSummary
+  const input = {
+    timeline: [root],
+    messagesFor: () => [reply],
+    summaries: (id: string) => (id === reply.id ? [...parts, answer] : []),
+    page: () => ({ hasMore: false }),
+    process: () => ({ open: true, working: false }),
+  }
+  const open = buildConversationRows(input)
+  expect(open.filter((row) => row.kind === "process")).toHaveLength(1)
+  const groups = open.filter((row) => row.kind === "body")
+  expect(Math.max(...groups.map((row) => row.parts.length))).toBeLessThanOrEqual(6)
+  expect(groups.some((row) => row.parts.length > 1)).toBe(true)
+  expect(groups.flatMap((row) => row.parts.map((part) => part.id))).toEqual([...parts, answer].map((part) => part.id))
+  const collapsed = buildConversationRows({ ...input, process: () => ({ open: false, working: false }) })
+  expect(collapsed.filter((row) => row.kind === "process")).toHaveLength(1)
+  expect(collapsed.filter((row) => row.kind === "body").flatMap((row) => row.parts.map((part) => part.id))).toEqual([
+    "answer",
+  ])
+  expect(collapsed.at(-1)?.kind).toBe("footer")
+})
+
+test("prepending a process page retains existing batch identities and Part membership", () => {
+  const input = {
+    timeline: [root],
+    messagesFor: () => [reply],
+    summaries: (id: string) => (id === reply.id ? parts.slice(6, 24) : []),
+    page: () => ({ hasMore: false }),
+    process: () => ({ open: true, working: false }),
+  }
+  const initial = buildConversationRows(input)
+  const grown = buildConversationRows({
+    ...input,
+    previous: initial,
+    summaries: (id: string) => (id === reply.id ? parts.slice(1, 24) : []),
+  })
+  const original = initial.filter((row) => row.kind === "body")
+  const kept = grown.filter((row) => row.kind === "body").filter((row) => original.some((old) => old.key === row.key))
+  expect(kept.map((row) => [row.key, row.parts.map((part) => part.id)])).toEqual(
+    original.map((row) => [row.key, row.parts.map((part) => part.id)]),
+  )
+})

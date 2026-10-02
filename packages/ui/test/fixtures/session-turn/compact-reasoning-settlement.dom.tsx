@@ -1,7 +1,8 @@
 import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { I18nProvider } from "@lingui/solid"
-import { createStore } from "solid-js/store"
+import { createStore, reconcile } from "solid-js/store"
 import { render } from "solid-js/web"
+import { createSignal, batch } from "solid-js"
 import { DataProvider } from "../../../src/context/data.tsx"
 import { DialogProvider } from "../../../src/context/dialog.tsx"
 import { DiffComponentProvider } from "../../../src/context/diff.tsx"
@@ -81,6 +82,9 @@ const resourceController = {
   openWorkspaceSource: () => false,
 }
 const EmptyDiff = () => null
+const [following, setFollowing] = createSignal(true)
+const [expanded, setExpanded] = createStore({})
+const activityView = { getExpanded: (key) => expanded[key], setExpanded: (key, value) => setExpanded(key, value) }
 const SlotProbe = (props) => <span data-test-slot={props.slot} />
 setExternalMessageSlotLookup((slot) =>
   ["message.before", "message.actions", "message.after"].includes(slot)
@@ -104,6 +108,8 @@ render(
                   lastUserMessageID={rootID}
                   activityDisplay="balanced"
                   compactReasoning={true}
+                  following={following()}
+                  activityView={activityView}
                 />
               </DataProvider>
             </DiffComponentProvider>
@@ -116,6 +122,41 @@ render(
 )
 
 globalThis.__settlementHarness = {
+  setFollowing,
+  recoverAfterError: () =>
+    batch(() => {
+      const failed = {
+        ...assistantMessage,
+        time: { created: 1, completed: 4000 },
+        error: { name: "UnknownError", data: { message: "Earlier attempt failed" } },
+      }
+      const recovered = {
+        ...assistantMessage,
+        id: "assistant-recovered",
+        time: { created: 5000, completed: 6000 },
+        finish: "stop",
+      }
+      setState("message", sessionID, [rootMessage, failed, recovered])
+      setState("part", recovered.id, [
+        { ...answerPart, id: "answer-recovered", messageID: recovered.id, text: "Recovered answer." },
+      ])
+      setRuntimeState("status", sessionID, { type: "idle" })
+    }),
+  clearStatus: () => setRuntimeState("status", sessionID, undefined),
+  reset: () =>
+    batch(() => {
+      setExpanded(reconcile({}))
+      setFollowing(true)
+      setState("message", sessionID, 1, "time", { created: 1 })
+      setState("message", sessionID, 1, "error", undefined)
+      setState("message", sessionID, 1, "finish", undefined)
+      setRuntimeState("status", sessionID, { type: "busy" })
+    }),
+  stop: () =>
+    batch(() => {
+      setState("message", sessionID, 1, "finish", "tool-calls")
+      setRuntimeState("status", sessionID, { type: "paused", reason: "aborted", since: 5000 })
+    }),
   settle: () => {
     setRuntimeState("status", sessionID, { type: "idle" })
     setState("message", sessionID, (messages) =>

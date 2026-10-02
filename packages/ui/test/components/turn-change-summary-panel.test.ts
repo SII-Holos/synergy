@@ -68,7 +68,7 @@ describe("TurnChangeSummaryPanel helpers", () => {
   })
 })
 
-test("the compact summary counts files while full review retains operation identity", () => {
+test("the summary preserves backend net counts without adding obsolete operation totals", () => {
   const workspace = { id: "wsp_a", generation: 1, root: "/a" }
   const files = turnChangeSummaryFiles([
     { file: "same.txt", workspace, operationID: "first", additions: 1, deletions: 2 },
@@ -76,6 +76,11 @@ test("the compact summary counts files while full review retains operation ident
     { file: "same.txt", workspace: { ...workspace, id: "wsp_b", root: "/b" }, additions: 1, deletions: 0 },
   ])
   expect(files).toHaveLength(2)
-  expect(files[0]).toMatchObject({ file: "same.txt", workspace, additions: 4, deletions: 6 })
+  expect(files[0]).toMatchObject({ file: "same.txt", workspace, additions: 3, deletions: 4 })
   expect(files[0]?.operationID).toBeUndefined()
+})
+
+test("pending results preserve an existing card while partial results remain visible", () => {
+  expect(resolveTurnDiffPanelState("pending", false, true)).toBe("pending")
+  expect(resolveTurnDiffPanelState("partial", false)).toBe("partial")
 })

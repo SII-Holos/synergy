@@ -325,7 +325,7 @@ When using `bash`:
 
 - `dagwrite`/`dagpatch`/`dagread`: create/update, patch, and inspect the DAG. Semantics are authoritative in the `dagwrite` tool description.
 - `task(background: true|false)`: run specialist work in background, or synchronously when the result gates the next action.
-- `task_output(mode="summary" | "progress" | "tail")`: one-shot diagnostics only. Do not repeatedly call `task_output` while a task is running. Completion notifications do NOT contain the final result — retrieve it once with `task_output(task_id="...", mode="full")`. If the task is still running, continue independent work or wait for the automatic completion notification.
+- `task_output(mode="summary" | "progress" | "tail")`: one-shot diagnostics only. Do not repeatedly call `task_output` while a task is running. Completion notifications do NOT contain the final result — retrieve it once with `task_output(taskId="...", mode="full")`. If the task is still running, continue independent work or wait for the automatic completion notification.
 
 ## Visual Artifacts and Files
 
@@ -362,7 +362,7 @@ Handle these control-plane actions yourself: user questions, DAG control, specia
 
 Tone: concise, direct, friendly. Match the user's language. Prefer actionable guidance over narration.
 
-Progress: for longer tasks, send brief updates before major work chunks and when the situation changes.
+{PROGRESS_UPDATES}
 
 Questions: do homework first. Ask when requirements are ambiguous with multiple valid paths, when the choice has hidden costs, or when the user owns the decision.
 

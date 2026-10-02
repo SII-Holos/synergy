@@ -11,6 +11,15 @@ let server: ViteDevServer
 let fixtureDirectory: string
 const pageErrors: string[] = []
 
+declare global {
+  interface Window {
+    __setTimeline: (messages: unknown[]) => void
+    __holdExecutions: () => void
+    __pendingExecutions: () => number
+    __settleExecutions: () => void
+  }
+}
+
 // Deterministic message factory so the fixture and the test share ids.
 function msg(id: string, role: "user" | "assistant", text: string) {
   return JSON.stringify({ id, sessionID: "ses_1", role, text, time: { created: 1 } })
@@ -36,8 +45,9 @@ function aliasConfig(stubPath: string) {
     "@/components/workspace/browser/browser-view-effects",
     "@/context/locale",
     "@/context/execution",
+    "@/context/sdk",
+    "@/context/session-data-view",
     "@/context/session-optimistic-message",
-    "./session-timeline",
     "./session-transition-card",
   ]
   return stubbed.map((find) => ({ find, replacement: stubPath }))
@@ -58,6 +68,7 @@ beforeAll(async () => {
       `
         import { createMemo, createSignal, Show } from "solid-js"
 
+        export { resolveActivityDisclosure } from '/@fs//Users/eric/.codex/worktrees/frontend-integration/synergy/packages/ui/src/components/session-turn-process.ts'
         let mountCount = 0
         ;(window as any).__sessionTurnMounts = () => mountCount
         const [executionAvailable, setExecutionAvailable] = createSignal(true)
@@ -71,7 +82,7 @@ beforeAll(async () => {
           const [mounted] = createSignal(++mountCount)
           const root = createMemo(() => props.rootMessage)
           return (
-            <div data-slot="session-turn-stub" data-message-id={props.messageID} data-mount={mounted()} data-part-count={props.segment?.parts.length}>
+            <div data-slot="session-turn-stub" data-message-id={props.messageID} data-mount={mounted()} data-part-count={props.segment?.parts.length} data-execution={props.executionState?.status}>
               {root()?.text ?? ""}
               <Show when={props.onExecutionDetails}>
                 <button aria-label="Task details" data-execution-details onClick={() => props.onExecutionDetails()} />
@@ -94,7 +105,24 @@ beforeAll(async () => {
           i18n: { _: (d: { message?: string; id: string }) => d.message ?? d.id },
           fmt: {},
         })
-        export const SessionTimeline = () => null
+        let holdExecutions = false
+        const pendingExecutions = []
+        window.__holdExecutions = () => { holdExecutions = true }
+        window.__pendingExecutions = () => pendingExecutions.length
+        window.__settleExecutions = () => {
+          holdExecutions = false
+          for (const {request, resolve} of pendingExecutions.splice(0)) {
+            resolve({data: request.rootIDs.map(rootID => ({rootID, status: "running"}))})
+          }
+        }
+        export const useSDK = () => ({
+          url: "http://fixture", scopeKey: "scope",
+          client: { session: { turnExecution: async (request) => holdExecutions
+            ? new Promise(resolve => pendingExecutions.push({request, resolve}))
+            : ({ data: [] }) } },
+          event: { on: () => () => {} },
+        })
+        export const useSessionDataView = () => () => ({ statusFor: () => undefined })
         export const SessionTransitionCard = () => null
         export const useExecution = () => ({
           available: executionAvailable,
@@ -107,10 +135,11 @@ beforeAll(async () => {
     Bun.write(
       path.join(fixtureDirectory, "main.tsx"),
       `
-        import { createComponent, createSignal } from "solid-js"
+        import { createComponent, createSignal, Suspense } from "solid-js"
         import { render } from "solid-js/web"
         import { setupI18n } from "@lingui/core"
         import { I18nProvider } from "@lingui/solid"
+        import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
         import { SessionConversation } from ${JSON.stringify(`/@fs/${conversationPath}`)}
 
         type AnyMsg = { id: string; role: "user" | "assistant"; text?: string }
@@ -170,7 +199,7 @@ beforeAll(async () => {
             get onClearHash() { return () => {} },
             get onScheduleScrollSpy() { return () => {} },
             get setScrollRef() { return () => {} },
-            get isDesktop() { return () => false },
+            get isDesktop() { return () => true },
             get scrollToMessage() { return () => {} },
             get anchor() { return (id: string) => "anchor-" + id },
             get terminalHeight() { return () => 100 },
@@ -179,7 +208,7 @@ beforeAll(async () => {
         }
 
         const i18n = setupI18n({locale: "en", messages: {en: {}}})
-        render(() => <I18nProvider i18n={i18n}><App /></I18nProvider>, document.querySelector("#root")!)
+        render(() => <I18nProvider i18n={i18n}><DialogProvider><Suspense fallback={<p data-test-loading>Loading conversation</p>}><App /></Suspense></DialogProvider></I18nProvider>, document.querySelector("#root")!)
       `,
     ),
   ])
@@ -243,6 +272,15 @@ describe("conversation row retention", () => {
     )
     await expect(details.count()).resolves.toBe(1)
     expect(pageErrors).toEqual([])
+  })
+
+  test("keeps the reading column free of a persistent timeline", async () => {
+    await page.evaluate(() => {
+      ;(window as unknown as { __setTimeline: (m: unknown[]) => void }).__setTimeline([
+        { id: "usr_navigation", sessionID: "ses_1", role: "user", time: { created: 1 } },
+      ])
+    })
+    expect(await page.getByRole("navigation", { name: "Conversation timeline" }).count()).toBe(0)
   })
 
   test("keeps rows mounted across message object replacement and propagates updates", async () => {
@@ -384,6 +422,39 @@ describe("conversation row retention", () => {
       (window as unknown as { __setExecutionAvailable(value: boolean): void }).__setExecutionAvailable(false),
     )
     expect(await details.count()).toBe(0)
+  })
+
+  test("delayed execution state never suspends the conversation or replaces an existing turn", async () => {
+    await page.reload()
+    await page.waitForFunction(() => typeof window.__setTimeline === "function")
+    await page.evaluate(() => {
+      window.__holdExecutions()
+      window.__setTimeline([
+        { id: "usr_delayed", sessionID: "ses_1", role: "user", text: "Pending task", time: { created: 1 } },
+      ])
+    })
+    await page.waitForFunction(() => window.__pendingExecutions() === 1)
+    expect(await page.locator("[data-test-loading]").count()).toBe(0)
+    const row = page.locator('[data-message-id="usr_delayed"] [data-slot="session-turn-stub"]')
+    expect(await row.isVisible()).toBe(true)
+    const mount = await row.getAttribute("data-mount")
+    await page.evaluate(() => window.__settleExecutions())
+    await page.waitForFunction(
+      () => document.querySelector('[data-slot="session-turn-stub"]')?.getAttribute("data-execution") === "running",
+    )
+    expect(await row.getAttribute("data-mount")).toBe(mount)
+    await page.evaluate(() => {
+      window.__holdExecutions()
+      window.__setTimeline([
+        { id: "usr_delayed", sessionID: "ses_1", role: "user", text: "Pending task", time: { created: 1 } },
+        { id: "usr_next", sessionID: "ses_1", role: "user", text: "Next task", time: { created: 2 } },
+      ])
+    })
+    await page.waitForFunction(() => window.__pendingExecutions() === 1)
+    expect(await page.locator("[data-test-loading]").count()).toBe(0)
+    expect(await row.getAttribute("data-mount")).toBe(mount)
+    expect(await page.locator('[data-slot="session-turn-stub"]').count()).toBe(2)
+    await page.evaluate(() => window.__settleExecutions())
     expect(pageErrors).toEqual([])
   })
 })

@@ -213,6 +213,15 @@ export namespace SessionHistoryDisplay {
     })
   }
 
+  export async function invalidatePart(scopeID: string, sessionID: string, messageID: string, partID: string) {
+    await SessionHistorySearch.partWritten(scopeID, { sessionID, messageID, id: partID })
+    const [previous] = await Storage.readMany<PartsState>([partStateKey(scopeID, sessionID, messageID)])
+    await Storage.write(partStateKey(scopeID, sessionID, messageID), {
+      ready: false,
+      generation: (previous?.generation ?? 0) + 1,
+    })
+  }
+
   export async function partRemoved(scopeID: string, sessionID: string, messageID: string, partID: string) {
     await Storage.remove(StoragePath.sessionDisplayPart(scopeID, sessionID, messageID, partID))
     const [previous] = await Storage.readMany<PartsState>([partStateKey(scopeID, sessionID, messageID)])

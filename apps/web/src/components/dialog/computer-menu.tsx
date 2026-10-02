@@ -100,6 +100,7 @@ export function ComputerMenu(props: { value?: string; onChange?: (url: string) =
             <span class="project-flow-row-copy">
               <strong>{label(url)}</strong>
               <small>
+                {serverDisplayName(url)} ·{" "}
                 {_(health()?.[url] === false ? copy.unavailable : health()?.[url] ? copy.connected : copy.loading)}
               </small>
             </span>

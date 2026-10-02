@@ -844,7 +844,7 @@ ToolRegistry.register({
   render(props) {
     const description = () => props.metadata.description as string | undefined
     const shortId = () => {
-      const id = props.input.task_id || ""
+      const id = props.input.taskId || ""
       return id.length > 12 ? id.slice(0, 9) + "…" : id
     }
     return (
@@ -874,7 +874,7 @@ ToolRegistry.register({
   render(props) {
     const description = () => props.metadata.description as string | undefined
     const shortId = () => {
-      const id = props.input.task_id || ""
+      const id = props.input.taskId || ""
       return id.length > 12 ? id.slice(0, 9) + "…" : id
     }
     return (
@@ -933,7 +933,7 @@ ToolRegistry.register({
     const { _ } = useLingui()
     const count = () => props.metadata?.count as number | undefined
     const idList = () => {
-      const ids = props.input.ids as string[] | undefined
+      const ids = props.input.memoryIds as string[] | undefined
       if (!ids || ids.length === 0) return ""
       if (ids.length === 1) return ids[0]
       return _({ ...TOOL_LABEL_DESC.memories, values: { count: ids.length } })
@@ -971,7 +971,7 @@ ToolRegistry.register({
         trigger={{
           icon: "brain",
           title: TOOL_TITLE_DESC["memory_write"],
-          subtitle: props.input.title || props.metadata?.title || "",
+          subtitle: props.input.memoryTitle || props.metadata?.title || "",
           tags:
             action() === "similar_found"
               ? [{ label: _(TOOL_TITLE_DESC["memory_write_similar_found"]) }]
@@ -1003,7 +1003,7 @@ ToolRegistry.register({
         trigger={{
           icon: "brain",
           title: TOOL_TITLE_DESC["memory_edit"],
-          subtitle: props.input.title || props.metadata?.title || "",
+          subtitle: props.input.memoryTitle || props.metadata?.title || "",
           tags: edited() ? [{ label: _(TOOL_MISC_DESC.updated) }] : undefined,
         }}
       >
@@ -1066,7 +1066,7 @@ ToolRegistry.register({
     const subtitle = () => {
       const t = titles()
       if (t.length === 0) {
-        const ids = props.input.ids as string[] | undefined
+        const ids = props.input.noteIds as string[] | undefined
         if (!ids || ids.length === 0) return ""
         return ids.length === 1
           ? ids[0]
@@ -1142,7 +1142,7 @@ ToolRegistry.register({
   render(props) {
     const { _ } = useLingui()
     const action = () => (props.metadata?.action || props.input.mode || "") as string
-    const noteTitle = () => (props.metadata?.title || props.input.title || "") as string
+    const noteTitle = () => (props.metadata?.title || props.input.noteTitle || "") as string
     const isBlueprint = () => isBlueprintToolKind(props.input, props.metadata)
     const actionLabel = () => {
       switch (action()) {
@@ -1182,7 +1182,7 @@ ToolRegistry.register({
   name: "note_edit",
   render(props) {
     const { _ } = useLingui()
-    const noteTitle = () => (props.metadata?.title || props.input.title || "") as string
+    const noteTitle = () => (props.metadata?.title || props.input.noteTitle || "") as string
     const opCount = () => (props.metadata?.opCount ?? props.metadata?.replacements) as number | undefined
     const isBlueprint = () => isBlueprintToolKind(props.input, props.metadata)
     return (
@@ -1335,7 +1335,7 @@ ToolRegistry.register({
         trigger={{
           icon: "calendar-days",
           title: TOOL_TITLE_DESC["agenda_schedule"],
-          subtitle: (props.metadata?.title || props.input.title || "") as string,
+          subtitle: (props.metadata?.title || props.input.agendaTitle || "") as string,
           tags: [
             props.metadata?.status ? { label: props.metadata.status as string } : undefined,
             props.metadata?.scheduledTimeoutLabel
@@ -1365,7 +1365,7 @@ ToolRegistry.register({
         trigger={{
           icon: "eye",
           title: TOOL_TITLE_DESC["agenda_watch"],
-          subtitle: (props.input.title || "") as string,
+          subtitle: (props.input.agendaTitle || "") as string,
           tags: props.input.delay ? [{ label: props.input.delay as string }] : undefined,
         }}
       >
@@ -1417,7 +1417,7 @@ ToolRegistry.register({
         trigger={{
           icon: "refresh-ccw",
           title: TOOL_TITLE_DESC["agenda_update"],
-          subtitle: (props.metadata?.title || props.input.id || "") as string,
+          subtitle: (props.metadata?.title || props.input.agendaItemId || "") as string,
           tags: [
             props.metadata?.status ? { label: props.metadata.status as string } : undefined,
             props.metadata?.scheduledTimeoutLabel
@@ -1447,7 +1447,7 @@ ToolRegistry.register({
         trigger={{
           icon: "trash-2",
           title: TOOL_TITLE_DESC["agenda_cancel"],
-          subtitle: (props.input.id || "") as string,
+          subtitle: (props.input.agendaItemId || "") as string,
         }}
       >
         <Show when={props.output}>
@@ -1471,7 +1471,7 @@ ToolRegistry.register({
         trigger={{
           icon: "zap",
           title: TOOL_TITLE_DESC["agenda_trigger"],
-          subtitle: (props.input.id || "") as string,
+          subtitle: (props.input.agendaItemId || "") as string,
         }}
       >
         <Show when={props.output}>
@@ -1497,7 +1497,7 @@ ToolRegistry.register({
         trigger={{
           icon: "clock",
           title: TOOL_TITLE_DESC["agenda_logs"],
-          subtitle: (props.input.id || "") as string,
+          subtitle: (props.input.agendaItemId || "") as string,
           tags: total() != null ? [{ label: _({ ...TOOL_LABEL_DESC.runs, values: { count: total()! } }) }] : undefined,
         }}
       >
@@ -1768,7 +1768,7 @@ ToolRegistry.register({
         trigger={{
           icon: "code",
           title: TOOL_TITLE_DESC["render"],
-          subtitle: props.input.title || "",
+          subtitle: props.input.artifactTitle || "",
           tags: html() ? [{ label: _(TOOL_MISC_DESC.htmlPreview) }] : undefined,
         }}
       >

@@ -1,3 +1,5 @@
+import { SessionActivity } from "@ericsanchezok/synergy-harness/session/activity"
+import { TurnExecutionState } from "@ericsanchezok/synergy-harness/session/turn-execution-state"
 import {
   abandonSession,
   continueSession,
@@ -43,6 +45,23 @@ import { BusyError } from "@ericsanchezok/synergy-harness/session/error"
 import { BadRequestError, errors } from "./error"
 
 const log = Log.create({ service: "session" })
+function fileHistoryFailure(error: unknown): Response {
+  if (error instanceof SessionHistory.FileRestoreMissingPatchDataError)
+    return Response.json(error.toObject(), { status: 400 })
+  if (
+    error instanceof BusyError ||
+    (error instanceof Error &&
+      [
+        "SnapshotRestoreUnavailable",
+        "SnapshotStorageError",
+        "WorkspaceFileWriteConflictError",
+        "WorkspaceFileAccessDeniedError",
+        "WorkspaceBusyError",
+      ].includes(error.name))
+  )
+    return Response.json({ name: error.name, data: { message: error.message } }, { status: 409 })
+  throw error
+}
 const ControlProfileId = z.enum(["guarded", "autonomous", "full_access"])
 const booleanQuery = z.preprocess((value) => {
   if (value === "true" || value === true) return true
@@ -80,6 +99,49 @@ const SessionAbandonResult = z
 
 export const SessionRoute = () =>
   new Hono()
+    .post(
+      "/:sessionID/turn-execution",
+      describeRoute({
+        summary: "Read root task execution states",
+        operationId: "session.turnExecution",
+        tags: ["Session"],
+        responses: {
+          200: {
+            description: "Execution states for the requested roots",
+            content: { "application/json": { schema: resolver(z.array(TurnExecutionState.Schema)) } },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ sessionID: Identifier.schema("session") })),
+      validator("json", z.object({ rootIDs: z.array(Identifier.schema("message")).max(64) })),
+      async (c) => c.json(await SessionActivity.turns(c.req.valid("param").sessionID, c.req.valid("json").rootIDs)),
+    )
+    .get(
+      "/:sessionID/message/:messageID/part/:partID/activity",
+      describeRoute({
+        summary: "Read one tool activity result",
+        operationId: "session.toolActivity",
+        tags: ["Session"],
+        responses: {
+          200: {
+            description: "Captured result of the selected tool invocation",
+            content: { "application/json": { schema: resolver(SessionActivity.Result) } },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: Identifier.schema("session"),
+          messageID: Identifier.schema("message"),
+          partID: Identifier.schema("part"),
+        }),
+      ),
+      validator("query", z.object({ callID: z.string().optional() })),
+      async (c) => c.json(await SessionActivity.tool({ ...c.req.valid("param"), ...c.req.valid("query") })),
+    )
     .post(
       "/:sessionID/run/:runID/cancel",
       describeRoute({
@@ -1862,11 +1924,71 @@ export const SessionRoute = () =>
       },
     )
     .post(
+      "/:sessionID/files/preview",
+      describeRoute({
+        summary: "Preview file restoration",
+        description: "Compare current files with the selected historical baseline before confirmation.",
+        operationId: "session.files.preview",
+        responses: {
+          200: {
+            description: "Restore preview and version identity",
+            content: { "application/json": { schema: resolver(SessionHistory.FileRestorePreview) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("param", z.object({ sessionID: Session.restoreFiles.schema.shape.sessionID })),
+      validator("json", SessionHistory.previewFiles.schema.omit({ sessionID: true })),
+      async (c) => {
+        try {
+          return c.json(
+            await SessionHistory.previewFilesWithSignal(
+              { sessionID: c.req.valid("param").sessionID, ...c.req.valid("json") },
+              c.req.raw.signal,
+            ),
+          )
+        } catch (error) {
+          return fileHistoryFailure(error)
+        }
+      },
+    )
+    .get(
+      "/:sessionID/files/diff",
+      describeRoute({
+        summary: "Read a historical file diff",
+        description: "Read captured file versions for a turn or session without reading the current workspace.",
+        operationId: "session.files.diff",
+        responses: {
+          200: {
+            description: "Historical file diff",
+            content: { "application/json": { schema: resolver(SnapshotSchema.FileDiff) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("param", z.object({ sessionID: Session.restoreFiles.schema.shape.sessionID })),
+      validator(
+        "query",
+        SessionHistory.FileDiffInput.omit({ sessionID: true }).extend({
+          generation: z.coerce.number().int().positive(),
+        }),
+      ),
+      async (c) => {
+        try {
+          return c.json(
+            await SessionHistory.fileDiff({ sessionID: c.req.valid("param").sessionID, ...c.req.valid("query") }),
+          )
+        } catch (error) {
+          return fileHistoryFailure(error)
+        }
+      },
+    )
+    .post(
       "/:sessionID/files/restore",
       describeRoute({
         summary: "Restore session files",
         description:
-          "Explicitly restore files from session patch data. Message rollback never calls this automatically.",
+          "Confirm a version-checked restore preview. Repeated confirmation returns the stored result without writing again. Message rollback never calls this automatically.",
         operationId: "session.files.restore",
         responses: {
           200: {
@@ -1886,7 +2008,7 @@ export const SessionRoute = () =>
           sessionID: Session.restoreFiles.schema.shape.sessionID,
         }),
       ),
-      validator("json", Session.restoreFiles.schema.omit({ sessionID: true })),
+      validator("json", Session.restoreFiles.schema.pick({ previewID: true }).required()),
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
         const body = c.req.valid("json")
@@ -1894,19 +2016,7 @@ export const SessionRoute = () =>
           const result = await SessionHistory.restoreFilesWithSignal({ sessionID, ...body }, c.req.raw.signal)
           return c.json(result)
         } catch (error) {
-          if (error instanceof SessionHistory.FileRestoreMissingPatchDataError) return c.json(error.toObject(), 400)
-          if (error instanceof BusyError) return c.json({ name: error.name, data: { message: error.message } }, 409)
-          if (
-            error instanceof Error &&
-            [
-              "SnapshotRestoreUnavailable",
-              "WorkspaceFileWriteConflictError",
-              "WorkspaceFileAccessDeniedError",
-              "WorkspaceBusyError",
-            ].includes(error.name)
-          )
-            return c.json({ name: error.name, data: { message: error.message } }, 409)
-          throw error
+          return fileHistoryFailure(error)
         }
       },
     )

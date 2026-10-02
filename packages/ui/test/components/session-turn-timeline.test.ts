@@ -641,6 +641,18 @@ describe("session turn working state", () => {
     ).toBe(false)
   })
 
+  test("missing and paused runtime states never manufacture live work", () => {
+    const messages = [assistant("assistant-running")]
+    expect(resolveTurnWorking({ isLastUserMessage: true, messages })).toBe(false)
+    expect(
+      resolveTurnWorking({
+        isLastUserMessage: true,
+        messages,
+        sessionStatus: { type: "paused", reason: "aborted", since: 10 },
+      }),
+    ).toBe(false)
+  })
+
   test("never marks an older turn as working", () => {
     expect(
       resolveTurnWorking({
@@ -704,7 +716,7 @@ describe("session turn timeline", () => {
     ).toBe(true)
   })
 
-  test("shows provider prelude after prior visible work when the latest assistant response is empty", () => {
+  test("does not insert another waiting row after visible work when the next model reply is empty", () => {
     const previous = completedAssistant("assistant-a")
     const latest = assistant("assistant-b")
     const previousItems = collectSessionTurnTimelineItems(
@@ -722,8 +734,9 @@ describe("session turn timeline", () => {
         hasError: false,
         latestAssistant: latest,
         latestAssistantTimelineItems: latestItems,
+        hasTurnContent: previousItems.length > 0,
       }),
-    ).toBe(true)
+    ).toBe(false)
   })
 
   test("hides provider prelude once the latest assistant response has a visible part", () => {

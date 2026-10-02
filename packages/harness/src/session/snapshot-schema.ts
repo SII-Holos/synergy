@@ -2,6 +2,12 @@ import { z } from "zod"
 import { SessionBounds } from "./bounds"
 
 export namespace SnapshotSchema {
+  export const DiffState = z.discriminatedUnion("status", [
+    z.object({ status: z.literal("pending"), deadlineAt: z.number() }),
+    z.object({ status: z.literal("ready") }),
+    z.object({ status: z.literal("partial"), code: z.enum(["timeout", "git_failure", "incomplete", "unknown"]) }),
+    z.object({ status: z.literal("error"), code: z.enum(["timeout", "git_failure", "incomplete", "unknown"]) }),
+  ])
   export const Workspace = z
     .object({
       id: z.string().min(1),
@@ -14,6 +20,21 @@ export namespace SnapshotSchema {
     })
     .meta({ ref: "SnapshotWorkspace" })
   export type Workspace = z.infer<typeof Workspace>
+  export const Omission = z.object({ file: z.string(), reason: z.enum(["size_limit", "read_failed"]) })
+  export type Omission = z.infer<typeof Omission>
+  export const Issue = z.object({
+    workspace: Workspace.optional(),
+    file: z.string().optional(),
+    code: z.enum([
+      "baseline_unavailable",
+      "capture_failed",
+      "interrupted",
+      "legacy_range",
+      "comparison_failed",
+      "size_limit",
+      "read_failed",
+    ]),
+  })
 
   export const FileDiff = z
     .object({

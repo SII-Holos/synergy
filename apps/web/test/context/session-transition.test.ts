@@ -10,6 +10,35 @@ import type { SessionTransitionHandoff } from "@/components/session/session-tran
 import { createSessionTransitionState } from "../../src/context/session-transition"
 
 describe("session transition state", () => {
+  test("publishes preparation before an ID exists and atomically hands it to the session", () => {
+    createRoot((dispose) => {
+      const state = createSessionTransitionState()
+      const lease = state.prepareDraft("draft:connection/scope")
+      expect(state.get("draft:connection/scope")?.progress.phase).toBe("loading")
+      lease.setText("Inspect the project")
+      expect(state.get("draft:connection/scope")?.draft?.text).toBe("Inspect the project")
+      expect(lease.handoff("session-1", createNewSessionTransitionProgress())).toBe(true)
+      expect(state.get("draft:connection/scope")).toBeUndefined()
+      expect(state.get("session-1")?.draft?.text).toBe("Inspect the project")
+      lease.clear()
+      expect(state.get("session-1")).toBeDefined()
+      dispose()
+    })
+  })
+  test("stale preparation cannot replace or clear a newer submission", () => {
+    createRoot((dispose) => {
+      const state = createSessionTransitionState()
+      const stale = state.prepareDraft("draft:scope")
+      const current = state.prepareDraft("draft:scope")
+      stale.setText("stale")
+      stale.clear()
+      expect(stale.handoff("wrong", createNewSessionTransitionProgress())).toBe(false)
+      current.setText("current")
+      expect(state.get("draft:scope")?.draft?.text).toBe("current")
+      expect(state.get("wrong")).toBeUndefined()
+      dispose()
+    })
+  })
   test("retains a transition for a remounted session route consumer", () => {
     createRoot((dispose) => {
       const state = createSessionTransitionState()

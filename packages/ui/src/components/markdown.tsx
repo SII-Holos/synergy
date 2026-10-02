@@ -265,18 +265,15 @@ export function Markdown(
   // consumes only the suffix after its offset. A shorter snapshot resets the
   // append-only parser without scanning the accumulated prefix.
   let stream: MarkdownStreamController | undefined
-  let previewOnly = false
   const terminalTransition = createMarkdownTerminalTransitionController()
   const endStream = () => {
     if (!stream) return
     stream.end()
     stream = undefined
-    previewOnly = false
   }
 
   createEffect(() => {
     if (!local.streaming) return
-    previewOnly = false
     renderController?.abort()
     disposeDocument?.()
     disposeDocument = undefined
@@ -291,16 +288,11 @@ export function Markdown(
     const rendered = html.latest
     if (rendered && isCurrentMarkdownRender(rendered, local.text)) return
     stream = createMarkdownStreamController(container)
-    previewOnly = true
     stream.update(local.text.length > 32 * 1024 ? local.text.slice(0, 8192) : local.text, local.cacheKey)
     stream.end()
     stream = undefined
   })
 
-  // Terminal render: once the full-fidelity HTML resolves (and we are no longer
-  // streaming), finish any live parser and crossfade from the streamed DOM into
-  // the one-shot high-fidelity tree. Enhancement (copy buttons, table wrap,
-  // katex copy) runs on the terminal content only once.
   createEffect(() => {
     if (local.streaming) return
     const rendered = html()
@@ -315,7 +307,6 @@ export function Markdown(
     )
       return
     if (document.activeElement !== document.body && container.contains(document.activeElement)) return
-    const hadStreamContent = Boolean(stream) && !previewOnly
     endStream()
     disposeDocument?.()
     disposeDocument = undefined
@@ -340,18 +331,11 @@ export function Markdown(
       )
       return
     }
-    const prefersReducedMotion =
-      typeof window !== "undefined" &&
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
     terminalTransition.apply({
       hash: rendered.hash,
       container,
       html: rendered.html,
       enhance: (root) => enhanceMarkdown(root as HTMLDivElement, _),
-      prefersReducedMotion,
-      markdownLength: local.text.length,
-      hadStreamContent,
     })
   })
 

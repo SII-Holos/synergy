@@ -42,6 +42,7 @@ export const panels = {
   notes: { id: "app.panel.notes", message: "Notes" },
   context: { id: "app.panel.context", message: "Context" },
   review: { id: "app.panel.review", message: "Review" },
+  executionDetail: { id: "app.panel.executionDetail", message: "Execution details" },
   lattice: { id: "app.panel.lattice", message: "Lattice" },
   boss: { id: "app.panel.boss", message: "Boss" },
   attachment: { id: "app.panel.attachment", message: "Attachment" },

@@ -14,7 +14,7 @@ Before executing the command:
 User-visible artifacts: if the command generates a visual or document result the user should inspect (for example .png, .jpg, .svg, .pdf, .html, plots, screenshots, rendered figures, or LaTeX output), call `attach` afterward to show the generated file in the conversation. Prefer attaching final results, not intermediate build artifacts, caches, dependency downloads, logs, or unrelated files. If you need to inspect an image yourself before showing it, use the image-inspection tool (`view_image`, or `look_at` when unavailable).
 
 Usage notes:
-- `command` and `description` are required; describe the action briefly.
+- `command` is required. Use `workdir` to select the working directory.
 - If the output exceeds ${maxLines} lines or ${maxBytes} bytes, it is truncated and the full output is written to a file. You can read specific sections with offset/limit or search the file. Because of this, you do NOT need `head`, `tail`, or other truncation commands to limit output — run the command directly.
 - `background: true` runs the command in the background immediately and returns a processId. `yieldSeconds` delays auto-backgrounding until a command has run that long (default 30); if the command completes first it returns normally.
 - After backgrounding, continue independent work if available. Otherwise choose a completion wait, readiness check or targeted diagnosis using `process` guidance. Running means alive, not necessarily progressing; do not restart a command merely to refresh its status.

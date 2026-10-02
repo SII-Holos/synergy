@@ -508,7 +508,7 @@ export namespace LocalBashBackend {
     try {
       regProc = ProcessRegistry.create({
         command: params.command,
-        description: params.description,
+        description: ctx.workBrief?.trim() || params.command,
         cwd,
       })
     } catch (error) {
@@ -525,7 +525,7 @@ export namespace LocalBashBackend {
       ctx.metadata({
         metadata: {
           output: "",
-          description: params.description,
+          description: ctx.workBrief?.trim() || params.command,
         },
       })
     } catch (error) {
@@ -547,7 +547,7 @@ export namespace LocalBashBackend {
       ctx.metadata({
         metadata: {
           output: truncateMetadataOutput(regProc.output),
-          description: params.description,
+          description: ctx.workBrief?.trim() || params.command,
         },
       })
     }
@@ -830,7 +830,7 @@ export namespace LocalBashBackend {
     hardCeilingTimer = setTimeout(() => {
       if (exited) return
       timedOut = true
-      log.warn("bash hard ceiling reached, killing", { description: params.description })
+      log.warn("bash hard ceiling reached, killing", { description: ctx.workBrief?.trim() || params.command })
       appendTimeoutMarker(timeoutMessage)
       void kill()
     }, ToolTimeout.DEFAULTS.bashHardCeilingMs)
@@ -874,10 +874,10 @@ export namespace LocalBashBackend {
         owned?.detachSignal()
         ProcessRegistry.markBackgrounded(regProc)
         return {
-          title: `[Auto-Background] ${params.description}`,
+          title: `[Auto-Background] ${ctx.workBrief?.trim() || params.command}`,
           metadata: {
             output: truncateMetadataOutput(regProc.output),
-            description: params.description,
+            description: ctx.workBrief?.trim() || params.command,
             processId: regProc.id,
             background: true,
           },
@@ -902,12 +902,12 @@ export namespace LocalBashBackend {
     const abortTag = `\n\n<bash_metadata>\n${abortReason}\n</bash_metadata>`
     if (timedOut) {
       return {
-        title: params.description,
+        title: ctx.workBrief?.trim() || params.command,
         metadata: {
           output: truncateMetadataOutput(output),
           exit: child.exitCode,
           signal: child.signalCode,
-          description: params.description,
+          description: ctx.workBrief?.trim() || params.command,
         },
         output: warnOutput(output),
       }
@@ -915,12 +915,12 @@ export namespace LocalBashBackend {
 
     if (aborted) {
       return {
-        title: params.description,
+        title: ctx.workBrief?.trim() || params.command,
         metadata: {
           output: truncateMetadataOutput(output + abortTag),
           exit: child.exitCode,
           signal: child.signalCode,
-          description: params.description,
+          description: ctx.workBrief?.trim() || params.command,
         },
         output: warnOutput(output + abortTag),
       }
@@ -949,12 +949,12 @@ export namespace LocalBashBackend {
     }
 
     return withAttachments({
-      title: params.description,
+      title: ctx.workBrief?.trim() || params.command,
       metadata: {
         output: truncateMetadataOutput(output),
         exit: child.exitCode,
         signal: child.signalCode,
-        description: params.description,
+        description: ctx.workBrief?.trim() || params.command,
       },
       output: warnOutput(output),
     })

@@ -61,7 +61,7 @@ function bashRegistryTool() {
     description: "Bash tool",
     parameters: z.object({ command: z.string(), description: z.string().optional() }),
     async execute(params: { command: string; description?: string }, ctx: any) {
-      return LocalBashBackend.execute({ command: params.command, description: params.description ?? "bash" }, ctx)
+      return LocalBashBackend.execute({ command: params.command }, { ...ctx, workBrief: params.description ?? "bash" })
     },
   }
 }

@@ -54,7 +54,7 @@ test("closing a Runtime drains a background child even after its history entry i
           phase = "starting shell"
           controller.signal.throwIfAborted()
           execution = LocalBashBackend.execute(
-            { command, description: "owned shutdown probe", yieldSeconds: 0.01 },
+            { command, yieldSeconds: 0.01 },
             {
               sessionID: "process-owner",
               messageID: "message",

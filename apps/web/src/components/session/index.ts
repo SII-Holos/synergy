@@ -1,7 +1,6 @@
 export { NewSessionGreeting } from "./session-new-view"
 export { QuestionPrompt } from "./question-prompt"
 export { PermissionDock } from "./permission-dock"
-export { SessionTimeline } from "./session-timeline"
 export { SessionReviewTab } from "./session-review-tab"
 export { SessionCortexIndicator } from "./session-cortex-indicator"
 export { SessionLspIndicator } from "./session-lsp-indicator"

@@ -27,7 +27,10 @@ export function workspaceOutputResources(input: {
     }
     if (part.type !== "tool" || part.state.status !== "completed") continue
     const metadata = part.state.metadata,
-      toolInput = part.state.input,
+      toolInput =
+        part.state.input && typeof part.state.input === "object" && !Array.isArray(part.state.input)
+          ? part.state.input
+          : {},
       completedAt = part.state.time.end
     if (
       part.tool === "note_write" &&

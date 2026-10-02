@@ -61,6 +61,7 @@ Create dialogs with `context.overlays.dialog(handle => <Dialog title="Preference
 
 - `shell.render()` and `HostView` compose native navigation, route, footer, conversation, composer, side workbench and bottom workbench views. A view unsupported on that page throws explicitly.
 - `session` reads the existing bounded message/part window, status and history state and delegates history loading, return-to-latest, refresh, rewind and fork to the session owner.
+- The optional `conversation.activityView` service reads and writes explicit process/batch/reasoning expansion by stable projection key. The host retains these choices in its session layout; replacing a view does not create a second state owner. Its absence preserves independent shared-UI use.
 - `conversation` supplies the shared turn projection, bounded render window, history controls, viewport bindings and canonical message actions. Replacing its view does not create another message store or derive message semantics. Custom viewports release their bound elements with `setScrollRef(undefined, scrollElement)` and `autoScroll.contentRef(undefined, contentElement)` so cleanup of a replaced view cannot clear its successor. Omitting the optional release element retains unconditional clearing.
 - `input` supplies revisioned text and selection, IME state, attachments, agent/model/variant choices and explicit submit/stop. Its optional native editor mounting API uses the same document as headless edits. Native workflow controls can be composed through the service's named control views.
 - `composerLayout` supplies layout state, navigation links and host-owned inbox, delegation, greeting, status and priority views. It does not expose the SDK or synchronization store.
@@ -116,3 +117,7 @@ Session questions and permissions remain mounted by the host. The native compose
 ### Virtual conversation content
 
 UI API 6 conversation services may provide optional `content` methods for bounded summaries, original text, Part retention and target-window loading. A retained Part lease is released when its row unmounts; expansion and measured layout belong outside row lifetime. Message location accepts an optional Part identity after obtaining that window. Public service calls check capability and component lifetime before and after asynchronous work. Original text operations cover effective server history independently of the currently mounted content.
+
+## Tool invocation intent
+
+The host adds optional `workBrief` to the model-facing schema. Plugin authors declare only native business parameters. The host extracts common intent before execution and passes native arguments unchanged to plugin operations and MCP servers. A third-party `workBrief` field remains native: its schema is wrapped as `{ workBrief, toolInput }` for the model. Definitions and unwrap mappings are frozen per request. Registered result renderers retain precedence; otherwise the read-only result uses structured JSON or text. Common intent never changes permission admission or execution identity.

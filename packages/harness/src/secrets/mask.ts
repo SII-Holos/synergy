@@ -3,7 +3,26 @@ import { SecretDetectorSource } from "./detector-source"
 import { SecretVault } from "./vault"
 
 export namespace SecretMask {
-  const MASKABLE_KEYS = new Set(["text", "content", "output", "value", "reasoning", "error"])
+  const MASKABLE_KEYS = new Set([
+    "text",
+    "content",
+    "output",
+    "value",
+    "reasoning",
+    "error",
+    "workBrief",
+    "memoryTitle",
+    "memoryContent",
+    "agendaTitle",
+    "agendaDescription",
+    "executionInstructions",
+    "taskTitle",
+    "taskInstructions",
+    "noteTitle",
+    "noteContent",
+    "blueprintDescription",
+    "artifactTitle",
+  ])
 
   /** Stable token for a key id; plain text, survives every serialization. */
   export function token(id: string): string {

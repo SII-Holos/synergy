@@ -232,6 +232,11 @@ export namespace StoragePath {
     ...sessionRoot(scopeID, sessionID),
     "summary_cursor",
   ]
+  export const sessionFileRestore = (scopeID: ScopeID, sessionID: SessionID, previewID: string) => [
+    ...sessionRoot(scopeID, sessionID),
+    "file_restore",
+    previewID,
+  ]
   export const sessionTodo = (scopeID: ScopeID, sessionID: SessionID) => [...sessionRoot(scopeID, sessionID), "todo"]
   export const sessionDag = (scopeID: ScopeID, sessionID: SessionID) => [...sessionRoot(scopeID, sessionID), "dag"]
   export const sessionLightLoopTerminal = (scopeID: ScopeID, sessionID: SessionID) => [

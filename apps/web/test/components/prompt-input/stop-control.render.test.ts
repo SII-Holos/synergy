@@ -222,6 +222,7 @@ mock.module("../../../src/context/workbench", () => ({
 }))
 
 mock.module("../../../src/context/session-transition", () => ({
+  draftTransitionKey: () => "draft:fixture",
   useSessionTransition: () => ({ getRecovery: () => undefined, clearRecovery: () => {} }),
 }))
 

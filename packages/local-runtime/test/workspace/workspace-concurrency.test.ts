@@ -53,16 +53,19 @@ test("an exited full-access Bash does not block another worktree while its turn 
           fn: () =>
             WorkspaceAccess.task({ sessionID: a!.id, workspace: a!.workspace, lazy: true }, async () => {
               const result = await LocalBashBackend.execute(
-                { command: "echo audit-command-finished", description: "Analysis fixture" },
+                { command: "echo audit-command-finished" },
                 {
-                  sessionID: a!.id,
-                  messageID: "audit-a",
-                  callID: "audit-a",
-                  agent: PrimaryAgentIdentity.names.general,
-                  abort: AbortSignal.timeout(10000),
-                  metadata() {},
-                  async ask() {},
-                  extra: { shellBypassSandbox: true, controlProfile: "full_access" },
+                  ...{
+                    sessionID: a!.id,
+                    messageID: "audit-a",
+                    callID: "audit-a",
+                    agent: PrimaryAgentIdentity.names.general,
+                    abort: AbortSignal.timeout(10000),
+                    metadata() {},
+                    async ask() {},
+                    extra: { shellBypassSandbox: true, controlProfile: "full_access" },
+                  },
+                  workBrief: "Analysis fixture",
                 },
               )
               expect(result.output.trim()).toBe("audit-command-finished")
@@ -171,10 +174,10 @@ for (const shared of [false, true])
               LocalBashBackend.execute(
                 {
                   command: process.platform === "win32" ? "ping -n 30 127.0.0.1 >NUL" : "/bin/sleep 30",
-                  description: "live work",
+
                   yieldSeconds: 0.01,
                 },
-                context(a.id),
+                { ...context(a.id), workBrief: "live work" },
               ),
           })
           const running = ProcessRegistry.get(result.metadata.processId!)!
@@ -185,8 +188,8 @@ for (const shared of [false, true])
               workspace: b.workspace,
               async fn() {
                 const written = await LocalBashBackend.execute(
-                  { command: "echo independent > concurrent.txt", description: "concurrent work" },
-                  context(b.id),
+                  { command: "echo independent > concurrent.txt" },
+                  { ...context(b.id), workBrief: "concurrent work" },
                 )
                 expect(written.metadata.exit).toBe(0)
                 const scanner = await ScanFilesTool.init()

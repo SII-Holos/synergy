@@ -43,14 +43,14 @@ test("defaults activity display to balanced without materializing a preference",
       },
     })
   }))
-test("defaults compact reasoning to true without materializing a preference", () =>
+test("defaults reasoning preview to off without materializing a preference", () =>
   runtime.run(async () => {
     await using tmp = await tmpdir()
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const config = await Config.current()
-        expect(config.compactReasoning).toBe(true)
+        expect(config.compactReasoning).toBe(false)
         expect((await Config.globalRaw()).compactReasoning).toBeUndefined()
       },
     })

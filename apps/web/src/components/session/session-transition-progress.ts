@@ -119,6 +119,16 @@ export function createNewSessionTransitionProgress(): SessionTransitionProgress 
   }
 }
 
+export function createSessionPreparationProgress(): SessionTransitionProgress {
+  return {
+    kind: "new-session",
+    phase: "loading",
+    title: { id: "session.submission.preparing", message: "Preparing task" },
+    description: { id: "session.submission.preparing", message: "Preparing task" },
+    steps: [{ id: "session", label: S.transitionStepPrepareSession, state: "active" }],
+  }
+}
+
 export function createNewSessionTransitionSuccessProgress(): SessionTransitionProgress {
   return {
     kind: "new-session",

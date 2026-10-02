@@ -117,6 +117,15 @@ const top = () => page.getByRole("dialog").last()
 const editor = () => top().getByRole("textbox", { name: "Folder path", exact: true })
 const edit = () => top().getByRole("button", { name: "Edit path", exact: true })
 
+async function selectFolder(name: string) {
+  const checkbox = page.getByRole("checkbox", { name: `Select folder: ${name}`, exact: true })
+  await top()
+    .locator('[data-component="checkbox"]')
+    .filter({ has: checkbox })
+    .locator('[data-slot="checkbox-checkbox-control"]')
+    .click()
+}
+
 async function open(query = "") {
   errors.length = 0
   await page.goto(base + query)
@@ -174,9 +183,9 @@ test("multi-selection stays distinct from navigation and restores the originatin
   await open()
   const confirm = top().getByRole("button", { name: "Use selected folders", exact: true })
   expect(await confirm.isDisabled()).toBe(true)
+  await selectFolder("alpha")
+  await selectFolder("beta")
   await top().getByRole("button", { name: "alpha", exact: true }).click()
-  await top().getByRole("button", { name: "beta", exact: true }).click()
-  await top().getByRole("button", { name: "Open folder: alpha", exact: true }).click()
   await top().getByText("This folder has no subfolders. You can use this folder.", { exact: true }).waitFor()
   expect(await top().getByText("2 folders selected", { exact: true }).isVisible()).toBe(true)
   await confirm.click()
@@ -191,7 +200,7 @@ test("multi-selection stays distinct from navigation and restores the originatin
 test("shrinking an open picker keeps the current folder visible without losing selection or the parent draft", async () => {
   await page.setViewportSize({ width: 1024, height: 768 })
   await open()
-  await top().getByRole("button", { name: "alpha", exact: true }).click()
+  await selectFolder("alpha")
   await edit().click()
   await editor().fill("/projects/team/research/working-files/current-project-folder-with-a-long-name")
   await editor().press("Enter")
@@ -250,8 +259,8 @@ test("single selection keeps the current-folder action and the footer reachable 
 test("confirming the first folders returns focus to the retained add-folder control", async () => {
   await open("?fields")
   expect(await page.locator(".project-folder-empty").isDisabled()).toBe(true)
-  await top().getByRole("button", { name: "alpha", exact: true }).click()
-  await top().getByRole("button", { name: "beta", exact: true }).click()
+  await selectFolder("alpha")
+  await selectFolder("beta")
   await top().getByRole("button", { name: "Use selected folders", exact: true }).click()
   await page.locator(".directory-navigation").waitFor({ state: "detached" })
   const add = page.getByRole("button", { name: "Add folder", exact: true })

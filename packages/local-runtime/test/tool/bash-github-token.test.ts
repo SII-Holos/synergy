@@ -61,10 +61,10 @@ test("local bash injects the managed GH_TOKEN via env for GitHub CLI commands", 
         const ghResult = await LocalBashBackend.execute(
           {
             command: "gh",
-            description: "prints managed GitHub token",
+
             workdir: tmp.path,
           },
-          testContext(),
+          { ...testContext(), workBrief: "prints managed GitHub token" },
         )
         expect(ghResult.output).toBe("stored-gh-token")
 
@@ -72,10 +72,10 @@ test("local bash injects the managed GH_TOKEN via env for GitHub CLI commands", 
         const nonGhResult = await LocalBashBackend.execute(
           {
             command: "printf '%s' \"${GH_TOKEN:-missing}\"",
-            description: "prints token availability",
+
             workdir: tmp.path,
           },
-          testContext(),
+          { ...testContext(), workBrief: "prints token availability" },
         )
         expect(nonGhResult.output).toBe("missing")
       },
@@ -99,10 +99,10 @@ test("local bash injects the managed GH_TOKEN for mixed, chained, and piped invo
         const chainedResult = await LocalBashBackend.execute(
           {
             command: `gh && ${printTokenOrMissing}`,
-            description: "prints chained token availability",
+
             workdir: tmp.path,
           },
-          testContext(),
+          { ...testContext(), workBrief: "prints chained token availability" },
         )
         expect(chainedResult.output).toBe("stored-gh-tokenstored-gh-token")
 
@@ -111,10 +111,10 @@ test("local bash injects the managed GH_TOKEN for mixed, chained, and piped invo
           const mixedResult = await LocalBashBackend.execute(
             {
               command: "echo ok; gh",
-              description: "prints mixed token availability",
+
               workdir: tmp.path,
             },
-            testContext(),
+            { ...testContext(), workBrief: "prints mixed token availability" },
           )
           expect(mixedResult.output).toBe("ok\nstored-gh-token")
 
@@ -122,10 +122,10 @@ test("local bash injects the managed GH_TOKEN for mixed, chained, and piped invo
           const pipedResult = await LocalBashBackend.execute(
             {
               command: "gh | cat",
-              description: "prints piped token availability",
+
               workdir: tmp.path,
             },
-            testContext(),
+            { ...testContext(), workBrief: "prints piped token availability" },
           )
           expect(pipedResult.output).toBe("stored-gh-token")
         }
@@ -143,10 +143,10 @@ test("local bash does not override an explicit GH_TOKEN established in the comma
         const prefixResult = await LocalBashBackend.execute(
           {
             command: "GH_TOKEN=explicit-gh-token gh",
-            description: "prints explicit token",
+
             workdir: tmp.path,
           },
-          testContext(),
+          { ...testContext(), workBrief: "prints explicit token" },
         )
         expect(prefixResult.output).toBe("explicit-gh-token")
 
@@ -154,10 +154,10 @@ test("local bash does not override an explicit GH_TOKEN established in the comma
         const exportResult = await LocalBashBackend.execute(
           {
             command: "export GH_TOKEN=exported-gh-token; gh",
-            description: "prints exported token",
+
             workdir: tmp.path,
           },
-          testContext(),
+          { ...testContext(), workBrief: "prints exported token" },
         )
         expect(exportResult.output).toBe("exported-gh-token")
       },
@@ -173,10 +173,10 @@ test("local bash adds no output notice when no GitHub credential is connected", 
         const result = await LocalBashBackend.execute(
           {
             command: "gh",
-            description: "runs gh without a stored credential",
+
             workdir: tmp.path,
           },
-          testContext(),
+          { ...testContext(), workBrief: "runs gh without a stored credential" },
         )
         expect(result.output).toBe("gh-ok")
         expect(result.output).not.toContain("GitHub CLI token skipped")

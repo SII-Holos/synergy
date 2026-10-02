@@ -1,3 +1,5 @@
+import { ToolIntent } from "./tool-intent"
+import { ToolActivityEvidence } from "./activity-evidence"
 import { RuntimeContext } from "../lifecycle/context"
 import { ModelSelection } from "./model-selection-schema"
 import { RolloutRecordingError } from "./rollout/error"
@@ -113,6 +115,23 @@ export namespace MessageV2 {
   export const PatchPart = PartBase.extend({
     type: z.literal("patch"),
     hash: z.string(),
+    checkpoint: z
+      .object({
+        version: z.literal(1),
+        rootID: z.string(),
+        segmentID: z.string(),
+        started: z.number(),
+        ended: z.number().optional(),
+        status: z.enum(["pending", "complete", "incomplete"]),
+        afterHash: z
+          .string()
+          .regex(/^[0-9a-f]{40}$/)
+          .optional(),
+        omissions: z.array(SnapshotSchema.Omission).optional(),
+        baselineOmissions: z.array(SnapshotSchema.Omission).optional(),
+        error: z.enum(["baseline_unavailable", "capture_failed", "interrupted", "legacy_range"]).optional(),
+      })
+      .optional(),
     operation: z
       .discriminatedUnion("status", [
         z.object({ status: z.literal("pending"), toolCallID: z.string() }),
@@ -314,6 +333,10 @@ export namespace MessageV2 {
   })
   export type StepFinishPart = z.infer<typeof StepFinishPart>
 
+  export const ToolStateInput = z
+    .union([z.record(z.string(), z.any()), z.array(z.unknown()), z.string(), z.number(), z.boolean(), z.null()])
+    .meta({ ref: "ToolStateInput" })
+
   export const ToolStatePending = z
     .object({
       status: z.literal("pending"),
@@ -347,7 +370,7 @@ export namespace MessageV2 {
   export const ToolStateRunning = z
     .object({
       status: z.literal("running"),
-      input: z.record(z.string(), z.any()),
+      input: ToolStateInput,
       title: z.string().optional(),
       metadata: z.record(z.string(), z.any()).optional(),
       time: z.object({
@@ -362,7 +385,7 @@ export namespace MessageV2 {
   export const ToolStateCompleted = z
     .object({
       status: z.literal("completed"),
-      input: z.record(z.string(), z.any()),
+      input: ToolStateInput,
       output: z.string(),
       outputBytes: z.number().int().nonnegative().optional(),
       outputArtifact: RolloutSchema.ArtifactRef.optional(),
@@ -384,7 +407,7 @@ export namespace MessageV2 {
   export const ToolStateError = z
     .object({
       status: z.literal("error"),
-      input: z.record(z.string(), z.any()),
+      input: ToolStateInput,
       error: z.string(),
       metadata: z.record(z.string(), z.any()).optional(),
       time: z.object({
@@ -413,6 +436,9 @@ export namespace MessageV2 {
     type: z.literal("tool"),
     callID: z.string(),
     tool: z.string(),
+    workBrief: z.string().optional(),
+    inputShape: z.enum(["flat", "envelope"]).optional(),
+    activityEvidence: ToolActivityEvidence.optional(),
     state: ToolState,
     metadata: z.record(z.string(), z.any()).optional(),
   }).meta({
@@ -496,16 +522,8 @@ export namespace MessageV2 {
         title: z.string().optional(),
         body: z.string().optional(),
         diffs: SnapshotSchema.FileDiff.array(),
-        diffState: z
-          .discriminatedUnion("status", [
-            z.object({ status: z.literal("pending"), deadlineAt: z.number() }),
-            z.object({ status: z.literal("ready") }),
-            z.object({
-              status: z.literal("error"),
-              code: z.enum(["timeout", "git_failure", "unknown", "incomplete"]),
-            }),
-          ])
-          .optional(),
+        diffState: SnapshotSchema.DiffState.optional(),
+        diffIssues: SnapshotSchema.Issue.array().optional(),
       })
       .optional(),
     agent: z.string(),
@@ -876,6 +894,7 @@ export namespace MessageV2 {
    * reading `part.synthetic` directly.
    */
   export function isSystemPart(part: Part): boolean {
+    if (part.type === "patch" && part.checkpoint) return true
     if (part.type === "compaction") return true
     if (part.type !== "text") return false
     if (part.origin !== undefined) return part.origin === "system"
@@ -1356,7 +1375,10 @@ export namespace MessageV2 {
                   addModelMessageContribution(provenance, "toolActivity", attachmentIntroduction)
                 }
               }
-              const input = sanitizePromptPayload(part.state.input, sanitization)
+              const input = sanitizePromptPayload(
+                ToolIntent.encode(part.state.input, part.workBrief, part.inputShape),
+                sanitization,
+              )
               const output = part.state.time.compacted
                 ? "[Old tool result content cleared]"
                 : sanitizePromptPayload(part.state.output, sanitization)
@@ -1372,7 +1394,10 @@ export namespace MessageV2 {
               addModelMessageContribution(provenance, "toolActivity", output)
             }
             if (part.state.status === "error") {
-              const input = sanitizePromptPayload(part.state.input, sanitization)
+              const input = sanitizePromptPayload(
+                ToolIntent.encode(part.state.input, part.workBrief, part.inputShape),
+                sanitization,
+              )
               assistantMessage.parts.push({
                 type: ("tool-" + part.tool) as `tool-${string}`,
                 state: "output-error",

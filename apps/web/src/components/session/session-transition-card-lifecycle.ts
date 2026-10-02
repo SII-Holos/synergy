@@ -1,6 +1,6 @@
 import type { SessionTransitionPhase } from "./session-transition-progress"
 
-export const SESSION_TRANSITION_SUCCESS_HOLD_MS = 3_000
+export const SESSION_TRANSITION_SUCCESS_HOLD_MS = 0
 export const SESSION_TRANSITION_EXIT_MS = 180
 
 export type SessionTransitionTimerDriver<Handle = ReturnType<typeof setTimeout>> = {

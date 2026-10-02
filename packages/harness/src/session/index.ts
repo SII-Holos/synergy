@@ -78,6 +78,8 @@ import { SessionWorkspaceRuntime } from "./workspace-runtime"
 import { SessionSearchIndex } from "./search-index"
 import { SessionHistoryDisplay } from "./history-display"
 
+import { SecretMask } from "../secrets/mask"
+
 export namespace Session {
   export const ModelSelectionInput = ModelSelection.Input
   export async function setModelSelection(sessionID: string, input: ModelSelection.Input) {
@@ -819,9 +821,18 @@ export namespace Session {
             part.type === "attachment" && part.artifact
               ? await RolloutArtifact.copy(from, to, part.artifact)
               : undefined
+          const evidence = SnapshotEvidence.interrupt(part)
           return preparePart(
             {
-              ...SnapshotEvidence.interrupt(part),
+              ...evidence,
+              ...(evidence.type === "patch" && evidence.checkpoint
+                ? {
+                    checkpoint: {
+                      ...evidence.checkpoint,
+                      rootID: messageMap.get(evidence.checkpoint.rootID) ?? evidence.checkpoint.rootID,
+                    },
+                  }
+                : {}),
               ...(artifact ? { artifact } : {}),
               ...(state ? { state } : {}),
               id,
@@ -1852,6 +1863,9 @@ export namespace Session {
 
   export async function preparePart(input: MessageV2.Part, ownerScopeID?: string): Promise<MessageV2.Part> {
     let part = input
+    if (part.type === "tool" && part.workBrief) {
+      part = { ...part, workBrief: await SecretMask.apply(part.workBrief) }
+    }
     const scopeID = asScopeID(ownerScopeID ?? (await SessionManager.resolveScopeID(part.sessionID)))
     try {
       const owner = { kind: "session" as const, scopeID, sessionID: part.sessionID }

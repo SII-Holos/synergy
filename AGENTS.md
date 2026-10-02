@@ -1,6 +1,6 @@
 # Synergy Repository Rules
 
-These rules apply to the Bun/TypeScript monorepo. Read the nearest package `AGENTS.md` before editing package code. Each rule links the document holding its rationale. Placement and budgets follow [docs/AGENTS.md](docs/AGENTS.md).
+Bun/TypeScript monorepo rules. Read the nearest package `AGENTS.md` before editing code. Rules link their rationale. Placement and budgets follow [docs/AGENTS.md](docs/AGENTS.md).
 
 ## Work from Current Evidence
 

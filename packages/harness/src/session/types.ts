@@ -218,6 +218,8 @@ const BaseInfo = z.preprocess(
         deletions: z.number(),
         files: z.number(),
         diffs: SnapshotSchema.FileDiff.array().optional(),
+        diffState: SnapshotSchema.DiffState.optional(),
+        diffIssues: SnapshotSchema.Issue.array().optional(),
       })
       .optional(),
     title: z.string(),

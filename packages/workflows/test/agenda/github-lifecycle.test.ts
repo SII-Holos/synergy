@@ -35,7 +35,7 @@ describe("GitHub watch lifecycle", () => {
             await Agenda.update(item.id, { status: "paused" }, item.origin.scope.id)
             const tool = await AgendaUpdateTool.init()
             const result = await tool.execute(
-              { id: item.id, status: "active" },
+              { agendaItemId: item.id, status: "active" },
               {
                 sessionID: "test-session",
                 messageID: "test-message",

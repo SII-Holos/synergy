@@ -12,18 +12,7 @@ export function turnChangeSummaryFiles(diffs: TurnChangeSummaryDiff[]) {
   for (const diff of diffs) {
     const { operationID: _operationID, ...file } = diff
     const key = reviewFileKey(file)
-    const previous = files.get(key)
-    files.set(
-      key,
-      previous
-        ? {
-            ...file,
-            additions: previous.additions + file.additions,
-            deletions: previous.deletions + file.deletions,
-            ...(previous.binary || file.binary ? { binary: true } : {}),
-          }
-        : file,
-    )
+    files.set(key, file)
   }
   return [...files.values()]
 }
@@ -38,12 +27,16 @@ const SHOW_DESC = /** i18n */ {
   message: "Show {count} more {count, plural, one {file} other {files}}",
 }
 
-export type TurnDiffPanelState = "hidden" | "pending" | "ready" | "error"
+export type TurnDiffPanelState = "hidden" | "pending" | "ready" | "partial" | "error"
 
 export const TURN_DIFF_PENDING_DELAY_MS = 150
 
-export function resolveTurnDiffPanelState(state: TurnDiffPanelState, pendingDelayElapsed: boolean): TurnDiffPanelState {
-  if (state === "pending" && !pendingDelayElapsed) return "hidden"
+export function resolveTurnDiffPanelState(
+  state: TurnDiffPanelState,
+  pendingDelayElapsed: boolean,
+  hasFiles = false,
+): TurnDiffPanelState {
+  if (state === "pending" && !pendingDelayElapsed && !hasFiles) return "hidden"
   return state
 }
 

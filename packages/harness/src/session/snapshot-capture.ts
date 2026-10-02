@@ -10,6 +10,7 @@ import { SnapshotGit } from "./snapshot-git"
 import type { SnapshotStore } from "./snapshot-store"
 import { WorkspaceTree } from "../workspace/tree"
 import type { BlobStore } from "../workspace/content"
+import type { SnapshotSchema } from "./snapshot-schema"
 
 export namespace SnapshotCapture {
   const MAX_FILE_BYTES = 2 * 1024 * 1024
@@ -110,7 +111,12 @@ export namespace SnapshotCapture {
   }
 
   export type Content = { tree: WorkspaceTree.Manifest; store: BlobStore }
-  export async function refresh(operation: SnapshotStore.Operation, signal?: AbortSignal, content?: Content) {
+  export async function refresh(
+    operation: SnapshotStore.Operation,
+    signal?: AbortSignal,
+    content?: Content,
+    onOmissions?: (omissions: SnapshotSchema.Omission[]) => void,
+  ) {
     const controller = new AbortController()
     const forward = () => controller.abort(signal?.reason)
     signal?.addEventListener("abort", forward, { once: true })
@@ -120,15 +126,25 @@ export namespace SnapshotCapture {
       60_000,
     )
     try {
-      return await refreshImpl(operation, controller.signal, content)
+      return await refreshImpl(operation, controller.signal, content, onOmissions)
     } finally {
       clearTimeout(timer)
       signal?.removeEventListener("abort", forward)
     }
   }
 
-  async function refreshImpl(operation: SnapshotStore.Operation, abort: AbortSignal, content?: Content) {
+  async function refreshImpl(
+    operation: SnapshotStore.Operation,
+    abort: AbortSignal,
+    content?: Content,
+    onOmissions?: (omissions: SnapshotSchema.Omission[]) => void,
+  ) {
     abort.throwIfAborted()
+    const omissions: SnapshotSchema.Omission[] = []
+    const omit = (file: string, reason: SnapshotSchema.Omission["reason"]) => {
+      if (!onOmissions) throw new Error(`Snapshot file could not be captured: ${file}`)
+      omissions.push({ file, reason })
+    }
     const root = content ? "" : await fs.realpath(operation.workspace)
     const run = (args: string[], input?: string) =>
       SnapshotGit.run(
@@ -259,8 +275,16 @@ export namespace SnapshotCapture {
           if (!same(stat, await fs.lstat(filename))) throw new Error("Snapshot symbolic link changed while reading")
           await retain(name, "120000", bytes)
         } else if (stat.isFile()) {
-          const bytes = await read(filename, stat, abort)
-          if (bytes) await retain(name, stat.mode & 0o111 ? "100755" : "100644", bytes)
+          try {
+            const bytes = await read(filename, stat, abort)
+            if (bytes) await retain(name, stat.mode & 0o111 ? "100755" : "100644", bytes)
+            else if (onOmissions) omit(name, "size_limit")
+            else if (previous.has(name)) throw new Error("A recorded file exceeds the snapshot size limit")
+          } catch (error) {
+            abort.throwIfAborted()
+            if (!onOmissions) throw error
+            omit(name, "read_failed")
+          }
         }
       }
       if (path.relative(root, await fs.realpath(absolute)) !== relative.split("/").join(path.sep))
@@ -318,8 +342,16 @@ export namespace SnapshotCapture {
           if (entry.kind === "symlink")
             await retain(entry.path, "120000", SnapshotLink.encode({ target: entry.target }))
           else {
-            const bytes = await readContent(entry)
-            if (bytes) await retain(entry.path, entry.mode & 0o111 ? "100755" : "100644", bytes)
+            try {
+              const bytes = await readContent(entry)
+              if (bytes) await retain(entry.path, entry.mode & 0o111 ? "100755" : "100644", bytes)
+              else if (onOmissions) omit(entry.path, "size_limit")
+              else if (previous.has(entry.path)) throw new Error("A recorded file exceeds the snapshot size limit")
+            } catch (error) {
+              abort.throwIfAborted()
+              if (!onOmissions) throw error
+              omit(entry.path, "read_failed")
+            }
           }
         }
       }
@@ -327,6 +359,7 @@ export namespace SnapshotCapture {
     try {
       if (content) await visitContent("", [], false, 0)
       else await visit("", initial, false, 0)
+      onOmissions?.(omissions)
       await flush()
       const updates: string[] = []
       for (const name of previous.keys()) if (!current.has(name)) updates.push(`0 ${"0".repeat(40)}\t${name}\0`)

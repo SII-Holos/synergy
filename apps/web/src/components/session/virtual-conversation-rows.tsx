@@ -1,9 +1,9 @@
 import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
-import type { AssistantMessage, UserMessage } from "@ericsanchezok/synergy-sdk"
+import type { AssistantMessage, UserMessage, TurnExecutionState } from "@ericsanchezok/synergy-sdk"
 import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack } from "solid-js"
 import { Dynamic } from "solid-js/web"
-import { SessionTurn } from "@ericsanchezok/synergy-ui/session-turn"
+import { SessionTurn, resolveActivityDisclosure } from "@ericsanchezok/synergy-ui/session-turn"
 import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
 import { MessageSlotOutlet } from "@ericsanchezok/synergy-ui/message-slots"
@@ -18,18 +18,61 @@ const layouts = new WeakMap<
   Map<string, { keys: string[]; cache: VirtualizerHandle["cache"]; bytes: number }>
 >()
 
-export function VirtualConversationRows(input: { context: PluginConversationService; scrollRef?: HTMLDivElement }) {
+type ProcessControls = {
+  executionFor?: (rootID: string) => TurnExecutionState | undefined
+  onRestoreChanges?: (messageID: string) => void
+}
+
+export function VirtualConversationRows(
+  input: ProcessControls & { context: PluginConversationService; scrollRef?: HTMLDivElement },
+) {
   const props = input.context
   const content = props.content!
   const [handle, setHandle] = createSignal<VirtualizerHandle>()
   const [margin, setMargin] = createSignal(0)
   const [retained, setRetained] = createSignal<string[]>([])
-  const rows = createMemo(() =>
+  const [interactionRoots, setInteractionRoots] = createSignal<string[]>([])
+  const [expanded, setExpanded] = createSignal<ReadonlyMap<string, boolean>>(new Map())
+  const activityView = {
+    getExpanded: (key: string) => props.activityView?.getExpanded(key) ?? expanded().get(key),
+    setExpanded: (key: string, value: boolean) => {
+      if (props.activityView) props.activityView.setExpanded(key, value)
+      else setExpanded((previous) => new Map(previous).set(key, value))
+    },
+  }
+  const processState = createMemo((previous: Map<string, { working: boolean; held: boolean }> | undefined) => {
+    const next = new Map<string, { working: boolean; held: boolean }>()
+    for (const root of props.timeline()) {
+      if (root.role !== "user") continue
+      const state = input.executionFor?.(root.id)
+      const working = state
+        ? ["preparing", "running", "approval"].includes(state.status)
+        : root.id === props.lastUserMessage()?.id && props.isWorking()
+      const last = previous?.get(root.id)
+      const reading = props.scrolledUp() || interactionRoots().includes(root.id)
+      next.set(root.id, { working, held: reading && (!!last?.held || (!!last?.working && !working)) })
+    }
+    return next
+  })
+  const rows = createMemo<ConversationRow[]>((previous) =>
     buildConversationRows({
+      previous,
       timeline: props.timeline(),
       messagesFor: (root) => props.turnProjection().turnMessagesFor(root as UserMessage),
       summaries: content.summaries,
       page: content.page,
+      process: (root) => {
+        const state = processState().get(root.id)!
+        return {
+          working: state.working,
+          open: resolveActivityDisclosure({
+            mode: props.activityDisplay(),
+            working: state.working,
+            heldOpen: state.held,
+            explicit: activityView.getExpanded(`turn-process:${root.id}`),
+          }),
+        }
+      },
     }),
   )
   const keys = createMemo(() => rows().map((row) => row.key))
@@ -104,10 +147,14 @@ export function VirtualConversationRows(input: { context: PluginConversationServ
   })
   const pinInteraction = () => {
     const ids = new Set<string>()
+    const roots = new Set<string>()
     const add = (node: Node | null) => {
       const element = node instanceof Element ? node : node?.parentElement
       const row = element?.closest<HTMLElement>("[data-display-row]")
-      if (row && container?.contains(row)) ids.add(row.dataset.displayRow!)
+      if (row && container?.contains(row)) {
+        ids.add(row.dataset.displayRow!)
+        roots.add(row.dataset.turnRoot!)
+      }
     }
     add(document.activeElement)
     const selection = document.getSelection()
@@ -125,6 +172,7 @@ export function VirtualConversationRows(input: { context: PluginConversationServ
       }
     }
     setRetained([...ids])
+    setInteractionRoots([...roots])
   }
   onMount(() => {
     const measure = () => {
@@ -141,6 +189,18 @@ export function VirtualConversationRows(input: { context: PluginConversationServ
     document.addEventListener("selectionchange", pinInteraction)
     const release = props.registerMessageLocator?.(async (messageID, behavior, partID) => {
       if (content.loadWindow && !(await content.loadWindow(messageID, partID))) return false
+      if (partID) {
+        const root = props.timeline().find(
+          (root) =>
+            root.id === messageID ||
+            (root.role === "user" &&
+              props
+                .turnProjection()
+                .turnMessagesFor(root)
+                .some((message) => message.id === messageID)),
+        )
+        if (root) activityView.setExpanded(`turn-process:${root.id}`, true)
+      }
       let index = rows().findIndex((row) => row.message.id === messageID)
       if (index < 0) return false
       await content.load(messageID)
@@ -191,7 +251,15 @@ export function VirtualConversationRows(input: { context: PluginConversationServ
           >
             {(key) => {
               const row = createMemo<ConversationRow>((previous) => byKey().get(key) ?? previous!, byKey().get(key)!)
-              return <ConversationDisplayRow context={props} row={row} />
+              return (
+                <ConversationDisplayRow
+                  context={props}
+                  row={row}
+                  activityView={activityView}
+                  executionFor={input.executionFor}
+                  onRestoreChanges={input.onRestoreChanges}
+                />
+              )
             }}
           </Virtualizer>
         </ToolExpansionProvider>
@@ -200,7 +268,13 @@ export function VirtualConversationRows(input: { context: PluginConversationServ
   )
 }
 
-function ConversationDisplayRow(input: { context: PluginConversationService; row: () => ConversationRow }) {
+function ConversationDisplayRow(
+  input: ProcessControls & {
+    context: PluginConversationService
+    row: () => ConversationRow
+    activityView: NonNullable<PluginConversationService["activityView"]>
+  },
+) {
   const props = input.context
   const content = props.content!
   const row = input.row
@@ -291,6 +365,9 @@ function ConversationDisplayRow(input: { context: PluginConversationService; row
       after: current.kind === "body" && current.after,
       beforeTool: current.kind === "body" && current.beforeTool,
       beforeReasoning: current.kind === "body" && current.beforeReasoning,
+      processHeader: current.kind === "process",
+      processBody: current.kind === "body" && current.processBody,
+      process: current.process,
     }
   }
   const anchor = () => {
@@ -304,11 +381,13 @@ function ConversationDisplayRow(input: { context: PluginConversationService; row
   return (
     <div
       data-display-row={row().key}
+      data-turn-root={row().root.id}
       data-message-id={row().message.id}
       data-message-role={row().message.role}
       data-part-id={partID()}
       id={anchor()}
-      class="min-w-0 w-full max-w-full pb-5"
+      class="min-w-0 w-full max-w-full"
+      classList={{ "pb-5": row().kind !== "process" }}
     >
       <Show when={failure()}>
         <button type="button" class="text-12-medium text-text-weak" onClick={() => void load()}>
@@ -368,7 +447,7 @@ function ConversationDisplayRow(input: { context: PluginConversationService; row
             messageID={row().root.id}
             rootMessage={row().root as UserMessage}
             messages={
-              row().kind === "footer"
+              row().kind === "footer" || row().kind === "process"
                 ? props.turnProjection().turnMessagesFor(row().root as UserMessage)
                 : [row().message]
             }
@@ -376,6 +455,9 @@ function ConversationDisplayRow(input: { context: PluginConversationService; row
             copyMessageText={content.text}
             compactionParentIDs={props.turnProjection().compactionParentIDs}
             activityDisplay={props.activityDisplay()}
+            activityView={input.activityView}
+            executionState={input.executionFor?.(row().root.id)}
+            following={!props.scrolledUp()}
             lastUserMessageID={props.lastUserMessage()?.id}
             compactReasoning={props.compactReasoning()}
             onRewind={
@@ -383,6 +465,7 @@ function ConversationDisplayRow(input: { context: PluginConversationService; row
             }
             rollbackActive={props.rollbackActive}
             onReviewChanges={props.onReviewChanges}
+            onRestoreChanges={input.onRestoreChanges}
             onForkMessage={props.onForkMessage}
             executionSummary={
               row().kind === "footer" && execution.available() ? execution.round(row().root.id) : undefined

@@ -64,25 +64,32 @@ test(
             const get = await MemoryGetTool.init()
             const search = await MemorySearchTool.init()
             const input = {
-              title: "Research preference",
-              content: "Use reproducible trials",
+              memoryTitle: "Research preference",
+              memoryContent: "Use reproducible trials",
               category: "user" as const,
               recallMode: "contextual" as const,
             }
             const written = await write.execute(input, ctx)
             const id = String(written.metadata.id)
-            expect(LibraryDB.Memory.get(id)?.content).toBe(input.content)
+            expect(LibraryDB.Memory.get(id)?.content).toBe(input.memoryContent)
             expect((await write.execute(input, ctx)).metadata.action).toBe("similar_found")
             expect(LibraryDB.Memory.count()).toBe(1)
-            const edited = await edit.execute({ ...input, id, content: "Use seeded reproducible trials" }, ctx)
-            expect(edited.output).toContain("updated successfully")
+            const edited = await edit.execute(
+              { ...input, memoryId: id, memoryContent: "Use seeded reproducible trials" },
+              ctx,
+            )
+            expect(JSON.parse(edited.output)).toMatchObject({
+              memoryId: id,
+              memoryTitle: input.memoryTitle,
+              memoryContent: "Use seeded reproducible trials",
+            })
             expect(LibraryDB.Memory.get(id)?.content).toContain("seeded")
-            expect((await edit.execute({ ...input, id: "absent" }, ctx)).output).toContain("not found")
-            expect((await get.execute({ ids: [id] }, ctx)).output).toContain("seeded")
-            expect((await get.execute({ ids: ["absent"] }, ctx)).metadata.count).toBe(0)
-            expect((await search.execute({ query: "trials", top_k: 5 }, ctx)).metadata.count).toBe(1)
+            expect((await edit.execute({ ...input, memoryId: "absent" }, ctx)).output).toContain("not found")
+            expect((await get.execute({ memoryIds: [id] }, ctx)).output).toContain("seeded")
+            expect((await get.execute({ memoryIds: ["absent"] }, ctx)).metadata.count).toBe(0)
+            expect((await search.execute({ query: "trials", limit: 5 }, ctx)).metadata.count).toBe(1)
             expect(
-              (await search.execute({ query: "trials", top_k: 5, categories: ["asset"] }, ctx)).metadata.count,
+              (await search.execute({ query: "trials", limit: 5, categories: ["asset"] }, ctx)).metadata.count,
             ).toBe(0)
             expect(await Rerank.rerank({ query: "trial", documents: ["evidence"], topN: 1 })).toEqual([
               { index: 0, relevanceScore: 0.95, document: "evidence" },
@@ -96,10 +103,10 @@ test(
             await expect(Rerank.rerank({ query: "trial", documents: ["evidence"] })).rejects.toThrow(
               "Rerank API error 400",
             )
-            expect((await write.execute({ ...input, title: "Failed write" }, ctx)).output).toContain(
+            await expect(write.execute({ ...input, memoryTitle: "Failed write" }, ctx)).rejects.toThrow(
               "Failed to generate embedding",
             )
-            expect((await edit.execute({ ...input, id }, ctx)).output).toContain("Failed to generate embedding")
+            await expect(edit.execute({ ...input, memoryId: id }, ctx)).rejects.toThrow("Failed to generate embedding")
             expect(LibraryDB.Memory.count()).toBe(1)
             expect(LibraryDB.Memory.get(id)?.content).toContain("seeded")
           },
@@ -232,3 +239,19 @@ test("memory recall falls back to ranked persisted text when the remote embeddin
   }))
 
 afterRuntimeTests(() => runtime.close())
+
+test("memory contracts use unambiguous object fields", async () => {
+  const write = await MemoryWriteTool.init()
+  expect(
+    write.parameters.safeParse({
+      memoryTitle: "Setup",
+      memoryContent: "Use Bun.",
+      category: "coding",
+      recallMode: "search_only",
+    }).success,
+  ).toBe(true)
+  expect(
+    write.parameters.safeParse({ title: "Setup", content: "Use Bun.", category: "coding", recallMode: "search_only" })
+      .success,
+  ).toBe(false)
+})

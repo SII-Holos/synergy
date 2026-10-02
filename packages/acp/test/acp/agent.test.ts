@@ -559,11 +559,24 @@ describe("ACP event subscriptions", () => {
         async (agent, h) => {
           await agent.newSession(newSessionArgs())
           const stream = h.eventStreams[0]!
-          const tool = (callID: string, name: string, state: Record<string, unknown>) =>
+          const tool = (
+            callID: string,
+            name: string,
+            state: Record<string, unknown>,
+            extra: Record<string, unknown> = {},
+          ) =>
             stream.push({
               type: "message.part.updated",
               properties: {
-                part: { sessionID: "session-/tmp/acp", messageID: "msg-1", type: "tool", callID, tool: name, state },
+                part: {
+                  sessionID: "session-/tmp/acp",
+                  messageID: "msg-1",
+                  type: "tool",
+                  callID,
+                  tool: name,
+                  state,
+                  ...extra,
+                },
               },
             })
           tool("edit-1", "edit", { status: "pending" })
@@ -586,6 +599,12 @@ describe("ACP event subscriptions", () => {
             metadata: {},
           })
           tool("read-1", "read", { status: "error", input: { filePath: "/fixture/missing" }, error: "File is missing" })
+          tool(
+            "native-array",
+            "mcp-array",
+            { status: "completed", input: ["one", "two"], output: "Observed", title: "Labels", metadata: {} },
+            { inputShape: "envelope", workBrief: "Inspect labels" },
+          )
           tool("todos-1", "todowrite", {
             status: "completed",
             input: {},
@@ -616,6 +635,12 @@ describe("ACP event subscriptions", () => {
         },
       )
       const updates = harness.sessionUpdates.map((event) => event.update)
+      expect(updates).toContainEqual(
+        expect.objectContaining({
+          toolCallId: "native-array",
+          rawInput: { workBrief: "Inspect labels", toolInput: ["one", "two"] },
+        }),
+      )
       expect(updates).toContainEqual(
         expect.objectContaining({ sessionUpdate: "tool_call", toolCallId: "edit-1", status: "pending" }),
       )

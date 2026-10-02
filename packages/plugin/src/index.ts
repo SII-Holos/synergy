@@ -25,5 +25,10 @@ export * from "./ui.js"
 export * from "./ui-catalog.js"
 export * from "./ui-condition.js"
 
-export type { PluginConversationService, PluginConversationViewport, PluginTurnProjection } from "./conversation.js"
+export type {
+  PluginConversationService,
+  PluginConversationViewport,
+  PluginConversationActivityView,
+  PluginTurnProjection,
+} from "./conversation.js"
 export type { PluginComposerLayoutService } from "./composer-layout.js"

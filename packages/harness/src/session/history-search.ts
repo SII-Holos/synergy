@@ -86,7 +86,7 @@ export namespace SessionHistorySearch {
     if (!state) await Storage.write(key, { ...initial, encoding: Storage.current().store.keyEncodedAs })
   }
 
-  export async function partWritten(scopeID: string, part: MessageV2.Part) {
+  export async function partWritten(scopeID: string, part: Pick<MessageV2.Part, "sessionID" | "messageID" | "id">) {
     await Storage.write(StoragePath.sessionTextDirty(scopeID, part.sessionID, part.messageID, part.id), {
       key: StoragePath.messagePart(
         Identifier.asScopeID(scopeID),

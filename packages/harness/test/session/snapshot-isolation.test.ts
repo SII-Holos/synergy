@@ -221,7 +221,7 @@ describe("Snapshot per-session isolation", () => {
       })
     }))
 
-  test("diffSummary() with hashes from different sessions returns empty array", () =>
+  test("diffSummary() rejects missing owned evidence instead of reporting no changes", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
@@ -235,8 +235,7 @@ describe("Snapshot per-session isolation", () => {
           await Bun.write(path.join(tmp.path, "full_a.txt"), "A v2")
           const toA = await Snapshot.track(sessionA)
 
-          const diffs = await Snapshot.diffSummary(fromA!, toA!, sessionB)
-          expect(diffs).toEqual([])
+          await expect(Snapshot.diffSummary(fromA!, toA!, sessionB)).rejects.toThrow()
         },
       })
     }))

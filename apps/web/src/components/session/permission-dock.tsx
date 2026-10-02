@@ -69,10 +69,14 @@ export function PermissionDock(props: { request: PermissionRequest }) {
   const state = () => decisions.state(decisions.key("permission", props.request))
   const locked = () => requestSubmissionLocked(state())
   const part = createMemo(() => permissionToolPart(props.request, view()))
+  const toolInput = createMemo(() => {
+    const input = part()?.state.input
+    return input && typeof input === "object" && !Array.isArray(input) ? input : {}
+  })
   const info = createMemo(() => permissionInfo(props.request, view()))
   const grantTitle = createMemo(() => getToolInfo(props.request.permission, {}, props.request.metadata).title)
   const command = () => {
-    const value = part()?.state.input.command ?? props.request.metadata.command
+    const value = toolInput().command ?? props.request.metadata.command
     return typeof value === "string" ? value : undefined
   }
   const reason = createMemo(() => {
@@ -139,7 +143,7 @@ export function PermissionDock(props: { request: PermissionRequest }) {
               {(current) => (
                 <Dynamic
                   component={ToolRegistry.render(current().tool) ?? SmartTool}
-                  input={current().state.input}
+                  input={toolInput()}
                   tool={current().tool}
                   metadata={{
                     ...props.request.metadata,

@@ -136,7 +136,7 @@ When adding a bulk variant of a storage operation, exercise every supported name
 
 For optional whole-store rewrites, prove ordinary startup never calls the rewrite even when prerequisite maintenance is already applied. Keep the atomic format commit separate from physical reclamation and reconcile a committed format with an absent migration receipt through a read-only probe. Persist every copy cursor in its batch transaction. If normal writes can occur between attempts, invalidate staged copies on source mutations before allowing a later swap; rebuild unfenced historical staging. Test updates, inserts, deletion, source drift, rollback, cancellation, reopening, and a second namespace. Background reclamation must yield to work and disk/WAL pressure, persist pause and progress, back off failures, and drain before storage closes.
 
-## Preserve File History Attribution
+## Preserve File History and Workspace Identity
 
 Snapshot and patch producers retain the source Workspace identity and binding generation. Derived summaries group those sources before comparing trees; current Session selection must not rewrite historical file ownership. Use literal, NUL-delimited Git filenames and object-store working directories for history-only reads. Exercise non-Git capture, missing directories, rebindings and equal relative filenames in different Workspaces.
 
@@ -165,3 +165,9 @@ Cross multiple runs under one owner with exact, owner-only and null-run ancestry
 For large evidence projections, keep historical preparation resumable and generation-checked. Test overwrites, tombstones, physical deletion, imports, restart and a concurrent mutation at publication. Unknown owners must remain ineligible for retention. Measure maintenance on its separate reader lane and verify foreground admission while that lane holds a snapshot. Prepared artifact bytes must remain pinned until the publishing transaction settles, including rollback and uncertain commit recovery.
 
 Owner migration callbacks must read canonical records using the owner identities supplied by the central runner; do not reenter business admission for the same unpublished owner. Verify this with a released completion ledger and an actual deferred import. If storage initialization already owns schema and preparation markers, structural startup migration must not join a historical background batch or inherit its admission deadline. Keep that backfill resumable after startup and prove foreground admission survives unavailable background maintenance.
+
+## Workspace net changes
+
+Keep segment checkpoint capture and settlement in Session, immutable trees in Snapshot and version-checked file publication in Local Runtime. Test baseline failure without recapture, net cancellation, parallel read-only tools, late background writes, partial capture, historical reads, migration, fork/export retention and restore receipt replay. A turn Diff describes all writers in its captured interval; do not add author attribution or scan the full workspace for every tool. File previews may truncate text, but comparison statistics and restoration must use complete retained evidence.
+
+Evaluate net coverage from its first baseline and latest endpoint, keeping each endpoint's omissions separate. Test recovery after an intermediate capture failure without clearing that historical failure or fabricating an unavailable first baseline.

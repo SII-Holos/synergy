@@ -1,6 +1,9 @@
+import { useFileRestore } from "./file-restore-dialog-loader"
+import { useSDK } from "@/context/sdk"
+import { useSessionDataView } from "@/context/session-data-view"
 import type { PluginComponentProps, PluginConversationService } from "@ericsanchezok/synergy-plugin"
 import { Dynamic } from "solid-js/web"
-import { For, Show, createMemo, createSignal, onMount } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, createResource, onCleanup, onMount } from "solid-js"
 import { VirtualConversationRows } from "./virtual-conversation-rows"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { SessionTurn } from "@ericsanchezok/synergy-ui/session-turn"
@@ -8,7 +11,6 @@ import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
 import { MessageSlotOutlet } from "@ericsanchezok/synergy-ui/message-slots"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
 import type { UserMessage, AssistantMessage, Message } from "@ericsanchezok/synergy-sdk"
-import { SessionTimeline } from "./session-timeline"
 import { buildConversationTimelineSnapshot } from "./conversation-timeline"
 import { ConversationViewport } from "./conversation-viewport"
 import { useLocale } from "@/context/locale"
@@ -21,7 +23,84 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
   const execution = useExecution()
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
-  const workspaceOpen = createMemo(() => props.workspaceOpen?.() ?? false)
+  const sdk = useSDK()
+  const restoreFiles = useFileRestore(() => props.sessionID)
+  const data = useSessionDataView()
+  let stateRequest: AbortController | undefined
+  const executionRequest = createMemo(
+    () => {
+      const roots = (props.timeline() ?? []).filter((message) => message.role === "user").map((message) => message.id)
+      const latest = props.lastUserMessage()
+      const last = latest ? props.turnProjection().turnMessagesFor(latest).at(-1) : undefined
+      const status = data().statusFor(props.sessionID)
+      return roots.length
+        ? {
+            server: sdk.url,
+            scope: sdk.scopeKey,
+            sessionID: props.sessionID,
+            rootIDs: roots.slice(-64),
+            revision: `${status?.type}:${last?.id}:${last?.role === "assistant" ? last.time.completed : ""}`,
+          }
+        : undefined
+    },
+    undefined,
+    {
+      equals: (a, b) =>
+        a?.server === b?.server &&
+        a?.scope === b?.scope &&
+        a?.sessionID === b?.sessionID &&
+        a?.revision === b?.revision &&
+        a?.rootIDs.join() === b?.rootIDs.join(),
+    },
+  )
+  const [executions, { refetch: refreshExecutions }] = createResource(
+    executionRequest,
+    async (request) => {
+      stateRequest?.abort()
+      const controller = new AbortController()
+      stateRequest = controller
+      const result = await sdk.client.session.turnExecution(
+        { sessionID: request.sessionID, rootIDs: request.rootIDs },
+        { signal: controller.signal, throwOnError: true },
+      )
+      if (
+        controller.signal.aborted ||
+        sdk.url !== request.server ||
+        sdk.scopeKey !== request.scope ||
+        props.sessionID !== request.sessionID
+      )
+        return undefined
+      return { request, states: result.data ?? [] }
+    },
+    { initialValue: undefined },
+  )
+  createEffect(() => {
+    if (!executionRequest()) stateRequest?.abort()
+  })
+  onCleanup(() => stateRequest?.abort())
+  onCleanup(
+    sdk.event.on("session.execution.updated", (event) => {
+      if (event.properties.sessionID === props.sessionID) void refreshExecutions()
+    }),
+  )
+  onCleanup(
+    sdk.event.on("permission.asked", (event) => {
+      if (event.properties.sessionID === props.sessionID) void refreshExecutions()
+    }),
+  )
+  onCleanup(
+    sdk.event.on("permission.replied", (event) => {
+      if (event.properties.sessionID === props.sessionID) void refreshExecutions()
+    }),
+  )
+  const executionFor = (rootID: string) => {
+    const result = executions.error ? undefined : executions.latest
+    return result?.request.sessionID === props.sessionID &&
+      result.request.server === sdk.url &&
+      result.request.scope === sdk.scopeKey
+      ? result.states.find((state) => state.rootID === rootID)
+      : undefined
+  }
   const lastTimelineID = createMemo(() => props.timeline()?.at(-1)?.id)
   const turnProjection = props.turnProjection
   const [scrollRef, setScrollRef] = createSignal<HTMLDivElement>()
@@ -45,19 +124,6 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
       onScrollContainer={(el) => {
         if (props.isDesktop()) props.onScheduleScrollSpy(el)
       }}
-      overlay={
-        <Show when={props.isDesktop() && !workspaceOpen()}>
-          <div class="absolute inset-0 pointer-events-none z-10">
-            <SessionTimeline
-              messages={props.visibleUserMessages}
-              currentMessage={props.activeMessage}
-              onMessageSelect={props.scrollToMessage}
-              bottomOffset={props.terminalHeight}
-              compressed={workspaceOpen}
-            />
-          </div>
-        </Show>
-      }
       contentClass="session-conversation-content session-content-column flex flex-col items-start justify-start gap-5"
       contentClassList={{
         "pb-6 md:pb-[calc(var(--prompt-height,10rem)+32px)]": true,
@@ -133,7 +199,6 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
                     data-message-id={key}
                     data-message-role="assistant"
                     class="min-w-0 w-full max-w-full"
-                    style={isLast() ? { animation: "fadeUp 0.3s ease-out both" } : undefined}
                   >
                     <MessageSlotOutlet
                       slot="message.before"
@@ -171,7 +236,6 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
                   data-message-id={key}
                   data-message-role="user"
                   class="min-w-0 w-full max-w-full"
-                  style={isLast() ? { animation: "fadeUp 0.3s ease-out both" } : undefined}
                 >
                   <SessionTurn
                     sessionID={props.sessionID}
@@ -180,6 +244,10 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
                     messages={turnMessages()}
                     compactionParentIDs={turnProjection().compactionParentIDs}
                     activityDisplay={props.activityDisplay()}
+                    activityView={props.activityView}
+                    executionState={executionFor(key)}
+                    following={!props.scrolledUp()}
+                    onRestoreChanges={(messageID) => void restoreFiles({ messageID })}
                     lastUserMessageID={props.lastUserMessage()?.id}
                     compactReasoning={props.compactReasoning()}
                     onRewind={props.canRewind(rootMessage()) ? () => props.onRewind?.(rootMessage()) : undefined}
@@ -200,7 +268,12 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
           </For>
         }
       >
-        <VirtualConversationRows context={props} scrollRef={scrollRef()} />
+        <VirtualConversationRows
+          context={props}
+          scrollRef={scrollRef()}
+          executionFor={executionFor}
+          onRestoreChanges={(messageID) => void restoreFiles({ messageID })}
+        />
       </Show>
       {props.transition?.()}
       <Show when={props.pendingTimeline?.()?.length}>

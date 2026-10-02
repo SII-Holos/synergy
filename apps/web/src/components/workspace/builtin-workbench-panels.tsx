@@ -145,6 +145,18 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         title: () => i18n._(P.review),
       }),
       register(createLatticeWorkbenchPanel(i18n._(P.lattice))),
+      register({
+        id: "execution-detail",
+        label: i18n._(P.executionDetail),
+        icon: getSemanticIcon("performance.trace"),
+        surface: "side",
+        cardinality: "singleton",
+        requiresSession: true,
+        launchable: false,
+        pluginId: "builtin",
+        order: 16,
+        loader: async () => ({ default: (await import("./tool-execution-detail")).ExecutionDetailWorkbenchContent }),
+      }),
       register(createBossWorkbenchPanel(i18n._(P.boss))),
       register({
         id: "attachment",

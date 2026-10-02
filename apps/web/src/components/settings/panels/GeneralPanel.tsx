@@ -97,7 +97,8 @@ const copy = {
   activityDisplayTitle: { id: "settings.general.activityDisplay.title", message: "Activity display" },
   activityDisplayDescription: {
     id: "settings.general.activityDisplay.description",
-    message: "Choose how much activity detail Synergy shows in the interface",
+    message:
+      "Balanced shows current calls and collects completed tools; Full expands tool history; Minimal keeps progress compact. You can expand the process in every mode.",
   },
   activityFull: { id: "settings.general.activityDisplay.full", message: "Full" },
   activityBalanced: { id: "settings.general.activityDisplay.balanced", message: "Balanced" },
@@ -109,10 +110,10 @@ const copy = {
   },
   workspaceMain: { id: "settings.general.workspace.main", message: "Main folder" },
   workspaceWorktree: { id: "settings.general.workspace.worktree", message: "Worktree" },
-  compactReasoningTitle: { id: "settings.general.compactReasoning.title", message: "Compact reasoning" },
+  compactReasoningTitle: { id: "settings.general.compactReasoning.title", message: "Reasoning preview" },
   compactReasoningDescription: {
     id: "settings.general.compactReasoning.description",
-    message: "Show live reasoning in a single line; completed turns keep an expandable reasoning row",
+    message: "Preview the original reasoning in one line. Reasoning remains expandable when this is off.",
   },
   preventSleepTitle: { id: "settings.general.preventSleep.title", message: "Prevent sleep while running" },
   preventSleepDescription: {

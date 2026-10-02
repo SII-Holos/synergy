@@ -76,6 +76,10 @@ test("read reports bounded content and empty pages without exposing a transport 
 test("console and network queries reject inconsistent filters and preserve bounded evidence", () =>
   runtime.run(async () => {
     const consoleTool = await BrowserConsoleTool.init()
+    expect(consoleTool.parameters.safeParse({ pageId: "page-test", action: "get", entryId: "entry-1" }).success).toBe(
+      true,
+    )
+    expect(consoleTool.parameters.safeParse({ pageId: "page-test", action: "get", id: "entry-1" }).success).toBe(false)
     const network = await BrowserNetworkTool.init()
     for (const params of [{ action: "get" }, { action: "clear", id: "x" }, { action: "clear", level: "error" }])
       expect(consoleTool.parameters.safeParse(params).success).toBe(false)
@@ -87,7 +91,7 @@ test("console and network queries reject inconsistent filters and preserve bound
     expect(
       (
         await network.execute(
-          { pageId: "page-test", action: "get", id: "request-1", includeBody: true, maxBodyBytes: 100 },
+          { pageId: "page-test", action: "get", requestId: "request-1", includeBody: true, maxBodyBytes: 100 },
           context,
         )
       ).metadata.action,

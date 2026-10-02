@@ -19,6 +19,8 @@ import { UpgradeWork } from "../storage/upgrade-work"
 import { withStorageQueueOptions } from "../storage/queue"
 import { Snapshot } from "./snapshot"
 import { SnapshotRestore } from "./snapshot-restore"
+import { SnapshotRanges } from "./snapshot-ranges"
+import { SessionFileRestore } from "./file-restore"
 import type { Info } from "./types"
 
 const log = Log.create({ service: "session.history" })
@@ -350,15 +352,8 @@ export namespace SessionHistory {
     .meta({ ref: "SessionRollbackSummary" })
   export type RollbackSummary = z.infer<typeof RollbackSummary>
 
-  export const FileRestoreResult = z
-    .object({
-      ...SnapshotRestore.Result.shape,
-      patchPartIDs: z.array(Identifier.schema("part")),
-      rollbackID: Identifier.schema("history").optional(),
-      messageID: Identifier.schema("message").optional(),
-      partID: Identifier.schema("part").optional(),
-    })
-    .meta({ ref: "SessionFileRestoreResult" })
+  export const FileRestoreResult = SessionFileRestore.Result
+  export const FileRestorePreview = SessionFileRestore.Preview
   export type FileRestoreResult = z.infer<typeof FileRestoreResult>
 
   export const UnrollbackConflictError = NamedError.create(
@@ -533,71 +528,142 @@ export namespace SessionHistory {
       }),
   )
 
+  export const FileDiffInput = z.object({
+    sessionID: Identifier.schema("session"),
+    messageID: Identifier.schema("message").optional(),
+    workspaceID: z.string(),
+    generation: z.number().int().positive(),
+    file: z.string().min(1),
+  })
+  export const fileDiff = fn(FileDiffInput, async (input) => {
+    await requireRestoreSession(input.sessionID)
+    const messages = await SessionHistory.rawMessages({ sessionID: input.sessionID })
+    const selected = input.messageID
+      ? messages.filter((message) => message.info.id === input.messageID || message.info.rootID === input.messageID)
+      : messages
+    const range = SnapshotRanges.net(SnapshotRanges.fromMessages(selected)).find(
+      (range) => range.workspace?.id === input.workspaceID && range.workspace.generation === input.generation,
+    )
+    if (!range?.from || !range.to)
+      throw new SnapshotRestore.Invalid({ message: "Historical file versions are unavailable" })
+    if (range.omissions?.some((item) => item.file === input.file))
+      throw new SnapshotRestore.Invalid({ message: "This file was not fully captured" })
+    const diff = await Snapshot.fileDiff(range.from, range.to, input.file, input.sessionID, AbortSignal.timeout(30000))
+    if (!diff) throw new SnapshotRestore.Invalid({ message: "This file has no recorded difference" })
+    return { ...diff, workspace: range.workspace }
+  })
+
   const RestoreFilesInput = z.object({
     sessionID: Identifier.schema("session"),
     rollbackID: Identifier.schema("history").optional(),
     messageID: Identifier.schema("message").optional(),
     partID: Identifier.schema("part").optional(),
     files: z.array(z.string()).max(10_000).optional(),
+    selectedFiles: z
+      .array(z.object({ workspaceID: z.string(), generation: z.number().int().positive(), file: z.string() }))
+      .max(10_000)
+      .optional(),
+    previewID: z.string().uuid().optional(),
   })
   export const restoreFiles = fn(RestoreFilesInput, (input) => restoreFilesWithSignal(input))
+  export const previewFiles = fn(RestoreFilesInput.omit({ previewID: true }), (input) => previewFilesWithSignal(input))
+
+  async function restoreSelection(input: z.infer<typeof RestoreFilesInput>) {
+    const [raw, events] = await Promise.all([rawMessages({ sessionID: input.sessionID }), readEvents(input.sessionID)])
+    const rollback = input.rollbackID
+      ? activeRollbacks(events).find((event) => event.id === input.rollbackID)
+      : undefined
+    if (input.rollbackID && !rollback)
+      throw new FileRestoreMissingPatchDataError({ message: "The selected rollback is unavailable" })
+    const selected = raw.filter((message) =>
+      rollback
+        ? rollback.droppedMessageIDs.includes(message.info.id)
+        : input.messageID
+          ? message.info.id === input.messageID || message.info.rootID === input.messageID
+          : true,
+    )
+    const ranges = SnapshotRanges.net(
+      SnapshotRanges.fromMessages(
+        selected.map((message) =>
+          input.partID ? { ...message, parts: message.parts.filter((part) => part.id === input.partID) } : message,
+        ),
+      ),
+    )
+    const patches: Snapshot.Patch[] = []
+    for (const range of ranges) {
+      if (!range.from || !range.to || !range.workspace) continue
+      const files = await Snapshot.changedPaths(range.from, range.to, input.sessionID)
+      const source = range.workspace
+      const chosen = files.filter(
+        (file) =>
+          !range.omissions?.some((item) => item.file === file) &&
+          (!input.selectedFiles ||
+            input.selectedFiles.some(
+              (item) => item.workspaceID === source.id && item.generation === source.generation && item.file === file,
+            )) &&
+          (!input.files || input.files.includes(file) || input.files.includes(path.join(source.root, file))),
+      )
+      if (chosen.length)
+        patches.push({
+          hash: range.from,
+          workspace: source,
+          files: chosen.map((file) => (source.pathKind === "workspace" ? file : path.join(source.root, file))),
+        })
+    }
+    if (!patches.length && !ranges.some((range) => range.checkpointID) && !input.selectedFiles) {
+      const legacy = collectPatches(raw, {
+        rollback,
+        messageID: input.messageID,
+        partID: input.partID,
+        files: input.files,
+      }).filter((part) => !part.checkpoint)
+      patches.push(...legacy)
+    }
+    if (!patches.length)
+      throw new FileRestoreMissingPatchDataError({
+        message: "No complete snapshot pair is available for the selected files",
+      })
+    return {
+      patches,
+      metadata: {
+        patchPartIDs: selected.flatMap((message) =>
+          message.parts.filter((part) => part.type === "patch").map((part) => part.id),
+        ),
+        rollbackID: input.rollbackID,
+        messageID: input.messageID,
+        partID: input.partID,
+      },
+    }
+  }
+
+  async function requireRestoreSession(sessionID: string) {
+    const session = await SessionManager.requireSession(sessionID)
+    if (session.scope.id !== ScopeContext.current.scope.id)
+      throw new Storage.NotFoundError({ message: "Session not found in this Scope" })
+  }
+
+  export async function previewFilesWithSignal(input: z.infer<typeof RestoreFilesInput>, signal?: AbortSignal) {
+    await requireRestoreSession(input.sessionID)
+    return SessionManager.run(
+      input.sessionID,
+      async (lease) => {
+        const abort = signal ? AbortSignal.any([signal, lease.signal]) : lease.signal
+        const selection = await restoreSelection(input)
+        return SessionFileRestore.prepare({ sessionID: input.sessionID, ...selection, signal: abort })
+      },
+      { workspace: "history" },
+    )
+  }
 
   export async function restoreFilesWithSignal(
     input: z.infer<typeof RestoreFilesInput>,
     signal?: AbortSignal,
   ): Promise<FileRestoreResult> {
-    const session = await SessionManager.requireSession(input.sessionID)
-    if (session.scope.id !== ScopeContext.current.scope.id)
-      throw new Storage.NotFoundError({ message: "Session not found in this Scope" })
-    return SessionManager.run(
-      input.sessionID,
-      async (lease) => {
-        const abort = signal ? AbortSignal.any([signal, lease.signal]) : lease.signal
-        abort.throwIfAborted()
-        const [raw, events] = await Promise.all([
-          rawMessages({ sessionID: input.sessionID }),
-          readEvents(input.sessionID),
-        ])
-        const active = activeRollbacks(events)
-        const rollbackEvent = input.rollbackID
-          ? active.find((event) => event.id === input.rollbackID)
-          : input.messageID || input.partID
-            ? undefined
-            : latest(events)
-        if ((input.rollbackID || (!input.messageID && !input.partID)) && !rollbackEvent) {
-          throw new FileRestoreMissingPatchDataError({
-            message: "No patch data is available for the requested file restore.",
-          })
-        }
-        const patches = collectPatches(raw, {
-          rollback: rollbackEvent,
-          messageID: input.messageID,
-          partID: input.partID,
-          files: input.files,
-        })
-
-        if (patches.length === 0) {
-          throw new FileRestoreMissingPatchDataError({
-            message: "No patch data is available for the requested file restore.",
-          })
-        }
-
-        const result = await Snapshot.revert(
-          patches.map((patch) => ({ hash: patch.hash, workspace: patch.workspace, files: patch.files })),
-          input.sessionID,
-          abort,
-        )
-
-        return {
-          ...result,
-          patchPartIDs: patches.map((patch) => patch.id),
-          rollbackID: rollbackEvent?.id ?? input.rollbackID,
-          messageID: input.messageID,
-          partID: input.partID,
-        }
-      },
-      { workspace: "history" },
-    )
+    await requireRestoreSession(input.sessionID)
+    if (input.previewID) return SessionFileRestore.apply(input.sessionID, input.previewID, signal)
+    throw new SnapshotRestore.Invalid({
+      message: "Preview file restoration and confirm its version before applying it",
+    })
   }
 
   async function loadRawFromDisk(sessionID: string) {

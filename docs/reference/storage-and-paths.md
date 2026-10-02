@@ -2,6 +2,8 @@
 
 Synergy keeps installation state under `<SYNERGY_HOME or OS home>/.synergy/`. `SYNERGY_HOME` selects the parent home, not the `.synergy` suffix. For example, `SYNERGY_HOME=/tmp/example` produces `/tmp/example/.synergy/`.
 
+File restoration receipts live below each Session’s `file_restore` namespace in the agent database. They retain the confirmation identity, expected versions and settled per-file outcome; file bytes stay in the existing Snapshot store. Session deletion removes these receipts with their owner. Prepared previews require new confirmation after Runtime restart or import.
+
 ## Physical layout
 
 | Path                                                      | Responsibility                                                                             |

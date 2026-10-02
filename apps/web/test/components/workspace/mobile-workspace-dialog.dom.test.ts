@@ -29,6 +29,7 @@ beforeAll(async () => {
     import { setupI18n } from "@lingui/core"
     import { I18nProvider } from "@lingui/solid"
     import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+    import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
     import { createSignal, Show } from "solid-js"
     import { MobileWorkspaceDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/mobile-workspace-dialog.tsx`)}
     import { messages as en } from ${JSON.stringify(`/@fs/${source}/locales/en/messages.po`)}
@@ -37,10 +38,13 @@ beforeAll(async () => {
     const i18n = setupI18n({ locale: "en", messages: { en } })
     window.closeCount = 0
     function Fixture() {
+      const dialog = useDialog()
       const [open, setOpen] = createSignal(false)
       window.unmount = () => setOpen(false)
+      window.mountWorkspace = () => setOpen(true)
       return <>
         <button onClick={() => setOpen(true)}>Open mobile workspace</button><button>Background action</button>
+        <button onClick={() => dialog.push(() => <Dialog title="Restore preview"><button>Confirm restoration</button></Dialog>)}>Preview restore</button>
         <Show when={open()}><MobileWorkspaceDialog onClose={() => { window.closeCount++; setOpen(false) }}>
           <button>Workspace action</button><input aria-label="Workspace input" />
         </MobileWorkspaceDialog></Show>
@@ -75,6 +79,7 @@ afterAll(async () => {
 interface MobileWindow extends Window {
   closeCount: number
   unmount(): void
+  mountWorkspace(): void
 }
 
 test("the mobile host leaves the resource chrome at the top without a second header", async () => {
@@ -90,6 +95,24 @@ test("the mobile host leaves the resource chrome at the top without a second hea
     await page.keyboard.press("Escape")
     await page.getByRole("dialog").waitFor({ state: "detached" })
   }
+})
+
+test("switching to mobile preserves the active confirmation before presenting the workspace", async () => {
+  await page.goto(baseUrl)
+  await page.getByRole("button", { name: "Preview restore" }).click()
+  await page.getByRole("button", { name: "Confirm restoration" }).waitFor()
+  await page.evaluate(() => (window as unknown as MobileWindow).mountWorkspace())
+  expect(await page.getByRole("dialog", { name: "Workspace", exact: true }).count()).toBe(0)
+  expect(await page.getByRole("button", { name: "Confirm restoration" }).isVisible()).toBe(true)
+  await page.keyboard.press("Tab")
+  expect(await page.evaluate(() => document.activeElement?.closest('[role="dialog"]')?.textContent)).toContain(
+    "Restore preview",
+  )
+  await page.keyboard.press("Escape")
+  await page.getByRole("dialog", { name: "Workspace", exact: true }).waitFor()
+  await page.keyboard.press("Escape")
+  await page.getByRole("dialog").waitFor({ state: "detached" })
+  expect(errors).toEqual([])
 })
 
 test("mobile workspace contains focus, fits the viewport and returns to its entry", async () => {
@@ -127,3 +150,28 @@ test("leaving the mobile presentation does not close the owning workspace", asyn
   expect(await page.evaluate(() => (window as unknown as MobileWindow).closeCount)).toBe(0)
   expect(errors).toEqual([])
 })
+
+test("reduced motion removes expanded workspace and overlay animations", async () => {
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  try {
+    await page.goto(baseUrl)
+    await page.getByRole("button", { name: "Open mobile workspace" }).click()
+    await page.getByRole("dialog").waitFor()
+    const animation = await page.getByRole("dialog").evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { name: style.animationName, transform: style.transform }
+    })
+    expect(animation).toEqual({ name: "none", transform: "none" })
+    expect(
+      await page
+        .locator('[data-component="dialog-overlay"]')
+        .evaluate((element) => getComputedStyle(element).animationName),
+    ).toBe("none")
+    await page.keyboard.press("Escape")
+    await page.getByRole("dialog").waitFor({ state: "detached" })
+    await page.waitForFunction(() => document.activeElement?.textContent === "Open mobile workspace")
+    expect(await page.evaluate(() => document.activeElement?.textContent)).toBe("Open mobile workspace")
+  } finally {
+    await page.emulateMedia({ reducedMotion: "no-preference" })
+  }
+}, 20000)

@@ -54,8 +54,8 @@ async function runTaskTool(input: { parentSessionID: string; messageID: string; 
   const tool = await TaskTool.init({})
   await tool.execute(
     {
-      description: "Model resolution probe",
-      prompt: "probe",
+      taskTitle: "Model resolution probe",
+      taskInstructions: "probe",
       subagent_type: "developer",
       background: true,
       category: input.category,

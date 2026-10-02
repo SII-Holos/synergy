@@ -1,5 +1,5 @@
+import { agendaAgentItem } from "./agent-item"
 import { GithubWatchPreflight } from "./github-watch-preflight"
-import { formatLocalDateTime } from "@ericsanchezok/synergy-harness/util/time-format"
 import { z } from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { Agenda, AgendaStore, AgendaTypes } from ".."
@@ -8,13 +8,19 @@ import DESCRIPTION from "./agenda-update.txt"
 import { ToolTimeout } from "@ericsanchezok/synergy-harness/tool/timeout"
 
 const parameters = z.object({
-  id: z.string().describe("Agenda item ID to update"),
-  title: z.string().optional().describe("New title"),
-  description: z.string().optional().describe("New description"),
+  agendaItemId: z.string().describe("Agenda item ID to update"),
+  agendaTitle: z.string().optional().describe("Replace the agenda item’s title; omit to keep it unchanged."),
+  agendaDescription: z
+    .string()
+    .optional()
+    .describe("Replace the agenda item’s description; omit to keep it unchanged."),
   status: AgendaTypes.ItemStatus.optional().describe("New status: pending, active, paused, done, cancelled"),
   tags: z.array(z.string()).optional().describe("New tags (replaces existing)"),
   triggers: z.array(AgendaTypes.Trigger).optional().describe("New triggers (replaces existing, recomputes nextRunAt)"),
-  prompt: z.string().optional().describe("New execution prompt"),
+  executionInstructions: z
+    .string()
+    .optional()
+    .describe("Replace the instructions executed when this item fires; omit to keep them unchanged."),
   wake: z.boolean().optional().describe("Whether to wake the origin session on completion"),
   silent: z.boolean().optional().describe("Whether to suppress result delivery"),
   agent: z.string().optional().describe("Agent to use, defaults to configured default"),
@@ -22,7 +28,7 @@ const parameters = z.object({
   controlProfile: AgendaTypes.ControlProfile.optional().describe(
     "Control profile for sessions created by this agenda item: guarded, autonomous, or full_access",
   ),
-  timeout: z.number().optional().describe("Execution timeout in milliseconds"),
+  timeoutSeconds: z.number().optional().describe("Execution timeout in seconds; omit to use the default"),
   sessionMode: z
     .enum(["ephemeral", "persistent"])
     .optional()
@@ -38,55 +44,51 @@ const parameters = z.object({
     .describe("Sessions whose content is relevant context for execution"),
 })
 
-export const AgendaUpdateTool = Tool.define("agenda_update", {
-  description: DESCRIPTION,
-  parameters,
-  async execute(params: z.infer<typeof parameters>) {
-    const triggers =
-      params.triggers ??
-      (params.status === "active"
-        ? (await AgendaStore.findInScope(ScopeContext.current.scope.id, params.id)).item.triggers
-        : undefined)
-    if (triggers?.some((t) => t.type === "github")) {
-      const rejected = await GithubWatchPreflight.check("agenda_update")
-      if (rejected) return rejected
-    }
-    const patch: AgendaTypes.PatchInput = {}
+export const AgendaUpdateTool = Tool.define(
+  "agenda_update",
+  {
+    description: DESCRIPTION,
+    parameters,
+    async execute(params: z.infer<typeof parameters>) {
+      const triggers =
+        params.triggers ??
+        (params.status === "active"
+          ? (await AgendaStore.findInScope(ScopeContext.current.scope.id, params.agendaItemId)).item.triggers
+          : undefined)
+      if (triggers?.some((t) => t.type === "github")) {
+        const rejected = await GithubWatchPreflight.check("agenda_update")
+        if (rejected) return rejected
+      }
+      const patch: AgendaTypes.PatchInput = {}
 
-    if (params.title !== undefined) patch.title = params.title
-    if (params.description !== undefined) patch.description = params.description
-    if (params.status !== undefined) patch.status = params.status
-    if (params.tags !== undefined) patch.tags = params.tags
-    if (params.triggers !== undefined) patch.triggers = params.triggers
-    if (params.prompt !== undefined) patch.prompt = params.prompt
-    if (params.wake !== undefined) patch.wake = params.wake
-    if (params.silent !== undefined) patch.silent = params.silent
-    if (params.agent !== undefined) patch.agent = params.agent
-    if (params.model !== undefined) patch.model = params.model
-    if (params.controlProfile !== undefined) patch.controlProfile = params.controlProfile
-    if (params.timeout !== undefined) patch.timeout = params.timeout
-    if (params.sessionMode !== undefined) patch.sessionMode = params.sessionMode
-    if (params.sessionRefs !== undefined) patch.sessionRefs = params.sessionRefs
+      if (params.agendaTitle !== undefined) patch.title = params.agendaTitle
+      if (params.agendaDescription !== undefined) patch.description = params.agendaDescription
+      if (params.status !== undefined) patch.status = params.status
+      if (params.tags !== undefined) patch.tags = params.tags
+      if (params.triggers !== undefined) patch.triggers = params.triggers
+      if (params.executionInstructions !== undefined) patch.prompt = params.executionInstructions
+      if (params.wake !== undefined) patch.wake = params.wake
+      if (params.silent !== undefined) patch.silent = params.silent
+      if (params.agent !== undefined) patch.agent = params.agent
+      if (params.model !== undefined) patch.model = params.model
+      if (params.controlProfile !== undefined) patch.controlProfile = params.controlProfile
+      if (params.timeoutSeconds !== undefined) patch.timeout = params.timeoutSeconds * 1_000
+      if (params.sessionMode !== undefined) patch.sessionMode = params.sessionMode
+      if (params.sessionRefs !== undefined) patch.sessionRefs = params.sessionRefs
 
-    const item = await Agenda.update(params.id, patch, ScopeContext.current.scope.id)
+      const item = await Agenda.update(params.agendaItemId, patch, ScopeContext.current.scope.id)
 
-    const lines = ["Agenda item updated.", `ID: ${item.id}`, `Title: ${item.title}`, `Status: ${item.status}`]
-    if (item.state.nextRunAt) lines.push(`Next run: ${formatLocalDateTime(item.state.nextRunAt)}`)
-    if (item.sessionMode) lines.push(`Session mode: ${item.sessionMode}`)
-    if (item.agent) lines.push(`Agent: ${item.agent}`)
-    if (item.model) lines.push(`Model: ${item.model.providerID}/${item.model.modelID}`)
-    if (item.controlProfile) lines.push(`Control profile: ${item.controlProfile}`)
-    if (item.timeout) lines.push(`Timeout: ${item.timeout}ms`)
-
-    return {
-      title: item.title,
-      output: lines.join("\n"),
-      metadata: {
-        id: item.id,
-        status: item.status,
-        scheduledTimeoutMs: item.timeout,
-        scheduledTimeoutLabel: ToolTimeout.scheduledTimeoutLabel(item.timeout),
-      } as Record<string, any>,
-    }
+      return {
+        title: item.title,
+        output: JSON.stringify(agendaAgentItem(item), null, 2),
+        metadata: {
+          id: item.id,
+          status: item.status,
+          scheduledTimeoutMs: item.timeout,
+          scheduledTimeoutLabel: ToolTimeout.scheduledTimeoutLabel(item.timeout),
+        } as Record<string, any>,
+      }
+    },
   },
-})
+  { activityKind: "object" },
+)

@@ -729,7 +729,7 @@ describe("SessionProcessor context usage persistence", () => {
 describe("SessionProcessor tool input bounds", () => {
   test("persists the canonical AI SDK input when streamed JSON differs", () =>
     runtime.run(async () => {
-      let runningInput: Record<string, unknown> | undefined
+      let runningInput: MessageV2.ToolPart["state"]["input"] | undefined
       const canonicalInput = {
         command: "git status",
         workdir: "/workspace",

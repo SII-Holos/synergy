@@ -55,7 +55,7 @@ function bashRegistryTool() {
       description: z.string().optional(),
     }),
     async execute(params: { command: string; description?: string }, ctx: any) {
-      return LocalBashBackend.execute({ command: params.command, description: params.description ?? "bash" }, ctx)
+      return LocalBashBackend.execute({ command: params.command }, { ...ctx, workBrief: params.description ?? "bash" })
     },
   }
 }
@@ -118,8 +118,8 @@ test("autonomous profile-auto-allowed bash installs the sandbox wrapper and runs
           const { processor, bash } = await resolveBashTool(session.id)
           try {
             const result = await bash.execute(
-              { command: 'echo "$TMPDIR"', description: "Probe controlled tmp" },
-              { toolCallId: "call_bash_autonomous" },
+              { command: 'echo "$TMPDIR"' },
+              { ...{ toolCallId: "call_bash_autonomous" }, workBrief: "Probe controlled tmp" },
             )
             expect(result.metadata.exit).toBe(0)
             // The sandbox wrapper was prepared: auto-allow did not bypass.
@@ -164,8 +164,8 @@ test("a session-approved external read is forwarded into the sandbox wrapper rea
           const { processor, bash } = await resolveBashTool(session.id)
           try {
             const result = await bash.execute(
-              { command: "cat /etc/hosts", description: "probe" },
-              { toolCallId: "call_bash_autonomous_ext_read" },
+              { command: "cat /etc/hosts" },
+              { ...{ toolCallId: "call_bash_autonomous_ext_read" }, workBrief: "probe" },
             )
             // Auto-allow never bypasses the sandbox under autonomous.
             expect(result.metadata.exit).toBe(0)
@@ -212,8 +212,8 @@ test("full_access keeps the historical sandbox bypass for bash", () =>
           const { processor, bash } = await resolveBashTool(session.id)
           try {
             const result = await bash.execute(
-              { command: "echo bypass-ok", description: "Probe bypass" },
-              { toolCallId: "call_bash_full_access" },
+              { command: "echo bypass-ok" },
+              { ...{ toolCallId: "call_bash_full_access" }, workBrief: "Probe bypass" },
             )
             expect(result.metadata.exit).toBe(0)
             expect(result.output).toContain("bypass-ok")
@@ -260,9 +260,8 @@ test("real OS sandbox contains a variable-target host tmp write under autonomous
             const result = await bash.execute(
               {
                 command: `out=${hostFile}; { echo hi; } > "$out" 2>&1; echo done; echo "t=\\"$TMPDIR\\""`,
-                description: "Contained variable-target write probe",
               },
-              { toolCallId: "call_bash_e2e" },
+              { ...{ toolCallId: "call_bash_e2e" }, workBrief: "Contained variable-target write probe" },
             )
             // The shell survives the denied redirect and reports completion;
             // the sandboxed child received a workspace-controlled TMPDIR.
@@ -308,8 +307,8 @@ test("real OS sandbox allows workspace writes under autonomous (darwin)", () =>
           try {
             const target = path.join(tmp.path, "ws-e2e.txt")
             const result = await bash.execute(
-              { command: `echo ws-ok > "${target}" && cat "${target}"`, description: "Workspace write probe" },
-              { toolCallId: "call_bash_e2e_ws" },
+              { command: `echo ws-ok > "${target}" && cat "${target}"` },
+              { ...{ toolCallId: "call_bash_e2e_ws" }, workBrief: "Workspace write probe" },
             )
             expect(result.output).toContain("ws-ok")
             expect(fs.existsSync(target)).toBe(true)

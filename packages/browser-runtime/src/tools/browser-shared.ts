@@ -338,3 +338,16 @@ export function withUnknownOutcomeGuidance(error: unknown, commandType: string):
     { cause: error },
   )
 }
+
+export function browserAgentRecord(value: unknown, identity: string, collection: string): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value
+  const record = value as Record<string, unknown>
+  const { id, ...fields } = record
+  return {
+    ...fields,
+    ...(id === undefined ? {} : { [identity]: id }),
+    ...(Array.isArray(record[collection])
+      ? { [collection]: record[collection].map((item) => browserAgentRecord(item, identity, collection)) }
+      : {}),
+  }
+}

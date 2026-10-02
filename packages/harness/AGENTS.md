@@ -28,4 +28,4 @@ Secret capture keeps Vault and execution-time resolution here; detector contract
 
 Storage transfer callers use the public `storage/compat` convergence guard before copying deferred datasets. The central migration runner stages records for shared migrations and tracks owner-local cohorts; background import remains owned and drained by the Runtime Handle.
 
-File-change evidence belongs to concrete Workspace operations; overlapping evidence cannot authorize undo. Preserve qualified snapshots and capture failures. Verify snapshot, summary, history and Local Runtime's `test/workspace/change-attribution.test.ts`.
+Session summaries compare Workspace checkpoints across all writers. Keep tool evidence separate. File restoration requires version-checked previews. Verify snapshots, summaries, history and Local Runtime's `test/workspace/change-attribution.test.ts`.

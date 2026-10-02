@@ -9490,6 +9490,214 @@
         ]
       }
     },
+    "/session/{sessionID}/turn-execution": {
+      "post": {
+        "operationId": "session.turnExecution",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Read root task execution states",
+        "tags": ["Session"],
+        "responses": {
+          "200": {
+            "description": "Execution states for the requested roots",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TurnExecutionState"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rootIDs": {
+                    "maxItems": 64,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^msg.*"
+                    }
+                  }
+                },
+                "required": ["rootIDs"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.turnExecution({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/message/{messageID}/part/{partID}/activity": {
+      "get": {
+        "operationId": "session.toolActivity",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "messageID",
+            "schema": {
+              "type": "string",
+              "pattern": "^msg.*"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "partID",
+            "schema": {
+              "type": "string",
+              "pattern": "^prt.*"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "callID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Read one tool activity result",
+        "tags": ["Session"],
+        "responses": {
+          "200": {
+            "description": "Captured result of the selected tool invocation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolActivityResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.toolActivity({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/run/{runID}/cancel": {
       "post": {
         "operationId": "session.cancelRun",
@@ -14710,9 +14918,9 @@
         ]
       }
     },
-    "/session/{sessionID}/files/restore": {
+    "/session/{sessionID}/files/preview": {
       "post": {
-        "operationId": "session.files.restore",
+        "operationId": "session.files.preview",
         "parameters": [
           {
             "in": "query",
@@ -14738,15 +14946,15 @@
             "required": true
           }
         ],
-        "summary": "Restore session files",
-        "description": "Explicitly restore files from session patch data. Message rollback never calls this automatically.",
+        "summary": "Preview file restoration",
+        "description": "Compare current files with the selected historical baseline before confirmation.",
         "responses": {
           "200": {
-            "description": "Restored files",
+            "description": "Restore preview and version identity",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionFileRestoreResult"
+                  "$ref": "#/components/schemas/SessionFileRestorePreview"
                 }
               }
             }
@@ -14823,8 +15031,275 @@
                     "items": {
                       "type": "string"
                     }
+                  },
+                  "selectedFiles": {
+                    "maxItems": 10000,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "workspaceID": {
+                          "type": "string"
+                        },
+                        "generation": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "file": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["workspaceID", "generation", "file"]
+                    }
                   }
                 }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.files.preview({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/files/diff": {
+      "get": {
+        "operationId": "session.files.diff",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "messageID",
+            "schema": {
+              "type": "string",
+              "pattern": "^msg.*"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "generation",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "file",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "summary": "Read a historical file diff",
+        "description": "Read captured file versions for a turn or session without reading the current workspace.",
+        "responses": {
+          "200": {
+            "description": "Historical file diff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileDiff"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.files.diff({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/files/restore": {
+      "post": {
+        "operationId": "session.files.restore",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Restore session files",
+        "description": "Confirm a version-checked restore preview. Repeated confirmation returns the stored result without writing again. Message rollback never calls this automatically.",
+        "responses": {
+          "200": {
+            "description": "Restored files",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionFileRestoreResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "previewID": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                },
+                "required": ["previewID"]
               }
             }
           }
@@ -48994,12 +49469,12 @@
             ]
           },
           "activityDisplay": {
-            "description": "How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced)",
+            "description": "Execution process detail: full = expanded process, balanced = current stage with completed process collapsed, minimal = compact progress. All modes use the same process view (default: balanced)",
             "type": "string",
             "enum": ["full", "balanced", "minimal"]
           },
           "compactReasoning": {
-            "description": "Show live reasoning in a compact single-line viewport",
+            "description": "Show a compact reasoning preview in the execution process (default: false)",
             "type": "boolean"
           },
           "locale": {
@@ -50152,6 +50627,88 @@
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/FileDiff"
+                }
+              },
+              "diffState": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "const": "pending"
+                      },
+                      "deadlineAt": {
+                        "type": "number"
+                      }
+                    },
+                    "required": ["status", "deadlineAt"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "const": "ready"
+                      }
+                    },
+                    "required": ["status"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "const": "partial"
+                      },
+                      "code": {
+                        "type": "string",
+                        "enum": ["timeout", "git_failure", "incomplete", "unknown"]
+                      }
+                    },
+                    "required": ["status", "code"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "const": "error"
+                      },
+                      "code": {
+                        "type": "string",
+                        "enum": ["timeout", "git_failure", "incomplete", "unknown"]
+                      }
+                    },
+                    "required": ["status", "code"]
+                  }
+                ]
+              },
+              "diffIssues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "workspace": {
+                      "$ref": "#/components/schemas/SnapshotWorkspace"
+                    },
+                    "file": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "baseline_unavailable",
+                        "capture_failed",
+                        "interrupted",
+                        "legacy_range",
+                        "comparison_failed",
+                        "size_limit",
+                        "read_failed"
+                      ]
+                    }
+                  },
+                  "required": ["code"]
                 }
               }
             },
@@ -55884,7 +56441,7 @@
             "type": "string"
           },
           "activityDisplay": {
-            "description": "How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced)",
+            "description": "Execution process detail: full = expanded process, balanced = current stage with completed process collapsed, minimal = compact progress. All modes use the same process view (default: balanced)",
             "type": "string",
             "enum": ["full", "balanced", "minimal"]
           },
@@ -55909,7 +56466,7 @@
             "$ref": "#/components/schemas/KeybindsConfig"
           },
           "compactReasoning": {
-            "description": "Show live reasoning in a compact single-line viewport",
+            "description": "Show a compact reasoning preview in the execution process (default: false)",
             "type": "boolean"
           },
           "quick_switcher": {
@@ -59285,6 +59842,711 @@
           }
         },
         "required": ["items", "nextCursor", "total"]
+      },
+      "TurnExecutionState": {
+        "type": "object",
+        "properties": {
+          "rootID": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["preparing", "running", "approval", "completed", "failed", "stopped", "interrupted"]
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "endedAt": {
+            "type": "number"
+          },
+          "segmentID": {
+            "type": "string"
+          },
+          "stoppedAt": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "required": ["rootID", "status", "startedAt", "stoppedAt"],
+        "additionalProperties": false
+      },
+      "ToolActivityEvidence": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["file-read", "file-change", "command", "search", "object", "media", "structured"]
+          },
+          "resource": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "workspaceID": {
+                "type": "string"
+              },
+              "generation": {
+                "type": "number"
+              },
+              "objectID": {
+                "type": "string"
+              }
+            }
+          },
+          "range": {
+            "type": "object",
+            "properties": {
+              "startLine": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "lineCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "totalLines": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["startLine", "lineCount"]
+          },
+          "ranges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "startLine": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "lineCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": ["startLine", "lineCount"]
+            }
+          },
+          "content": {
+            "$ref": "#/components/schemas/RolloutArtifactRef"
+          },
+          "mediaType": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "processID": {
+            "type": "string"
+          },
+          "directory": {
+            "type": "string"
+          },
+          "exitCode": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "signal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "background": {
+            "type": "boolean"
+          }
+        },
+        "required": ["kind"],
+        "additionalProperties": false
+      },
+      "ToolStatePending": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "pending"
+          },
+          "input": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "raw": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": ["status", "input", "raw"]
+      },
+      "ToolStateGenerating": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "generating"
+          },
+          "input": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "raw": {
+            "type": "string"
+          },
+          "charsReceived": {
+            "type": "number"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": ["status", "input", "raw", "charsReceived"]
+      },
+      "ToolStateInput": {
+        "anyOf": [
+          {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          {
+            "type": "array",
+            "items": {}
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "ToolStateRunning": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "running"
+          },
+          "input": {
+            "$ref": "#/components/schemas/ToolStateInput"
+          },
+          "title": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "number"
+              }
+            },
+            "required": ["start"]
+          }
+        },
+        "required": ["status", "input", "time"]
+      },
+      "AttachmentSourceText": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "start": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "end": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["value", "start", "end"]
+      },
+      "FileSource": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "$ref": "#/components/schemas/AttachmentSourceText"
+          },
+          "type": {
+            "type": "string",
+            "const": "file"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": ["text", "type", "path"]
+      },
+      "Range": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "object",
+            "properties": {
+              "line": {
+                "type": "number"
+              },
+              "character": {
+                "type": "number"
+              }
+            },
+            "required": ["line", "character"]
+          },
+          "end": {
+            "type": "object",
+            "properties": {
+              "line": {
+                "type": "number"
+              },
+              "character": {
+                "type": "number"
+              }
+            },
+            "required": ["line", "character"]
+          }
+        },
+        "required": ["start", "end"]
+      },
+      "SymbolSource": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "$ref": "#/components/schemas/AttachmentSourceText"
+          },
+          "type": {
+            "type": "string",
+            "const": "symbol"
+          },
+          "path": {
+            "type": "string"
+          },
+          "range": {
+            "$ref": "#/components/schemas/Range"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["text", "type", "path", "range", "name", "kind"]
+      },
+      "ResourceSource": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "$ref": "#/components/schemas/AttachmentSourceText"
+          },
+          "type": {
+            "type": "string",
+            "const": "resource"
+          },
+          "clientName": {
+            "type": "string"
+          },
+          "uri": {
+            "type": "string"
+          }
+        },
+        "required": ["text", "type", "clientName", "uri"]
+      },
+      "AttachmentSource": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/FileSource"
+          },
+          {
+            "$ref": "#/components/schemas/SymbolSource"
+          },
+          {
+            "$ref": "#/components/schemas/ResourceSource"
+          }
+        ]
+      },
+      "AttachmentPresentation": {
+        "type": "object",
+        "properties": {
+          "hidden": {
+            "type": "boolean"
+          },
+          "renderer": {
+            "type": "string",
+            "enum": ["image", "video", "audio", "thumbnail", "file"]
+          },
+          "size": {
+            "type": "string",
+            "enum": ["original", "small", "medium", "large"]
+          },
+          "crop": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AttachmentModelPolicy": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "summary"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": ["mode"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "content"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": ["mode"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "provider-file"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": ["mode"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "none"
+              }
+            },
+            "required": ["mode"]
+          }
+        ]
+      },
+      "AttachmentPart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "attachment"
+          },
+          "artifact": {
+            "$ref": "#/components/schemas/RolloutArtifactRef"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "localPath": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/AttachmentSource"
+          },
+          "presentation": {
+            "$ref": "#/components/schemas/AttachmentPresentation"
+          },
+          "model": {
+            "$ref": "#/components/schemas/AttachmentModelPolicy"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": ["id", "sessionID", "messageID", "type", "mime", "url"]
+      },
+      "ToolStateCompleted": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "completed"
+          },
+          "input": {
+            "$ref": "#/components/schemas/ToolStateInput"
+          },
+          "output": {
+            "type": "string"
+          },
+          "outputBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "outputArtifact": {
+            "$ref": "#/components/schemas/RolloutArtifactRef"
+          },
+          "outputTruncated": {
+            "type": "boolean"
+          },
+          "title": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "number"
+              },
+              "end": {
+                "type": "number"
+              },
+              "compacted": {
+                "type": "number"
+              }
+            },
+            "required": ["start", "end"]
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttachmentPart"
+            }
+          }
+        },
+        "required": ["status", "input", "output", "title", "metadata", "time"]
+      },
+      "ToolStateError": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "error"
+          },
+          "input": {
+            "$ref": "#/components/schemas/ToolStateInput"
+          },
+          "error": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "number"
+              },
+              "end": {
+                "type": "number"
+              }
+            },
+            "required": ["start", "end"]
+          }
+        },
+        "required": ["status", "input", "error", "time"]
+      },
+      "ToolState": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ToolStatePending"
+          },
+          {
+            "$ref": "#/components/schemas/ToolStateGenerating"
+          },
+          {
+            "$ref": "#/components/schemas/ToolStateRunning"
+          },
+          {
+            "$ref": "#/components/schemas/ToolStateCompleted"
+          },
+          {
+            "$ref": "#/components/schemas/ToolStateError"
+          }
+        ]
+      },
+      "ToolPart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "tool"
+          },
+          "callID": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "workBrief": {
+            "type": "string"
+          },
+          "inputShape": {
+            "type": "string",
+            "enum": ["flat", "envelope"]
+          },
+          "activityEvidence": {
+            "$ref": "#/components/schemas/ToolActivityEvidence"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ToolState"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": ["id", "sessionID", "messageID", "type", "callID", "tool", "state"]
+      },
+      "ToolActivityResult": {
+        "type": "object",
+        "properties": {
+          "part": {
+            "$ref": "#/components/schemas/ToolPart"
+          },
+          "text": {
+            "type": "string"
+          },
+          "evidenceMissing": {
+            "type": "boolean"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "process": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["running", "completed", "interrupted", "failed"]
+              },
+              "exitCode": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "signal": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "endedAt": {
+                "type": "number"
+              }
+            },
+            "required": ["status"]
+          }
+        },
+        "required": ["part", "evidenceMissing"]
       },
       "ExperimentOverrides": {
         "type": "object",
@@ -62729,202 +63991,6 @@
         },
         "required": ["outcome", "repaired", "abandoned", "paused"]
       },
-      "AttachmentSourceText": {
-        "type": "object",
-        "properties": {
-          "value": {
-            "type": "string"
-          },
-          "start": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "end": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          }
-        },
-        "required": ["value", "start", "end"]
-      },
-      "FileSource": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "$ref": "#/components/schemas/AttachmentSourceText"
-          },
-          "type": {
-            "type": "string",
-            "const": "file"
-          },
-          "path": {
-            "type": "string"
-          }
-        },
-        "required": ["text", "type", "path"]
-      },
-      "Range": {
-        "type": "object",
-        "properties": {
-          "start": {
-            "type": "object",
-            "properties": {
-              "line": {
-                "type": "number"
-              },
-              "character": {
-                "type": "number"
-              }
-            },
-            "required": ["line", "character"]
-          },
-          "end": {
-            "type": "object",
-            "properties": {
-              "line": {
-                "type": "number"
-              },
-              "character": {
-                "type": "number"
-              }
-            },
-            "required": ["line", "character"]
-          }
-        },
-        "required": ["start", "end"]
-      },
-      "SymbolSource": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "$ref": "#/components/schemas/AttachmentSourceText"
-          },
-          "type": {
-            "type": "string",
-            "const": "symbol"
-          },
-          "path": {
-            "type": "string"
-          },
-          "range": {
-            "$ref": "#/components/schemas/Range"
-          },
-          "name": {
-            "type": "string"
-          },
-          "kind": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          }
-        },
-        "required": ["text", "type", "path", "range", "name", "kind"]
-      },
-      "ResourceSource": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "$ref": "#/components/schemas/AttachmentSourceText"
-          },
-          "type": {
-            "type": "string",
-            "const": "resource"
-          },
-          "clientName": {
-            "type": "string"
-          },
-          "uri": {
-            "type": "string"
-          }
-        },
-        "required": ["text", "type", "clientName", "uri"]
-      },
-      "AttachmentSource": {
-        "anyOf": [
-          {
-            "$ref": "#/components/schemas/FileSource"
-          },
-          {
-            "$ref": "#/components/schemas/SymbolSource"
-          },
-          {
-            "$ref": "#/components/schemas/ResourceSource"
-          }
-        ]
-      },
-      "AttachmentPresentation": {
-        "type": "object",
-        "properties": {
-          "hidden": {
-            "type": "boolean"
-          },
-          "renderer": {
-            "type": "string",
-            "enum": ["image", "video", "audio", "thumbnail", "file"]
-          },
-          "size": {
-            "type": "string",
-            "enum": ["original", "small", "medium", "large"]
-          },
-          "crop": {
-            "type": "boolean"
-          }
-        }
-      },
-      "AttachmentModelPolicy": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "mode": {
-                "type": "string",
-                "const": "summary"
-              },
-              "summary": {
-                "type": "string"
-              }
-            },
-            "required": ["mode"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "mode": {
-                "type": "string",
-                "const": "content"
-              },
-              "text": {
-                "type": "string"
-              }
-            },
-            "required": ["mode"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "mode": {
-                "type": "string",
-                "const": "provider-file"
-              },
-              "summary": {
-                "type": "string"
-              }
-            },
-            "required": ["mode"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "mode": {
-                "type": "string",
-                "const": "none"
-              }
-            },
-            "required": ["mode"]
-          }
-        ]
-      },
       "OriginUser": {
         "type": "object",
         "properties": {
@@ -63863,16 +64929,57 @@
                     "properties": {
                       "status": {
                         "type": "string",
+                        "const": "partial"
+                      },
+                      "code": {
+                        "type": "string",
+                        "enum": ["timeout", "git_failure", "incomplete", "unknown"]
+                      }
+                    },
+                    "required": ["status", "code"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
                         "const": "error"
                       },
                       "code": {
                         "type": "string",
-                        "enum": ["timeout", "git_failure", "unknown", "incomplete"]
+                        "enum": ["timeout", "git_failure", "incomplete", "unknown"]
                       }
                     },
                     "required": ["status", "code"]
                   }
                 ]
+              },
+              "diffIssues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "workspace": {
+                      "$ref": "#/components/schemas/SnapshotWorkspace"
+                    },
+                    "file": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "baseline_unavailable",
+                        "capture_failed",
+                        "interrupted",
+                        "legacy_range",
+                        "comparison_failed",
+                        "size_limit",
+                        "read_failed"
+                      ]
+                    }
+                  },
+                  "required": ["code"]
+                }
               }
             },
             "required": ["diffs"]
@@ -64693,304 +65800,6 @@
         },
         "required": ["id", "sessionID", "messageID", "type", "text", "time"]
       },
-      "AttachmentPart": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "sessionID": {
-            "type": "string"
-          },
-          "messageID": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string",
-            "const": "attachment"
-          },
-          "artifact": {
-            "$ref": "#/components/schemas/RolloutArtifactRef"
-          },
-          "mime": {
-            "type": "string"
-          },
-          "filename": {
-            "type": "string"
-          },
-          "url": {
-            "type": "string"
-          },
-          "localPath": {
-            "type": "string"
-          },
-          "source": {
-            "$ref": "#/components/schemas/AttachmentSource"
-          },
-          "presentation": {
-            "$ref": "#/components/schemas/AttachmentPresentation"
-          },
-          "model": {
-            "$ref": "#/components/schemas/AttachmentModelPolicy"
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          }
-        },
-        "required": ["id", "sessionID", "messageID", "type", "mime", "url"]
-      },
-      "ToolStatePending": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "pending"
-          },
-          "input": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          },
-          "raw": {
-            "type": "string"
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          }
-        },
-        "required": ["status", "input", "raw"]
-      },
-      "ToolStateGenerating": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "generating"
-          },
-          "input": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          },
-          "raw": {
-            "type": "string"
-          },
-          "charsReceived": {
-            "type": "number"
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          }
-        },
-        "required": ["status", "input", "raw", "charsReceived"]
-      },
-      "ToolStateRunning": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "running"
-          },
-          "input": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          },
-          "title": {
-            "type": "string"
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          },
-          "time": {
-            "type": "object",
-            "properties": {
-              "start": {
-                "type": "number"
-              }
-            },
-            "required": ["start"]
-          }
-        },
-        "required": ["status", "input", "time"]
-      },
-      "ToolStateCompleted": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "completed"
-          },
-          "input": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          },
-          "output": {
-            "type": "string"
-          },
-          "outputBytes": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          },
-          "outputArtifact": {
-            "$ref": "#/components/schemas/RolloutArtifactRef"
-          },
-          "outputTruncated": {
-            "type": "boolean"
-          },
-          "title": {
-            "type": "string"
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          },
-          "time": {
-            "type": "object",
-            "properties": {
-              "start": {
-                "type": "number"
-              },
-              "end": {
-                "type": "number"
-              },
-              "compacted": {
-                "type": "number"
-              }
-            },
-            "required": ["start", "end"]
-          },
-          "attachments": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AttachmentPart"
-            }
-          }
-        },
-        "required": ["status", "input", "output", "title", "metadata", "time"]
-      },
-      "ToolStateError": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "error"
-          },
-          "input": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          },
-          "error": {
-            "type": "string"
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          },
-          "time": {
-            "type": "object",
-            "properties": {
-              "start": {
-                "type": "number"
-              },
-              "end": {
-                "type": "number"
-              }
-            },
-            "required": ["start", "end"]
-          }
-        },
-        "required": ["status", "input", "error", "time"]
-      },
-      "ToolState": {
-        "anyOf": [
-          {
-            "$ref": "#/components/schemas/ToolStatePending"
-          },
-          {
-            "$ref": "#/components/schemas/ToolStateGenerating"
-          },
-          {
-            "$ref": "#/components/schemas/ToolStateRunning"
-          },
-          {
-            "$ref": "#/components/schemas/ToolStateCompleted"
-          },
-          {
-            "$ref": "#/components/schemas/ToolStateError"
-          }
-        ]
-      },
-      "ToolPart": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "sessionID": {
-            "type": "string"
-          },
-          "messageID": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string",
-            "const": "tool"
-          },
-          "callID": {
-            "type": "string"
-          },
-          "tool": {
-            "type": "string"
-          },
-          "state": {
-            "$ref": "#/components/schemas/ToolState"
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          }
-        },
-        "required": ["id", "sessionID", "messageID", "type", "callID", "tool", "state"]
-      },
       "StepStartPart": {
         "type": "object",
         "properties": {
@@ -65190,6 +65999,72 @@
           },
           "hash": {
             "type": "string"
+          },
+          "checkpoint": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "number",
+                "const": 1
+              },
+              "rootID": {
+                "type": "string"
+              },
+              "segmentID": {
+                "type": "string"
+              },
+              "started": {
+                "type": "number"
+              },
+              "ended": {
+                "type": "number"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["pending", "complete", "incomplete"]
+              },
+              "afterHash": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$"
+              },
+              "omissions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "file": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "enum": ["size_limit", "read_failed"]
+                    }
+                  },
+                  "required": ["file", "reason"]
+                }
+              },
+              "baselineOmissions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "file": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "enum": ["size_limit", "read_failed"]
+                    }
+                  },
+                  "required": ["file", "reason"]
+                }
+              },
+              "error": {
+                "type": "string",
+                "enum": ["baseline_unavailable", "capture_failed", "interrupted", "legacy_range"]
+              }
+            },
+            "required": ["version", "rootID", "segmentID", "started", "status"]
           },
           "operation": {
             "anyOf": [
@@ -65907,6 +66782,70 @@
           "patchPartIDs",
           "canUnrollback"
         ]
+      },
+      "SessionFileRestorePreview": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "expiresAt": {
+            "type": "number"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                },
+                "workspace": {
+                  "$ref": "#/components/schemas/SnapshotWorkspace"
+                },
+                "version": {
+                  "type": "object",
+                  "properties": {
+                    "entry": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "content": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["entry"]
+                },
+                "before": {
+                  "type": "string"
+                },
+                "after": {
+                  "type": "string"
+                },
+                "action": {
+                  "type": "string",
+                  "enum": ["create", "replace", "delete"]
+                },
+                "truncated": {
+                  "type": "boolean"
+                },
+                "binary": {
+                  "type": "boolean"
+                }
+              },
+              "required": ["file", "workspace", "version", "before", "after", "action", "truncated", "binary"]
+            }
+          }
+        },
+        "required": ["id", "expiresAt", "files"]
       },
       "SessionFileRestoreResult": {
         "type": "object",
@@ -75365,6 +76304,59 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.session.execution.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.execution.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "rootID": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID", "rootID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.session.tool.activity": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.tool.activity"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              },
+              "callID": {
+                "type": "string"
+              },
+              "processID": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "number"
+              }
+            },
+            "required": ["sessionID", "messageID", "callID", "processID", "revision"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.session.input.progress": {
         "type": "object",
         "properties": {
@@ -77033,6 +78025,12 @@
           },
           {
             "$ref": "#/components/schemas/Event.rollout.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.execution.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.tool.activity"
           },
           {
             "$ref": "#/components/schemas/Event.session.input.progress"

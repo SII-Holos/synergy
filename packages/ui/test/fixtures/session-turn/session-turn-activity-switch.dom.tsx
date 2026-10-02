@@ -71,6 +71,22 @@ const secondToolPart = {
   messageID: secondAssistantID,
   callID: "call-activity-switch-second",
 }
+const failedToolPart = {
+  id: "tool-activity-switch-failed",
+  sessionID,
+  messageID: secondAssistantID,
+  type: "tool",
+  callID: "call-activity-switch-failed",
+  tool: "bash",
+  workBrief: "Inspect missing.json without changing files.",
+  state: {
+    status: "error",
+    input: { command: "cat missing.json" },
+    error: "missing.json does not exist",
+    metadata: {},
+    time: { start: 3, end: 4 },
+  },
+}
 const answerPart = {
   id: "answer-activity-switch",
   sessionID,
@@ -84,8 +100,8 @@ const data = {
   message: { [sessionID]: [rootMessage, assistantMessage, secondAssistantMessage] },
   part: {
     [rootID]: [],
-    [assistantID]: [answerPart, toolPart],
-    [secondAssistantID]: [secondToolPart],
+    [assistantID]: [toolPart],
+    [secondAssistantID]: [secondToolPart, failedToolPart, { ...answerPart, messageID: secondAssistantID }],
   },
 }
 // Session runtime state lives outside the Scope store; the view resolves
@@ -96,7 +112,12 @@ const runtime = {
   permissionsFor: () => NO_REQUESTS,
   questionsFor: () => NO_REQUESTS,
 }
+const openedTools = []
 const resourceController = {
+  openToolActivity: (target) => {
+    openedTools.push(target)
+    return true
+  },
   open: () => false,
   openAttachment: () => false,
   resolveWorkspacePath: (value) => value,
@@ -104,6 +125,7 @@ const resourceController = {
 }
 const EmptyDiff = () => null
 const [mode, setMode] = createSignal("minimal")
+const [executionState, setExecutionState] = createSignal()
 const SlotProbe = (props) => <span data-test-slot={props.slot} data-test-message={props.messageId} />
 setExternalMessageSlotLookup((slot) =>
   ["message.before", "message.actions", "message.after"].includes(slot)
@@ -126,6 +148,7 @@ render(
                   messages={[rootMessage, assistantMessage, secondAssistantMessage]}
                   lastUserMessageID={rootID}
                   activityDisplay={mode()}
+                  executionState={executionState()}
                 >
                   <span id="activity-switch-sentinel" hidden>
                     stable
@@ -141,4 +164,9 @@ render(
   document.querySelector("#root"),
 )
 
-globalThis.__activitySwitchHarness = { setMode }
+globalThis.__activitySwitchHarness = {
+  setMode,
+  openedTools,
+  setExecutionStatus: (status) =>
+    setExecutionState({ rootID, status, startedAt: 1, endedAt: 4, stoppedAt: status === "stopped" ? [4] : [] }),
+}

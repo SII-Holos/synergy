@@ -4,7 +4,6 @@ import type { SandboxExecutionWrapper } from "../sandbox/types"
 
 export interface BashParams {
   command: string
-  description: string
   workdir?: string
   background?: boolean
   yieldSeconds?: number

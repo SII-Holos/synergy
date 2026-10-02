@@ -52,7 +52,9 @@ export default function Layout(props: ParentProps) {
                 >
                   <ExecutionProvider>
                     <LocalProvider>
-                      <FileProvider><BrowserCatalogProvider>{props.children}</BrowserCatalogProvider></FileProvider>
+                      <FileProvider>
+                        <BrowserCatalogProvider>{props.children}</BrowserCatalogProvider>
+                      </FileProvider>
                     </LocalProvider>
                   </ExecutionProvider>
                 </DataProvider>

@@ -46,6 +46,7 @@ export const SemanticIconToken = {
   "memory.main": "brain",
   "experience.main": "lightbulb",
   "agents.main": "users",
+  "agent.identity": "bot",
   "providers.main": "server",
   "providers.reconnect": "shield-alert",
   "agenda.main": "calendar-clock",
@@ -167,6 +168,7 @@ export const SemanticIconToken = {
   "navigation.forward": "arrow-right",
   "navigation.expand": "chevron-right",
   "navigation.collapse": "chevron-down",
+  "navigation.latest": "arrow-down",
   "navigation.home": "home",
 
   // Prompt composer and command entry

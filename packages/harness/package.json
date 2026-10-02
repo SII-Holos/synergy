@@ -46,6 +46,8 @@
     "./provider/provider": "./src/provider/provider.ts",
     "./agent/agent": "./src/agent/agent.ts",
     "./global/installation": "./src/global/installation.ts",
+    "./session/activity": "./src/session/activity.ts",
+    "./session/turn-execution-state": "./src/session/turn-execution-state.ts",
     "./session/message-v2": "./src/session/message-v2.ts",
     "./session/todo": "./src/session/todo.ts",
     "./session/dag": "./src/session/dag.ts",
@@ -363,7 +365,8 @@
     "./config/reload-contributions": "./src/config/reload-contributions.ts",
     "./agent/primary-identity": "./src/agent/primary-identity.ts",
     "./agent/primary-identity-upgrade": "./src/agent/primary-identity-upgrade.ts",
-    "./config/reference-migration": "./src/config/reference-migration.ts"
+    "./config/reference-migration": "./src/config/reference-migration.ts",
+    "./session/tool-intent": "./src/session/tool-intent.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

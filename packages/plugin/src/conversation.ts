@@ -32,6 +32,11 @@ export interface PluginConversationViewport {
   forceScrollToBottom(): void
 }
 
+export interface PluginConversationActivityView {
+  getExpanded(key: string): boolean | undefined
+  setExpanded(key: string, expanded: boolean): void
+}
+
 export interface PluginConversationService {
   content?: PluginConversationContent
   registerMessageLocator?: (
@@ -41,6 +46,7 @@ export interface PluginConversationService {
   timeline: Accessor<readonly Message[]>
   turnProjection: Accessor<PluginTurnProjection>
   activityDisplay: Accessor<"full" | "balanced" | "minimal">
+  activityView?: PluginConversationActivityView
   pendingTimeline?: Accessor<readonly SessionInboxItem[]>
   transition?: () => JSX.Element
   onFirstTurnMounted(): void

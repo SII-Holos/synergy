@@ -44,7 +44,7 @@ function bashRegistryTool() {
       description: z.string().optional(),
     }),
     async execute(params: { command: string; description?: string }, ctx: any) {
-      return LocalBashBackend.execute({ command: params.command, description: params.description ?? "bash" }, ctx)
+      return LocalBashBackend.execute({ command: params.command }, { ...ctx, workBrief: params.description ?? "bash" })
     },
   }
 }
@@ -102,8 +102,8 @@ test("bash detached daemon guard honors session full_access over agent guarded",
           const { processor, bash } = await resolveBashTool(session.id)
           try {
             const result = await bash.execute(
-              { command: "nohup echo allowed > daemon.log 2>&1", description: "Launch daemon" },
-              { toolCallId: "call_bash_nohup" },
+              { command: "nohup echo allowed > daemon.log 2>&1" },
+              { ...{ toolCallId: "call_bash_nohup" }, workBrief: "Launch daemon" },
             )
             expect(result.metadata.exit).toBe(0)
           } finally {
@@ -131,8 +131,8 @@ test("bash detached daemon guard honors inherited session full_access", () =>
           const { processor, bash } = await resolveBashTool(child.id)
           try {
             const result = await bash.execute(
-              { command: "nohup echo allowed > daemon.log 2>&1", description: "Launch daemon" },
-              { toolCallId: "call_bash_setsid" },
+              { command: "nohup echo allowed > daemon.log 2>&1" },
+              { ...{ toolCallId: "call_bash_setsid" }, workBrief: "Launch daemon" },
             )
             expect(result.metadata.exit).toBe(0)
           } finally {

@@ -588,11 +588,14 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
       if (navigation) navigation.inert = navigationInert ?? false
     })
   })
+  const hidden = () => !state().opened() || (!props.modalHost && displaySize() === 0)
 
   const rootStyle = () =>
-    isSide()
-      ? { width: state().opened() ? `${displaySize()}px` : "0px" }
-      : { height: state().opened() ? `${displaySize()}px` : "0px" }
+    props.modalHost
+      ? { width: "100%", height: "100%" }
+      : isSide()
+        ? { width: state().opened() ? `${displaySize()}px` : "0px" }
+        : { height: state().opened() ? `${displaySize()}px` : "0px" }
 
   const focusTab = (index: number) => {
     const tabs = state().tabs()
@@ -614,8 +617,8 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
   return (
     <div
       ref={root}
-      inert={!state().opened() || displaySize() === 0}
-      aria-hidden={!state().opened() || displaySize() === 0}
+      inert={hidden()}
+      aria-hidden={hidden()}
       onPointerDown={() => workbench.interact()}
       onKeyDown={(event) => {
         if (event.key !== "Tab") workbench.interact()
@@ -636,7 +639,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
       }}
       style={rootStyle()}
     >
-      <Show when={!isSide() || !presentation().overlay}>
+      <Show when={!props.modalHost && (!isSide() || !presentation().overlay)}>
         <ResizeHandle
           direction={isSide() ? "horizontal" : "vertical"}
           edge="start"

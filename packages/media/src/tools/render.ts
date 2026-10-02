@@ -1,22 +1,7 @@
-import z from "zod"
+import { z } from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 
-const DESCRIPTION = `Render arbitrary HTML content inline in the conversation.
-
-Accepts a complete HTML document or HTML fragment and renders it in a sandboxed iframe. The HTML can contain inline SVG, CSS, and HTML tables — anything that doesn't require JavaScript execution.
-
-Use this to display:
-- Rich data visualizations (charts, graphs, diagrams — using inline SVG)
-- Comparison tables with custom formatting
-- Timelines, trees, and flow charts
-- Any structured information that benefits from visual layout
-
-Rendering behavior:
-- The renderer injects a polished default theme: dark gradient background, readable system font, table styling, code styling, and sensible spacing
-- You may pass a small HTML fragment; you do not need to include <html>, <head>, <body>, or boilerplate styles
-- Add your own <style> block when you need custom layout, colors, SVG sizing, or animation
-- Use data-render-fullbleed on a single root element when you want to opt out of default body padding
-- The iframe uses a strict CSP and no script execution. External network resources are blocked; use inline SVG/CSS and data/blob images only.`
+const DESCRIPTION = `Create a read-only visual result from an HTML fragment or document. Use for charts, diagrams, comparisons and other results that benefit from visual layout. Include HTML, inline CSS and SVG; omit JavaScript and external resources. Small fragments are sufficient. Use data-render-fullbleed on a single root element to remove outer padding. Returns the rendered content and its artifact title.`
 
 export const RenderTool = Tool.define("render", {
   description: DESCRIPTION,
@@ -26,12 +11,12 @@ export const RenderTool = Tool.define("render", {
       .describe(
         "HTML fragment or document to render. Can include inline <style>, <svg>, <table>, and other HTML elements. JavaScript and external network resources are not executed or loaded.",
       ),
-    title: z.string().optional().describe("Optional title displayed in the tool card header"),
+    artifactTitle: z.string().optional().describe("Short name for the visual result; omit to use the default name"),
   }),
   async execute(params) {
     return {
-      title: params.title ?? "Render",
-      output: `Rendered HTML${params.title ? `: ${params.title}` : ""} (${params.html.length} chars)`,
+      title: params.artifactTitle ?? "Render",
+      output: `Rendered HTML${params.artifactTitle ? `: ${params.artifactTitle}` : ""} (${params.html.length} chars)`,
       metadata: {
         render: "html",
         html: params.html,
