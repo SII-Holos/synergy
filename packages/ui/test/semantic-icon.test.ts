@@ -101,6 +101,11 @@ describe("semantic icons", () => {
     expect(getSemanticIcon("blueprint.main")).not.toBe("stamp")
   })
 
+  test("fullscreen and restore use opposite diagonal arrow glyphs", () => {
+    expect(getSemanticIcon("workspace.fullscreen")).toBe("maximize-2")
+    expect(getSemanticIcon("window.restore")).toBe("minimize-2")
+  })
+
   test("semantic tokens do not reuse Lucide glyphs for different meanings", () => {
     const grouped = new Map<string, string[]>()
     for (const [token, icon] of Object.entries(SemanticIconToken)) {

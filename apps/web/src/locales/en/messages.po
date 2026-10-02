@@ -23349,11 +23349,11 @@ msgstr "Open in new tab"
 
 #. js-lingui-explicit-id
 msgid "workspace.fullscreen.enter"
-msgstr "Expand workspace"
+msgstr "Full screen"
 
 #. js-lingui-explicit-id
 msgid "workspace.fullscreen.exit"
-msgstr "Restore view"
+msgstr "Exit full screen"
 
 #. js-lingui-explicit-id
 msgid "workspace.home.newTab"

@@ -21,7 +21,7 @@ beforeAll(async () => {
   directory = await mkdtemp(path.join(import.meta.dir, ".workbench-fixture-"))
   await Bun.write(
     path.join(directory, "index.html"),
-    '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+    '<div id="root" class="synergy-workbench-canvas"></div><script type="module" src="/main.tsx"></script>',
   )
   await Bun.write(
     path.join(directory, "state.tsx"),
@@ -192,6 +192,53 @@ test("converting a tab to another resource type mounts the corresponding panel",
   expect(await page.getByRole("button", { name: "side action", exact: true }).count()).toBe(0)
 })
 
+for (const colorScheme of ["light", "dark"] as const) {
+  test(`resource creation controls retain independent hover and menu states in ${colorScheme} mode`, async () => {
+    await page.emulateMedia({ colorScheme, reducedMotion: "reduce" })
+    await page.goto(baseUrl)
+    await page.getByRole("button", { name: "Open side", exact: true }).click()
+    const group = page.locator(".workbench-surface--side .workbench-surface-add-group")
+    const add = group.getByRole("button", { name: "New tab", exact: true })
+    const menu = group.getByRole("button", { name: "Open a resource", exact: true })
+    const before = await group.boundingBox()
+    const styles = () =>
+      group.evaluate((element) => ({
+        background: getComputedStyle(element).backgroundColor,
+        buttons: Array.from(element.querySelectorAll("button"), (button) => getComputedStyle(button).backgroundColor),
+      }))
+    await add.hover()
+    const addHover = await styles()
+    expect(addHover.background).not.toBe("rgba(0, 0, 0, 0)")
+    expect(addHover.buttons[0]).not.toBe(addHover.background)
+    expect(addHover.buttons[1]).toBe("rgba(0, 0, 0, 0)")
+    await page.mouse.down()
+    expect((await styles()).buttons[0]).not.toBe(addHover.buttons[0])
+    await page.mouse.up()
+    await menu.hover()
+    const menuHover = await styles()
+    expect(menuHover.background).toBe(addHover.background)
+    expect(menuHover.buttons[0]).toBe("rgba(0, 0, 0, 0)")
+    expect(menuHover.buttons[1]).toBe(addHover.buttons[0])
+    expect(await group.boundingBox()).toEqual(before)
+    await menu.click()
+    await page.getByRole("menu").waitFor()
+    await page.mouse.move(0, 0)
+    await page.getByRole("menuitem", { name: "extra", exact: true }).focus()
+    const menuOpen = await styles()
+    expect(menuOpen.background).toBe(addHover.background)
+    expect(menuOpen.buttons[1]).toBe(menuHover.buttons[1])
+    await page.keyboard.press("Escape")
+    await page.getByRole("menu").waitFor({ state: "hidden" })
+    await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Open a resource")
+    expect(await menu.evaluate((button) => getComputedStyle(button).outlineStyle)).toBe("solid")
+    await page.keyboard.press("Shift+Tab")
+    expect(await add.evaluate((button) => document.activeElement === button)).toBe(true)
+    expect((await styles()).buttons[0]).not.toBe((await styles()).background)
+    expect(await group.boundingBox()).toEqual(before)
+    expect(errors).toEqual([])
+  })
+}
+
 test("initializing restored tabs in a narrow window retains their identity without page errors", async () => {
   await page.setViewportSize({ width: 375, height: 900 })
   await page.goto(baseUrl + "?restored")
@@ -271,13 +318,17 @@ test("fullscreen owns display and hit testing without discarding the composer", 
   await page.goto(baseUrl + "?composed")
   await page.getByRole("textbox", { name: "Composer draft" }).fill("Keep this unsent draft")
   await page.getByRole("button", { name: "Open side", exact: true }).click()
-  await page.getByRole("button", { name: "Expand workspace", exact: true }).click()
+  const fullscreen = page.getByRole("button", { name: "Full screen", exact: true })
+  expect(await fullscreen.locator("svg.lucide-maximize-2").count()).toBe(1)
+  await fullscreen.click()
   expect(await page.getByRole("textbox", { name: "Composer draft" }).isVisible()).toBe(false)
   expect(await page.getByRole("button", { name: "Navigation", exact: true }).isVisible()).toBe(false)
   expect((await page.locator(".sb-integrated").boundingBox())!.width).toBe(0)
   const tab = page.getByRole("tab", { name: "side", exact: true })
   await tab.click({ timeout: 2000 })
-  await page.getByRole("button", { name: "Restore view", exact: true }).click()
+  const restore = page.getByRole("button", { name: "Exit full screen", exact: true })
+  expect(await restore.locator("svg.lucide-minimize-2").count()).toBe(1)
+  await restore.click()
   expect(await page.getByRole("textbox", { name: "Composer draft" }).inputValue()).toBe("Keep this unsent draft")
   expect(errors).toEqual([])
 })
@@ -324,7 +375,7 @@ test("expanded resources respect the native titlebar safe area", async () => {
   await page.goto(baseUrl + "?composed")
   await page.evaluate(() => document.documentElement.style.setProperty("--workbench-native-inset", "88px"))
   await page.getByRole("button", { name: "Open side", exact: true }).click()
-  await page.getByRole("button", { name: "Expand workspace", exact: true }).click()
+  await page.getByRole("button", { name: "Full screen", exact: true }).click()
   const tab = await page.getByRole("tab", { name: "side", exact: true }).boundingBox()
   expect(tab!.x).toBeGreaterThanOrEqual(88)
 })

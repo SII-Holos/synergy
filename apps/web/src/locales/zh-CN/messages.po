@@ -23349,11 +23349,11 @@ msgstr "在新标签页打开"
 
 #. js-lingui-explicit-id
 msgid "workspace.fullscreen.enter"
-msgstr "展开工作区"
+msgstr "全屏"
 
 #. js-lingui-explicit-id
 msgid "workspace.fullscreen.exit"
-msgstr "还原视图"
+msgstr "退出全屏"
 
 #. js-lingui-explicit-id
 msgid "workspace.home.newTab"

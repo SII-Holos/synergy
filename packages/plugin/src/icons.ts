@@ -136,7 +136,7 @@ export const SemanticIconToken = {
   "app.sidebar.open": "panel-left-open",
   "app.sidebar.close": "panel-left-close",
   "app.sideWorkspace": "panel-right",
-  "workspace.fullscreen": "maximize",
+  "workspace.fullscreen": "maximize-2",
   "workspace.split": "shrink",
   "workspace.newTab": "square-plus",
   "workspace.collapse": "panel-right-close",

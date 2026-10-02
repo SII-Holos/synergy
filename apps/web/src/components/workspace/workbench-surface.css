@@ -242,8 +242,20 @@
   border-radius: 8px;
   transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
 }
-.workbench-surface-add-group:hover {
-  background: var(--workbench-control-bg-hover, var(--surface-raised-base-hover));
+.workbench-surface-add-group:hover,
+.workbench-surface-add-group:has(:focus-visible),
+.workbench-surface-add-group:has([aria-expanded="true"]) {
+  background-color: var(--workbench-control-bg, var(--surface-inset-base));
+}
+.workbench-surface-add-group [data-component="icon-button"][aria-expanded="true"]:not(:disabled) {
+  background-color: var(--workbench-control-bg-hover, var(--surface-inset-base-hover));
+}
+.workbench-surface-add-group [data-component="icon-button"]:active:not(:disabled) {
+  background-color: var(--surface-inset-strong-hover);
+}
+.workbench-surface-add-group
+  [data-component="icon-button"]:focus:not(:focus-visible):not(:hover):not([aria-expanded="true"]) {
+  background-color: transparent;
 }
 .workbench-surface-controls [data-component="icon-button"] {
   height: 32px;

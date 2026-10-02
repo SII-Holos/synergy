@@ -823,17 +823,17 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
                 <Tooltip
                   value={
                     state().fullscreen()
-                      ? lingui._({ id: "workspace.fullscreen.exit", message: "Restore view" })
-                      : lingui._({ id: "workspace.fullscreen.enter", message: "Expand workspace" })
+                      ? lingui._({ id: "workspace.fullscreen.exit", message: "Exit full screen" })
+                      : lingui._({ id: "workspace.fullscreen.enter", message: "Full screen" })
                   }
                 >
                   <IconButton
-                    icon={getSemanticIcon(state().fullscreen() ? "workspace.split" : "workspace.fullscreen")}
+                    icon={getSemanticIcon(state().fullscreen() ? "window.restore" : "workspace.fullscreen")}
                     variant="ghost"
                     aria-label={
                       state().fullscreen()
-                        ? lingui._({ id: "workspace.fullscreen.exit", message: "Restore view" })
-                        : lingui._({ id: "workspace.fullscreen.enter", message: "Expand workspace" })
+                        ? lingui._({ id: "workspace.fullscreen.exit", message: "Exit full screen" })
+                        : lingui._({ id: "workspace.fullscreen.enter", message: "Full screen" })
                     }
                     aria-pressed={state().fullscreen()}
                     onClick={() => state().setFullscreen(!state().fullscreen())}
