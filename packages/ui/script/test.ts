@@ -11,6 +11,7 @@ await runBatchedTests({
   root,
   timeoutMs: 120000,
   isolated: [
+    "test/components/message-readers.render.test.ts",
     "test/components/execution-completion.dom.test.ts",
     "test/components/tool/computer-tool-renders.test.tsx",
     "test/components/basic-tool-lifecycle.dom.test.ts",
@@ -50,6 +51,7 @@ await runBatchedTests({
     "test/components/provider-icon.test.ts",
   ],
   browserOnly: [
+    "test/components/message-readers.render.test.ts",
     "test/hooks/create-auto-scroll.test.ts",
     "test/hooks/use-filtered-list.test.tsx",
     "test/theme-provider-fallback.test.ts",
