@@ -26,6 +26,8 @@ The built-in Shell's full width and its normal navigation preference determine a
 
 Creation controls separate the group's control surface from the individual segment's hover surface. An open resource menu retains its segment state after focus moves into the popup. Pointer focus on the other segment does not hold its highlight; keyboard focus remains visible. Fullscreen uses diagonal outward arrows and the shared restore action uses diagonal inward arrows, with Full screen and Exit full screen labels.
 
+Resource menu navigation skips disabled choices and preserves editor key handling. Entering with ArrowDown selects the first enabled item; ArrowUp selects the last even when no item already has focus. Home and End move to the corresponding enabled edge. This helper remains measured directly in Bun while rendered resource and dialog components declare exact browser-suite coverage boundaries.
+
 ## Alternatives considered
 
 **Increasing only the overlay z-index.** This would leave hidden conversation and navigation controls in the focus order and keep competing collapse controls. Presentation ownership addresses painting, hit testing and focus together.

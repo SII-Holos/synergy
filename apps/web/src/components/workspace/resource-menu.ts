@@ -18,6 +18,8 @@ export const resourceMenuKeyDown: JSX.EventHandler<HTMLDivElement, KeyboardEvent
         ? items.length - 1
         : event.key === "ArrowDown"
           ? (current + 1) % items.length
-          : (current - 1 + items.length) % items.length
+          : current <= 0
+            ? items.length - 1
+            : current - 1
   items[index].focus()
 }

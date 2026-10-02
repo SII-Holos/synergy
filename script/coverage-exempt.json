@@ -179,6 +179,10 @@
           "reason": "dialogs require interactive flows"
         },
         {
+          "glob": "src/components/file-workbench/close-dialog.tsx",
+          "reason": "Save, discard, cancel, dismissal and focus return are verified by test/components/dialog/file-entry-dialog.dom.test.ts with the real shared dialog provider in Chromium; Bun cannot instrument the Vite renderer's TSX source. File save failures and draft revisions remain measured in test/context/file/close-policy.test.ts."
+        },
+        {
           "glob": "src/components/file-workbench/content.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
@@ -731,6 +735,10 @@
           "reason": "workspace/browser surfaces require a live runtime"
         },
         {
+          "glob": "src/components/workspace/browser/browser-catalog.tsx",
+          "reason": "Canonical catalog metadata, native presentation initialization and peer page switching are verified by test/components/workspace/browser/browser-panel-presentation.dom.test.tsx and browser-workbench-sync.dom.test.tsx in Chromium; Bun cannot instrument the Vite renderer's TSX source."
+        },
+        {
           "glob": "src/components/workspace/browser/browser-data-settings.tsx",
           "reason": "Account filtering and origin-scoped fill are exercised by browser-interaction.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
         },
@@ -799,6 +807,10 @@
           "reason": "workspace/browser surfaces require a live runtime"
         },
         {
+          "glob": "src/components/workspace/resource-home.tsx",
+          "reason": "Dynamic registry entries, capability and session availability, matching resource menus and narrow layouts are verified by test/components/workspace/resource-home.dom.test.ts in Chromium; Bun cannot instrument the Vite renderer's TSX source."
+        },
+        {
           "glob": "src/components/workspace/tool-context.tsx",
           "reason": "workspace/browser surfaces require a live runtime"
         },
@@ -821,6 +833,10 @@
         {
           "glob": "src/components/workspace/workbench-surface.tsx",
           "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/workspace-navigator.tsx",
+          "reason": "Resource-bounded drawers, responsive widths, nested overlays, Escape dismissal and focus restoration are verified by test/components/workspace/workbench-surface.dom.test.ts in Chromium; Bun cannot instrument the Vite renderer's TSX source."
         },
         {
           "glob": "src/composables/use-full-access-acknowledgement.ts",
