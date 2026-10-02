@@ -283,3 +283,71 @@ test("tool authorization preserves exact origin, detached input and abort semant
   )
   expect(seen).toHaveLength(1)
 })
+
+test("host consent receives detached origin and preserves default, denial and cancellation", async () => {
+  const seen: ToolPolicySource.PermissionInput[] = []
+  let handled = true
+  let failure: Error | undefined
+  await using runtime = await testRuntime({
+    register() {
+      ToolPolicySource.register({
+        async requestPermission(input) {
+          seen.push(input)
+          input.request.metadata.targets = ["changed inside host"]
+          if (failure) throw failure
+          return handled
+        },
+      })
+    },
+  })
+  await using independent = await testRuntime()
+  const abort = new AbortController()
+  const input: ToolPolicySource.PermissionInput = {
+    toolID: "domain_probe",
+    request: { permission: "domain_mutation", patterns: ["personal:exact"], metadata: { targets: ["original"] } },
+    context: { sessionID: "session", messageID: "assistant", callID: "call", agent: agent.name, abort: abort.signal },
+  }
+  expect(await independent.run(() => ToolPolicySource.requestPermission(input))).toBe(false)
+  expect(await runtime.run(() => ToolPolicySource.requestPermission(input))).toBe(true)
+  expect(input.request.metadata.targets).toEqual(["original"])
+  expect(seen[0]).toMatchObject({
+    toolID: input.toolID,
+    context: { sessionID: "session", messageID: "assistant", callID: "call" },
+  })
+  handled = false
+  expect(await runtime.run(() => ToolPolicySource.requestPermission(input))).toBe(false)
+  failure = new PermissionNext.RejectedError()
+  await expect(runtime.run(() => ToolPolicySource.requestPermission(input))).rejects.toBe(failure)
+  abort.abort(new Error("cancelled before consent"))
+  await expect(runtime.run(() => ToolPolicySource.requestPermission(input))).rejects.toThrow("cancelled before consent")
+  expect(seen).toHaveLength(3)
+})
+
+test("host consent cancellation after its callback cannot admit execution", async () => {
+  const abort = new AbortController()
+  await using runtime = await testRuntime({
+    register() {
+      ToolPolicySource.register({
+        async requestPermission() {
+          abort.abort(new Error("cancelled during consent"))
+          return true
+        },
+      })
+    },
+  })
+  await expect(
+    runtime.run(() =>
+      ToolPolicySource.requestPermission({
+        toolID: "domain_probe",
+        request: { permission: "domain_mutation", patterns: ["exact"], metadata: {} },
+        context: {
+          sessionID: "session",
+          messageID: "assistant",
+          callID: "call",
+          agent: agent.name,
+          abort: abort.signal,
+        },
+      }),
+    ),
+  ).rejects.toThrow("cancelled during consent")
+})

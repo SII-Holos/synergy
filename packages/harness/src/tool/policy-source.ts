@@ -3,6 +3,7 @@ import { RuntimeContext } from "../lifecycle/context"
 import type { Agent } from "../agent/agent"
 import type { Provider } from "../provider/provider"
 import type { Session } from "../session"
+import type { Tool } from "./tool"
 
 export namespace ToolPolicySource {
   export interface SelectionInput {
@@ -23,6 +24,12 @@ export namespace ToolPolicySource {
   export interface Source {
     select?(input: Readonly<SelectionInput>): Promise<readonly string[]>
     authorize?(input: Readonly<ExecutionInput>): Promise<void>
+    requestPermission?(input: Readonly<PermissionInput>): Promise<boolean>
+  }
+  export interface PermissionInput {
+    toolID: string
+    request: Parameters<Tool.Context["ask"]>[0]
+    context: Pick<Tool.Context, "sessionID" | "messageID" | "callID" | "agent" | "abort">
   }
   export class DeniedError extends Error {
     constructor(cause: unknown) {
@@ -77,5 +84,23 @@ export namespace ToolPolicySource {
       throw new DeniedError(error)
     }
     input.signal?.throwIfAborted()
+  }
+
+  /** A trusted host may own domain consent; false retains the generic Core permission policy. */
+  export async function requestPermission(input: PermissionInput): Promise<boolean> {
+    input.context.abort.throwIfAborted()
+    const source = state().source
+    if (!source?.requestPermission) return false
+    const handled = z.boolean().parse(
+      await source.requestPermission(
+        Object.freeze({
+          toolID: input.toolID,
+          request: structuredClone(input.request),
+          context: Object.freeze({ ...input.context }),
+        }),
+      ),
+    )
+    input.context.abort.throwIfAborted()
+    return handled
   }
 }

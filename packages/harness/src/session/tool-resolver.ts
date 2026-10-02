@@ -1094,7 +1094,7 @@ export namespace ToolResolver {
     }
   }
 
-  function contextFactory(input: Input) {
+  function contextFactory(input: Input, toolID: string) {
     return (args: any, options: ToolCallOptions): Tool.Context => {
       const resolveCurrentProfile = async (): Promise<ResolvedProfile> => {
         const profileId = await Session.resolveEffectiveControlProfile({
@@ -1145,6 +1145,20 @@ export namespace ToolResolver {
           })
         },
         async ask(req) {
+          if (
+            await ToolPolicySource.requestPermission({
+              toolID,
+              request: req,
+              context: {
+                sessionID: ctx.sessionID,
+                messageID: ctx.messageID,
+                callID: ctx.callID,
+                agent: ctx.agent,
+                abort: ctx.abort,
+              },
+            })
+          )
+            return
           const profile = await resolvedProfile()
           const requestMetadata = req.metadata ?? {}
           const decision = ApprovalPolicy.decidePermission(profile, req.permission, requestMetadata)
@@ -1469,7 +1483,7 @@ export namespace ToolResolver {
         inputSchema: schema,
         executor: "control_plane",
         createRuntimeTool(runtimeInput) {
-          const context = contextFactory(runtimeInput)
+          const context = contextFactory(runtimeInput, item.id)
           return tool({
             id: item.id as any,
             description: item.description,
@@ -1586,7 +1600,7 @@ export namespace ToolResolver {
         description: item.description,
         inputSchema: schema,
         createRuntimeTool(runtimeInput) {
-          const context = contextFactory(runtimeInput)
+          const context = contextFactory(runtimeInput, item.id)
           return tool({
             id: item.id as any,
             description: item.description,
@@ -1953,7 +1967,7 @@ export namespace ToolResolver {
           inputSchema: schema,
           executor: "mcp",
           createRuntimeTool(runtimeInput) {
-            const context = contextFactory(runtimeInput)
+            const context = contextFactory(runtimeInput, key)
             const execute = item.execute
             if (!execute) return item
             return {
