@@ -28,7 +28,7 @@ for (const backend of storageTestBackends()) {
       const store = await TransactionalStore.open(
         backend === "sqlite"
           ? { backend, namespace, filename: path.join(root, `${namespace}.sqlite`) }
-          : { backend: "postgres", namespace, url: process.env.SYNERGY_TEST_POSTGRES_URL! },
+          : { backend: "postgres", namespace, url: process.env.SYNERGY_TEST_POSTGRES_URL!, maxConnections: 2 },
       )
       stores.push(store)
       return store
