@@ -129,7 +129,7 @@ When adding a bulk variant of a storage operation, exercise every supported name
 
 For optional whole-store rewrites, prove ordinary startup never calls the rewrite even when prerequisite maintenance is already applied. Keep the atomic format commit separate from physical reclamation and reconcile a committed format with an absent migration receipt through a read-only probe. Persist every copy cursor in its batch transaction. If normal writes can occur between attempts, invalidate staged copies on source mutations before allowing a later swap; rebuild unfenced historical staging. Test updates, inserts, deletion, source drift, rollback, cancellation, reopening, and a second namespace. Background reclamation must yield to work and disk/WAL pressure, persist pause and progress, back off failures, and drain before storage closes.
 
-## Preserve File History Attribution
+## Preserve File History and Workspace Identity
 
 Snapshot and patch producers retain the source Workspace identity and binding generation. Derived summaries group those sources before comparing trees; current Session selection must not rewrite historical file ownership. Use literal, NUL-delimited Git filenames and object-store working directories for history-only reads. Exercise non-Git capture, missing directories, rebindings and equal relative filenames in different Workspaces.
 
@@ -154,3 +154,9 @@ For retained usage, exercise deletion and retention independently from explicit 
 Test unknown-attribution records with unrelated owners and descendants together. Selection must preserve uncertainty from the selected owners without importing another owner's gaps; a narrower clear must not erase uncertainty shared by unselected work.
 
 Cross multiple runs under one owner with exact, owner-only and null-run ancestry at successive levels. A run filter needs a proven parent run at every edge, while Session-wide selection may retain owner-only relationships. Exercise reporting and revision-bounded clearing against the same real records, and verify unrelated record identities survive; a correct aggregate alone cannot prove safe deletion. Keep uncertainty records out of evidence-coverage counts.
+
+## Workspace net changes
+
+Keep segment checkpoint capture and settlement in Session, immutable trees in Snapshot and version-checked file publication in Local Runtime. Test baseline failure without recapture, net cancellation, parallel read-only tools, late background writes, partial capture, historical reads, migration, fork/export retention and restore receipt replay. A turn Diff describes all writers in its captured interval; do not add author attribution or scan the full workspace for every tool. File previews may truncate text, but comparison statistics and restoration must use complete retained evidence.
+
+Evaluate net coverage from its first baseline and latest endpoint, keeping each endpoint's omissions separate. Test recovery after an intermediate capture failure without clearing that historical failure or fabricating an unavailable first baseline.

@@ -15409,6 +15409,86 @@ msgid "session.reasoning.title"
 msgstr "推理"
 
 #. js-lingui-explicit-id
+msgid "session.restore.binary"
+msgstr "二进制文件，无法预览文本。"
+
+#. js-lingui-explicit-id
+msgid "session.restore.cancel"
+msgstr "取消"
+
+#. js-lingui-explicit-id
+msgid "session.restore.confirm"
+msgstr "确认恢复"
+
+#. js-lingui-explicit-id
+msgid "session.restore.create"
+msgstr "恢复已删除的文件"
+
+#. js-lingui-explicit-id
+msgid "session.restore.delete"
+msgstr "删除新增的文件"
+
+#. js-lingui-explicit-id
+msgid "session.restore.description"
+msgstr "请比较当前内容与将恢复的版本。预览后若文件再次变化，需要重新确认。"
+
+#. js-lingui-explicit-id
+msgid "session.restore.direction"
+msgstr "当前内容 → 将恢复的内容"
+
+#. js-lingui-explicit-id
+msgid "session.restore.loading"
+msgstr "正在准备恢复预览…"
+
+#. js-lingui-explicit-id
+msgid "session.restore.refresh"
+msgstr "刷新预览"
+
+#. js-lingui-explicit-id
+msgid "session.restore.replace"
+msgstr "恢复文件内容"
+
+#. js-lingui-explicit-id
+msgid "session.restore.restoring"
+msgstr "正在恢复…"
+
+#. js-lingui-explicit-id
+msgid "session.restore.title"
+msgstr "撤销文件更改"
+
+#. js-lingui-explicit-id
+msgid "session.restore.truncated"
+msgstr "预览已截短，恢复使用完整的已保存文件。"
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.baseline"
+msgstr "未能保存起始快照。"
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.capture"
+msgstr "未能保存结束快照。"
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.comparison"
+msgstr "无法比较已保存的文件版本。"
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.interrupted"
+msgstr "保存检查点前记录被中断。"
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.legacy"
+msgstr "此历史保留了操作快照，但缺少完整的轮次基线。"
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.read"
+msgstr "无法稳定读取此文件。"
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.size"
+msgstr "此文件超出快照大小限制。"
+
+#. js-lingui-explicit-id
 msgid "session.review.recording.failed"
 msgstr "文件改动记录失败。"
 
@@ -15431,6 +15511,18 @@ msgstr "正在记录文件改动…"
 #. js-lingui-explicit-id
 msgid "session.review.recording.timeout"
 msgstr "文件改动记录超时。"
+
+#. js-lingui-explicit-id
+msgid "session.review.sessionTitle"
+msgstr "会话更改"
+
+#. js-lingui-explicit-id
+msgid "session.review.turnTitle"
+msgstr "本轮更改"
+
+#. js-lingui-explicit-id
+msgid "session.review.undo"
+msgstr "撤销更改"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -23388,6 +23480,18 @@ msgid "ui.session.awaitingResponse"
 msgstr "等待回复……"
 
 #. js-lingui-explicit-id
+msgid "ui.sessionReview.loadingFile"
+msgstr "正在加载历史文件…"
+
+#. js-lingui-explicit-id
+msgid "ui.sessionReview.retryFile"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "ui.sessionReview.undoFile"
+msgstr "撤销此文件的更改"
+
+#. js-lingui-explicit-id
 msgid "ui.toast.copyFailure"
 msgstr "无法复制通知。"
 
@@ -23418,6 +23522,10 @@ msgstr "再显示 {count} 个文件"
 #. js-lingui-explicit-id
 msgid "ui.turnChangeSummary.title"
 msgstr "已更改 {fileCount, plural, one {# 个文件} other {# 个文件}}"
+
+#. js-lingui-explicit-id
+msgid "ui.turnChangeSummary.undo"
+msgstr "撤销"
 
 #. js-lingui-explicit-id
 msgid "window.close.aria"

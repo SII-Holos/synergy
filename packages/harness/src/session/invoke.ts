@@ -469,7 +469,7 @@ export namespace SessionInvoke {
       const outcome = lease.signal.aborted ? "cancelled" : failure || errors.length ? "failed" : undefined
       for (const segment of segments) {
         try {
-          await RolloutLedger.finishSegment(segment, outcome ?? "completed")
+          await RolloutLifecycle.finishSegment(segment, outcome ?? "completed")
         } catch (error) {
           errors.push(error)
         }
@@ -1521,7 +1521,7 @@ export namespace SessionInvoke {
                   processedRootID,
                 )
                 const failed = terminal?.info.role === "assistant" && terminal.info.error
-                await RolloutLedger.finishSegment(
+                await RolloutLifecycle.finishSegment(
                   segment,
                   abort.aborted ? "cancelled" : failed ? "failed" : "completed",
                 )
@@ -2365,7 +2365,7 @@ export namespace SessionInvoke {
       status = "completed"
       return result
     } finally {
-      await RolloutLedger.finishSegment(segment, status)
+      await RolloutLifecycle.finishSegment(segment, status)
       // Detached turn work (titles, summaries) keeps writing ledger records
       // after its segment closes, and finalizing first refuses a call this
       // process has not observed yet — stranding the run as permanently

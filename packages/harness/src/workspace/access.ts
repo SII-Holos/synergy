@@ -63,6 +63,12 @@ export namespace WorkspaceAccess {
   const observers = RuntimeContext.createAsyncContext<
     { runtime: RuntimeContext.Instance; observe: WriteObserver } | undefined
   >()
+  const useObservers = RuntimeContext.createAsyncContext<
+    { runtime: RuntimeContext.Instance; observe: (workspaces: Workspace[]) => Promise<void> } | undefined
+  >()
+  export function observeUses<T>(observe: (workspaces: Workspace[]) => Promise<void>, fn: () => Promise<T>) {
+    return useObservers.run({ runtime: RuntimeContext.current(), observe }, fn)
+  }
   export function observeWrites<T>(observe: WriteObserver | undefined, fn: () => Promise<T>): Promise<T> {
     return observers.run(observe ? { runtime: RuntimeContext.current(), observe } : undefined, fn)
   }
@@ -487,6 +493,8 @@ export namespace WorkspaceAccess {
       )
       await validate(task)
     })
+    const listener = useObservers.getStore()
+    if (listener?.runtime === RuntimeContext.current()) await listener.observe(workspaces)
   }
 
   export function signal() {

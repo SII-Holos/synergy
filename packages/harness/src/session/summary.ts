@@ -39,7 +39,7 @@ export namespace SessionSummary {
   type QueuedSummaryInput = SummaryInput & { historyRevision: number }
   type ActiveSummary = { promise: Promise<void>; pending: QueuedSummaryInput[] }
   const SummaryCursor = z.object({
-    version: z.literal(3),
+    version: z.literal(4),
     ranges: z.array(SnapshotRanges.Range),
   })
   type SummaryCursor = z.infer<typeof SummaryCursor>
@@ -185,12 +185,20 @@ export namespace SessionSummary {
     const all = input.messages
       ? await Promise.all(
           input.messages.map(async (message) => {
-            if (!message.parts.some((part) => part.type === "patch" && part.operation?.status === "pending"))
+            if (
+              !message.parts.some(
+                (part) =>
+                  part.type === "patch" &&
+                  (part.operation?.status === "pending" || part.checkpoint?.status === "pending"),
+              )
+            )
               return message
             return MessageV2.get({ sessionID: input.sessionID, messageID: message.info.id })
           }),
         )
-      : await SessionHistory.detachedModelMessages({ sessionID: input.sessionID, signal: abort })
+      : input.diffOnly
+        ? await SessionHistory.rawMessages({ sessionID: input.sessionID })
+        : await SessionHistory.detachedModelMessages({ sessionID: input.sessionID, signal: abort })
     abort.throwIfAborted()
     const diffCache = new Map<string, Promise<SnapshotSchema.FileDiff[]>>()
     const pendingWritten = Promise.withResolvers<void>()
@@ -241,13 +249,19 @@ export namespace SessionSummary {
       cursor = cursorFromMessages(history)
     }
     cursor = mergeSummaryCursor(cursor, input.messages)
-    const diffs = await computeCursorDiff(cursor, input.sessionID, input.diffCache, input.abort)
+    const compared = await compareRanges(cursor.ranges, input.sessionID, input.diffCache, input.abort)
+    const previous = await Storage.read<SnapshotSchema.FileDiff[]>(
+      StoragePath.sessionSummary(scopeID, asSessionID(input.sessionID)),
+    ).catch(() => [])
+    const diffs = retainAvailable(compared, previous)
     input.abort.throwIfAborted()
     if (input.historyRevision !== SessionManager.historyRevision(input.sessionID)) return
     let applied = false
     await Session.update(input.sessionID, (draft) => {
       if (input.historyRevision !== SessionManager.historyRevision(input.sessionID)) return
       draft.summary = {
+        diffState: compared.state,
+        diffIssues: compared.issues,
         additions: diffs.reduce((sum, diff) => sum + diff.additions, 0),
         deletions: diffs.reduce((sum, diff) => sum + diff.deletions, 0),
         files: new Set(diffs.map((diff) => JSON.stringify([SnapshotRanges.key(diff), diff.file]))).size,
@@ -276,22 +290,21 @@ export namespace SessionSummary {
     session: Session.Info,
   ) {
     if (input.completeHistory) return input.messages
-    if (session.summary !== undefined) return Session.messages({ sessionID: input.sessionID })
-    const { SessionHistory } = await import("./history")
+    if (session.summary !== undefined) return SessionHistory.rawMessages({ sessionID: input.sessionID })
     const snapshotIDs = new Set(input.messages.map((message) => message.info.id))
     const infos = await SessionHistory.messageInfos(input.sessionID)
     if (infos.some((info) => !snapshotIDs.has(info.id))) {
-      return Session.messages({ sessionID: input.sessionID })
+      return SessionHistory.rawMessages({ sessionID: input.sessionID })
     }
     return input.messages
   }
 
   function cursorFromMessages(messages: MessageV2.WithParts[]): SummaryCursor {
-    return { version: 3, ranges: SnapshotRanges.fromMessages(messages) }
+    return { version: 4, ranges: SnapshotRanges.fromMessages(messages) }
   }
 
   function mergeSummaryCursor(cursor: SummaryCursor, messages: MessageV2.WithParts[]): SummaryCursor {
-    return { version: 3, ranges: SnapshotRanges.merge(cursor.ranges, SnapshotRanges.fromMessages(messages)) }
+    return { version: 4, ranges: SnapshotRanges.merge(cursor.ranges, SnapshotRanges.fromMessages(messages)) }
   }
 
   export async function invalidateDerivedState(sessionID: string, scopeID?: Identifier.ScopeID) {
@@ -311,18 +324,68 @@ export namespace SessionSummary {
       .catch(() => undefined)
   }
 
-  async function computeCursorDiff(
-    cursor: SummaryCursor,
+  async function compareRanges(
+    ranges: SnapshotRanges.Range[],
     sessionID: string,
     cache: Map<string, Promise<SnapshotSchema.FileDiff[]>>,
     abort: AbortSignal,
   ) {
-    const result: SnapshotSchema.FileDiff[] = []
-    for (const range of cursor.ranges) {
-      const files = new Set(range.files)
-      result.push(...(await computeSnapshotDiff(range, sessionID, cache, abort)).filter((diff) => files.has(diff.file)))
+    const diffs: SnapshotSchema.FileDiff[] = []
+    const issues: z.infer<typeof SnapshotSchema.Issue>[] = []
+    const unavailable = new Set<string>()
+    let valid = 0
+    let pending = false
+    for (const range of SnapshotRanges.net(ranges)) {
+      pending ||= range.pending === true
+      if (range.incomplete && !range.pending)
+        issues.push({ workspace: range.workspace, code: range.issue ?? "capture_failed" })
+      if (!range.from || !range.to) {
+        unavailable.add(SnapshotRanges.key(range))
+        if (!range.pending && !range.incomplete)
+          issues.push({ workspace: range.workspace, code: "baseline_unavailable" })
+        continue
+      }
+      try {
+        const candidates = await computeSnapshotDiff(range, sessionID, cache, abort)
+        const omitted = new Set(range.omissions?.map((item) => item.file))
+        for (const item of range.omissions ?? []) {
+          if (item.reason === "read_failed" || candidates.some((diff) => diff.file === item.file)) {
+            if (
+              !issues.some(
+                (issue) =>
+                  issue.file === item.file &&
+                  issue.workspace?.id === range.workspace?.id &&
+                  issue.workspace?.generation === range.workspace?.generation,
+              )
+            )
+              issues.push({ workspace: range.workspace, file: item.file, code: item.reason })
+          }
+        }
+        diffs.push(...candidates.filter((diff) => !omitted.has(diff.file)))
+        valid++
+      } catch (error) {
+        abort.throwIfAborted()
+        log.warn("workspace comparison failed", { workspaceID: range.workspace?.id, error })
+        issues.push({ workspace: range.workspace, code: "comparison_failed" })
+        unavailable.add(SnapshotRanges.key(range))
+      }
     }
-    return SnapshotSchema.boundArray(result)
+    const state: z.infer<typeof SnapshotSchema.DiffState> = pending
+      ? { status: "pending", deadlineAt: Date.now() + summaryRunTimeoutMs() }
+      : issues.length
+        ? {
+            status: valid ? "partial" : "error",
+            code: issues.every((issue) => issue.code === "comparison_failed") ? "git_failure" : "incomplete",
+          }
+        : { status: "ready" }
+    return { diffs: SnapshotSchema.boundArray(diffs), issues, unavailable, state }
+  }
+
+  function retainAvailable(compared: Awaited<ReturnType<typeof compareRanges>>, previous: SnapshotSchema.FileDiff[]) {
+    return SnapshotSchema.boundArray([
+      ...compared.diffs,
+      ...previous.filter((diff) => compared.unavailable.has(SnapshotRanges.key(diff))),
+    ])
   }
 
   type UserSummary = NonNullable<MessageV2.User["summary"]>
@@ -402,20 +465,16 @@ export namespace SessionSummary {
 
       let diffs: SnapshotSchema.FileDiff[] | undefined
       try {
-        diffs = await computeDiff({
-          messages,
-          sessionID: input.sessionID,
-          cache: input.diffCache,
-          abort: input.abort,
-        })
+        const compared = await compareRanges(
+          SnapshotRanges.fromMessages(messages),
+          input.sessionID,
+          input.diffCache,
+          input.abort,
+        )
+        diffs = retainAvailable(compared, latestUser?.summary?.diffs ?? [])
         latestUser = await updateSummary(
           { sessionID: input.sessionID, messageID: input.messageID },
-          {
-            diffs,
-            diffState: SnapshotRanges.fromMessages(messages).some((range) => range.incomplete)
-              ? { status: "error", code: "incomplete" }
-              : { status: "ready" },
-          },
+          { diffs, diffState: compared.state, diffIssues: compared.issues },
           input.abort,
         )
       } catch (error) {
@@ -534,19 +593,6 @@ export namespace SessionSummary {
     }
   }
 
-  async function computeDiff(input: {
-    messages: MessageV2.WithParts[]
-    sessionID: string
-    cache: Map<string, Promise<SnapshotSchema.FileDiff[]>>
-    abort: AbortSignal
-  }) {
-    const diffs: SnapshotSchema.FileDiff[] = []
-    for (const range of SnapshotRanges.fromMessages(input.messages)) {
-      diffs.push(...(await computeSnapshotDiff(range, input.sessionID, input.cache, input.abort)))
-    }
-    return SnapshotSchema.boundArray(diffs)
-  }
-
   function computeSnapshotDiff(
     range: SnapshotRanges.Range,
     sessionID: string,
@@ -592,6 +638,7 @@ export function registerSummaryJob() {
         sessionID: ctx.sessionID,
         messageID: ctx.lastUser.id,
         revisionID: ctx.lastAssistant?.id,
+        diffOnly: false,
       }
     },
     timeoutMs: 180_000,
@@ -600,6 +647,7 @@ export function registerSummaryJob() {
         sessionID: input.sessionID,
         messageID: input.messageID,
         revisionID: input.revisionID,
+        diffOnly: input.diffOnly,
         signal,
       })
       return "pass"

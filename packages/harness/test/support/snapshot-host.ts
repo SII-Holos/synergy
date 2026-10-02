@@ -6,6 +6,23 @@ import { SnapshotRestore } from "../../src/session/snapshot-restore"
 // Atomic mutation, filesystem races and native ownership are tested in local-runtime.
 export function registerSnapshotTestHost() {
   SnapshotRestore.register({
+    async preview({ files }) {
+      return Promise.all(
+        files.map(async (file) => {
+          const stat = await fs.lstat(file.file).catch(() => undefined)
+          return {
+            file: file.file,
+            workspace: file.workspace,
+            version: { entry: stat ? String(stat.mtimeMs) : null },
+            before: stat ? await fs.readFile(file.file, "utf8") : "",
+            after: new TextDecoder().decode(await file.read()),
+            action: !file.mode ? ("delete" as const) : stat ? ("replace" as const) : ("create" as const),
+            truncated: false,
+            binary: false,
+          }
+        }),
+      )
+    },
     async restore({ files, signal }) {
       const restoredFiles: string[] = []
       for (const file of files) {

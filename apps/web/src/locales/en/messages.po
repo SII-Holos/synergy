@@ -15409,6 +15409,86 @@ msgid "session.reasoning.title"
 msgstr "Reasoning"
 
 #. js-lingui-explicit-id
+msgid "session.restore.binary"
+msgstr "Binary file. Text preview is unavailable."
+
+#. js-lingui-explicit-id
+msgid "session.restore.cancel"
+msgstr "Cancel"
+
+#. js-lingui-explicit-id
+msgid "session.restore.confirm"
+msgstr "Confirm restoration"
+
+#. js-lingui-explicit-id
+msgid "session.restore.create"
+msgstr "Restore deleted file"
+
+#. js-lingui-explicit-id
+msgid "session.restore.delete"
+msgstr "Delete added file"
+
+#. js-lingui-explicit-id
+msgid "session.restore.description"
+msgstr "Compare current content with the version to restore. New changes after this preview will require confirmation again."
+
+#. js-lingui-explicit-id
+msgid "session.restore.direction"
+msgstr "Current content → Content to restore"
+
+#. js-lingui-explicit-id
+msgid "session.restore.loading"
+msgstr "Preparing restore preview…"
+
+#. js-lingui-explicit-id
+msgid "session.restore.refresh"
+msgstr "Refresh preview"
+
+#. js-lingui-explicit-id
+msgid "session.restore.replace"
+msgstr "Restore file content"
+
+#. js-lingui-explicit-id
+msgid "session.restore.restoring"
+msgstr "Restoring…"
+
+#. js-lingui-explicit-id
+msgid "session.restore.title"
+msgstr "Undo file changes"
+
+#. js-lingui-explicit-id
+msgid "session.restore.truncated"
+msgstr "Preview shortened. Restoration uses the complete saved file."
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.baseline"
+msgstr "The starting snapshot could not be saved."
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.capture"
+msgstr "The ending snapshot could not be saved."
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.comparison"
+msgstr "Saved file versions could not be compared."
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.interrupted"
+msgstr "Recording was interrupted before a checkpoint was saved."
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.legacy"
+msgstr "This history retains operation snapshots, but has no complete turn baseline."
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.read"
+msgstr "This file could not be read consistently."
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.size"
+msgstr "This file exceeded the snapshot size limit."
+
+#. js-lingui-explicit-id
 msgid "session.review.recording.failed"
 msgstr "File change recording failed."
 
@@ -15431,6 +15511,18 @@ msgstr "Recording file changes…"
 #. js-lingui-explicit-id
 msgid "session.review.recording.timeout"
 msgstr "File change recording timed out."
+
+#. js-lingui-explicit-id
+msgid "session.review.sessionTitle"
+msgstr "Session changes"
+
+#. js-lingui-explicit-id
+msgid "session.review.turnTitle"
+msgstr "Turn changes"
+
+#. js-lingui-explicit-id
+msgid "session.review.undo"
+msgstr "Undo changes"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -23388,6 +23480,18 @@ msgid "ui.session.awaitingResponse"
 msgstr "Awaiting response…"
 
 #. js-lingui-explicit-id
+msgid "ui.sessionReview.loadingFile"
+msgstr "Loading historical file content…"
+
+#. js-lingui-explicit-id
+msgid "ui.sessionReview.retryFile"
+msgstr "Retry loading historical content"
+
+#. js-lingui-explicit-id
+msgid "ui.sessionReview.undoFile"
+msgstr "Undo this file"
+
+#. js-lingui-explicit-id
 msgid "ui.toast.copyFailure"
 msgstr "Unable to copy the toast."
 
@@ -23418,6 +23522,10 @@ msgstr "Show {count} more {count, plural, one {file} other {files}}"
 #. js-lingui-explicit-id
 msgid "ui.turnChangeSummary.title"
 msgstr "Changed {fileCount, plural, one {# file} other {# files}}"
+
+#. js-lingui-explicit-id
+msgid "ui.turnChangeSummary.undo"
+msgstr "Undo"
 
 #. js-lingui-explicit-id
 msgid "window.close.aria"

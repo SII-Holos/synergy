@@ -16,7 +16,7 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { useNavigate } from "@solidjs/router"
 import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
-import { fileRestoreFeedback } from "./file-restore-feedback"
+import { useFileRestore } from "./file-restore-dialog-loader"
 import { compactSessionWithCurrentModel } from "./compact-action"
 
 export function useSessionCommands(params: {
@@ -59,6 +59,7 @@ export function useSessionCommands(params: {
     navigateMessageByOffset,
   } = params
 
+  const restoreFiles = useFileRestore(() => routeParams.id)
   const workbench = useWorkbenchPanels()
   const file = useFile()
   const { i18n } = useLocale()
@@ -267,11 +268,7 @@ export function useSessionCommands(params: {
         const sessionID = routeParams.id
         const rollback = info()?.history?.rollback
         if (!sessionID || !rollback) return
-        const result = await sdk.client.session.files.restore(
-          { sessionID, rollbackID: rollback.id },
-          { throwOnError: true },
-        )
-        showToast(fileRestoreFeedback(result.data, i18n))
+        void restoreFiles({ rollbackID: rollback.id })
       },
     },
     {

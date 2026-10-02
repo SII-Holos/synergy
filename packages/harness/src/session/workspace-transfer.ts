@@ -53,8 +53,15 @@ export namespace WorkspaceTransfer {
     }
     const summary = (value: Record<string, unknown>) => {
       const summary = object(value.summary)
-      return summary && Array.isArray(summary.diffs)
-        ? { ...value, summary: { ...summary, diffs: summary.diffs.map(source) } }
+      return summary
+        ? {
+            ...value,
+            summary: {
+              ...summary,
+              ...(Array.isArray(summary.diffs) ? { diffs: summary.diffs.map(source) } : {}),
+              ...(Array.isArray(summary.diffIssues) ? { diffIssues: summary.diffIssues.map(source) } : {}),
+            },
+          }
         : value
     }
     const record = object(value)
@@ -116,7 +123,13 @@ export namespace WorkspaceTransfer {
         message.info.role === "user" && message.info.summary
           ? {
               ...message.info,
-              summary: { ...message.info.summary, diffs: message.info.summary.diffs.map((value) => diff(value, ids)) },
+              summary: {
+                ...message.info.summary,
+                diffs: message.info.summary.diffs.map((value) => diff(value, ids)),
+                diffIssues: message.info.summary.diffIssues?.map((issue) =>
+                  issue.workspace ? { ...issue, workspace: remap(issue.workspace, ids) } : issue,
+                ),
+              },
             }
           : message.info,
       parts: message.parts.map((part) => {

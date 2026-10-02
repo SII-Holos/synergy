@@ -234,3 +234,26 @@
     transform: none;
   }
 }
+
+[data-slot="turn-change-summary-actions"] {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+[data-component="turn-change-summary-panel"] [data-slot="turn-change-summary-header"] {
+  flex-wrap: wrap;
+}
+
+[data-component="turn-change-summary-panel"] [data-slot="turn-change-summary-title-copy"] {
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+[data-component="turn-change-summary-panel"] [role="status"] {
+  flex-basis: 100%;
+  color: var(--text-weak);
+  font-size: var(--font-size-x-small);
+  line-height: var(--line-height-x-small);
+}

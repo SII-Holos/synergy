@@ -1,3 +1,4 @@
+import { useFileRestore } from "./file-restore-dialog-loader"
 import { useSDK } from "@/context/sdk"
 import { useSessionDataView } from "@/context/session-data-view"
 import type { PluginComponentProps, PluginConversationService } from "@ericsanchezok/synergy-plugin"
@@ -20,6 +21,7 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
   const sdk = useSDK()
+  const restoreFiles = useFileRestore(() => props.sessionID)
   const data = useSessionDataView()
   let stateRequest: AbortController | undefined
   const executionRequest = createMemo(
@@ -230,6 +232,7 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
                 onRewind={props.canRewind(rootMessage()) ? () => props.onRewind?.(rootMessage()) : undefined}
                 rollbackActive={props.rollbackActive}
                 onReviewChanges={props.onReviewChanges}
+                onRestoreChanges={(messageID) => void restoreFiles({ messageID })}
                 onForkMessage={props.onForkMessage}
                 classes={{
                   root: "min-w-0 w-full relative",

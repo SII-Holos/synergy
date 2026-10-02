@@ -115,6 +115,23 @@ export namespace MessageV2 {
   export const PatchPart = PartBase.extend({
     type: z.literal("patch"),
     hash: z.string(),
+    checkpoint: z
+      .object({
+        version: z.literal(1),
+        rootID: z.string(),
+        segmentID: z.string(),
+        started: z.number(),
+        ended: z.number().optional(),
+        status: z.enum(["pending", "complete", "incomplete"]),
+        afterHash: z
+          .string()
+          .regex(/^[0-9a-f]{40}$/)
+          .optional(),
+        omissions: z.array(SnapshotSchema.Omission).optional(),
+        baselineOmissions: z.array(SnapshotSchema.Omission).optional(),
+        error: z.enum(["baseline_unavailable", "capture_failed", "interrupted", "legacy_range"]).optional(),
+      })
+      .optional(),
     operation: z
       .discriminatedUnion("status", [
         z.object({ status: z.literal("pending"), toolCallID: z.string() }),
@@ -505,16 +522,8 @@ export namespace MessageV2 {
         title: z.string().optional(),
         body: z.string().optional(),
         diffs: SnapshotSchema.FileDiff.array(),
-        diffState: z
-          .discriminatedUnion("status", [
-            z.object({ status: z.literal("pending"), deadlineAt: z.number() }),
-            z.object({ status: z.literal("ready") }),
-            z.object({
-              status: z.literal("error"),
-              code: z.enum(["timeout", "git_failure", "unknown", "incomplete"]),
-            }),
-          ])
-          .optional(),
+        diffState: SnapshotSchema.DiffState.optional(),
+        diffIssues: SnapshotSchema.Issue.array().optional(),
       })
       .optional(),
     agent: z.string(),
@@ -829,6 +838,7 @@ export namespace MessageV2 {
    * reading `part.synthetic` directly.
    */
   export function isSystemPart(part: Part): boolean {
+    if (part.type === "patch" && part.checkpoint) return true
     if (part.type === "compaction") return true
     if (part.type !== "text") return false
     if (part.origin !== undefined) return part.origin === "system"

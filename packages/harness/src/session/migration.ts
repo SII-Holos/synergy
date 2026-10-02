@@ -1,4 +1,5 @@
 import { Tool } from "../tool/tool"
+import { migrateTurnFileCheckpoints } from "./file-changes-migration"
 import { normalizeLocalScope } from "../scope/migration"
 import { WorkspaceBinding } from "../workspace/binding"
 import { RuntimeContext } from "../lifecycle/context"
@@ -1519,6 +1520,23 @@ export async function migrateToolInputSemantics(
 }
 
 export const migrations: Migration[] = [
+  {
+    id: "20261003-session-turn-file-checkpoints",
+    scope: "session",
+    dependsOn: ["20260923-session-operation-snapshot-cursor"],
+    description: "Preserve recorded file versions as explicit legacy workspace checkpoints",
+    upSession: migrateTurnFileCheckpoints,
+    async up(progress) {
+      let done = 0
+      for (const scopeID of await SessionMigrationTarget.scopes()) {
+        for (const sessionID of await SessionMigrationTarget.sessions(scopeID)) {
+          await migrateTurnFileCheckpoints({ scopeID, sessionID })
+          progress(++done, 0)
+        }
+      }
+      progress(done, done)
+    },
+  },
   {
     id: "20260411-session-endpoint-index",
     description: "Backfill endpoint session index and remove legacy channel index",

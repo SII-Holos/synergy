@@ -28,13 +28,14 @@ beforeAll(async () => {
     import {SessionReviewTab} from ${JSON.stringify(`/@fs/${appSrc}/components/session/session-review-tab.tsx`)}
     import {TurnChangeSummaryPanel} from "@ericsanchezok/synergy-ui/turn-change-summary-panel"
     const [incomplete,setIncomplete]=createSignal(false)
+    const [pending,setPending]=createSignal(false)
     const [workspace,setWorkspace]=createSignal({id:"wsp_a",generation:1,path:"/a"})
     const [open,setOpen]=createSignal([])
     const [diffs,setDiffs]=createSignal([{id:"wsp_a",generation:1,root:"/a"},{id:"wsp_b",generation:1,root:"/b"}].map(workspace=>({file:"same.txt",workspace,additions:1,deletions:0,preview:"+"+workspace.root})))
-    const h=window.fixture={calls:[],incomplete:()=>setIncomplete(true),empty:()=>setDiffs([]),locale:(locale)=>i18n.activate(locale),operations:()=>setDiffs(["first","last"].map(operationID=>({file:"same.txt",workspace:{id:"wsp_a",generation:1,root:"/a"},operationID,additions:1,deletions:1,preview:"+"+operationID}))),legacy:()=>setDiffs(["/legacy-a","/legacy-b"].map(legacyRoot=>({file:"same.txt",legacyRoot,additions:1,deletions:0,preview:"+"+legacyRoot}))),switch:()=>setWorkspace({id:"wsp_b",generation:1,path:"/b"}),rebind:()=>setWorkspace({id:"wsp_b",generation:2,path:"/b"})}
+    const h=window.fixture={calls:[],pending:()=>setPending(true),ready:()=>setPending(false),incomplete:()=>setIncomplete(true),empty:()=>setDiffs([]),locale:(locale)=>i18n.activate(locale),operations:()=>setDiffs(["first","last"].map(operationID=>({file:"same.txt",workspace:{id:"wsp_a",generation:1,root:"/a"},operationID,additions:1,deletions:1,preview:"+"+operationID}))),legacy:()=>setDiffs(["/legacy-a","/legacy-b"].map(legacyRoot=>({file:"same.txt",legacyRoot,additions:1,deletions:0,preview:"+"+legacyRoot}))),switch:()=>setWorkspace({id:"wsp_b",generation:1,path:"/b"}),rebind:()=>setWorkspace({id:"wsp_b",generation:2,path:"/b"})}
     const view=()=>({review:{open,setOpen},scroll:()=>undefined,setScroll(){}})
     const i18n=setupI18n({locale:"en",messages:{en:{},"zh-CN":{"turn-change.recording-incomplete":"文件改动记录尚不完整"}}})
-    render(()=><I18nProvider i18n={i18n}><SessionReviewTab workspace={workspace} diffs={diffs} diffState={()=>incomplete()?{status:"error",code:"incomplete"}:undefined} view={view} diffStyle="unified" onViewFile={file=>h.calls.push(file)}/><TurnChangeSummaryPanel diffs={diffs()} state={incomplete()?"error":"ready"} incomplete={incomplete()} onReviewRequested={()=>{}} onFileSelected={file=>h.calls.push(file)}/></I18nProvider>,document.getElementById("root"))
+    render(()=><I18nProvider i18n={i18n}><SessionReviewTab workspace={workspace} diffs={diffs} diffState={()=>incomplete()?{status:"error",code:"incomplete"}:undefined} view={view} diffStyle="unified" onViewFile={file=>h.calls.push(file)}/><TurnChangeSummaryPanel diffs={diffs()} state={pending()?"pending":incomplete()?"partial":"ready"} incomplete={incomplete()} onReviewRequested={()=>{}} onFileSelected={file=>h.calls.push(file)}/></I18nProvider>,document.getElementById("root"))
   `,
   )
   const reservation = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
@@ -128,13 +129,13 @@ test("separate writes to the same bound file remain independently expandable", a
   expect(await rows.nth(1).textContent()).toContain("+last")
 })
 
-test("incomplete recording stays a quiet entry while Review explains the limits", async () => {
+test("incomplete recording preserves file rows while Review explains the limits", async () => {
   await page.goto(base)
   await page.locator('[data-component="turn-change-summary-panel"]').waitFor()
   await page.evaluate(() => (window as unknown as { fixture: { incomplete(): void } }).fixture.incomplete())
   const entry = page.locator('[data-slot="turn-change-summary-entry"]')
-  expect(await entry.getAttribute("title")).toContain("File change recording is incomplete")
-  expect(await page.locator('[data-component="turn-change-summary-panel"]').count()).toBe(0)
+  expect(await page.locator('[data-component="turn-change-summary-panel"]').count()).toBe(1)
+  expect(await page.locator('[data-slot="turn-change-summary-row"]').count()).toBe(2)
   const notice = page.locator('[data-slot="review-recording-notice"]')
   expect(await notice.textContent()).toContain("This does not mean no files changed")
   expect(await page.locator('[data-slot="session-review-view-button"]').count()).toBe(2)
@@ -144,4 +145,26 @@ test("incomplete recording stays a quiet entry while Review explains the limits"
   await page.evaluate(() => (window as unknown as { fixture: { locale(value: string): void } }).fixture.locale("zh-CN"))
   expect(await entry.getAttribute("title")).toContain("文件改动记录尚不完整")
   expect(errors).toEqual([])
+})
+
+test("pending and partial settlement keep the same file card and rows mounted", async () => {
+  await page.goto(base)
+  const card = page.locator('[data-component="turn-change-summary-panel"]')
+  await card.waitFor()
+  await card.evaluate((element) => element.setAttribute("data-retained", "yes"))
+  await page
+    .locator('[data-slot="turn-change-summary-row"]')
+    .first()
+    .evaluate((element) => element.setAttribute("data-retained", "yes"))
+  for (const transition of ["pending", "ready", "incomplete"] as const) {
+    await page.evaluate(
+      (key) => (window as unknown as { fixture: Record<string, () => void> }).fixture[key]!(),
+      transition,
+    )
+    expect(await card.getAttribute("data-retained")).toBe("yes")
+    expect(await page.locator('[data-slot="turn-change-summary-row"]').first().getAttribute("data-retained")).toBe(
+      "yes",
+    )
+    expect(await page.locator('[data-slot="turn-change-summary-row"]').count()).toBe(2)
+  }
 })

@@ -15409,6 +15409,86 @@ msgid "session.reasoning.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.restore.binary"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.restore.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.restore.confirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.restore.create"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.restore.delete"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.restore.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.restore.direction"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.restore.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.restore.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.restore.replace"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.restore.restoring"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.restore.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.restore.truncated"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.baseline"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.capture"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.comparison"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.interrupted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.legacy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.read"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.review.issue.size"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.review.recording.failed"
 msgstr ""
 
@@ -15430,6 +15510,18 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.review.recording.timeout"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.review.sessionTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.review.turnTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.review.undo"
 msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
@@ -23388,6 +23480,18 @@ msgid "ui.session.awaitingResponse"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "ui.sessionReview.loadingFile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.sessionReview.retryFile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.sessionReview.undoFile"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "ui.toast.copyFailure"
 msgstr ""
 
@@ -23417,6 +23521,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "ui.turnChangeSummary.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.turnChangeSummary.undo"
 msgstr ""
 
 #. js-lingui-explicit-id

@@ -1,4 +1,4 @@
-import { createEffect, createMemo, on, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, on, onCleanup, Show, For, type JSX } from "solid-js"
 import { SessionReview, reviewFileKey } from "@ericsanchezok/synergy-ui/session-review"
 import type { FileDiff, UserMessage } from "@ericsanchezok/synergy-sdk/client"
 import { useLingui } from "@lingui/solid"
@@ -19,9 +19,30 @@ const recordingErrors: Record<Extract<DiffState, { status: "error" }>["code"], M
   unknown: { id: "session.review.recording.failed", message: "File change recording failed." },
 }
 
+const issueMessages = {
+  baseline_unavailable: { id: "session.review.issue.baseline", message: "The starting snapshot could not be saved." },
+  capture_failed: { id: "session.review.issue.capture", message: "The ending snapshot could not be saved." },
+  interrupted: {
+    id: "session.review.issue.interrupted",
+    message: "Recording was interrupted before a checkpoint was saved.",
+  },
+  legacy_range: {
+    id: "session.review.issue.legacy",
+    message: "This history retains operation snapshots, but has no complete turn baseline.",
+  },
+  comparison_failed: { id: "session.review.issue.comparison", message: "Saved file versions could not be compared." },
+  size_limit: { id: "session.review.issue.size", message: "This file exceeded the snapshot size limit." },
+  read_failed: { id: "session.review.issue.read", message: "This file could not be read consistently." },
+} satisfies Record<string, MessageDescriptor>
+
 export interface SessionReviewTabProps {
   diffs: () => FileDiff[]
   diffState?: () => DiffState
+  diffIssues?: () => NonNullable<UserMessage["summary"]>["diffIssues"]
+  title?: string
+  actions?: JSX.Element
+  onRestoreFile?: (diff: FileDiff) => void
+  loadDiff?: (diff: FileDiff, signal: AbortSignal) => Promise<FileDiff>
   workspace?: () => { id: string; generation: number; path: string } | null
   view: () => ReturnType<ReturnType<typeof useLayout>["view"]>
   diffStyle: DiffStyle
@@ -41,7 +62,8 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
     const state = props.diffState?.()
     if (state?.status === "pending")
       return _({ id: "session.review.recording.pending", message: "Recording file changes…" })
-    if (state?.status === "error") return translateDescriptor(recordingErrors[state.code], i18n())
+    if (state?.status === "error" || state?.status === "partial")
+      return translateDescriptor(recordingErrors[state.code], i18n())
   }
   const canViewFile = (diff: FileDiff) => {
     const current = props.workspace?.()
@@ -146,6 +168,10 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
 
   return (
     <SessionReview
+      title={props.title}
+      actions={props.actions}
+      onRestoreFile={props.onRestoreFile}
+      loadDiff={props.loadDiff}
       notice={
         <Show when={recordingNotice()}>
           <div data-slot="review-recording-notice" role="status" class="px-6 py-3 text-13-regular text-text-weak">
@@ -159,6 +185,17 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
                 })}
               </p>
             </Show>
+            <For each={props.diffIssues?.()}>
+              {(issue) => {
+                const source = [issue.workspace?.root || issue.workspace?.id, issue.file].filter(Boolean).join("/")
+                return (
+                  <p>
+                    {source ? `${source}: ` : ""}
+                    {translateDescriptor(issueMessages[issue.code], i18n())}
+                  </p>
+                )
+              }}
+            </For>
           </div>
         </Show>
       }

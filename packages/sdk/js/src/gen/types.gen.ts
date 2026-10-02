@@ -6452,6 +6452,34 @@ export type Session = {
     deletions: number
     files: number
     diffs?: Array<FileDiff>
+    diffState?:
+      | {
+          status: "pending"
+          deadlineAt: number
+        }
+      | {
+          status: "ready"
+        }
+      | {
+          status: "partial"
+          code: "timeout" | "git_failure" | "incomplete" | "unknown"
+        }
+      | {
+          status: "error"
+          code: "timeout" | "git_failure" | "incomplete" | "unknown"
+        }
+    diffIssues?: Array<{
+      workspace?: SnapshotWorkspace
+      file?: string
+      code:
+        | "baseline_unavailable"
+        | "capture_failed"
+        | "interrupted"
+        | "legacy_range"
+        | "comparison_failed"
+        | "size_limit"
+        | "read_failed"
+    }>
   }
   title: string
   version: string
@@ -8639,9 +8667,25 @@ export type UserMessage = {
           status: "ready"
         }
       | {
-          status: "error"
-          code: "timeout" | "git_failure" | "unknown" | "incomplete"
+          status: "partial"
+          code: "timeout" | "git_failure" | "incomplete" | "unknown"
         }
+      | {
+          status: "error"
+          code: "timeout" | "git_failure" | "incomplete" | "unknown"
+        }
+    diffIssues?: Array<{
+      workspace?: SnapshotWorkspace
+      file?: string
+      code:
+        | "baseline_unavailable"
+        | "capture_failed"
+        | "interrupted"
+        | "legacy_range"
+        | "comparison_failed"
+        | "size_limit"
+        | "read_failed"
+    }>
   }
   agent: string
   model: {
@@ -8954,6 +8998,24 @@ export type PatchPart = {
   messageID: string
   type: "patch"
   hash: string
+  checkpoint?: {
+    version: 1
+    rootID: string
+    segmentID: string
+    started: number
+    ended?: number
+    status: "pending" | "complete" | "incomplete"
+    afterHash?: string
+    omissions?: Array<{
+      file: string
+      reason: "size_limit" | "read_failed"
+    }>
+    baselineOmissions?: Array<{
+      file: string
+      reason: "size_limit" | "read_failed"
+    }>
+    error?: "baseline_unavailable" | "capture_failed" | "interrupted" | "legacy_range"
+  }
   operation?:
     | {
         status: "pending"
@@ -9094,6 +9156,24 @@ export type SessionRollbackSummary = {
   files: Array<string>
   patchPartIDs: Array<string>
   canUnrollback: boolean
+}
+
+export type SessionFileRestorePreview = {
+  id: string
+  expiresAt: number
+  files: Array<{
+    file: string
+    workspace: SnapshotWorkspace
+    version: {
+      entry: string | null
+      content?: string
+    }
+    before: string
+    after: string
+    action: "create" | "replace" | "delete"
+    truncated: boolean
+    binary: boolean
+  }>
 }
 
 export type SessionFileRestoreResult = {
@@ -18856,12 +18936,113 @@ export type SessionUnrollbackResponses = {
 
 export type SessionUnrollbackResponse = SessionUnrollbackResponses[keyof SessionUnrollbackResponses]
 
-export type SessionFilesRestoreData = {
+export type SessionFilesPreviewData = {
   body?: {
     rollbackID?: string
     messageID?: string
     partID?: string
     files?: Array<string>
+    selectedFiles?: Array<{
+      workspaceID: string
+      generation: number
+      file: string
+    }>
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/files/preview"
+}
+
+export type SessionFilesPreviewErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionFilesPreviewError = SessionFilesPreviewErrors[keyof SessionFilesPreviewErrors]
+
+export type SessionFilesPreviewResponses = {
+  /**
+   * Restore preview and version identity
+   */
+  200: SessionFileRestorePreview
+}
+
+export type SessionFilesPreviewResponse = SessionFilesPreviewResponses[keyof SessionFilesPreviewResponses]
+
+export type SessionFilesDiffData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query: {
+    directory?: string
+    scopeID?: string
+    messageID?: string
+    workspaceID: string
+    generation: number
+    file: string
+  }
+  url: "/session/{sessionID}/files/diff"
+}
+
+export type SessionFilesDiffErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionFilesDiffError = SessionFilesDiffErrors[keyof SessionFilesDiffErrors]
+
+export type SessionFilesDiffResponses = {
+  /**
+   * Historical file diff
+   */
+  200: FileDiff
+}
+
+export type SessionFilesDiffResponse = SessionFilesDiffResponses[keyof SessionFilesDiffResponses]
+
+export type SessionFilesRestoreData = {
+  body?: {
+    previewID: string
   }
   path: {
     sessionID: string

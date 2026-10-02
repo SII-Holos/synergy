@@ -8,7 +8,7 @@ import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
-import { For, Match, Show, Switch, type JSX } from "solid-js"
+import { createResource, onCleanup, For, Match, Show, Switch, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
 import { type FileDiff } from "@ericsanchezok/synergy-sdk"
 import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
@@ -31,6 +31,9 @@ export interface SessionReviewProps {
   class?: string
   classList?: Record<string, boolean | undefined>
   classes?: { root?: string; header?: string; container?: string }
+  title?: string
+  onRestoreFile?: (diff: FileDiff) => void
+  loadDiff?: (diff: FileDiff, signal: AbortSignal) => Promise<FileDiff>
   actions?: JSX.Element
   notice?: JSX.Element
   diffs: (FileDiff & { preloaded?: PreloadMultiFileDiffResult<any> })[]
@@ -77,7 +80,7 @@ export const SessionReview = (props: SessionReviewProps) => {
           [props.classes?.header ?? ""]: !!props.classes?.header,
         }}
       >
-        <div data-slot="session-review-title">{_(SESSION_REVIEW_DESC.title)}</div>
+        <div data-slot="session-review-title">{props.title ?? _(SESSION_REVIEW_DESC.title)}</div>
         <div data-slot="session-review-actions">
           <Show when={props.onDiffStyleChange}>
             <RadioGroup
@@ -159,11 +162,14 @@ export const SessionReview = (props: SessionReviewProps) => {
                   </Accordion.Trigger>
                 </StickyAccordionHeader>
                 <Accordion.Content data-slot="session-review-accordion-content">
-                  <DiffPatchGate
-                    patch={diff.patch}
-                    diffStyle={diffStyle()}
-                    fallback={<DiffPreview diff={diff} variant="review" />}
-                  />
+                  <Show when={open().includes(reviewFileKey(diff))}>
+                    <ReviewFileBody diff={diff} diffStyle={diffStyle()} loadDiff={props.loadDiff} />
+                    <Show when={props.onRestoreFile && diff.workspace}>
+                      <Button variant="ghost" onClick={() => props.onRestoreFile?.(diff)}>
+                        {_({ id: "ui.sessionReview.undoFile", message: "Undo this file" })}
+                      </Button>
+                    </Show>
+                  </Show>
                 </Accordion.Content>
               </Accordion.Item>
             )}
@@ -171,5 +177,38 @@ export const SessionReview = (props: SessionReviewProps) => {
         </Accordion>
       </div>
     </div>
+  )
+}
+
+function ReviewFileBody(props: {
+  diff: FileDiff
+  diffStyle: SessionReviewDiffStyle
+  loadDiff?: SessionReviewProps["loadDiff"]
+}) {
+  const { _ } = useLingui()
+  const controller = new AbortController()
+  onCleanup(() => controller.abort())
+  const [full, { refetch }] = createResource(
+    () => props.diff.truncated && !!props.loadDiff,
+    () => props.loadDiff!(props.diff, controller.signal),
+    { initialValue: undefined },
+  )
+  const diff = () => (full.error ? props.diff : (full.latest ?? props.diff))
+  return (
+    <>
+      <Show when={full.loading}>
+        <p role="status">{_({ id: "ui.sessionReview.loadingFile", message: "Loading historical file content…" })}</p>
+      </Show>
+      <Show when={full.error}>
+        <Button variant="ghost" onClick={() => void refetch()}>
+          {_({ id: "ui.sessionReview.retryFile", message: "Retry loading historical content" })}
+        </Button>
+      </Show>
+      <DiffPatchGate
+        patch={diff().patch}
+        diffStyle={props.diffStyle}
+        fallback={<DiffPreview diff={diff()} variant="review" />}
+      />
+    </>
   )
 }

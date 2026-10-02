@@ -264,6 +264,7 @@ export function shouldShowTurnDiffs(
   if (!diffState) return (summary?.diffs.length ?? 0) > 0 ? "ready" : "hidden"
   if (diffState.status === "pending") return "pending"
   if (diffState.status === "error") return "error"
+  if (diffState.status === "partial") return "partial"
   return summary.diffs.length > 0 ? "ready" : "hidden"
 }
 
@@ -1045,6 +1046,7 @@ export function SessionTurn(
     onRewind?: () => void
     rollbackActive?: boolean
     onReviewChanges?: (input: { messageID: string; file?: string }) => void
+    onRestoreChanges?: (messageID: string) => void
     onForkMessage?: (messageID: string) => void
     activityDisplay?: ActivityDisplayMode
     compactReasoning?: boolean
@@ -1241,7 +1243,7 @@ export function SessionTurn(
   const diffSettlementStatus = createMemo(() => message()?.summary?.diffState?.status)
   const incompleteFileRecording = createMemo(() => {
     const state = message()?.summary?.diffState
-    return state?.status === "error" && state.code === "incomplete"
+    return state?.status === "partial" || (state?.status === "error" && state.code === "incomplete")
   })
 
   createEffect(
@@ -1262,7 +1264,7 @@ export function SessionTurn(
       hasCompactionEvent: hasCompactionEvent(),
       isCompactedParent: !!msg && compactionParentIDs().has(msg.id),
     })
-    return resolveTurnDiffPanelState(projected, pendingDelayElapsed())
+    return resolveTurnDiffPanelState(projected, pendingDelayElapsed(), (msg?.summary?.diffs.length ?? 0) > 0)
   })
   const visibleDiffPanelState = createMemo<Exclude<TurnDiffPanelState, "hidden"> | undefined>(() => {
     const state = diffPanelState()
@@ -1758,7 +1760,11 @@ export function SessionTurn(
                             </div>
                           </div>
                         </Show>
-                        <Show when={!working() ? visibleDiffPanelState() : undefined}>
+                        <Show
+                          when={
+                            !working() || (msg().summary?.diffs.length ?? 0) > 0 ? visibleDiffPanelState() : undefined
+                          }
+                        >
                           {(state) => (
                             <div
                               data-slot="session-turn-timeline-item"
@@ -1770,6 +1776,9 @@ export function SessionTurn(
                                 state={state()}
                                 incomplete={incompleteFileRecording()}
                                 animateReady={animateReadyDiffPanel()}
+                                onUndoRequested={
+                                  props.onRestoreChanges ? () => props.onRestoreChanges?.(msg().id) : undefined
+                                }
                                 onReviewRequested={() => props.onReviewChanges?.({ messageID: msg().id })}
                                 onFileSelected={(file) => props.onReviewChanges?.({ messageID: msg().id, file })}
                               />

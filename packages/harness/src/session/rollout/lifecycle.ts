@@ -43,13 +43,30 @@ export namespace RolloutLifecycle {
       hash.update(Experiment.fingerprint(message))
       messages++
     }
-    return RolloutLedger.beginSegment({
+    const segment = await RolloutLedger.beginSegment({
       owner: owner(session),
       runID: root.id,
       input: JSON.parse(JSON.stringify({ message: root, parts })),
       parent: await parent(session),
       initialHistory: { messages, sha256: hash.digest("hex") },
     })
+    const { SessionFileChanges } = await import("../file-changes")
+    await SessionFileChanges.begin({ sessionID: session.id, rootID: root.id, segmentID: segment.id })
+    return segment
+  }
+
+  export async function finishSegment(
+    segment: RolloutSchema.ExecutionSegment,
+    status: Parameters<typeof RolloutLedger.finishSegment>[1],
+  ) {
+    if (segment.owner.kind === "session") {
+      const { SessionFileChanges } = await import("../file-changes")
+      await SessionFileChanges.finish(
+        { sessionID: segment.owner.sessionID, rootID: segment.runID, segmentID: segment.id },
+        { deferSummary: true },
+      )
+    }
+    return RolloutLedger.finishSegment(segment, status)
   }
 
   export async function configuration(

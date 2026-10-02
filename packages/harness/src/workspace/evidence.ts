@@ -18,11 +18,20 @@ export namespace WorkspaceEvidence {
   export const Reference = Owner.extend({ partID: z.string() })
   export type Reference = z.infer<typeof Reference>
   const context = RuntimeContext.createAsyncContext<
-    { runtime: RuntimeContext.Instance; owner: z.infer<typeof Owner> } | undefined
+    | {
+        runtime: RuntimeContext.Instance
+        owner: z.infer<typeof Owner>
+        onUse?: (workspace: WorkspaceCatalog.Info) => Promise<void>
+      }
+    | undefined
   >()
 
-  export function provide<T>(owner: z.infer<typeof Owner> | undefined, action: () => Promise<T>) {
-    return context.run(owner ? { runtime: RuntimeContext.current(), owner } : undefined, action)
+  export function provide<T>(
+    owner: z.infer<typeof Owner> | undefined,
+    action: () => Promise<T>,
+    onUse?: (workspace: WorkspaceCatalog.Info) => Promise<void>,
+  ) {
+    return context.run(owner ? { runtime: RuntimeContext.current(), owner, onUse } : undefined, action)
   }
 
   export async function begin(workspace: WorkspaceCatalog.Info): Promise<Reference | undefined> {
@@ -35,6 +44,7 @@ export namespace WorkspaceEvidence {
     )
       return
     if (current.owner.scopeID !== workspace.scopeID) throw new Error("Workspace evidence belongs to another Scope")
+    await current.onUse?.(workspace)
     const reference = { ...current.owner, partID: Identifier.ascending("part") }
     const { Session } = await import("../session")
     await Session.updatePart({

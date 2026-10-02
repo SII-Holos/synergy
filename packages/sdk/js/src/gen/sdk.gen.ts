@@ -676,6 +676,10 @@ import type {
   SessionExportEstimateErrors,
   SessionExportEstimateResponses,
   SessionExportMode,
+  SessionFilesDiffErrors,
+  SessionFilesDiffResponses,
+  SessionFilesPreviewErrors,
+  SessionFilesPreviewResponses,
   SessionFilesRestoreErrors,
   SessionFilesRestoreResponses,
   SessionForkErrors,
@@ -1732,11 +1736,11 @@ export class Agenda extends HeyApiClient {
 
 export class Files extends HeyApiClient {
   /**
-   * Restore session files
+   * Preview file restoration
    *
-   * Explicitly restore files from session patch data. Message rollback never calls this automatically.
+   * Compare current files with the selected historical baseline before confirmation.
    */
-  public restore<ThrowOnError extends boolean = false>(
+  public preview<ThrowOnError extends boolean = false>(
     parameters: {
       sessionID: string
       directory?: string
@@ -1745,6 +1749,11 @@ export class Files extends HeyApiClient {
       messageID?: string
       partID?: string
       files?: Array<string>
+      selectedFiles?: Array<{
+        workspaceID: string
+        generation: number
+        file: string
+      }>
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1760,6 +1769,88 @@ export class Files extends HeyApiClient {
             { in: "body", key: "messageID" },
             { in: "body", key: "partID" },
             { in: "body", key: "files" },
+            { in: "body", key: "selectedFiles" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionFilesPreviewResponses, SessionFilesPreviewErrors, ThrowOnError>(
+      {
+        url: "/session/{sessionID}/files/preview",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+
+  /**
+   * Read a historical file diff
+   *
+   * Read captured file versions for a turn or session without reading the current workspace.
+   */
+  public diff<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      messageID?: string
+      workspaceID: string
+      generation: number
+      file: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "messageID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "generation" },
+            { in: "query", key: "file" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionFilesDiffResponses, SessionFilesDiffErrors, ThrowOnError>({
+      url: "/session/{sessionID}/files/diff",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Restore session files
+   *
+   * Confirm a version-checked restore preview. Repeated confirmation returns the stored result without writing again. Message rollback never calls this automatically.
+   */
+  public restore<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      previewID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "previewID" },
           ],
         },
       ],

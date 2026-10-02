@@ -15,6 +15,30 @@ import { FileEntry } from "../../src/file/entry"
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
 
+test("restore preview captures current bytes and rejects edits made after confirmation", () =>
+  runtime.run(async () => {
+    await using directory = await tmpdir()
+    await ScopeContext.provide({
+      scope: await directory.scope(),
+      fn: async () => {
+        const file = path.join(directory.path, "note.txt")
+        await Bun.write(file, "initial\n")
+        const hash = (await Snapshot.track("preview-restore"))!
+        const patches = [{ hash, workspace: Snapshot.workspace(), files: [file] }]
+        await Bun.write(file, "changed\n")
+        const preview = await Snapshot.previewRestore(patches, "preview-restore")
+        expect(preview[0]).toMatchObject({ file, before: "changed\n", after: "initial\n" })
+        await Bun.write(file, "newer\n")
+        await expect(Snapshot.revert(patches, "preview-restore", undefined, preview)).rejects.toThrow()
+        expect(await Bun.file(file).text()).toBe("newer\n")
+        const refreshed = await Snapshot.previewRestore(patches, "preview-restore")
+        const result = await Snapshot.revert(patches, "preview-restore", undefined, refreshed)
+        expect(result.restoredFiles).toEqual([file])
+        expect(await Bun.file(file).text()).toBe("initial\n")
+      },
+    })
+  }))
+
 test("native history restoration replaces a symlink entry without following its external target", () =>
   runtime.run(async () => {
     await using directory = await tmpdir()
@@ -439,11 +463,15 @@ test("file restore owns and drains the session loop through cancellation", () =>
           await release.promise
           return replace(input)
         })
-        const restore = SessionHistory.restoreFilesWithSignal({ sessionID: session.id, partID })
+        const preview = await SessionHistory.previewFiles({ sessionID: session.id, partID })
+        const another = await SessionHistory.previewFiles({ sessionID: session.id, partID })
+        const restore = SessionHistory.restoreFilesWithSignal({ sessionID: session.id, previewID: preview.id })
         try {
           await entered.promise
           expect(SessionManager.isRunning(session.id)).toBe(true)
-          await expect(SessionHistory.restoreFilesWithSignal({ sessionID: session.id, partID })).rejects.toThrow()
+          await expect(
+            SessionHistory.restoreFilesWithSignal({ sessionID: session.id, previewID: another.id }),
+          ).rejects.toThrow()
           await expect(Session.updateWorkspace(session.id, null, { requireIdle: true })).rejects.toThrow()
           expect(SessionManager.signalAbort(session.id)).toBe("signaled")
           expect(SessionManager.isRunning(session.id)).toBe(true)
@@ -458,6 +486,49 @@ test("file restore owns and drains the session loop through cancellation", () =>
           await restore.catch(() => {})
           await Session.remove(session.id)
         }
+      },
+    })
+  }))
+
+test("session file restore previews a root range and replays its receipt without writing twice", () =>
+  runtime.run(async () => {
+    await using directory = await tmpdir()
+    await ScopeContext.provide({
+      scope: await directory.scope(),
+      fn: async () => {
+        const { SessionFileChanges } = await import("../../../harness/src/session/file-changes")
+        const session = await Session.create({})
+        const root = await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          sessionID: session.id,
+          role: "user",
+          isRoot: true,
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test" },
+          time: { created: Date.now() },
+        })
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          sessionID: session.id,
+          messageID: root.id,
+          type: "text",
+          text: "Change files",
+        })
+        const file = path.join(directory.path, "note.txt")
+        await Bun.write(file, "baseline\n")
+        const segment = { sessionID: session.id, rootID: root.id, segmentID: crypto.randomUUID() }
+        await SessionFileChanges.begin(segment)
+        await Bun.write(file, "changed\n")
+        await SessionFileChanges.finish(segment)
+        const preview = await SessionHistory.previewFiles({ sessionID: session.id, messageID: root.id })
+        expect(preview.files[0]).toMatchObject({ before: "changed\n", after: "baseline\n" })
+        const result = await Session.restoreFiles({ sessionID: session.id, previewID: preview.id })
+        expect(result.restoredFiles).toEqual([file])
+        await Bun.write(file, "written after restore\n")
+        expect(await Session.restoreFiles({ sessionID: session.id, previewID: preview.id })).toEqual(result)
+        expect(await Bun.file(file).text()).toBe("written after restore\n")
+        const diffs = await Session.diff(session.id)
+        expect(diffs[0]).toMatchObject({ additions: 1, deletions: 1 })
       },
     })
   }))

@@ -1,3 +1,5 @@
+import { Button } from "@ericsanchezok/synergy-ui/button"
+import { useFileRestore } from "@/components/session/file-restore-dialog-loader"
 import { parseToolReviewSource, toolReviewDiffs } from "@/context/tool-review-target"
 import { useSDK } from "@/context/sdk"
 import { ErrorCard } from "@ericsanchezok/synergy-ui/error-card"
@@ -10,7 +12,7 @@ import { useSessionDataView } from "@/context/session-data-view"
 import { useSync } from "@/context/sync"
 import type { FileDiff, UserMessage } from "@ericsanchezok/synergy-sdk/client"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
-import { sessionReview as R } from "@/locales/messages"
+import { panels, sessionReview as R } from "@/locales/messages"
 import { useFile } from "@/context/file"
 
 export function SessionReviewWorkbenchContent(props: WorkbenchPanelContentProps) {
@@ -21,6 +23,7 @@ export function SessionReviewWorkbenchContent(props: WorkbenchPanelContentProps)
   const file = useFile()
   const lingui = useLingui()
   const sdk = useSDK()
+  const restoreFiles = useFileRestore(() => params.id)
   const toolTarget = createMemo(() => parseToolReviewSource(props.tab.source))
   let controller: AbortController | undefined
   const [toolDiffs, { mutate }] = createResource(toolTarget, async (target) => {
@@ -147,7 +150,56 @@ export function SessionReviewWorkbenchContent(props: WorkbenchPanelContentProps)
           <SessionReviewTab
             workspace={() => file.workspace}
             diffs={diffsArr}
-            diffState={() => turnSummary()?.diffState}
+            title={
+              toolTarget()
+                ? lingui._(panels.review)
+                : props.tab.source
+                  ? lingui._({ id: "session.review.turnTitle", message: "Turn changes" })
+                  : lingui._({ id: "session.review.sessionTitle", message: "Session changes" })
+            }
+            diffState={() =>
+              props.tab.source ? turnSummary()?.diffState : sync.session.get(params.id!)?.summary?.diffState
+            }
+            diffIssues={() =>
+              props.tab.source ? turnSummary()?.diffIssues : sync.session.get(params.id!)?.summary?.diffIssues
+            }
+            actions={
+              <Show when={!toolTarget() && diffsArr().length}>
+                <Button variant="ghost" onClick={() => void restoreFiles({ messageID: props.tab.source })}>
+                  {lingui._({ id: "session.review.undo", message: "Undo changes" })}
+                </Button>
+              </Show>
+            }
+            onRestoreFile={
+              toolTarget()
+                ? undefined
+                : (diff) =>
+                    diff.workspace &&
+                    void restoreFiles({
+                      messageID: props.tab.source,
+                      selectedFiles: [
+                        { workspaceID: diff.workspace.id, generation: diff.workspace.generation, file: diff.file },
+                      ],
+                    })
+            }
+            loadDiff={
+              toolTarget()
+                ? undefined
+                : async (diff, signal) => {
+                    if (!diff.workspace) return diff
+                    const result = await sdk.client.session.files.diff(
+                      {
+                        sessionID: params.id!,
+                        messageID: props.tab.source,
+                        workspaceID: diff.workspace.id,
+                        generation: diff.workspace.generation,
+                        file: diff.file,
+                      },
+                      { signal, throwOnError: true },
+                    )
+                    return result.data!
+                  }
+            }
             view={view}
             diffStyle={layout.review.diffStyle()}
             onDiffStyleChange={layout.review.setDiffStyle}

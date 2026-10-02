@@ -566,7 +566,13 @@ describe("SessionSummary", () => {
           const ranges = diffSummary.mock.calls.map((call) => (call as unknown[]).slice(0, 3))
           expect(ranges).toContainEqual(["from_2", "to_2", session.id])
           expect(ranges).toContainEqual(["from_1", "to_2", session.id])
-          expect((await Session.get(session.id)).summary).toEqual({ additions: 1, deletions: 0, files: 1 })
+          expect((await Session.get(session.id)).summary).toEqual({
+            additions: 1,
+            deletions: 0,
+            files: 1,
+            diffState: { status: "ready" },
+            diffIssues: [],
+          })
 
           const cursorPath = StoragePath.sessionSummaryCursor(
             Identifier.asScopeID(scope.id),

@@ -818,9 +818,18 @@ export namespace Session {
             part.type === "attachment" && part.artifact
               ? await RolloutArtifact.copy(from, to, part.artifact)
               : undefined
+          const evidence = SnapshotEvidence.interrupt(part)
           return preparePart(
             {
-              ...SnapshotEvidence.interrupt(part),
+              ...evidence,
+              ...(evidence.type === "patch" && evidence.checkpoint
+                ? {
+                    checkpoint: {
+                      ...evidence.checkpoint,
+                      rootID: messageMap.get(evidence.checkpoint.rootID) ?? evidence.checkpoint.rootID,
+                    },
+                  }
+                : {}),
               ...(artifact ? { artifact } : {}),
               ...(state ? { state } : {}),
               id,

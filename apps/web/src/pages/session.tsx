@@ -1,3 +1,4 @@
+import { useFileRestore } from "@/components/session/file-restore-dialog-loader"
 import { catalogFileWorkspace } from "@/context/file/workspace"
 import { projectEntryCopy } from "@/components/dialog/project-entry-copy"
 import { projectTaskIntent } from "@/components/session/project-task-intent"
@@ -43,6 +44,7 @@ import {
   type JSX,
 } from "solid-js"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -82,7 +84,6 @@ import { navMark, navParams } from "@/utils/perf"
 import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 
-import { fileRestoreFeedback } from "@/components/session/file-restore-feedback"
 import { requestErrorMessage } from "@/utils/error"
 import { useSessionCommands } from "@/components/session/commands"
 import { useSessionMeta } from "@/composables/use-session-meta"
@@ -200,6 +201,7 @@ function SessionPageContent() {
   const confirm = useConfirm()
   const command = useCommand()
   const params = useParams()
+  const restoreFiles = useFileRestore(() => params.id)
   const navigate = useNavigate()
   const location = useLocation()
   const sdk = useSDK()
@@ -266,6 +268,7 @@ function SessionPageContent() {
     promptHeight: 0,
     mobileReviewOpen: false,
     mobileReviewSelectedFile: undefined as string | undefined,
+    mobileReviewMessageID: undefined as string | undefined,
     delayedMessageLoad: undefined as { sessionID: string; generation: number } | undefined,
   })
 
@@ -496,7 +499,7 @@ function SessionPageContent() {
         allMessages={messages().filter((m) => m.role === "user" || m.role === "assistant")}
         partsByMessage={dataView().partTable()}
         canRetry={retryInput !== undefined}
-        onConfirm={async (action, cutMessageID, restoreFiles) => {
+        onConfirm={async (action, cutMessageID) => {
           if (!sessionID || !cutMessageID) return
           const previousActiveMessage = previousMessage(userMessages(), cutMessageID)
           // Abort if running, then allow the runtime to release its loop lease before rollback asserts idle.
@@ -515,28 +518,13 @@ function SessionPageContent() {
               return requestErrorMessage(error)
             }
           }
-          let restoreFailed = false
-          if (restoreFiles && result.data?.id) {
-            try {
-              const restored = await sdk.client.session.files.restore(
-                { sessionID, rollbackID: result.data.id },
-                { throwOnError: true },
-              )
-              const feedback = fileRestoreFeedback(restored.data, i18n)
-              restoreFailed = feedback.type === "error"
-              showToast(feedback)
-            } catch (error) {
-              restoreFailed = true
-              showToast({ type: "error", description: requestErrorMessage(error, i18n._(S.transitionRecoveryFailed)) })
-            }
-          }
           if (cutParts.length > 0) {
             const restored = extractPromptDraft({ message: targetMsg, parts: cutParts, directory: sdk.directory })
             prompt.set(restored.prompt, inlineLength(restored.prompt))
             prompt.context.set(restored.context)
           }
           setActiveMessage(previousActiveMessage)
-          if (restoreFailed || action !== "retry" || !retryInput) return
+          if (action !== "retry" || !retryInput) return
           try {
             await sdk.client.session.input(retryInput, { throwOnError: true })
             prompt.resetDraft()
@@ -1930,6 +1918,7 @@ function SessionPageContent() {
           setStore({
             mobileReviewOpen: true,
             mobileReviewSelectedFile: input.file,
+            mobileReviewMessageID: input.messageID,
           })
         }
       }
@@ -2176,49 +2165,97 @@ function SessionPageContent() {
           <WorkbenchSurface surface="bottom" />
         </Show>
         <Show when={!isDesktop() && store.mobileReviewOpen}>
-          <div
-            class="md:hidden absolute inset-x-0 bottom-0 z-40 flex flex-col bg-background-stronger border-t border-border-weak-base rounded-t-xl shadow-lg"
-            style={{ height: "50vh" }}
-          >
-            <div class="flex items-center justify-between px-4 h-11 shrink-0">
-              <span class="text-13-medium text-text-strong">
-                {i18n._(AP.sessionFilesChanged.id, { count: reviewCount() })}
-              </span>
-              <button
-                type="button"
-                class="flex items-center justify-center size-7 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
-                aria-label={i18n._(AP.sessionCloseReview.id)}
-                onClick={() => setStore("mobileReviewOpen", false)}
-              >
-                <Icon name={getSemanticIcon("action.close")} size="small" />
-              </button>
+          <MobileWorkspaceDialog onClose={() => setStore("mobileReviewOpen", false)}>
+            <div class="flex h-full min-h-0 flex-col">
+              <div class="flex-1 min-h-0 overflow-auto">
+                <Show
+                  // Explicit exemption: undefined session_diff shows the
+                  // "loading changes" fallback; the view layer's shared empty
+                  // array (truthy) would flip that loading semantics.
+                  when={
+                    params.id &&
+                    (store.mobileReviewMessageID
+                      ? (
+                          dataView()
+                            .messagesFor(params.id)
+                            .find((message) => message.id === store.mobileReviewMessageID) as UserMessage | undefined
+                        )?.summary?.diffs
+                      : sync.data.session_diff[params.id])
+                  }
+                  fallback={
+                    <div class="px-4 py-4 text-13-regular text-text-weak">{i18n._(AP.sessionLoadingChanges.id)}</div>
+                  }
+                >
+                  {(rawDiffs) => {
+                    const diffsArr = () => (Array.isArray(rawDiffs()) ? (rawDiffs() as FileDiff[]) : ([] as FileDiff[]))
+                    return (
+                      <SessionReviewTab
+                        workspace={() => file.workspace}
+                        diffs={diffsArr}
+                        title={
+                          store.mobileReviewMessageID
+                            ? i18n._({ id: "session.review.turnTitle", message: "Turn changes" })
+                            : i18n._({ id: "session.review.sessionTitle", message: "Session changes" })
+                        }
+                        diffState={() =>
+                          store.mobileReviewMessageID
+                            ? (
+                                dataView()
+                                  .messagesFor(params.id!)
+                                  .find((message) => message.id === store.mobileReviewMessageID) as
+                                  | UserMessage
+                                  | undefined
+                              )?.summary?.diffState
+                            : info()?.summary?.diffState
+                        }
+                        actions={
+                          <Button
+                            variant="ghost"
+                            onClick={() => void restoreFiles({ messageID: store.mobileReviewMessageID })}
+                          >
+                            {i18n._({ id: "session.review.undo", message: "Undo changes" })}
+                          </Button>
+                        }
+                        onRestoreFile={(diff) =>
+                          diff.workspace &&
+                          void restoreFiles({
+                            messageID: store.mobileReviewMessageID,
+                            selectedFiles: [
+                              {
+                                workspaceID: diff.workspace!.id,
+                                generation: diff.workspace!.generation,
+                                file: diff.file,
+                              },
+                            ],
+                          })
+                        }
+                        loadDiff={async (diff, signal) =>
+                          diff.workspace
+                            ? (
+                                await sdk.client.session.files.diff(
+                                  {
+                                    sessionID: params.id!,
+                                    messageID: store.mobileReviewMessageID,
+                                    workspaceID: diff.workspace.id,
+                                    generation: diff.workspace.generation,
+                                    file: diff.file,
+                                  },
+                                  { signal, throwOnError: true },
+                                )
+                              ).data!
+                            : diff
+                        }
+                        view={view}
+                        diffStyle="unified"
+                        selectedFile={() => store.mobileReviewSelectedFile}
+                        onViewFile={(path) => void file.openWorkspaceFile(path)}
+                      />
+                    )
+                  }}
+                </Show>
+              </div>
             </div>
-            <div class="flex-1 min-h-0 overflow-auto">
-              <Show
-                // Explicit exemption: undefined session_diff shows the
-                // "loading changes" fallback; the view layer's shared empty
-                // array (truthy) would flip that loading semantics.
-                when={params.id && sync.data.session_diff[params.id]}
-                fallback={
-                  <div class="px-4 py-4 text-13-regular text-text-weak">{i18n._(AP.sessionLoadingChanges.id)}</div>
-                }
-              >
-                {(rawDiffs) => {
-                  const diffsArr = Array.isArray(rawDiffs()) ? (rawDiffs() as FileDiff[]) : ([] as FileDiff[])
-                  return (
-                    <SessionReviewTab
-                      workspace={() => file.workspace}
-                      diffs={() => diffsArr}
-                      view={view}
-                      diffStyle="unified"
-                      selectedFile={() => store.mobileReviewSelectedFile}
-                      onViewFile={(path) => void file.openWorkspaceFile(path)}
-                    />
-                  )
-                }}
-              </Show>
-            </div>
-          </div>
+          </MobileWorkspaceDialog>
         </Show>
       </>
     ),

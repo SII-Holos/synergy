@@ -9,7 +9,34 @@ import path from "node:path"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
+import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
+import { LoopJob } from "@ericsanchezok/synergy-harness/session/loop-job"
 const runtime = await testRuntime()
+
+test("user shell freezes its file checkpoint on exit", () =>
+  runtime.run(async () => {
+    await using directory = await tmpdir()
+    await ScopeContext.provide({
+      scope: await directory.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await shell({
+          sessionID: session.id,
+          agent: "build",
+          model: { providerID: "test", modelID: "test" },
+          command: "echo shell-change > changed.txt",
+        })
+        await LoopJob.settleDetached(session.id)
+        const history = await SessionHistory.rawMessages({ sessionID: session.id })
+        const checkpoints = history
+          .flatMap((message) => message.parts)
+          .filter((part) => part.type === "patch" && part.checkpoint)
+        expect(checkpoints).toHaveLength(1)
+        expect(checkpoints[0]?.type === "patch" && checkpoints[0].checkpoint?.status).toBe("complete")
+        expect((await Session.diff(session.id)).map((file) => file.file)).toContain("changed.txt")
+      },
+    })
+  }))
 
 describe("session shell", () => {
   test.skipIf(process.platform === "win32")(

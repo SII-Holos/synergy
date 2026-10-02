@@ -324,58 +324,34 @@ The Side Workspace Context panel reads this field from normal message synchroniz
 
 ## Turn Diffs
 
-Each user message may carry computed file-change diffs from the turn's patch parts. New patches capture an immutable before/after tree for each actual write operation, after physical admission and before its release. Model-step start and finish parts carry accounting without filesystem attribution. Native processes retain exclusion until both their tree and evidence finalization finish, including after the tool returns or its Task ends. Explicit shared Workspaces keep their original binding in each record. Legacy step snapshots remain readable as historical evidence. Diffs are stored in `summary.diffs` on the `UserMessage` schema and surfaced to the frontend through the existing `message.updated` reconcile flow — no separate event, store, or route.
+Session file history describes workspace net changes during execution, including user and external-process writes. It does not infer an author from a tool result. `SessionFileChanges` captures one baseline before execution and one endpoint when an execution segment finishes, fails or stops. A workspace first used later in the segment receives its baseline before that use. Each system `patch` part carries `checkpoint.version = 1`, root and segment identities, capture timestamps, source Workspace identity/generation, immutable tree references and capture omissions. Checkpoints do not enter model input.
 
-### Diff state machine
+Continuation retains the root's first baseline and appends a new execution segment. A new root receives a new baseline. `SnapshotRanges.net` compares the earliest baseline with the latest available endpoint for each Workspace binding. The session comparison spans each binding's first baseline and latest endpoint; it does not sum operation statistics. Restoring a file to its baseline removes its net difference. Independent workspaces with equal relative filenames remain separate.
 
-`summary.diffState` records the lifecycle of diff computation for a turn:
+Background process ownership and save receipts remain with the Runtime. A segment endpoint freezes only the bytes observed during that capture, without waiting for background completion. Later process writes cannot revise that endpoint; another segment may capture them. Concrete tool evidence remains owned by its tool domain and is not inferred from the workspace comparison.
 
-| Status    | Meaning                                                                                                                   |
-| --------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `pending` | Diff is being computed; includes the server-owned expiry marker `deadlineAt` (epoch ms) for timeout and restart recovery. |
-| `ready`   | Diffs computed successfully.                                                                                              |
-| `error`   | Diff computation failed; carries a safe error `code` (`timeout`, `git_failure`, `incomplete`, or `unknown`).              |
+### Settlement and synchronization
 
-The non-blocking summary `LoopJob` derives turn diffs in this order:
+Both the user message and session summary carry `diffState` and optional `diffIssues`. The turn's `summary.diffs` is the UI projection; session totals and the existing session Diff query use the same net comparison.
 
-1. fresh-merge `diffState: { status: "pending", deadlineAt }` on the user message before `computeDiff()` so the frontend sees the pending state immediately;
-2. call `computeDiff()` using each recorded write operation from every assistant revision belonging to the root turn; exact operation pairs never span intervening writes by another owner;
-3. on success, write `{ diffs, diffState: { status: "ready" } }` atomically;
-4. on failure, write `{ diffState: { status: "error", code } }`; on a per-run timeout, apply `error/timeout` only if the diff is still `pending`, preserving an already-`ready` settlement while later enrichment or session aggregation finishes.
+| State     | Meaning                                                                                               |
+| --------- | ----------------------------------------------------------------------------------------------------- |
+| `pending` | Comparison is in progress. `deadlineAt` is a server recovery marker; existing results remain visible. |
+| `ready`   | The configured capture scope was recorded, including a verified empty net change.                     |
+| `partial` | Usable comparisons exist, with identified missing workspaces or files.                                |
+| `error`   | No usable comparison can establish the change set. This is not evidence of no changes.                |
 
-An interrupted or failed operation capture remains explicitly incomplete, retains available diffs and cannot authorize file restoration. Background completion queues a diff-only refresh without title/body model calls. It uses the same per-session ordering, yields live execution capacity while waiting, and refreshes mutable pending parts before applying a captured root-turn view. Native process completion is published after its evidence is finalized, so completion consumers do not observe an unfinished archive.
+Safe issue codes distinguish unavailable baselines, capture failures, interrupted execution, legacy ranges, comparison failures, file read failures and size limits. A preview's truncation does not make its retained source incomplete. Capture omissions exclude affected paths from full statistics, historical detail and restoration; available files remain visible. An unavailable workspace comparison preserves its previous displayed evidence. A failed initial capture cannot acquire a replacement baseline from later filesystem contents.
 
-Title generation may continue after either outcome. Body generation runs only when diff settlement succeeded with a non-empty diff set. Diff errors persist safe error codes only and do not block the session or later queued turns. A stale persisted `pending` state is projected to `error/timeout` at the backend read boundary after its deadline; the frontend renders the server settlement state and never compares `deadlineAt` with the client clock.
+Summary work runs FIFO per session and coalesces duplicate root/revision jobs. Completion schedules diff-only settlement through `LoopJob`, independently of title/body model generation. Pending checkpoint parts are refreshed before comparison. `message.updated` publishes turn settlement; `session.updated` and the established session Diff event publish session projections. Clients do not infer failure from their own clock or issue requests for every streamed token.
 
-### Ordering and caching
+### Historical reads and upgrades
 
-Summary computation is FIFO per session. Queue identity includes the terminal assistant revision, so later continuations of the same root turn are processed while duplicate triggers for one revision are coalesced. Each worker must settle after cancellation before the queue advances, preventing timed-out work from overwriting a later revision. Each `summarizeNow()` run owns a `diffCache` that lets its session-level and turn-level computations reuse the same in-flight snapshot-range promise when their bounds match.
+`GET /session/{sessionID}/files/diff` reads one retained file comparison for an optional root message and a qualified Workspace/generation/path. It never rereads the live file. Review requests full content only when a truncated file is expanded and releases the request/renderers on close.
 
-### Schema
+The central `20261003-session-turn-file-checkpoints` migration delegates to the Session owner. It preserves old operation parts, trees and displayed diffs, adds explicit legacy checkpoint records from available endpoints, and upgrades summary cursors to version 4. A legacy operation interval is marked incomplete as a turn baseline; missing endpoints are never fabricated. Recovery marks pending checkpoints interrupted without scanning current files. Fork remaps checkpoint root identity and retains both endpoints; import/export and permanent deletion use the existing snapshot ownership system.
 
-`diffState` is an optional additive field on `summary`:
-
-```ts
-diffState?: {
-  status: "pending"
-  deadlineAt: number
-} | {
-  status: "ready"
-} | {
-  status: "error"
-  code: "timeout" | "git_failure" | "incomplete" | "unknown"
-}
-```
-
-`summary.diffs` is always present when `summary` exists (default empty array).
-
-### Invariants
-
-- A ready settlement writes `diffState` and `summary.diffs` in the same `updateSummary` call; an error settlement writes only its safe state and preserves existing summary fields.
-- A message without `diffState` but with non-empty `diffs` is treated as legacy `ready` at the read boundary.
-- `deadlineAt` is a server recovery marker. Clients render the persisted settlement state and do not derive terminal state from their local clock.
-- `summary.diffs` is the sole turn-level diff data source. The session-level `session_diff` bucket is a separate aggregation of all turn diffs for the Review workbench panel.
-- No migration, route, event, storage export version, config, or new runtime module was required for the diff settlement flow; it uses only the existing summary infrastructure.
+See [workspace snapshot and restore ownership](workspace-and-files.md#snapshots-rollback-and-restore) and the [workspace net change decision](../decisions/implemented/architecture/2026-10-03-workspace-net-change-review.md).
 
 ## Persistent Inbox
 
@@ -445,9 +421,9 @@ History rollback is an event overlay on the raw transcript.
 - A rollback records the cut, dropped message IDs, affected root turns, and available patch parts.
 - Effective history applies rollback and unrollback events without deleting raw messages.
 - Redo is allowed only for the latest active rollback and only before new messages make it ambiguous.
-- Model context, summaries, session forks, and frontend history use effective history.
+- Model context, conversation summaries, session forks, and frontend history use effective history. Workspace net comparisons retain recorded checkpoints independently of conversation rollback.
 
-Rollback does not modify project files. File restoration is a separate explicit operation that applies stored snapshot patch data for selected files or parts.
+Rollback does not modify project files. File restoration has a separate preview and confirmation, described in [workspace restoration](workspace-and-files.md#snapshots-rollback-and-restore). It never resends a message or rewrites the original historical Diff.
 
 ## Archive and Deletion
 

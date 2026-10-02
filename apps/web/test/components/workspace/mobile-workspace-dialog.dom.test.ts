@@ -29,6 +29,7 @@ beforeAll(async () => {
     import { setupI18n } from "@lingui/core"
     import { I18nProvider } from "@lingui/solid"
     import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+    import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
     import { createSignal, Show } from "solid-js"
     import { MobileWorkspaceDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/mobile-workspace-dialog.tsx`)}
     import { messages as en } from ${JSON.stringify(`/@fs/${source}/locales/en/messages.po`)}
@@ -37,10 +38,13 @@ beforeAll(async () => {
     const i18n = setupI18n({ locale: "en", messages: { en } })
     window.closeCount = 0
     function Fixture() {
+      const dialog = useDialog()
       const [open, setOpen] = createSignal(false)
       window.unmount = () => setOpen(false)
+      window.mountWorkspace = () => setOpen(true)
       return <>
         <button onClick={() => setOpen(true)}>Open mobile workspace</button><button>Background action</button>
+        <button onClick={() => dialog.push(() => <Dialog title="Restore preview"><button>Confirm restoration</button></Dialog>)}>Preview restore</button>
         <Show when={open()}><MobileWorkspaceDialog onClose={() => { window.closeCount++; setOpen(false) }}>
           <button>Workspace action</button><input aria-label="Workspace input" />
         </MobileWorkspaceDialog></Show>
@@ -75,13 +79,33 @@ afterAll(async () => {
 interface MobileWindow extends Window {
   closeCount: number
   unmount(): void
+  mountWorkspace(): void
 }
+
+test("switching to mobile preserves the active confirmation before presenting the workspace", async () => {
+  await page.goto(baseUrl)
+  await page.getByRole("button", { name: "Preview restore" }).click()
+  await page.getByRole("button", { name: "Confirm restoration" }).waitFor()
+  await page.evaluate(() => (window as unknown as MobileWindow).mountWorkspace())
+  expect(await page.getByRole("dialog", { name: "Workspace", exact: true }).count()).toBe(0)
+  expect(await page.getByRole("button", { name: "Confirm restoration" }).isVisible()).toBe(true)
+  await page.keyboard.press("Tab")
+  expect(await page.evaluate(() => document.activeElement?.closest('[role="dialog"]')?.textContent)).toContain(
+    "Restore preview",
+  )
+  await page.keyboard.press("Escape")
+  await page.getByRole("dialog", { name: "Workspace", exact: true }).waitFor()
+  await page.keyboard.press("Escape")
+  await page.getByRole("dialog").waitFor({ state: "detached" })
+  expect(errors).toEqual([])
+})
 
 test("mobile workspace contains focus, fits the viewport and returns to its entry", async () => {
   errors.length = 0
   await page.goto(baseUrl)
   await page.getByRole("button", { name: "Open mobile workspace" }).click()
   await page.getByRole("dialog", { name: "Workspace", exact: true }).waitFor()
+  await page.waitForFunction(() => !!document.activeElement?.closest('[role="dialog"]'))
   for (let i = 0; i < 8; i++) {
     await page.keyboard.press(i < 4 ? "Tab" : "Shift+Tab")
     expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true)
