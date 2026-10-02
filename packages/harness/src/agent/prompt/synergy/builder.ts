@@ -6,7 +6,6 @@ import {
   INTERACTIVE_MEMORY_METHOD_COMMON,
   INTERACTIVE_MEMORY_PRIORITY_COMMON,
 } from "../interactive-memory"
-import { buildAgentTable } from "../agent-table"
 import type { AgentInfo } from "../types"
 
 export type { AgentInfo }
@@ -62,7 +61,6 @@ export function buildSynergyMemorySection(): string {
 /**
  * Build the complete synergy prompt
  */
-export function buildSynergyPrompt(agents: AgentInfo[]): string {
-  const agentTable = buildAgentTable(agents)
-  return PROMPT_BASE.replace("{AGENT_TABLE}", agentTable).replace("{MEMORY_INTERACTION}", buildSynergyMemorySection())
+export function buildSynergyPrompt(_agents: AgentInfo[]): string {
+  return PROMPT_BASE.replace("{MEMORY_INTERACTION}", buildSynergyMemorySection())
 }

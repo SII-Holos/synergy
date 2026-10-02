@@ -7,6 +7,28 @@ import TASK_DESCRIPTION from "../../src/cortex/tools/task.txt"
 const noPollingRule = "Do not repeatedly call `task_output` while a task is running."
 const notificationRule = "wait for the automatic completion notification"
 
+describe("primary process waiting guidance", () => {
+  for (const [name, prompt] of [
+    ["synergy", buildSynergyPrompt([])],
+    ["synergy-max", buildSynergyMaxPrompt([])],
+  ]) {
+    test(`${name} chooses waits from dependencies and available work`, () => {
+      expect(prompt).toMatch(/continue independent work while a command runs/i)
+      expect(prompt).toMatch(/wait when completion gates progress and no independent work remains/i)
+      expect(prompt).toMatch(/persistent services, check readiness rather than waiting for exit/i)
+    })
+
+    test(`${name} diagnoses from evidence without treating silence or a wait window as failure`, () => {
+      expect(prompt).toMatch(/Running does not prove progress/i)
+      expect(prompt).toMatch(/Diagnose an explicit input request or unexplained lack of progress/i)
+      expect(prompt).toMatch(/confirmed quiet work can keep running/i)
+      expect(prompt).toMatch(/known, authorized inputs for unattended work/i)
+      expect(prompt).toMatch(/Do not manufacture progress by repeatedly checking status or rerunning a command/i)
+      expect(prompt).toMatch(/do not treat a wait window ending as failure/i)
+    })
+  }
+})
+
 describe("background task polling guidance", () => {
   test("primary agent prompts prefer automatic completion notifications", () => {
     for (const prompt of [buildSynergyPrompt([]), buildSynergyMaxPrompt([])]) {
