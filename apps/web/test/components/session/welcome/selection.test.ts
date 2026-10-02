@@ -10,7 +10,7 @@ function storage() {
 }
 
 test("a welcome stays stable until explicit new, which excludes its predecessor", () => {
-  const selection = createWelcomeSelection({ ids: ["chain", "stack", "orbit"], random: () => 0 })
+  const selection = createWelcomeSelection({ ids: ["flight", "stack", "slingshot"], random: () => 0 })
   const first = selection.current("one")
   expect(selection.current("one")).toBe(first)
   const second = selection.begin("one")

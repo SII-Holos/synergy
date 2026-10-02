@@ -23288,31 +23288,35 @@ msgid "welcome.flight.ready"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.again"
+msgid "welcome.slingshot.aim"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.aim"
+msgid "welcome.slingshot.field"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.arrived"
+msgid "welcome.slingshot.help"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.field"
+msgid "welcome.slingshot.lost"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.help"
+msgid "welcome.slingshot.name"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.name"
+msgid "welcome.slingshot.ready"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.ready"
+msgid "welcome.slingshot.score"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.won"
 msgstr ""
 
 #. js-lingui-explicit-id

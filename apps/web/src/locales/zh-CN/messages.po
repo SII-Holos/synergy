@@ -23288,32 +23288,36 @@ msgid "welcome.flight.ready"
 msgstr "移动操控 · 点击起飞"
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.again"
-msgstr "换个角度 · 点击重试"
-
-#. js-lingui-explicit-id
-msgid "welcome.orbit.aim"
+msgid "welcome.slingshot.aim"
 msgstr "角度 {angle}°，力度 {power}"
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.arrived"
-msgstr "投递成功 · 点击飞往下一站"
+msgid "welcome.slingshot.field"
+msgstr "弹弓游戏区域"
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.field"
-msgstr "引力投递游戏区域"
+msgid "welcome.slingshot.help"
+msgstr "向后拉小鸟，松手击倒目标。左右键调整角度，上下键调整力度，空格发射，Esc 取消拉弓。"
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.help"
-msgstr "移动鼠标瞄准，点击发射，也可以向后拖动调整力度。方向键调整角度和力度，空格发射。"
+msgid "welcome.slingshot.lost"
+msgstr "再试一次"
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.name"
-msgstr "引力投递"
+msgid "welcome.slingshot.name"
+msgstr "像素弹弓"
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.ready"
-msgstr "移动瞄准，点击发射"
+msgid "welcome.slingshot.ready"
+msgstr "向后拉，松开发射 · {shots} 发"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.score"
+msgstr "第 {level} 关 · {score} 分"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.won"
+msgstr "{stars} · 下一关"
 
 #. js-lingui-explicit-id
 msgid "welcome.stack.field"

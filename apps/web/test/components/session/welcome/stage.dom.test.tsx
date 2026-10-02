@@ -132,24 +132,37 @@ test("clicking outside pauses, idle autofocus does not, and a deliberate game ac
   expect(await stage.getAttribute("data-active")).toBeNull()
 })
 
-test("gravity aiming responds to hover before launch, supports cancellation and keyboard delivery", async () => {
-  await open("orbit")
+test("slingshot aims before launch, cancels pulls, and completes a level with keyboard shots", async () => {
+  await open("slingshot")
   const board = page.locator(".welcome-game-canvas")
   const initial = await board.getAttribute("aria-description")
   const bounds = (await board.boundingBox())!
   await page.mouse.move(bounds.x + bounds.width * 0.7, bounds.y + bounds.height * 0.2)
   expect(await board.getAttribute("aria-description")).not.toBe(initial)
+  const scale = Math.min(bounds.width / 720, bounds.height / 360)
+  const x = bounds.x + (bounds.width - 720 * scale) / 2 + 98 * scale
+  const y = bounds.y + bounds.height - 360 * scale + 224 * scale
+  await page.mouse.move(x, y)
   await page.mouse.down()
-  await page.mouse.move(bounds.x + bounds.width * 0.6, bounds.y + bounds.height * 0.4)
+  await page.mouse.move(x - 45 * scale, y + 40 * scale)
   await page.keyboard.press("Escape")
   await page.mouse.up()
-  expect(await page.locator(".welcome-orbit").getAttribute("data-phase")).toBe("aiming")
+  expect(await page.locator(".welcome-slingshot").getAttribute("data-phase")).toBe("aiming")
+  expect(await page.locator(".welcome-slingshot").getAttribute("data-shots")).toBe("3")
   await board.focus()
   await page.keyboard.press("r")
+  for (let n = 0; n < 15; n++) await page.keyboard.press("ArrowLeft")
+  for (let n = 0; n < 2; n++) await page.keyboard.press("ArrowUp")
   await page.keyboard.press("Space")
-  await page.waitForFunction(() => document.querySelector(".welcome-orbit")?.getAttribute("data-phase") === "delivered")
+  await page.waitForFunction(
+    () => document.querySelector(".welcome-slingshot")?.getAttribute("data-phase") === "won",
+    undefined,
+    { timeout: 12000 },
+  )
+  await board.click()
+  expect(await page.locator(".welcome-slingshot").getAttribute("data-level")).toBe("1")
   expect(errors).toEqual([])
-})
+}, 20000)
 
 test("falling blocks rotate and drop with keyboard, and flight follows the pointer before playing", async () => {
   await open("blocks")
@@ -187,7 +200,7 @@ test("a fifth module needs no host changes and a late module cannot replace it",
 })
 
 test("narrow and short layouts keep all four games and the editor reachable", async () => {
-  for (const scene of ["stack", "orbit", "blocks", "flight"])
+  for (const scene of ["stack", "slingshot", "blocks", "flight"])
     for (const width of [320, 375, 720]) {
       await page.setViewportSize({ width, height: 580 })
       await open(scene)
@@ -216,7 +229,7 @@ test("reduced motion stops decorative frames and supports explicit keyboard play
 test("each scene supports light, dark, and doubled scale", async () => {
   const captures = process.env.WELCOME_CAPTURE_DIR
   if (captures) await mkdir(captures, { recursive: true })
-  for (const scene of ["stack", "orbit", "blocks", "flight"])
+  for (const scene of ["stack", "slingshot", "blocks", "flight"])
     for (const colorScheme of ["light", "dark"] as const) {
       await page.setViewportSize({ width: 1100, height: 920 })
       await page.emulateMedia({ colorScheme, reducedMotion: "reduce" })

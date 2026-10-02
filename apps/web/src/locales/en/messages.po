@@ -23288,32 +23288,36 @@ msgid "welcome.flight.ready"
 msgstr "Move to steer · Click to fly"
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.again"
-msgstr "Try a different angle · Click to retry"
-
-#. js-lingui-explicit-id
-msgid "welcome.orbit.aim"
+msgid "welcome.slingshot.aim"
 msgstr "Angle {angle}°, power {power}"
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.arrived"
-msgstr "Delivered · Click for the next flight"
+msgid "welcome.slingshot.field"
+msgstr "Slingshot playfield"
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.field"
-msgstr "Gravity delivery playfield"
+msgid "welcome.slingshot.help"
+msgstr "Pull the bird back and release to topple the targets. Left and right aim, up and down set power, Space launches. Escape cancels the pull."
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.help"
-msgstr "Move to aim, click to launch, or pull back to set power. Arrow keys aim and adjust power; Space launches."
+msgid "welcome.slingshot.lost"
+msgstr "Try again"
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.name"
-msgstr "Gravity post"
+msgid "welcome.slingshot.name"
+msgstr "Pixel slingshot"
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.ready"
-msgstr "Aim, then click to launch"
+msgid "welcome.slingshot.ready"
+msgstr "Pull back and release · {shots} shots"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.score"
+msgstr "Level {level} · {score} points"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.won"
+msgstr "{stars} · Next level"
 
 #. js-lingui-explicit-id
 msgid "welcome.stack.field"
