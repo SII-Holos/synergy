@@ -124,6 +124,7 @@ test("clicking outside pauses, idle autofocus does not, and a deliberate game ac
   expect(await stage.getAttribute("data-active")).toBeNull()
   await page.getByRole("textbox").fill("Keep this draft")
   await page.locator(".welcome-game-status").click()
+  expect(await page.locator(".welcome-game-canvas").evaluate((el) => document.activeElement === el)).toBe(true)
   expect(await stage.getAttribute("data-active")).toBe("")
   expect(await page.getByRole("textbox").inputValue()).toBe("Keep this draft")
   await page.getByRole("button", { name: "Overlay", exact: true }).click()
@@ -329,4 +330,16 @@ test("touch gestures rotate and drop blocks without changing the draft", async (
   expect(await page.locator(".welcome-blocks").getAttribute("data-locked")).toBe("4")
   expect(await page.getByRole("textbox").inputValue()).toBe("")
   expect(errors).toEqual([])
+})
+
+test("Escape cancels a captured falling-block gesture without starting the round", async () => {
+  await page.setViewportSize({ width: 960, height: 920 })
+  await open("blocks")
+  const box = (await page.locator(".welcome-game-canvas").boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.keyboard.press("Escape")
+  await page.mouse.up()
+  expect(await page.locator(".welcome-blocks").getAttribute("data-phase")).toBe("ready")
+  expect(await page.locator(".welcome-stage").getAttribute("data-active")).toBeNull()
 })

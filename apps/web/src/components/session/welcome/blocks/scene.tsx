@@ -1,4 +1,4 @@
-import { createEffect, createSignal } from "solid-js"
+import { createEffect, createSignal, onCleanup } from "solid-js"
 import { useLocale } from "@/context/locale"
 import type { WelcomeSceneProps } from "../types"
 import { GameSurface } from "../surface"
@@ -85,6 +85,16 @@ export default function BlocksScene(props: WelcomeSceneProps) {
     520,
     440,
   )
+  const cancel = () => {
+    if (!touch) return
+    const id = touch.id
+    touch = undefined
+    if (canvas.element().hasPointerCapture(id)) canvas.element().releasePointerCapture(id)
+  }
+  createEffect(() => {
+    if (!props.active()) cancel()
+  })
+  onCleanup(cancel)
   return (
     <div
       class="welcome-game welcome-blocks"
@@ -166,12 +176,8 @@ export default function BlocksScene(props: WelcomeSceneProps) {
                 setState((s) => moveBlocks(s, Math.sign(dx)))
             else setState(rotateBlocks)
           }}
-          onPointerCancel={() => {
-            touch = undefined
-          }}
-          onLostPointerCapture={() => {
-            touch = undefined
-          }}
+          onPointerCancel={cancel}
+          onLostPointerCapture={cancel}
         />
       </GameSurface>
     </div>

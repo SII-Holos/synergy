@@ -22,12 +22,16 @@ export function GameSurface(props: {
         type="button"
         aria-describedby={helpID}
         aria-label={`${props.name} · ${props.status}. ${i18n._({ id: "welcome.common.statusControl", message: "Click to play or pause. Escape pauses; R restarts." })}`}
-        onClick={() => {
+        onClick={(event) => {
           if (props.scene.active() && props.playing) props.scene.pause()
           else {
             props.scene.interact()
             if (!props.playing) props.onAction()
           }
+          event.currentTarget
+            .closest(".welcome-game")
+            ?.querySelector<HTMLCanvasElement>(".welcome-game-canvas")
+            ?.focus({ preventScroll: true })
         }}
       >
         <span>{props.name}</span>
