@@ -46,7 +46,19 @@ test("native public conversation retains bounded history and reconciles updates 
     let oldestTime = conversation.messages.at(-1)!.info.time.created
     for (let pageIndex = 0; pageIndex < 2; pageIndex++) {
       const [response] = await Promise.all([
-        page.waitForResponse((response) => response.url().includes(`/session/${conversation.id}/timeline`)),
+        page.waitForResponse(async (response) => {
+          const url = new URL(response.url())
+          if (
+            url.pathname !== `/session/${conversation.id}/timeline/page` ||
+            !url.searchParams.has("cursor") ||
+            url.searchParams.has("messageID") ||
+            !response.ok()
+          )
+            return false
+          const timeline = (await response.json()) as SessionTimelinePage
+          const oldest = timeline.items.find((item) => item.info.role === "user")
+          return !!oldest && oldest.info.time.created < oldestTime
+        }),
         page.getByRole("button", { name: "Load earlier messages", exact: true }).click(),
       ])
       const text = await response.text()
@@ -74,6 +86,17 @@ test("native public conversation retains bounded history and reconciles updates 
       expect(await roots.count()).toBeLessThanOrEqual(30)
       expect(await page.locator("[data-display-row]").count()).toBeLessThanOrEqual(80)
     }
+    await page.keyboard.press("ControlOrMeta+f")
+    const historySearch = page.getByRole("dialog", { name: "Search conversation", exact: true })
+    await historySearch.waitFor()
+    await historySearch.getByPlaceholder("Search all conversation history").fill("Question 137")
+    expect(await historySearch.getByLabel("Include reasoning", { exact: true }).count()).toBe(1)
+    expect(await historySearch.getByLabel("Include tool content", { exact: true }).count()).toBe(1)
+    await historySearch.getByRole("button", { name: "Question 137", exact: true }).click()
+    await historySearch.waitFor({ state: "detached" })
+    await page.getByText("Question 137", { exact: true }).waitFor()
+    expect(await roots.count()).toBeLessThanOrEqual(30)
+    expect(await page.locator("[data-display-row]").count()).toBeLessThanOrEqual(80)
     const returnLatest = page.getByRole("button", { name: "Return to latest", exact: true })
     await returnLatest.click()
     await page.getByText("Answer 360", { exact: true }).waitFor()
