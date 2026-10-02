@@ -881,7 +881,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         throw new Error(
           _({
             id: "settings.runtime.boss.saveFirst",
-            message: "Save your changes before opening the Boss Mode session.",
+            message: "Save changes first.",
           }),
         )
     }
@@ -964,7 +964,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       save: save.saveServerChanges,
     },
     {
-      name: _({ id: "settings.runtime.boss.name", message: "Name" }),
+      name: _({ id: "settings.runtime.boss.name", message: "Assistant name" }),
       page: "boss",
       dirty: bossNameController.dirty,
       save: bossNameController.save,

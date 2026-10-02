@@ -16437,15 +16437,15 @@ msgstr "归档 | 已归档 | 会话 | 删除 | 历史 | 项目"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.boss.description"
-msgstr "将本机 Synergy 变为一个同事：自动创建运行时 boss 会话并把所有飞书消息路由给它。"
+msgstr "一个入口，统筹任务与项目。"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.boss.label"
-msgstr "Boss Mode（同事模式）"
+msgstr "Boss 模式"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.boss.searchTerms"
-msgstr "boss | 同事 | 飞书 | 路由 | 运行时"
+msgstr "boss | 任务 | 项目 | 助手 | 飞书"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.channels.description"
@@ -20456,32 +20456,24 @@ msgid "settings.runtime.agents.wall.title"
 msgstr "总超时"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.conversation"
-msgstr "同事会话"
-
-#. js-lingui-explicit-id
 msgid "settings.runtime.boss.conversation.open"
-msgstr "会话"
+msgstr "任务入口"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.desc"
-msgstr "将本机 Synergy 变为一个同事：自动创建运行时 boss 会话并把所有飞书消息路由给它。"
+msgstr "一个入口，统筹任务与项目。"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.enable"
-msgstr "启用同事模式"
+msgstr "启用 Boss 模式"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.enabled.desc"
-msgstr "把所有飞书消息路由到运行时 boss 会话"
+msgstr "飞书消息汇入对应入口。"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.name"
-msgstr "名字"
-
-#. js-lingui-explicit-id
-msgid "settings.runtime.boss.name.desc"
-msgstr "你的 Boss 同事将使用的名字。"
+msgstr "助手名称"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.name.placeholder"
@@ -20493,7 +20485,11 @@ msgstr "重新加载名称"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.openSession"
-msgstr "打开 Boss 会话"
+msgstr "打开任务入口"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.action"
+msgstr "打开"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.openSession.busy"
@@ -20501,11 +20497,11 @@ msgstr "正在打开…"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.openSession.desc"
-msgstr "打开运行时 boss 聊天会话，首次使用时会自动创建。"
+msgstr "首次使用时创建。"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.openSession.failed"
-msgstr "无法打开 Boss 会话"
+msgstr "无法打开任务入口"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.persona.conciseness"
@@ -20545,19 +20541,15 @@ msgstr "亲和度"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.personality"
-msgstr "性格"
-
-#. js-lingui-explicit-id
-msgid "settings.runtime.boss.personality.desc"
-msgstr "你的 Boss 同事的行为与沟通方式。"
+msgstr "协作风格"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.saveFirst"
-msgstr "保存更改后再打开 Boss Mode 会话。"
+msgstr "请先保存更改。"
 
 #. Boss Mode
 msgid "settings.runtime.boss.title"
-msgstr "Boss Mode（同事模式）"
+msgstr "Boss 模式"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.compaction.autoCompact.desc"

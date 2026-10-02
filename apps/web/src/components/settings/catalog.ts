@@ -499,12 +499,11 @@ const BUILTIN_SETTINGS_COPY = {
     label: { id: "settings.catalog.boss.label", message: "Boss Mode" },
     description: {
       id: "settings.catalog.boss.description",
-      message:
-        "Turn this Synergy instance into a colleague: auto-create a runtime boss session and route all Feishu messages to it.",
+      message: "Coordinate tasks and projects from one entry point.",
     },
     searchTerms: {
       id: "settings.catalog.boss.searchTerms",
-      message: "boss | colleague | feishu | routing | runtime",
+      message: "boss | task | project | assistant | feishu",
       comment: SEARCH_TERMS_COMMENT,
     },
     rowLabels: [

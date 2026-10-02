@@ -17,18 +17,13 @@ import type { MessageDescriptor } from "@lingui/core"
 const bossPageTitle = { id: "settings.runtime.boss.title", message: "Boss Mode" }
 const bossPageDesc = {
   id: "settings.runtime.boss.desc",
-  message:
-    "Turn this Synergy instance into a colleague: auto-create a runtime boss session and route all Feishu messages to it.",
+  message: "Coordinate tasks and projects from one entry point.",
 }
 const bossRowDesc = {
   id: "settings.runtime.boss.enabled.desc",
-  message: "Route all Feishu messages to the runtime boss session",
+  message: "Feishu messages also go to the corresponding task entry.",
 }
 const personalityRowTitle = settingsFieldCopy.bossPersonality
-const personalityRowDesc = {
-  id: "settings.runtime.boss.personality.desc",
-  message: "How your boss colleague behaves and communicates.",
-}
 const personaDefault = { id: "settings.runtime.boss.persona.default", message: "Default" }
 const personaProjectManager = { id: "settings.runtime.boss.persona.projectManager", message: "Project Manager" }
 const personaOpsAssistant = { id: "settings.runtime.boss.persona.opsAssistant", message: "Ops Assistant" }
@@ -38,18 +33,15 @@ const personaTraitsTitle = {
   message: "Custom personality traits",
 }
 const nameRowTitle = settingsFieldCopy.bossName
-const nameRowDesc = {
-  id: "settings.runtime.boss.name.desc",
-  message: "The name your boss colleague will use.",
-}
 const namePlaceholder = { id: "settings.runtime.boss.name.placeholder", message: "e.g. Xiaofei" }
-const openSessionRowTitle = { id: "settings.runtime.boss.openSession", message: "Open boss session" }
+const openSessionRowTitle = { id: "settings.runtime.boss.openSession", message: "Open task entry" }
+const openSessionAction = { id: "settings.runtime.boss.openSession.action", message: "Open" }
 const openSessionRowDesc = {
   id: "settings.runtime.boss.openSession.desc",
-  message: "Open the runtime boss chat. Creates the session on first use.",
+  message: "Created on first use.",
 }
 const openSessionBusy = { id: "settings.runtime.boss.openSession.busy", message: "Opening…" }
-const openSessionFailed = { id: "settings.runtime.boss.openSession.failed", message: "Could not open the boss session" }
+const openSessionFailed = { id: "settings.runtime.boss.openSession.failed", message: "Could not open the task entry" }
 
 type BossPersonaPresetOption = { value: string; label: MessageDescriptor }
 
@@ -126,7 +118,7 @@ export function BossModePanel(props: {
     <SettingsPage title={_(bossPageTitle)} description={_(bossPageDesc)}>
       <SettingsSection>
         <SettingRow
-          title={_({ id: "settings.runtime.boss.enable", message: "Enable colleague mode" })}
+          title={_({ id: "settings.runtime.boss.enable", message: "Enable Boss Mode" })}
           description={_(bossRowDesc)}
           trailing={
             <Switch
@@ -137,7 +129,6 @@ export function BossModePanel(props: {
         />
         <SettingRow
           title={_(personalityRowTitle)}
-          description={_(personalityRowDesc)}
           trailing={
             <SegmentPill
               value={preset()}
@@ -187,7 +178,6 @@ export function BossModePanel(props: {
         </Show>
         <SettingRow
           title={_(nameRowTitle)}
-          description={_(nameRowDesc)}
           trailing={
             <TextField
               type="text"
@@ -210,19 +200,20 @@ export function BossModePanel(props: {
           </Show>
         </Show>
       </SettingsSection>
-      <SettingsSection title={_({ id: "settings.runtime.boss.conversation", message: "Colleague conversation" })}>
+      <SettingsSection>
         <SettingRow
-          title={_({ id: "settings.runtime.boss.conversation.open", message: "Conversation" })}
+          title={_({ id: "settings.runtime.boss.conversation.open", message: "Task entry" })}
           description={_(openSessionRowDesc)}
           trailing={
             <Button
               type="button"
               variant="secondary"
               size="small"
+              aria-label={opening() ? _(openSessionBusy) : _(openSessionRowTitle)}
               disabled={!enabled() || opening() || props.configDirty || props.nameController.dirty()}
               onClick={() => void handleOpenSession()}
             >
-              {opening() ? _(openSessionBusy) : _(openSessionRowTitle)}
+              {opening() ? _(openSessionBusy) : _(openSessionAction)}
             </Button>
           }
         />
@@ -230,7 +221,7 @@ export function BossModePanel(props: {
           <p class="ds-section-hint">
             {_({
               id: "settings.runtime.boss.saveFirst",
-              message: "Save your changes before opening the Boss Mode session.",
+              message: "Save changes first.",
             })}
           </p>
         </Show>

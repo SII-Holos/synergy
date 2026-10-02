@@ -16437,7 +16437,7 @@ msgstr "⟦archive | archived | session | delete | history | project⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.boss.description"
-msgstr "⟦Turn this Synergy instance into a colleague: auto-create a runtime boss session and route all Feishu messages to it.⟧"
+msgstr "⟦Coordinate tasks and projects from one entry point.⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.boss.label"
@@ -16445,7 +16445,7 @@ msgstr "⟦Boss Mode⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.boss.searchTerms"
-msgstr "⟦boss | colleague | feishu | routing | runtime⟧"
+msgstr "⟦boss | task | project | assistant | feishu⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.channels.description"
@@ -20456,32 +20456,24 @@ msgid "settings.runtime.agents.wall.title"
 msgstr "⟦Wall Timeout⟧"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.conversation"
-msgstr "⟦Colleague conversation⟧"
-
-#. js-lingui-explicit-id
 msgid "settings.runtime.boss.conversation.open"
-msgstr "⟦Conversation⟧"
+msgstr "⟦Task entry⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.desc"
-msgstr "⟦Turn this Synergy instance into a colleague: auto-create a runtime boss session and route all Feishu messages to it.⟧"
+msgstr "⟦Coordinate tasks and projects from one entry point.⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.enable"
-msgstr "⟦Enable colleague mode⟧"
+msgstr "⟦Enable Boss Mode⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.enabled.desc"
-msgstr "⟦Route all Feishu messages to the runtime boss session⟧"
+msgstr "⟦Feishu messages also go to the corresponding task entry.⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.name"
-msgstr "⟦Name⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.runtime.boss.name.desc"
-msgstr "⟦The name your boss colleague will use.⟧"
+msgstr "⟦Assistant name⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.name.placeholder"
@@ -20493,7 +20485,11 @@ msgstr "⟦Reload name⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.openSession"
-msgstr "⟦Open boss session⟧"
+msgstr "⟦Open task entry⟧"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.action"
+msgstr "⟦Open⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.openSession.busy"
@@ -20501,11 +20497,11 @@ msgstr "⟦Opening…⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.openSession.desc"
-msgstr "⟦Open the runtime boss chat. Creates the session on first use.⟧"
+msgstr "⟦Created on first use.⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.openSession.failed"
-msgstr "⟦Could not open the boss session⟧"
+msgstr "⟦Could not open the task entry⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.persona.conciseness"
@@ -20545,15 +20541,11 @@ msgstr "⟦Warmth⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.personality"
-msgstr "⟦Personality⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.runtime.boss.personality.desc"
-msgstr "⟦How your boss colleague behaves and communicates.⟧"
+msgstr "⟦Collaboration style⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.saveFirst"
-msgstr "⟦Save your changes before opening the Boss Mode session.⟧"
+msgstr "⟦Save changes first.⟧"
 
 #. Boss Mode
 msgid "settings.runtime.boss.title"
