@@ -457,44 +457,27 @@ export function SkillView(props: {
                     <div class={libraryMetaLabelClass}>
                       {_({ id: "app.library.skills.import.destination", message: "Destination" })}
                     </div>
-                    <div
-                      class="mt-2 flex items-center gap-1 rounded-lg bg-surface-inset-base p-0.5 ring-1 ring-inset ring-border-weaker-base/55"
-                      role="radiogroup"
-                      aria-label={_({ id: "app.library.skills.import.destination", message: "Destination" })}
-                    >
-                      <For each={importScopeOptions()}>
-                        {(scope) => (
-                          <button
-                            type="button"
-                            classList={{
-                              "flex-1 rounded-md px-2.5 py-1.5 app-panel-caption font-medium transition-colors": true,
-                              "workbench-selected-surface bg-surface-raised-base text-text-strong shadow-sm":
-                                selectedImportScope() === scope,
-                              "text-text-weak hover:text-text-base": selectedImportScope() !== scope,
-                            }}
-                            role="radio"
-                            aria-checked={selectedImportScope() === scope}
-                            onClick={() => setImportScope(scope)}
-                          >
-                            {importScopeLabel(scope, _)}
-                          </button>
-                        )}
-                      </For>
-                    </div>
+                    <AppPanel.Selection
+                      class="mt-2"
+                      label={_({ id: "app.library.skills.import.destination", message: "Destination" })}
+                      items={importScopeOptions().map((scope) => ({ id: scope, label: importScopeLabel(scope, _) }))}
+                      active={selectedImportScope()}
+                      onChange={(scope) => setImportScope(scope as SkillImportScope)}
+                    />
                   </div>
                 </Show>
                 <Show when={importMode() === "menu"}>
-                  <div class="p-1.5">
+                  <div class="flex flex-col gap-0.5">
                     <button
                       type="button"
-                      class="flex w-full items-center gap-2.5 rounded-[0.9rem] px-3 py-2 text-left app-panel-caption font-medium text-text-base transition-colors hover:bg-surface-inset-base"
+                      class="menu-field-item"
                       onClick={() => {
                         setImportOpen(false)
                         fileInputRef.click()
                       }}
                     >
                       <Icon name={getSemanticIcon("workspace.add")} size="small" class="text-icon-weak-base shrink-0" />
-                      <div class="min-w-0">
+                      <div class="min-w-0 flex-1">
                         <div class="app-panel-control text-text-base">
                           {_({ id: "app.library.skills.import.uploadArchive", message: "Upload archive" })}
                         </div>
@@ -506,13 +489,9 @@ export function SkillView(props: {
                         </div>
                       </div>
                     </button>
-                    <button
-                      type="button"
-                      class="flex w-full items-center gap-2.5 rounded-[0.9rem] px-3 py-2 text-left app-panel-caption font-medium text-text-base transition-colors hover:bg-surface-inset-base"
-                      onClick={() => setImportMode("url")}
-                    >
+                    <button type="button" class="menu-field-item" onClick={() => setImportMode("url")}>
                       <Icon name={getSemanticIcon("browser.main")} size="small" class="text-icon-weak-base shrink-0" />
-                      <div class="min-w-0">
+                      <div class="min-w-0 flex-1">
                         <div class="app-panel-control text-text-base">
                           {_({ id: "app.library.skills.import.fromUrl", message: "From URL" })}
                         </div>

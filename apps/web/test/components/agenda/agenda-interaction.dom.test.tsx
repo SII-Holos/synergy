@@ -309,6 +309,7 @@ test("creating an agenda submits the chosen Scope and keeps inputs after a faile
   await page.getByRole("button", { name: /Advanced settings/ }).click()
   await page.getByRole("button", { name: /^Scope:/ }).click()
   await page.getByRole("option", { name: /Target project/ }).click()
+  await page.getByRole("listbox", { name: "Scope", exact: true }).waitFor({ state: "detached" })
   await page.getByRole("button", { name: "Create", exact: true }).click()
   await page.getByText("Fixture save failed", { exact: true }).waitFor()
   const recordedRequest = () => formRequest
@@ -316,7 +317,7 @@ test("creating an agenda submits the chosen Scope and keeps inputs after a faile
   expect(await page.getByPlaceholder("Add title", { exact: true }).inputValue()).toBe("Scheduled check")
   saveFailure = false
   await page.getByRole("button", { name: "Create", exact: true }).click()
-  await page.getByRole("dialog").waitFor({ state: "detached" })
+  await page.getByRole("dialog", { name: "New task", exact: true }).waitFor({ state: "detached" })
 })
 
 test("editing preserves the owning Scope and triggers the schedule form cannot express", async () => {
@@ -512,7 +513,8 @@ test("the composed Agenda separates future occurrences from rule management and 
   await page.getByRole("button", { name: "Clear search", exact: true }).press("Enter")
   expect(await search.evaluate((element) => element === document.activeElement)).toBe(true)
   expect(await page.locator(".agenda-task-row").count()).toBe(4)
-  await page.getByRole("combobox", { name: "Scope", exact: true }).selectOption("scope-target")
+  await page.getByRole("button", { name: "Scope: All Scopes", exact: true }).click()
+  await page.getByRole("option", { name: "Target project", exact: true }).click()
   expect(await page.locator(".agenda-task-row").count()).toBe(1)
   expect(await page.getByRole("button", { name: "Project briefing Enabled", exact: true }).isVisible()).toBe(true)
   await page.getByRole("button", { name: "Clear filters", exact: true }).first().click()
@@ -616,12 +618,35 @@ test("phone Agenda actions keep usable touch targets and the primary icon stays 
   await page.emulateMedia({ reducedMotion: "no-preference" })
 })
 
+test("Scope filters use a themed listbox with keyboard selection and focus return", async () => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto(baseUrl + "?panel")
+  const trigger = page.getByRole("button", { name: "Scope: All Scopes", exact: true })
+  expect(await trigger.count()).toBe(1)
+  await trigger.press("ArrowDown")
+  const options = page.getByRole("listbox", { name: "Scope", exact: true })
+  await options.waitFor()
+  await page.getByRole("option", { name: "Target project", exact: true }).press("Enter")
+  await options.waitFor({ state: "detached" })
+  const selected = page.getByRole("button", { name: "Scope: Target project", exact: true })
+  await page.waitForFunction((element) => element === document.activeElement, await selected.elementHandle())
+  await selected.press("Space")
+  expect(await page.getByRole("option", { name: "Target project", exact: true }).getAttribute("aria-selected")).toBe(
+    "true",
+  )
+  await page.keyboard.press("Escape")
+  await options.waitFor({ state: "detached" })
+  await page.waitForFunction((element) => element === document.activeElement, await selected.elementHandle())
+  expect(await selected.evaluate((element) => element === document.activeElement)).toBe(true)
+})
+
 test("creating from a selected Scope keeps that context without changing an existing task owner", async () => {
   const received = () => formRequest
   formRequest = undefined
   saveFailure = false
   await page.goto(baseUrl + "?panel")
-  await page.getByRole("combobox", { name: "Scope", exact: true }).selectOption("scope-target")
+  await page.getByRole("button", { name: "Scope: All Scopes", exact: true }).click()
+  await page.getByRole("option", { name: "Target project", exact: true }).click()
   await page.getByRole("button", { name: "New task", exact: true }).click()
   await page.getByPlaceholder("Add title", { exact: true }).fill("Scoped new task")
   await page.getByRole("button", { name: "Create", exact: true }).click()

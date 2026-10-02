@@ -1,4 +1,5 @@
-import { createSignal, For, Show, createEffect } from "solid-js"
+import { createSignal, Show, createEffect } from "solid-js"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { useLingui } from "@lingui/solid"
 import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
@@ -36,14 +37,14 @@ export function DeclarativeSettingsForm(props: DeclarativeSettingsFormProps) {
     let input
     if (fieldSchema.enum) {
       input = (
-        <select
+        <MenuField
           id={`plugin-setting-${key}`}
+          ariaLabel={fieldTitle}
           value={(local()[key] as string) ?? ""}
-          onChange={(e) => handleChange(key, e.currentTarget.value)}
-          class={inputClass}
-        >
-          <For each={fieldSchema.enum as string[]}>{(v) => <option value={v}>{v}</option>}</For>
-        </select>
+          onChange={(value) => handleChange(key, value)}
+          triggerClass="menu-field-trigger w-full min-h-9"
+          options={(fieldSchema.enum as string[]).map((value) => ({ value, label: value }))}
+        />
       )
     } else if (fieldType === "boolean") {
       input = (

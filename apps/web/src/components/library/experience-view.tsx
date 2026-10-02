@@ -544,7 +544,7 @@ export function ExperienceView(props: {
               <MenuField
                 value={sort()}
                 ariaLabel={_({ id: "app.library.experience.sort.aria", message: "Sort experiences" })}
-                triggerClass={libraryActionButtonClass}
+                triggerClass={`menu-field-trigger ${libraryActionButtonClass}`}
                 placement="bottom-end"
                 options={availableSorts().map((key) => ({ value: key, label: getExperienceSortLabel(_, key) }))}
                 onChange={(value) => setSort(value as ExperienceSortKey)}

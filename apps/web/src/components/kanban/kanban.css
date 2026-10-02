@@ -104,27 +104,24 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  background: var(--surface-base);
-  border: 1px solid var(--border-base);
-  border-radius: 8px;
-  padding: 4px 10px;
+  flex-wrap: wrap;
 }
 
 .kanban-grid-config-field {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--font-size-x-small);
+  font-size: 12px;
+  line-height: 16px;
   color: var(--text-weak);
 }
 
-.kanban-grid-config-field select {
-  font-size: var(--font-size-x-small);
-  color: var(--text-strong);
-  background: var(--surface-base-hover);
-  border: 1px solid var(--border-base);
-  border-radius: 6px;
-  padding: 2px 6px;
+.kanban-grid-select {
+  min-width: 56px;
+}
+
+.kanban-grid-menu {
+  min-width: 80px;
 }
 
 /* --- Grid layout --- */
@@ -577,62 +574,9 @@
 }
 
 .kanban-composer-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: var(--font-size-x-small);
-  color: var(--text-weak);
-  background: var(--surface-base-hover);
-  border: 1px solid var(--border-base);
-  border-radius: 6px;
-  padding: 3px 8px;
-  cursor: pointer;
-  max-width: 140px;
-}
-
-.kanban-composer-chip:hover {
-  color: var(--text-strong);
-  border-color: var(--border-strong-base);
-}
-
-.kanban-composer-chip-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* --- Composer menus --- */
-
-.kanban-composer-menu {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 140px;
-  padding: 4px;
-}
-
-.kanban-composer-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-  border: none;
-  background: transparent;
-  border-radius: 6px;
-  padding: 6px 8px;
-  cursor: pointer;
-  font-size: var(--font-size-small);
-  color: var(--text-strong);
-}
-
-.kanban-composer-item:hover {
-  background: var(--surface-base-interactive-active);
-}
-
-.kanban-composer-item[data-active] {
-  color: var(--text-strong);
-  background: var(--surface-base-active);
+  gap: 6px;
+  padding: 0 10px;
+  max-width: 160px;
 }
 
 .kanban-pane-statusbar {
@@ -801,13 +745,6 @@
   }
 }
 
-.kanban-composer-choice [data-slot="radio-group-items"] {
-  flex-direction: column;
-  align-items: stretch;
-}
-.kanban-composer-choice [data-slot="radio-group-item-label"] {
-  justify-content: flex-start;
-}
 .kanban-composer-error {
   color: var(--text-on-critical-base);
   margin: 0;

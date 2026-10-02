@@ -1076,7 +1076,7 @@ function ScopePicker(props: {
     <MenuField
       value={props.value}
       ariaLabel={_(A.formScopeLabel)}
-      triggerClass="agenda-control-surface w-full"
+      triggerClass="menu-field-trigger agenda-control-surface w-full min-h-9"
       options={props.scopes.map((scope) => ({
         value: scope.id,
         label: scopePickerLabel(scope, props.currentScopeID, _),

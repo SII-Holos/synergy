@@ -3,6 +3,7 @@ import { AgendaTaskList } from "./task-list"
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -422,22 +423,24 @@ export function AgendaPanel() {
                     })}
             </p>
             <div class="agenda-page-tools">
-              <label class="agenda-scope-filter app-panel-control">
+              <div class="agenda-scope-filter app-panel-control">
                 <span>{_({ id: "app.agenda.scope.filter", message: "Scope" })}</span>
-                <select
-                  aria-label={_({ id: "app.agenda.scope.filter", message: "Scope" })}
+                <MenuField
+                  ariaLabel={_({ id: "app.agenda.scope.filter", message: "Scope" })}
                   value={tab() === "activity" ? historyScope() : scopeFilter()}
-                  onChange={(event) => setScopeFilter(event.currentTarget.value)}
-                >
-                  <Show when={tab() !== "activity"}>
-                    <option value="">{_({ id: "app.agenda.scope.all", message: "All Scopes" })}</option>
-                  </Show>
-                  <option value="home">{_({ id: "app.sidebar.section.home", message: "Home" })}</option>
-                  <For each={globalSync.data.scope.filter((scope) => scope.id !== "home")}>
-                    {(scope) => <option value={scope.id}>{scope.name || scope.id}</option>}
-                  </For>
-                </select>
-              </label>
+                  triggerClass="menu-field-trigger agenda-scope-select"
+                  options={[
+                    ...(tab() !== "activity"
+                      ? [{ value: "", label: _({ id: "app.agenda.scope.all", message: "All Scopes" }) }]
+                      : []),
+                    { value: "home", label: _({ id: "app.sidebar.section.home", message: "Home" }) },
+                    ...globalSync.data.scope
+                      .filter((scope) => scope.id !== "home")
+                      .map((scope) => ({ value: scope.id, label: scope.name || scope.id })),
+                  ]}
+                  onChange={setScopeFilter}
+                />
+              </div>
               <Show when={tab() !== "activity"}>
                 <div class="agenda-search">
                   <input

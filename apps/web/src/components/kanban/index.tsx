@@ -16,6 +16,7 @@ import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
 import { planMessagePageApply } from "@/context/session-message-page"
 import { scopeKeyForNavEntry } from "@/components/sidebar/session-visual-state"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { kanbanPage } from "@/locales/messages"
 import { resolveActivityDisplay } from "@ericsanchezok/synergy-ui/session-turn-activity"
 import type { ControlProfileId } from "@/context/input"
@@ -414,29 +415,28 @@ export function KanbanPanel() {
           />
           <Show when={layoutMode() === "grid"}>
             <div class="kanban-grid-config" role="group" aria-label={_(kanbanPage.gridLayoutLabel)}>
-              <label class="kanban-grid-config-field">
+              <div class="kanban-grid-config-field">
                 <span>{_(kanbanPage.gridColumns)}</span>
-                <select
-                  value={store.gridCols}
-                  onChange={(event) => setStore("gridCols", Number(event.currentTarget.value))}
-                >
-                  <option value={1}>1</option>
-                  <option value={2}>2</option>
-                  <option value={3}>3</option>
-                  <option value={4}>4</option>
-                </select>
-              </label>
-              <label class="kanban-grid-config-field">
+                <MenuField
+                  ariaLabel={_(kanbanPage.gridColumns)}
+                  value={String(store.gridCols)}
+                  triggerClass="menu-field-trigger kanban-grid-select"
+                  surfaceClass="kanban-grid-menu"
+                  options={[1, 2, 3, 4].map((value) => ({ value: String(value), label: String(value) }))}
+                  onChange={(value) => setStore("gridCols", Number(value))}
+                />
+              </div>
+              <div class="kanban-grid-config-field">
                 <span>{_(kanbanPage.gridRows)}</span>
-                <select
-                  value={store.gridRows}
-                  onChange={(event) => setStore("gridRows", Number(event.currentTarget.value))}
-                >
-                  <option value={1}>1</option>
-                  <option value={2}>2</option>
-                  <option value={3}>3</option>
-                </select>
-              </label>
+                <MenuField
+                  ariaLabel={_(kanbanPage.gridRows)}
+                  value={String(store.gridRows)}
+                  triggerClass="menu-field-trigger kanban-grid-select"
+                  surfaceClass="kanban-grid-menu"
+                  options={[1, 2, 3].map((value) => ({ value: String(value), label: String(value) }))}
+                  onChange={(value) => setStore("gridRows", Number(value))}
+                />
+              </div>
             </div>
           </Show>
         </div>

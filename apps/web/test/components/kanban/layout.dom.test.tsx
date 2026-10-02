@@ -188,7 +188,7 @@ test("board composer has one native focus entry per selector and names its send 
   await page.getByRole("button", { name: "Send message", exact: true }).click()
   expect(await input.inputValue()).toBe("Retained after failure")
   await triggers.nth(1).click()
-  expect(await page.getByRole("radio", { name: "Guarded", exact: true }).isChecked()).toBe(true)
+  expect(await page.getByRole("option", { name: "Guarded", exact: true }).getAttribute("aria-selected")).toBe("true")
   await page.keyboard.press("Escape")
   await page.waitForFunction(
     () => document.querySelectorAll('[data-slot="popover-trigger"]')[1] === document.activeElement,
@@ -226,6 +226,7 @@ test("panel ordering works inside the workbench scroll container and returns key
   await page.goto(`${url}?reorder&locked`)
   await page.getByRole("button", { name: "Session panel actions", exact: true }).press("Enter")
   await page.keyboard.press("Escape")
+  await page.getByRole("menu").waitFor({ state: "detached" })
   expect(await page.getByRole("menuitem").count()).toBe(0)
 })
 
@@ -279,8 +280,8 @@ test("live motion preference changes cancel movement and resume without stagger"
 
 for (const mode of ["grid", "focus"]) {
   test(`${mode} panes accept late session data and refresh their titles without replacing drafts`, async () => {
-    const lifecycleBrowser = await chromium.launch({ headless: true })
-    const page = await lifecycleBrowser.newPage({ viewport: { width: 1280, height: 812 } })
+    const page = await browser.newPage({ viewport: { width: 1280, height: 812 } })
+    page.setDefaultTimeout(10000)
     const errors: string[] = []
     page.on("pageerror", (error) => errors.push(error.message))
     try {
@@ -314,15 +315,15 @@ for (const mode of ["grid", "focus"]) {
       }
       expect(errors).toEqual([])
     } finally {
-      await lifecycleBrowser.close()
+      await page.close()
     }
   })
 }
 
 test("feature reading typography applies to the real Markdown renderer without changing the main conversation", async () => {
-  const readingBrowser = await chromium.launch({ headless: true })
+  const page = await browser.newPage({ viewport: { width: 1280, height: 812 } })
+  page.setDefaultTimeout(10000)
   try {
-    const page = await readingBrowser.newPage({ viewport: { width: 1280, height: 812 } })
     await page.goto(`${url}?reading`)
     const body = page.locator('.app-panel [data-component="markdown"] p')
     await body.waitFor()
@@ -344,6 +345,6 @@ test("feature reading typography applies to the real Markdown renderer without c
         .evaluate((element) => getComputedStyle(element).fontSize),
     ).toBe("16px")
   } finally {
-    await readingBrowser.close()
+    await page.close()
   }
 })

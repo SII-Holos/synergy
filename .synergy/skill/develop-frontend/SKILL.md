@@ -142,6 +142,8 @@ bun test --cwd apps/web test/testing/color-token-contract.test.ts
 
 Use standards-mode fixture documents for composed interaction tests. Include the workbench's root overflow and scroll ancestors when testing keyboard menus; a trigger that passes on an unconstrained document can fail in the real panel. Cover Enter, Space, opening arrow keys, disabled items, selection and focus return.
 
+Audit opened dropdowns as well as their triggers. Feature-page choices reuse `MenuField`; verify the selection check independently of hover, themed portals, long labels and short/narrow viewports. Listbox Escape must dismiss its owning popup without clearing a multi-selection or reaching the parent Dialog. Wait for popup removal and settled trigger focus before asserting restoration.
+
 1. Run the narrow component, model, or context test first.
 2. Run:
 

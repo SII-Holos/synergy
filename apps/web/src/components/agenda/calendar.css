@@ -278,13 +278,9 @@
   gap: 8px;
   color: var(--text-weak);
 }
-.agenda-scope-filter select {
+.agenda-scope-select {
   max-width: 240px;
   min-height: 36px;
-  padding: 4px 8px;
-  border-radius: 8px;
-  color: var(--text-base);
-  background: var(--surface-inset-base);
 }
 .agenda-search {
   display: flex;
@@ -506,7 +502,7 @@
   }
   .agenda-range-button,
   .agenda-create-action,
-  .agenda-scope-filter select {
+  .agenda-scope-select {
     min-height: 44px;
   }
 }

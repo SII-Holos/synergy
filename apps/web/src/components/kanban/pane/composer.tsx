@@ -4,8 +4,7 @@ import type { MessageDescriptor } from "@lingui/core"
 import type { Agent, Session, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { RadioGroup } from "@ericsanchezok/synergy-ui/radio-group"
-import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { ControlProfileId } from "@/context/input"
 import { useLocale } from "@/context/locale"
@@ -69,9 +68,6 @@ export function KanbanPaneComposer(props: {
   const [sending, setSending] = createSignal(false)
   const [agent, setAgent] = createSignal<string | undefined>(props.session?.agentOverride)
   const [switchingProfile, setSwitchingProfile] = createSignal(false)
-  const [agentOpen, setAgentOpen] = createSignal(false)
-  const [profileOpen, setProfileOpen] = createSignal(false)
-  const [workflowOpen, setWorkflowOpen] = createSignal(false)
   const [actionError, setActionError] = createSignal<string>()
 
   const profile = createMemo<ControlProfileId>(() => props.session?.controlProfile ?? "guarded")
@@ -118,104 +114,40 @@ export function KanbanPaneComposer(props: {
     <div class="kanban-pane-composer">
       <div class="kanban-pane-composer-toolbar">
         <Show when={visibleAgents().length > 0}>
-          <Popover
-            open={agentOpen()}
-            onOpenChange={setAgentOpen}
-            variant="menu"
-            title={_(kanbanPage.composerAgent)}
-            triggerAs={(triggerProps) => (
-              <button
-                {...triggerProps}
-                type="button"
-                class="kanban-composer-chip"
-                aria-label={_(kanbanPage.composerAgent)}
-              >
-                <Icon name={getSemanticIcon("agents.main")} size="small" />
-                <span class="kanban-composer-chip-label">{currentAgent()}</span>
-              </button>
-            )}
-          >
-            <RadioGroup
-              class="app-panel-selection kanban-composer-choice"
-              orientation="vertical"
-              aria-label={_(kanbanPage.composerAgent)}
-              options={visibleAgents()}
-              current={visibleAgents().find((item) => item.name === currentAgent())}
-              value={(item) => item.name}
-              label={(item) => item.name}
-              onSelect={(item) => {
-                if (item) setAgent(item.name)
-                setAgentOpen(false)
-              }}
-            />
-          </Popover>
+          <MenuField
+            ariaLabel={_(kanbanPage.composerAgent)}
+            icon={getSemanticIcon("agents.main")}
+            triggerClass="menu-field-trigger kanban-composer-chip"
+            value={currentAgent()}
+            options={visibleAgents().map((item) => ({ value: item.name, label: item.name }))}
+            onChange={setAgent}
+          />
         </Show>
-        <Popover
-          open={profileOpen()}
-          onOpenChange={setProfileOpen}
-          variant="menu"
-          title={_(kanbanPage.composerPermission)}
-          triggerAs={(triggerProps) => (
-            <button
-              {...triggerProps}
-              type="button"
-              class="kanban-composer-chip"
-              aria-label={_(kanbanPage.composerPermission)}
-            >
-              <Icon name={getSemanticIcon(profileVisual().icon)} size="small" />
-              <span class="kanban-composer-chip-label">{translateModeCopy(profileVisual().shortLabel)}</span>
-            </button>
-          )}
-        >
-          <RadioGroup
-            class="app-panel-selection kanban-composer-choice"
-            orientation="vertical"
-            aria-label={_(kanbanPage.composerPermission)}
-            disabled={switchingProfile()}
-            options={PERMISSION_MODES}
-            current={PERMISSION_MODES.find((item) => item.id === profile())}
-            value={(item) => item.id}
-            label={(item) => translateModeCopy(item.label)}
-            onSelect={(item) => {
-              if (!item || switchingProfile()) return
-              setSwitchingProfile(true)
-              void run(() => props.onUpdateProfile(item.id)).finally(() => {
-                setSwitchingProfile(false)
-                setProfileOpen(false)
-              })
-            }}
-          />
-        </Popover>
-        <Popover
-          open={workflowOpen()}
-          onOpenChange={setWorkflowOpen}
-          variant="menu"
-          title={_(kanbanPage.composerWorkflow)}
-          triggerAs={(triggerProps) => (
-            <button
-              {...triggerProps}
-              type="button"
-              class="kanban-composer-chip"
-              aria-label={_(kanbanPage.composerWorkflow)}
-            >
-              <Icon name={getSemanticIcon("cortex.main")} size="small" />
-              <span class="kanban-composer-chip-label">{workflowLabel(workflow(), _)}</span>
-            </button>
-          )}
-        >
-          <RadioGroup
-            class="app-panel-selection kanban-composer-choice"
-            orientation="vertical"
-            aria-label={_(kanbanPage.composerWorkflow)}
-            options={["none", "plan", "lattice", "boss"] as BoardWorkflowKind[]}
-            current={workflow()}
-            label={(kind) => workflowLabel(kind, _)}
-            onSelect={(kind) => {
-              if (!kind) return
-              void run(() => props.onSetWorkflow(kind)).finally(() => setWorkflowOpen(false))
-            }}
-          />
-        </Popover>
+        <MenuField
+          ariaLabel={_(kanbanPage.composerPermission)}
+          icon={getSemanticIcon(profileVisual().icon)}
+          triggerClass="menu-field-trigger kanban-composer-chip"
+          triggerLabel={translateModeCopy(profileVisual().shortLabel)}
+          value={profile()}
+          disabled={switchingProfile()}
+          options={PERMISSION_MODES.map((item) => ({ value: item.id, label: translateModeCopy(item.label) }))}
+          onChange={(id) => {
+            if (switchingProfile()) return
+            setSwitchingProfile(true)
+            void run(() => props.onUpdateProfile(id)).finally(() => setSwitchingProfile(false))
+          }}
+        />
+        <MenuField
+          ariaLabel={_(kanbanPage.composerWorkflow)}
+          icon={getSemanticIcon("cortex.main")}
+          triggerClass="menu-field-trigger kanban-composer-chip"
+          value={workflow()}
+          options={(["none", "plan", "lattice", "boss"] as BoardWorkflowKind[]).map((kind) => ({
+            value: kind,
+            label: workflowLabel(kind, _),
+          }))}
+          onChange={(kind) => void run(() => props.onSetWorkflow(kind))}
+        />
       </div>
       <form
         class="kanban-pane-composer-input-row"

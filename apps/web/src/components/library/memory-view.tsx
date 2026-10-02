@@ -280,8 +280,15 @@ export function MemoryView(props: {
                     close()
                   }}
                 >
-                  <span>{_({ id: "app.library.memory.allCategories", message: "All categories" })}</span>
+                  <span class="menu-field-item-label">
+                    {_({ id: "app.library.memory.allCategories", message: "All categories" })}
+                  </span>
                   <span class="menu-field-count">{memories()?.length ?? 0}</span>
+                  <span class="menu-field-check" aria-hidden="true">
+                    <Show when={categoryFilter().size === 0}>
+                      <Icon name={getSemanticIcon("state.success")} size="small" />
+                    </Show>
+                  </span>
                 </button>
               )}
             />
@@ -308,7 +315,7 @@ export function MemoryView(props: {
             <MenuField
               value={sort()}
               ariaLabel={_({ id: "app.library.memory.sort.aria", message: "Sort memories" })}
-              triggerClass={libraryActionButtonClass}
+              triggerClass={`menu-field-trigger ${libraryActionButtonClass}`}
               placement="bottom-end"
               options={availableSorts().map((key) => ({ value: key, label: getMemorySortLabel(_, key) }))}
               onChange={(value) => setSort(value as MemorySortKey)}
