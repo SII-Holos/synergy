@@ -11041,8 +11041,16 @@ msgid "project.entry.changed"
 msgstr "Project folders changed. Review the selected main folder, then start the task again."
 
 #. js-lingui-explicit-id
+msgid "project.entry.checked"
+msgstr "Checked {time}"
+
+#. js-lingui-explicit-id
 msgid "project.entry.chooseFolders"
 msgstr "Choose folders"
+
+#. js-lingui-explicit-id
+msgid "project.entry.clean"
+msgstr "No uncommitted changes"
 
 #. js-lingui-explicit-id
 msgid "project.entry.computer"
@@ -11077,8 +11085,20 @@ msgid "project.entry.deleteWorktree"
 msgstr "Remove Worktree"
 
 #. js-lingui-explicit-id
+msgid "project.entry.details"
+msgstr "Details"
+
+#. js-lingui-explicit-id
 msgid "project.entry.developer"
 msgstr "Developer settings"
+
+#. js-lingui-explicit-id
+msgid "project.entry.dirty"
+msgstr "Uncommitted changes"
+
+#. js-lingui-explicit-id
+msgid "project.entry.diskSize"
+msgstr "{size} MiB"
 
 #. js-lingui-explicit-id
 msgid "project.entry.emptyWorktrees"
@@ -14453,6 +14473,76 @@ msgstr "Describe a task or add files to get started."
 #. js-lingui-explicit-id
 msgid "session.greeting.taskTitle"
 msgstr "What would you like to work on?"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.copied"
+msgstr "Conversation copied"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.copyDescription"
+msgstr "Copy all user and assistant text in this conversation"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.copyTitle"
+msgstr "Copy conversation text"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.exportDescription"
+msgstr "Download all user and assistant text in this conversation"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.exportTitle"
+msgstr "Export conversation text"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchEmpty"
+msgstr "No matching content"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchFailed"
+msgstr "Couldn’t search conversation"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchMore"
+msgstr "Continue searching"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchPlaceholder"
+msgstr "Search all conversation history"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchPreparing"
+msgstr "Preparing history search… {count} parts ready"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchReasoning"
+msgstr "Include reasoning"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchTitle"
+msgstr "Search conversation"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchTools"
+msgstr "Include tool content"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.textFailed"
+msgstr "Unable to read the conversation. Try again."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

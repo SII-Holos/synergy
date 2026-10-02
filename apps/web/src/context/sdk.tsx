@@ -38,6 +38,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       },
       isHome,
       client: sdk,
+      content: globalSDK.content,
       event: emitter,
       url: globalSDK.url,
       connected: globalSDK.connected,

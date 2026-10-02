@@ -108,3 +108,7 @@ The public `@ericsanchezok/synergy-plugin-kit/testing` entry exports isolated pr
 Start with `?safe-ui=1` to skip executable third-party UI and Skins before loading them. Recovery stays active in that browser tab across routing and reloads. Settings → General → Restart normally explicitly clears it. This path does not depend on a third-party Shell rendering successfully; a synchronous plugin loop still requires reloading into recovery.
 
 Session questions and permissions remain mounted by the host. The native composer provides an inline outlet; custom session pages without that outlet retain a protected, viewport-bounded host surface automatically.
+
+### Virtual conversation content
+
+UI API 6 conversation services may provide optional `content` methods for bounded summaries, original text, Part retention and target-window loading. A retained Part lease is released when its row unmounts; expansion and measured layout belong outside row lifetime. Message location accepts an optional Part identity after obtaining that window. Public service calls check capability and component lifetime before and after asynchronous work. Original text operations cover effective server history independently of the currently mounted content.

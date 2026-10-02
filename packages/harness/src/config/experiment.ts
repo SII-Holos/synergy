@@ -2,7 +2,7 @@ import { RuntimeContext } from "../lifecycle/context"
 import { ConfigExtensions } from "./extensions"
 import { Context } from "../util/context"
 import { createHash } from "node:crypto"
-import z from "zod"
+import { z } from "zod"
 import { CoreInfo, Info as ConfigSchema } from "./schema"
 
 export namespace Experiment {
@@ -78,6 +78,18 @@ export namespace Experiment {
     "explicit_command",
   ])
   export type Source = z.infer<typeof Source>
+  const executorConcurrency = Execution.shape.toolExecutorConcurrency.unwrap()
+  const SnapshotRuntime = Runtime.extend({
+    execution: Runtime.shape.execution
+      .unwrap()
+      .extend({
+        toolExecutorConcurrency: z
+          .partialRecord(z.enum([...executorConcurrency.keyType.options, "link"]), executorConcurrency.valueType)
+          .optional(),
+      })
+      .strict()
+      .optional(),
+  }).meta({ ref: "ExperimentSnapshotRuntime" })
   export const Snapshot = z
     .object({
       version: z.literal(1),
@@ -86,7 +98,7 @@ export namespace Experiment {
       fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
       effective: Overrides,
       overrides: Overrides,
-      runtime: Runtime,
+      runtime: SnapshotRuntime,
       sources: z.record(z.string(), Source),
     })
     .strict()

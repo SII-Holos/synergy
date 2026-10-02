@@ -1204,6 +1204,205 @@ export const SessionRoute = () =>
       },
     )
     .get(
+      "/:sessionID/timeline/page",
+      describeRoute({
+        summary: "Get an ordered page of message presentation summaries",
+        operationId: "session.timelinePage",
+        responses: {
+          200: {
+            description: "Bounded message summaries and lightweight referenced roots",
+            content: { "application/json": { schema: resolver(SessionHistory.TimelinePage) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("param", z.object({ sessionID: Identifier.schema("session") })),
+      validator(
+        "query",
+        z.object({
+          cursor: z.string().optional(),
+          limit: z.coerce.number().int().min(1).max(100).optional(),
+          messageID: Identifier.schema("message").optional(),
+        }),
+      ),
+      async (c) => {
+        try {
+          return c.json(await SessionHistory.timelinePage({ ...c.req.valid("param"), ...c.req.valid("query") }))
+        } catch (error) {
+          if (error instanceof SessionHistory.DisplayConflict) return c.json(error.toObject(), 409)
+          throw error
+        }
+      },
+    )
+    .get(
+      "/:sessionID/history/search",
+      describeRoute({
+        summary: "Search original content across the effective Session history",
+        operationId: "session.historySearch",
+        responses: {
+          200: {
+            description: "Stable message and Part matches with resumable preparation and bounded cursors",
+            content: { "application/json": { schema: resolver(SessionHistory.SearchPage) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("param", z.object({ sessionID: Identifier.schema("session") })),
+      validator(
+        "query",
+        z.object({
+          query: z
+            .string()
+            .min(1)
+            .max(1024)
+            .refine(
+              (value) => [...value.normalize("NFC").toLowerCase()].length <= 512,
+              "Search query exceeds its budget",
+            ),
+          reasoning: booleanQuery.optional(),
+          tools: booleanQuery.optional(),
+          cursor: z.string().optional(),
+          limit: z.coerce.number().int().min(1).max(100).optional(),
+        }),
+      ),
+      async (c) => {
+        const { sessionID } = c.req.valid("param")
+        await Session.flushPartWrites(sessionID)
+        try {
+          return c.json(await SessionHistory.search({ sessionID, ...c.req.valid("query"), signal: c.req.raw.signal }))
+        } catch (error) {
+          if (error instanceof SessionHistory.DisplayConflict) return c.json(error.toObject(), 409)
+          throw error
+        }
+      },
+    )
+    .get(
+      "/:sessionID/history/text",
+      describeRoute({
+        summary: "Read original text from the effective Session history",
+        operationId: "session.historyText",
+        responses: {
+          200: {
+            description: "Original text independent of the mounted window",
+            content: { "application/json": { schema: resolver(z.object({ text: z.string() })) } },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ sessionID: Identifier.schema("session") })),
+      validator(
+        "query",
+        z.object({
+          messageID: Identifier.schema("message").optional(),
+          rootID: Identifier.schema("message").optional(),
+          role: z.enum(["user", "assistant"]).optional(),
+          latest: booleanQuery.optional(),
+          reasoning: booleanQuery.optional(),
+          tools: booleanQuery.optional(),
+        }),
+      ),
+      async (c) => {
+        const { sessionID } = c.req.valid("param")
+        await Session.flushPartWrites(sessionID)
+        return c.json({ text: await SessionHistory.text({ sessionID, ...c.req.valid("query") }) })
+      },
+    )
+    .get(
+      "/:sessionID/message/:messageID/details",
+      describeRoute({
+        summary: "Resolve original message metadata by version",
+        operationId: "session.messageDetails",
+        responses: {
+          200: {
+            description: "Original message metadata without Part bodies",
+            content: { "application/json": { schema: resolver(SessionHistory.MessageDetails) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator(
+        "param",
+        z.object({ sessionID: Identifier.schema("session"), messageID: Identifier.schema("message") }),
+      ),
+      validator("query", z.object({ version: z.string().optional() })),
+      async (c) => {
+        try {
+          return c.json(await SessionHistory.messageDetails({ ...c.req.valid("param"), ...c.req.valid("query") }))
+        } catch (error) {
+          if (error instanceof SessionHistory.DisplayConflict) return c.json(error.toObject(), 409)
+          throw error
+        }
+      },
+    )
+    .get(
+      "/:sessionID/message/:messageID/part/page",
+      describeRoute({
+        summary: "Get presentation summaries for a message's Parts",
+        operationId: "session.partPage",
+        responses: {
+          200: {
+            description: "Bounded Part summaries with versioned content references",
+            content: { "application/json": { schema: resolver(SessionHistory.PartPage) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator(
+        "param",
+        z.object({ sessionID: Identifier.schema("session"), messageID: Identifier.schema("message") }),
+      ),
+      validator(
+        "query",
+        z.object({
+          cursor: z.string().optional(),
+          limit: z.coerce.number().int().min(1).max(100).optional(),
+          partID: Identifier.schema("part").optional(),
+          older: booleanQuery.optional(),
+        }),
+      ),
+      async (c) => {
+        await Session.flushPartWrites(c.req.valid("param").sessionID)
+        try {
+          return c.json(await SessionHistory.partPage({ ...c.req.valid("param"), ...c.req.valid("query") }))
+        } catch (error) {
+          if (error instanceof SessionHistory.DisplayConflict) return c.json(error.toObject(), 409)
+          throw error
+        }
+      },
+    )
+    .get(
+      "/:sessionID/message/:messageID/part/:partID/content",
+      describeRoute({
+        summary: "Resolve the original content of a versioned Part",
+        operationId: "session.partContent",
+        responses: {
+          200: {
+            description: "Canonical Part content and its version",
+            content: { "application/json": { schema: resolver(SessionHistory.PartContent) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: Identifier.schema("session"),
+          messageID: Identifier.schema("message"),
+          partID: Identifier.schema("part"),
+        }),
+      ),
+      validator("query", z.object({ version: z.string().optional() })),
+      async (c) => {
+        await Session.flushPartWrites(c.req.valid("param").sessionID)
+        try {
+          return c.json(await SessionHistory.partContent({ ...c.req.valid("param"), ...c.req.valid("query") }))
+        } catch (error) {
+          if (error instanceof SessionHistory.DisplayConflict) return c.json(error.toObject(), 409)
+          throw error
+        }
+      },
+    )
+    .get(
       "/:sessionID/message/page",
       describeRoute({
         summary: "Get a page of session messages",
@@ -1462,13 +1661,10 @@ export const SessionRoute = () =>
       ),
       validator("json", InvokeInput.omit({ sessionID: true })),
       async (c) => {
-        c.status(204)
-        c.header("Content-Type", "application/json")
-        return stream(c, async () => {
-          const sessionID = c.req.valid("param").sessionID
-          const body = c.req.valid("json")
-          await submitInput({ ...body, sessionID })
-        })
+        const sessionID = c.req.valid("param").sessionID
+        const body = c.req.valid("json")
+        await submitInput({ ...body, sessionID })
+        return c.body(null, 204)
       },
     )
     .post(

@@ -11041,7 +11041,15 @@ msgid "project.entry.changed"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "project.entry.checked"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "project.entry.chooseFolders"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.clean"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -11077,7 +11085,19 @@ msgid "project.entry.deleteWorktree"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "project.entry.details"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "project.entry.developer"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.dirty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.diskSize"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -14452,6 +14472,76 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.greeting.taskTitle"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.copied"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.copyDescription"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.copyTitle"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.exportDescription"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.exportTitle"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchEmpty"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchFailed"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchMore"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchPlaceholder"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchPreparing"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchReasoning"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchTitle"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchTools"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.textFailed"
 msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.

@@ -1,8 +1,12 @@
 import type { SessionWorkspaceTransitionRequest } from "./worktree-session"
-import { createMemo, createResource, createSignal, For, Show, type JSX } from "solid-js"
+import { createMemo, createResource, createSignal, For, Show, Suspense, onCleanup, type JSX } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { useLingui } from "@lingui/solid"
-import type { ProjectDirectories, SessionWorkspaceSelection, Worktree } from "@ericsanchezok/synergy-sdk/client"
+import type {
+  ProjectDirectories,
+  SessionWorkspaceSelection,
+  WorktreeInventoryEntry,
+} from "@ericsanchezok/synergy-sdk/client"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
@@ -14,6 +18,7 @@ import { useSync } from "@/context/sync"
 import { useLayout } from "@/context/layout"
 import { getScopeLabel, resolveProjectScope } from "@/utils/scope"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
+import { loadWorktreeInventory } from "@/utils/worktree-inventory"
 import { requestErrorMessage } from "@/utils/error"
 import type { PromptStartOptionGroup } from "../prompt-input/start-options"
 import { ProjectTaskButton } from "./project-task-button"
@@ -23,7 +28,7 @@ import { DialogWorktrees } from "../dialog/dialog-worktrees"
 import { DialogWorkingLocation } from "../dialog/dialog-working-location"
 import { projectEntryCopy as copy } from "../dialog/project-entry-copy"
 
-export function SessionWorkContext(props: {
+type WorkContextProps = {
   onWorkspaceTransition?: (request: SessionWorkspaceTransitionRequest) => void
   running?: boolean
   environmentID?: string | null
@@ -39,7 +44,16 @@ export function SessionWorkContext(props: {
   directoryError?: string
   onRefresh?: () => void
   onSelect?: (selection: SessionWorkspaceSelection) => void
-}) {
+}
+export function SessionWorkContext(props: WorkContextProps) {
+  const { _ } = useLingui()
+  return (
+    <Suspense fallback={<span class="project-inline-note">{_(copy.loading)}</span>}>
+      <WorkContextContent {...props} />
+    </Suspense>
+  )
+}
+function WorkContextContent(props: WorkContextProps) {
   const { _ } = useLingui()
   const sdk = useSDK()
   const globalSDK = useGlobalSDK()
@@ -55,16 +69,27 @@ export function SessionWorkContext(props: {
     props.directories?.folders.find((folder) => folder.workspaceID === props.directories?.mainWorkspaceID),
   )
   const session = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
+  let inventoryRequest: AbortController | undefined
+  onCleanup(() => inventoryRequest?.abort())
+  const inventoryVersion = createMemo(() =>
+    JSON.stringify([
+      props.directories?.revision,
+      sync.data.workspaces.map((workspace) => [workspace.id, workspace.binding.generation]),
+    ]),
+  )
   const [trees] = createResource(
-    () =>
-      !sdk.isHome && globalSDK.capabilities.has("workbench")
-        ? { scopeID: sdk.scopeID, revision: props.directories?.revision, workspaceID: session()?.workspaceID }
-        : false,
-    async ({ scopeID }) => {
+    () => (!sdk.isHome && globalSDK.capabilities.has("workbench") ? `${sdk.scopeID}:${inventoryVersion()}` : false),
+    async () => {
+      inventoryRequest?.abort()
+      const controller = new AbortController()
+      inventoryRequest = controller
       try {
         setError("")
-        return (await sdk.client.project.worktrees({ scopeID }, { throwOnError: true })).data
+        return (
+          await loadWorktreeInventory(sdk.client, globalSDK.url, sdk.scopeID, inventoryVersion(), controller.signal)
+        ).data?.items
       } catch (failure) {
+        if (controller.signal.aborted) return undefined
         setError(requestErrorMessage(failure, _(copy.unavailable)))
         return []
       }
@@ -117,7 +142,7 @@ export function SessionWorkContext(props: {
       setPending(false)
     }
   }
-  const useTree = (tree: Worktree) =>
+  const useTree = (tree: WorktreeInventoryEntry) =>
     select({ mode: "existing", target: tree.id, sourceWorkspaceID: tree.sourceWorkspaceID })
   function settings() {
     const project = scope()
@@ -280,6 +305,7 @@ export function SessionWorkContext(props: {
                 dialog.show(() => (
                   <DialogWorktrees
                     scopeID={sdk.scopeID}
+                    inventoryVersion={inventoryVersion()}
                     disabled={props.running}
                     onSelect={async (tree) => {
                       if (await useTree(tree)) dialog.close()

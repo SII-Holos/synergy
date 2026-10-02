@@ -63,6 +63,10 @@ let queue: QueueEntry[] = []
 let locallyRejected = 0
 let tokenDurationSampleRate = DEFAULT_TOKEN_DURATION_SAMPLE_RATE
 let cleanup: Array<() => void> = []
+let uploadGeneration = 0
+let uploading = false
+let nextUploadAt = 0
+let failures = 0
 const recentLongTasks: LongTaskEntry[] = []
 const tokenReceipts = new Map<string, TokenReceipt>()
 const tokenDurations = new Map<string, TokenDurationAggregate>()
@@ -321,6 +325,7 @@ export function drainTokenDurationMetrics(): BrowserMetric[] {
 }
 
 async function flushBrowserMetrics(input: { url: string; client: SynergyClient }, options?: { keepalive?: boolean }) {
+  if (uploading || (!options?.keepalive && Date.now() < nextUploadAt)) return
   for (const metric of drainTokenDurationMetrics()) enqueue({ kind: "metric", value: metric })
   if (queue.length === 0 && locallyRejected === 0) return
   const candidates = queue.splice(0, MAX_BATCH)
@@ -334,15 +339,28 @@ async function flushBrowserMetrics(input: { url: string; client: SynergyClient }
   })
   queue = [...fitted.deferred, ...queue]
   if (fitted.entries.length === 0 && rejected === 0) return
+  const generation = uploadGeneration
+  uploading = true
+  nextUploadAt = Date.now() + 1000
   try {
     await input.client.performance.browserMetrics.ingest(
       { perfBrowserMetricBatch: fitted.body },
       { throwOnError: true, keepalive: options?.keepalive },
     )
+    if (generation === uploadGeneration) failures = 0
   } catch (error) {
+    if (generation !== uploadGeneration) return
     if (!shouldRetryBrowserMetricBatch(error)) return
     queue = [...fitted.entries, ...queue].slice(0, MAX_BATCH * 4)
     locallyRejected += rejected
+    failures++
+    const retryAfter =
+      typeof error === "object" && error !== null && "retryAfterMs" in error && typeof error.retryAfterMs === "number"
+        ? error.retryAfterMs
+        : 0
+    nextUploadAt = Date.now() + Math.max(retryAfter, Math.min(60_000, 1000 * 2 ** failures))
+  } finally {
+    if (generation === uploadGeneration) uploading = false
   }
 }
 
@@ -577,6 +595,10 @@ function encodedSize(value: unknown) {
 }
 
 export function stopBrowserPerformanceMetrics() {
+  uploadGeneration++
+  uploading = false
+  nextUploadAt = 0
+  failures = 0
   if (timer) window.clearInterval(timer)
   for (const stop of cleanup.splice(0)) stop()
   timer = undefined

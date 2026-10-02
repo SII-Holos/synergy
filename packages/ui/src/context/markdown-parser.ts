@@ -1,0 +1,84 @@
+import { Marked } from "marked"
+import markedKatex from "marked-katex-extension"
+import markedShiki from "marked-shiki"
+import type { BundledLanguage, Highlighter } from "shiki"
+import { markGeneratedKatex, markedLatex, prepareMarkdownMath, stripGeneratedKatexMarker } from "./marked-math"
+import { synergyHighlightTheme } from "./highlight-theme"
+
+function escapeHtmlAttribute(value: string) {
+  return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+}
+
+const mathOptions = {
+  throwOnError: false,
+  nonStandard: true,
+}
+
+// Provenance: https://shiki.style/guide/best-performance
+// Local adaptation: reuse a lazy highlighter in the worker, loading languages within a bounded grammar budget.
+export function createMarkdownParser() {
+  let highlighter: Highlighter | undefined
+  let grammarBytes = 0
+  let highlighting: Promise<void> = Promise.resolve()
+  const highlight = (code: string, lang: string) => {
+    const task = highlighting.then(async () => {
+      if (code.length > 4096 || code.split("\n", 162).length > 160)
+        return `<pre class="shiki" data-language="text"><code>${code.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}</code></pre>`
+      const shiki = await import("shiki")
+      const language = lang && lang in shiki.bundledLanguages ? (lang as BundledLanguage) : "text"
+      if (language !== "text" && !highlighter?.getLoadedLanguages().includes(language)) {
+        const grammar = await shiki.bundledLanguages[language]()
+        const size = JSON.stringify(grammar.default).length * 8
+        if (size > 32 * 1024 * 1024)
+          return `<pre class="shiki" data-language="text"><code>${code.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}</code></pre>`
+        if (grammarBytes + size > 32 * 1024 * 1024) {
+          highlighter?.dispose()
+          highlighter = undefined
+          grammarBytes = 0
+        }
+        highlighter ??= await shiki.createHighlighter({ themes: [synergyHighlightTheme], langs: [] })
+        await highlighter.loadLanguage(...grammar.default)
+        grammarBytes += size
+      }
+      highlighter ??= await shiki.createHighlighter({ themes: [synergyHighlightTheme], langs: [] })
+      const html = highlighter.codeToHtml(code, { lang: language, theme: "Synergy", tabindex: false })
+      return html
+        .replace("<pre", `<pre data-language="${escapeHtmlAttribute(language)}"`)
+        .replace("<code>", `<code data-language="${escapeHtmlAttribute(language)}">`)
+    })
+    highlighting = task.then(
+      () => {},
+      () => {},
+    )
+    return task
+  }
+  const parser = new Marked().use(
+    {
+      hooks: {
+        preprocess: prepareMarkdownMath,
+      },
+      renderer: {
+        html({ text }) {
+          return stripGeneratedKatexMarker(text)
+        },
+        link({ href, title, tokens }) {
+          const titleAttr = title ? ` title="${escapeHtmlAttribute(title)}"` : ""
+          return `<a href="${escapeHtmlAttribute(href)}"${titleAttr} target="_blank" rel="noopener noreferrer">${this.parser.parseInline(tokens)}</a>`
+        },
+      },
+    },
+    markedLatex(mathOptions),
+    markGeneratedKatex(markedKatex(mathOptions)),
+    markedShiki({
+      container: '<div data-slot="markdown-code-block" data-language="%l">%s</div>',
+      highlight,
+    }),
+  )
+  return Object.assign(parser, {
+    dispose() {
+      highlighter?.dispose()
+      highlighter = undefined
+      grammarBytes = 0
+    },
+  })
+}

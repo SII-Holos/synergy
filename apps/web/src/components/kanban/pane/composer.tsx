@@ -1,7 +1,7 @@
 import { For, Show, createMemo, createSignal } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import type { MessageDescriptor } from "@lingui/core"
-import type { Agent, Session, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
+import type { AgentSummary, Session, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
@@ -44,7 +44,7 @@ function workflowLabel(kind: BoardWorkflowKind, _: (d: { id: string; message: st
  */
 export function KanbanPaneComposer(props: {
   sessionID: string
-  agents: Agent[]
+  agents: AgentSummary[]
   session?: Session
   status?: SessionStatus
   onSend: (text: string, options?: { agent?: string }) => Promise<void>

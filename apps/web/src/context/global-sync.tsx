@@ -1,8 +1,9 @@
 import {
   type Message,
-  type Agent,
+  type AgentSummary,
   type Session,
   type Part,
+  type SessionPartSummary,
   type Config,
   type Scope,
   type WorkspaceInfo,
@@ -11,7 +12,7 @@ import {
   type Todo,
   type ProviderListResponse,
   type ProviderAuthResponse,
-  type Command,
+  type CommandSummary,
   type McpStatus,
   type LspStatus,
   type VcsInfo,
@@ -23,6 +24,11 @@ import {
   type ScopeBootstrapResponse,
   createSynergyClient,
 } from "@ericsanchezok/synergy-sdk/client"
+import { sharedRequests } from "@/utils/shared-requests"
+import { createContentBudget, contentBudgetKey } from "./content-budget"
+import { clearConversationContent } from "./conversation-content-state"
+import type { createPartMaterializer } from "./part-materializer"
+import { mergeModelDirectory, type ProviderSnapshot } from "./model-directory"
 import { projectWorkspaceBinding } from "./workspace-catalog"
 import { createScopeRetention } from "./scope-retention"
 import { resolveWorkspaceTransition } from "./workspace-transition"
@@ -127,10 +133,10 @@ type GlobalPaths = {
 
 type State = {
   status: "loading" | "partial" | "complete"
-  agent: Agent[]
-  command: Command[]
+  agent: AgentSummary[]
+  command: CommandSummary[]
   scopeID: string
-  provider: ProviderListResponse
+  provider: ProviderSnapshot
   config: Config
   path: Path
   workspaces: WorkspaceInfo[]
@@ -167,6 +173,12 @@ type State = {
   part: {
     [messageID: string]: Part[]
   }
+  partSummary: Record<string, SessionPartSummary[]>
+  partPage: Record<
+    string,
+    { nextCursor: string | null; previousCursor: string | null; hasMore: boolean; hasEarlier: boolean }
+  >
+  partVersion: Record<string, string>
 }
 
 function setPlanBlueprintOfferState(
@@ -266,6 +278,34 @@ function removePendingRequest<T extends { id: string }>(
 // is its only event-side source.
 
 function createGlobalSync() {
+  const contentBudget = createContentBudget()
+  const contentCaches = new Map<string, { cache: ReturnType<typeof createPartMaterializer>; readers: number }>()
+  function retainContentCache(scopeKey: string, create: () => ReturnType<typeof createPartMaterializer>) {
+    let entry = contentCaches.get(scopeKey)
+    if (!entry) {
+      entry = { cache: create(), readers: 0 }
+      contentCaches.set(scopeKey, entry)
+    }
+    entry.readers++
+    const retained = entry
+    let released = false
+    return {
+      cache: entry.cache,
+      release() {
+        if (released) return
+        released = true
+        if (--retained.readers === 0) {
+          retained.cache.dispose()
+          contentCaches.delete(scopeKey)
+        }
+      },
+    }
+  }
+  onCleanup(() => {
+    for (const entry of contentCaches.values()) entry.cache.dispose()
+    contentCaches.clear()
+    contentBudget.dispose()
+  })
   const contextProjectionRevision = createSessionContextProjectionRevision()
   const globalSDK = useGlobalSDK()
   const [failure, setFailure] = createSignal<GlobalSyncFailure>()
@@ -274,7 +314,7 @@ function createGlobalSync() {
     paths: GlobalPaths
     config: Config
     scope: Scope[]
-    provider: ProviderListResponse
+    provider: ProviderSnapshot
     provider_auth: ProviderAuthResponse
     agenda: AgendaItem[]
     cortex: CortexTask[]
@@ -306,7 +346,16 @@ function createGlobalSync() {
     question: {},
   })
 
+  function invalidateMessageContent(scopeKey: string, messageID: string) {
+    contentCaches.get(scopeKey)?.cache.invalidate(messageID)
+    contentBudget.clearPrefix(`${scopeKey}\0${messageID}\0`)
+  }
   const children: Record<string, ReturnType<typeof createStore<State>>> = {}
+  const scopeLifetimes = new Map<string, AbortController>()
+  onCleanup(() => {
+    for (const lifetime of scopeLifetimes.values()) lifetime.abort()
+    scopeLifetimes.clear()
+  })
   // Reactivity for the scope-store registry: consumers reading
   // peekScopeState() re-run when a store is created or evicted, so a sidebar
   // row that first observed `undefined` picks the store up once an event or
@@ -324,6 +373,20 @@ function createGlobalSync() {
   const [reconnectVersion, setReconnectVersion] = createSignal(0)
   const [scopeReconnectVersions, setScopeReconnectVersions] = createStore<Record<string, number>>({})
   const scopeReconnectRecovery = createScopeReconnectRecovery((scopeKey, generation) => {
+    const state = children[scopeKey]
+    if (state) {
+      const [store, setStore] = state
+      for (const [sessionID, messages] of Object.entries(store.message)) {
+        partSnapshotFreshness.releaseSession(scopeKey, sessionID)
+        for (const message of messages) invalidateMessageContent(scopeKey, message.id)
+      }
+      setStore(
+        produce((draft) => {
+          for (const messages of Object.values(draft.message))
+            for (const message of messages) clearConversationContent(draft, message.id)
+        }),
+      )
+    }
     setScopeReconnectVersions(scopeKey, generation)
   })
   const resourceFreshness = new SyncResourceFreshness()
@@ -375,6 +438,142 @@ function createGlobalSync() {
       scopeID: scopeKey,
       throwOnError: true,
     })
+  }
+
+  const scopeRequestLifetime = new AbortController()
+  onCleanup(() => scopeRequestLifetime.abort())
+  function coreSnapshot(scopeKey: string) {
+    return sharedRequests.request(
+      JSON.stringify([globalSDK.url, "bootstrap-core", scopeKey]),
+      (signal) =>
+        createScopedClient(scopeKey).scope.bootstrapCore({ scopeID: scopeKey }, { signal, throwOnError: true }),
+      { signal: scopeLifetimes.get(scopeKey)?.signal ?? scopeRequestLifetime.signal, ttlMs: 0 },
+    )
+  }
+
+  async function doRefreshScopePanels(scopeKey: string) {
+    const state = children[scopeKey]
+    if (!state) return
+    const [store, setStore] = state
+    const client = createScopedClient(scopeKey)
+    const results = await Promise.allSettled([
+      client.command.list().then((x) => {
+        if (children[scopeKey] === state) setStore("command", x.data ?? [])
+      }),
+      client.workspace.list({ scopeID: scopeKey }).then((x) => {
+        if (children[scopeKey] !== state || !x.data) return
+        setStore(
+          "workspaces",
+          reconcile(
+            scopeWriteTracker(scopeKey).mergeWorkspaces(readSyncVersion(x.response?.headers), x.data, store.workspaces),
+            { key: "id" },
+          ),
+        )
+        refreshWorkspaceProjections(store, setStore)
+      }),
+    ])
+    for (const result of results)
+      if (result.status === "rejected") console.error("Scope panel refresh failed", result.reason)
+  }
+
+  const modelLookups = new Map<string, Promise<void>>()
+  function modelSnapshot(scopeKey: string) {
+    return isHomeScope(scopeKey) ? globalStore.provider : ensureScopeState(scopeKey)[0].provider
+  }
+  function applyModels(scopeKey: string, page: Parameters<typeof mergeModelDirectory>[1]) {
+    const current = modelSnapshot(scopeKey)
+    const merged = mergeModelDirectory(current, page)
+    if (merged === current) return
+    if (isHomeScope(scopeKey)) setGlobalStore("provider", merged)
+    else ensureScopeState(scopeKey)[1]("provider", merged)
+  }
+  async function ensureModels(scopeKey: string, keys: { providerID: string; modelID: string }[]) {
+    const current = modelSnapshot(scopeKey)
+    const state = children[scopeKey]
+    const signal = scopeLifetimes.get(scopeKey)?.signal ?? scopeRequestLifetime.signal
+    const missing = [
+      ...new Map(keys.map((key) => [JSON.stringify([key.providerID, key.modelID]), key])).values(),
+    ].filter(
+      (key) =>
+        !current.all.find((p) => p.id === key.providerID)?.models[key.modelID] &&
+        !current.resolvedModels?.includes(JSON.stringify([key.providerID, key.modelID])),
+    )
+    if (!missing.length) return
+    for (let offset = 0; offset < missing.length; offset += 100) {
+      const batch = missing.slice(offset, offset + 100)
+      const key = JSON.stringify([globalSDK.url, "models", scopeKey, current.version, batch])
+      const result = await sharedRequests.request(
+        key,
+        (signal) =>
+          createScopedClient(scopeKey).provider.modelsById(
+            { scopeID: scopeKey, models: batch },
+            { signal, throwOnError: true },
+          ),
+        { signal },
+      )
+      if (
+        disposed ||
+        signal.aborted ||
+        children[scopeKey] !== state ||
+        !result.data ||
+        current.version !== modelSnapshot(scopeKey).version
+      )
+        return
+      if (current.version !== result.data.version) {
+        void bootstrapInstance(scopeKey)
+        return
+      }
+      applyModels(scopeKey, result.data)
+      const snapshot = modelSnapshot(scopeKey)
+      const resolved = {
+        ...snapshot,
+        resolvedModels: [
+          ...new Set([
+            ...(snapshot.resolvedModels ?? []),
+            ...batch.map((key) => JSON.stringify([key.providerID, key.modelID])),
+          ]),
+        ],
+      }
+      if (isHomeScope(scopeKey)) setGlobalStore("provider", resolved)
+      else ensureScopeState(scopeKey)[1]("provider", resolved)
+    }
+  }
+  function loadModelCatalog(scopeKey: string) {
+    const key = JSON.stringify([scopeKey, modelSnapshot(scopeKey).version])
+    const existing = modelLookups.get(key)
+    if (existing) return existing
+    const state = children[scopeKey]
+    const signal = scopeLifetimes.get(scopeKey)?.signal ?? scopeRequestLifetime.signal
+    const pending = (async () => {
+      let cursor: string | undefined
+      const version = modelSnapshot(scopeKey).version
+      do {
+        const result = await createScopedClient(scopeKey).provider.catalogPage(
+          { scopeID: scopeKey, connectedOnly: true, cursor, limit: 100 },
+          { signal, throwOnError: true },
+        )
+        if (
+          disposed ||
+          signal.aborted ||
+          children[scopeKey] !== state ||
+          version !== modelSnapshot(scopeKey).version ||
+          !result.data
+        )
+          return
+        if (version !== result.data.version) {
+          void bootstrapInstance(scopeKey)
+          return
+        }
+        applyModels(scopeKey, result.data)
+        cursor = result.data.nextCursor
+        if (cursor) await new Promise<void>((resolve) => setTimeout(resolve, 0))
+      } while (cursor)
+    })()
+    modelLookups.set(key, pending)
+    void pending.catch(() => {
+      if (modelLookups.get(key) === pending) modelLookups.delete(key)
+    })
+    return pending
   }
 
   function scopeRequest(scopeKey: string) {
@@ -500,6 +699,7 @@ function createGlobalSync() {
   function ensureScopeState(scopeKey: string) {
     if (!scopeKey) console.error("No scope key provided")
     if (!children[scopeKey]) {
+      scopeLifetimes.set(scopeKey, new AbortController())
       children[scopeKey] = createStore<State>({
         scopeID: "",
         provider: {
@@ -535,6 +735,9 @@ function createGlobalSync() {
         messageWindow: {},
         latestContextMessage: {},
         part: {},
+        partSummary: {},
+        partPage: {},
+        partVersion: {},
       })
       setScopeRegistryVersion((version) => version + 1)
       scheduleBootstrap(scopeKey)
@@ -586,6 +789,8 @@ function createGlobalSync() {
   }
 
   function releaseScopeState(scopeKey: string) {
+    scopeLifetimes.get(scopeKey)?.abort()
+    scopeLifetimes.delete(scopeKey)
     contextProjectionRevision.releaseScope(scopeKey)
     if (children[scopeKey]) {
       for (const sessionID of Object.keys(children[scopeKey][0].message)) {
@@ -675,16 +880,15 @@ function createGlobalSync() {
   }
 
   async function loadGlobalConfig() {
-    return globalSDK.client.config.global().then((x) => {
-      setGlobalStore("config", reconcile(x.data ?? {}))
+    return coreSnapshot(HOME_SCOPE_KEY).then((x) => {
+      if (x.data) setGlobalStore("config", reconcile(x.data.config))
     })
   }
 
   async function loadGlobalProviders() {
     return Promise.all([
-      globalSDK.client.provider.list().then((x) => {
-        const data = internProviderList(x.data!)
-        setGlobalStore("provider", data)
+      coreSnapshot(HOME_SCOPE_KEY).then((x) => {
+        if (x.data) setGlobalStore("provider", x.data.provider)
       }),
       globalSDK.client.provider.auth().then((x) => {
         setGlobalStore("provider_auth", x.data ?? {})
@@ -696,15 +900,11 @@ function createGlobalSync() {
     const [_, setStore] = ensureScopeState(scopeKey)
     const sdk = createScopedClient(scopeKey)
 
-    return Promise.all([
-      sdk.provider.list().then((x) => {
-        const data = internProviderList(x.data!)
-        setStore("provider", data)
-      }),
-      sdk.app.agents().then((x) => setStore("agent", x.data ?? [])),
-      sdk.config.get().then((x) => setStore("config", x.data!)),
-      sdk.command.list().then((x) => setStore("command", x.data ?? [])),
-    ]).then(() => undefined)
+    sharedRequests.invalidate(JSON.stringify([globalSDK.url, "bootstrap-core", scopeKey]))
+    return coreSnapshot(scopeKey).then((result) => {
+      if (!result.data) throw new Error("Scope bootstrap returned no data")
+      applyScopeBootstrapSnapshot(scopeKey, children[scopeKey][0], setStore, result.data, result.response?.headers)
+    })
   }
 
   let refreshAllConfigsTimer: ReturnType<typeof setTimeout> | undefined
@@ -798,19 +998,8 @@ function createGlobalSync() {
 
       const scopePromises: Promise<unknown>[] = []
 
-      if (targets.has("config")) {
-        scopePromises.push(sdk.config.get().then((x) => setStore("config", x.data!)))
-      }
-      if (targets.has("provider") || targets.has("config")) {
-        scopePromises.push(
-          sdk.provider.list().then((x) => {
-            const data = internProviderList(x.data!)
-            setStore("provider", data)
-          }),
-        )
-      }
-      if (targets.has("agent") || targets.has("provider") || targets.has("config")) {
-        scopePromises.push(sdk.app.agents().then((x) => setStore("agent", x.data ?? [])))
+      if (targets.has("config") || targets.has("provider") || targets.has("agent")) {
+        scopePromises.push(refreshConfig(scopeKey))
       }
       if (targets.has("command") || targets.has("mcp") || targets.has("config")) {
         scopePromises.push(sdk.command.list().then((x) => setStore("command", x.data ?? [])))
@@ -949,7 +1138,7 @@ function createGlobalSync() {
     scopeKey: string,
     store: State,
     setStore: SetStoreFunction<State>,
-    data: ScopeBootstrapResponse,
+    data: Omit<ScopeBootstrapResponse, "agent"> & { agent: AgentSummary[]; workspacesComplete?: boolean },
     headers: Pick<Headers, "get"> | undefined,
   ) {
     const sessions = data.sessions?.data.filter((session) => !!session?.id && !session.time?.archived)
@@ -965,16 +1154,21 @@ function createGlobalSync() {
     const tracker = writeTrackers.get(scopeKey)
     batch(() => {
       setStore("scopeID", data.scopeID)
-      setStore("provider", internProviderList(data.provider))
+      setStore("provider", data.provider)
       setStore("agent", reconcile(data.agent, { key: "name" }))
       setStore("config", reconcile(data.config))
       if (data.path) setStore("path", reconcile(data.path))
       if (data.workspaces)
         setStore(
           "workspaces",
-          reconcile(tracker?.mergeWorkspaces(version, data.workspaces, store.workspaces) ?? data.workspaces, {
-            key: "id",
-          }),
+          reconcile(
+            (tracker ?? new ScopeWriteTracker()).mergeWorkspaces(version, data.workspaces, store.workspaces, {
+              complete: data.workspacesComplete,
+            }),
+            {
+              key: "id",
+            },
+          ),
         )
       if (data.command) setStore("command", reconcile(data.command, { key: "name" }))
       if (data.sessionStatus) {
@@ -1115,7 +1309,7 @@ function createGlobalSync() {
     const sdk = createScopedClient(scopeKey)
 
     await Promise.all([
-      sdk.scope.bootstrap(scopeRequest(scopeKey)).then((result) => {
+      coreSnapshot(scopeKey).then((result) => {
         if (!current()) return
         if (!result.data) throw new Error("Scope bootstrap returned no data")
         applyScopeBootstrapSnapshot(scopeKey, store, setStore, result.data, result.response?.headers)
@@ -1141,7 +1335,7 @@ function createGlobalSync() {
     const sdk = createScopedClient(scopeKey)
     try {
       await Promise.all([
-        retry(() => sdk.scope.bootstrap(scopeRequest(scopeKey))).then((result) => {
+        retry(() => coreSnapshot(scopeKey)).then((result) => {
           if (!current()) return
           if (!result.data) throw new Error("Scope bootstrap returned no data")
           applyScopeBootstrapSnapshot(scopeKey, store, setStore, result.data, result.response?.headers)
@@ -1158,6 +1352,7 @@ function createGlobalSync() {
       ])
       if (!current()) return false
       setStore("status", "complete")
+      void doRefreshScopePanels(scopeKey).catch(() => {})
       return true
     } catch (error) {
       if (current()) setFailure({ source: "scope", scopeKey, error })
@@ -1288,9 +1483,10 @@ function createGlobalSync() {
       if (!state) continue
       const [store, setStore] = state
       const msgs = store.message[sessionID]
+      for (const message of msgs ?? []) invalidateMessageContent(scopeKey, message.id)
       setStore(
         produce((draft) => {
-          if (msgs) for (const m of msgs) delete draft.part[m.id]
+          if (msgs) for (const m of msgs) clearConversationContent(draft, m.id)
           delete draft.message[sessionID]
           delete draft.messageWindow[sessionID]
           delete draft.latestContextMessage[sessionID]
@@ -1312,6 +1508,7 @@ function createGlobalSync() {
   }
 
   function markActiveSession(scopeKey: string, sessionID: string | undefined) {
+    globalSDK.content.active(scopeKey, sessionID)
     activeBucketKey = sessionID ? bucketKey(scopeKey, sessionID) : undefined
     if (scopeKey && sessionID) touchMessageBucket(scopeKey, sessionID)
   }
@@ -1325,7 +1522,7 @@ function createGlobalSync() {
     inboxRequest?: SyncResourceRequest
   }
   type SessionWindowReloadResult = {
-    response: Awaited<ReturnType<ScopedClient["session"]["messagePage"]>>
+    response: Awaited<ReturnType<ScopedClient["session"]["timelinePage"]>>
     messageRequest: SyncResourceRequest
     partSnapshotRequest: SessionPartSnapshotRequest
     contextProjectionRevision: number
@@ -1338,7 +1535,7 @@ function createGlobalSync() {
       const partSnapshotRequest = capturePartSnapshotRequest(input.scopeKey, input.sessionID)
       const projectionRevision = contextProjectionRevision.begin(input.scopeKey, input.sessionID)
       const response = await retry(() =>
-        sdk.session.messagePage({ sessionID: input.sessionID, limit: 200 }, { signal, throwOnError: true }),
+        sdk.session.timelinePage({ sessionID: input.sessionID, limit: 100 }, { signal, throwOnError: true }),
       )
       return { response, messageRequest, partSnapshotRequest, contextProjectionRevision: projectionRevision }
     },
@@ -1351,7 +1548,7 @@ function createGlobalSync() {
       if (!currentMessages) return "applied"
       const metadata = store.messageWindow[input.sessionID]
       if (!input.inboxRequest && metadata?.mode !== "latest") return "applied"
-      const plan = planMessagePageApply({
+      const plan = planMessagePageApply<Message, Part>({
         page: result.response.data,
         current: {
           messages: currentMessages,
@@ -1376,9 +1573,10 @@ function createGlobalSync() {
         result.response.response?.headers,
         () => {
           batch(() => {
+            for (const messageID of plan.droppedIds) invalidateMessageContent(input.scopeKey, messageID)
             setStore(
               produce((draft) => {
-                for (const messageID of plan.droppedIds) delete draft.part[messageID]
+                for (const messageID of plan.droppedIds) clearConversationContent(draft, messageID)
                 if (input.inboxRequest) delete draft.session_diff[input.sessionID]
                 if (
                   input.inboxRequest &&
@@ -1713,9 +1911,10 @@ function createGlobalSync() {
 
           batch(() => {
             setLatestContextMessage(scopeKey, sessionID, latestContextMessage)
+            for (const messageID of result.droppedIds) invalidateMessageContent(scopeKey, messageID)
             setStore(
               produce((draft) => {
-                for (const messageID of result.droppedIds) delete draft.part[messageID]
+                for (const messageID of result.droppedIds) clearConversationContent(draft, messageID)
               }),
             )
             setStore("message", sessionID, reconcile(result.window.messages, { key: "id" }))
@@ -1767,9 +1966,10 @@ function createGlobalSync() {
           batch(() => {
             setLatestContextMessage(scopeKey, sessionID, latestContextMessage)
             if (removedVisible) {
+              invalidateMessageContent(scopeKey, messageID)
               setStore(
                 produce((draft) => {
-                  delete draft.part[messageID]
+                  clearConversationContent(draft, messageID)
                 }),
               )
               setStore("message", sessionID, reconcile(result.messages, { key: "id" }))
@@ -1786,6 +1986,56 @@ function createGlobalSync() {
             )
           })
         })
+        break
+      }
+      case "message.part.summary": {
+        const { summary, content } = event.properties
+        const loaded = store.message[summary.sessionID]?.some((message) => message.id === summary.messageID)
+        if (!loaded) {
+          if (store.messageWindow[summary.sessionID]?.mode === "latest")
+            partRepairScheduler.request(scopeKey, summary.sessionID)
+          break
+        }
+        partSnapshotFreshness.touch(scopeKey, summary.sessionID, summary.messageID)
+        const summaries = store.partSummary[summary.messageID] ?? []
+        const index = summaries.findIndex((part) => part.id === summary.id)
+        if (index >= 0) setStore("partSummary", summary.messageID, index, reconcile(summary))
+        else
+          setStore(
+            "partSummary",
+            summary.messageID,
+            [...summaries, summary].sort((a, b) => a.id.localeCompare(b.id)),
+          )
+        if (!content) break
+        setStore("partVersion", summary.id, summary.content.version)
+        if (content.kind === "checkpoint") {
+          const parts = store.part[summary.messageID] ?? []
+          const index = parts.findIndex((part) => part.id === summary.id)
+          if (index >= 0) setStore("part", summary.messageID, index, reconcile(content.part))
+          applyEvent(scopeKey, {
+            type: "message.part.updated",
+            properties: { part: content.part, delta: event.properties.delta },
+          })
+        } else
+          applyEvent(scopeKey, {
+            type: "message.part.delta",
+            properties: {
+              sessionID: summary.sessionID,
+              messageID: summary.messageID,
+              partID: summary.id,
+              kind: summary.type,
+              delta: content.delta,
+            },
+          })
+        contentBudget.publish(
+          contentBudgetKey(scopeKey, summary.messageID, summary.id),
+          summary.content.version,
+          summary.content.bytes * 2,
+          () => {
+            contentCaches.get(scopeKey)?.cache.invalidate(summary.messageID, summary.id)
+            setStore("part", summary.messageID, (parts) => (parts ?? []).filter((part) => part.id !== summary.id))
+          },
+        )
         break
       }
       case "message.part.delta": {
@@ -1920,7 +2170,7 @@ function createGlobalSync() {
         const metadata = store.messageWindow[sessionID]
         const messageLoaded =
           hasMessageWindowSnapshot(messages, metadata) && messages.some((message) => message.id === messageID)
-        partSnapshotFreshness.touch(scopeKey, sessionID, messageID, { requiresSnapshot: !messageLoaded })
+        partSnapshotFreshness.touch(scopeKey, sessionID, messageID, { requiresSnapshot: true })
         if (!messageLoaded) {
           if (hasMessageWindowSnapshot(messages, metadata) && metadata?.mode === "latest") {
             partRepairScheduler.request(scopeKey, sessionID)
@@ -1928,6 +2178,15 @@ function createGlobalSync() {
           break
         }
         invalidateResource(scopeKey, sessionID, "message")
+        contentCaches.get(scopeKey)?.cache.invalidate(messageID, partID)
+        contentBudget.remove(contentBudgetKey(scopeKey, messageID, partID))
+        setStore("partSummary", messageID, (items) => (items ?? []).filter((part) => part.id !== partID))
+        setStore(
+          "partVersion",
+          produce((draft) => {
+            delete draft[partID]
+          }),
+        )
         const parts = store.part[messageID]
         if (!parts) break
         const result = Binary.search(parts, partID, (p) => p.id)
@@ -2105,7 +2364,7 @@ function createGlobalSync() {
     if (!wm) return resyncInstance(scopeKey).catch(() => false)
     try {
       const sdk = createScopedClient(scopeKey)
-      const res = await sdk.event.replay({ since: wm.seq, epoch: wm.epoch })
+      const res = await sdk.event.replay({ since: wm.seq, epoch: wm.epoch, mode: "projection" })
       if (!current()) return false
       const data = res.data as
         | { status: "ok"; epoch: string; seq: number; events: any[] }
@@ -2219,9 +2478,8 @@ function createGlobalSync() {
         }),
       ),
       retry(() =>
-        globalSDK.client.provider.list().then((result) => {
-          const data = result.data!
-          setGlobalStore("provider", data)
+        coreSnapshot(HOME_SCOPE_KEY).then((result) => {
+          if (result.data) setGlobalStore("provider", result.data.provider)
         }),
       ),
       retry(() =>
@@ -2248,6 +2506,7 @@ function createGlobalSync() {
     setGlobalStore("ready", true)
     loadGlobalAgenda()
     loadGlobalSessionStatus()
+    refreshCortex()
     return true
   }
 
@@ -2267,6 +2526,8 @@ function createGlobalSync() {
 
   return {
     data: globalStore,
+    contentBudget,
+    retainContentCache,
     get ready() {
       return globalStore.ready
     },
@@ -2324,6 +2585,8 @@ function createGlobalSync() {
       }
     },
     refreshProviders: () => refreshTargeted(["provider"]),
+    ensureModels,
+    loadModelCatalog,
     scope: {
       loadSessions,
       loadAgenda,

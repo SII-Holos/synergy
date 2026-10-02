@@ -69,6 +69,7 @@ export namespace Command {
     .meta({ ref: "Command" })
 
   export type Info = Omit<z.infer<typeof Info>, "template"> & { template?: Promise<string> | string }
+  export const Summary = Info.omit({ template: true }).meta({ ref: "CommandSummary" })
 
   export type ActionInput = {
     messageID?: string
@@ -125,11 +126,15 @@ export namespace Command {
   }
 
   function promptCommand(input: Omit<Info, "kind" | "surfaces" | "promptVisible">): Info {
-    return { ...input, kind: "prompt", surfaces: ["web", "cli"], promptVisible: true }
+    return Object.assign(input, { kind: "prompt" as const, surfaces: ["web", "cli"] as Surface[], promptVisible: true })
   }
 
   function actionCommand(input: Omit<Info, "kind" | "surfaces" | "promptVisible">): Info {
-    return { ...input, kind: "action", surfaces: ["web", "cli"], promptVisible: false }
+    return Object.assign(input, {
+      kind: "action" as const,
+      surfaces: ["web", "cli"] as Surface[],
+      promptVisible: false,
+    })
   }
 
   export const Default = {
@@ -320,5 +325,9 @@ export namespace Command {
   export async function list() {
     registerMcpSubscriptions()
     return state().then((x) => Object.values(x))
+  }
+
+  export async function summaries() {
+    return (await list()).map((command) => Summary.parse(command))
   }
 }

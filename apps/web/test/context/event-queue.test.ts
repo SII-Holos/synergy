@@ -10,6 +10,28 @@ import {
 
 type Recorded = { directory: string; payload: unknown }
 
+test("summary coalescing retains every sequenced state event", () => {
+  const emitted: unknown[] = []
+  const queue = createEventQueue({
+    emit: (_scope, event) => emitted.push(event),
+    isHidden: () => true,
+    batch: (fn) => fn(),
+    schedule: () => {},
+  })
+  const event = (seq?: number) => ({
+    type: "message.part.summary",
+    seq,
+    properties: { summary: { messageID: "m", id: "p" } },
+  })
+  queue.push("scope", event())
+  queue.push("scope", event())
+  queue.push("scope", event(1))
+  queue.push("scope", event(2))
+  queue.flush()
+  expect(emitted).toEqual([event(), event(1), event(2)])
+  queue.dispose()
+})
+
 function recordedPayload(type: string, properties: Record<string, unknown>) {
   return { type, properties }
 }

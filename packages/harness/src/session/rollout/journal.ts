@@ -81,7 +81,12 @@ export namespace RolloutJournal {
     return record(() => recoverPending(owner, onProgress))
   }
 
-  export async function write(owner: RolloutSchema.Owner, key: string[], value: unknown) {
+  export async function write(
+    owner: RolloutSchema.Owner,
+    key: string[],
+    value: unknown,
+    publish?: () => Promise<void>,
+  ) {
     return record(async () => {
       const base = RolloutArtifact.root(owner)
       if (!base.every((segment, index) => key[index] === segment)) throw new Error("Rollout write escapes its owner")
@@ -103,6 +108,7 @@ export namespace RolloutJournal {
       // a crash can never expose a head that disagrees with the persisted
       // event set or leave an applied projection without its evidence.
       await Storage.transaction(async () => {
+        await publish?.()
         await RolloutPending.track(owner)
         await Storage.write(eventKey(owner, seq), event)
         await Storage.write(key, event.value)

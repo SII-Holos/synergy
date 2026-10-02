@@ -1,11 +1,13 @@
 export type PrependAnchorCandidate = {
   messageID: string
+  rowKey?: string
   top: number
   bottom: number
 }
 
 export type PrependScrollAnchor = {
   messageID: string
+  rowKey?: string
   offsetTop: number
 }
 
@@ -17,6 +19,7 @@ export function selectPrependAnchor(
   if (!anchor) return
   return {
     messageID: anchor.messageID,
+    ...(anchor.rowKey ? { rowKey: anchor.rowKey } : {}),
     offsetTop: anchor.top - viewportTop,
   }
 }

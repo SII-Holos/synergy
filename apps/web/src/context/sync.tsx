@@ -6,7 +6,10 @@ import { retry } from "@ericsanchezok/synergy-util/retry"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
-import type { Message, Session } from "@ericsanchezok/synergy-sdk/client"
+import type { Message, Part, Session, SessionPartSummary } from "@ericsanchezok/synergy-sdk/client"
+import { createPartMaterializer } from "./part-materializer"
+import { contentBudgetKey } from "./content-budget"
+import { clearConversationContent } from "./conversation-content-state"
 import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState } from "./global-sync"
 import { createSessionMessageLoader, type SessionMessageLoadState } from "./session-message-loader"
 import { requestErrorMessage } from "@/utils/error"
@@ -37,6 +40,122 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const scope = globalSync.retainScopeState(sdk.scopeKey)
     onCleanup(scope.release)
     const [store, setStore] = scope.state
+    const contentLifetime = new AbortController()
+    const partPages = new Map<string, Promise<void>>()
+    const retainedContent = globalSync.retainContentCache(sdk.scopeKey, () =>
+      createPartMaterializer({
+        memory: globalSync.contentBudget,
+        memoryKey: (summary) => contentBudgetKey(sdk.scopeKey, summary.messageID, summary.id),
+        read: async (summary, signal) => {
+          const cached = store.part[summary.messageID]?.find((part) => part.id === summary.id)
+          if (cached && store.partVersion[summary.id] === summary.content.version)
+            return { part: cached, version: summary.content.version }
+          const response = await sdk.client.session.partContent(
+            {
+              sessionID: summary.sessionID,
+              messageID: summary.messageID,
+              partID: summary.id,
+              version: summary.content.version,
+            },
+            { signal, throwOnError: true },
+          )
+          if (!response.data) throw new Error("Missing conversation content")
+          return response.data
+        },
+        isCurrent: (summary) => {
+          const current = store.partSummary[summary.messageID]?.find((item) => item.id === summary.id)
+          return !current || current.content.version === summary.content.version
+        },
+        apply: (part, summary) => {
+          setStore("partVersion", part.id, summary.content.version)
+          const parts = store.part[part.messageID] ?? []
+          const index = parts.findIndex((item) => item.id === part.id)
+          if (index >= 0) setStore("part", part.messageID, index, reconcile(part))
+          else
+            setStore(
+              "part",
+              part.messageID,
+              [...parts, part].sort((a, b) => a.id.localeCompare(b.id)),
+            )
+        },
+        evict: (summary) => {
+          if (store.partVersion[summary.id] && store.partVersion[summary.id] !== summary.content.version) return
+          setStore("part", summary.messageID, (parts) => (parts ?? []).filter((part) => part.id !== summary.id))
+        },
+        subscribe: (summary) => sdk.content.retain(sdk.scopeKey, summary),
+      }),
+    )
+    const materializer = retainedContent.cache
+    onCleanup(() => {
+      contentLifetime.abort()
+      retainedContent.release()
+    })
+    const loadPartSummaries = (
+      sessionID: string,
+      messageID: string,
+      more = false,
+      force = false,
+      options?: { partID?: string; older?: boolean },
+    ): Promise<void> => {
+      const pending = partPages.get(messageID)
+      if (pending)
+        return pending.then(() => {
+          if (options?.partID && !store.partSummary[messageID]?.some((part) => part.id === options.partID))
+            return loadPartSummaries(sessionID, messageID, false, true, options)
+        })
+      if (!force && !more && store.partPage[messageID]) return Promise.resolve()
+      const cursor = more
+        ? options?.older
+          ? store.partPage[messageID]?.previousCursor
+          : store.partPage[messageID]?.nextCursor
+        : undefined
+      if (more && !cursor) return Promise.resolve()
+      const request = (async () => {
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const freshness = globalSync.capturePartSnapshotRequest(sdk.scopeKey, sessionID)
+          const response = await sdk.client.session.partPage(
+            {
+              sessionID,
+              messageID,
+              cursor: cursor ?? undefined,
+              partID: options?.partID,
+              older: options?.older,
+              limit: 100,
+            },
+            { signal: contentLifetime.signal, throwOnError: true },
+          )
+          const page = response.data
+          if (!page || contentLifetime.signal.aborted) return
+          const action = globalSync.partSnapshotAction(sdk.scopeKey, sessionID, messageID, freshness)
+          if (action === "retry") continue
+          const previous = store.partPage[messageID]
+          const current = store.partSummary[messageID] ?? []
+          const items = new Map((more || action === "preserve" ? current : []).map((part) => [part.id, part]))
+          for (const part of page.items)
+            items.set(part.id, action === "preserve" ? (current.find((item) => item.id === part.id) ?? part) : part)
+          batch(() => {
+            setStore(
+              "partSummary",
+              messageID,
+              reconcile(
+                [...items.values()].sort((a, b) => a.id.localeCompare(b.id)),
+                { key: "id" },
+              ),
+            )
+            setStore("partPage", messageID, {
+              nextCursor: more && options?.older ? (previous?.nextCursor ?? page.nextCursor) : page.nextCursor,
+              hasMore: more && options?.older ? (previous?.hasMore ?? page.hasMore) : page.hasMore,
+              previousCursor: more && !options?.older ? (previous?.previousCursor ?? null) : page.previousCursor,
+              hasEarlier: more && !options?.older ? (previous?.hasEarlier ?? false) : page.hasEarlier,
+            })
+          })
+          return
+        }
+        throw new Error("Conversation summary changed while loading")
+      })().finally(() => partPages.delete(messageID))
+      partPages.set(messageID, request)
+      return request
+    }
     const absolute = (path: string) => (store.path.directory + "/" + path).replace("//", "/")
     const chunk = 200
 
@@ -107,7 +226,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       if (reconnectVersion > current) sessionReconnectVersions.set(sessionID, reconnectVersion)
     }
 
-    type SessionMessagePageResponse = Awaited<ReturnType<(typeof sdk.client.session)["messagePage"]>>
+    type SessionMessagePageResponse = Awaited<ReturnType<(typeof sdk.client.session)["timelinePage"]>>
     type SessionMessagePageLoadResult = {
       response: SessionMessagePageResponse
       request?: SyncResourceRequest
@@ -119,6 +238,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       cursor?: string
       reconnectVersion?: number
       limit: number
+      targetMessageID?: string
     }
     const messageLoader = createSessionMessageLoader<SessionMessagePageLoadResult, MessagePageLoadInput>({
       request: async (sessionID, signal, input) => {
@@ -128,11 +248,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           input?.mode === "latest" ? globalSync.beginContextProjection(sdk.scopeKey, sessionID) : undefined
         const partSnapshotRequest = globalSync.capturePartSnapshotRequest(sdk.scopeKey, sessionID)
         const response = await retry(() =>
-          sdk.client.session.messagePage(
+          sdk.client.session.timelinePage(
             {
               sessionID,
               cursor: input?.cursor,
-              limit: input?.limit ?? chunk,
+              limit: Math.min(100, input?.limit ?? chunk),
+              messageID: input?.targetMessageID,
             },
             { signal, throwOnError: true },
           ),
@@ -150,7 +271,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           pendingLatestIds: currentMetadata?.pendingLatestIds ?? [],
           tailMissingLatest: currentMetadata?.tailMissingLatest ?? false,
         }
-        const plan = planMessagePageApply({ page, current, mode: input?.mode })
+        const plan = planMessagePageApply<Message, Part>({
+          page,
+          current,
+          mode: input?.mode,
+          replace: !!input?.targetMessageID,
+        })
         const partActions = new Map(
           Object.keys(plan.parts).map((messageID) => [
             messageID,
@@ -160,9 +286,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         if ([...partActions.values()].some((action) => action === "retry")) return "superseded"
         const apply = () => {
           batch(() => {
+            for (const messageID of plan.droppedIds) materializer.invalidate(messageID)
             setStore(
               produce((draft) => {
-                for (const messageID of plan.droppedIds) delete draft.part[messageID]
+                for (const messageID of plan.droppedIds) {
+                  clearConversationContent(draft, messageID)
+                }
               }),
             )
             setStore("message", sessionID, reconcile(internMessages(plan.window.messages), { key: "id" }))
@@ -378,6 +507,23 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       },
       session: {
         get: getSession,
+        content: {
+          summaries: loadPartSummaries,
+          earlier: (sessionID: string, messageID: string) =>
+            loadPartSummaries(sessionID, messageID, true, false, { older: true }),
+          retain: (summary: SessionPartSummary) => materializer.retain(summary),
+          async text(sessionID: string, messageID: string) {
+            const response = await sdk.client.session.historyText(
+              { sessionID, messageID },
+              { throwOnError: true, signal: contentLifetime.signal },
+            )
+            return response.data?.text ?? ""
+          },
+          invalidate: (messageID: string, partID?: string) => materializer.invalidate(messageID, partID),
+          get bytes() {
+            return materializer.bytes
+          },
+        },
         latestContextMessage(sessionID: string) {
           return store.latestContextMessage[sessionID]
         },
@@ -477,6 +623,15 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         dag: loadDag,
         refreshVolatile,
         history: {
+          async locate(sessionID: string, messageID: string, partID?: string) {
+            if (!store.message[sessionID]?.some((message) => message.id === messageID))
+              await loadMessagePage(sessionID, { mode: "history", targetMessageID: messageID, limit: 50 })
+            if (!store.message[sessionID]?.some((message) => message.id === messageID)) return false
+            if (partID && !store.partSummary[messageID]?.some((part) => part.id === partID))
+              await loadPartSummaries(sessionID, messageID, false, true, { partID })
+            else await loadPartSummaries(sessionID, messageID)
+            return !partID || store.partSummary[messageID]?.some((part) => part.id === partID) === true
+          },
           more(sessionID: string) {
             return store.messageWindow[sessionID]?.hasMore ?? false
           },

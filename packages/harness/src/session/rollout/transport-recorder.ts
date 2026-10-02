@@ -72,8 +72,10 @@ export namespace RolloutTransportRecorder {
             attempt.value.usageFinal = false
           }
           await writer.append(event.data)
-          attempt.value[event.channel] = await writer.checkpoint()
-          await RolloutLedger.writeAttempt(attempt.value)
+          await writer.checkpoint(async (ref, publish) => {
+            attempt.value[event.channel] = ref
+            await RolloutLedger.writeAttempt(attempt.value, publish)
+          })
           return
         }
         attempt.value[event.channel] = await writer.finish(event.complete ? "complete" : "partial")

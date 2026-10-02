@@ -37,6 +37,8 @@ export const ProviderListResponse = z
   })
   .meta({ ref: "ProviderListResponse" })
 
+const convertedCatalog = RuntimeContext.state(() => new WeakMap<object, Record<string, Provider.Info>>())
+
 export async function listProvidersForClient(): Promise<z.infer<typeof ProviderListResponse>> {
   const config = await Config.current()
   const disabled = new Set(config.disabled_providers ?? [])
@@ -65,8 +67,14 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
     }),
   )
   const configProviders = Object.keys(configured).filter((id) => !allProviders[id])
+  let catalog = convertedCatalog().get(allProviders)
+  if (!catalog) {
+    catalog = mapValues(allProviders, (provider) => Provider.fromModelsDevProvider(provider))
+    convertedCatalog().set(allProviders, catalog)
+  }
   const providers = Object.assign(
-    mapValues(allProviders, (provider) => Provider.fromModelsDevProvider(provider)),
+    {},
+    catalog,
     Object.fromEntries(configProviders.map((providerID) => [providerID, configured[providerID]])),
     connected,
   )

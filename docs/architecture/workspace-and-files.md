@@ -12,6 +12,8 @@ Saved-version reads require the observed catalog revision. Recovery copies the s
 
 The Harness Workspace catalog owns a stable ID and a versioned local binding. Sessions persist only `workspaceID`; their public `workspace` descriptor is resolved from that catalog. Multiple Sessions share the same binding, while rebinding preserves the ID and advances its generation. Execution verifies the host namespace, generation and directory identity. A missing catalog record, missing directory, or replaced directory retains its historical reference and fails execution.
 
+Resolving an already registered native directory reads its location indexes and catalog in one read-only snapshot. A missing registration enters the writer and checks again before creating it. Conflicting identities, removal and physical replacement retain their existing failures; execution still validates the selected generation and physical directory after this metadata lookup.
+
 Owner-local migrations upgrade old embedded Session directories before navigation or other current projections read them, preserving activity and unrelated owner metadata. Transcript and Rollout archives include referenced Workspace metadata. Imported bindings remain unavailable until explicitly rebound, even if their historical path exists locally; import does not convey filesystem authority.
 
 ## Storage backends and content
@@ -118,6 +120,8 @@ The current selection preserves Home's absent Workspace and preserves unresolved
 Scope bootstrap includes the Workspace catalog. The frontend merges catalog events and snapshots using the Scope epoch and sequence, then projects current Session bindings without changing conversation activity. Delayed Session responses cannot replace a newer known binding with an old generation. Already-open file tabs retain their captured binding instead of following the Session to another directory.
 
 The Web file workspace exposes scoped routes for directory children, file metadata, text/image preview, PDF byte streaming, file/content/symbol search, VCS status, and user-direct file writes. Every path is resolved inside `ScopeContext.current.directory`. Lexical escapes, control characters, and symlinks whose real path escapes the workspace are denied.
+
+Read-only file routes await the selected Workspace's generation-owned file resources and start Scope recovery separately at background storage priority. Scope startup remains deduplicated, drained during disposal and retried after failure; it does not hold the file response behind examination of unrelated Session history. File mutations retain the Scope recovery barrier. Directory children and metadata do not compute Git status; the independent status resource supplies it after the file listing becomes usable.
 
 Directory results can hide ignored and dot-prefixed entries, are sorted with directories first, and use bounded cursor pages. Reads distinguish:
 

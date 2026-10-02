@@ -1000,6 +1000,16 @@ export function SessionTurn(
     onForkMessage?: (messageID: string) => void
     activityDisplay?: ActivityDisplayMode
     compactReasoning?: boolean
+    copyMessageText?: (messageID: string) => Promise<string>
+    segment?: {
+      user: boolean
+      footer: boolean
+      parts: readonly { messageID: string; id: string }[]
+      before: boolean
+      after: boolean
+      beforeTool?: boolean
+      beforeReasoning?: boolean
+    }
     classes?: {
       root?: string
       content?: string
@@ -1011,6 +1021,20 @@ export function SessionTurn(
   const view = data.view
   const { _, i18n } = useLingui()
   const activityDisplay = createMemo(() => resolveActivityDisplay(props.activityDisplay))
+  const segmentParts = createMemo(() => {
+    if (!props.segment) return view.partTable()
+    const table: Record<string, PartType[]> = {}
+    for (const selected of props.segment.parts) {
+      const part = view.partsFor(selected.messageID).find((part) => part.id === selected.id)
+      if (part) (table[selected.messageID] ??= []).push(part)
+    }
+    return table
+  })
+  const partsFor = (messageID: string) =>
+    props.segment ? (segmentParts()[messageID] ?? emptyParts) : view.partsFor(messageID)
+  const showFooter = () => !props.segment || props.segment.footer
+  const beforeBoundary = () => !props.segment || props.segment.before
+  const afterBoundary = () => !props.segment || props.segment.after
 
   const emptyParts: PartType[] = []
   const emptyAssistant: AssistantMessage[] = []
@@ -1033,7 +1057,7 @@ export function SessionTurn(
   const parts = createMemo(() => {
     const msg = message()
     if (!msg) return emptyParts
-    return view.partsFor(msg.id)
+    return partsFor(msg.id)
   })
 
   const turnMessages = createMemo(() => props.messages, emptyDisplayMessages, { equals: same })
@@ -1070,6 +1094,7 @@ export function SessionTurn(
   const permissionCount = createMemo(() => permissions().length)
 
   const shellModePart = createMemo(() => {
+    if (props.segment) return
     const p = parts()
     if (!p.every((part) => part?.type === "text" && isSystemPart(part))) return
 
@@ -1100,10 +1125,10 @@ export function SessionTurn(
   }
 
   const projectAssistantMessage = (item: AssistantMessage): SessionTurnAssistantDisplayItem[] => {
-    const visibleItems = collectSessionTurnTimelineItems([item], view.partTable(), working())
+    const visibleItems = collectSessionTurnTimelineItems([item], segmentParts(), working())
     if (activityDisplay() === "full") return visibleItems
 
-    const sourceItems = collectSessionTurnTimelineItems([item], view.partTable(), true)
+    const sourceItems = collectSessionTurnTimelineItems([item], segmentParts(), true)
     return projectAssistantActivityItems({
       message: item,
       sourceItems,
@@ -1126,7 +1151,7 @@ export function SessionTurn(
         if (item.role === "user") {
           const userMsg = item as UserMessage
           if (userMsg.isRoot !== false) return emptyDisplayItems
-          const itemParts = view.partsFor(item.id)
+          const itemParts = partsFor(item.id)
           // A user's own mid-run message (steer / follow-up) renders as their
           // message bubble; system-injected non-root messages (cortex, agenda,
           // …) render as a compact origin chip.
@@ -1186,9 +1211,9 @@ export function SessionTurn(
         if (props.compactReasoning && isWorking) {
           liveReasoningParts = new Map()
           for (const assistant of assistants) {
-            const reasoningPart = view
-              .partsFor(assistant.id)
-              .findLast((part): part is ReasoningPart => part.type === "reasoning" && Boolean(part.text.trim()))
+            const reasoningPart = partsFor(assistant.id).findLast(
+              (part): part is ReasoningPart => part.type === "reasoning" && Boolean(part.text.trim()),
+            )
             if (reasoningPart) liveReasoningParts.set(assistant.id, reasoningPart)
           }
         }
@@ -1196,12 +1221,12 @@ export function SessionTurn(
           compactReasoningParts: liveReasoningParts,
         }) as SessionTurnDisplayItem[]
         return props.compactReasoning && !isWorking
-          ? injectPersistedReasoningItems(projected, assistants, view.partTable())
+          ? injectPersistedReasoningItems(projected, assistants, segmentParts())
           : projected
       }
       if (props.compactReasoning) {
         if (isWorking) return compactReasoningTimelineItems(result)
-        return injectPersistedReasoningItems(result, assistants, view.partTable())
+        return injectPersistedReasoningItems(result, assistants, segmentParts())
       }
       return result
     },
@@ -1218,7 +1243,9 @@ export function SessionTurn(
     return result
   })
   const hasCompactionEvent = createMemo(() => timelineItems().some(isCompactionDisplayItem))
-  const showUserChrome = createMemo(() => shouldShowTurnUserChrome(message(), parts(), hasCompactionEvent()))
+  const showUserChrome = createMemo(
+    () => (props.segment?.user ?? true) && shouldShowTurnUserChrome(message(), parts(), hasCompactionEvent()),
+  )
   const [pendingDelayElapsed, setPendingDelayElapsed] = createSignal(false)
   const [animateReadyDiffPanel, setAnimateReadyDiffPanel] = createSignal(false)
   const diffSettlementStatus = createMemo(() => message()?.summary?.diffState?.status)
@@ -1329,6 +1356,7 @@ export function SessionTurn(
   })
   const copyController = createCopyController({
     text: markdownText,
+    loadText: props.copyMessageText ? () => props.copyMessageText!(lastAssistantMessage()!.id) : undefined,
     copyLabel: _(SESSION_TURN_DESC.copyMarkdown),
     copiedLabel: _(SESSION_TURN_DESC.copied),
     failureDescription: _(SESSION_TURN_DESC.copyFailure),
@@ -1407,9 +1435,9 @@ export function SessionTurn(
                     {(shellPart) => <Part part={shellPart()} message={msg()} defaultOpen />}
                   </Match>
                   <Match when={true}>
-                    <Show when={showUserChrome()}>{renderMessageSlot("message.before-user")}</Show>
+                    <Show when={showUserChrome() && beforeBoundary()}>{renderMessageSlot("message.before-user")}</Show>
                     <Show when={showUserChrome()}>
-                      {renderCoreMessageSlot("message.before", msg().id, "user")}
+                      <Show when={beforeBoundary()}>{renderCoreMessageSlot("message.before", msg().id, "user")}</Show>
                       {/* Mailbox source annotation */}
                       <Show when={(msg() as UserMessage).metadata?.mailbox && !specialUserMessageRenderer()}>
                         <MailboxSourceBadge message={msg() as UserMessage} />
@@ -1418,13 +1446,20 @@ export function SessionTurn(
                       <div data-slot="session-turn-rewind-wrapper" data-align="right">
                         <Show
                           when={specialUserMessageRenderer()}
-                          fallback={<Message message={msg()} parts={parts()} userVariant="turn-bubble" />}
+                          fallback={
+                            <Message
+                              message={msg()}
+                              parts={parts()}
+                              userVariant="turn-bubble"
+                              loadCopyText={props.copyMessageText ? () => props.copyMessageText!(msg().id) : undefined}
+                            />
+                          }
                         >
                           {(SpecialUserMessage) => (
                             <Dynamic component={SpecialUserMessage()} message={msg()} parts={parts()} />
                           )}
                         </Show>
-                        <Show when={props.onRewind && !specialUserMessageRenderer()}>
+                        <Show when={afterBoundary() && props.onRewind && !specialUserMessageRenderer()}>
                           <button
                             type="button"
                             data-slot="session-turn-rewind-button"
@@ -1438,10 +1473,12 @@ export function SessionTurn(
                             <span>{_(SESSION_TURN_DESC.rewind)}</span>
                           </button>
                         </Show>
-                        {renderCoreMessageSlot("message.actions", msg().id, "user")}
+                        <Show when={afterBoundary()}>{renderCoreMessageSlot("message.actions", msg().id, "user")}</Show>
                       </div>
-                      {renderCoreMessageSlot("message.after", msg().id, "user")}
-                      {renderMessageSlot("message.after-user")}
+                      <Show when={afterBoundary()}>
+                        {renderCoreMessageSlot("message.after", msg().id, "user")}
+                        {renderMessageSlot("message.after-user")}
+                      </Show>
                     </Show>
                     <Show
                       when={
@@ -1472,17 +1509,27 @@ export function SessionTurn(
                               <Show when={item()}>
                                 {(current) => (
                                   <>
-                                    <Show when={boundary()?.first === index()}>
+                                    <Show when={beforeBoundary() && boundary()?.first === index()}>
                                       {renderCoreMessageSlot(
                                         "message.before",
                                         current().message.id,
                                         current().message.role,
                                       )}
                                     </Show>
-                                    <Show when={index() === timelineSlotIndexes().firstReasoning}>
+                                    <Show
+                                      when={
+                                        (props.segment?.beforeReasoning ?? beforeBoundary()) &&
+                                        index() === timelineSlotIndexes().firstReasoning
+                                      }
+                                    >
                                       {renderMessageSlot("message.before-reasoning")}
                                     </Show>
-                                    <Show when={index() === timelineSlotIndexes().firstTool}>
+                                    <Show
+                                      when={
+                                        (props.segment?.beforeTool ?? beforeBoundary()) &&
+                                        index() === timelineSlotIndexes().firstTool
+                                      }
+                                    >
                                       {renderMessageSlot("message.before-tools")}
                                     </Show>
                                     <div
@@ -1508,13 +1555,13 @@ export function SessionTurn(
                                         }
                                       />
                                     </div>
-                                    <Show when={index() === timelineSlotIndexes().lastReasoning}>
+                                    <Show when={afterBoundary() && index() === timelineSlotIndexes().lastReasoning}>
                                       {renderMessageSlot("message.after-reasoning")}
                                     </Show>
-                                    <Show when={index() === timelineSlotIndexes().lastTool}>
+                                    <Show when={afterBoundary() && index() === timelineSlotIndexes().lastTool}>
                                       {renderMessageSlot("message.after-tools")}
                                     </Show>
-                                    <Show when={boundary()?.last === index()}>
+                                    <Show when={afterBoundary() && boundary()?.last === index()}>
                                       {renderCoreMessageSlot(
                                         "message.actions",
                                         current().message.id,
@@ -1532,7 +1579,7 @@ export function SessionTurn(
                             )
                           }}
                         </For>
-                        <Show when={showProviderPrelude()}>
+                        <Show when={showFooter() && showProviderPrelude()}>
                           <div data-slot="session-turn-timeline-item" data-kind="provider-prelude">
                             <ProviderPrelude
                               text={providerPreludeText(sessionStatus(), _(awaitingResponse))}
@@ -1540,7 +1587,7 @@ export function SessionTurn(
                             />
                           </div>
                         </Show>
-                        <Show when={completedTurnStats()}>
+                        <Show when={showFooter() && completedTurnStats()}>
                           {(stats) => (
                             <div data-slot="session-turn-timeline-item" data-kind="provider-prelude">
                               <ProviderPrelude
@@ -1552,7 +1599,13 @@ export function SessionTurn(
                             </div>
                           )}
                         </Show>
-                        <Show when={!working() && markdownText()}>
+                        <Show
+                          when={
+                            showFooter() &&
+                            !working() &&
+                            (markdownText() || (props.copyMessageText && lastAssistantMessage()))
+                          }
+                        >
                           <div data-slot="session-turn-timeline-item" data-kind="copy-markdown">
                             <div data-slot="assistant-message-meta">
                               <Show keyed when={assistantTimestamp()}>
@@ -1586,7 +1639,7 @@ export function SessionTurn(
                             </div>
                           </div>
                         </Show>
-                        <Show when={!working() ? visibleDiffPanelState() : undefined}>
+                        <Show when={showFooter() && !working() ? visibleDiffPanelState() : undefined}>
                           {(state) => (
                             <TurnChangeSummaryPanel
                               diffs={msg().summary?.diffs ?? []}
@@ -1600,10 +1653,10 @@ export function SessionTurn(
                         </Show>
                       </div>
                     </Show>
-                    <Show when={error()}>
+                    <Show when={showFooter() && error()}>
                       <ErrorCard error={errorMessage()} />
                     </Show>
-                    {renderMessageSlot("message.after-message")}
+                    <Show when={showFooter()}>{renderMessageSlot("message.after-message")}</Show>
                   </Match>
                 </Switch>
               </div>

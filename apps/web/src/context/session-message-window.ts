@@ -109,11 +109,7 @@ export function applyLatestPage<T extends MessageRef>(
 }
 
 function capHistoryMessages<T extends MessageRef>(messages: T[], cap: number): T[] {
-  if (messages.length <= cap) return messages
-  const kept = messages.slice(0, cap)
-  const overflowRootIDs = new Set(messages.slice(cap).flatMap((message) => (message.rootID ? [message.rootID] : [])))
-  if (overflowRootIDs.size === 0) return kept
-  return kept.filter((message) => !message.rootID || !overflowRootIDs.has(message.rootID))
+  return messages.length <= cap ? messages : messages.slice(0, cap)
 }
 
 export function prependOlderPage<T extends MessageRef>(

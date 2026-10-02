@@ -48,6 +48,11 @@ export const projectEntryCopy = {
   use: { id: "project.entry.use", message: "Use Worktree" },
   retry: { id: "project.entry.retry", message: "Retry" },
   loading: { id: "project.entry.loading", message: "Loading…" },
+  details: { id: "project.entry.details", message: "Details" },
+  clean: { id: "project.entry.clean", message: "No uncommitted changes" },
+  dirty: { id: "project.entry.dirty", message: "Uncommitted changes" },
+  checked: { id: "project.entry.checked", message: "Checked {time}" },
+  diskSize: { id: "project.entry.diskSize", message: "{size} MiB" },
   unsupported: {
     id: "project.entry.unsupported",
     message: "This task uses a custom location. Manage it in developer settings.",

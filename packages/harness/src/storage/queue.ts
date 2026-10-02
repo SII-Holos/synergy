@@ -51,6 +51,10 @@ export interface StorageQueueOptions {
 
 const admission = new AsyncLocalStorage<StorageQueueOptions>()
 
+export function storageQueuePriority() {
+  return admission.getStore()?.priority ?? "foreground"
+}
+
 export function withStorageQueueOptions<T>(options: StorageQueueOptions, body: () => T): T {
   const parent = admission.getStore()
   return admission.run(
@@ -76,10 +80,15 @@ type Waiting = {
 export class StorageQueue {
   private readonly waiting: Waiting[] = []
   private active = false
+  private activePriority?: "foreground" | "background"
   private closed = false
   private drained?: ReturnType<typeof Promise.withResolvers<void>>
 
   constructor(private readonly name: string) {}
+
+  get foregroundPending() {
+    return this.activePriority === "foreground" || this.waiting.some((entry) => entry.priority === "foreground")
+  }
 
   run<T>(body: () => Promise<T>, options: StorageQueueOptions = {}): Promise<T> {
     if (this.closed) return Promise.reject(new StorageClosedError())
@@ -194,11 +203,13 @@ export class StorageQueue {
     const [next] = this.waiting.splice(Math.max(0, foreground), 1)
     if (!next) return
     this.active = true
+    this.activePriority = next.priority
     next.execute()
   }
 
   private release() {
     this.active = false
+    this.activePriority = undefined
     this.dispatch()
     if (!this.active && !this.waiting.length) this.drained?.resolve()
   }

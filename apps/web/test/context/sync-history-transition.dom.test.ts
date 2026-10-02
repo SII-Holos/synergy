@@ -23,9 +23,9 @@ test("history transitions replace dropped branches and restore effective message
     stub,
     `
 import {createStore} from 'solid-js/store';
-const state=createStore({status:'ready',path:{directory:''},scopeID:'home',session:[],message:{},messageWindow:{},latestContextMessage:{},part:{},permission:{},question:{},inbox:{},todo:{},dag:{},session_diff:{},cortex:[]});
+const state=createStore({status:'ready',path:{directory:''},scopeID:'home',session:[],message:{},messageWindow:{},latestContextMessage:{},part:{},partSummary:{},partPage:{},partVersion:{},permission:{},question:{},inbox:{},todo:{},dag:{},session_diff:{},cortex:[]});
 export const calls={messagePage:[],permissionList:[]};
-export const useGlobalSync=()=>({
+export const useGlobalSync=()=>({retainContentCache:(_key,create)=>({cache:create(),release(){}}),
   data:{scope:[]},
   retainScopeState:()=>({state,release:()=>{}}),
   scopeReconnectVersion:()=>0,
@@ -51,7 +51,7 @@ export const useSDK=()=>({scopeKey:'probe',scopeID:'home',directory:'/probe',isH
   session:{
     get:()=>Promise.resolve({data:{id:'ses_probe',time:{created:0,updated:0}}}),
     inbox:()=>Promise.resolve({data:[]}),
-    messagePage:(input)=>{
+    timelinePage:(input)=>{
       calls.messagePage.push({sessionID:input.sessionID,limit:input.limit,...(input.cursor?{cursor:input.cursor}:{})});
       return Promise.resolve(page());
     },

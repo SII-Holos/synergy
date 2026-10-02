@@ -22,6 +22,7 @@ import { ToolTextOutput } from "./tool-output-text"
 import { classifyTool } from "./tool/classifier"
 import { toolCountdown, type ToolTime } from "./tool/timeout"
 import type { ToolMetadata } from "./tool-registry-lazy"
+import { useToolExpansion } from "./tool-expansion"
 
 const charsLabelDescriptor = { id: "ui.basicTool.chars", message: "{count} chars" }
 const autoExpandedLabelDescriptor = { id: "ui.basicTool.autoExpanded", message: "Auto-loaded" }
@@ -128,7 +129,12 @@ function fromTrigger(
 export function BasicTool(props: BasicToolProps) {
   const resultOnly = useContext(ToolResultPresentationContext)
   const { _ } = useLingui()
-  const [open, setOpen] = createSignal(props.defaultOpen ?? false)
+  const expansion = useToolExpansion()
+  const [open, updateOpen] = createSignal(expansion?.get() ?? props.defaultOpen ?? false)
+  const setOpen = (open: boolean) => {
+    expansion?.set(open)
+    updateOpen(open)
+  }
   const hasDetails = () => !props.hideDetails && (props.hasDetails ?? "children" in props)
   const active = () => props.status === "pending" || props.status === "running" || props.status === "generating"
 

@@ -9,8 +9,30 @@ import { StorageFormatV3Migration } from "./format-v3-migration"
 import { StorageIncrementalVacuum } from "./incremental-vacuum"
 import { StorageFormatV3State } from "./format-v3-state"
 import { StoragePath } from "./path"
+import { EvidenceOwnerProjection } from "./evidence-owner-projection"
 
 export const migrations: Migration[] = [
+  {
+    id: "20261001-text-projection-structure",
+    scope: "global",
+    execution: "startup",
+    domain: "storage",
+    description: "Prepare bounded text projection storage without reading historical bodies",
+    async up(progress) {
+      progress(1, 1)
+    },
+  },
+  {
+    id: EvidenceOwnerProjection.id,
+    scope: "global",
+    execution: "startup",
+    domain: "storage",
+    description: "Prepare incremental evidence owner statistics without scanning historical records at startup",
+    async up(progress) {
+      await Storage.current().store.prepareEvidenceOwners({ maxRows: 1 })
+      progress(1, 1)
+    },
+  },
   {
     id: "20260929-retire-synergy-link",
     scope: "global",

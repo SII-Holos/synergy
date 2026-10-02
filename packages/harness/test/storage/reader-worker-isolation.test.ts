@@ -8,6 +8,32 @@ import { SqliteWorkerClient } from "../../src/storage/sqlite-worker-client"
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
 
+test("a maintenance read does not occupy the foreground reader and is read only", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    const driver = await SqliteDriver.open(path.join(tmp.path, "isolated-read.sqlite"))
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const maintenance = driver.transaction(
+      async (tx) => {
+        expect(await tx.query("SELECT 1 AS value")).toEqual([{ value: 1n }])
+        entered.resolve()
+        await release.promise
+        await expect(tx.query("CREATE TABLE forbidden(value INTEGER)")).rejects.toThrow()
+      },
+      { readOnly: true, background: true },
+    )
+    try {
+      await entered.promise
+      const completed = await Promise.race([driver.query("SELECT 2 AS value"), Bun.sleep(200).then(() => "blocked")])
+      expect(completed).toEqual([{ value: 2n }])
+    } finally {
+      release.resolve()
+      await maintenance
+      await driver.close()
+    }
+  }))
+
 test.skipIf(process.platform === "win32")("reads complete while the owned writer process is suspended", () =>
   runtime.run(async () => {
     await using tmp = await tmpdir()

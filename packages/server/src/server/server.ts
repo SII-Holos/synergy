@@ -8,6 +8,8 @@ import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { GlobalBus } from "@ericsanchezok/synergy-harness/bus/global"
 import { EventWire } from "./event-wire"
 import { GlobalEventClients } from "./global-event-clients"
+import { createEventProjection, ContentInterests, projectReplayEvent } from "./event-projection"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { describeRoute, generateSpecs, validator, resolver } from "hono-openapi"
 import { Hono, type Context, type MiddlewareHandler, type Next } from "hono"
@@ -40,6 +42,7 @@ import { Installation } from "@ericsanchezok/synergy-harness/global/installation
 import { MDNS } from "./mdns"
 import { Worktree } from "@ericsanchezok/synergy-local-runtime/workspace/worktree"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { BusyError } from "@ericsanchezok/synergy-harness/session/error"
 import { LoopJob } from "@ericsanchezok/synergy-harness/session/loop-job"
@@ -982,14 +985,46 @@ export namespace Server {
           // One encoder shared by all delta clients on this route: they receive
           // identical frames, so the checkpoint throttle is shared correctly.
           const wire = EventWire.createEncoder()
+          const projections = new Map<unknown, ReturnType<typeof createEventProjection>>()
           const broadcastHandler = (event: any) => {
-            const result = globalEventClients.broadcast((mode) => {
-              if (mode === "full") return JSON.stringify(event)
-              const dp = wire.deltaPayload(event.payload)
-              return dp === event.payload
-                ? JSON.stringify(event)
-                : JSON.stringify({ scopeID: event.scopeID, payload: dp })
-            })
+            const summary =
+              event.payload?.type === "message.part.updated"
+                ? MessageV2.summarizePart(event.payload.properties.part)
+                : undefined
+            const header =
+              event.payload?.type === "message.updated"
+                ? SessionHistory.summarizeMessage(event.payload.properties.info)
+                : undefined
+            const result = globalEventClients.broadcast(
+              (mode) => {
+                if (mode === "full") return JSON.stringify(event)
+                const dp = wire.deltaPayload(event.payload)
+                return dp === event.payload
+                  ? JSON.stringify(event)
+                  : JSON.stringify({ scopeID: event.scopeID, payload: dp })
+              },
+              (client) => {
+                if (client.mode !== "projection") return
+                if (summary)
+                  return JSON.stringify(
+                    projections.get(GlobalEventClients.connectionKey(client.ws))!.project(event, summary),
+                  )
+                if (header)
+                  return JSON.stringify({
+                    ...event,
+                    payload: { ...event.payload, properties: { info: header.info, content: header.content } },
+                  })
+                return JSON.stringify(event)
+              },
+            )
+            const live = new Set(
+              [...globalEventClients.clients()].map((client) => GlobalEventClients.connectionKey(client.ws)),
+            )
+            for (const [key, projection] of projections)
+              if (!live.has(key)) {
+                projection.dispose()
+                projections.delete(key)
+              }
             const payload = event?.payload
             const part = payload?.properties?.part
             if (result.dropped > 0 && payload?.type === "message.part.updated" && part?.type === "tool") {
@@ -1007,7 +1042,11 @@ export namespace Server {
             }
           }
           GlobalBus().on("event", broadcastHandler)
-          instanceState._globalEventBroadcastOff = () => GlobalBus().off("event", broadcastHandler)
+          instanceState._globalEventBroadcastOff = () => {
+            GlobalBus().off("event", broadcastHandler)
+            for (const projection of projections.values()) projection.dispose()
+            projections.clear()
+          }
           const heartbeatData = JSON.stringify({
             scopeID: null,
             payload: {
@@ -1034,11 +1073,20 @@ export namespace Server {
                 onError() {},
               }
             }
-            const mode: "full" | "delta" = c.req.query("stream") === "delta" ? "delta" : "full"
+            const streamMode = c.req.query("stream")
+            const mode: GlobalEventClients.Mode =
+              streamMode === "projection" ? "projection" : streamMode === "delta" ? "delta" : "full"
             return {
               onOpen(_event, ws) {
                 log.info("global event ws connected", { mode })
                 globalEventClients.add(ws, mode)
+                if (mode === "projection")
+                  projections.set(
+                    GlobalEventClients.connectionKey(ws),
+                    createEventProjection((frame) => {
+                      globalEventClients.reply(ws, JSON.stringify(frame))
+                    }),
+                  )
                 globalEventClients.reply(
                   ws,
                   JSON.stringify({
@@ -1051,16 +1099,46 @@ export namespace Server {
                 )
               },
               onClose(_event, ws) {
+                projections.get(GlobalEventClients.connectionKey(ws))?.dispose()
+                projections.delete(GlobalEventClients.connectionKey(ws))
                 globalEventClients.remove(ws)
                 log.info("global event ws disconnected")
               },
               onError(_event, ws) {
+                projections.get(GlobalEventClients.connectionKey(ws))?.dispose()
+                projections.delete(GlobalEventClients.connectionKey(ws))
                 globalEventClients.remove(ws)
               },
               onMessage(_event, ws) {
                 try {
                   if (typeof _event.data !== "string") return
                   const data = JSON.parse(_event.data)
+                  if (data?.payload?.type === "client.content.interests" && mode === "projection") {
+                    const interests = ContentInterests.parse(data.payload.properties)
+                    const projection = projections.get(GlobalEventClients.connectionKey(ws))
+                    void projection?.interests(interests, async (interest) => {
+                      const session = await SessionManager.requireSession(interest.sessionID)
+                      if (session.scope.id !== interest.scopeID)
+                        throw new Error("Content interest belongs to another Scope")
+                      const scope = await Scope.resolve({ scopeID: interest.scopeID })
+                      return ScopeContext.provide({
+                        scope,
+                        workspace: null,
+                        fn: async () => {
+                          const epoch = Bus.epoch(),
+                            seq = Bus.currentSeq()
+                          await Session.flushPartWrites(interest.sessionID)
+                          const result = await SessionHistory.partContent({
+                            sessionID: interest.sessionID,
+                            messageID: interest.messageID,
+                            partID: interest.partID,
+                          })
+                          return { part: result.part, epoch, seq }
+                        },
+                      })
+                    })
+                    return
+                  }
                   if (data?.payload?.type === "client.ping") {
                     globalEventClients.reply(
                       ws,
@@ -1416,14 +1494,14 @@ export namespace Server {
               description: "List of commands",
               content: {
                 "application/json": {
-                  schema: resolver(Command.Info.array()),
+                  schema: resolver(Command.Summary.array()),
                 },
               },
             },
           },
         }),
         async (c) => {
-          const commands = await Command.list()
+          const commands = await Command.summaries()
           return c.json(commands)
         },
       )
@@ -1588,17 +1666,26 @@ export namespace Server {
             epoch: z.string().optional(),
             directory: z.string().optional(),
             scopeID: z.string().optional(),
+            mode: z.enum(["full", "projection"]).optional(),
           }),
         ),
         async (c) => {
-          const { since, epoch } = c.req.valid("query")
+          const { since, epoch, mode } = c.req.valid("query")
           const currentEpoch = Bus.epoch()
           // Epoch mismatch means the runtime restarted; the seq space is
           // unrelated, so force a full resync.
           if (epoch && epoch !== currentEpoch) {
             return c.json({ status: "reset" as const, epoch: currentEpoch, seq: Bus.currentSeq() })
           }
-          return c.json(Bus.replay(since))
+          const replay = Bus.replay(since)
+          return c.json(
+            mode === "projection" && replay.status === "ok"
+              ? {
+                  ...replay,
+                  events: replay.events.map((event) => projectReplayEvent(event, SessionHistory.summarizeMessage)),
+                }
+              : replay,
+          )
         },
       )
       .get(

@@ -210,7 +210,6 @@ describe("session wake retry", () => {
           const loop = spyOn(SessionInvoke, "loop").mockImplementation((async () => {
             attempts++
             if (attempts === 1) {
-              // Failed materialization parks the original payload so later work can proceed.
               const steerItems = await SessionInbox.peekSteer(session.id)
               expect(steerItems.length).toBe(1)
               for (const item of steerItems) await SessionInbox.materializeItem(item, root.info.id)

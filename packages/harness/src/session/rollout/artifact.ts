@@ -51,11 +51,12 @@ export namespace RolloutArtifact {
     return write(owner, source(), mediaType)
   }
 
+  export type CheckpointCommit = (ref: Ref, publish: () => Promise<void>) => Promise<void>
   export type Writer = {
     id: string
     readonly committed: Ref
     append(bytes: Uint8Array): Promise<void>
-    checkpoint(): Promise<Ref>
+    checkpoint(commit?: CheckpointCommit): Promise<Ref>
     finish(status?: "complete" | "partial"): Promise<Ref>
   }
 
@@ -93,17 +94,23 @@ export namespace RolloutArtifact {
     const hash = new Bun.CryptoHasher("sha256")
     let filled = 0
 
-    async function flush() {
-      if (!filled) return
+    async function flush(commit?: CheckpointCommit) {
+      if (!filled) {
+        await commit?.({ ...ref }, async () => {})
+        return
+      }
       const data = buffer.subarray(0, filled)
       const sha256 = new Bun.CryptoHasher("sha256").update(data).digest("hex")
       const next = { ...ref, bytes: ref.bytes + filled, chunks: ref.chunks + 1 }
       await record(async () => {
-        await Storage.writeBinary([...base, "blobs", sha256], data)
-        await Storage.transaction(async () => {
+        using prepared = await Storage.prepareBinary([...base, "blobs", sha256], data)
+        const publish = async () => {
+          await Storage.publishPreparedBinary(prepared)
           await Storage.write([...key, "chunks", String(ref.chunks).padStart(12, "0")], { sha256, bytes: filled })
           await Storage.write([...key, "info"], next)
-        })
+        }
+        if (commit) await commit({ ...next }, publish)
+        else await Storage.transaction(publish)
       })
       hash.update(data)
       ref = next
@@ -131,9 +138,9 @@ export namespace RolloutArtifact {
       get committed() {
         return { ...ref }
       },
-      checkpoint() {
+      checkpoint(commit) {
         return exclusive(async () => {
-          await flush()
+          await flush(commit)
           return { ...ref }
         })
       },

@@ -16,9 +16,9 @@ test("SyncProvider aborts message loading and releases its Scope on unmount", as
  import {createStore} from 'solid-js/store';
  const state=createStore({status:'ready',message:{},messageWindow:{},latestContextMessage:{},session:[],path:{directory:''}});
  export const stats={released:0,signal:null,reject:null};
- export const useGlobalSync=()=>({retainScopeState:()=>({state,release:()=>stats.released++}),scopeReconnectVersion:()=>0,capturePartSnapshotRequest:()=>({}),captureResourceRequest:()=>({}),beginContextProjection:()=>0});
+ export const useGlobalSync=()=>({retainContentCache:(_key,create)=>({cache:create(),release(){}}),retainScopeState:()=>({state,release:()=>stats.released++}),scopeReconnectVersion:()=>0,capturePartSnapshotRequest:()=>({}),captureResourceRequest:()=>({}),beginContextProjection:()=>0});
  export const refreshPlanBlueprintOfferFromLoadedParts=()=>{};export const updatePlanBlueprintOfferState=()=>{};
- export const useSDK=()=>({scopeKey:'probe',client:{session:{messagePage:(_input,options)=>{stats.signal=options.signal;return new Promise((resolve,reject)=>stats.reject=reject)}}}});
+ export const useSDK=()=>({scopeKey:'probe',client:{session:{timelinePage:(_input,options)=>{stats.signal=options.signal;return new Promise((resolve,reject)=>stats.reject=reject)}}}});
  `,
   )
   await Bun.write(

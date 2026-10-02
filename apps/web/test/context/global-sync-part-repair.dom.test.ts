@@ -47,13 +47,13 @@ test("part repair preserves history, diffs, and compaction ownership", async () 
     const ok = data => Promise.resolve({data})
     export function createSynergyClient(options) {
       return {
-        scope: { bootstrap: () => options.scopeID.startsWith("background.") ? ok({scopeID:options.scopeID,provider:{all:[]},agent:[],config:{}}) : new Promise(resolve => requests.push({key:options.scopeID,resolve,done:false})) },
+        scope: { bootstrapCore: () => (options.scopeID === "home" || options.scopeID.startsWith("background.")) ? ok({scopeID:options.scopeID,provider:{all:[]},agent:[],config:{}}) : new Promise(resolve => requests.push({key:options.scopeID,resolve,done:false})) },
         permission: {list:()=>ok([])}, question: {list:()=>ok([])},
         event:{replay:()=>new Promise(resolve=>replays.push(resolve))},
-        session:{list:()=>ok({total:0,data:[]}),inbox:()=>ok([]),messagePage:(_input, options)=>new Promise(resolve=>pages.push({resolve,signal:options.signal}))},
+        session:{list:()=>ok({total:0,data:[]}),inbox:()=>ok([]),timelinePage:(_input, options)=>new Promise(resolve=>pages.push({resolve,signal:options.signal}))},
       }
     }
-    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>true},prepareScopeState(){},connected:()=>false,event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
+    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>true},prepareScopeState(){},connected:()=>false,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>ok([])}},
       scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:()=>ok({})},
     }})
@@ -92,8 +92,8 @@ test("part repair preserves history, diffs, and compaction ownership", async () 
           const headers=version?{get:name=>name==="x-synergy-seq"?String(version.seq):name==="x-synergy-epoch"?version.epoch:undefined}:undefined
           request.resolve({data,response:headers?{headers}:undefined})
         },
-        waitForRequest(key) {return new Promise(resolve=>{const check=()=>{if(requests.some(r=>!r.done&&r.key===key))return resolve();setTimeout(check,5)};check()})},
-        waitComplete(state) {return new Promise(resolve=>createRoot(dispose=>createComputed(()=>{if(state[0].status==='complete'){dispose();resolve()}})))},
+        waitForRequest(key) {return new Promise((resolve,reject)=>{const until=Date.now()+2000;const check=()=>{if(requests.some(r=>!r.done&&r.key===key))return resolve();if(Date.now()>until)return reject(new Error("no bootstrap request: "+key));setTimeout(check,5)};check()})},
+        waitComplete(state) {return new Promise((resolve,reject)=>createRoot(dispose=>{const timer=setTimeout(()=>{dispose();reject(new Error('bootstrap incomplete: '+state[0].status))},2000);createComputed(()=>{if(state[0].status==='complete'){clearTimeout(timer);dispose();resolve()}})}))},
         watchPeek(key,sink) {return createRoot(dispose=>{createComputed(()=>sink(api.peekScopeState(key)));return dispose})},
       }
     }

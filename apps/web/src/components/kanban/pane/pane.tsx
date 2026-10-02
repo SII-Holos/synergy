@@ -2,7 +2,7 @@ import { For, Show, createEffect, createMemo, createSignal, onCleanup, type JSX 
 import { Dynamic } from "solid-js/web"
 import { useLingui } from "@lingui/solid"
 import type {
-  Agent,
+  AgentSummary,
   AssistantMessage,
   FileDiff,
   Message,
@@ -48,7 +48,7 @@ export type BoardPaneData = {
   part: Record<string, Part[]>
   session_diff: Record<string, FileDiff[]>
   session: Session[]
-  agent: Agent[]
+  agent: AgentSummary[]
 }
 
 export type BoardPaneLoadState = {

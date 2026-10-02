@@ -743,11 +743,50 @@ export namespace MessageV2 {
   })
   export type Info = z.infer<typeof Info>
 
+  export const PartSummary = z
+    .object({
+      id: z.string(),
+      sessionID: z.string(),
+      messageID: z.string(),
+      type: z.string(),
+      preview: z.string(),
+      render: z.boolean().optional(),
+      status: z.string().optional(),
+      tool: z.string().optional(),
+      content: z
+        .object({ version: z.string(), bytes: z.number().int().nonnegative() })
+        .meta({ ref: "SessionPartContentReference" }),
+    })
+    .meta({ ref: "SessionPartSummary" })
+  export type PartSummary = z.infer<typeof PartSummary>
+  export function summarizePart(part: Part): PartSummary {
+    const text = JSON.stringify(part)
+    return {
+      id: part.id,
+      sessionID: part.sessionID,
+      messageID: part.messageID,
+      type: part.type,
+      render:
+        !["snapshot", "patch", "step-start", "step-finish"].includes(part.type) &&
+        (part.type !== "text" || !isSystemPart(part)),
+      preview:
+        part.type === "text" || part.type === "reasoning"
+          ? part.text.slice(0, 256)
+          : part.type === "tool"
+            ? part.tool
+            : part.type,
+      tool: part.type === "tool" ? part.tool : undefined,
+      status: part.type === "tool" ? part.state.status : undefined,
+      content: { version: new Bun.CryptoHasher("sha256").update(text).digest("hex"), bytes: Buffer.byteLength(text) },
+    }
+  }
+
   export const Event = {
     Updated: BusEvent.define(
       "message.updated",
       z.object({
         info: Info,
+        content: z.object({ version: z.string(), bytes: z.number().int().nonnegative() }).optional(),
       }),
     ),
     Removed: BusEvent.define(
@@ -762,6 +801,23 @@ export namespace MessageV2 {
       z.object({
         part: Part,
         delta: z.string().optional(),
+      }),
+      { streaming: true },
+    ),
+    PartSummary: BusEvent.define(
+      "message.part.summary",
+      z.object({
+        summary: PartSummary,
+        delta: z.string().optional(),
+        subscription: z.number().int().optional(),
+        checkpointEpoch: z.string().optional(),
+        checkpointSeq: z.number().int().optional(),
+        content: z
+          .discriminatedUnion("kind", [
+            z.object({ kind: z.literal("checkpoint"), part: Part }),
+            z.object({ kind: z.literal("delta"), baseVersion: z.string(), delta: z.string() }),
+          ])
+          .optional(),
       }),
       { streaming: true },
     ),
@@ -1400,7 +1456,7 @@ export namespace MessageV2 {
     return sortable.toString(16).padStart(16, "0")
   }
 
-  function messageOrderMarker(info: Info) {
+  export function messageOrderMarker(info: Info) {
     return `${messageOrderNumberKey(info.time.created)}_${info.id}`
   }
 
@@ -1528,6 +1584,7 @@ export namespace MessageV2 {
       const nextMarker = messageOrderMarker(info)
       if (previousMarker === nextMarker) {
         await Storage.write(StoragePath.messageInfo(input.scopeID, sessionID, Identifier.asMessageID(info.id)), info)
+        await (await import("./history-display")).SessionHistoryDisplay.messageWritten(input.scopeID, info)
         return info
       }
 
@@ -1537,6 +1594,7 @@ export namespace MessageV2 {
         ready: false,
       })
       await Storage.write(StoragePath.messageInfo(input.scopeID, sessionID, Identifier.asMessageID(info.id)), info)
+      await (await import("./history-display")).SessionHistoryDisplay.messageWritten(input.scopeID, info)
       if (previousMarker) {
         await Storage.remove(StoragePath.sessionMessageOrderMarker(input.scopeID, sessionID, previousMarker))
       }
@@ -1566,6 +1624,9 @@ export namespace MessageV2 {
       const marker = order.byMessageID.get(input.messageID)
       if (!marker) {
         await Storage.remove(StoragePath.messageInfo(input.scopeID, input.sessionID, input.messageID))
+        await (
+          await import("./history-display")
+        ).SessionHistoryDisplay.messageRemoved(input.scopeID, input.sessionID, input.messageID)
         return
       }
 
@@ -1575,6 +1636,9 @@ export namespace MessageV2 {
         ready: false,
       })
       await Storage.remove(StoragePath.messageInfo(input.scopeID, input.sessionID, input.messageID))
+      await (
+        await import("./history-display")
+      ).SessionHistoryDisplay.messageRemoved(input.scopeID, input.sessionID, input.messageID)
       await Storage.remove(StoragePath.sessionMessageOrderMarker(input.scopeID, input.sessionID, marker))
       const markers = order.markers.filter((candidate) => candidate !== marker)
       await Storage.write(StoragePath.sessionMessageOrderState(input.scopeID, input.sessionID), {

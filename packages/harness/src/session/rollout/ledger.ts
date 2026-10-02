@@ -272,14 +272,15 @@ export namespace RolloutLedger {
     return result.sort((a, b) => a.index - b.index)
   }
 
-  export async function writeAttempt(value: RolloutSchema.AttemptRecord) {
+  export async function writeAttempt(value: RolloutSchema.AttemptRecord, publish?: () => Promise<void>) {
     const attempt = RolloutSchema.AttemptRecord.parse(value)
-    await writeExecution([...attemptRoot(attempt.owner, attempt.runID, attempt.callID), attempt.id], attempt)
+    await writeExecution([...attemptRoot(attempt.owner, attempt.runID, attempt.callID), attempt.id], attempt, publish)
   }
 
   async function writeExecution<T extends { owner: Owner; runID: string; id: string; started: number; status: string }>(
     key: string[],
     value: T,
+    publish?: () => Promise<void>,
   ) {
     return record(async () => {
       using lock = await Lock.write(`rollout-record:${key.join(":")}`)
@@ -287,7 +288,10 @@ export namespace RolloutLedger {
         if (error instanceof Storage.NotFoundError) return undefined
         throw error
       })
-      if (current && current.status !== "running") return current
+      if (current && current.status !== "running") {
+        if (publish) throw new Error("Cannot append evidence to a terminal execution")
+        return current
+      }
       if (
         current &&
         (current.id !== value.id ||
@@ -296,7 +300,7 @@ export namespace RolloutLedger {
           JSON.stringify(current.owner) !== JSON.stringify(value.owner))
       )
         throw new Error("Rollout execution identity changed")
-      await RolloutJournal.write(value.owner, key, value)
+      await RolloutJournal.write(value.owner, key, value, publish)
       return value
     })
   }

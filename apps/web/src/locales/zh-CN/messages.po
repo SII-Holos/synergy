@@ -11041,8 +11041,16 @@ msgid "project.entry.changed"
 msgstr "项目文件夹已更改。请确认当前主目录，再开始任务。"
 
 #. js-lingui-explicit-id
+msgid "project.entry.checked"
+msgstr "检查于 {time}"
+
+#. js-lingui-explicit-id
 msgid "project.entry.chooseFolders"
 msgstr "选择文件夹"
+
+#. js-lingui-explicit-id
+msgid "project.entry.clean"
+msgstr "没有未提交的更改"
 
 #. js-lingui-explicit-id
 msgid "project.entry.computer"
@@ -11077,8 +11085,20 @@ msgid "project.entry.deleteWorktree"
 msgstr "移除 Worktree"
 
 #. js-lingui-explicit-id
+msgid "project.entry.details"
+msgstr "详情"
+
+#. js-lingui-explicit-id
 msgid "project.entry.developer"
 msgstr "开发者设置"
+
+#. js-lingui-explicit-id
+msgid "project.entry.dirty"
+msgstr "有未提交的更改"
+
+#. js-lingui-explicit-id
+msgid "project.entry.diskSize"
+msgstr "{size} MiB"
 
 #. js-lingui-explicit-id
 msgid "project.entry.emptyWorktrees"
@@ -14453,6 +14473,76 @@ msgstr "描述你的任务，或添加文件开始。"
 #. js-lingui-explicit-id
 msgid "session.greeting.taskTitle"
 msgstr "想开始什么任务？"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.copied"
+msgstr "已复制完整会话"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.copyDescription"
+msgstr "复制此会话的全部用户和助手正文"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.copyTitle"
+msgstr "复制完整会话正文"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.exportDescription"
+msgstr "下载此会话的全部用户和助手正文"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.exportTitle"
+msgstr "导出完整会话正文"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchEmpty"
+msgstr "没有找到匹配内容"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchFailed"
+msgstr "无法搜索会话历史"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchMore"
+msgstr "更多结果"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchPlaceholder"
+msgstr "搜索完整会话历史"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchPreparing"
+msgstr "正在建立历史索引，已处理 {count} 项…"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchReasoning"
+msgstr "包含推理"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchTitle"
+msgstr "搜索会话历史"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.searchTools"
+msgstr "包含工具内容"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.history.textFailed"
+msgstr "无法读取会话，请重试。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

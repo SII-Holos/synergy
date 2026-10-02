@@ -13,6 +13,10 @@ import { MessageV2 } from "./message-v2"
 import { SessionMessageCache } from "./message-cache"
 import { applyModelWorkingSetProjection, modelWorkingSetProjection } from "./model-working-set"
 import { SessionManager } from "./manager"
+import { SessionHistoryDisplay } from "./history-display"
+import { SessionHistorySearch } from "./history-search"
+import { UpgradeWork } from "../storage/upgrade-work"
+import { withStorageQueueOptions } from "../storage/queue"
 import { Snapshot } from "./snapshot"
 import { SnapshotRestore } from "./snapshot-restore"
 import type { Info } from "./types"
@@ -21,6 +25,271 @@ const log = Log.create({ service: "session.history" })
 const PAGE_HYDRATION_CONCURRENCY = 16
 
 export namespace SessionHistory {
+  export const TimelinePage = SessionHistoryDisplay.TimelinePage
+  export const PartPage = SessionHistoryDisplay.PartPage
+  export const PartContent = SessionHistoryDisplay.PartContent
+  export const DisplayConflict = SessionHistoryDisplay.Conflict
+  export const summarizePart = SessionHistoryDisplay.summarizePart
+  export const summarizeMessage = SessionHistoryDisplay.summarizeMessage
+  export const MessageDetails = SessionHistoryDisplay.MessageDetails
+
+  export async function prepareDisplay(sessionID: string, progress?: (current: number, total: number) => void) {
+    const session = await SessionManager.requireSession(sessionID)
+    return prepareSessionDisplay(session, progress)
+  }
+
+  async function prepareSessionDisplay(session: Info, progress?: (current: number, total: number) => void) {
+    const sessionID = session.id
+    await SessionHistoryDisplay.prepare(
+      session.scope.id,
+      sessionID,
+      async () => {
+        const infos = await readMessageInfo(sessionID)
+        return deriveInfoSemantics(infos, (messageID) =>
+          MessageV2.parts({ scopeID: session.scope.id, sessionID, messageID }),
+        )
+      },
+      progress,
+    )
+  }
+
+  export async function timelinePage(input: {
+    sessionID: string
+    cursor?: string
+    limit?: number
+    messageID?: string
+  }) {
+    const session = await SessionManager.requireSession(input.sessionID)
+    await prepareSessionDisplay(session)
+    return SessionHistoryDisplay.timelinePage(input, await displayVisibility(session), session.scope.id)
+  }
+
+  export async function latestRootID(sessionID: string) {
+    const session = await SessionManager.requireSession(sessionID)
+    await prepareSessionDisplay(session)
+    return SessionHistoryDisplay.latestRoot(session.scope.id, sessionID, await displayVisibility(session))
+  }
+
+  async function displayVisibility(session: Info) {
+    const sessionID = session.id
+    const [events, lastRoot] = await Promise.all([
+      readSessionEvents(session),
+      SessionHistoryDisplay.latestRootCreated(session.scope.id, sessionID),
+    ])
+    const hidden = new Set<string>()
+    let cut: string | undefined
+    for (const event of activeRollbacks(events)) {
+      const id = getCutMessageID(event)
+      const header =
+        id && canUnrollbackAt(lastRoot, event)
+          ? await SessionHistoryDisplay.header(session.scope.id, sessionID, id)
+          : undefined
+      if (header) cut = cut ? (cut < header.order ? cut : header.order) : header.order
+      else for (const messageID of event.droppedMessageIDs) hidden.add(messageID)
+    }
+    return { hidden, cut }
+  }
+
+  async function requireDisplayMessage(session: Info, messageID: string) {
+    const sessionID = session.id
+    await prepareSessionDisplay(session)
+    const [header, visibility] = await Promise.all([
+      SessionHistoryDisplay.header(session.scope.id, sessionID, messageID),
+      displayVisibility(session),
+    ])
+    if (header && !visibility.hidden.has(messageID) && (!visibility.cut || header.order < visibility.cut)) return header
+    throw new Storage.NotFoundError({ message: "Message is outside the effective Session history" })
+  }
+  export async function partPage(input: Parameters<typeof SessionHistoryDisplay.partPage>[0]) {
+    const session = await SessionManager.requireSession(input.sessionID)
+    await requireDisplayMessage(session, input.messageID)
+    return SessionHistoryDisplay.partPage(input, session.scope.id)
+  }
+  export async function partContent(input: Parameters<typeof SessionHistoryDisplay.partContent>[0]) {
+    const session = await SessionManager.requireSession(input.sessionID)
+    await requireDisplayMessage(session, input.messageID)
+    return SessionHistoryDisplay.partContent(input, session.scope.id)
+  }
+  export async function messageDetails(input: Parameters<typeof SessionHistoryDisplay.messageDetails>[0]) {
+    const session = await SessionManager.requireSession(input.sessionID)
+    await requireDisplayMessage(session, input.messageID)
+    return SessionHistoryDisplay.messageDetails(input, session.scope.id)
+  }
+
+  export const SearchPage = z
+    .object({
+      items: z
+        .object({
+          sessionID: Identifier.schema("session"),
+          messageID: Identifier.schema("message"),
+          partID: Identifier.schema("part"),
+          version: z.string(),
+          category: z.enum(["text", "reasoning", "tool"]),
+          role: z.enum(["user", "assistant"]),
+          offset: z.number(),
+          text: z.string(),
+        })
+        .array(),
+      nextCursor: z.string().nullable(),
+      preparing: z.boolean(),
+      prepared: z.number(),
+      scanned: z.number(),
+      indexed: z.boolean(),
+    })
+    .meta({ ref: "SessionHistorySearchPage" })
+
+  export async function search(input: {
+    sessionID: string
+    query: string
+    reasoning?: boolean
+    tools?: boolean
+    cursor?: string
+    limit?: number
+    signal?: AbortSignal
+  }): Promise<z.infer<typeof SearchPage>> {
+    const session = await SessionManager.requireSession(input.sessionID)
+    await prepareSessionDisplay(session)
+    input.signal?.throwIfAborted()
+    const release = UpgradeWork.priority(input.sessionID)
+    const preparation = await SessionHistorySearch.prepareBatch(session.scope.id, input.sessionID).finally(release)
+    if (!preparation.ready) SessionHistorySearch.requestBackground(session.scope.id, input.sessionID)
+    const fingerprint = new Bun.CryptoHasher("sha256")
+      .update(
+        JSON.stringify([
+          session.scope.id,
+          input.sessionID,
+          input.query,
+          Boolean(input.reasoning),
+          Boolean(input.tools),
+        ]),
+      )
+      .digest("hex")
+    let cursor: string | undefined
+    if (input.cursor) {
+      try {
+        const value = z
+          .object({ cursor: z.string(), fingerprint: z.literal(fingerprint) })
+          .parse(JSON.parse(Buffer.from(input.cursor, "base64url").toString()))
+        cursor = value.cursor
+      } catch {
+        throw new DisplayConflict({ message: "Search cursor belongs to another query" })
+      }
+    }
+    const page = await Storage.snapshot((tx) =>
+      tx.searchTextProjection({
+        scopeID: session.scope.id,
+        sessionID: input.sessionID,
+        query: input.query,
+        cursor,
+        limit: input.limit,
+        categories: [
+          "text",
+          ...(input.reasoning ? ["reasoning" as const] : []),
+          ...(input.tools ? ["tool" as const] : []),
+        ],
+      }),
+    )
+    const ids = [...new Set(page.items.map((item) => item.key[4]!))]
+    const [headers, visibility] = await Promise.all([
+      Storage.readMany<SessionHistoryDisplay.MessageSummary>(
+        ids.map((id) => StoragePath.sessionDisplayMessage(session.scope.id, input.sessionID, id)),
+      ),
+      displayVisibility(session),
+    ])
+    const headerMap = new Map(ids.map((id, index) => [id, headers[index]]))
+    const items = page.items.flatMap((item) => {
+      const header = headerMap.get(item.key[4]!)
+      if (
+        !header ||
+        header.info.visible === false ||
+        visibility.hidden.has(header.info.id) ||
+        (visibility.cut && header.order >= visibility.cut)
+      )
+        return []
+      return [
+        {
+          sessionID: input.sessionID,
+          messageID: header.info.id,
+          partID: item.key[6]!,
+          version: item.version,
+          category: item.category,
+          role: header.info.role,
+          offset: item.offset,
+          text: item.text,
+        },
+      ]
+    })
+    return {
+      items,
+      nextCursor:
+        page.nextCursor && Buffer.from(JSON.stringify({ cursor: page.nextCursor, fingerprint })).toString("base64url"),
+      preparing: !preparation.ready,
+      prepared: preparation.prepared,
+      scanned: page.scanned,
+      indexed: page.indexed,
+    }
+  }
+  export async function text(input: {
+    sessionID: string
+    messageID?: string
+    rootID?: string
+    role?: "user" | "assistant"
+    latest?: boolean
+    reasoning?: boolean
+    tools?: boolean
+  }) {
+    await prepareDisplay(input.sessionID)
+    return withStorageQueueOptions({ priority: "background" }, () =>
+      Storage.snapshot(async () => {
+        const headers: SessionHistoryDisplay.MessageSummary[] = []
+        let cursor: string | undefined
+        do {
+          const page = await timelinePage({
+            sessionID: input.sessionID,
+            messageID: input.messageID,
+            cursor,
+            limit: 100,
+          })
+          headers.unshift(...page.items)
+          cursor = input.messageID ? undefined : (page.nextCursor ?? undefined)
+        } while (cursor)
+        let selected = headers.filter(
+          (header) =>
+            (!input.messageID || header.info.id === input.messageID) &&
+            (!input.rootID || header.info.rootID === input.rootID || header.info.id === input.rootID) &&
+            (!input.role || header.info.role === input.role) &&
+            header.info.visible !== false,
+        )
+        if (input.latest) selected = selected.slice(-1)
+        const session = await SessionManager.requireSession(input.sessionID)
+        const chunks: string[] = []
+        for (const header of selected) {
+          const parts: MessageV2.Part[] = []
+          for await (const record of Storage.records<MessageV2.Part>({
+            kind: "part",
+            scopeID: session.scope.id,
+            sessionID: input.sessionID,
+            messageID: header.info.id,
+          }))
+            parts.push(record.value)
+          const texts = parts.filter(
+            (part): part is MessageV2.TextPart => part.type === "text" && !MessageV2.isSystemPart(part),
+          )
+          for (const part of texts) chunks.push(part.text)
+          if (input.reasoning || (header.info.role === "assistant" && !parts.some((part) => part.type === "text")))
+            for (const part of parts) if (part.type === "reasoning") chunks.push(part.text)
+          if (input.tools)
+            for (const part of parts) {
+              if (part.type !== "tool") continue
+              chunks.push(JSON.stringify(part.state.input))
+              if (part.state.status === "completed") chunks.push(part.state.output)
+              if (part.state.status === "error") chunks.push(part.state.error)
+            }
+        }
+        return chunks.join("\n\n")
+      }),
+    )
+  }
   const { asScopeID, asSessionID, asHistoryID } = Identifier
 
   export const RollbackEvent = z
@@ -508,6 +777,11 @@ export namespace SessionHistory {
 
   export async function readEvents(sessionID: string) {
     const session = await SessionManager.requireSession(sessionID)
+    return readSessionEvents(session)
+  }
+
+  async function readSessionEvents(session: Info) {
+    const sessionID = session.id
     const scopeID = asScopeID((session.scope as Scope).id)
     const ids = await Storage.scan(StoragePath.sessionHistoryRoot(scopeID, asSessionID(sessionID)))
     const events = await Storage.readMany<Event>(
@@ -712,8 +986,12 @@ export namespace SessionHistory {
       // Only explicit non-root injections are exempt; a new root (or an
       // un-derived legacy user message) invalidates redo.
       if ((msg as MessageV2.User).isRoot === false) return false
-      return msg.time.created > event.time.created
+      return !canUnrollbackAt(msg.time.created, event)
     })
+  }
+
+  function canUnrollbackAt(lastRootCreated: number, event: RollbackEvent) {
+    return lastRootCreated <= event.time.created
   }
 
   function summarizePatches(messages: MessageV2.WithParts[]) {
