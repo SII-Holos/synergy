@@ -117,8 +117,11 @@ msgstr "⟦Extract content with Anysearch⟧"
 msgid "anysearch.title.search"
 msgstr "⟦Search with Anysearch⟧"
 
-#. Runtime Lingui descriptors for agenda host labels and wrappers.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
+msgid "app.agenda.action.accepted"
+msgstr ""
+
+#. action buttons
 msgid "app.agenda.action.activate"
 msgstr "⟦Activate⟧"
 
@@ -132,10 +135,18 @@ msgstr "⟦Cancel⟧"
 msgid "app.agenda.action.complete"
 msgstr "⟦Complete⟧"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.action.enableRun"
+msgstr ""
+
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.action.failed"
 msgstr "⟦Agenda action failed⟧"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.action.more"
+msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -147,19 +158,67 @@ msgstr "⟦Pause⟧"
 msgid "app.agenda.action.requestFailed"
 msgstr "⟦Request failed⟧"
 
-#. action buttons
-msgid "app.agenda.action.trigger"
-msgstr "⟦Trigger⟧"
+#. js-lingui-explicit-id
+msgid "app.agenda.action.runNow"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.action.submitted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.action.submittedHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.loaded"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.loadingMore"
+msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.activity.loadMore"
 msgstr "⟦Load more⟧"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.moreHint"
+msgstr ""
+
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.activity.noHistory"
 msgstr "⟦No history found⟧"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.noMatch"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.noSession"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.openSession"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.refreshing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.retry"
+msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -189,6 +248,58 @@ msgstr "⟦Activity endpoint is unavailable on the running server instance⟧"
 msgid "app.agenda.activity.unavailableShort"
 msgstr "⟦Activity is unavailable right now⟧"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.count"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.emptyHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.invalid"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.limited"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.listRange"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.openHistory"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.pastHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.predicted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.relative"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.weekRange"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.calendar.chooseDate"
+msgstr ""
+
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.calendar.day"
@@ -209,16 +320,36 @@ msgid "app.agenda.calendar.more"
 msgstr "⟦+{count} more⟧"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.calendar.next"
-msgstr "⟦Next date range⟧"
+msgid "app.agenda.calendar.nextDay"
+msgstr ""
+
+#. ---------------------------------------------------------------------------
+msgid "app.agenda.calendar.nextMonth"
+msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.agenda.calendar.previous"
-msgstr "⟦Previous date range⟧"
+msgid "app.agenda.calendar.nextWeek"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.calendar.previousDay"
+msgstr ""
+
+#. ---------------------------------------------------------------------------
+msgid "app.agenda.calendar.previousMonth"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.calendar.previousWeek"
+msgstr ""
 
 #. calendar.tsx
 msgid "app.agenda.calendar.today"
 msgstr "⟦Today⟧"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.calendar.views"
+msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -250,7 +381,11 @@ msgstr "⟦Created {date}⟧"
 msgid "app.agenda.detail.delete"
 msgstr "⟦Delete⟧"
 
-#. detail popover
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.disabledPreview"
+msgstr ""
+
+#. detail dialog
 msgid "app.agenda.detail.edit"
 msgstr "⟦Edit⟧"
 
@@ -258,6 +393,18 @@ msgstr "⟦Edit⟧"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.detail.errors"
 msgstr "⟦{count, plural, one {# error} other {# errors}}⟧"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.expectedHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.expectedTrigger"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.historyFailed"
+msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -269,10 +416,42 @@ msgstr "⟦Last run: {date}⟧"
 msgid "app.agenda.detail.next"
 msgstr "⟦Next: {time}⟧"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.noLongerEnabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.noPreview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.previewFirst"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.previewHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.previewInvalid"
+msgstr ""
+
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.detail.recentRuns"
 msgstr "⟦Recent runs⟧"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.relativePreview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.rulePreview"
+msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -317,6 +496,10 @@ msgstr "⟦{count}ms⟧"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.duration.seconds"
 msgstr "⟦{count}s⟧"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.filters.clear"
+msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -402,10 +585,26 @@ msgstr "⟦Description⟧"
 msgid "app.agenda.form.descriptionPlaceholder"
 msgstr "⟦Description...⟧"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.form.discardChanges"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.form.discardDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.form.discardTitle"
+msgstr ""
+
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.form.intervalChip"
 msgstr "⟦Interval⟧"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.form.keepEditing"
+msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -421,6 +620,11 @@ msgstr "⟦Prompt⟧"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.form.promptPlaceholder"
 msgstr "⟦Enter task prompt⟧"
+
+#. Runtime Lingui descriptors for agenda host labels and wrappers.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.agenda.form.removeTime"
+msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -573,11 +777,6 @@ msgstr "⟦New Agenda⟧"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.agenda.panel.noTodoItems"
-msgstr "⟦No todo items⟧"
-
-#. Runtime Lingui descriptors for agenda host labels and wrappers.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.panel.tab.activity"
 msgstr "⟦History⟧"
 
@@ -586,22 +785,65 @@ msgstr "⟦History⟧"
 msgid "app.agenda.panel.tab.schedule"
 msgstr "⟦Schedule⟧"
 
-#. panel.tsx — header, tabs, detail popover, action buttons
+#. js-lingui-explicit-id
+msgid "app.agenda.panel.tab.tasks"
+msgstr ""
+
+#. panel.tsx — header, tabs, detail dialog, action buttons
 msgid "app.agenda.panel.title"
 msgstr "⟦Agenda⟧"
 
-#. Runtime Lingui descriptors for agenda host labels and wrappers.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.agenda.panel.todoLabel"
-msgstr "⟦Todo⟧"
+#. js-lingui-explicit-id
+msgid "app.agenda.rawTriggers"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.run.trigger.at"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.run.trigger.cron"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.run.trigger.delay"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.run.trigger.every"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.run.trigger.watch"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.runStatus.error"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.runStatus.ok"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.runStatus.skipped"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.scope.all"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.scope.filter"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.search.clear"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.agenda.series.active"
 msgstr "⟦Active⟧"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.all"
-msgstr "⟦All series⟧"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.series.cancelled"
@@ -612,26 +854,6 @@ msgid "app.agenda.series.done"
 msgstr "⟦Done⟧"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.series.empty"
-msgstr "⟦No matching agenda items⟧"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.failed"
-msgstr "⟦Last run failed⟧"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.missingStatus"
-msgstr "⟦Latest run status unavailable⟧"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.noRuns"
-msgstr "⟦No run record available⟧"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.noTimes"
-msgstr "⟦No planned times in this range⟧"
-
-#. js-lingui-explicit-id
 msgid "app.agenda.series.paused"
 msgstr "⟦Paused⟧"
 
@@ -640,12 +862,52 @@ msgid "app.agenda.series.pending"
 msgstr "⟦Pending⟧"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.series.previewCount"
-msgstr "⟦Preview {count, plural, one {# planned time} other {# planned times}}⟧"
+msgid "app.agenda.status.unknown"
+msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.agenda.series.previewHint"
-msgstr "⟦Planned times are a preview. See History for completed runs.⟧"
+msgid "app.agenda.tasks.all"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.archived"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.count"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.emptyHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.filter"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.noRuns"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.search"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.unknownResult"
+msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -657,6 +919,10 @@ msgstr "⟦at {time}⟧"
 msgid "app.agenda.trigger.cron"
 msgstr "⟦cron: {expr}⟧"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.trigger.daily"
+msgstr ""
+
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.trigger.delay"
@@ -667,6 +933,10 @@ msgstr "⟦delay {delay}⟧"
 msgid "app.agenda.trigger.every"
 msgstr "⟦every {interval}⟧"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.trigger.github"
+msgstr ""
+
 #. trigger summaries
 msgid "app.agenda.trigger.manual"
 msgstr "⟦Manual⟧"
@@ -675,6 +945,10 @@ msgstr "⟦Manual⟧"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.trigger.poll"
 msgstr "⟦poll: {command}⟧"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.trigger.session"
+msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -701,6 +975,42 @@ msgstr ""
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.description.lightweight"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.trigger.webhook"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.trigger.weekly"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.weekday.friday"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.weekday.monday"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.weekday.saturday"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.weekday.sunday"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.weekday.thursday"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.weekday.tuesday"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.weekday.wednesday"
 msgstr ""
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
@@ -1925,6 +2235,10 @@ msgstr "⟦The action could not be completed.⟧"
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.confirm.cancel"
 msgstr "⟦Cancel⟧"
+
+#. js-lingui-explicit-id
+msgid "app.dialog.confirm.close"
+msgstr ""
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.directory.browseFailed"
@@ -3172,6 +3486,10 @@ msgstr "⟦Error details⟧"
 msgid "app.kanban.focus.resizeRail"
 msgstr "⟦Resize panel⟧"
 
+#. js-lingui-explicit-id
+msgid "app.kanban.focusSession"
+msgstr ""
+
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.follow"
 msgstr "⟦Follow latest⟧"
@@ -3208,9 +3526,36 @@ msgstr "⟦Messages are temporarily unavailable. Please retry.⟧"
 msgid "app.kanban.loading"
 msgstr "⟦Loading…⟧"
 
+#. * Full-featured board composer: agent picker (applies to the next send),
+ * control-profile selector, orchestration-mode menu, and a status bar —
+ * all backed by the same backend operations the session page uses, but
+ * targeted at this pane's scope/session through the injected client.
+msgid "app.kanban.messageLabel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.kanban.moveFirst"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.kanban.moveLast"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.kanban.moveNext"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.kanban.movePrevious"
+msgstr ""
+
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.openSession"
 msgstr "⟦Open session⟧"
+
+#. js-lingui-explicit-id
+msgid "app.kanban.paneActions"
+msgstr ""
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.pinPane"
@@ -3220,13 +3565,28 @@ msgstr "⟦Pin⟧"
 msgid "app.kanban.pinToReorderHint"
 msgstr "⟦Pin this session to reorder it⟧"
 
+#. js-lingui-explicit-id
+msgid "app.kanban.responseReady"
+msgstr ""
+
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.retry"
 msgstr "⟦Retry⟧"
 
+#. js-lingui-explicit-id
+msgid "app.kanban.scope.unknown"
+msgstr ""
+
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.sendFailed"
 msgstr "⟦Failed to send message⟧"
+
+#. * Full-featured board composer: agent picker (applies to the next send),
+ * control-profile selector, orchestration-mode menu, and a status bar —
+ * all backed by the same backend operations the session page uses, but
+ * targeted at this pane's scope/session through the injected client.
+msgid "app.kanban.sendLabel"
+msgstr ""
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.sendPlaceholder"
@@ -3986,6 +4346,10 @@ msgid "app.library.category.writing"
 msgstr "⟦Writing⟧"
 
 #. js-lingui-explicit-id
+msgid "app.library.clearFilters"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.library.clearSearch"
 msgstr "⟦Clear search⟧"
 
@@ -4016,6 +4380,26 @@ msgstr "⟦Saved⟧"
 #. js-lingui-explicit-id
 msgid "app.library.experience.collapse"
 msgstr "⟦Collapse experience⟧"
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.contentTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.copy.dimensions"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.copy.intent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.copy.reason"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.copy.reward"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.library.experience.copyFailed"
@@ -4118,6 +4502,10 @@ msgid "app.library.experience.scope"
 msgstr "⟦Scope⟧"
 
 #. js-lingui-explicit-id
+msgid "app.library.experience.scopeNameUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.library.experience.script"
 msgstr "⟦Script⟧"
 
@@ -4149,6 +4537,14 @@ msgstr "⟦Showing {shown} of {total} experiences⟧"
 msgid "app.library.experience.sort.aria"
 msgstr "⟦Sort experiences⟧"
 
+#. js-lingui-explicit-id
+msgid "app.library.experience.source"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.sourceUnavailable"
+msgstr ""
+
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.experience.stat.confidence"
 msgstr "⟦C⟧"
@@ -4176,6 +4572,10 @@ msgstr "⟦Encoding failed⟧"
 #. js-lingui-explicit-id
 msgid "app.library.experience.status.pending"
 msgstr "⟦Pending evaluation⟧"
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.technicalDetails"
+msgstr ""
 
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.experience.total"
@@ -4248,6 +4648,10 @@ msgstr "⟦Expand memory⟧"
 #. js-lingui-explicit-id
 msgid "app.library.memory.filter.aria"
 msgstr "⟦Filter memories by category⟧"
+
+#. js-lingui-explicit-id
+msgid "app.library.memory.loadFailed"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.library.memory.similarityPercent"
@@ -4742,6 +5146,10 @@ msgid "app.library.stats.itemCountWithStore"
 msgstr "⟦{count} · {store} local store⟧"
 
 #. js-lingui-explicit-id
+msgid "app.library.stats.knowledge"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.library.stats.learning"
 msgstr "⟦Learning⟧"
 
@@ -4882,12 +5290,20 @@ msgid "app.library.stats.usage"
 msgstr "⟦Usage⟧"
 
 #. js-lingui-explicit-id
+msgid "app.library.stats.views"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.library.syncing"
 msgstr "⟦Syncing...⟧"
 
 #. js-lingui-explicit-id
 msgid "app.library.title"
 msgstr "⟦Library⟧"
+
+#. js-lingui-explicit-id
+msgid "app.library.views"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.name.synergy"
@@ -5588,10 +6004,22 @@ msgstr "⟦Preparing a bounded, redacted telemetry snapshot⟧"
 msgid "app.performance.analysis.description.ready"
 msgstr "⟦Bounded, redacted telemetry analyzed in one durable Session⟧"
 
+#. js-lingui-explicit-id
+msgid "app.performance.analysis.description.running"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.analysis.description.session"
+msgstr ""
+
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.analysis.progress"
 msgstr "⟦The analyst is correlating current health, latency, resource, session, storage, and frontend signals.⟧"
+
+#. js-lingui-explicit-id
+msgid "app.performance.analysis.startHint"
+msgstr ""
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -5651,6 +6079,26 @@ msgstr "⟦Milliseconds⟧"
 #. axis titles
 msgid "app.performance.axis.percent"
 msgstr "⟦Percent⟧"
+
+#. js-lingui-explicit-id
+msgid "app.performance.browser.noSamples"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.browser.partial"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.browser.retention"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.browser.stale"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.browser.unsupported"
+msgstr ""
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -5731,10 +6179,22 @@ msgstr "⟦Storage metrics are not available for this range⟧"
 msgid "app.performance.chart.storage.title"
 msgstr "⟦Storage I/O⟧"
 
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.activeTurns"
+msgstr ""
+
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.dataset.arrayBuffers"
 msgstr "⟦ArrayBuffers⟧"
+
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.domNodes"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.eventLoop"
+msgstr ""
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -5751,10 +6211,42 @@ msgstr "⟦Heap total⟧"
 msgid "app.performance.dataset.heapUsed"
 msgstr "⟦Heap used⟧"
 
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.navigation"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.operation"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.operationsPerBucket"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.readBytesPerBucket"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.request"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.requestsPerBucket"
+msgstr ""
+
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.dataset.rss"
 msgstr "⟦RSS⟧"
+
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.turn"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.writeBytesPerBucket"
+msgstr ""
 
 #. empty states
 msgid "app.performance.empty.default"
@@ -5785,8 +6277,126 @@ msgstr "⟦Frontend vitals⟧"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.group.browser"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.group.diagnostics"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.group.requests"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.group.resourcePressure"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.group.resources"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.group.storage"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.backpressure"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.highBuffers"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.highCpu"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.highExternal"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.highHeap"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.highRss"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.inspectTrace"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.longTask"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.loopLag"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.observed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.occurrences"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.requestFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.slowLibrary"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.slowModel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.slowOperation"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.slowRequest"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.slowStorage"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.slowTool"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.slowTurn"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.storageFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.toolFailed"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.issue.traceAvailable"
 msgstr "⟦trace available⟧"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.writeFailed"
+msgstr ""
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -5807,6 +6417,22 @@ msgstr "⟦No recent issues⟧"
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.issues.title"
 msgstr "⟦Performance issues⟧"
+
+#. js-lingui-explicit-id
+msgid "app.performance.memory.measured"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.memory.provenance"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.metric.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.openDiagnostics"
+msgstr ""
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -5881,6 +6507,10 @@ msgstr "⟦Slow tools⟧"
 msgid "app.performance.resources.baseline"
 msgstr "⟦Baseline⟧"
 
+#. js-lingui-explicit-id
+msgid "app.performance.resources.calls"
+msgstr ""
+
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.resources.cgroupCurrent"
@@ -5911,6 +6541,10 @@ msgstr "⟦unavailable⟧"
 msgid "app.performance.resources.coverageValue"
 msgstr "⟦{measured}/{count} · {completeness}⟧"
 
+#. js-lingui-explicit-id
+msgid "app.performance.resources.cpu"
+msgstr ""
+
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.resources.current"
@@ -5923,8 +6557,21 @@ msgstr "⟦Owner-attributed memory and owner-executed recovery; this view never 
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.details"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.resources.disk"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.resources.lastRecovery"
 msgstr "⟦Last owner recovery⟧"
+
+#. js-lingui-explicit-id
+msgid "app.performance.resources.memory"
+msgstr ""
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -6128,10 +6775,30 @@ msgstr "⟦{total} total · {running} running⟧"
 msgid "app.performance.runtime.unknown"
 msgstr "⟦Unknown⟧"
 
+#. js-lingui-explicit-id
+msgid "app.performance.sessions.active"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.sessions.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.severity.critical"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.severity.error"
+msgstr ""
+
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.severity.info"
 msgstr "⟦info⟧"
+
+#. js-lingui-explicit-id
+msgid "app.performance.severity.warning"
+msgstr ""
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -6187,6 +6854,26 @@ msgstr "⟦Unable to fetch performance snapshot⟧"
 msgid "app.performance.snapshot.unavailableDescription"
 msgstr "⟦Server data is unavailable. Current runtime health cannot be determined.⟧"
 
+#. js-lingui-explicit-id
+msgid "app.performance.source.localDom"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.source.localHeap"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.source.localNavigation"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.source.requestBuckets"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.source.timeline"
+msgstr ""
+
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.summary.arrayBuffers"
@@ -6196,6 +6883,16 @@ msgstr "⟦ArrayBuffers⟧"
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.summary.cpu"
 msgstr "⟦CPU⟧"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.critical"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.degraded"
+msgstr ""
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -6230,6 +6927,11 @@ msgstr "⟦External⟧"
 #. summary cards
 msgid "app.performance.summary.health"
 msgstr "⟦Health⟧"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.healthy"
+msgstr ""
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -6350,6 +7052,10 @@ msgstr "⟦Recent event traces⟧"
 msgid "app.performance.timeline.unavailable"
 msgstr "⟦Unable to fetch performance trends⟧"
 
+#. js-lingui-explicit-id
+msgid "app.performance.timeRange"
+msgstr ""
+
 #. time ranges
 msgid "app.performance.timeRange.15m"
 msgstr "⟦15m⟧"
@@ -6419,6 +7125,22 @@ msgstr "⟦End⟧"
 msgid "app.performance.trace.events"
 msgstr "⟦Events⟧"
 
+#. js-lingui-explicit-id
+msgid "app.performance.trace.limited"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.trace.loadFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.trace.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.trace.missingDetail"
+msgstr ""
+
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.trace.module"
@@ -6443,6 +7165,30 @@ msgstr "⟦Start⟧"
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.trace.status"
 msgstr "⟦Status⟧"
+
+#. js-lingui-explicit-id
+msgid "app.performance.trace.status.cancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.trace.status.error"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.trace.status.interrupted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.trace.status.ok"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.trace.status.running"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.trace.status.timeout"
+msgstr ""
 
 #. trace drawer
 msgid "app.performance.trace.title"
@@ -6576,6 +7322,10 @@ msgid "app.plugin.detail.action.installing"
 msgstr "⟦Installing...⟧"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.detail.action.loadingRelease"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.plugin.detail.action.loadingReview"
 msgstr "⟦Loading review...⟧"
 
@@ -6608,8 +7358,20 @@ msgid "app.plugin.detail.close"
 msgstr "⟦Close plugin details⟧"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.detail.compatibilityRequirement"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.installationUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.plugin.detail.loading"
 msgstr "⟦Loading plugin...⟧"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.metadataUnavailable"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.metric.author"
@@ -6664,12 +7426,28 @@ msgid "app.plugin.detail.notFoundInRegistry"
 msgstr "⟦{pluginId} does not exist in this registry.⟧"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.detail.notProvided"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.plugin.detail.permission.technicalDetails"
 msgstr "⟦Technical details⟧"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.detail.permissionsLoading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.permissionsUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.plugin.detail.progressAriaLabel"
 msgstr "⟦{action} plugin⟧"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.repository"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.repositoryAriaLabel"
@@ -6682,6 +7460,10 @@ msgstr "⟦Features⟧"
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.section.capabilitiesSummary"
 msgstr "⟦{tools} tools · {operations} operations · {surfaces} UI surfaces⟧"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.section.catalogCapabilitiesSummary"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.section.developmentRegistration"
@@ -6748,6 +7530,14 @@ msgid "app.plugin.detail.state.needsApproval"
 msgstr "⟦Needs approval⟧"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.detail.technicalDefinitions"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.technicalInformation"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.plugin.detail.version.compatibility"
 msgstr "⟦Plugin API {apiVersion} · Synergy {range}⟧"
 
@@ -6764,6 +7554,46 @@ msgid "app.plugin.error.title"
 msgstr "⟦Plugin Error: {pluginId}⟧"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.feature.agents"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.feature.agents.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.feature.guidance"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.feature.guidance.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.feature.mcp"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.feature.mcp.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.feature.skills"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.feature.skills.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.feature.ui"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.feature.ui.description"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.plugin.icon.alt"
 msgstr "⟦{name} icon⟧"
 
@@ -6774,6 +7604,10 @@ msgstr "⟦Plugin icon⟧"
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.apiVersion.label"
 msgstr "⟦API {version}⟧"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.marketplace.browse"
+msgstr ""
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.build.label"
@@ -6788,8 +7622,16 @@ msgid "app.plugin.marketplace.checkingPlugins"
 msgstr "⟦Checking plugins⟧"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.marketplace.clearFilters"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.plugin.marketplace.clearSearch"
 msgstr "⟦Clear search⟧"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.marketplace.developmentDocs"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.empty.developmentHint"
@@ -6868,6 +7710,18 @@ msgid "app.plugin.marketplace.installation.package"
 msgstr "⟦{source} package⟧"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.marketplace.installedUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.marketplace.installedUnavailableDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.marketplace.manage"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.plugin.marketplace.matchingQuery"
 msgstr "⟦matching \"{query}\"⟧"
 
@@ -6936,20 +7790,12 @@ msgid "app.plugin.marketplace.row.pluginDisabled"
 msgstr "⟦Plugin disabled⟧"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.marketplace.row.unknownAuthor"
-msgstr "⟦Unknown author⟧"
-
-#. js-lingui-explicit-id
 msgid "app.plugin.marketplace.row.updateAvailable"
 msgstr "⟦Update available from v{version}⟧"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.row.updateAvailable.generic"
 msgstr "⟦Update available⟧"
-
-#. js-lingui-explicit-id
-msgid "app.plugin.marketplace.row.updated"
-msgstr "⟦Updated {time}⟧"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.searchPlaceholder"
@@ -6976,12 +7822,36 @@ msgid "app.plugin.marketplace.status.needsApproval"
 msgstr "⟦Needs approval⟧"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.marketplace.statusFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.marketplace.statusStarting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.marketplace.statusStopped"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.marketplace.statusStopping"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.plugin.marketplace.title"
 msgstr "⟦Plugins⟧"
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.version.label"
 msgstr "⟦v{version}⟧"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.marketplace.views"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.agentCall"
+msgstr ""
 
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permission.agentCall.description"
@@ -6991,6 +7861,18 @@ msgstr "⟦Send bounded text to approved Sessionless Agents without tools or Ses
 msgid "app.plugin.permission.agentCall.title"
 msgstr "⟦Call Synergy agents⟧"
 
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.assetWrite"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.assetWrite.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.composerIntercept"
+msgstr ""
+
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permission.composerIntercept.description"
 msgstr "⟦Delay a normal message before it enters a Session while the plugin finishes its interaction.⟧"
@@ -6998,6 +7880,10 @@ msgstr "⟦Delay a normal message before it enters a Session while the plugin fi
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permission.composerIntercept.title"
 msgstr "⟦Intercept message submission⟧"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.composerRead"
+msgstr ""
 
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permission.composerRead.description"
@@ -7007,6 +7893,10 @@ msgstr "⟦Read settled text and selection from the active Synergy composer.⟧"
 msgid "app.plugin.permission.composerRead.title"
 msgstr "⟦Read composer drafts⟧"
 
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.composerWrite"
+msgstr ""
+
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permission.composerWrite.description"
 msgstr "⟦Offer completions and annotations or apply edits to the active composer.⟧"
@@ -7015,6 +7905,70 @@ msgstr "⟦Offer completions and annotations or apply edits to the active compos
 msgid "app.plugin.permission.composerWrite.title"
 msgstr "⟦Change composer drafts⟧"
 
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.configRead"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.configRead.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.configWrite"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.configWrite.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.declaredAccess"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.mcpInvoke"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.mcpInvoke.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.mcpSpawn"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.mcpSpawn.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.networkRequest"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.networkRequest.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.promptTransform"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.promptTransform.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.runtimeEndpointRead"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.secrets"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.selectionRead"
+msgstr ""
+
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permission.selectionRead.description"
 msgstr "⟦Receive non-sensitive text selected in Synergy and add text actions to its menu.⟧"
@@ -7022,6 +7976,54 @@ msgstr "⟦Receive non-sensitive text selected in Synergy and add text actions t
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permission.selectionRead.title"
 msgstr "⟦Read selected text⟧"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.sessionControl"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.sessionRead"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.settingsRead"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.settingsWrite"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.shellExecute"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.shellExecute.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.taskDelegate"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.taskDelegate.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.toolInvoke"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.uiHostActions"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.workspaceRead"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.workspaceWrite"
+msgstr ""
 
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permissionGroup.data"
@@ -8499,15 +9501,6 @@ msgstr "⟦Loading usage stats…⟧"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.stats.load.unavailable"
 msgstr "⟦Usage stats are unavailable right now⟧"
-
-#. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.stats.milestone.subtitle"
-msgstr "⟦We’ll turn your long-term stats into unlockable milestones next.⟧"
-
-#. ── milestones.tsx ──────────────────────────────────────────────────
-msgid "app.stats.milestone.title"
-msgstr "⟦Achievements (coming next)⟧"
 
 #. ── model.ts — ranking row secondary / primary descriptors ──────────
 msgid "app.stats.model.avgMs"
@@ -22074,6 +23067,14 @@ msgid "special-user.status.changes-requested"
 msgstr "⟦Changes requested⟧"
 
 #. js-lingui-explicit-id
+msgid "stats.cost.unpriced"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "stats.rank.metricSelection"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "stats.rank.unit.calls"
 msgstr "⟦calls⟧"
 
@@ -22084,6 +23085,26 @@ msgstr "⟦messages⟧"
 #. js-lingui-explicit-id
 msgid "stats.rank.unit.sessions"
 msgstr "⟦sessions⟧"
+
+#. js-lingui-explicit-id
+msgid "stats.rank.unit.tokens"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "stats.section.code"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "stats.section.navigation"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "stats.section.overview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "stats.section.trends"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "task.location.advanced"
@@ -23453,7 +24474,7 @@ msgstr "⟦Compressing context...⟧"
 msgid "ui.compaction.summaryReady"
 msgstr "⟦Summary ready⟧"
 
-#. js-lingui-explicit-id
+#. ---------------------------------------------------------------------------
 msgid "ui.dialog.close"
 msgstr "⟦Close dialog⟧"
 

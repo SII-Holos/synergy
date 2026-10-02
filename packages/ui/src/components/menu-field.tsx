@@ -5,7 +5,7 @@ import { PortalStyleOwner } from "../context/ui-style"
 import { Popover } from "@kobalte/core/popover"
 import { Listbox, Item, ItemLabel, ItemIndicator } from "@kobalte/core/listbox"
 import { createSignal, Show, type JSX } from "solid-js"
-import { Icon } from "./icon"
+import { Icon, type IconName } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import "./menu-field.css"
 
@@ -20,6 +20,7 @@ type MenuFieldBaseProps<T extends string> = {
   id?: string
   options: MenuFieldOption<T>[]
   ariaLabel: string
+  icon?: IconName
   ariaDescribedBy?: string
   disabled?: boolean
   placement?: "bottom-start" | "bottom-end"
@@ -85,10 +86,15 @@ export function MenuField<T extends string>(props: MenuFieldProps<T>) {
         }}
         onEscapeKeyDown={(event) => event.stopPropagation()}
         class={`menu-field-surface ${props.surfaceClass ?? ""}`}
+        aria-label={props.ariaLabel}
+        onOpenAutoFocus={(event) => event.preventDefault()}
       >
         {props.leading?.(() => setOpen(false))}
         <Listbox
           class="menu-field-list"
+          aria-label={props.ariaLabel}
+          autoFocus="first"
+          scrollRef={() => surface}
           options={props.options}
           optionValue={(option) => option.value}
           optionTextValue={(option) => option.label}
@@ -96,6 +102,7 @@ export function MenuField<T extends string>(props: MenuFieldProps<T>) {
           shouldFocusOnHover
           selectionMode={multiple() ? "multiple" : "single"}
           disallowEmptySelection={!multiple()}
+          selectOnFocus={false}
           allowDuplicateSelectionEvents={!multiple()}
           value={selected()}
           onChange={handleChange}
@@ -116,7 +123,7 @@ export function MenuField<T extends string>(props: MenuFieldProps<T>) {
                   <span class="menu-field-count">{option.count}</span>
                 </Show>
                 <span class="menu-field-item-mark" aria-hidden="true">
-                  <ItemIndicator as="span" class="menu-field-item-indicator">
+                  <ItemIndicator as="span" class="menu-field-item-indicator" data-slot="menu-field-indicator">
                     <Icon name={getSemanticIcon("state.success")} size="small" />
                   </ItemIndicator>
                 </span>
@@ -129,18 +136,32 @@ export function MenuField<T extends string>(props: MenuFieldProps<T>) {
   )
 
   return (
-    <Popover open={open()} onOpenChange={setOpen} placement={props.placement ?? "bottom-start"} gutter={8}>
+    <Popover
+      open={open()}
+      onOpenChange={setOpen}
+      placement={props.placement ?? "bottom-start"}
+      gutter={6}
+      overflowPadding={12}
+    >
       <Popover.Trigger
         ref={trigger}
         id={props.id}
         as="button"
         type="button"
+        data-slot="popover-trigger"
+        data-component="menu-field"
         class={props.triggerClass ?? "menu-field-trigger"}
         aria-label={triggerText() ? `${props.ariaLabel}: ${triggerText()}` : props.ariaLabel}
         aria-describedby={[row?.descriptionId, props.ariaDescribedBy].filter(Boolean).join(" ") || undefined}
         disabled={props.disabled}
+        onKeyDown={(event: KeyboardEvent) => {
+          if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
+          event.preventDefault()
+          setOpen(true)
+        }}
       >
-        <span class={props.triggerClass ? undefined : "menu-field-value"}>{triggerText()}</span>
+        <Show when={props.icon}>{(icon) => <Icon name={icon()} size="small" />}</Show>
+        <span class="menu-field-value">{triggerText()}</span>
         <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="menu-field-chevron" />
       </Popover.Trigger>
       <Popover.Portal mount={props.popoverLayer ?? parentLayer()}>{content()}</Popover.Portal>

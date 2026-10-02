@@ -117,10 +117,13 @@ msgstr "使用 Anysearch 提取内容"
 msgid "anysearch.title.search"
 msgstr "使用 Anysearch 搜索"
 
-#. Runtime Lingui descriptors for agenda host labels and wrappers.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
+msgid "app.agenda.action.accepted"
+msgstr "已提交"
+
+#. action buttons
 msgid "app.agenda.action.activate"
-msgstr "激活"
+msgstr "启用"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -132,10 +135,18 @@ msgstr "取消"
 msgid "app.agenda.action.complete"
 msgstr "完成"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.action.enableRun"
+msgstr "启用并立即运行"
+
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.action.failed"
 msgstr "议程操作失败"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.action.more"
+msgstr "更多操作"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -147,19 +158,67 @@ msgstr "暂停"
 msgid "app.agenda.action.requestFailed"
 msgstr "请求失败"
 
-#. action buttons
-msgid "app.agenda.action.trigger"
-msgstr "触发运行"
+#. js-lingui-explicit-id
+msgid "app.agenda.action.runNow"
+msgstr "立即运行"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.action.submitted"
+msgstr "已提交执行"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.action.submittedHint"
+msgstr "执行结果可在历史中查看。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.description"
+msgstr "按发生时间查看真实执行、结果和关联会话。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.loaded"
+msgstr "已加载 {shown} / {total} 条执行记录"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.loadingMore"
+msgstr "加载中…"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.activity.loadMore"
 msgstr "加载更多"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.moreHint"
+msgstr "还有未加载的执行记录。"
+
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.activity.noHistory"
 msgstr "未找到历史记录"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.noMatch"
+msgstr "没有匹配的执行记录"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.noSession"
+msgstr "暂无可用的关联会话"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.openSession"
+msgstr "打开会话"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.refresh"
+msgstr "刷新"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.refreshing"
+msgstr "刷新中…"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.retry"
+msgstr "重试"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -173,7 +232,7 @@ msgstr "{count, plural, one {# 次运行} other {# 次运行}}"
 
 #. activity-view.tsx
 msgid "app.agenda.activity.searchPlaceholder"
-msgstr "搜索历史、议程标题、错误…"
+msgstr "搜索任务标题、执行内容或错误…"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -182,12 +241,64 @@ msgstr "会话就绪"
 
 #. activity-state.ts
 msgid "app.agenda.activity.unavailable"
-msgstr "当前运行的服务器实例不支持活动端点"
+msgstr "执行历史暂不可用。"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.activity.unavailableShort"
 msgstr "活动暂不可用"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.count"
+msgstr "{count, plural, one {# 次预计触发} other {# 次预计触发}}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.description"
+msgstr "查看已启用任务的预计触发时间；选择日期即可更改展示范围。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.empty"
+msgstr "这段时间没有未来安排"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.emptyHint"
+msgstr "安排仅展示已启用任务的未来触发时间。手动任务和事件触发任务可在「任务」中查看。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.invalid"
+msgstr "有 {count} 条任务规则无法预测，请在「任务」中检查触发设置。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.limited"
+msgstr "当前预览不完整：{count} 条任务规则超过范围上限（每个触发器最多 200 次 cron 或 500 次间隔触发）。缩小日期范围可查看更多。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.listRange"
+msgstr "{date} 起 7 天"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.openHistory"
+msgstr "查看执行历史"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.pastHint"
+msgstr "这段时间已过去，可在历史中查看实际执行。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.predicted"
+msgstr "预计触发时间 · {timezone}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.relative"
+msgstr "部分间隔或延迟任务的时间取决于启用和实际执行；这里只显示已知的下一次触发。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.weekRange"
+msgstr "{start} – {end}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.calendar.chooseDate"
+msgstr "选择日期"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -209,16 +320,36 @@ msgid "app.agenda.calendar.more"
 msgstr "+{count} 个更多"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.calendar.next"
-msgstr "下一时间范围"
+msgid "app.agenda.calendar.nextDay"
+msgstr "下一天"
+
+#. ---------------------------------------------------------------------------
+msgid "app.agenda.calendar.nextMonth"
+msgstr "下个月"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.calendar.previous"
-msgstr "上一时间范围"
+msgid "app.agenda.calendar.nextWeek"
+msgstr "后 7 天"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.calendar.previousDay"
+msgstr "上一天"
+
+#. ---------------------------------------------------------------------------
+msgid "app.agenda.calendar.previousMonth"
+msgstr "上个月"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.calendar.previousWeek"
+msgstr "前 7 天"
 
 #. calendar.tsx
 msgid "app.agenda.calendar.today"
 msgstr "今天"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.calendar.views"
+msgstr "日历视图"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -250,7 +381,11 @@ msgstr "创建于 {date}"
 msgid "app.agenda.detail.delete"
 msgstr "删除"
 
-#. detail popover
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.disabledPreview"
+msgstr "这条规则未在启用状态；以下仅为时间预览，任务不会执行。"
+
+#. detail dialog
 msgid "app.agenda.detail.edit"
 msgstr "编辑"
 
@@ -258,6 +393,18 @@ msgstr "编辑"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.detail.errors"
 msgstr "{count, plural, one {# 个错误} other {# 个错误}}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.expectedHint"
+msgstr "这是预计触发时间，不是执行记录，也不代表执行时长。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.expectedTrigger"
+msgstr "预计触发"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.historyFailed"
+msgstr "无法加载执行历史。"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -269,10 +416,42 @@ msgstr "上次运行：{date}"
 msgid "app.agenda.detail.next"
 msgstr "下次：{time}"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.noLongerEnabled"
+msgstr "这项任务已停止启用，因此不会在这个时间触发。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.noPreview"
+msgstr "未来 7 天内没有可预测的触发时间。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.previewFirst"
+msgstr "仅展示前 8 个时间。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.previewHint"
+msgstr "以下是这条规则的预计时间，实际执行可在历史中查看。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.previewInvalid"
+msgstr "部分触发设置无法预测。"
+
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.detail.recentRuns"
 msgstr "最近运行"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.relativePreview"
+msgstr "间隔和延迟时间取决于何时启用及实际执行，仅能预览已启用任务的已知下一次时间。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.rulePreview"
+msgstr "规则预览 · 未来 7 天"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -282,7 +461,7 @@ msgstr "{count, plural, one {# 次运行} other {# 次运行}}"
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.detail.taskLabel"
-msgstr "任务"
+msgstr "执行内容"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -317,6 +496,10 @@ msgstr "{count}毫秒"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.duration.seconds"
 msgstr "{count}秒"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.filters.clear"
+msgstr "清除筛选"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -402,10 +585,26 @@ msgstr "描述"
 msgid "app.agenda.form.descriptionPlaceholder"
 msgstr "描述…"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.form.discardChanges"
+msgstr "放弃更改"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.form.discardDescription"
+msgstr "日程更改尚未保存。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.form.discardTitle"
+msgstr "放弃更改？"
+
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.form.intervalChip"
 msgstr "间隔"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.form.keepEditing"
+msgstr "继续编辑"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -421,6 +620,11 @@ msgstr "任务说明"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.form.promptPlaceholder"
 msgstr "输入要执行的任务"
+
+#. Runtime Lingui descriptors for agenda host labels and wrappers.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.agenda.form.removeTime"
+msgstr "移除计划时间"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -569,12 +773,7 @@ msgstr "编辑议程"
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.panel.newAgenda"
-msgstr "新建议程"
-
-#. Runtime Lingui descriptors for agenda host labels and wrappers.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.agenda.panel.noTodoItems"
-msgstr "没有待办项"
+msgstr "新建任务"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -584,24 +783,67 @@ msgstr "历史"
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.panel.tab.schedule"
-msgstr "日程"
+msgstr "安排"
 
-#. panel.tsx — header, tabs, detail popover, action buttons
+#. js-lingui-explicit-id
+msgid "app.agenda.panel.tab.tasks"
+msgstr "任务"
+
+#. panel.tsx — header, tabs, detail dialog, action buttons
 msgid "app.agenda.panel.title"
 msgstr "日程"
 
-#. Runtime Lingui descriptors for agenda host labels and wrappers.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.agenda.panel.todoLabel"
-msgstr "待办"
+#. js-lingui-explicit-id
+msgid "app.agenda.rawTriggers"
+msgstr "触发表达式"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.run.trigger.at"
+msgstr "计划执行"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.run.trigger.cron"
+msgstr "计划执行"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.run.trigger.delay"
+msgstr "延迟执行"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.run.trigger.every"
+msgstr "周期执行"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.run.trigger.watch"
+msgstr "事件触发执行"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.runStatus.error"
+msgstr "执行失败"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.runStatus.ok"
+msgstr "执行成功"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.runStatus.skipped"
+msgstr "已跳过"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.scope.all"
+msgstr "所有范围"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.scope.filter"
+msgstr "范围"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.search.clear"
+msgstr "清除搜索"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.series.active"
 msgstr "已启用"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.all"
-msgstr "全部系列"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.series.cancelled"
@@ -612,40 +854,60 @@ msgid "app.agenda.series.done"
 msgstr "已完成"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.series.empty"
-msgstr "暂无符合条件的日程"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.failed"
-msgstr "上次执行失败"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.missingStatus"
-msgstr "缺少最近运行状态"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.noRuns"
-msgstr "暂无运行记录"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.noTimes"
-msgstr "本时间范围内无计划时间"
-
-#. js-lingui-explicit-id
 msgid "app.agenda.series.paused"
 msgstr "已暂停"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.series.pending"
-msgstr "待办"
+msgstr "未启用"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.series.previewCount"
-msgstr "预览 {count, plural, one {# 个计划时间} other {# 个计划时间}}"
+msgid "app.agenda.status.unknown"
+msgstr "状态未知"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.series.previewHint"
-msgstr "以下为计划时间预览，实际执行情况请查看“历史”。"
+msgid "app.agenda.tasks.all"
+msgstr "全部"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.archived"
+msgstr "已结束"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.count"
+msgstr "{count, plural, one {# 项任务} other {# 项任务}}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.description"
+msgstr "管理全部任务规则，包括手动、事件触发、未启用和已结束的任务。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.empty"
+msgstr "没有可显示的任务"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.emptyHint"
+msgstr "新建任务，或清除筛选以查看已有规则。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.failed"
+msgstr "最近失败"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.filter"
+msgstr "任务状态"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.noRuns"
+msgstr "暂无执行记录"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.search"
+msgstr "搜索任务"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.unknownResult"
+msgstr "执行结果未知"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -657,6 +919,10 @@ msgstr "于 {time}"
 msgid "app.agenda.trigger.cron"
 msgstr "cron：{expr}"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.trigger.daily"
+msgstr "每天 {time}（{timezone}）"
+
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.trigger.delay"
@@ -667,14 +933,22 @@ msgstr "延迟 {delay}"
 msgid "app.agenda.trigger.every"
 msgstr "每 {interval}"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.trigger.github"
+msgstr "GitHub 事件"
+
 #. trigger summaries
 msgid "app.agenda.trigger.manual"
-msgstr "手动"
+msgstr "手动执行"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.trigger.poll"
 msgstr "轮询：{command}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.trigger.session"
+msgstr "关联会话事件"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -690,6 +964,42 @@ msgstr "未知"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.trigger.watch"
 msgstr "监视：{glob}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.trigger.webhook"
+msgstr "Webhook 事件"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.trigger.weekly"
+msgstr "每{weekday} {time}（{timezone}）"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.weekday.friday"
+msgstr "周五"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.weekday.monday"
+msgstr "周一"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.weekday.saturday"
+msgstr "周六"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.weekday.sunday"
+msgstr "周日"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.weekday.thursday"
+msgstr "周四"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.weekday.tuesday"
+msgstr "周二"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.weekday.wednesday"
+msgstr "周三"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.description.coding"
@@ -1925,6 +2235,10 @@ msgstr "无法完成此操作。"
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.confirm.cancel"
 msgstr "取消"
+
+#. js-lingui-explicit-id
+msgid "app.dialog.confirm.close"
+msgstr "关闭确认窗口"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.directory.browseFailed"
@@ -3172,6 +3486,10 @@ msgstr "错误详情"
 msgid "app.kanban.focus.resizeRail"
 msgstr "调整面板宽度"
 
+#. js-lingui-explicit-id
+msgid "app.kanban.focusSession"
+msgstr "聚焦 {title}"
+
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.follow"
 msgstr "跟随最新"
@@ -3208,9 +3526,36 @@ msgstr "暂时无法获取消息，请重试。"
 msgid "app.kanban.loading"
 msgstr "加载中…"
 
+#. * Full-featured board composer: agent picker (applies to the next send),
+ * control-profile selector, orchestration-mode menu, and a status bar —
+ * all backed by the same backend operations the session page uses, but
+ * targeted at this pane's scope/session through the injected client.
+msgid "app.kanban.messageLabel"
+msgstr "向此会话发送消息"
+
+#. js-lingui-explicit-id
+msgid "app.kanban.moveFirst"
+msgstr "移到开头"
+
+#. js-lingui-explicit-id
+msgid "app.kanban.moveLast"
+msgstr "移到末尾"
+
+#. js-lingui-explicit-id
+msgid "app.kanban.moveNext"
+msgstr "后移"
+
+#. js-lingui-explicit-id
+msgid "app.kanban.movePrevious"
+msgstr "前移"
+
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.openSession"
 msgstr "打开会话"
+
+#. js-lingui-explicit-id
+msgid "app.kanban.paneActions"
+msgstr "会话面板操作"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.pinPane"
@@ -3220,13 +3565,28 @@ msgstr "固定"
 msgid "app.kanban.pinToReorderHint"
 msgstr "先固定此会话才能调整顺序"
 
+#. js-lingui-explicit-id
+msgid "app.kanban.responseReady"
+msgstr "回复已就绪"
+
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.retry"
 msgstr "重试"
 
+#. js-lingui-explicit-id
+msgid "app.kanban.scope.unknown"
+msgstr "未知 Scope"
+
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.sendFailed"
 msgstr "发送消息失败"
+
+#. * Full-featured board composer: agent picker (applies to the next send),
+ * control-profile selector, orchestration-mode menu, and a status bar —
+ * all backed by the same backend operations the session page uses, but
+ * targeted at this pane's scope/session through the injected client.
+msgid "app.kanban.sendLabel"
+msgstr "发送消息"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.sendPlaceholder"
@@ -3986,6 +4346,10 @@ msgid "app.library.category.writing"
 msgstr "写作"
 
 #. js-lingui-explicit-id
+msgid "app.library.clearFilters"
+msgstr "清除筛选"
+
+#. js-lingui-explicit-id
 msgid "app.library.clearSearch"
 msgstr "清空搜索"
 
@@ -4016,6 +4380,26 @@ msgstr "已保存"
 #. js-lingui-explicit-id
 msgid "app.library.experience.collapse"
 msgstr "收起经验"
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.contentTitle"
+msgstr "经验"
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.copy.dimensions"
+msgstr "维度"
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.copy.intent"
+msgstr "意图"
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.copy.reason"
+msgstr "原因"
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.copy.reward"
+msgstr "奖励"
 
 #. js-lingui-explicit-id
 msgid "app.library.experience.copyFailed"
@@ -4067,7 +4451,7 @@ msgstr "全部经验"
 
 #. js-lingui-explicit-id
 msgid "app.library.experience.filter.aria"
-msgstr "筛选体验"
+msgstr "筛选经验"
 
 #. js-lingui-explicit-id
 msgid "app.library.experience.filter.currentScope"
@@ -4118,6 +4502,10 @@ msgid "app.library.experience.scope"
 msgstr "Scope"
 
 #. js-lingui-explicit-id
+msgid "app.library.experience.scopeNameUnavailable"
+msgstr "Scope 名称不可用"
+
+#. js-lingui-explicit-id
 msgid "app.library.experience.script"
 msgstr "脚本"
 
@@ -4147,7 +4535,15 @@ msgstr "正在显示 {shown}/{total} 条经验"
 
 #. js-lingui-explicit-id
 msgid "app.library.experience.sort.aria"
-msgstr "排序体验"
+msgstr "排序经验"
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.source"
+msgstr "来源"
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.sourceUnavailable"
+msgstr "来源会话信息不可用。"
 
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.experience.stat.confidence"
@@ -4176,6 +4572,10 @@ msgstr "编码失败"
 #. js-lingui-explicit-id
 msgid "app.library.experience.status.pending"
 msgstr "待评估"
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.technicalDetails"
+msgstr "技术详情"
 
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.experience.total"
@@ -4250,6 +4650,10 @@ msgid "app.library.memory.filter.aria"
 msgstr "按类别筛选记忆"
 
 #. js-lingui-explicit-id
+msgid "app.library.memory.loadFailed"
+msgstr "无法加载记忆。"
+
+#. js-lingui-explicit-id
 msgid "app.library.memory.similarityPercent"
 msgstr "{pct}%"
 
@@ -4271,7 +4675,7 @@ msgstr "经验 {count}"
 
 #. js-lingui-explicit-id
 msgid "app.library.nav.home"
-msgstr "首页"
+msgstr "概览"
 
 #. js-lingui-explicit-id
 msgid "app.library.nav.memories"
@@ -4742,6 +5146,10 @@ msgid "app.library.stats.itemCountWithStore"
 msgstr "{count} · {store} 本地存储"
 
 #. js-lingui-explicit-id
+msgid "app.library.stats.knowledge"
+msgstr "知识"
+
+#. js-lingui-explicit-id
 msgid "app.library.stats.learning"
 msgstr "学习"
 
@@ -4882,12 +5290,20 @@ msgid "app.library.stats.usage"
 msgstr "用量"
 
 #. js-lingui-explicit-id
+msgid "app.library.stats.views"
+msgstr "统计视图"
+
+#. js-lingui-explicit-id
 msgid "app.library.syncing"
 msgstr "正在同步…"
 
 #. js-lingui-explicit-id
 msgid "app.library.title"
 msgstr "知识库"
+
+#. js-lingui-explicit-id
+msgid "app.library.views"
+msgstr "知识库视图"
 
 #. js-lingui-explicit-id
 msgid "app.name.synergy"
@@ -5561,7 +5977,7 @@ msgstr "重新获取"
 
 #. performance analysis
 msgid "app.performance.analysis.action.analyze"
-msgstr "分析"
+msgstr "生成诊断"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -5588,10 +6004,22 @@ msgstr "正在准备有界且已脱敏的遥测快照"
 msgid "app.performance.analysis.description.ready"
 msgstr "已在一个持久会话中分析有界且已脱敏的遥测数据"
 
+#. js-lingui-explicit-id
+msgid "app.performance.analysis.description.running"
+msgstr "正在模型会话中诊断此快照"
+
+#. js-lingui-explicit-id
+msgid "app.performance.analysis.description.session"
+msgstr "所选快照的模型诊断"
+
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.analysis.progress"
 msgstr "分析器正在关联当前的健康、延迟、资源、会话、存储和前端信号。"
+
+#. js-lingui-explicit-id
+msgid "app.performance.analysis.startHint"
+msgstr "基于此快照创建模型诊断会话"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -5641,7 +6069,7 @@ msgstr "数量"
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.axis.memory"
-msgstr "内存 (MB)"
+msgstr "内存 (MiB)"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -5651,6 +6079,26 @@ msgstr "毫秒"
 #. axis titles
 msgid "app.performance.axis.percent"
 msgstr "百分比"
+
+#. js-lingui-explicit-id
+msgid "app.performance.browser.noSamples"
+msgstr "此快照没有采样"
+
+#. js-lingui-explicit-id
+msgid "app.performance.browser.partial"
+msgstr "部分数据"
+
+#. js-lingui-explicit-id
+msgid "app.performance.browser.retention"
+msgstr "受保留范围限制的快照"
+
+#. js-lingui-explicit-id
+msgid "app.performance.browser.stale"
+msgstr "来自上次快照"
+
+#. js-lingui-explicit-id
+msgid "app.performance.browser.unsupported"
+msgstr "此浏览器不支持，快照中没有测量值"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -5679,7 +6127,7 @@ msgstr "CPU 与事件循环"
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.chart.memory.desc"
-msgstr "以 MB 为单位显示 RSS、堆、外部内存和 ArrayBuffer 内存指标"
+msgstr "以 MiB 为单位显示 RSS、堆、外部内存和 ArrayBuffer 内存指标"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -5731,10 +6179,22 @@ msgstr "此范围内没有可用的存储指标"
 msgid "app.performance.chart.storage.title"
 msgstr "存储 I/O"
 
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.activeTurns"
+msgstr "活跃轮次"
+
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.dataset.arrayBuffers"
 msgstr "ArrayBuffer"
+
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.domNodes"
+msgstr "DOM 节点"
+
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.eventLoop"
+msgstr "事件循环"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -5751,10 +6211,42 @@ msgstr "总堆"
 msgid "app.performance.dataset.heapUsed"
 msgstr "已用堆"
 
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.navigation"
+msgstr "导航耗时"
+
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.operation"
+msgstr "存储操作"
+
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.operationsPerBucket"
+msgstr "每个时间段的操作数"
+
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.readBytesPerBucket"
+msgstr "每个时间桶读取字节"
+
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.request"
+msgstr "请求"
+
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.requestsPerBucket"
+msgstr "每个时间桶请求数"
+
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.dataset.rss"
 msgstr "RSS"
+
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.turn"
+msgstr "会话轮次"
+
+#. js-lingui-explicit-id
+msgid "app.performance.dataset.writeBytesPerBucket"
+msgstr "每个时间桶写入字节"
 
 #. empty states
 msgid "app.performance.empty.default"
@@ -5785,8 +6277,126 @@ msgstr "前端关键指标"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.group.browser"
+msgstr "浏览器性能"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.group.diagnostics"
+msgstr "诊断"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.group.requests"
+msgstr "请求与会话"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.group.resourcePressure"
+msgstr "资源压力"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.group.resources"
+msgstr "资源使用情况"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.group.storage"
+msgstr "存储"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.backpressure"
+msgstr "遥测写入队列已满"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.highBuffers"
+msgstr "ArrayBuffer 占用较高"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.highCpu"
+msgstr "CPU 使用率较高"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.highExternal"
+msgstr "外部内存占用较高"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.highHeap"
+msgstr "堆内存占用较高"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.highRss"
+msgstr "进程内存占用较高"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.inspectTrace"
+msgstr "查看关联追踪"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.longTask"
+msgstr "浏览器长任务"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.loopLag"
+msgstr "事件循环延迟"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.observed"
+msgstr "测量值：{value}"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.occurrences"
+msgstr "发生 {count} 次 · 最近出现于 {time}"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.requestFailed"
+msgstr "HTTP 请求失败"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.slowLibrary"
+msgstr "知识查询较慢"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.slowModel"
+msgstr "模型调用较慢"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.slowOperation"
+msgstr "操作较慢"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.slowRequest"
+msgstr "HTTP 请求较慢"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.slowStorage"
+msgstr "存储操作较慢"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.slowTool"
+msgstr "工具执行较慢"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.slowTurn"
+msgstr "会话轮次较慢"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.storageFailed"
+msgstr "存储操作失败"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.toolFailed"
+msgstr "工具执行失败"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.issue.traceAvailable"
 msgstr "有可用追踪"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.writeFailed"
+msgstr "遥测写入失败"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -5807,6 +6417,22 @@ msgstr "没有近期问题"
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.issues.title"
 msgstr "性能问题"
+
+#. js-lingui-explicit-id
+msgid "app.performance.memory.measured"
+msgstr "已测量 {measured}/{count} 个进程"
+
+#. js-lingui-explicit-id
+msgid "app.performance.memory.provenance"
+msgstr "{source} · {coverage}"
+
+#. js-lingui-explicit-id
+msgid "app.performance.metric.unavailable"
+msgstr "此快照没有测量值"
+
+#. js-lingui-explicit-id
+msgid "app.performance.openDiagnostics"
+msgstr "查看诊断"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -5881,6 +6507,10 @@ msgstr "慢速工具"
 msgid "app.performance.resources.baseline"
 msgstr "基线"
 
+#. js-lingui-explicit-id
+msgid "app.performance.resources.calls"
+msgstr "模型与工具调用"
+
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.resources.cgroupCurrent"
@@ -5911,6 +6541,10 @@ msgstr "不可用"
 msgid "app.performance.resources.coverageValue"
 msgstr "{measured}/{count} · {completeness}"
 
+#. js-lingui-explicit-id
+msgid "app.performance.resources.cpu"
+msgstr "CPU 与事件循环"
+
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.resources.current"
@@ -5923,8 +6557,21 @@ msgstr "按所有者归因内存并由所有者执行回收；此视图不会回
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.details"
+msgstr "资源归属"
+
+#. js-lingui-explicit-id
+msgid "app.performance.resources.disk"
+msgstr "磁盘"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.resources.lastRecovery"
 msgstr "最近一次所有者回收"
+
+#. js-lingui-explicit-id
+msgid "app.performance.resources.memory"
+msgstr "内存"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -6128,10 +6775,30 @@ msgstr "共 {total} 个 · 运行中 {running} 个"
 msgid "app.performance.runtime.unknown"
 msgstr "未知"
 
+#. js-lingui-explicit-id
+msgid "app.performance.sessions.active"
+msgstr "{count} 个活跃"
+
+#. js-lingui-explicit-id
+msgid "app.performance.sessions.pending"
+msgstr "{count} 个待处理"
+
+#. js-lingui-explicit-id
+msgid "app.performance.severity.critical"
+msgstr "严重"
+
+#. js-lingui-explicit-id
+msgid "app.performance.severity.error"
+msgstr "错误"
+
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.severity.info"
-msgstr "信息"
+msgstr "提示"
+
+#. js-lingui-explicit-id
+msgid "app.performance.severity.warning"
+msgstr "警告"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -6187,6 +6854,26 @@ msgstr "无法获取性能快照"
 msgid "app.performance.snapshot.unavailableDescription"
 msgstr "无法读取服务端数据，暂时无法判断当前运行状态。"
 
+#. js-lingui-explicit-id
+msgid "app.performance.source.localDom"
+msgstr "本地 DOM 采样"
+
+#. js-lingui-explicit-id
+msgid "app.performance.source.localHeap"
+msgstr "本地浏览器内存采样"
+
+#. js-lingui-explicit-id
+msgid "app.performance.source.localNavigation"
+msgstr "本地导航耗时采样"
+
+#. js-lingui-explicit-id
+msgid "app.performance.source.requestBuckets"
+msgstr "时间线每个分桶的请求采样"
+
+#. js-lingui-explicit-id
+msgid "app.performance.source.timeline"
+msgstr "时间线 · {metric}"
+
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.summary.arrayBuffers"
@@ -6196,6 +6883,16 @@ msgstr "ArrayBuffer"
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.summary.cpu"
 msgstr "CPU"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.critical"
+msgstr "严重异常"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.degraded"
+msgstr "需要关注"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -6229,6 +6926,11 @@ msgstr "外部内存"
 
 #. summary cards
 msgid "app.performance.summary.health"
+msgstr "健康"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.healthy"
 msgstr "健康"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
@@ -6350,6 +7052,10 @@ msgstr "近期事件追踪"
 msgid "app.performance.timeline.unavailable"
 msgstr "无法获取性能趋势"
 
+#. js-lingui-explicit-id
+msgid "app.performance.timeRange"
+msgstr "时间范围"
+
 #. time ranges
 msgid "app.performance.timeRange.15m"
 msgstr "15 分钟"
@@ -6419,6 +7125,22 @@ msgstr "结束"
 msgid "app.performance.trace.events"
 msgstr "事件"
 
+#. js-lingui-explicit-id
+msgid "app.performance.trace.limited"
+msgstr "信息有限"
+
+#. js-lingui-explicit-id
+msgid "app.performance.trace.loadFailed"
+msgstr "无法加载追踪详情"
+
+#. js-lingui-explicit-id
+msgid "app.performance.trace.loading"
+msgstr "正在加载追踪详情…"
+
+#. js-lingui-explicit-id
+msgid "app.performance.trace.missingDetail"
+msgstr "追踪详情不可用"
+
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.trace.module"
@@ -6443,6 +7165,30 @@ msgstr "开始"
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.trace.status"
 msgstr "状态"
+
+#. js-lingui-explicit-id
+msgid "app.performance.trace.status.cancelled"
+msgstr "已取消"
+
+#. js-lingui-explicit-id
+msgid "app.performance.trace.status.error"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "app.performance.trace.status.interrupted"
+msgstr "已中断"
+
+#. js-lingui-explicit-id
+msgid "app.performance.trace.status.ok"
+msgstr "已完成"
+
+#. js-lingui-explicit-id
+msgid "app.performance.trace.status.running"
+msgstr "运行中"
+
+#. js-lingui-explicit-id
+msgid "app.performance.trace.status.timeout"
+msgstr "超时"
 
 #. trace drawer
 msgid "app.performance.trace.title"
@@ -6576,6 +7322,10 @@ msgid "app.plugin.detail.action.installing"
 msgstr "正在安装…"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.detail.action.loadingRelease"
+msgstr "正在加载版本…"
+
+#. js-lingui-explicit-id
 msgid "app.plugin.detail.action.loadingReview"
 msgstr "正在加载审查信息…"
 
@@ -6608,8 +7358,20 @@ msgid "app.plugin.detail.close"
 msgstr "关闭插件详情"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.detail.compatibilityRequirement"
+msgstr "需要 Synergy {range}"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.installationUnavailable"
+msgstr "无法刷新安装状态。"
+
+#. js-lingui-explicit-id
 msgid "app.plugin.detail.loading"
 msgstr "正在加载插件…"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.metadataUnavailable"
+msgstr "暂时无法读取插件元数据，仍可查看已记录的安装信息。"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.metric.author"
@@ -6664,12 +7426,28 @@ msgid "app.plugin.detail.notFoundInRegistry"
 msgstr "{pluginId} 不存在于此注册表中。"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.detail.notProvided"
+msgstr "未提供"
+
+#. js-lingui-explicit-id
 msgid "app.plugin.detail.permission.technicalDetails"
 msgstr "技术详情"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.detail.permissionsLoading"
+msgstr "正在加载权限…"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.permissionsUnavailable"
+msgstr "权限信息不可用，请先重试版本请求再安装。"
+
+#. js-lingui-explicit-id
 msgid "app.plugin.detail.progressAriaLabel"
-msgstr "{action} 插件"
+msgstr "插件操作：{action}"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.repository"
+msgstr "代码仓库"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.repositoryAriaLabel"
@@ -6682,6 +7460,10 @@ msgstr "能力"
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.section.capabilitiesSummary"
 msgstr "{tools} 个工具 · {operations} 个操作 · {surfaces} 个 UI 界面"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.section.catalogCapabilitiesSummary"
+msgstr "{tools} 个工具 · {surfaces} 个界面扩展"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.section.developmentRegistration"
@@ -6748,6 +7530,14 @@ msgid "app.plugin.detail.state.needsApproval"
 msgstr "需要批准"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.detail.technicalDefinitions"
+msgstr "技术定义"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.technicalInformation"
+msgstr "技术信息"
+
+#. js-lingui-explicit-id
 msgid "app.plugin.detail.version.compatibility"
 msgstr "Plugin API {apiVersion} · Synergy {range}"
 
@@ -6764,6 +7554,46 @@ msgid "app.plugin.error.title"
 msgstr "插件错误：{pluginId}"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.feature.agents"
+msgstr "专用智能体"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.feature.agents.description"
+msgstr "提供 {count} 个专用智能体。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.feature.guidance"
+msgstr "会话指导"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.feature.guidance.description"
+msgstr "功能启用时，为会话添加插件指导。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.feature.mcp"
+msgstr "可选 MCP 服务"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.feature.mcp.description"
+msgstr "提供 {count} 个 MCP 服务，仅在配置后启用。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.feature.skills"
+msgstr "内置技能"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.feature.skills.description"
+msgstr "提供 {count} 项技能，供智能体在相关场景中使用。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.feature.ui"
+msgstr "Synergy 界面扩展"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.feature.ui.description"
+msgstr "添加 {count} 项界面扩展。"
+
+#. js-lingui-explicit-id
 msgid "app.plugin.icon.alt"
 msgstr "{name} 图标"
 
@@ -6774,6 +7604,10 @@ msgstr "插件图标"
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.apiVersion.label"
 msgstr "API {version}"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.marketplace.browse"
+msgstr "浏览插件"
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.build.label"
@@ -6788,8 +7622,16 @@ msgid "app.plugin.marketplace.checkingPlugins"
 msgstr "正在检查插件"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.marketplace.clearFilters"
+msgstr "清除筛选"
+
+#. js-lingui-explicit-id
 msgid "app.plugin.marketplace.clearSearch"
 msgstr "清空搜索"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.marketplace.developmentDocs"
+msgstr "插件开发指南"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.empty.developmentHint"
@@ -6868,6 +7710,18 @@ msgid "app.plugin.marketplace.installation.package"
 msgstr "{source} 软件包"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.marketplace.installedUnavailable"
+msgstr "无法加载已安装插件"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.marketplace.installedUnavailableDescription"
+msgstr "请检查连接后重试。已加载的插件仍可访问。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.marketplace.manage"
+msgstr "管理"
+
+#. js-lingui-explicit-id
 msgid "app.plugin.marketplace.matchingQuery"
 msgstr "匹配“{query}”"
 
@@ -6936,20 +7790,12 @@ msgid "app.plugin.marketplace.row.pluginDisabled"
 msgstr "插件已禁用"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.marketplace.row.unknownAuthor"
-msgstr "未知作者"
-
-#. js-lingui-explicit-id
 msgid "app.plugin.marketplace.row.updateAvailable"
 msgstr "可从 v{version} 更新"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.row.updateAvailable.generic"
 msgstr "有可用更新"
-
-#. js-lingui-explicit-id
-msgid "app.plugin.marketplace.row.updated"
-msgstr "更新于 {time}"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.searchPlaceholder"
@@ -6976,12 +7822,36 @@ msgid "app.plugin.marketplace.status.needsApproval"
 msgstr "需要批准"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.marketplace.statusFailed"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.marketplace.statusStarting"
+msgstr "启动中"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.marketplace.statusStopped"
+msgstr "已停止"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.marketplace.statusStopping"
+msgstr "停止中"
+
+#. js-lingui-explicit-id
 msgid "app.plugin.marketplace.title"
 msgstr "插件"
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.version.label"
 msgstr "v{version}"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.marketplace.views"
+msgstr "插件视图"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.agentCall"
+msgstr "调用已批准的智能体"
 
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permission.agentCall.description"
@@ -6991,6 +7861,18 @@ msgstr "向获批的无会话代理发送有长度限制的文本，不启用工
 msgid "app.plugin.permission.agentCall.title"
 msgstr "调用 Synergy 代理"
 
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.assetWrite"
+msgstr "创建附件"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.assetWrite.description"
+msgstr "可在 Synergy 中创建文件和附件。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.composerIntercept"
+msgstr "发送前检查消息"
+
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permission.composerIntercept.description"
 msgstr "插件完成交互期间，延迟普通消息进入会话。"
@@ -6998,6 +7880,10 @@ msgstr "插件完成交互期间，延迟普通消息进入会话。"
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permission.composerIntercept.title"
 msgstr "拦截消息提交"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.composerRead"
+msgstr "读取当前草稿"
 
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permission.composerRead.description"
@@ -7007,6 +7893,10 @@ msgstr "读取当前 Synergy 输入框中已稳定的文本和选区。"
 msgid "app.plugin.permission.composerRead.title"
 msgstr "读取输入框草稿"
 
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.composerWrite"
+msgstr "更新当前草稿"
+
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permission.composerWrite.description"
 msgstr "提供补全和标注，或对当前输入框应用编辑。"
@@ -7015,6 +7905,70 @@ msgstr "提供补全和标注，或对当前输入框应用编辑。"
 msgid "app.plugin.permission.composerWrite.title"
 msgstr "修改输入框草稿"
 
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.configRead"
+msgstr "读取配置"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.configRead.description"
+msgstr "可读取已批准的 Synergy 配置值。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.configWrite"
+msgstr "更新配置"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.configWrite.description"
+msgstr "可更新已批准的 Synergy 配置值。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.declaredAccess"
+msgstr "声明的访问权限：{capability}"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.mcpInvoke"
+msgstr "使用 MCP 工具"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.mcpInvoke.description"
+msgstr "可调用已声明的 MCP 服务提供的工具。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.mcpSpawn"
+msgstr "启动 MCP 服务"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.mcpSpawn.description"
+msgstr "可启动和管理已声明的 MCP 服务进程。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.networkRequest"
+msgstr "访问网络"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.networkRequest.description"
+msgstr "可发起外部网络请求。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.promptTransform"
+msgstr "添加会话指导"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.promptTransform.description"
+msgstr "可向发送给模型的上下文添加插件指导。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.runtimeEndpointRead"
+msgstr "读取本地服务端地址"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.secrets"
+msgstr "管理插件凭据"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.selectionRead"
+msgstr "读取选中文本"
+
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permission.selectionRead.description"
 msgstr "接收 Synergy 中选取的非敏感文本，并向文本菜单添加操作。"
@@ -7022,6 +7976,54 @@ msgstr "接收 Synergy 中选取的非敏感文本，并向文本菜单添加操
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permission.selectionRead.title"
 msgstr "读取所选文本"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.sessionControl"
+msgstr "控制会话执行"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.sessionRead"
+msgstr "读取会话"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.settingsRead"
+msgstr "读取插件设置"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.settingsWrite"
+msgstr "更新插件设置"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.shellExecute"
+msgstr "运行声明的安装命令"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.shellExecute.description"
+msgstr "仅可通过明确需要此权限的插件功能执行命令。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.taskDelegate"
+msgstr "运行受限内部任务"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.taskDelegate.description"
+msgstr "可将有明确边界的工作委派给已批准的 Synergy 智能体。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.toolInvoke"
+msgstr "使用声明的工具"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.uiHostActions"
+msgstr "使用工作台操作"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.workspaceRead"
+msgstr "读取工作区文件"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.permission.workspaceWrite"
+msgstr "更新工作区文件"
 
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permissionGroup.data"
@@ -8499,15 +9501,6 @@ msgstr "正在加载使用统计…"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.stats.load.unavailable"
 msgstr "使用统计目前不可用"
-
-#. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.stats.milestone.subtitle"
-msgstr "接下来我们会把你的长期统计转化为可解锁的里程碑。"
-
-#. ── milestones.tsx ──────────────────────────────────────────────────
-msgid "app.stats.milestone.title"
-msgstr "成就（即将推出）"
 
 #. ── model.ts — ranking row secondary / primary descriptors ──────────
 msgid "app.stats.model.avgMs"
@@ -22074,6 +23067,14 @@ msgid "special-user.status.changes-requested"
 msgstr "请求更改"
 
 #. js-lingui-explicit-id
+msgid "stats.cost.unpriced"
+msgstr "未计价"
+
+#. js-lingui-explicit-id
+msgid "stats.rank.metricSelection"
+msgstr "{title}指标"
+
+#. js-lingui-explicit-id
 msgid "stats.rank.unit.calls"
 msgstr "次调用"
 
@@ -22084,6 +23085,26 @@ msgstr "条消息"
 #. js-lingui-explicit-id
 msgid "stats.rank.unit.sessions"
 msgstr "个会话"
+
+#. js-lingui-explicit-id
+msgid "stats.rank.unit.tokens"
+msgstr "Token"
+
+#. js-lingui-explicit-id
+msgid "stats.section.code"
+msgstr "代码"
+
+#. js-lingui-explicit-id
+msgid "stats.section.navigation"
+msgstr "用量分区"
+
+#. js-lingui-explicit-id
+msgid "stats.section.overview"
+msgstr "概览"
+
+#. js-lingui-explicit-id
+msgid "stats.section.trends"
+msgstr "趋势"
 
 #. js-lingui-explicit-id
 msgid "task.location.advanced"
@@ -23453,7 +24474,7 @@ msgstr "正在整理上下文…"
 msgid "ui.compaction.summaryReady"
 msgstr "摘要已就绪"
 
-#. js-lingui-explicit-id
+#. ---------------------------------------------------------------------------
 msgid "ui.dialog.close"
 msgstr "关闭对话框"
 

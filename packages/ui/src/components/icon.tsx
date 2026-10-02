@@ -6,6 +6,9 @@ import { splitProps, type ComponentProps } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import {
   Activity,
+  FileChartColumn,
+  ListEnd,
+  ShieldHalf,
   Laptop,
   BriefcaseBusiness,
   CodeXml,
@@ -247,6 +250,9 @@ import {
 } from "lucide-solid"
 
 const icons = {
+  "file-chart-column": FileChartColumn,
+  "list-end": ListEnd,
+  "shield-half": ShieldHalf,
   activity: Activity,
   "alert-triangle": TriangleAlert,
   "align-right": AlignRight,

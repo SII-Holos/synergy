@@ -54,6 +54,7 @@ export const SemanticIconToken = {
   "task.research": "telescope",
   "task.write": "pen",
   "session.running": "loader-circle",
+  "session.followLatest": "list-end",
   "session.idle": "circle",
   "session.waiting": "hourglass",
   "session.retry": "rotate-ccw",
@@ -97,7 +98,7 @@ export const SemanticIconToken = {
   "performance.storage": "hard-drive",
   "performance.library": "book-marked",
   "performance.vitals": "circle-gauge",
-  "performance.analysis": "binoculars",
+  "performance.analysis": "file-chart-column",
 
   // Settings areas that are not product entities
   "settings.account": "user",
@@ -128,7 +129,8 @@ export const SemanticIconToken = {
 
   // Permission modes and prompts
   "permission.required": "octagon-alert",
-  "permission.guarded": "badge-check",
+  "permission.guarded": "shield-half",
+  "plugin.sourceVerified": "badge-check",
   "permission.autonomous": "orbit",
   "permission.fullAccess": "shield-x",
 

@@ -74,7 +74,11 @@ On first startup, Agenda creates the home-scoped `anima-daily` item. It runs the
 
 ## Product Surfaces
 
-The Agenda UI presents calendar/schedule state, item editing, status controls, execution history, and related sessions. Agents can create and manage supported time triggers with Agenda tools. Plugins can inspect or alter execution through `agenda.run.before`, `agenda.run.after`, and `agenda.run.error` hooks.
+The Agenda UI separates Arrangements, Tasks and History. Arrangements predicts future trigger times for enabled rules in a selected date range; its list starts at the selected date and covers seven days. Day, week and month views keep that selected date. Manual, event-triggered, paused, not-enabled and finished rules remain available in Tasks without date navigation. Selecting an arrangement opens details with the specific predicted time and its underlying rule.
+
+History shows actual executions by occurrence date, result and related session in the selected Scope. It preserves records through failed refreshes and identifies how many records are loaded from its paged result. Calendar predictions do not stand in for historical executions. Absolute times, cron rules and anchored intervals can be expanded; floating intervals and delays show only an enabled rule's known next time because later times depend on activation and execution. Preview coverage, limits and invalid trigger settings are disclosed. Time presentation uses the browser's local timezone while cron rules retain their own timezone.
+
+Enabled describes a rule's lifecycle, not a running execution. Manually triggering a paused or pending item also enables it, so its action is labelled Enable and run now. Submission confirmation means the request was accepted; execution results belong to History. Agents can create and manage supported time triggers with Agenda tools. Plugins can inspect or alter execution through `agenda.run.before`, `agenda.run.after`, and `agenda.run.error` hooks.
 
 ## Invariants
 

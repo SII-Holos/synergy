@@ -51,10 +51,6 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
-          "glob": "src/components/agenda/expand.ts",
-          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
-        },
-        {
           "glob": "src/components/agenda/form.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
@@ -1195,8 +1191,16 @@
           "reason": "Entry operation dialog executes in real Chromium under test/components/dialog/file-entry-dialog.dom.test.ts; Bun coverage does not instrument the Vite browser bundle"
         },
         {
-          "glob": "src/components/agenda/series-list.tsx",
-          "reason": "Solid wrapper behavior is verified in test/components/agenda/series-list.dom.test.tsx; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+          "glob": "src/components/agenda/task-list.tsx",
+          "reason": "Task filters, lifecycle actions and details are verified in test/components/agenda/agenda-interaction.dom.test.tsx; Bun coverage cannot instrument the Vite-compiled Chromium bundle."
+        },
+        {
+          "glob": "src/components/agenda/detail-actions.tsx",
+          "reason": "Detail actions and nested menu dismissal are verified in test/components/agenda/agenda-interaction.dom.test.tsx; Bun coverage cannot instrument the Vite-compiled Chromium bundle."
+        },
+        {
+          "glob": "src/components/kanban/pane/reorder-menu.tsx",
+          "reason": "Keyboard ordering, disabled actions and focus return are verified in test/components/kanban/layout.dom.test.tsx; Bun coverage cannot instrument the Vite-compiled Chromium bundle."
         },
         {
           "glob": "src/components/app-shell/mobile-drawer-dialog.tsx",

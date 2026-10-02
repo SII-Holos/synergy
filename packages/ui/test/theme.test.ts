@@ -25,6 +25,14 @@ test("resolves CSS variable references for imperative consumers", () => {
   expect(resolveThemeColor(resolved, "syntax-comment")).toBe(resolveThemeColor(resolved, "text-weaker"))
 })
 
+test("unmodified dark brand artwork remains readable on its image surface in both modes", () => {
+  const variants = resolveTheme(synergyTheme)
+  for (const theme of [variants.light, variants.dark]) {
+    const surface = theme["surface-brand-image" as ThemeTokenName]
+    expect(contrastRatio("#151515", surface)).toBeGreaterThanOrEqual(7)
+  }
+})
+
 function luminance(value: string): number {
   const hex = value.trim()
   if (!hex.startsWith("#")) throw new Error(`Expected hex color for luminance check, got ${value}`)

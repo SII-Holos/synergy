@@ -78,13 +78,13 @@ export function MemoryDistribution(props: {
         },
       },
     },
-    animation: { duration: 600, easing: "easeOutQuart" as const },
+    animation: false as const,
   }))
 
   return (
     <div class="library-chart-surface mt-4">
       <div class="pb-2">
-        <h3 class="text-13-medium text-text-strong">
+        <h3 class="app-panel-control text-text-strong">
           {_({ id: "app.library.stats.memory.categories", message: "Memory categories" })}
         </h3>
       </div>
@@ -114,8 +114,8 @@ export function MemoryDistribution(props: {
                         class="inline-block h-2 w-2 rounded-full shrink-0"
                         style={{ background: categoryColor(item.category) }}
                       />
-                      <span class="text-10-medium text-text-base">{label}</span>
-                      <span class="text-10-regular text-text-weak tabular-nums">{item.count}</span>
+                      <span class="app-panel-caption text-text-base">{label}</span>
+                      <span class="app-panel-caption text-text-weak tabular-nums">{item.count}</span>
                       <span class="text-9-regular text-text-weaker tabular-nums">({pct().toFixed(0)}%)</span>
                     </div>
                   )
@@ -128,7 +128,7 @@ export function MemoryDistribution(props: {
                   const style = RECALL_MODE_STYLES[item.recallMode] ?? RECALL_MODE_STYLES.search_only!
                   return (
                     <div
-                      class={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-10-medium ring-1 ring-inset ${style.bg}`}
+                      class={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 app-panel-caption ring-1 ring-inset ${style.bg}`}
                     >
                       <span class="font-semibold tabular-nums">{item.count}</span>
                       <span>{getRecallModeLabel(_, item.recallMode as any)}</span>

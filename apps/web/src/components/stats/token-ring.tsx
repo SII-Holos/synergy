@@ -80,19 +80,19 @@ function Callout(props: {
     <div class={`flex items-center gap-3 ${isLeft() ? "justify-end" : "justify-start"}`}>
       {isLeft() ? null : <Connector color={props.segment.color} side="right" />}
       <div
-        class={`min-w-0 flex-1 rounded-2xl bg-surface-inset-base/40 px-3 py-2.5 ring-1 ring-inset ring-border-weaker-base ${
+        class={`min-w-0 flex-1 rounded-xl bg-surface-inset-base/40 px-3 py-2.5 ring-1 ring-inset ring-border-weaker-base ${
           isLeft() ? "text-right" : "text-left"
         }`}
       >
         <div class={`flex items-center gap-2 ${isLeft() ? "justify-end" : "justify-start"}`}>
-          <span class="text-10-medium uppercase tracking-[0.16em] text-text-weaker">{props.segment.label}</span>
+          <span class="app-panel-caption font-medium text-text-weaker">{props.segment.label}</span>
           <span class="h-2 w-2 shrink-0 rounded-full" style={{ "background-color": props.segment.color }} />
         </div>
         <div class="mt-1 text-lg font-semibold tracking-tight text-text-strong tabular-nums">
           {formatCompact(props.segment.value)}
         </div>
-        <div class="mt-1 text-10-regular text-text-weak">{props.shareLabel}</div>
-        {props.segment.note ? <div class="mt-1 text-10-regular text-text-weaker">{props.segment.note}</div> : null}
+        <div class="mt-1 app-panel-caption text-text-weak">{props.shareLabel}</div>
+        {props.segment.note ? <div class="mt-1 app-panel-caption text-text-weaker">{props.segment.note}</div> : null}
       </div>
       {isLeft() ? <Connector color={props.segment.color} side="left" /> : null}
     </div>
@@ -169,11 +169,7 @@ export function TokenRing(props: { tokens: StatsSnapshot["tokenCost"]["tokens"];
     responsive: true,
     maintainAspectRatio: false,
     cutout: "72%" as const,
-    animation: {
-      animateRotate: true,
-      duration: 900,
-      easing: "easeOutQuart" as const,
-    },
+    animation: false as const,
     plugins: {
       legend: {
         display: false,
@@ -194,10 +190,7 @@ export function TokenRing(props: { tokens: StatsSnapshot["tokenCost"]["tokens"];
   return (
     <>
       <style>{ANIMATION_STYLE}</style>
-      <section
-        class="rounded-2xl bg-surface-raised-base px-4 py-5"
-        style={{ animation: "tokenRingEnter 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) 220ms both" }}
-      >
+      <section class="rounded-xl bg-surface-raised-base px-4 py-5">
         <div class="grid items-center gap-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
           <div class="order-2 grid gap-2.5 lg:order-1">
             <For each={leftSegments()}>
@@ -210,11 +203,11 @@ export function TokenRing(props: { tokens: StatsSnapshot["tokenCost"]["tokens"];
               <div class="relative h-40 w-40 sm:h-44 sm:w-44">
                 <Doughnut data={chartData()} options={chartOptions()} />
                 <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-7 text-center">
-                  <span class="text-10-medium uppercase tracking-[0.18em] text-text-weaker">
+                  <span class="app-panel-caption font-medium text-text-weaker">
                     {i18n._(S.tokenCacheEfficiency.id)}
                   </span>
-                  <span class="mt-1 text-24-semibold text-text-strong tabular-nums">{cacheEfficiency()}%</span>
-                  <span class="mt-1 text-10-regular leading-4 text-text-weak">
+                  <span class="mt-1 app-panel-value text-text-strong tabular-nums">{cacheEfficiency()}%</span>
+                  <span class="mt-1 app-panel-caption leading-4 text-text-weak">
                     {i18n._(S.tokenCacheEfficiencyNote.id)}
                   </span>
                 </div>

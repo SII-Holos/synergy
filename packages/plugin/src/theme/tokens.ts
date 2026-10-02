@@ -157,6 +157,7 @@ export const THEME_TOKEN_NAMES = [
   "surface-base-hover",
   "surface-base-interactive-active",
   "surface-brand-base",
+  "surface-brand-image",
   "surface-brand-hover",
   "surface-critical-base",
   "surface-critical-solid",

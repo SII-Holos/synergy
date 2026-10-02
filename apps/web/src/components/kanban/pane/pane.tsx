@@ -1,3 +1,6 @@
+import { KanbanReorderMenu, type KanbanReorderAction } from "./reorder-menu"
+import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
+import { translateDescriptor } from "@/locales/translate"
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { useLingui } from "@lingui/solid"
@@ -28,7 +31,7 @@ import {
   selectMessagesInCanonicalOrder,
 } from "@/components/session/session-message-order"
 import { resolveSessionVisualState } from "@/components/sidebar/session-visual-state"
-import { paneHeadStatusFromVisual } from "../model/head-status"
+import { paneDisplayState, paneHeadStatusFromVisual } from "../model/head-status"
 import { hasMessageWindowSnapshot, type MessageWindowMetadata } from "@/context/session-message-window"
 import { useLocale } from "@/context/locale"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -41,6 +44,7 @@ import { KANBAN_REORDER_MIME } from "@/utils/session-drag"
 import { KanbanPaneComposer, type BoardWorkflowKind } from "./composer"
 import type { ControlProfileId } from "@/context/input"
 import "../kanban.css"
+import "@ericsanchezok/synergy-ui/menu-field"
 
 export type BoardPaneData = {
   message: Record<string, Message[]>
@@ -61,6 +65,10 @@ export type BoardPaneLoadState = {
 const MAX_RENDERED_TURNS = 40
 
 export function KanbanPane(props: {
+  draft?: string
+  onDraftChange?: (value: string) => void
+  reorderActions?: KanbanReorderAction[]
+  onReorder?: (key: string) => void
   pane: BoardPane
   data: BoardPaneData
   serverUrl: string
@@ -68,6 +76,7 @@ export function KanbanPane(props: {
   follow: () => boolean
   onToggleFollow: () => void
   onOpen: () => void
+  onActivate?: () => void
   onPinToggle?: () => void
   /** Reactive pinned flag: must be an accessor because Solid's keyed For
    *  does not re-invoke pane rows on flag-only changes. */
@@ -81,7 +90,7 @@ export function KanbanPane(props: {
   onUpdateProfile: (profile: ControlProfileId) => Promise<void>
   onSetWorkflow: (kind: BoardWorkflowKind) => Promise<void>
 }) {
-  const { _ } = useLingui()
+  const { _, i18n } = useLingui()
   const { fmt } = useLocale()
   const globalSync = useGlobalSync()
   const runtime = createSessionDataRuntime(globalSync)
@@ -123,6 +132,7 @@ export function KanbanPane(props: {
         })
       : undefined,
   )
+  const displayState = createMemo(() => (visual() ? paneDisplayState(visual()!) : undefined))
 
   // Localized relative activity label with a one-minute update cadence so an
   // idle pinned pane keeps advancing while mounted.
@@ -135,6 +145,15 @@ export function KanbanPane(props: {
     const at = props.pane.entry?.lastActivityAt
     if (!at) return ""
     return fmt.relative(at, new Date(now()))
+  })
+  const scopeLabel = createMemo(() => {
+    if (props.pane.entry?.scopeType === "home") return _({ id: "app.sidebar.section.home", message: "Home" })
+    const scope = globalSync.data.scope.find((scope) => scope.id === props.pane.entry?.scopeID)
+    return (
+      scope?.name ||
+      scope?.local?.worktree.split(/[\\/]/).at(-1) ||
+      _({ id: "app.kanban.scope.unknown", message: "Unknown scope" })
+    )
   })
 
   // Turn projection + latest-mode trimming (mirrors the session conversation):
@@ -189,43 +208,65 @@ export function KanbanPane(props: {
       class="kanban-pane"
     >
       <div class="kanban-pane-head" data-status={headStatus() || undefined}>
-        <Show when={props.pane.kind === "live" && props.pane.entry}>
-          <span
-            class={`kanban-dot kanban-dot-${visual()?.tone ?? "default"}`}
-            data-pulse={visual()?.pulse || undefined}
-            aria-hidden="true"
-          />
-        </Show>
-        <button class="kanban-pane-title" onClick={props.onOpen} title={_(kanbanPage.openSession)}>
-          <Show
-            when={props.pane.kind === "live" && props.pane.entry}
-            fallback={<span class="kanban-pane-title-text">{_(kanbanPage.unavailable)}</span>}
-          >
-            <span class="kanban-pane-title-text">{props.pane.entry!.title}</span>
-          </Show>
-        </button>
-        <span class="kanban-pane-scope">
-          {props.pane.entry?.scopeType === "home" ? "HOME" : props.pane.entry?.scopeID}
-        </span>
-        <span class="kanban-pane-time">{lastActivity()}</span>
+        <div class="kanban-pane-heading">
+          <Tooltip value={props.pane.entry?.title ?? _(kanbanPage.unavailable)}>
+            <button type="button" class="kanban-pane-title" onClick={props.onOpen} title={_(kanbanPage.openSession)}>
+              <Show
+                when={props.pane.kind === "live" && props.pane.entry}
+                fallback={<span class="kanban-pane-title-text">{_(kanbanPage.unavailable)}</span>}
+              >
+                <span class="kanban-pane-title-text">{props.pane.entry!.title}</span>
+              </Show>
+            </button>
+          </Tooltip>
+          <div class="kanban-pane-meta">
+            <span class="kanban-pane-scope" title={scopeLabel()}>
+              {scopeLabel()}
+            </span>
+            <Show when={displayState()}>
+              {(state) => (
+                <span class="kanban-pane-state" title={translateDescriptor(state().label, i18n())}>
+                  <Icon name={state().icon} size="small" />
+                  <span>{translateDescriptor(state().label, i18n())}</span>
+                </span>
+              )}
+            </Show>
+            <span class="kanban-pane-time">{lastActivity()}</span>
+          </div>
+        </div>
         <div class="kanban-pane-actions">
+          <Show when={props.onActivate}>
+            <button
+              type="button"
+              class="kanban-pane-action kanban-pane-activate"
+              aria-label={_({
+                id: "app.kanban.focusSession",
+                message: "Focus {title}",
+                values: { title: props.pane.entry?.title ?? props.pane.sessionID },
+              })}
+              onClick={props.onActivate}
+            >
+              {_(kanbanPage.layoutFocus)}
+            </button>
+          </Show>
           <Show when={props.pane.kind === "live"}>
             <button
               class="kanban-pane-action"
               data-active={props.follow() || undefined}
+              aria-pressed={props.follow()}
+              aria-label={props.follow() ? _(kanbanPage.follow) : _(kanbanPage.unfollow)}
               onClick={props.onToggleFollow}
               title={props.follow() ? _(kanbanPage.follow) : _(kanbanPage.unfollow)}
             >
-              <Icon
-                name={props.follow() ? getSemanticIcon("session.running") : getSemanticIcon("session.idle")}
-                size="small"
-              />
+              <Icon name={getSemanticIcon("session.followLatest")} size="small" />
             </button>
           </Show>
           <Show when={props.onPinToggle}>
             <button
               class="kanban-pane-action"
               data-active={props.pinned() || undefined}
+              aria-pressed={props.pinned()}
+              aria-label={props.pinned() ? _(kanbanPage.unpinPane) : _(kanbanPage.pinPane)}
               onClick={props.onPinToggle}
               title={props.pinned() ? _(kanbanPage.unpinPane) : _(kanbanPage.pinPane)}
             >
@@ -238,6 +279,7 @@ export function KanbanPane(props: {
           <Show when={props.pane.kind === "live"}>
             <span
               class="kanban-pane-grip"
+              draggable={props.pinned()}
               data-locked={!props.pinned() || undefined}
               title={props.pinned() ? _(kanbanPage.dragReorder) : _(kanbanPage.pinToReorderHint)}
               aria-label={props.pinned() ? _(kanbanPage.dragReorder) : _(kanbanPage.pinToReorderHint)}
@@ -253,6 +295,9 @@ export function KanbanPane(props: {
             >
               <Icon name={getSemanticIcon("action.grip")} size="small" />
             </span>
+          </Show>
+          <Show when={props.reorderActions}>
+            <KanbanReorderMenu actions={props.reorderActions!} onReorder={props.onReorder} />
           </Show>
         </div>
       </div>
@@ -352,6 +397,8 @@ export function KanbanPane(props: {
       </div>
       <Show when={props.pane.kind === "live" && !props.compact}>
         <KanbanPaneComposer
+          draft={props.draft}
+          onDraftChange={props.onDraftChange}
           sessionID={props.pane.sessionID}
           agents={props.data.agent}
           session={liveSession()}

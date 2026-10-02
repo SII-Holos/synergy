@@ -4,6 +4,7 @@ import {
   browserMetricPoints,
   buildLineChartModel,
   CHART_METRICS,
+  formatMetricValue,
   memoryPoints,
   requestPoints,
   resourcePressurePoints,
@@ -34,6 +35,12 @@ function mockI18n(): I18n {
     },
   } as I18n
 }
+
+test("binary memory samples keep their MiB unit in displayed chart values", () => {
+  const points = browserMetricPoints([{ timestamp: 1, memory: 1048576 }])
+  expect(points[0].memory).toBe(1)
+  expect(formatMetricValue(points[0].memory, "megabytes")).toBe("1.0 MiB")
+})
 
 function summary(runtime: Partial<PerformanceSummary["runtime"]>): PerformanceSummary {
   return {
@@ -133,6 +140,22 @@ function timeline(series: PerformanceTimeline["series"]): PerformanceTimeline {
 }
 
 describe("performance chart model", () => {
+  test("a single real sample remains visible and uses a local timestamp axis", () => {
+    const timestamp = Date.parse("2026-10-02T04:00:00Z")
+    const model = buildLineChartModel({
+      points: [{ timestamp, cpu: 0 }],
+      datasets: [datasetSpecs[0]],
+      theme: chartTheme,
+      formatTime,
+    })
+    expect(model.data.datasets[0].pointRadius).toBeGreaterThanOrEqual(2)
+    expect(model.data.datasets[0].data).toEqual([{ x: timestamp, y: 0 }])
+    const axis = model.options.scales?.x
+    expect(axis?.min).toBeLessThan(timestamp)
+    expect(axis?.max).toBeGreaterThan(timestamp)
+    expect(Number(axis?.max) - Number(axis?.min)).toBeLessThanOrEqual(60_000)
+  })
+
   test("resource chart assigns each dataset to a unit axis", () => {
     const model = buildLineChartModel({
       points: [{ timestamp: 1000, cpu: 25, memory: 512, eventLoopLag: 12 }],
@@ -391,7 +414,7 @@ describe("performance dashboard runtime support", () => {
 
     expect(items).toContainEqual({
       label: P.runtimeMessageCache,
-      value: "1 MB · 2 entries (2 active) · 4/1 hit/miss · 3 evictions · 1 protected over budget · largest 700000 B",
+      value: "1 MiB · 2 entries (2 active) · 4/1 hit/miss · 3 evictions · 1 protected over budget · largest 683.6 KiB",
       tone: "warning",
     })
     expect(items).toContainEqual({ label: P.runtimeLlmStreams, value: "2 streams · 3 turns", tone: "default" })

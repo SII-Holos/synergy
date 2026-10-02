@@ -4,6 +4,9 @@
 import { registerIcon } from "./icon-registry"
 
 const builtinIconNames = [
+  "file-chart-column",
+  "list-end",
+  "shield-half",
   "activity",
   "laptop",
   "briefcase-business",

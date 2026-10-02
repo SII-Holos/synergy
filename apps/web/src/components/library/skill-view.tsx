@@ -65,7 +65,7 @@ function importScopeLabel(scope: "project" | "global", _: ReturnType<typeof useL
 function skillScopeColor(skill: SkillItem) {
   switch (skill.scope) {
     case "project":
-      return "bg-icon-success-base/15 text-icon-success-base"
+      return "bg-surface-success-weak text-text-on-success-base"
     case "global":
       return "bg-surface-inset-base text-text-base"
     case "builtin":
@@ -78,7 +78,7 @@ function skillScopeColor(skill: SkillItem) {
 function compatibilityTone(level?: SkillCompatibilityLevel) {
   switch (level) {
     case "native":
-      return "bg-icon-success-base/10 text-icon-success-base ring-icon-success-base/12"
+      return "bg-surface-success-weak text-text-on-success-base ring-border-success-base"
     case "compatible":
       return "workbench-selected-surface text-text-strong ring-border-base/20"
     case "partial":
@@ -457,48 +457,31 @@ export function SkillView(props: {
                     <div class={libraryMetaLabelClass}>
                       {_({ id: "app.library.skills.import.destination", message: "Destination" })}
                     </div>
-                    <div
-                      class="mt-2 flex items-center gap-1 rounded-lg bg-surface-inset-base p-0.5 ring-1 ring-inset ring-border-weaker-base/55"
-                      role="radiogroup"
-                      aria-label={_({ id: "app.library.skills.import.destination", message: "Destination" })}
-                    >
-                      <For each={importScopeOptions()}>
-                        {(scope) => (
-                          <button
-                            type="button"
-                            classList={{
-                              "flex-1 rounded-md px-2.5 py-1.5 text-11-medium transition-colors": true,
-                              "workbench-selected-surface bg-surface-raised-base text-text-strong shadow-sm":
-                                selectedImportScope() === scope,
-                              "text-text-weak hover:text-text-base": selectedImportScope() !== scope,
-                            }}
-                            role="radio"
-                            aria-checked={selectedImportScope() === scope}
-                            onClick={() => setImportScope(scope)}
-                          >
-                            {importScopeLabel(scope, _)}
-                          </button>
-                        )}
-                      </For>
-                    </div>
+                    <AppPanel.Selection
+                      class="mt-2"
+                      label={_({ id: "app.library.skills.import.destination", message: "Destination" })}
+                      items={importScopeOptions().map((scope) => ({ id: scope, label: importScopeLabel(scope, _) }))}
+                      active={selectedImportScope()}
+                      onChange={(scope) => setImportScope(scope as SkillImportScope)}
+                    />
                   </div>
                 </Show>
                 <Show when={importMode() === "menu"}>
-                  <div class="p-1.5">
+                  <div class="flex flex-col gap-0.5">
                     <button
                       type="button"
-                      class="flex w-full items-center gap-2.5 rounded-[0.9rem] px-3 py-2 text-left text-12-medium text-text-base transition-colors hover:bg-surface-inset-base"
+                      class="menu-field-item"
                       onClick={() => {
                         setImportOpen(false)
                         fileInputRef.click()
                       }}
                     >
                       <Icon name={getSemanticIcon("workspace.add")} size="small" class="text-icon-weak-base shrink-0" />
-                      <div class="min-w-0">
-                        <div class="text-13-regular text-text-base">
+                      <div class="min-w-0 flex-1">
+                        <div class="app-panel-control text-text-base">
                           {_({ id: "app.library.skills.import.uploadArchive", message: "Upload archive" })}
                         </div>
-                        <div class="text-11-regular text-text-weaker">
+                        <div class="app-panel-caption text-text-weaker">
                           {_({
                             id: "app.library.skills.import.uploadArchiveDesc",
                             message: "Import a local .zip or .skill archive",
@@ -506,17 +489,13 @@ export function SkillView(props: {
                         </div>
                       </div>
                     </button>
-                    <button
-                      type="button"
-                      class="flex w-full items-center gap-2.5 rounded-[0.9rem] px-3 py-2 text-left text-12-medium text-text-base transition-colors hover:bg-surface-inset-base"
-                      onClick={() => setImportMode("url")}
-                    >
+                    <button type="button" class="menu-field-item" onClick={() => setImportMode("url")}>
                       <Icon name={getSemanticIcon("browser.main")} size="small" class="text-icon-weak-base shrink-0" />
-                      <div class="min-w-0">
-                        <div class="text-13-regular text-text-base">
+                      <div class="min-w-0 flex-1">
+                        <div class="app-panel-control text-text-base">
                           {_({ id: "app.library.skills.import.fromUrl", message: "From URL" })}
                         </div>
-                        <div class="text-11-regular text-text-weaker">
+                        <div class="app-panel-caption text-text-weaker">
                           {_({
                             id: "app.library.skills.import.fromUrlDesc",
                             message: "Download a .zip or .skill archive",
@@ -532,7 +511,7 @@ export function SkillView(props: {
                       <div class={libraryMetaLabelClass}>
                         {_({ id: "app.library.skills.import.label", message: "Import" })}
                       </div>
-                      <div class="mt-1 text-12-medium text-text-strong">
+                      <div class="mt-1 app-panel-caption font-medium text-text-strong">
                         {_({ id: "app.library.skills.import.fromUrlHeading", message: "Import from URL" })}
                       </div>
                     </div>
@@ -542,7 +521,7 @@ export function SkillView(props: {
                         id: "app.library.skills.import.urlPlaceholder",
                         message: "https://example.com/skill.zip",
                       })}
-                      class="w-full rounded-[0.95rem] border border-border-base/38 bg-surface-inset-base px-3 py-2.5 text-13-regular text-text-base outline-none ring-1 ring-inset ring-border-base/35 transition-colors placeholder:text-text-weak focus:border-border-base/50 focus:bg-surface-inset-base"
+                      class="w-full rounded-[0.95rem] border border-border-base/38 bg-surface-inset-base px-3 py-2.5 app-panel-control text-text-base outline-none ring-1 ring-inset ring-border-base/35 transition-colors placeholder:text-text-weak focus:border-border-base/50 focus:bg-surface-inset-base"
                       value={importUrl()}
                       onInput={(e) => setImportUrl(e.currentTarget.value)}
                       onKeyDown={(e) => {
@@ -553,7 +532,7 @@ export function SkillView(props: {
                     <div class="flex items-center justify-end gap-2">
                       <button
                         type="button"
-                        class="rounded-full px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-all hover:bg-surface-inset-base hover:text-text-base"
+                        class="rounded-full px-3 py-1.5 app-panel-caption font-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-all hover:bg-surface-inset-base hover:text-text-base"
                         onClick={() => setImportMode("menu")}
                       >
                         {_({ id: "app.library.skills.import.back", message: "Back" })}
@@ -561,7 +540,7 @@ export function SkillView(props: {
                       <button
                         type="button"
                         classList={{
-                          "rounded-full px-3.5 py-1.5 text-11-medium ring-1 ring-inset transition-all": true,
+                          "rounded-full px-3.5 py-1.5 app-panel-caption font-medium ring-1 ring-inset transition-all": true,
                           "bg-text-strong text-background-base ring-border-base/20 hover:opacity-90":
                             !!importUrl().trim(),
                           "bg-surface-inset-base text-text-weaker ring-border-base/35 pointer-events-none":
@@ -615,7 +594,7 @@ export function SkillView(props: {
           <div class="mb-3 rounded-[1.15rem] border border-border-warning-base/35 bg-surface-warning-weak px-4 py-3 ring-1 ring-inset ring-border-weaker-base">
             <button
               type="button"
-              class="flex w-full cursor-pointer items-center gap-2 text-12-medium text-text-strong"
+              class="flex w-full cursor-pointer items-center gap-2 app-panel-caption font-medium text-text-strong"
               onClick={() => setDiagnosticsExpanded((prev) => !prev)}
             >
               <Icon name={getSemanticIcon("state.warning")} size="small" class="text-icon-warning-base shrink-0" />
@@ -623,7 +602,7 @@ export function SkillView(props: {
               <Icon
                 name={getSemanticIcon("navigation.expand")}
                 size="small"
-                class="shrink-0 text-text-weaker transition-transform duration-200"
+                class="shrink-0 text-text-weaker transition-transform duration-180"
                 classList={{ "rotate-90": diagnosticsExpanded() }}
               />
             </button>
@@ -632,15 +611,15 @@ export function SkillView(props: {
                 <For each={diagnosticGroups()}>
                   {(group) => (
                     <div class="flex flex-col gap-2">
-                      <div class="mt-1 text-11-medium text-text-weaker">{group.title}</div>
+                      <div class="mt-1 app-panel-caption font-medium text-text-weaker">{group.title}</div>
                       <For each={group.items}>
                         {(item) => (
                           <div class={`rounded-[0.95rem] px-3 py-2 ${libraryInsetClass}`}>
-                            <div class="text-11-medium text-text-strong">{item.name}</div>
-                            <div class="mt-0.5 text-11-regular text-text-diff-delete-base break-words">
+                            <div class="app-panel-caption font-medium text-text-strong">{item.name}</div>
+                            <div class="mt-0.5 app-panel-caption text-text-diff-delete-base break-words">
                               {item.message}
                             </div>
-                            <div class="mt-1 text-10-regular text-text-weaker break-all">{item.path}</div>
+                            <div class="mt-1 app-panel-caption text-text-weaker break-all">{item.path}</div>
                           </div>
                         )}
                       </For>
@@ -673,7 +652,7 @@ export function SkillView(props: {
             />
           }
         >
-          <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          <div class="library-skill-grid">
             <For each={filtered()}>
               {(skill: SkillItem) => <SkillCard skill={skill} onOpen={() => openSkillDetail(skill)} />}
             </For>
@@ -693,83 +672,43 @@ function SkillCard(props: { skill: SkillItem; onOpen: () => void }) {
   const diagnostics = () => skillCanonicalDiagnostics(props.skill)
 
   return (
-    <div class={`${libraryCardBaseClass} ${libraryCardHoverClass} h-full`}>
-      <div class="flex h-full flex-col gap-3 p-4">
-        <div class="flex items-start gap-3">
-          <div class="min-w-0 flex-1">
-            <div class="flex min-w-0 items-start gap-2">
-              <span class="min-w-0 flex-1 text-13-medium leading-snug text-text-strong break-words">
-                {props.skill.name}
-              </span>
-              <Show when={scopeLabel()}>
-                <span
-                  class={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 ring-inset ring-border-base/10 ${skillScopeColor(props.skill)}`}
-                >
-                  {scopeLabel()}
-                </span>
-              </Show>
-            </div>
-          </div>
-          <button
-            type="button"
-            class="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/40 transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
-            onClick={props.onOpen}
-            title={_({
-              id: "app.library.skills.card.openDetails",
-              message: "Open details for {name}",
-              values: { name: props.skill.name },
+    <button
+      type="button"
+      class={`${libraryCardBaseClass} ${libraryCardHoverClass} library-skill-card text-left`}
+      onClick={props.onOpen}
+      aria-haspopup="dialog"
+      aria-label={_({
+        id: "app.library.skills.card.openDetails",
+        message: "Open details for {name}",
+        values: { name: props.skill.name },
+      })}
+    >
+      <span class="library-skill-card-title app-panel-row-title text-text-strong line-clamp-2">{props.skill.name}</span>
+      <span class="app-panel-copy text-text-weak line-clamp-2">{props.skill.description}</span>
+      <span class="library-skill-card-meta app-panel-caption text-text-weak">
+        <Show when={scopeLabel()}>
+          <span>{scopeLabel()}</span>
+        </Show>
+        <span>{skillInvocationLabel(props.skill, _)}</span>
+        <Show when={compatibility()}>
+          <span class={compatibilityTone(props.skill.compatibility?.level)}>{compatibility()}</span>
+        </Show>
+        <Show when={diagnostics().length}>
+          <span>
+            {_({
+              id: "app.library.skills.card.diagnosticsCount",
+              message: "{count, plural, one {# diagnostic} other {# diagnostics}}",
+              values: { count: diagnostics().length },
             })}
-            aria-label={_({
-              id: "app.library.skills.card.openDetails",
-              message: "Open details for {name}",
-              values: { name: props.skill.name },
-            })}
-          >
-            <Icon name={getSemanticIcon("action.open")} size="small" />
-          </button>
-        </div>
-
-        <p class="text-12-regular leading-relaxed text-text-weak/90 whitespace-pre-wrap line-clamp-4">
-          {props.skill.description}
-        </p>
-
-        <div class="mt-auto flex flex-col gap-2.5 pt-1">
-          <Show when={displayLocation()}>
-            <div class={`flex items-center gap-2 px-3 py-2.5 ${libraryInsetClass}`} title={props.skill.location}>
-              <Icon name={getSemanticIcon("settings.commands")} size="small" class="shrink-0 text-icon-weak-base" />
-              <span class="min-w-0 truncate text-10-regular text-text-weaker">{displayLocation()}</span>
-            </div>
-          </Show>
-
-          <div class="flex flex-wrap items-center gap-1.5">
-            <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-base ring-1 ring-inset ring-border-base/35">
-              {skillInvocationLabel(props.skill, _)}
-            </span>
-            <Show when={declaredCompatibility()}>
-              <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
-                {declaredCompatibility()}
-              </span>
-            </Show>
-            <Show when={compatibility()}>
-              <span
-                class={`rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 ring-inset ${compatibilityTone(props.skill.compatibility?.level)}`}
-              >
-                {compatibility()}
-              </span>
-            </Show>
-            <Show when={diagnostics().length > 0}>
-              <span class="rounded-full bg-icon-warning-base/10 px-2.5 py-1 text-[10px] font-medium text-icon-warning-base ring-1 ring-inset ring-icon-warning-base/12">
-                {_({
-                  id: "app.library.skills.card.diagnosticsCount",
-                  message: "{count, plural, one {# diagnostic} other {# diagnostics}}",
-                  values: { count: diagnostics().length },
-                })}
-              </span>
-            </Show>
-          </div>
-        </div>
-      </div>
-    </div>
+          </span>
+        </Show>
+      </span>
+      <Show when={displayLocation()}>
+        <span class="app-panel-caption text-text-weaker truncate" title={props.skill.location}>
+          {displayLocation()}
+        </span>
+      </Show>
+    </button>
   )
 }
 
@@ -806,7 +745,11 @@ function SkillDetailDialog(props: {
   }
 
   return (
-    <Dialog title={<span class="min-w-0 truncate">{props.skill.name}</span>} class="dialog-skill-detail">
+    <Dialog
+      size="wide"
+      title={<span class="min-w-0 truncate">{props.skill.name}</span>}
+      class="app-panel-detail-dialog dialog-skill-detail"
+    >
       <div class="skill-detail-shell">
         <div class="skill-detail-scroll">
           <div class="skill-detail-meta-row">

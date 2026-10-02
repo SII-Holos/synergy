@@ -30,6 +30,7 @@ export type PerformanceMetricPoint = {
 }
 
 export type PerformanceTraceSpan = PerfTraceListItem
+export type PerformanceTracePreview = Pick<PerfTraceListItem, "traceId" | "name"> & Partial<PerfTraceListItem>
 export type PerformanceIssue = PerfIssue
 export type PerformanceRankedItem = PerfDashboardSummary["top"]["slowRoutes"][number]
 export type PerformanceSummary = Omit<PerfDashboardSummary, "resources" | "top"> & {

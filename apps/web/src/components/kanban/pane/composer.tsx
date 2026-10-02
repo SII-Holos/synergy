@@ -1,10 +1,10 @@
-import { For, Show, createMemo, createSignal } from "solid-js"
+import { Show, createMemo, createSignal } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import type { MessageDescriptor } from "@lingui/core"
 import type { AgentSummary, Session, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { ControlProfileId } from "@/context/input"
 import { useLocale } from "@/context/locale"
@@ -43,6 +43,8 @@ function workflowLabel(kind: BoardWorkflowKind, _: (d: { id: string; message: st
  * targeted at this pane's scope/session through the injected client.
  */
 export function KanbanPaneComposer(props: {
+  draft?: string
+  onDraftChange?: (value: string) => void
   sessionID: string
   agents: AgentSummary[]
   session?: Session
@@ -57,34 +59,29 @@ export function KanbanPaneComposer(props: {
     controller.activeLocale()
     return translateDescriptor(descriptor, i18n)
   }
-  const [draft, setDraft] = createSignal("")
+  const [localDraft, setLocalDraft] = createSignal("")
+  const draft = () => props.draft ?? localDraft()
+  const setDraft = (value: string) => {
+    if (props.onDraftChange) props.onDraftChange(value)
+    else setLocalDraft(value)
+  }
   const [sending, setSending] = createSignal(false)
   const [agent, setAgent] = createSignal<string | undefined>(props.session?.agentOverride)
   const [switchingProfile, setSwitchingProfile] = createSignal(false)
+  const [actionError, setActionError] = createSignal<string>()
 
   const profile = createMemo<ControlProfileId>(() => props.session?.controlProfile ?? "guarded")
   const workflow = createMemo<BoardWorkflowKind>(() => workflowKindOf(props.session))
   const profileVisual = createMemo(() => permissionModeVisual(profile()))
-  const statusText = createMemo(() => {
-    const s = props.status
-    switch (s?.type) {
-      case "busy":
-        return s.description ?? _(kanbanPage.statusBusy)
-      case "retry":
-        return _(kanbanPage.statusRetry)
-      case "paused":
-        return s.description ?? _(kanbanPage.statusPaused)
-      default:
-        return _(kanbanPage.statusIdle)
-    }
-  })
   const visibleAgents = createMemo(() => props.agents.filter((a) => !a.hidden && a.mode !== "subagent"))
   const currentAgent = createMemo(() => agent() ?? visibleAgents()[0]?.name ?? _(kanbanPage.composerDefaultAgent))
 
   const run = async (action: () => Promise<void>) => {
     try {
+      setActionError(undefined)
       await action()
     } catch (error) {
+      setActionError(error instanceof Error ? error.message : _(kanbanPage.sendFailed))
       showToast({
         type: "error",
         title: _(kanbanPage.sendFailed),
@@ -97,10 +94,12 @@ export function KanbanPaneComposer(props: {
     const text = draft().trim()
     if (!text || sending()) return
     setSending(true)
+    setActionError(undefined)
     try {
       await props.onSend(text, { agent: agent() })
       setDraft("")
     } catch (error) {
+      setActionError(error instanceof Error ? error.message : _(kanbanPage.sendFailed))
       showToast({
         type: "error",
         title: _(kanbanPage.sendFailed),
@@ -115,82 +114,40 @@ export function KanbanPaneComposer(props: {
     <div class="kanban-pane-composer">
       <div class="kanban-pane-composer-toolbar">
         <Show when={visibleAgents().length > 0}>
-          <Popover
-            trigger={
-              <button class="kanban-composer-chip" title={_(kanbanPage.composerAgent)}>
-                <Icon name={getSemanticIcon("agents.main")} size="small" />
-                <span class="kanban-composer-chip-label">{currentAgent()}</span>
-              </button>
-            }
-            title={_(kanbanPage.composerAgent)}
-          >
-            <div class="kanban-composer-menu" role="listbox" aria-label={_(kanbanPage.composerAgent)}>
-              <For each={visibleAgents()}>
-                {(candidate) => (
-                  <button
-                    class="kanban-composer-item"
-                    data-active={candidate.name === currentAgent() || undefined}
-                    onClick={() => setAgent(candidate.name)}
-                  >
-                    {candidate.name}
-                  </button>
-                )}
-              </For>
-            </div>
-          </Popover>
+          <MenuField
+            ariaLabel={_(kanbanPage.composerAgent)}
+            icon={getSemanticIcon("agents.main")}
+            triggerClass="menu-field-trigger kanban-composer-chip"
+            value={currentAgent()}
+            options={visibleAgents().map((item) => ({ value: item.name, label: item.name }))}
+            onChange={setAgent}
+          />
         </Show>
-        <Popover
-          trigger={
-            <button class="kanban-composer-chip" title={_(kanbanPage.composerPermission)}>
-              <Icon name={getSemanticIcon(profileVisual().icon)} size="small" />
-              <span class="kanban-composer-chip-label">{translateModeCopy(profileVisual().shortLabel)}</span>
-            </button>
-          }
-          title={_(kanbanPage.composerPermission)}
-        >
-          <div class="kanban-composer-menu" role="listbox" aria-label={_(kanbanPage.composerPermission)}>
-            <For each={PERMISSION_MODES}>
-              {(mode) => (
-                <button
-                  class="kanban-composer-item"
-                  data-active={mode.id === profile() || undefined}
-                  onClick={() => {
-                    // Debounce double-clicks: the update hits the session API
-                    // and a second in-flight call would race the first.
-                    if (switchingProfile()) return
-                    setSwitchingProfile(true)
-                    void run(() => props.onUpdateProfile(mode.id)).finally(() => setSwitchingProfile(false))
-                  }}
-                >
-                  {translateModeCopy(mode.label)}
-                </button>
-              )}
-            </For>
-          </div>
-        </Popover>
-        <Popover
-          trigger={
-            <button class="kanban-composer-chip" title={_(kanbanPage.composerWorkflow)}>
-              <Icon name={getSemanticIcon("cortex.main")} size="small" />
-              <span class="kanban-composer-chip-label">{workflowLabel(workflow(), _)}</span>
-            </button>
-          }
-          title={_(kanbanPage.composerWorkflow)}
-        >
-          <div class="kanban-composer-menu" role="listbox" aria-label={_(kanbanPage.composerWorkflow)}>
-            <For each={["none", "plan", "lattice", "boss"] as const}>
-              {(kind) => (
-                <button
-                  class="kanban-composer-item"
-                  data-active={kind === workflow() || undefined}
-                  onClick={() => void run(() => props.onSetWorkflow(kind))}
-                >
-                  {workflowLabel(kind, _)}
-                </button>
-              )}
-            </For>
-          </div>
-        </Popover>
+        <MenuField
+          ariaLabel={_(kanbanPage.composerPermission)}
+          icon={getSemanticIcon(profileVisual().icon)}
+          triggerClass="menu-field-trigger kanban-composer-chip"
+          triggerLabel={translateModeCopy(profileVisual().shortLabel)}
+          value={profile()}
+          disabled={switchingProfile()}
+          options={PERMISSION_MODES.map((item) => ({ value: item.id, label: translateModeCopy(item.label) }))}
+          onChange={(id) => {
+            if (switchingProfile()) return
+            setSwitchingProfile(true)
+            void run(() => props.onUpdateProfile(id)).finally(() => setSwitchingProfile(false))
+          }}
+        />
+        <MenuField
+          ariaLabel={_(kanbanPage.composerWorkflow)}
+          icon={getSemanticIcon("cortex.main")}
+          triggerClass="menu-field-trigger kanban-composer-chip"
+          value={workflow()}
+          options={(["none", "plan", "lattice", "boss"] as BoardWorkflowKind[]).map((kind) => ({
+            value: kind,
+            label: workflowLabel(kind, _),
+          }))}
+          onChange={(kind) => void run(() => props.onSetWorkflow(kind))}
+        />
       </div>
       <form
         class="kanban-pane-composer-input-row"
@@ -204,27 +161,24 @@ export function KanbanPaneComposer(props: {
           type="text"
           value={draft()}
           placeholder={_(kanbanPage.sendPlaceholder)}
+          aria-label={_({ id: "app.kanban.messageLabel", message: "Message this session" })}
           disabled={sending()}
           onInput={(event) => setDraft(event.currentTarget.value)}
         />
-        <button class="kanban-pane-send" type="submit" disabled={sending() || !draft().trim()}>
+        <button
+          class="kanban-pane-send"
+          type="submit"
+          aria-label={_({ id: "app.kanban.sendLabel", message: "Send message" })}
+          disabled={sending() || !draft().trim()}
+        >
           <Icon name={getSemanticIcon("prompt.send")} size="small" />
         </button>
       </form>
-      <div class="kanban-pane-statusbar">
-        <span class={`kanban-status-dot kanban-status-dot-${props.status?.type ?? "idle"}`} aria-hidden="true" />
-        <span class="kanban-status-text">{statusText()}</span>
-        <span class="kanban-status-sep" aria-hidden="true" />
-        <span class="kanban-status-meta">
-          {_(kanbanPage.composerAgent)}: {currentAgent()}
-        </span>
-        <span class="kanban-status-meta">
-          {_(kanbanPage.composerPermission)}: {translateModeCopy(profileVisual().shortLabel)}
-        </span>
-        <span class="kanban-status-meta">
-          {_(kanbanPage.composerWorkflow)}: {workflowLabel(workflow(), _)}
-        </span>
-      </div>
+      <Show when={actionError()}>
+        <p class="kanban-composer-error app-panel-caption" role="alert">
+          {actionError()}
+        </p>
+      </Show>
     </div>
   )
 }

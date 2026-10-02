@@ -1,5 +1,3 @@
-export const MS_PER_DAY = 86_400_000
-
 export function startOfDay(ts: number): number {
   const d = new Date(ts)
   d.setHours(0, 0, 0, 0)
@@ -20,7 +18,11 @@ export function addDays(ts: number, days: number): number {
 
 export function addMonths(ts: number, months: number): number {
   const d = new Date(ts)
+  const day = d.getDate()
+  d.setDate(1)
   d.setMonth(d.getMonth() + months)
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+  d.setDate(Math.min(day, last))
   return d.getTime()
 }
 
@@ -33,10 +35,6 @@ export function monthRange(ts: number): { start: number; end: number } {
   last.setHours(0, 0, 0, 0)
   const end = addDays(startOfWeek(last.getTime()), 7)
   return { start, end }
-}
-
-export function formatHour(h: number): string {
-  return `${h.toString().padStart(2, "0")}:00`
 }
 
 import type { IntlFormatter } from "@/context/locale/formatter"

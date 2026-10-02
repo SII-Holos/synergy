@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, mock, test } from "bun:test"
 import { plugin } from "bun"
 import { transformAsync } from "@babel/core"
 import { setupI18n } from "@lingui/core"
@@ -37,7 +37,13 @@ mock.module("@ericsanchezok/synergy-ui/session-turn", () => ({
 }))
 
 const i18n = setupI18n({ locale: "en", messages: { en: {} } })
-mock.module("@lingui/solid", () => ({ useLingui: () => ({ _: i18n._.bind(i18n) }) }))
+mock.module("@lingui/solid", () => ({ useLingui: () => ({ _: i18n._.bind(i18n), i18n: () => i18n }) }))
+
+const getAnimations = Element.prototype.getAnimations
+Element.prototype.getAnimations = () => []
+afterAll(() => {
+  Element.prototype.getAnimations = getAnimations
+})
 
 let config: Record<string, unknown> = {}
 const configWrites: unknown[] = []
@@ -129,6 +135,9 @@ mock.module("../../../src/context/layout", () => ({
 }))
 
 mock.module("@solidjs/router", () => ({ useNavigate: () => () => {} }))
+mock.module("../../../src/components/workspace/mobile-header-close", () => ({
+  useWorkspaceMobileHeaderClose: () => () => {},
+}))
 mock.module("@ericsanchezok/synergy-ui/toast", () => ({ showToast: () => {} }))
 mock.module("../../../src/context/locale", () => ({
   useLocale: () => ({
@@ -172,7 +181,7 @@ const confirmButton = (label: string) =>
 
 const permissionChip = (harness: Harness) =>
   [...harness.root.querySelectorAll<HTMLButtonElement>(".kanban-composer-chip")].find((node) =>
-    node.getAttribute("title")?.includes("Permission"),
+    node.getAttribute("aria-label")?.startsWith("Permission"),
   )
 
 // The composer's control-profile menu only exists after its popover opens.
@@ -184,8 +193,8 @@ async function openProfileMenu(harness: Harness) {
 }
 
 async function selectProfile(label: string) {
-  const item = [...document.querySelectorAll<HTMLButtonElement>('[role="listbox"] .kanban-composer-item')].find(
-    (node) => node.textContent?.trim() === label,
+  const item = [...document.querySelectorAll<HTMLElement>('[role="listbox"] [role="option"]')].find(
+    (node) => node.querySelector(".menu-field-item-label")?.textContent?.trim() === label,
   )
   expect(item, `no kanban control-profile option labelled ${label}`).toBeDefined()
   item!.click()

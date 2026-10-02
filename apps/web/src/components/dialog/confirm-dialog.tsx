@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js"
+import { createSignal, Show } from "solid-js"
 import type { I18n, MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -41,6 +41,7 @@ export function ConfirmDialog(props: ConfirmOptions & { close?: () => void }) {
   const dialogContext = useDialog()
   const [pending, setPending] = createSignal(false)
   let cancelButton: HTMLButtonElement | undefined
+  const [failure, setFailure] = createSignal<string>()
   let settled = false
   const close = () => (props.close ?? dialogContext.close)()
 
@@ -54,12 +55,14 @@ export function ConfirmDialog(props: ConfirmOptions & { close?: () => void }) {
   async function confirm() {
     if (pending() || settled) return
     setPending(true)
+    setFailure(undefined)
     try {
       await props.onConfirm()
       settled = true
       close()
       props.onConfirmed?.()
     } catch (error) {
+      setFailure(errorDescription(error, _))
       showToast({
         type: "error",
         title: _(dialog.actionFailed),
@@ -79,14 +82,14 @@ export function ConfirmDialog(props: ConfirmOptions & { close?: () => void }) {
       action={
         <button
           type="button"
-          data-slot="dialog-close-button"
-          data-component="icon-button"
-          data-variant="ghost"
           aria-label={_({
             id: "confirm.close.named",
             message: "Close {title}",
             values: { title: resolveContent(props.title, _) },
           })}
+          data-slot="dialog-close-button"
+          data-component="icon-button"
+          data-variant="ghost"
           disabled={pending()}
           onClick={() => {
             dismiss()
@@ -96,6 +99,11 @@ export function ConfirmDialog(props: ConfirmOptions & { close?: () => void }) {
         </button>
       }
     >
+      <Show when={failure()}>
+        <p role="alert" class="confirm-dialog-error">
+          {failure()}
+        </p>
+      </Show>
       <div data-slot="dialog-actions" class="confirm-dialog-actions">
         <Button
           ref={cancelButton}

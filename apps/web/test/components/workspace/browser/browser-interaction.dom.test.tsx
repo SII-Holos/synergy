@@ -390,6 +390,7 @@ test("Safari shows an honest export path and import dialog stays within a narrow
   const dialog = page.getByRole("dialog", { name: "Import browser data", exact: true })
   await dialog.getByRole("button", { name: "From: Google Chrome · Work", exact: true }).click()
   await page.getByRole("option", { name: "Safari", exact: true }).click()
+  await page.getByRole("listbox", { name: "From", exact: true }).waitFor({ state: "detached" })
   expect(await dialog.getByRole("switch", { name: "Cookies", exact: true }).isDisabled()).toBe(true)
   await dialog
     .getByText(
@@ -401,7 +402,7 @@ test("Safari shows an honest export path and import dialog stays within a narrow
   expect(bounds!.x).toBeGreaterThanOrEqual(0)
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(375)
   await dialog.press("Escape")
-  await page.getByRole("dialog").waitFor({ state: "hidden" })
+  await dialog.waitFor({ state: "detached" })
 })
 
 test("partial import keeps successful counts visible alongside the recovery reason", async () => {
