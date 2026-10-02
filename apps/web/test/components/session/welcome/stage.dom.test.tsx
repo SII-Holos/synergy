@@ -27,6 +27,7 @@ beforeAll(async () => {
     import { WelcomeProvider, useWelcome, useNewTaskNavigation } from "${source}/components/session/welcome/context"
     import { WelcomeStage } from "${source}/components/session/welcome/stage"
     import { createWelcomeMemory } from "${source}/components/session/welcome/types"
+    import { createFlight, startFlight } from "${source}/components/session/welcome/flight/model"
     import { welcomeScenes } from "${source}/components/session/welcome/registry"
     import { handleComposerTypingAutofocus } from "${source}/components/prompt-input/typing-autofocus"
     import "@ericsanchezok/synergy-ui/styles"
@@ -50,7 +51,17 @@ beforeAll(async () => {
       if (new URLSearchParams(location.search).has("lifecycle")) return <Lifecycle />
       const theme = useTheme()
       const [definition, setDefinition] = createSignal(welcomeScenes.find(s => s.id === new URLSearchParams(location.search).get("scene")) ?? welcomeScenes[0])
-      const [memory, setMemory] = createSignal(createWelcomeMemory())
+      const initialMemory = createWelcomeMemory()
+      const fixture = new URLSearchParams(location.search).get("fixture")
+      if (fixture === "flight-power") {
+        const flight = startFlight(createFlight(8))
+        initialMemory.write({...flight, spawn:99, pickups:[{id:90,...flight.ship,kind:"fire"},{id:91,...flight.ship,kind:"shield"}]})
+      }
+      if (fixture === "flight-over") {
+        const flight = startFlight(createFlight(8))
+        initialMemory.write({...flight, lives:1, spawn:99, enemies:[{id:9,...flight.ship,origin:flight.ship.x,age:0,kind:0,hp:1,flash:0}]})
+      }
+      const [memory, setMemory] = createSignal(initialMemory)
       const [blocked, setBlocked] = createSignal(false)
       const [shown, setShown] = createSignal(true)
       let input
@@ -383,4 +394,23 @@ test("settled tower floors remain opaque across their contact at normal and doub
     })
     expect(solid).toBe(true)
   }
+})
+
+test("flight pickups show timed effects, freeze outside the game, and a loss restarts locally", async () => {
+  await page.setViewportSize({ width: 960, height: 920 })
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await open("flight&fixture=flight-power")
+  await page.waitForFunction(() => document.querySelector(".welcome-flight")?.getAttribute("data-fire") === "true")
+  expect(await page.locator(".welcome-flight").getAttribute("data-shield")).toBe("true")
+  await page.getByRole("textbox").click()
+  const canvas = page.locator(".welcome-game-canvas")
+  const paused = await canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
+  await page.waitForTimeout(200)
+  expect(await canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())).toBe(paused)
+  await open("flight&fixture=flight-over")
+  await page.waitForFunction(() => document.querySelector(".welcome-flight")?.getAttribute("data-phase") === "over")
+  await page.locator(".welcome-game-canvas").click()
+  expect(await page.locator(".welcome-flight").getAttribute("data-phase")).toBe("playing")
+  expect(await page.locator(".welcome-flight").getAttribute("data-lives")).toBe("3")
+  expect(await page.getByRole("textbox").inputValue()).toBe("")
 })

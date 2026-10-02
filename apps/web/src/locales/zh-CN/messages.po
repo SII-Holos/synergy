@@ -23269,7 +23269,7 @@ msgstr "飞机大战游戏区域"
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.help"
-msgstr "移动鼠标或按方向键操控，点击或按空格开始自动发射。避开敌机，守住下方边界。"
+msgstr "移动指针或使用方向键操控，点击或按空格开始自动射击。躲避碰撞；漏掉敌人会中断连击。拾取箭头获得十秒火力、护盾抵挡一次碰撞、十字恢复生命。"
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.name"
