@@ -59,7 +59,7 @@ One model step performs the following work:
 1. Load the session, effective messages, root parts, last terminal assistant, and current model limits.
 2. Detect loop signals and run pre-LLM jobs.
 3. Resolve the root agent and model, including external-agent routing where configured.
-4. Resolve tool definitions, system context, Cortex context, Library recall, environment context, and Agenda reminders in parallel where independent.
+4. Persist the assistant and await Runtime-registered domain model preparation with its exact assistant/root identities and cancellation signal. A failed observation settles the assistant with an error before model dispatch. Resolve tool definitions, system context, Cortex context, Library recall, environment context, and Agenda reminders in parallel where independent.
 5. Project workflow-wrapped messages without mutating stored user text.
 6. Build and measure the provider prompt.
 7. Trigger compaction instead of calling the model if the prompt crosses the configured soft budget or leaves no response space.
