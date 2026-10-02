@@ -96,8 +96,9 @@ Project-relative source paths such as `packages/local-runtime/src/tools/read.ts`
 3. Open the pull request against `dev`.
 4. Use project-relative paths and redacted evidence in the PR body.
 5. State the summary and exact test commands. Do not claim checks that were not run.
-6. When the change implements a BlueprintLoop, state that loop's final status and audit conclusion in the body. An executor's own "done" is not an audit result: the loop counts as accepted only once `blueprint_loop_approve` settled it, and a loop left in `auditing`, failed, or rejected without a fresh audit is reported as unaccepted rather than described as complete.
-7. Use a reviewed Note as the file input when outbound content requires user editing:
+6. Check automated feedback against the current head and base. Review edits to existing PR comments as well as newly created comments; filtering only by creation time can hide the latest review result.
+7. When the change implements a BlueprintLoop, state that loop's final status and audit conclusion in the body. An executor's own "done" is not an audit result: the loop counts as accepted only once `blueprint_loop_approve` settled it, and a loop left in `auditing`, failed, or rejected without a fresh audit is reported as unaccepted rather than described as complete.
+8. Use a reviewed Note as the file input when outbound content requires user editing:
 
 ```bash
 git commit -F /synergy/note/<note-id>

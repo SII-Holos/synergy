@@ -3,6 +3,10 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import type { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Config } from "@ericsanchezok/synergy-harness/config/config"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { $ } from "bun"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Worktree } from "@ericsanchezok/synergy-local-runtime/workspace/worktree"
 import {
@@ -12,6 +16,7 @@ import {
 } from "@ericsanchezok/synergy-workbench/project/worktree-janitor"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
+import { ProjectDirectories } from "../../src/project/directories"
 const runtime = await testRuntime()
 
 // ---------------------------------------------------------------------------
@@ -50,6 +55,89 @@ async function pollUntil(predicate: () => Promise<boolean>, timeoutMs = 10_000) 
 }
 
 describe("worktree janitor wiring", () => {
+  test(
+    "sweeps current and historical repositories while retaining dirty task bindings",
+    () =>
+      runtime.run(async () => {
+        await using oldRepository = await tmpdir({ git: true })
+        await using newRepository = await tmpdir({ git: true })
+        await $`git update-ref refs/remotes/origin/main HEAD`.cwd(oldRepository.path).quiet()
+        await $`git update-ref refs/remotes/origin/main HEAD`.cwd(newRepository.path).quiet()
+        await Config.domainUpdate("worktree", { worktree: { maxManaged: 1 } })
+        const project = await ProjectDirectories.create({
+          name: "Historical repository cleanup",
+          directories: [oldRepository.path],
+          mainDirectory: oldRepository.path,
+        })
+        await ScopeContext.provide({
+          scope: project.scope,
+          workspace: null,
+          fn: async () => {
+            const sourceWorkspaceID = project.directories.mainWorkspaceID!
+            const session = await Session.create({
+              workspace: WorkspaceCatalog.projection(await WorkspaceCatalog.get(sourceWorkspaceID, project.scope.id)),
+            })
+            const retained = await Worktree.create({
+              name: "dirty-historical-task",
+              sourceWorkspaceID,
+              sessionID: session.id,
+              bind: true,
+              baseRef: "current",
+            })
+            const bytes = new Uint8Array([0, 255, 17, 128])
+            const dirtyFile = path.join(retained.path, "unsaved.bin")
+            await Bun.write(dirtyFile, bytes)
+            const historical = await Worktree.create({
+              name: "clean-historical-task",
+              sourceWorkspaceID,
+              bind: false,
+              baseRef: "current",
+            })
+            const changed = await ProjectDirectories.update(project.scope.id, {
+              revision: project.directories.revision,
+              directories: [newRepository.path],
+              mainDirectory: newRepository.path,
+            })
+            const current = await Worktree.create({
+              name: "old-current-task",
+              sourceWorkspaceID: changed.mainWorkspaceID!,
+              bind: false,
+              baseRef: "current",
+            })
+            const newest = await Worktree.create({
+              name: "new-current-task",
+              sourceWorkspaceID: changed.mainWorkspaceID!,
+              bind: false,
+              baseRef: "current",
+            })
+            const before = await Session.get(session.id)
+            await startWorktreeJanitor(project.scope)
+            try {
+              expect(
+                await pollUntil(async () => {
+                  const paths = await Promise.all(
+                    [historical, current].map((tree) => Bun.file(`${tree.path}/.git`).exists()),
+                  )
+                  return paths.every((exists) => !exists)
+                }),
+              ).toBe(true)
+            } finally {
+              await stopWorktreeJanitor(project.scope.id)
+            }
+            expect(new Uint8Array(await Bun.file(dirtyFile).arrayBuffer())).toEqual(bytes)
+            expect((await Session.get(session.id)).workspace).toEqual(before.workspace)
+            expect((await Worktree.resolve(retained.id)).bindings).toContain(session.id)
+            expect(await Bun.file(`${newest.path}/.git`).exists()).toBe(true)
+            expect((await ProjectDirectories.get(project.scope.id)).folders.map((folder) => folder.path)).toEqual([
+              newRepository.path,
+            ])
+            await Session.remove(session.id)
+          },
+        })
+      }),
+    30_000,
+  )
+
   test("scope disposal waits for the active sweep and rejects follow-up requests", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
