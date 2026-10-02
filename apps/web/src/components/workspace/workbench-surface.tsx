@@ -45,6 +45,7 @@ import type {
 import "./workbench-surface.css"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { resourceMenuKeyDown } from "./resource-menu"
+import { workspaceTabStops } from "./focus"
 import { workspace as W } from "@/locales/messages"
 import {
   DragDropProvider,
@@ -471,16 +472,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
         !local.actionsOpen &&
         !local.menuTabId
       ) {
-        const focusable = [
-          ...root.querySelectorAll<HTMLElement>(
-            'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex], [contenteditable="true"]',
-          ),
-        ].filter(
-          (element) =>
-            element.tabIndex >= 0 &&
-            element.getClientRects().length &&
-            !element.closest('[inert], [aria-hidden="true"]'),
-        )
+        const focusable = workspaceTabStops(root)
         const index = focusable.indexOf(document.activeElement as HTMLElement)
         if ((event.shiftKey && index <= 0) || (!event.shiftKey && index === focusable.length - 1)) {
           event.preventDefault()

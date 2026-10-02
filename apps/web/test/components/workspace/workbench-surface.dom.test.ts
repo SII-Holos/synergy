@@ -32,9 +32,8 @@ beforeAll(async () => {
     const entries = ["side", "bottom", "extra"].map(id => ({
       id, label: id, icon: "file", surfaces: ["side", "bottom"], cardinality: "multi",
       component: () => { window.mounts[id]++; return <div>
-        {id === "side" && location.search === "?workspace-navigation" ? window.navigationPanel() : null}
         {(() => { if (crash() && id === "side") throw new Error("Panel crashed"); return null })()}
-        <button>{id} action</button><input aria-label={id + " draft"} />
+        {id === "side" && new URLSearchParams(location.search).has("workspace-navigation") ? window.navigationPanel() : <><button>{id} action</button><input aria-label={id + " draft"} /></>}
       </div> }
     }))
     const states = Object.fromEntries(["side", "bottom"].map(id => {
@@ -1060,10 +1059,17 @@ test("the automatic workspace overlay contains keyboard focus and restores the p
   await page.setViewportSize({ width: 375, height: 900 })
   await page.goto(baseUrl)
   await page.getByRole("button", { name: "Open side", exact: true }).click()
+  await page.evaluate(() => (window as unknown as WorkbenchWindow).fixture.populate())
+  const selected = page.getByRole("tab", { name: "Long document title 1", exact: true })
+  await selected.click()
   const panel = page.locator(".workbench-surface--side")
   await panel.getByRole("textbox", { name: "side draft" }).focus()
   await page.keyboard.press("Tab")
-  expect(await panel.evaluate((el) => el.contains(document.activeElement))).toBe(true)
+  expect(await selected.evaluate((element) => element === document.activeElement)).toBe(true)
+  await page.keyboard.press("Shift+Tab")
+  expect(
+    await panel.getByRole("textbox", { name: "side draft" }).evaluate((element) => element === document.activeElement),
+  ).toBe(true)
   await page.setViewportSize({ width: 1200, height: 1000 })
   await page.waitForFunction(() => !document.querySelector(".workbench-surface--side")?.hasAttribute("aria-modal"))
   await page.waitForFunction(
@@ -1071,6 +1077,26 @@ test("the automatic workspace overlay contains keyboard focus and restores the p
   )
   expect(Math.round((await panel.boundingBox())!.width)).toBe(360)
 }, 30000)
+
+test("leaving navigation skips hidden menu anchors in the real mobile workspace", async () => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto(`${baseUrl}?modal&workspace-navigation`)
+  await page.getByRole("button", { name: "Open modal workspace", exact: true }).click()
+  await page.evaluate(() => (window as unknown as WorkbenchWindow).fixture.populate())
+  const selected = page.getByRole("tab", { name: "Long document title 1", exact: true })
+  await selected.click()
+  await page.getByRole("button", { name: "Toggle navigation", exact: true }).click()
+  const drawer = page.getByRole("dialog", { name: "Documents", exact: true })
+  await drawer.waitFor()
+  await page.getByRole("button", { name: "Open file action", exact: true }).focus()
+  await page.keyboard.press("Tab")
+  await drawer.waitFor({ state: "detached" })
+  expect(await selected.evaluate((element) => element === document.activeElement)).toBe(true)
+  await page.keyboard.press("Escape")
+  await page.getByRole("dialog", { name: "Workspace", exact: true }).waitFor({ state: "detached" })
+  await page.waitForFunction(() => document.activeElement?.textContent === "Open modal workspace")
+  expect(errors).toEqual([])
+})
 
 test("modal workspace stays accessible and focusable below the dock width limit", async () => {
   errors.length = 0
