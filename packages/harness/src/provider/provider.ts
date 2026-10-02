@@ -861,7 +861,13 @@ export namespace Provider {
               existingModel?.api.npm ??
               sourceCatalog?.npm ??
               "@ai-sdk/openai-compatible",
-            url: provider?.api ?? existingModel?.api.url ?? sourceCatalog?.api,
+            url:
+              provider?.api ??
+              existingModel?.api.url ??
+              sourceCatalog?.api ??
+              (typeof model.options?.baseURL === "string" ? model.options.baseURL : undefined) ??
+              (typeof provider.options?.baseURL === "string" ? provider.options.baseURL : undefined) ??
+              "",
           },
           status: model.status ?? existingModel?.status ?? "active",
           name,
@@ -1084,6 +1090,8 @@ export namespace Provider {
           model: configProvider?.models?.[modelID]?.billingMode,
           connection: configProvider?.billingMode,
           profile: ProviderProfile.resolve(providerID, provider.profileID)?.billingMode,
+          origins: ProviderProfile.resolve(providerID, provider.profileID)?.billingOrigins,
+          endpoint: String(model.options.baseURL ?? provider.options.baseURL ?? model.api.url),
         })
         model.api.id = model.api.id ?? model.id ?? modelID
         if (modelID === "gpt-5-chat-latest" || (providerID === "openrouter" && modelID === "openai/gpt-5-chat"))

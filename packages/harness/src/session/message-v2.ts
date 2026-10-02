@@ -1,3 +1,5 @@
+import { ToolIntent } from "./tool-intent"
+import { ToolActivityEvidence } from "./activity-evidence"
 import { RuntimeContext } from "../lifecycle/context"
 import { ModelSelection } from "./model-selection-schema"
 import { RolloutRecordingError } from "./rollout/error"
@@ -113,6 +115,23 @@ export namespace MessageV2 {
   export const PatchPart = PartBase.extend({
     type: z.literal("patch"),
     hash: z.string(),
+    checkpoint: z
+      .object({
+        version: z.literal(1),
+        rootID: z.string(),
+        segmentID: z.string(),
+        started: z.number(),
+        ended: z.number().optional(),
+        status: z.enum(["pending", "complete", "incomplete"]),
+        afterHash: z
+          .string()
+          .regex(/^[0-9a-f]{40}$/)
+          .optional(),
+        omissions: z.array(SnapshotSchema.Omission).optional(),
+        baselineOmissions: z.array(SnapshotSchema.Omission).optional(),
+        error: z.enum(["baseline_unavailable", "capture_failed", "interrupted", "legacy_range"]).optional(),
+      })
+      .optional(),
     operation: z
       .discriminatedUnion("status", [
         z.object({ status: z.literal("pending"), toolCallID: z.string() }),
@@ -314,6 +333,10 @@ export namespace MessageV2 {
   })
   export type StepFinishPart = z.infer<typeof StepFinishPart>
 
+  export const ToolStateInput = z
+    .union([z.record(z.string(), z.any()), z.array(z.unknown()), z.string(), z.number(), z.boolean(), z.null()])
+    .meta({ ref: "ToolStateInput" })
+
   export const ToolStatePending = z
     .object({
       status: z.literal("pending"),
@@ -347,7 +370,7 @@ export namespace MessageV2 {
   export const ToolStateRunning = z
     .object({
       status: z.literal("running"),
-      input: z.record(z.string(), z.any()),
+      input: ToolStateInput,
       title: z.string().optional(),
       metadata: z.record(z.string(), z.any()).optional(),
       time: z.object({
@@ -362,7 +385,7 @@ export namespace MessageV2 {
   export const ToolStateCompleted = z
     .object({
       status: z.literal("completed"),
-      input: z.record(z.string(), z.any()),
+      input: ToolStateInput,
       output: z.string(),
       outputBytes: z.number().int().nonnegative().optional(),
       outputArtifact: RolloutSchema.ArtifactRef.optional(),
@@ -384,7 +407,7 @@ export namespace MessageV2 {
   export const ToolStateError = z
     .object({
       status: z.literal("error"),
-      input: z.record(z.string(), z.any()),
+      input: ToolStateInput,
       error: z.string(),
       metadata: z.record(z.string(), z.any()).optional(),
       time: z.object({
@@ -413,6 +436,9 @@ export namespace MessageV2 {
     type: z.literal("tool"),
     callID: z.string(),
     tool: z.string(),
+    workBrief: z.string().optional(),
+    inputShape: z.enum(["flat", "envelope"]).optional(),
+    activityEvidence: ToolActivityEvidence.optional(),
     state: ToolState,
     metadata: z.record(z.string(), z.any()).optional(),
   }).meta({
@@ -496,16 +522,8 @@ export namespace MessageV2 {
         title: z.string().optional(),
         body: z.string().optional(),
         diffs: SnapshotSchema.FileDiff.array(),
-        diffState: z
-          .discriminatedUnion("status", [
-            z.object({ status: z.literal("pending"), deadlineAt: z.number() }),
-            z.object({ status: z.literal("ready") }),
-            z.object({
-              status: z.literal("error"),
-              code: z.enum(["timeout", "git_failure", "unknown", "incomplete"]),
-            }),
-          ])
-          .optional(),
+        diffState: SnapshotSchema.DiffState.optional(),
+        diffIssues: SnapshotSchema.Issue.array().optional(),
       })
       .optional(),
     agent: z.string(),
@@ -743,11 +761,50 @@ export namespace MessageV2 {
   })
   export type Info = z.infer<typeof Info>
 
+  export const PartSummary = z
+    .object({
+      id: z.string(),
+      sessionID: z.string(),
+      messageID: z.string(),
+      type: z.string(),
+      preview: z.string(),
+      render: z.boolean().optional(),
+      status: z.string().optional(),
+      tool: z.string().optional(),
+      content: z
+        .object({ version: z.string(), bytes: z.number().int().nonnegative() })
+        .meta({ ref: "SessionPartContentReference" }),
+    })
+    .meta({ ref: "SessionPartSummary" })
+  export type PartSummary = z.infer<typeof PartSummary>
+  export function summarizePart(part: Part): PartSummary {
+    const text = JSON.stringify(part)
+    return {
+      id: part.id,
+      sessionID: part.sessionID,
+      messageID: part.messageID,
+      type: part.type,
+      render:
+        !["snapshot", "patch", "step-start", "step-finish"].includes(part.type) &&
+        (part.type !== "text" || !isSystemPart(part)),
+      preview:
+        part.type === "text" || part.type === "reasoning"
+          ? part.text.slice(0, 256)
+          : part.type === "tool"
+            ? part.tool
+            : part.type,
+      tool: part.type === "tool" ? part.tool : undefined,
+      status: part.type === "tool" ? part.state.status : undefined,
+      content: { version: new Bun.CryptoHasher("sha256").update(text).digest("hex"), bytes: Buffer.byteLength(text) },
+    }
+  }
+
   export const Event = {
     Updated: BusEvent.define(
       "message.updated",
       z.object({
         info: Info,
+        content: z.object({ version: z.string(), bytes: z.number().int().nonnegative() }).optional(),
       }),
     ),
     Removed: BusEvent.define(
@@ -762,6 +819,23 @@ export namespace MessageV2 {
       z.object({
         part: Part,
         delta: z.string().optional(),
+      }),
+      { streaming: true },
+    ),
+    PartSummary: BusEvent.define(
+      "message.part.summary",
+      z.object({
+        summary: PartSummary,
+        delta: z.string().optional(),
+        subscription: z.number().int().optional(),
+        checkpointEpoch: z.string().optional(),
+        checkpointSeq: z.number().int().optional(),
+        content: z
+          .discriminatedUnion("kind", [
+            z.object({ kind: z.literal("checkpoint"), part: Part }),
+            z.object({ kind: z.literal("delta"), baseVersion: z.string(), delta: z.string() }),
+          ])
+          .optional(),
       }),
       { streaming: true },
     ),
@@ -820,6 +894,7 @@ export namespace MessageV2 {
    * reading `part.synthetic` directly.
    */
   export function isSystemPart(part: Part): boolean {
+    if (part.type === "patch" && part.checkpoint) return true
     if (part.type === "compaction") return true
     if (part.type !== "text") return false
     if (part.origin !== undefined) return part.origin === "system"
@@ -1300,7 +1375,10 @@ export namespace MessageV2 {
                   addModelMessageContribution(provenance, "toolActivity", attachmentIntroduction)
                 }
               }
-              const input = sanitizePromptPayload(part.state.input, sanitization)
+              const input = sanitizePromptPayload(
+                ToolIntent.encode(part.state.input, part.workBrief, part.inputShape),
+                sanitization,
+              )
               const output = part.state.time.compacted
                 ? "[Old tool result content cleared]"
                 : sanitizePromptPayload(part.state.output, sanitization)
@@ -1316,7 +1394,10 @@ export namespace MessageV2 {
               addModelMessageContribution(provenance, "toolActivity", output)
             }
             if (part.state.status === "error") {
-              const input = sanitizePromptPayload(part.state.input, sanitization)
+              const input = sanitizePromptPayload(
+                ToolIntent.encode(part.state.input, part.workBrief, part.inputShape),
+                sanitization,
+              )
               assistantMessage.parts.push({
                 type: ("tool-" + part.tool) as `tool-${string}`,
                 state: "output-error",
@@ -1400,7 +1481,7 @@ export namespace MessageV2 {
     return sortable.toString(16).padStart(16, "0")
   }
 
-  function messageOrderMarker(info: Info) {
+  export function messageOrderMarker(info: Info) {
     return `${messageOrderNumberKey(info.time.created)}_${info.id}`
   }
 
@@ -1528,6 +1609,7 @@ export namespace MessageV2 {
       const nextMarker = messageOrderMarker(info)
       if (previousMarker === nextMarker) {
         await Storage.write(StoragePath.messageInfo(input.scopeID, sessionID, Identifier.asMessageID(info.id)), info)
+        await (await import("./history-display")).SessionHistoryDisplay.messageWritten(input.scopeID, info)
         return info
       }
 
@@ -1537,6 +1619,7 @@ export namespace MessageV2 {
         ready: false,
       })
       await Storage.write(StoragePath.messageInfo(input.scopeID, sessionID, Identifier.asMessageID(info.id)), info)
+      await (await import("./history-display")).SessionHistoryDisplay.messageWritten(input.scopeID, info)
       if (previousMarker) {
         await Storage.remove(StoragePath.sessionMessageOrderMarker(input.scopeID, sessionID, previousMarker))
       }
@@ -1566,6 +1649,9 @@ export namespace MessageV2 {
       const marker = order.byMessageID.get(input.messageID)
       if (!marker) {
         await Storage.remove(StoragePath.messageInfo(input.scopeID, input.sessionID, input.messageID))
+        await (
+          await import("./history-display")
+        ).SessionHistoryDisplay.messageRemoved(input.scopeID, input.sessionID, input.messageID)
         return
       }
 
@@ -1575,6 +1661,9 @@ export namespace MessageV2 {
         ready: false,
       })
       await Storage.remove(StoragePath.messageInfo(input.scopeID, input.sessionID, input.messageID))
+      await (
+        await import("./history-display")
+      ).SessionHistoryDisplay.messageRemoved(input.scopeID, input.sessionID, input.messageID)
       await Storage.remove(StoragePath.sessionMessageOrderMarker(input.scopeID, input.sessionID, marker))
       const markers = order.markers.filter((candidate) => candidate !== marker)
       await Storage.write(StoragePath.sessionMessageOrderState(input.scopeID, input.sessionID), {

@@ -10,8 +10,8 @@ import {
 describe("voice panel model", () => {
   test("emptyVoiceDraft returns blank stt and tts drafts", () => {
     expect(emptyVoiceDraft()).toEqual({
-      stt: { baseURL: "", apiKey: "", model: "", language: "" },
-      tts: { baseURL: "", apiKey: "", model: "", voice: "", instructions: "" },
+      stt: { enabled: false, removeKey: false, baseURL: "", apiKey: "", model: "", language: "" },
+      tts: { enabled: false, removeKey: false, baseURL: "", apiKey: "", model: "", voice: "", instructions: "" },
     })
   })
 
@@ -28,8 +28,23 @@ describe("voice panel model", () => {
     } as VoiceConfig)
 
     expect(draft).toEqual({
-      stt: { baseURL: "https://stt.example", apiKey: "", model: "asr-1", language: "zh" },
-      tts: { baseURL: "https://tts.example", apiKey: "", model: "tts-1", voice: "v1", instructions: "slow" },
+      stt: {
+        enabled: true,
+        removeKey: false,
+        baseURL: "https://stt.example",
+        apiKey: "",
+        model: "asr-1",
+        language: "zh",
+      },
+      tts: {
+        enabled: true,
+        removeKey: false,
+        baseURL: "https://tts.example",
+        apiKey: "",
+        model: "tts-1",
+        voice: "v1",
+        instructions: "slow",
+      },
     })
     expect(voiceDraftFromConfig(undefined)).toEqual(emptyVoiceDraft())
   })
@@ -63,13 +78,13 @@ describe("voice panel model", () => {
     })
   })
 
-  test("buildVoiceConfigPatch clears a model with an empty string and keeps cleared optionals", () => {
+  test("buildVoiceConfigPatch clears optional fields explicitly", () => {
     const loaded = { stt: { baseURL: "https://a.example", model: "m1", language: "zh" } } as VoiceConfig
     const draft = voiceDraftFromConfig(loaded)
     draft.stt.model = ""
     draft.stt.baseURL = ""
 
-    expect(buildVoiceConfigPatch(draft, loaded)).toEqual({ stt: { model: "" } })
+    expect(buildVoiceConfigPatch(draft, loaded)).toEqual({ stt: { model: "", baseURL: null, enabled: true } })
   })
 
   test("buildVoiceConfigPatch treats whitespace as empty and merges both sides", () => {

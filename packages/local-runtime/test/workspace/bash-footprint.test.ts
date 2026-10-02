@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterAll, expect, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -20,7 +21,7 @@ function context(options: {
   return {
     sessionID: crypto.randomUUID(),
     messageID: "message",
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     abort: options.abort ?? new AbortController().signal,
     metadata() {},
     async ask() {},
@@ -49,15 +50,18 @@ nativeTest(
         scope: await tmp.scope(),
         async fn() {
           const running = await LocalBashBackend.execute(
-            { command: "/bin/sleep 20", description: "read-only task", yieldSeconds: 0.01 },
-            context({ workspace: tmp.path, mode: "read_only" }),
+            { command: "/bin/sleep 20", yieldSeconds: 0.01 },
+            { ...context({ workspace: tmp.path, mode: "read_only" }), workBrief: "read-only task" },
           )
           const processInfo = ProcessRegistry.get(running.metadata.processId!)!
           expect(running.metadata.background).toBe(true)
           try {
             const result = await LocalBashBackend.execute(
-              { command: "printf independent", description: "independent writer" },
-              context({ workspace: tmp.path, abort: AbortSignal.timeout(5000) }),
+              { command: "printf independent" },
+              {
+                ...context({ workspace: tmp.path, abort: AbortSignal.timeout(5000) }),
+                workBrief: "independent writer",
+              },
             )
             expect(result.output).toBe("independent")
             expect(processInfo.child?.alive?.()).toBe(true)
@@ -83,8 +87,11 @@ nativeTest(
           scope: scopeA,
           async fn() {
             const running = await LocalBashBackend.execute(
-              { command: "/bin/sleep 20", description: "workspace writer", yieldSeconds: 0.01 },
-              context({ workspace: a.path, mode: "workspace_write", shares: shared ? [b.path] : [] }),
+              { command: "/bin/sleep 20", yieldSeconds: 0.01 },
+              {
+                ...context({ workspace: a.path, mode: "workspace_write", shares: shared ? [b.path] : [] }),
+                workBrief: "workspace writer",
+              },
             )
             return ProcessRegistry.get(running.metadata.processId!)!
           },
@@ -94,12 +101,15 @@ nativeTest(
             scope: scopeB,
             async fn() {
               const result = LocalBashBackend.execute(
-                { command: "printf independent", description: "other workspace writer" },
-                context({
-                  workspace: b.path,
-                  mode: "workspace_write",
-                  abort: AbortSignal.timeout(5000),
-                }),
+                { command: "printf independent" },
+                {
+                  ...context({
+                    workspace: b.path,
+                    mode: "workspace_write",
+                    abort: AbortSignal.timeout(5000),
+                  }),
+                  workBrief: "other workspace writer",
+                },
               )
               expect((await result).output).toBe("independent")
               expect(processInfo.child?.alive?.()).toBe(true)

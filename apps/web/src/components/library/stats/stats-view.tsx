@@ -62,7 +62,7 @@ export function StatsView(props: { registerSync?: (handle: LibraryStatsSyncHandl
       </Show>
       <Show when={error()}>
         <div class="library-sync-row">
-          <span class="text-12-regular text-text-weak">
+          <span class="app-panel-caption text-text-weak">
             {data()
               ? _({ id: "app.library.stats.stale", message: "Refresh failed. The previous snapshot is still shown." })
               : error()}
@@ -77,13 +77,13 @@ export function StatsView(props: { registerSync?: (handle: LibraryStatsSyncHandl
         fallback={
           <div class="flex items-center justify-center py-12">
             <div class="flex max-w-sm flex-col items-center gap-2 text-center">
-              <div class="text-12-medium text-text-base">
+              <div class="app-panel-caption text-text-base">
                 {loading()
                   ? _({ id: "app.library.stats.loading", message: "Loading library stats…" })
                   : _({ id: "app.library.stats.unavailable", message: "Library stats are unavailable right now" })}
               </div>
               <Show when={error() && !loading()}>
-                <div class="text-11-regular text-text-weak">{error()}</div>
+                <div class="app-panel-caption text-text-weak">{error()}</div>
               </Show>
             </div>
           </div>

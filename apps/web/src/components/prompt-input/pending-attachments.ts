@@ -15,14 +15,18 @@ export interface PendingPromptAttachment {
   filename: string
   mime: string
   size: number
-  status: "uploading" | "uploaded"
+  status: "uploading" | "uploaded" | "failed"
+  error?: string
 }
 
 export interface PendingAttachmentTracker {
   pending: Accessor<PendingPromptAttachment[]>
   /** True while any entry is still in flight; a flashing entry does not block sending. */
   uploading: Accessor<boolean>
-  begin(entry: Omit<PendingPromptAttachment, "status">): void
+  blocking: Accessor<boolean>
+  file(id: string): File | undefined
+  begin(entry: Omit<PendingPromptAttachment, "status" | "error">, file?: File): void
+  markFailed(id: string, error?: string): void
   markUploaded(id: string): void
   end(id: string): void
   cancel(id: string): boolean
@@ -38,6 +42,7 @@ export function createPendingAttachmentTracker(options?: { flashMs?: number }): 
   const [pending, setPending] = createSignal<PendingPromptAttachment[]>([])
   const cancelled = new Set<string>()
   const flashTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  const files = new Map<string, File>()
 
   const clearFlash = (id: string) => {
     const timer = flashTimers.get(id)
@@ -49,14 +54,26 @@ export function createPendingAttachmentTracker(options?: { flashMs?: number }): 
   return {
     pending,
     uploading: () => pending().some((entry) => entry.status === "uploading"),
-    begin(entry) {
+    blocking: () => pending().some((entry) => entry.status !== "uploaded"),
+    file: (id) => files.get(id),
+    begin(entry, file) {
       clearFlash(entry.id)
       cancelled.delete(entry.id)
-      setPending((list) => [...list, { ...entry, status: "uploading" }])
+      if (file) files.set(entry.id, file)
+      setPending((list) =>
+        list.some((item) => item.id === entry.id)
+          ? list.map((item) => (item.id === entry.id ? { ...entry, status: "uploading" } : item))
+          : [...list, { ...entry, status: "uploading" }],
+      )
+    },
+    markFailed(id, error) {
+      if (cancelled.has(id)) return
+      setPending((list) => list.map((entry) => (entry.id === id ? { ...entry, status: "failed", error } : entry)))
     },
     markUploaded(id) {
       if (!pending().some((entry) => entry.id === id && entry.status === "uploading")) return
       clearFlash(id)
+      files.delete(id)
       setPending((list) => list.map((entry) => (entry.id === id ? { ...entry, status: "uploaded" } : entry)))
       flashTimers.set(
         id,
@@ -69,11 +86,13 @@ export function createPendingAttachmentTracker(options?: { flashMs?: number }): 
     end(id) {
       clearFlash(id)
       cancelled.delete(id)
+      files.delete(id)
       setPending((list) => list.filter((entry) => entry.id !== id))
     },
     cancel(id) {
       if (!pending().some((entry) => entry.id === id)) return false
       clearFlash(id)
+      files.delete(id)
       if (pending().some((entry) => entry.id === id && entry.status === "uploading")) cancelled.add(id)
       setPending((list) => list.filter((entry) => entry.id !== id))
       return true
@@ -85,10 +104,11 @@ export function createPendingAttachmentTracker(options?: { flashMs?: number }): 
       for (const entry of pending()) if (entry.status === "uploading") cancelled.add(entry.id)
       for (const timer of flashTimers.values()) clearTimeout(timer)
       flashTimers.clear()
+      files.clear()
       setPending([])
     },
     scope() {
-      const entries = pending().filter((entry) => entry.status === "uploading")
+      const entries = pending().filter((entry) => entry.status !== "uploaded")
       return {
         count: entries.length,
         bytes: entries.reduce((total, entry) => total + entry.size, 0),

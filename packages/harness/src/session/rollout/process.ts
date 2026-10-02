@@ -3,6 +3,7 @@ import { ProcessRegistry } from "../../process/registry"
 import { RolloutArtifact } from "./artifact"
 import { RolloutLedger } from "./ledger"
 import type { RolloutSchema } from "./schema"
+import { SessionActivityEvent } from "../activity-events"
 
 export namespace RolloutProcess {
   const runtimeState = RuntimeContext.state(() => ({
@@ -58,6 +59,18 @@ export namespace RolloutProcess {
       stream: await RolloutArtifact.get(input.owner, stream.id),
     }
     await RolloutLedger.writeProcess(process).catch(onFailure)
+    const tool = (await RolloutLedger.tools(input.owner, input.runID)).find((tool) => tool.id === input.toolExecutionID)
+    let lastPublished = 0
+    const publish = async (force = false) => {
+      if (!tool || (!force && Date.now() - lastPublished < 180)) return
+      lastPublished = Date.now()
+      await SessionActivityEvent.tool(input.owner, {
+        messageID: tool.messageID,
+        callID: tool.toolCallID,
+        processID: process.id,
+        revision: process.stream.bytes + (process.ended ? 1 : 0),
+      })
+    }
     const settled = Promise.withResolvers<void>()
     void settled.promise.catch(() => {})
     instanceState.active.set(input.processID, { owner: input.owner, runID: input.runID, done: settled.promise })
@@ -78,6 +91,7 @@ export namespace RolloutProcess {
             }
             process.stream = await stream.checkpoint()
             await RolloutLedger.writeProcess(process)
+            await publish()
           })
           .catch(onFailure)
         return pending
@@ -92,6 +106,7 @@ export namespace RolloutProcess {
           process.signal = completion.signal
           process.pid = completion.pid
           await RolloutLedger.writeProcess(process)
+          await publish(true)
         })()
           .catch(onFailure)
           .then(

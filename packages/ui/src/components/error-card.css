@@ -1,3 +1,11 @@
+[data-slot="tool-result-error"] {
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
 [data-component="error-card"] {
   width: 100%;
   min-width: 0;

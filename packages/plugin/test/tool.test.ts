@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, test } from "bun:test"
 import z from "zod"
 import { tool, type ToolContext, type ToolDefinition, type ToolExposure, type ToolResult } from "../src/tool"
@@ -55,7 +56,7 @@ describe("tool()", () => {
     const context: ToolContext = {
       sessionID: "ses",
       messageID: "msg",
-      agent: "synergy",
+      agent: TEST_AGENT_NAME,
       abort: new AbortController().signal,
       directory: "/tmp",
     }
@@ -67,7 +68,7 @@ describe("tool()", () => {
       },
     })
     const result = await definition.execute({}, context)
-    expect(result).toEqual({ output: "ses:msg:synergy" })
+    expect(result).toEqual({ output: `ses:msg:${TEST_AGENT_NAME}` })
   })
 
   test("ToolDefinition carries the shape used by PluginManifest compilation", () => {

@@ -1,8 +1,41 @@
 import { describe, expect, test } from "bun:test"
 import { testRuntime } from "../support/runtime"
 import { WorkspaceCatalog } from "../../src/workspace/catalog"
+import { Storage } from "../../src/storage/storage"
 
 describe("Workspace catalog", () => {
+  test("an existing registration remains readable while the writer is occupied", async () => {
+    await using runtime = await testRuntime()
+    await runtime.run(async () => {
+      const input = { scopeID: "project", type: "main", hostID: "host", path: "/registered", physicalID: "identity" }
+      const registered = await WorkspaceCatalog.register(input)
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const writer = Storage.transaction(async () => {
+        entered.resolve()
+        await release.promise
+      })
+      await entered.promise
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        const result = await Promise.race([
+          WorkspaceCatalog.register(input),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error("Registration lookup waited for the held writer")), 2000)
+          }),
+        ])
+        expect(result).toEqual(registered)
+        await expect(WorkspaceCatalog.register({ ...input, physicalID: "replacement" })).rejects.toMatchObject({
+          name: "WorkspaceUnavailable",
+        })
+      } finally {
+        clearTimeout(timer)
+        release.resolve()
+        await writer
+      }
+    })
+  })
+
   test("shares one identity for a local binding without sharing another host's files", async () => {
     await using runtime = await testRuntime()
     await runtime.run(async () => {

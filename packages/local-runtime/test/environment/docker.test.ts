@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 import { WorkspaceFileService } from "../../src/workspace-file/service"
 import { WorktreeProcess } from "../../src/workspace/process"
@@ -424,7 +425,7 @@ test.skipIf(!image)(
             )
             const response = await shell({
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test", modelID: "test" },
               command: "cat result; printf shell-content >> result",
             })
@@ -479,7 +480,7 @@ test.skipIf(!image)(
               const context = {
                 sessionID: session.id,
                 messageID: "msg_files",
-                agent: "synergy",
+                agent: PrimaryAgentIdentity.names.general,
                 abort: AbortSignal.any([]),
                 ask: async () => {},
                 metadata() {},

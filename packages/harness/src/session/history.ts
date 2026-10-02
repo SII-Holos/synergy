@@ -13,14 +13,291 @@ import { MessageV2 } from "./message-v2"
 import { SessionMessageCache } from "./message-cache"
 import { applyModelWorkingSetProjection, modelWorkingSetProjection } from "./model-working-set"
 import { SessionManager } from "./manager"
+import { SessionHistoryDisplay } from "./history-display"
+import { SessionHistorySearch } from "./history-search"
+import { UpgradeWork } from "../storage/upgrade-work"
+import { withStorageQueueOptions } from "../storage/queue"
 import { Snapshot } from "./snapshot"
 import { SnapshotRestore } from "./snapshot-restore"
+import { SnapshotRanges } from "./snapshot-ranges"
+import { SessionFileRestore } from "./file-restore"
 import type { Info } from "./types"
 
 const log = Log.create({ service: "session.history" })
 const PAGE_HYDRATION_CONCURRENCY = 16
 
 export namespace SessionHistory {
+  export const TimelinePage = SessionHistoryDisplay.TimelinePage
+  export const PartPage = SessionHistoryDisplay.PartPage
+  export const PartContent = SessionHistoryDisplay.PartContent
+  export const DisplayConflict = SessionHistoryDisplay.Conflict
+  export const summarizePart = SessionHistoryDisplay.summarizePart
+  export const summarizeMessage = SessionHistoryDisplay.summarizeMessage
+  export const MessageDetails = SessionHistoryDisplay.MessageDetails
+
+  export async function prepareDisplay(sessionID: string, progress?: (current: number, total: number) => void) {
+    const session = await SessionManager.requireSession(sessionID)
+    return prepareSessionDisplay(session, progress)
+  }
+
+  async function prepareSessionDisplay(session: Info, progress?: (current: number, total: number) => void) {
+    return prepareDisplayOwner({ scopeID: session.scope.id, sessionID: session.id }, progress)
+  }
+
+  export async function prepareDisplayOwner(
+    owner: { scopeID: string; sessionID: string },
+    progress?: (current: number, total: number) => void,
+  ) {
+    const scopeID = asScopeID(owner.scopeID)
+    const sessionID = asSessionID(owner.sessionID)
+    await SessionHistoryDisplay.prepare(
+      scopeID,
+      sessionID,
+      async () => {
+        const infos = await MessageV2.readInfoList({ scopeID, sessionID })
+        return deriveInfoSemantics(infos, (messageID) => MessageV2.parts({ scopeID, sessionID, messageID }))
+      },
+      progress,
+    )
+  }
+
+  export async function timelinePage(input: {
+    sessionID: string
+    cursor?: string
+    limit?: number
+    messageID?: string
+  }) {
+    const session = await SessionManager.requireSession(input.sessionID)
+    await prepareSessionDisplay(session)
+    return SessionHistoryDisplay.timelinePage(input, await displayVisibility(session), session.scope.id)
+  }
+
+  export async function latestRootID(sessionID: string) {
+    const session = await SessionManager.requireSession(sessionID)
+    await prepareSessionDisplay(session)
+    return SessionHistoryDisplay.latestRoot(session.scope.id, sessionID, await displayVisibility(session))
+  }
+
+  async function displayVisibility(session: Info) {
+    const sessionID = session.id
+    const [events, lastRoot] = await Promise.all([
+      readSessionEvents(session),
+      SessionHistoryDisplay.latestRootCreated(session.scope.id, sessionID),
+    ])
+    const hidden = new Set<string>()
+    let cut: string | undefined
+    for (const event of activeRollbacks(events)) {
+      const id = getCutMessageID(event)
+      const header =
+        id && canUnrollbackAt(lastRoot, event)
+          ? await SessionHistoryDisplay.header(session.scope.id, sessionID, id)
+          : undefined
+      if (header) cut = cut ? (cut < header.order ? cut : header.order) : header.order
+      else for (const messageID of event.droppedMessageIDs) hidden.add(messageID)
+    }
+    return { hidden, cut }
+  }
+
+  async function requireDisplayMessage(session: Info, messageID: string) {
+    const sessionID = session.id
+    await prepareSessionDisplay(session)
+    const [header, visibility] = await Promise.all([
+      SessionHistoryDisplay.header(session.scope.id, sessionID, messageID),
+      displayVisibility(session),
+    ])
+    if (header && !visibility.hidden.has(messageID) && (!visibility.cut || header.order < visibility.cut)) return header
+    throw new Storage.NotFoundError({ message: "Message is outside the effective Session history" })
+  }
+  export async function partPage(input: Parameters<typeof SessionHistoryDisplay.partPage>[0]) {
+    const session = await SessionManager.requireSession(input.sessionID)
+    await requireDisplayMessage(session, input.messageID)
+    return SessionHistoryDisplay.partPage(input, session.scope.id)
+  }
+  export async function partContent(input: Parameters<typeof SessionHistoryDisplay.partContent>[0]) {
+    const session = await SessionManager.requireSession(input.sessionID)
+    await requireDisplayMessage(session, input.messageID)
+    return SessionHistoryDisplay.partContent(input, session.scope.id)
+  }
+  export async function messageDetails(input: Parameters<typeof SessionHistoryDisplay.messageDetails>[0]) {
+    const session = await SessionManager.requireSession(input.sessionID)
+    await requireDisplayMessage(session, input.messageID)
+    return SessionHistoryDisplay.messageDetails(input, session.scope.id)
+  }
+
+  export const SearchPage = z
+    .object({
+      items: z
+        .object({
+          sessionID: Identifier.schema("session"),
+          messageID: Identifier.schema("message"),
+          partID: Identifier.schema("part"),
+          version: z.string(),
+          category: z.enum(["text", "reasoning", "tool"]),
+          role: z.enum(["user", "assistant"]),
+          offset: z.number(),
+          text: z.string(),
+        })
+        .array(),
+      nextCursor: z.string().nullable(),
+      preparing: z.boolean(),
+      prepared: z.number(),
+      scanned: z.number(),
+      indexed: z.boolean(),
+    })
+    .meta({ ref: "SessionHistorySearchPage" })
+
+  export async function search(input: {
+    sessionID: string
+    query: string
+    reasoning?: boolean
+    tools?: boolean
+    cursor?: string
+    limit?: number
+    signal?: AbortSignal
+  }): Promise<z.infer<typeof SearchPage>> {
+    const session = await SessionManager.requireSession(input.sessionID)
+    await prepareSessionDisplay(session)
+    input.signal?.throwIfAborted()
+    const release = UpgradeWork.priority(input.sessionID)
+    const preparation = await SessionHistorySearch.prepareBatch(session.scope.id, input.sessionID).finally(release)
+    if (!preparation.ready) SessionHistorySearch.requestBackground(session.scope.id, input.sessionID)
+    const fingerprint = new Bun.CryptoHasher("sha256")
+      .update(
+        JSON.stringify([
+          session.scope.id,
+          input.sessionID,
+          input.query,
+          Boolean(input.reasoning),
+          Boolean(input.tools),
+        ]),
+      )
+      .digest("hex")
+    let cursor: string | undefined
+    if (input.cursor) {
+      try {
+        const value = z
+          .object({ cursor: z.string(), fingerprint: z.literal(fingerprint) })
+          .parse(JSON.parse(Buffer.from(input.cursor, "base64url").toString()))
+        cursor = value.cursor
+      } catch {
+        throw new DisplayConflict({ message: "Search cursor belongs to another query" })
+      }
+    }
+    const page = await Storage.snapshot((tx) =>
+      tx.searchTextProjection({
+        scopeID: session.scope.id,
+        sessionID: input.sessionID,
+        query: input.query,
+        cursor,
+        limit: input.limit,
+        categories: [
+          "text",
+          ...(input.reasoning ? ["reasoning" as const] : []),
+          ...(input.tools ? ["tool" as const] : []),
+        ],
+      }),
+    )
+    const ids = [...new Set(page.items.map((item) => item.key[4]!))]
+    const [headers, visibility] = await Promise.all([
+      Storage.readMany<SessionHistoryDisplay.MessageSummary>(
+        ids.map((id) => StoragePath.sessionDisplayMessage(session.scope.id, input.sessionID, id)),
+      ),
+      displayVisibility(session),
+    ])
+    const headerMap = new Map(ids.map((id, index) => [id, headers[index]]))
+    const items = page.items.flatMap((item) => {
+      const header = headerMap.get(item.key[4]!)
+      if (
+        !header ||
+        header.info.visible === false ||
+        visibility.hidden.has(header.info.id) ||
+        (visibility.cut && header.order >= visibility.cut)
+      )
+        return []
+      return [
+        {
+          sessionID: input.sessionID,
+          messageID: header.info.id,
+          partID: item.key[6]!,
+          version: item.version,
+          category: item.category,
+          role: header.info.role,
+          offset: item.offset,
+          text: item.text,
+        },
+      ]
+    })
+    return {
+      items,
+      nextCursor:
+        page.nextCursor && Buffer.from(JSON.stringify({ cursor: page.nextCursor, fingerprint })).toString("base64url"),
+      preparing: !preparation.ready,
+      prepared: preparation.prepared,
+      scanned: page.scanned,
+      indexed: page.indexed,
+    }
+  }
+  export async function text(input: {
+    sessionID: string
+    messageID?: string
+    rootID?: string
+    role?: "user" | "assistant"
+    latest?: boolean
+    reasoning?: boolean
+    tools?: boolean
+  }) {
+    await prepareDisplay(input.sessionID)
+    return withStorageQueueOptions({ priority: "background" }, () =>
+      Storage.snapshot(async () => {
+        const headers: SessionHistoryDisplay.MessageSummary[] = []
+        let cursor: string | undefined
+        do {
+          const page = await timelinePage({
+            sessionID: input.sessionID,
+            messageID: input.messageID,
+            cursor,
+            limit: 100,
+          })
+          headers.unshift(...page.items)
+          cursor = input.messageID ? undefined : (page.nextCursor ?? undefined)
+        } while (cursor)
+        let selected = headers.filter(
+          (header) =>
+            (!input.messageID || header.info.id === input.messageID) &&
+            (!input.rootID || header.info.rootID === input.rootID || header.info.id === input.rootID) &&
+            (!input.role || header.info.role === input.role) &&
+            header.info.visible !== false,
+        )
+        if (input.latest) selected = selected.slice(-1)
+        const session = await SessionManager.requireSession(input.sessionID)
+        const chunks: string[] = []
+        for (const header of selected) {
+          const parts: MessageV2.Part[] = []
+          for await (const record of Storage.records<MessageV2.Part>({
+            kind: "part",
+            scopeID: session.scope.id,
+            sessionID: input.sessionID,
+            messageID: header.info.id,
+          }))
+            parts.push(record.value)
+          const texts = parts.filter(
+            (part): part is MessageV2.TextPart => part.type === "text" && !MessageV2.isSystemPart(part),
+          )
+          for (const part of texts) chunks.push(part.text)
+          if (input.reasoning || (header.info.role === "assistant" && !parts.some((part) => part.type === "text")))
+            for (const part of parts) if (part.type === "reasoning") chunks.push(part.text)
+          if (input.tools)
+            for (const part of parts) {
+              if (part.type !== "tool") continue
+              chunks.push(JSON.stringify(part.state.input))
+              if (part.state.status === "completed") chunks.push(part.state.output)
+              if (part.state.status === "error") chunks.push(part.state.error)
+            }
+        }
+        return chunks.join("\n\n")
+      }),
+    )
+  }
   const { asScopeID, asSessionID, asHistoryID } = Identifier
 
   export const RollbackEvent = z
@@ -75,15 +352,8 @@ export namespace SessionHistory {
     .meta({ ref: "SessionRollbackSummary" })
   export type RollbackSummary = z.infer<typeof RollbackSummary>
 
-  export const FileRestoreResult = z
-    .object({
-      ...SnapshotRestore.Result.shape,
-      patchPartIDs: z.array(Identifier.schema("part")),
-      rollbackID: Identifier.schema("history").optional(),
-      messageID: Identifier.schema("message").optional(),
-      partID: Identifier.schema("part").optional(),
-    })
-    .meta({ ref: "SessionFileRestoreResult" })
+  export const FileRestoreResult = SessionFileRestore.Result
+  export const FileRestorePreview = SessionFileRestore.Preview
   export type FileRestoreResult = z.infer<typeof FileRestoreResult>
 
   export const UnrollbackConflictError = NamedError.create(
@@ -258,71 +528,142 @@ export namespace SessionHistory {
       }),
   )
 
+  export const FileDiffInput = z.object({
+    sessionID: Identifier.schema("session"),
+    messageID: Identifier.schema("message").optional(),
+    workspaceID: z.string(),
+    generation: z.number().int().positive(),
+    file: z.string().min(1),
+  })
+  export const fileDiff = fn(FileDiffInput, async (input) => {
+    await requireRestoreSession(input.sessionID)
+    const messages = await SessionHistory.rawMessages({ sessionID: input.sessionID })
+    const selected = input.messageID
+      ? messages.filter((message) => message.info.id === input.messageID || message.info.rootID === input.messageID)
+      : messages
+    const range = SnapshotRanges.net(SnapshotRanges.fromMessages(selected)).find(
+      (range) => range.workspace?.id === input.workspaceID && range.workspace.generation === input.generation,
+    )
+    if (!range?.from || !range.to)
+      throw new SnapshotRestore.Invalid({ message: "Historical file versions are unavailable" })
+    if (range.omissions?.some((item) => item.file === input.file))
+      throw new SnapshotRestore.Invalid({ message: "This file was not fully captured" })
+    const diff = await Snapshot.fileDiff(range.from, range.to, input.file, input.sessionID, AbortSignal.timeout(30000))
+    if (!diff) throw new SnapshotRestore.Invalid({ message: "This file has no recorded difference" })
+    return { ...diff, workspace: range.workspace }
+  })
+
   const RestoreFilesInput = z.object({
     sessionID: Identifier.schema("session"),
     rollbackID: Identifier.schema("history").optional(),
     messageID: Identifier.schema("message").optional(),
     partID: Identifier.schema("part").optional(),
     files: z.array(z.string()).max(10_000).optional(),
+    selectedFiles: z
+      .array(z.object({ workspaceID: z.string(), generation: z.number().int().positive(), file: z.string() }))
+      .max(10_000)
+      .optional(),
+    previewID: z.string().uuid().optional(),
   })
   export const restoreFiles = fn(RestoreFilesInput, (input) => restoreFilesWithSignal(input))
+  export const previewFiles = fn(RestoreFilesInput.omit({ previewID: true }), (input) => previewFilesWithSignal(input))
+
+  async function restoreSelection(input: z.infer<typeof RestoreFilesInput>) {
+    const [raw, events] = await Promise.all([rawMessages({ sessionID: input.sessionID }), readEvents(input.sessionID)])
+    const rollback = input.rollbackID
+      ? activeRollbacks(events).find((event) => event.id === input.rollbackID)
+      : undefined
+    if (input.rollbackID && !rollback)
+      throw new FileRestoreMissingPatchDataError({ message: "The selected rollback is unavailable" })
+    const selected = raw.filter((message) =>
+      rollback
+        ? rollback.droppedMessageIDs.includes(message.info.id)
+        : input.messageID
+          ? message.info.id === input.messageID || message.info.rootID === input.messageID
+          : true,
+    )
+    const ranges = SnapshotRanges.net(
+      SnapshotRanges.fromMessages(
+        selected.map((message) =>
+          input.partID ? { ...message, parts: message.parts.filter((part) => part.id === input.partID) } : message,
+        ),
+      ),
+    )
+    const patches: Snapshot.Patch[] = []
+    for (const range of ranges) {
+      if (!range.from || !range.to || !range.workspace) continue
+      const files = await Snapshot.changedPaths(range.from, range.to, input.sessionID)
+      const source = range.workspace
+      const chosen = files.filter(
+        (file) =>
+          !range.omissions?.some((item) => item.file === file) &&
+          (!input.selectedFiles ||
+            input.selectedFiles.some(
+              (item) => item.workspaceID === source.id && item.generation === source.generation && item.file === file,
+            )) &&
+          (!input.files || input.files.includes(file) || input.files.includes(path.join(source.root, file))),
+      )
+      if (chosen.length)
+        patches.push({
+          hash: range.from,
+          workspace: source,
+          files: chosen.map((file) => (source.pathKind === "workspace" ? file : path.join(source.root, file))),
+        })
+    }
+    if (!patches.length && !ranges.some((range) => range.checkpointID) && !input.selectedFiles) {
+      const legacy = collectPatches(raw, {
+        rollback,
+        messageID: input.messageID,
+        partID: input.partID,
+        files: input.files,
+      }).filter((part) => !part.checkpoint)
+      patches.push(...legacy)
+    }
+    if (!patches.length)
+      throw new FileRestoreMissingPatchDataError({
+        message: "No complete snapshot pair is available for the selected files",
+      })
+    return {
+      patches,
+      metadata: {
+        patchPartIDs: selected.flatMap((message) =>
+          message.parts.filter((part) => part.type === "patch").map((part) => part.id),
+        ),
+        rollbackID: input.rollbackID,
+        messageID: input.messageID,
+        partID: input.partID,
+      },
+    }
+  }
+
+  async function requireRestoreSession(sessionID: string) {
+    const session = await SessionManager.requireSession(sessionID)
+    if (session.scope.id !== ScopeContext.current.scope.id)
+      throw new Storage.NotFoundError({ message: "Session not found in this Scope" })
+  }
+
+  export async function previewFilesWithSignal(input: z.infer<typeof RestoreFilesInput>, signal?: AbortSignal) {
+    await requireRestoreSession(input.sessionID)
+    return SessionManager.run(
+      input.sessionID,
+      async (lease) => {
+        const abort = signal ? AbortSignal.any([signal, lease.signal]) : lease.signal
+        const selection = await restoreSelection(input)
+        return SessionFileRestore.prepare({ sessionID: input.sessionID, ...selection, signal: abort })
+      },
+      { workspace: "history" },
+    )
+  }
 
   export async function restoreFilesWithSignal(
     input: z.infer<typeof RestoreFilesInput>,
     signal?: AbortSignal,
   ): Promise<FileRestoreResult> {
-    const session = await SessionManager.requireSession(input.sessionID)
-    if (session.scope.id !== ScopeContext.current.scope.id)
-      throw new Storage.NotFoundError({ message: "Session not found in this Scope" })
-    return SessionManager.run(
-      input.sessionID,
-      async (lease) => {
-        const abort = signal ? AbortSignal.any([signal, lease.signal]) : lease.signal
-        abort.throwIfAborted()
-        const [raw, events] = await Promise.all([
-          rawMessages({ sessionID: input.sessionID }),
-          readEvents(input.sessionID),
-        ])
-        const active = activeRollbacks(events)
-        const rollbackEvent = input.rollbackID
-          ? active.find((event) => event.id === input.rollbackID)
-          : input.messageID || input.partID
-            ? undefined
-            : latest(events)
-        if ((input.rollbackID || (!input.messageID && !input.partID)) && !rollbackEvent) {
-          throw new FileRestoreMissingPatchDataError({
-            message: "No patch data is available for the requested file restore.",
-          })
-        }
-        const patches = collectPatches(raw, {
-          rollback: rollbackEvent,
-          messageID: input.messageID,
-          partID: input.partID,
-          files: input.files,
-        })
-
-        if (patches.length === 0) {
-          throw new FileRestoreMissingPatchDataError({
-            message: "No patch data is available for the requested file restore.",
-          })
-        }
-
-        const result = await Snapshot.revert(
-          patches.map((patch) => ({ hash: patch.hash, workspace: patch.workspace, files: patch.files })),
-          input.sessionID,
-          abort,
-        )
-
-        return {
-          ...result,
-          patchPartIDs: patches.map((patch) => patch.id),
-          rollbackID: rollbackEvent?.id ?? input.rollbackID,
-          messageID: input.messageID,
-          partID: input.partID,
-        }
-      },
-      { workspace: "history" },
-    )
+    await requireRestoreSession(input.sessionID)
+    if (input.previewID) return SessionFileRestore.apply(input.sessionID, input.previewID, signal)
+    throw new SnapshotRestore.Invalid({
+      message: "Preview file restoration and confirm its version before applying it",
+    })
   }
 
   async function loadRawFromDisk(sessionID: string) {
@@ -508,6 +849,11 @@ export namespace SessionHistory {
 
   export async function readEvents(sessionID: string) {
     const session = await SessionManager.requireSession(sessionID)
+    return readSessionEvents(session)
+  }
+
+  async function readSessionEvents(session: Info) {
+    const sessionID = session.id
     const scopeID = asScopeID((session.scope as Scope).id)
     const ids = await Storage.scan(StoragePath.sessionHistoryRoot(scopeID, asSessionID(sessionID)))
     const events = await Storage.readMany<Event>(
@@ -712,8 +1058,12 @@ export namespace SessionHistory {
       // Only explicit non-root injections are exempt; a new root (or an
       // un-derived legacy user message) invalidates redo.
       if ((msg as MessageV2.User).isRoot === false) return false
-      return msg.time.created > event.time.created
+      return !canUnrollbackAt(msg.time.created, event)
     })
+  }
+
+  function canUnrollbackAt(lastRootCreated: number, event: RollbackEvent) {
+    return lastRootCreated <= event.time.created
   }
 
   function summarizePatches(messages: MessageV2.WithParts[]) {

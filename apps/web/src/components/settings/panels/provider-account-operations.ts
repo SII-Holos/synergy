@@ -48,6 +48,21 @@ export function canAddProviderAccount(connection: Pick<ProviderConnection, "canC
   return connection.canCreateSibling
 }
 
+export function createProviderAccountCommand(
+  write: () => Promise<ProviderConnection>,
+  refresh: (connection: ProviderConnection) => Promise<void>,
+) {
+  let receipt: ProviderConnection | undefined
+  return {
+    persisted: () => Boolean(receipt),
+    async run() {
+      receipt ??= await write()
+      await refresh(receipt)
+      return receipt
+    },
+  }
+}
+
 export async function saveProviderAccount(
   client: ProviderConnectionClient,
   input: SaveProviderAccountInput,

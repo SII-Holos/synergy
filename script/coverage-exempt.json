@@ -51,10 +51,6 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
-          "glob": "src/components/agenda/expand.ts",
-          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
-        },
-        {
           "glob": "src/components/agenda/form.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
@@ -177,6 +173,10 @@
         {
           "glob": "src/components/dialog/project-directory-picker.tsx",
           "reason": "dialogs require interactive flows"
+        },
+        {
+          "glob": "src/components/file-workbench/close-dialog.tsx",
+          "reason": "Save, discard, cancel, dismissal and focus return are verified by test/components/dialog/file-entry-dialog.dom.test.ts with the real shared dialog provider in Chromium; Bun cannot instrument the Vite renderer's TSX source. File save failures and draft revisions remain measured in test/context/file/close-policy.test.ts."
         },
         {
           "glob": "src/components/file-workbench/content.tsx",
@@ -335,6 +335,10 @@
           "reason": "voice dictation requires a live editor runtime and microphone access"
         },
         {
+          "glob": "src/components/prompt-input/voice-dictation-browser.ts",
+          "reason": "Browser MediaRecorder and OfflineAudioContext bindings are exercised with real Chromium audio in test/components/settings/panels/VoicePanel.test.ts. Vite/browser execution does not contribute to Bun lcov; recorder state and audio conversion remain measured by voice-dictation.test.ts and voice-dictation-audio.test.ts."
+        },
+        {
           "glob": "src/components/prompt-input/worktree-unavailable-dialog.tsx",
           "reason": "prompt input requires a live editor runtime"
         },
@@ -447,27 +451,11 @@
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
         {
-          "glob": "src/components/session/session-progress-dag.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
-        },
-        {
-          "glob": "src/components/session/session-progress-island.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
-        },
-        {
-          "glob": "src/components/session/session-progress-panel.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
-        },
-        {
-          "glob": "src/components/session/session-progress-todo.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+          "glob": "src/components/session/session-surface-focus.tsx",
+          "reason": "Solid focus context is exercised in test/components/session/decision-surface.dom.test.tsx; Bun cannot instrument Vite/Chromium execution."
         },
         {
           "glob": "src/components/session/session-review-tab.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
-        },
-        {
-          "glob": "src/components/session/session-timeline.tsx",
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
         {
@@ -476,10 +464,6 @@
         },
         {
           "glob": "src/components/session/session-transition-progress-steps.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
-        },
-        {
-          "glob": "src/components/session/subagent-dock.tsx",
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
         {
@@ -607,6 +591,10 @@
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
+          "glob": "src/components/settings/panels/LanguageToolsPanel.tsx",
+          "reason": "Rendered by test/components/settings/settings-details.dom.test.tsx for owner-specific formatter configuration and selected-project status. Vite/browser execution does not contribute to Bun lcov."
+        },
+        {
           "glob": "src/components/settings/panels/McpPanel.tsx",
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
@@ -731,6 +719,10 @@
           "reason": "workspace/browser surfaces require a live runtime"
         },
         {
+          "glob": "src/components/workspace/browser/browser-catalog.tsx",
+          "reason": "Canonical catalog metadata, native presentation initialization and peer page switching are verified by test/components/workspace/browser/browser-panel-presentation.dom.test.tsx and browser-workbench-sync.dom.test.tsx in Chromium; Bun cannot instrument the Vite renderer's TSX source."
+        },
+        {
           "glob": "src/components/workspace/browser/browser-data-settings.tsx",
           "reason": "Account filtering and origin-scoped fill are exercised by browser-interaction.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
         },
@@ -739,8 +731,12 @@
           "reason": "Source selection, data switches, narrow layout and partial results are exercised by browser-interaction.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
         },
         {
+          "glob": "src/components/workspace/browser/browser-new-tab.tsx",
+          "reason": "New-tab search composition/submission, footer styles and keyboard import/focus return are exercised by browser-interaction.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
+        },
+        {
           "glob": "src/components/workspace/browser/browser-panel.tsx",
-          "reason": "workspace/browser surfaces require a live runtime"
+          "reason": "Native presentation initialization and peer page switching are exercised by browser-panel-presentation.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
         },
         {
           "glob": "src/components/workspace/browser/browser-result-dialog.tsx",
@@ -755,8 +751,8 @@
           "reason": "workspace/browser surfaces require a live runtime"
         },
         {
-          "glob": "src/components/workspace/browser/browser-view-effects.tsx",
-          "reason": "workspace/browser surfaces require a live runtime"
+          "glob": "src/components/workspace/workspace-output-effects.tsx",
+          "reason": "Live task output presentation is verified by the workbench acceptance fixture; the finite reveal policy is measured in test/context/workbench/reveal-policy.test.ts"
         },
         {
           "glob": "src/components/workspace/browser/browser-workbench-sync.tsx",
@@ -795,6 +791,10 @@
           "reason": "workspace/browser surfaces require a live runtime"
         },
         {
+          "glob": "src/components/workspace/resource-home.tsx",
+          "reason": "Dynamic registry entries, capability and session availability, matching resource menus and narrow layouts are verified by test/components/workspace/resource-home.dom.test.ts in Chromium; Bun cannot instrument the Vite renderer's TSX source."
+        },
+        {
           "glob": "src/components/workspace/tool-context.tsx",
           "reason": "workspace/browser surfaces require a live runtime"
         },
@@ -817,6 +817,10 @@
         {
           "glob": "src/components/workspace/workbench-surface.tsx",
           "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/workspace-navigator.tsx",
+          "reason": "Resource-bounded drawers, responsive widths, nested overlays, Escape dismissal and focus restoration are verified by test/components/workspace/workbench-surface.dom.test.ts in Chromium; Bun cannot instrument the Vite renderer's TSX source."
         },
         {
           "glob": "src/composables/use-full-access-acknowledgement.ts",
@@ -889,6 +893,10 @@
         {
           "glob": "src/context/session-bottom-recovery.ts",
           "reason": "reactive trigger executed through the dom suite's vite build, invisible to bun coverage"
+        },
+        {
+          "glob": "src/context/session-decision.tsx",
+          "reason": "Solid request owner is exercised in test/components/session/decision-surface.dom.test.tsx for draft persistence and isolation, authoritative cleanup, delayed replies, unknown outcomes and failed storage; Bun cannot instrument Vite/Chromium execution. Pure draft, snapshot and submission modules remain measured by unit tests."
         },
         {
           "glob": "src/context/sync.tsx",
@@ -1187,8 +1195,16 @@
           "reason": "Entry operation dialog executes in real Chromium under test/components/dialog/file-entry-dialog.dom.test.ts; Bun coverage does not instrument the Vite browser bundle"
         },
         {
-          "glob": "src/components/agenda/series-list.tsx",
-          "reason": "Solid wrapper behavior is verified in test/components/agenda/series-list.dom.test.tsx; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+          "glob": "src/components/agenda/task-list.tsx",
+          "reason": "Task filters, lifecycle actions and details are verified in test/components/agenda/agenda-interaction.dom.test.tsx; Bun coverage cannot instrument the Vite-compiled Chromium bundle."
+        },
+        {
+          "glob": "src/components/agenda/detail-actions.tsx",
+          "reason": "Detail actions and nested menu dismissal are verified in test/components/agenda/agenda-interaction.dom.test.tsx; Bun coverage cannot instrument the Vite-compiled Chromium bundle."
+        },
+        {
+          "glob": "src/components/kanban/pane/reorder-menu.tsx",
+          "reason": "Keyboard ordering, disabled actions and focus return are verified in test/components/kanban/layout.dom.test.tsx; Bun coverage cannot instrument the Vite-compiled Chromium bundle."
         },
         {
           "glob": "src/components/app-shell/mobile-drawer-dialog.tsx",
@@ -1205,6 +1221,14 @@
         {
           "glob": "src/components/session/pending-timeline-item.tsx",
           "reason": "Solid wrapper behavior is verified in test/components/session/session-recovery.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/session/history-search-dialog.tsx",
+          "reason": "Production browser search and historical result navigation are verified in test/plugin-ui5/messages-browser.test.ts; Bun cannot instrument the browser bundle. Query cancellation and pagination remain measured in test/components/history-search.test.ts."
+        },
+        {
+          "glob": "src/components/session/virtual-conversation-rows.tsx",
+          "reason": "Production browser prepend, older-text reading, bounded mounting, return-to-latest and reconnect are verified in test/plugin-ui5/messages-browser.test.ts; Bun cannot instrument the browser bundle. Row projection and retention remain measured in the Web conversation row tests."
         },
         {
           "glob": "src/components/session/request-submission-notice.tsx",
@@ -1225,6 +1249,18 @@
         {
           "glob": "src/components/workspace/mobile-workspace-dialog.tsx",
           "reason": "Solid wrapper behavior is verified in test/components/workspace/mobile-workspace-dialog.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/execution/panel.tsx",
+          "reason": "Task navigation, retained branches, filters, dialogs and bounded virtual rows are exercised by test/components/execution/delegation.dom.test.tsx in compiled Chromium. Bun cannot attribute that browser execution to TSX; trajectory and window logic remain directly measured."
+        },
+        {
+          "glob": "src/components/execution/inspector.tsx",
+          "reason": "Node selection, saved failures and return navigation are exercised by test/components/execution/delegation.dom.test.tsx in compiled Chromium, outside Bun's source instrumentation. Its reusable evidence block is directly measured by controls.render.test.ts."
+        },
+        {
+          "glob": "src/components/execution/reader.tsx",
+          "reason": "Pinned content, complete copy, cancellation, checksum failures and 20MB Unicode search/reading are exercised by test/components/execution/reader.dom.test.tsx in compiled Chromium. Bun cannot attribute the browser bundle to TSX; reader-state and content helpers remain directly measured."
         }
       ]
     },
@@ -1918,6 +1954,10 @@
         {
           "glob": "src/components/tool/content-preview.tsx",
           "reason": "Solid wrapper exercised by basic-tool-lifecycle.dom.test.ts through Vite; Bun coverage attributes the compiled fixture instead of this TSX source. Preview logic remains measured in content-preview-model.ts."
+        },
+        {
+          "glob": "src/context/markdown-worker.ts",
+          "reason": "Real worker rendering, version replacement, math/code copying and grammar loading are verified in test/markdown-virtual.browser.test.ts; Bun does not instrument browser workers. Parser, document and worker-client behavior remain measured by the UI unit tests."
         },
         {
           "glob": "src/components/tool/index.ts",

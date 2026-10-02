@@ -29,29 +29,32 @@ for (const fail of [false, true]) {
             scope: await tmp.scope(),
             fn: async () => {
               const result = LocalBashBackend.execute(
-                { command: "printf done", description: "fixture", yieldSeconds: 0 },
+                { command: "printf done", yieldSeconds: 0 },
                 {
-                  sessionID: "fixture",
-                  messageID: "fixture",
-                  agent: "test",
-                  abort: new AbortController().signal,
-                  metadata() {},
-                  async ask() {},
-                  ...(fail
-                    ? {
-                        async openProcessEvidence(): Promise<never> {
-                          throw new Error("fixture setup failed")
-                        },
-                      }
-                    : {}),
-                  extra: {
-                    shellAuthorizationResolved: true,
-                    sandboxPrepare: async ({ command }: { command: string }) => ({
-                      command: "/bin/sh",
-                      args: ["-c", command],
-                      sandboxed: true,
-                    }),
+                  ...{
+                    sessionID: "fixture",
+                    messageID: "fixture",
+                    agent: "test",
+                    abort: new AbortController().signal,
+                    metadata() {},
+                    async ask() {},
+                    ...(fail
+                      ? {
+                          async openProcessEvidence(): Promise<never> {
+                            throw new Error("fixture setup failed")
+                          },
+                        }
+                      : {}),
+                    extra: {
+                      shellAuthorizationResolved: true,
+                      sandboxPrepare: async ({ command }: { command: string }) => ({
+                        command: "/bin/sh",
+                        args: ["-c", command],
+                        sandboxed: true,
+                      }),
+                    },
                   },
+                  workBrief: "fixture",
                 },
               )
               if (fail) await expect(result).rejects.toThrow("fixture setup failed")

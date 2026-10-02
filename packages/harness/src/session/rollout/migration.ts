@@ -12,11 +12,64 @@ import { CortexDelegationInfo } from "../types"
 import { Attachment } from "../../attachment"
 import { RolloutArtifact } from "./artifact"
 import { RolloutAttachment } from "./attachment"
-import type { RolloutSchema } from "./schema"
+import { RolloutSchema } from "./schema"
 import { work } from "../../util/queue"
 
 const MIGRATION_CONCURRENCY = 8
 export namespace RolloutMigration {
+  export async function pricing(owner: RolloutSchema.Owner) {
+    const root = RolloutArtifact.root(owner)
+    for (const run of await Storage.scan([...root, "runs"])) {
+      const base = [...root, "runs", run]
+      for (const callID of await Storage.scan([...base, "attempts"])) {
+        const raw = await Storage.read([...base, "calls", callID], { silentNotFound: true }).catch((error) => {
+          if (error instanceof Storage.NotFoundError) return undefined
+          throw error
+        })
+        const call = raw ? RolloutSchema.CallRecord.parse(raw) : undefined
+        for (const id of await Storage.scan([...base, "attempts", callID])) {
+          const key = [...base, "attempts", callID, id]
+          const attempt = RolloutSchema.AttemptRecord.parse(await Storage.read(key))
+          if (attempt.pricingEvidence) continue
+          await Storage.write(key, {
+            ...attempt,
+            pricingEvidence: { version: 1, source: "historical", pricing: call?.model.pricing ?? null },
+          })
+        }
+      }
+    }
+  }
+  export const pricingMigration: Migration = {
+    id: "20261001-rollout-attempt-price-evidence",
+    scope: "session",
+    dependsOn: ["20260907-session-rollout-evidence"],
+    description: "Preserve the historical request price snapshot without recalculating recorded estimates",
+    async upSession(owner) {
+      await pricing({ kind: "session", ...owner })
+    },
+    async up(progress) {
+      let completed = 0
+      for (const kind of ["session", "operations"] as const) {
+        let after: string[] | undefined
+        for (;;) {
+          const rows = await Storage.query({
+            kind,
+            after,
+            limit: 64,
+            ...(kind === "operations" ? { orderEquals: "head" } : {}),
+          })
+          for (const row of rows) {
+            if (kind === "session") await pricing({ kind: "session", scopeID: row.key[1], sessionID: row.key[2] })
+            else if (row.key.slice(3).join("/") === "rollout/journal/head")
+              await pricing({ kind: "operation", scopeID: row.key[1], operationID: row.key[2] })
+            progress(++completed, completed)
+          }
+          if (rows.length < 64) break
+          after = rows.at(-1)!.key
+        }
+      }
+    },
+  }
   // Archived session metadata is historical evidence; validate only the settlement fields this migration owns.
   const SettlementRecord = z
     .object({

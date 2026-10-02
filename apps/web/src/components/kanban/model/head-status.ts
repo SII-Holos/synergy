@@ -1,5 +1,7 @@
 import type { SessionVisualState } from "@/components/sidebar/session-visual-state"
 import { isWorkingStatus } from "@/utils/session-status"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { kanbanPage } from "@/locales/messages"
 
 /**
  * Head-status tint for a Kanban pane, derived from the session's resolved
@@ -9,6 +11,17 @@ import { isWorkingStatus } from "@/utils/session-status"
  * "waiting for the user" always outranks "busy" because it demands attention.
  */
 export type PaneHeadStatus = "working" | "waiting" | "completed" | undefined
+
+export function paneDisplayState(state: SessionVisualState): SessionVisualState {
+  if (!["default", "muted", "worktree"].includes(state.tone)) return state
+  if (state.completionUnread)
+    return {
+      ...state,
+      icon: getSemanticIcon("state.complete"),
+      label: { id: "app.kanban.responseReady", message: "Response ready" },
+    }
+  return { ...state, icon: getSemanticIcon("session.idle"), label: kanbanPage.statusIdle }
+}
 
 export function paneHeadStatusFromVisual(input: {
   statusType?: string

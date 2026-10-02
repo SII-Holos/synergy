@@ -7,7 +7,7 @@ const DEFAULT_WAIT_S = ToolTimeout.DEFAULTS.taskOutputWaitMs / 1_000
 
 const parameters = z
   .object({
-    task_id: z.string().optional().describe("Task ID from a visible background task"),
+    taskId: z.string().optional().describe("Task ID from a visible background task"),
     mode: z
       .enum(["summary", "progress", "tail", "full"])
       .optional()
@@ -47,11 +47,13 @@ function formatDuration(startedAt: number, completedAt?: number) {
   return `${minutes}m ${remainingSeconds}s`
 }
 
-export const TaskOutputTool = Tool.define<typeof parameters, TaskOutputMetadata>("task_output", {
-  description: `Retrieve output from a visible background task.
+export const TaskOutputTool = Tool.define<typeof parameters, TaskOutputMetadata>(
+  "task_output",
+  {
+    description: `Retrieve output from a visible background task.
 
 ## Parameters
-- **task_id** (optional): Task ID from a visible background task
+- **taskId** (optional): Task ID from a visible background task
 - **mode** (optional): Output mode:
   - \`progress\` — live status (health, tool calls, duration)
   - \`tail\` — recent session activity from the subagent
@@ -70,114 +72,116 @@ task_output()
 
 Check live progress without waiting:
 \`\`\`
-task_output(task_id: "ctx_abc123", mode: "progress")
+task_output(taskId: "ctx_abc123", mode: "progress")
 \`\`\`
 
 Inspect recent activity:
 \`\`\`
-task_output(task_id: "ctx_abc123", mode: "tail")
+task_output(taskId: "ctx_abc123", mode: "tail")
 \`\`\`
 
 Compact status check:
 \`\`\`
-task_output(task_id: "ctx_abc123", mode: "summary")
+task_output(taskId: "ctx_abc123", mode: "summary")
 \`\`\`
 
 Wait once for the final result when the next action depends on completion (up to 300s):
 \`\`\`
-task_output(task_id: "ctx_abc123", mode: "full", block: true)
+task_output(taskId: "ctx_abc123", mode: "full", block: true)
 \`\`\`
 If the task is still running after this wait, continue other work or use a later one-shot diagnostic only when new evidence is needed. Do not start a polling loop.`,
-  parameters,
-  async execute(params: z.infer<typeof parameters>, ctx) {
-    const { Cortex } = await import("..")
-    const visibleTasks = Cortex.getVisibleTasks(ctx.sessionID).sort((a, b) => b.startedAt - a.startedAt)
+    parameters,
+    async execute(params: z.infer<typeof parameters>, ctx) {
+      const { Cortex } = await import("..")
+      const visibleTasks = Cortex.getVisibleTasks(ctx.sessionID).sort((a, b) => b.startedAt - a.startedAt)
 
-    if (!params.task_id) {
-      if (visibleTasks.length === 0) {
+      if (!params.taskId) {
+        if (visibleTasks.length === 0) {
+          return {
+            title: "No visible tasks",
+            metadata: { found: false, visibleTaskIds: [] },
+            output: "No visible background tasks for this session.",
+          }
+        }
+
+        const lines = visibleTasks.map((task) => {
+          const duration = formatDuration(task.startedAt, task.completedAt)
+          const info = Cortex.describe(task)
+          const last = info.lastTool
+            ? ` — last: ${info.lastTool}${info.lastToolStatus ? ` ${info.lastToolStatus}` : ""}`
+            : ""
+          return `- \`${task.id}\` — ${task.status} — @${task.agent} — ${task.description} [${duration}, ${info.health}]${last}`
+        })
+
         return {
-          title: "No visible tasks",
-          metadata: { found: false, visibleTaskIds: [] },
-          output: "No visible background tasks for this session.",
+          title: `Visible tasks (${visibleTasks.length})`,
+          metadata: {
+            found: false,
+            visibleTaskIds: visibleTasks.map((task) => task.id),
+          },
+          output: [
+            "Visible background tasks for this session:",
+            ...lines,
+            "",
+            "Use task_output only for a one-shot diagnostic check.",
+            "If a task is still running, wait for the automatic completion notification.",
+          ].join("\n"),
         }
       }
 
-      const lines = visibleTasks.map((task) => {
-        const duration = formatDuration(task.startedAt, task.completedAt)
-        const info = Cortex.describe(task)
-        const last = info.lastTool
-          ? ` — last: ${info.lastTool}${info.lastToolStatus ? ` ${info.lastToolStatus}` : ""}`
-          : ""
-        return `- \`${task.id}\` — ${task.status} — @${task.agent} — ${task.description} [${duration}, ${info.health}]${last}`
+      const task = await Cortex.getVisibleTaskForOutput(ctx.sessionID, params.taskId)
+      if (!task) {
+        return {
+          title: "Task unavailable",
+          metadata: { taskId: params.taskId, found: false, visibleTaskIds: visibleTasks.map((item) => item.id) },
+          output: `Task ${params.taskId} is not available from this session. Use \`task_list()\` or \`task_output()\` to inspect visible tasks first.`,
+        }
+      }
+      const visibleTaskIds = [...new Set([...visibleTasks.map((item) => item.id), task.id])]
+
+      ctx.metadata({
+        title: task.description ?? `Task ${params.taskId}`,
+        metadata: {
+          taskId: params.taskId,
+          status: task.status,
+          found: true,
+          description: task.description,
+          timeout: params.timeoutSeconds,
+          mode: params.mode ?? "full",
+          visibleTaskIds,
+        },
       })
 
+      if ((task.status === "running" || task.status === "queued") && params.block) {
+        await Cortex.waitFor(params.taskId, params.timeoutSeconds ?? DEFAULT_WAIT_S, ctx.abort)
+      }
+
+      const current = (await Cortex.getVisibleTaskForOutput(ctx.sessionID, params.taskId)) ?? task
+      const output = await Cortex.output(params.taskId, params.mode ?? "full", ctx.sessionID)
+
       return {
-        title: `Visible tasks (${visibleTasks.length})`,
+        title: `Task ${params.taskId}`,
         metadata: {
-          found: false,
-          visibleTaskIds: visibleTasks.map((task) => task.id),
+          taskId: params.taskId,
+          status: current.status,
+          found: true,
+          description: current.description,
+          timeout: params.timeoutSeconds,
+          mode: params.mode ?? "full",
+          visibleTaskIds,
+          output: current.output,
         },
-        output: [
-          "Visible background tasks for this session:",
-          ...lines,
-          "",
-          "Use task_output only for a one-shot diagnostic check.",
-          "If a task is still running, wait for the automatic completion notification.",
-        ].join("\n"),
+        output,
       }
-    }
-
-    const task = await Cortex.getVisibleTaskForOutput(ctx.sessionID, params.task_id)
-    if (!task) {
-      return {
-        title: "Task unavailable",
-        metadata: { taskId: params.task_id, found: false, visibleTaskIds: visibleTasks.map((item) => item.id) },
-        output: `Task ${params.task_id} is not available from this session. Use \`task_list()\` or \`task_output()\` to inspect visible tasks first.`,
-      }
-    }
-    const visibleTaskIds = [...new Set([...visibleTasks.map((item) => item.id), task.id])]
-
-    ctx.metadata({
-      title: task.description ?? `Task ${params.task_id}`,
-      metadata: {
-        taskId: params.task_id,
-        status: task.status,
-        found: true,
-        description: task.description,
-        timeout: params.timeoutSeconds,
-        mode: params.mode ?? "full",
-        visibleTaskIds,
-      },
-    })
-
-    if ((task.status === "running" || task.status === "queued") && params.block) {
-      await Cortex.waitFor(params.task_id, params.timeoutSeconds ?? DEFAULT_WAIT_S, ctx.abort)
-    }
-
-    const current = (await Cortex.getVisibleTaskForOutput(ctx.sessionID, params.task_id)) ?? task
-    const output = await Cortex.output(params.task_id, params.mode ?? "full", ctx.sessionID)
-
-    return {
-      title: `Task ${params.task_id}`,
-      metadata: {
-        taskId: params.task_id,
-        status: current.status,
-        found: true,
-        description: current.description,
-        timeout: params.timeoutSeconds,
-        mode: params.mode ?? "full",
-        visibleTaskIds,
-        output: current.output,
-      },
-      output,
-    }
+    },
+    async afterPersist(params, ctx, result) {
+      if (!params.taskId || !result.metadata.found) return
+      if ((params.mode ?? "full") !== "full") return
+      const status = result.metadata.status
+      if (status !== "completed" && status !== "error" && status !== "cancelled" && status !== "interrupted") return
+      const { Cortex } = await import("..")
+      await Cortex.acknowledgeParentCompletion({ taskID: params.taskId, parentSessionID: ctx.sessionID })
+    },
   },
-  async afterPersist(params, ctx, result) {
-    if (!params.task_id || !result.metadata.found) return
-    if ((params.mode ?? "full") !== "full") return
-    const status = result.metadata.status
-    if (status !== "completed" && status !== "error" && status !== "cancelled" && status !== "interrupted") return
-    const { Cortex } = await import("..")
-    await Cortex.acknowledgeParentCompletion({ taskID: params.task_id, parentSessionID: ctx.sessionID })
-  },
-})
+  { activityKind: "object" },
+)

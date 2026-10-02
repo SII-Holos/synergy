@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterAll, expect, test } from "bun:test"
 import z from "zod"
 import path from "node:path"
@@ -48,7 +49,7 @@ async function withSession(
         id: Identifier.ascending("message"),
         sessionID: session.id,
         role: "user",
-        agent: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
         model: { providerID: "test", modelID: "model" },
         time: { created: Date.now() },
       })
@@ -58,8 +59,8 @@ async function withSession(
         role: "assistant",
         parentID: root.id,
         rootID: root.id,
-        agent: "synergy",
-        mode: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
+        mode: PrimaryAgentIdentity.names.general,
         providerID: "test",
         modelID: "model",
         path: { cwd: directory.path, root: directory.path },
@@ -88,7 +89,7 @@ test("plugin host executes a registered file tool and persists its result and ro
         }),
       )
       const result = await invokePluginTool({
-        context: { sessionID: session.id, messageID: assistantID, agent: "synergy" },
+        context: { sessionID: session.id, messageID: assistantID, agent: PrimaryAgentIdentity.names.general },
         request: { tool: "read", args: { text: "reproducible result" } },
       })
       expect(result.output).toBe("reproducible result")
@@ -122,7 +123,7 @@ test("plugin host rejects denied tools without side effects and records the fail
       )
       await expect(
         invokePluginTool({
-          context: { sessionID: session.id, messageID: assistantID, agent: "synergy" },
+          context: { sessionID: session.id, messageID: assistantID, agent: PrimaryAgentIdentity.names.general },
           request: { tool: "read", args: {} },
         }),
       ).rejects.toThrow()
@@ -152,7 +153,12 @@ test("plugin host cancellation reaches an active tool and persists interrupted e
         }),
       )
       const pending = invokePluginTool({
-        context: { sessionID: session.id, messageID: assistantID, agent: "synergy", abort: controller.signal },
+        context: {
+          sessionID: session.id,
+          messageID: assistantID,
+          agent: PrimaryAgentIdentity.names.general,
+          abort: controller.signal,
+        },
         request: { tool: "read", args: {} },
       })
       const observed = pending.then(
@@ -192,7 +198,7 @@ test("plugin host preserves recording failures when durable output cannot be wri
       )
       try {
         const error = await invokePluginTool({
-          context: { sessionID: session.id, messageID: assistantID, agent: "synergy" },
+          context: { sessionID: session.id, messageID: assistantID, agent: PrimaryAgentIdentity.names.general },
           request: { tool: "read", args: {} },
         }).catch((error) => error)
         expect(RolloutRecordingError.isInstance(error)).toBe(true)
@@ -250,7 +256,12 @@ test("nested plugin invocation retains real tool recording under a single global
             inputSchema: z.object({}),
             async execute() {
               const result = await invokePluginTool({
-                context: { sessionID: session.id, messageID: assistantID, agent: "synergy", callID: "plugin-parent" },
+                context: {
+                  sessionID: session.id,
+                  messageID: assistantID,
+                  agent: PrimaryAgentIdentity.names.general,
+                  callID: "plugin-parent",
+                },
                 request: { tool: "read", args: { text: "nested evidence" } },
               })
               processor
@@ -305,7 +316,7 @@ test("public invocation respects closed admission and rejects unowned plugin par
       const input = {
         sessionID: session.id,
         messageID: assistantID,
-        agent: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
         tool: "read",
         args: {},
         signal: new AbortController().signal,

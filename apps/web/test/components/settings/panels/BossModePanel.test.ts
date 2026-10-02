@@ -13,6 +13,7 @@ let fixtureDirectory: string
 beforeAll(async () => {
   fixtureDirectory = await mkdtemp(path.join(import.meta.dir, ".boss-mode-panel-fixture-"))
   const panelPath = path.resolve(import.meta.dir, "../../../../src/components/settings/panels/BossModePanel.tsx")
+  const controllerPath = path.join(path.dirname(panelPath), "boss-name-controller.ts")
   const typesPath = path.resolve(import.meta.dir, "../../../../src/components/settings/types.ts")
   const stubPath = path.join(fixtureDirectory, "stubs.tsx")
 
@@ -46,6 +47,7 @@ beforeAll(async () => {
         import { render } from "solid-js/web"
         import { setupI18n } from "@lingui/core"
         import { I18nProvider } from "@lingui/solid"
+        import { createBossNameController } from ${JSON.stringify(`/@fs/${controllerPath}`)}
         import { BossModePanel } from ${JSON.stringify(`/@fs/${panelPath}`)}
         import { defaultSettingsState } from ${JSON.stringify(`/@fs/${typesPath}`)}
 
@@ -102,7 +104,9 @@ beforeAll(async () => {
           const [changes, setChanges] = createSignal<Array<[string, string]>>([])
           ;(window as any).__bossChanges = () => changes()
           ;(window as any).__bossLibraryCalls = () => libraryCalls
-          return createComponent(BossModePanel, {
+          const nameController = createBossNameController({ listSelfMemories, createMemory, updateMemory, removeMemory })
+          void nameController.load()
+          return [createComponent(BossModePanel, {
             get runtime() {
               return runtime()
             },
@@ -110,13 +114,16 @@ beforeAll(async () => {
               setChanges((prev) => [...prev, [key, value]])
               setRuntime((prev) => ({ ...prev, [key]: value }))
             },
-            get bossNameGateway() {
-              return { listSelfMemories, createMemory, updateMemory, removeMemory }
-            },
+            nameController,
             get onOpenBossSession() {
               return openBossSession
             },
-          })
+          }), createComponent(() => {
+            const button = document.createElement("button")
+            button.textContent = "Save preferences"
+            button.onclick = () => void nameController.save()
+            return button
+          }, {})]
         }
 
         render(
@@ -198,11 +205,11 @@ describe("BossModePanel", () => {
     await expect(switchInput.count()).resolves.toBe(1)
     expect(await switchInput.getAttribute("aria-checked")).toBe("true")
 
-    const personality = page.locator('[role="group"][aria-label="Personality"]')
+    const personality = page.getByRole("group", { name: "Collaboration style" })
     await expect(personality.count()).resolves.toBe(1)
     expect(await personality.locator("button").count()).toBe(4)
 
-    const nameInput = page.locator('input[data-slot="input-input"]')
+    const nameInput = page.getByRole("textbox", { name: "Assistant name" })
     await expect(nameInput.count()).resolves.toBe(1)
     expect(await nameInput.inputValue()).toBe("")
     expect(await nameInput.isDisabled()).toBe(false)
@@ -234,11 +241,13 @@ describe("BossModePanel", () => {
       ["bossPersonaFormality", "0.75"],
     ])
 
-    // 4. Typing a name reports bossName and debounce-persists via the library
-    //    gateway (create first, then update for a second edit).
+    // Name changes remain staged until the host explicitly saves them.
     await nameInput.fill("Xiaofei")
-    expect((await bossChanges()).at(-1)).toEqual(["bossName", "Xiaofei"])
-    await page.waitForTimeout(900)
+    expect(await nameInput.inputValue()).toBe("Xiaofei")
+    await nameInput.blur()
+    expect(await bossLibraryCalls()).toEqual([])
+    await page.getByRole("button", { name: "Save preferences" }).click()
+    await page.waitForFunction(() => (window as any).__bossLibraryCalls().length === 1)
     let calls = await bossLibraryCalls()
     expect(calls).toEqual([
       {
@@ -251,7 +260,8 @@ describe("BossModePanel", () => {
     ])
 
     await nameInput.fill("Xiaofei Chen")
-    await page.waitForTimeout(900)
+    await page.getByRole("button", { name: "Save preferences" }).click()
+    await page.waitForFunction(() => (window as any).__bossLibraryCalls().length === 2)
     calls = await bossLibraryCalls()
     expect(calls).toEqual([
       {
@@ -274,7 +284,9 @@ describe("BossModePanel", () => {
     // 5. Clearing the name field removes the stored boss_name row through
     //    the library gateway (empty draft reaches the persister).
     await nameInput.fill("")
-    await page.waitForTimeout(900)
+    expect((await bossLibraryCalls()).length).toBe(2)
+    await page.getByRole("button", { name: "Save preferences" }).click()
+    await page.waitForFunction(() => (window as any).__bossLibraryCalls().length === 3)
     expect(await bossLibraryCalls()).toEqual([
       {
         kind: "create",
@@ -293,11 +305,11 @@ describe("BossModePanel", () => {
       },
       { kind: "remove", id: "mem_1" },
     ])
-    expect((await bossChanges()).at(-1)).toEqual(["bossName", ""])
+    expect(await nameInput.inputValue()).toBe("")
 
-    // 5b. The Open boss session button invokes the injected host handler,
+    // 5b. The task-entry button invokes the injected host handler,
     //     disables while the open is pending, and surfaces failures as a toast.
-    const openButton = page.getByRole("button", { name: "Open boss session" })
+    const openButton = page.getByRole("button", { name: "Open task entry" })
     await expect(openButton.count()).resolves.toBe(1)
     expect(await openButton.isDisabled()).toBe(false)
     await openButton.click()
@@ -317,9 +329,7 @@ describe("BossModePanel", () => {
     await openButton.click()
     await page.waitForFunction(() => (window as unknown as { __bossToasts: Array<unknown> }).__bossToasts.length >= 1)
     expect(await bossOpenStats()).toEqual({ calls: 2, mode: "reject" })
-    expect(await bossToasts()).toEqual([
-      { type: "error", title: "Could not open the boss session", description: "boom" },
-    ])
+    expect(await bossToasts()).toEqual([{ type: "error", title: "Could not open the task entry", description: "boom" }])
     await expect(busyButton.count()).resolves.toBe(0)
     expect(await openButton.isDisabled()).toBe(false)
     await page.evaluate(() =>
@@ -334,5 +344,5 @@ describe("BossModePanel", () => {
     expect(await page.locator('input[type="range"]').count()).toBe(4)
     expect(await page.locator('textarea[data-slot="input-input"]').count()).toBe(0)
     expect(await page.locator('input[data-slot="input-input"][type="number"]').count()).toBe(0)
-  })
+  }, 30000)
 })

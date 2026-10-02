@@ -8,6 +8,7 @@ export type BottomRecoverySignals = {
   tailMissingLatest: () => boolean
   pendingLatest: () => boolean
   historyLoading: () => boolean
+  locationPinned?: () => boolean
 }
 
 /**
@@ -27,6 +28,9 @@ export type BottomRecoverySignals = {
  * waits for that observed-bottom evaluation first, so a leftover scrolled-up
  * state carried across an in-app navigation cannot arm the next session
  * through the switch effect's late reset.
+ * Explicit history locations hold recovery until the user releases them;
+ * short target windows and provisional row heights must not count as a
+ * request to return to latest. Releasing the location marks engagement.
  *
  * Firing is latched with hysteresis and frozen while a recovery runs: the
  * recovery's own historyLoading flicker can neither reset the latch nor
@@ -41,6 +45,7 @@ export function createBottomRecoveryTrigger(signals: BottomRecoverySignals, reco
   let sawBottom = false
   let settledAfterFire = true
   let lastSessionID: string | undefined
+  let wasLocationPinned = false
 
   createEffect(
     on(
@@ -51,17 +56,30 @@ export function createBottomRecoveryTrigger(signals: BottomRecoverySignals, reco
         () => signals.mode(),
         () => signals.tailMissingLatest(),
         () => signals.pendingLatest(),
+        () => signals.locationPinned?.() ?? false,
       ],
-      ([sessionID, scrolledUp, historyLoading, mode, tailMissingLatest, pendingLatest]) => {
+      ([sessionID, scrolledUp, historyLoading, mode, tailMissingLatest, pendingLatest, locationPinned]) => {
         if (sessionID !== lastSessionID) {
           lastSessionID = sessionID
           armed = false
           sawBottom = false
           settledAfterFire = true
+          wasLocationPinned = false
         }
         // A running recovery owns the loading state it observes; freeze arm
         // and latch updates so its own flicker cannot re-arm or re-fire it.
         if (inFlight) return
+        if (locationPinned) {
+          wasLocationPinned = true
+          armed = false
+          sawBottom = false
+          settledAfterFire = true
+          return
+        }
+        if (wasLocationPinned) {
+          wasLocationPinned = false
+          armed = true
+        }
         if (historyLoading) armed = true
         if (!scrolledUp) sawBottom = true
         if (scrolledUp && sawBottom) armed = true

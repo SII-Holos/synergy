@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "./primary-identity"
 import PROMPT_BOSS_SYNERGY from "./prompt/boss-synergy/base.txt"
 
 import { PermissionNext } from "../permission/next"
@@ -148,8 +149,8 @@ function maxPrimaryPermission(ctx: BuiltinAgentContext): PermissionNext.Ruleset 
 
 export function createBuiltinPrimaryAgents(ctx: BuiltinAgentContext): Record<string, Agent.Info> {
   return {
-    synergy: {
-      name: "synergy",
+    [PrimaryAgentIdentity.names.general]: {
+      name: PrimaryAgentIdentity.names.general,
       description:
         "Primary general-purpose orchestrator for the classic Synergy workflow. Plans, coordinates, executes, delegates to the legacy subagent set, verifies work, and handles user interaction across coding, writing, research, analysis, and operations.",
       prompt: "",
@@ -158,8 +159,8 @@ export function createBuiltinPrimaryAgents(ctx: BuiltinAgentContext): Record<str
       mode: "primary",
       native: true,
     },
-    "synergy-max": {
-      name: "synergy-max",
+    [PrimaryAgentIdentity.names.coding]: {
+      name: PrimaryAgentIdentity.names.coding,
       description:
         "Primary maximum-orchestration agent for the new coding-harness workflow. Acts as architect, planner, dispatcher, integrator, and quality controller over the expanded professional subagent system.",
       prompt: "",
@@ -168,8 +169,8 @@ export function createBuiltinPrimaryAgents(ctx: BuiltinAgentContext): Record<str
       mode: "primary",
       native: true,
     },
-    "synergy-flash": {
-      name: "synergy-flash",
+    [PrimaryAgentIdentity.names.lightweight]: {
+      name: PrimaryAgentIdentity.names.lightweight,
       description:
         "Primary lightweight general-purpose agent. Works hands-on with the classic execution surface and stays concise; orchestration tools (task delegation, DAG planning) stay folded behind expand_tools and are expanded only when the user asks for parallel work or the request is clearly a large multi-part task.",
       prompt: "",

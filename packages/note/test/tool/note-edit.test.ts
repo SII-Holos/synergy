@@ -55,7 +55,7 @@ describe("note_edit anchored operations", () => {
           await NoteStore.update(scope.id, note.id, { expectedVersion: note.version })
 
           const result = await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             freshen: "never",
             ops: [
@@ -90,7 +90,7 @@ describe("note_edit anchored operations", () => {
           const block = NoteDocument.listBlocks(note.content)[0]
 
           const result = await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             baseDocHash: NoteDocument.hash(note.content),
             ops: [
@@ -126,7 +126,7 @@ describe("note_edit anchored operations", () => {
           const b = blocks.find((block) => block.text.trim() === "B")!
 
           await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             baseDocHash: NoteDocument.hash(note.content),
             ops: [
@@ -165,7 +165,7 @@ describe("note_edit anchored operations", () => {
           const old = NoteDocument.listBlocks(note.content)[0]
 
           const result = await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             baseDocHash: NoteDocument.hash(note.content),
             ops: [
@@ -203,7 +203,7 @@ describe("note_edit anchored operations", () => {
           const block = NoteDocument.listBlocks(note.content)[0]
 
           const result = await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             baseDocHash: NoteDocument.hash(note.content),
             ops: [
@@ -251,7 +251,7 @@ describe("note_edit anchored operations", () => {
           const block = NoteDocument.listBlocks(note.content)[0]
 
           const result = await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             baseDocHash: NoteDocument.hash(note.content),
             ops: [
@@ -295,7 +295,7 @@ describe("note_edit anchored operations", () => {
           const editableBlock = NoteDocument.listBlocks(editableNote.content)[0]
 
           const editResult = await execute({
-            id: editableNote.id,
+            noteId: editableNote.id,
             baseVersion: editableNote.version,
             baseDocHash: NoteDocument.hash(editableNote.content),
             ops: [
@@ -317,7 +317,7 @@ describe("note_edit anchored operations", () => {
           const guardedNote = await NoteStore.create({ title: "Hard break guard", content })
           const guardedBlock = NoteDocument.listBlocks(guardedNote.content)[0]
           const guardResult = await execute({
-            id: guardedNote.id,
+            noteId: guardedNote.id,
             baseVersion: guardedNote.version,
             baseDocHash: NoteDocument.hash(guardedNote.content),
             ops: [
@@ -362,7 +362,7 @@ describe("note_edit anchored operations", () => {
           const blockquote = NoteDocument.listBlocks(note.content).find((block) => block.type === "blockquote")!
 
           const result = await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             baseDocHash: NoteDocument.hash(note.content),
             ops: [
@@ -419,7 +419,7 @@ describe("note_edit anchored operations", () => {
           )!
 
           await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             baseDocHash: NoteDocument.hash(note.content),
             ops: [
@@ -467,7 +467,7 @@ describe("note_edit anchored operations", () => {
           const block = NoteDocument.listBlocks(note.content)[0]
 
           const result = await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             baseDocHash: NoteDocument.hash(note.content),
             ops: [
@@ -521,7 +521,7 @@ describe("note_edit anchored operations", () => {
           const child = blocks.find((block) => block.parentId === blockquote.id && block.type === "paragraph")!
 
           const result = await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             baseDocHash: NoteDocument.hash(note.content),
             ops: [
@@ -566,7 +566,7 @@ describe("note_edit anchored operations", () => {
           const cell = NoteDocument.listBlocks(note.content).find((block) => block.type === "tableCell")!
 
           const result = await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             baseDocHash: NoteDocument.hash(note.content),
             ops: [
@@ -609,7 +609,7 @@ describe("note_edit anchored operations", () => {
           const [anchor, removed] = NoteDocument.listBlocks(note.content)
 
           const result = await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             baseDocHash: NoteDocument.hash(note.content),
             ops: [
@@ -643,7 +643,7 @@ describe("note_edit anchored operations", () => {
           const block = NoteDocument.listBlocks(note.content)[0]
 
           const result = await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             baseDocHash: NoteDocument.hash(note.content),
             ops: [
@@ -682,7 +682,7 @@ describe("note_edit anchored operations", () => {
           const [first, second] = NoteDocument.listBlocks(note.content)
 
           const result = await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             baseDocHash: NoteDocument.hash(note.content),
             ops: [
@@ -729,7 +729,7 @@ describe("note_edit anchored operations", () => {
           const block = NoteDocument.listBlocks(note.content)[0]
 
           const result = await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             baseDocHash: NoteDocument.hash(note.content),
             ops: [
@@ -773,7 +773,7 @@ describe("note_edit anchored operations", () => {
           const block = NoteDocument.listBlocks(note.content)[0]
 
           const result = await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             baseDocHash: NoteDocument.hash(note.content),
             ops: [
@@ -817,7 +817,7 @@ describe("note_edit anchored operations", () => {
           const c = blocks.find((block) => block.text.trim() === "C")!
 
           const result = await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             baseDocHash: NoteDocument.hash(note.content),
             ops: [
@@ -873,7 +873,7 @@ describe("note_edit anchored operations", () => {
           const cell = NoteDocument.listBlocks(note.content).find((block) => block.type === "tableCell")!
 
           const result = await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             baseDocHash: NoteDocument.hash(note.content),
             ops: [
@@ -913,7 +913,7 @@ describe("note_edit anchored operations", () => {
           const block = NoteDocument.listBlocks(note.content)[0]
 
           const result = await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             baseDocHash: NoteDocument.hash(note.content),
             dryRun: true,
@@ -958,7 +958,7 @@ describe("note_edit anchored operations", () => {
           })
 
           const result = await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             baseDocHash: NoteDocument.hash(note.content),
             ops: [
@@ -996,7 +996,7 @@ describe("note_edit anchored operations", () => {
           await NoteStore.update(scope.id, note.id, { expectedVersion: note.version })
 
           const result = await execute({
-            id: note.id,
+            noteId: note.id,
             baseVersion: note.version,
             ops: [
               {

@@ -30,14 +30,15 @@ for (const backend of storageTestBackends()) {
               { key: [...prefix, "info"], value: { retained: true } },
             ]),
           )
-          expect(await store.pruneTreeWithinBudget(prefix, { limits, cutoff: 0, active: () => false })).toMatchObject({
-            records: 0,
-            deferred: "recent",
-          })
-          let checks = 0
-          expect(
-            await store.pruneTreeWithinBudget(prefix, { limits, cutoff, active: () => ++checks > 1 }),
-          ).toMatchObject({ records: 0, deferred: "active" })
+          for (const maintenance of [false, true]) {
+            expect(
+              await store.pruneTreeWithinBudget(prefix, { limits, cutoff: 0, active: () => false, maintenance }),
+            ).toMatchObject({ records: 0, deferred: "recent" })
+            let checks = 0
+            expect(
+              await store.pruneTreeWithinBudget(prefix, { limits, cutoff, active: () => ++checks > 1, maintenance }),
+            ).toMatchObject({ records: 0, deferred: "active" })
+          }
           await store.transaction((tx) =>
             tx.writeArtifacts(
               Array.from({ length: 257 }, (_, index) => ({

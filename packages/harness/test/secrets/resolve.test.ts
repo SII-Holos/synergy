@@ -14,6 +14,21 @@ afterEach(() =>
 )
 
 describe("SecretResolve execution boundary", () => {
+  test("preserves native root strings and arrays while resolving an execution-only copy", () =>
+    runtime.run(async () => {
+      const value = `native-${crypto.randomUUID()}`
+      const entry = await SecretVault.register(value, { kind: "user" })
+      tracked.push(entry.id)
+      const token = `⟦sec:${entry.id}⟧`
+      const scalar = await SecretResolve.transformArgs(token, { tool: "mcp__native" })
+      expect(scalar.args).toBe(value)
+      expect(scalar.resolved).toBe(1)
+      const original = [token, { nested: token }]
+      const array = await SecretResolve.transformArgs(original, { tool: "mcp__native" })
+      expect(array.args).toEqual([value, { nested: value }])
+      expect(original).toEqual([token, { nested: token }])
+    }))
+
   test("substitutes tokens in non-bash args through a cloned copy", () =>
     runtime.run(async () => {
       const value = `sk-deploy-${crypto.randomUUID()}`

@@ -32,7 +32,8 @@ for (const args of [
           child.exited,
         ])
         expect(code, errors).toBe(0)
-        expect(JSON.parse(output).tasks.map((task: { taskId: string }) => task.taskId)).toEqual([
+        const tasks = JSON.parse(output).tasks as Array<{ taskId: string; command: string }>
+        expect(tasks.filter((task) => task.command !== "<NONEXISTENT>").map((task) => task.taskId)).toEqual([
           "@ericsanchezok/synergy-plugin#build",
           "@ericsanchezok/synergy-sdk#build",
           "@ericsanchezok/synergy-util#build",

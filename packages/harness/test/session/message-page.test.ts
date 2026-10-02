@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { describe, expect, mock, test } from "bun:test"
 import { Identifier } from "../../src/id/id"
 import { ScopeContext } from "../../src/scope/context"
@@ -18,7 +19,7 @@ async function writeUser(sessionID: string, id: string, created: number) {
     id,
     sessionID,
     role: "user",
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test", modelID: "test" },
     time: { created },
     isRoot: true,
@@ -39,7 +40,7 @@ async function writeAssistant(input: { sessionID: string; id: string; rootID: st
     modelID: "test",
     providerID: "test",
     mode: "build",
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     path: { cwd: input.cwd, root: input.cwd },
     summary: false,
     cost: 0,
@@ -108,7 +109,7 @@ describe("session message cursor pages", () => {
             sessionID: session.id,
             role: "user",
             time: { created: 1_000 },
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test" },
             isRoot: true,
             rootID,

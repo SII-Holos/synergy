@@ -7,6 +7,7 @@ import { build, type Plugin } from "vite"
 import solidPlugin from "vite-plugin-solid"
 
 interface CodeHarness {
+  remountExpansion: () => void
   multiedit: () => void
   locale: (locale: string) => void
   dispose: () => void
@@ -94,14 +95,17 @@ import { ToolFilePreview, ToolPatchPreview } from ${JSON.stringify(path.resolve(
 import { ResourceOpenProvider } from ${JSON.stringify(path.resolve(import.meta.dir, "../../src/context/resource-open.tsx"))}
 import { BasicTool } from ${JSON.stringify(path.resolve(import.meta.dir, "../../src/components/basic-tool.tsx"))}
 import { Code } from ${JSON.stringify(codePath)}
+import { ToolExpansionProvider, ToolExpansionIdentity } from ${JSON.stringify(path.resolve(import.meta.dir, "../../src/components/tool-expansion.tsx"))}
+const expansion = new Map<string, boolean>()
+const [expansionMounted, setExpansionMounted] = createSignal(true)
 const [revision, setRevision] = createSignal(0)
 const [multi, setMulti] = createSignal(false)
 const Multi = ToolRegistry.render("multiedit")!
 const requests: unknown[] = []
 const i18n = setupI18n()
 i18n.load({en:{}, "zh-CN":{"ui.toolContent.openFile":"打开当前文件","ui.toolContent.openReview":"在审阅中打开"}})
-const dispose = render(() => <I18nProvider i18n={i18n}><ResourceOpenProvider value={{open:()=>false,openAttachment:()=>false,resolveWorkspacePath:path=>path,openWorkspaceSource:path=>{requests.push({path});return true},openToolReview:target=>{requests.push(target);return true}}}><div id="multi"><ErrorBoundary fallback={error=><div data-error>{error.message}</div>}><Show when={multi()}><Multi tool="multiedit" status="completed" defaultOpen input={{filePath:"file.ts"}} metadata={{results:[{filediff:{file:"file.ts",preview:"+historic"}}]}} /></Show></ErrorBoundary></div><div id="preview-host"><ToolFilePreview content={"line\\n".repeat(1000)} path="file.ts"/><ToolPatchPreview patch={"+new\\n".repeat(1000)} path="file.ts" tool={{sessionId:"session",messageId:"message",partId:"part"}}/></div><div id="large-code"><Code file={{name:"large.ts", contents:"x".repeat(100000)}} /></div><BasicTool trigger={{icon:"file", title:"Probe", subtitle:String(revision())}} status="completed" defaultOpen={false}><Code file={{name:"probe.ts", contents:"const a = 1",cacheKey:"probe"}} /></BasicTool></ResourceOpenProvider></I18nProvider>, document.querySelector("#root")!)
-;(globalThis as any).__codeHarness = {multiedit:()=>setMulti(true),locale:locale=>i18n.activate(locale), counts:()=>({...((globalThis as any).__codeFixtureState), connected:document.querySelectorAll('[data-component="fake-pierre-render"]').length}), requests:()=>requests, reset:()=>{}, churnSame:()=>setRevision(n=>n+1), churnChange:()=>{}, dispose}
+const dispose = render(() => <I18nProvider i18n={i18n}><ResourceOpenProvider value={{open:()=>false,openAttachment:()=>false,resolveWorkspacePath:path=>path,openWorkspaceSource:path=>{requests.push({path});return true},openToolReview:target=>{requests.push(target);return true}}}><div id="multi"><ErrorBoundary fallback={error=><div data-error>{error.message}</div>}><Show when={multi()}><Multi tool="multiedit" status="completed" defaultOpen input={{filePath:"file.ts"}} metadata={{results:[{filediff:{file:"file.ts",preview:"+historic"}}]}} /></Show></ErrorBoundary></div><div id="preview-host"><ToolFilePreview content={"line\\n".repeat(1000)} path="file.ts"/><ToolPatchPreview patch={"+new\\n".repeat(1000)} path="file.ts" tool={{sessionId:"session",messageId:"message",partId:"part"}}/></div><div id="large-code"><Code file={{name:"large.ts", contents:"x".repeat(100000)}} /></div><BasicTool trigger={{icon:"file", title:"Probe", subtitle:String(revision())}} status="completed" defaultOpen={false}><Code file={{name:"probe.ts", contents:"const a = 1",cacheKey:"probe"}} /></BasicTool><ToolExpansionProvider value={{get:id=>expansion.get(id),set:(id,value)=>expansion.set(id,value)}}><div id="expansion"><Show when={expansionMounted()}><ToolExpansionIdentity partID="persistent"><BasicTool trigger={{icon:"file",title:"Persistent"}}><span data-persistent-content>kept open</span></BasicTool></ToolExpansionIdentity></Show></div></ToolExpansionProvider></ResourceOpenProvider></I18nProvider>, document.querySelector("#root")!)
+;(globalThis as any).__codeHarness = {remountExpansion:()=>{setExpansionMounted(false);setExpansionMounted(true)},multiedit:()=>setMulti(true),locale:locale=>i18n.activate(locale), counts:()=>({...((globalThis as any).__codeFixtureState), connected:document.querySelectorAll('[data-component="fake-pierre-render"]').length}), requests:()=>requests, reset:()=>{}, churnSame:()=>setRevision(n=>n+1), churnChange:()=>{}, dispose}
 `,
   )
 
@@ -194,6 +198,17 @@ describe("tool result demand and previews", () => {
     await wait(20)
     expect(document.querySelector("#multi [data-error]")?.textContent).toBeUndefined()
     expect(document.querySelector("#multi pre")?.textContent).toBe("+historic")
+  })
+
+  test("tool expansion survives virtual row unmount and remount", async () => {
+    const button = document.querySelector<HTMLButtonElement>("#expansion button")!
+    expect(document.querySelector("#expansion [data-persistent-content]")).toBeNull()
+    button.click()
+    await wait(20)
+    expect(document.querySelector("#expansion [data-persistent-content]")?.textContent).toBe("kept open")
+    harness.remountExpansion()
+    await wait(20)
+    expect(document.querySelector("#expansion [data-persistent-content]")?.textContent).toBe("kept open")
   })
 
   test("bounded previews open a file or the exact historical tool review", () => {

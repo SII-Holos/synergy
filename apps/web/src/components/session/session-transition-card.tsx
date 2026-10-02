@@ -74,15 +74,7 @@ export function SessionTransitionCard(props: {
         <span class="session-transition-card-icon" data-state={props.progress.phase}>
           <Icon name={presentation().icon} size="small" />
         </span>
-        <div class="session-transition-card-heading">
-          <span class="session-transition-card-kicker">{translateDescriptor(presentation().kicker, i18n)}</span>
-          <span class="session-transition-card-title">
-            {translateSessionTransitionCopy(props.progress.title, i18n)}
-          </span>
-          <span class="session-transition-card-description">
-            {translateSessionTransitionCopy(props.progress.description, i18n)}
-          </span>
-        </div>
+        <span class="session-transition-card-title">{translateSessionTransitionCopy(props.progress.title, i18n)}</span>
         <Show when={props.onDismiss}>
           <Button
             variant="ghost"
@@ -95,16 +87,17 @@ export function SessionTransitionCard(props: {
           />
         </Show>
       </div>
-      <Show when={props.progress.steps.length > 0}>
-        <SessionTransitionStepList steps={props.progress.steps} phase={props.progress.phase} />
-      </Show>
-      <Show when={props.progress.error}>
-        {(error) => (
-          <details class="session-transition-card-diagnostics">
-            <summary>{_(S.transitionErrorDetails)}</summary>
-            <pre>{[error().code, error().message].filter(Boolean).join(": ")}</pre>
-          </details>
-        )}
+      <Show when={props.progress.phase === "error"}>
+        <details class="session-transition-card-diagnostics">
+          <summary>{_(S.transitionErrorDetails)}</summary>
+          <p>{translateSessionTransitionCopy(props.progress.description, i18n)}</p>
+          <Show when={props.progress.steps.length > 0}>
+            <SessionTransitionStepList steps={props.progress.steps} phase={props.progress.phase} />
+          </Show>
+          <Show when={props.progress.error}>
+            {(error) => <pre>{[error().code, error().message].filter(Boolean).join(": ")}</pre>}
+          </Show>
+        </details>
       </Show>
       <Show when={props.onRetry}>
         {(retry) => (

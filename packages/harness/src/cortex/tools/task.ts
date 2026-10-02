@@ -17,8 +17,8 @@ import { CortexTypes } from "../types"
 import { ToolTimeout } from "../../tool/timeout"
 
 const parameters = z.object({
-  description: z.string().describe("A short (3-5 words) description of the task"),
-  prompt: z
+  taskTitle: z.string().describe("A short (3-5 words) description of the task"),
+  taskInstructions: z
     .string()
     .describe(
       "The task for the agent to perform. Include: what to do, expected outcome, context. " +
@@ -40,7 +40,7 @@ const parameters = z.object({
     .boolean()
     .optional()
     .describe(
-      "Run task in background (async). Returns immediately with task_id. " +
+      "Run task in background (async). Returns immediately with taskId. " +
         "Use for parallel exploration or long-running tasks. Default: false (sync)",
     ),
   category: z
@@ -84,125 +84,127 @@ async function bindDagNode(sessionID: string, nodeID: string | undefined, task: 
   await Dag.update({ sessionID, nodes })
 }
 
-export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", async (ctx) => {
-  const caller = ctx?.agent
-  const agents = await Agent.list().then((items) =>
-    items.filter((agent) => AgentDelegation.canDelegateTo(agent, caller)),
-  )
+export const TaskTool = Tool.define<typeof parameters, TaskMetadata>(
+  "task",
+  async (ctx) => {
+    const caller = ctx?.agent
+    const agents = await Agent.list().then((items) =>
+      items.filter((agent) => AgentDelegation.canDelegateTo(agent, caller)),
+    )
 
-  const accessibleAgents = caller
-    ? agents.filter((a) => PermissionNext.evaluate("task", a.name, caller.permission).action !== "deny")
-    : agents
+    const accessibleAgents = caller
+      ? agents.filter((a) => PermissionNext.evaluate("task", a.name, caller.permission).action !== "deny")
+      : agents
 
-  const description = DESCRIPTION.replace(
-    "{agents}",
-    accessibleAgents
-      .map((a) => `- ${a.name}: ${a.description ?? "This subagent should only be called manually by the user."}`)
-      .join("\n"),
-  )
-  return {
-    description,
-    parameters,
-    async execute(params: z.infer<typeof parameters>, ctx) {
-      await ctx.ask({
-        permission: "task",
-        patterns: [params.subagent_type],
-        metadata: {
-          description: params.description,
-          subagent_type: params.subagent_type,
-        },
-      })
-
-      const agent = await Agent.get(params.subagent_type)
-      if (!agent) throw new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`)
-      const callerInfo = caller ?? (ctx.agent ? await Agent.get(ctx.agent) : undefined)
-      if (!AgentDelegation.canDelegateTo(agent, callerInfo ?? ctx.agent)) {
-        throw new Error(`Agent type ${params.subagent_type} is not visible to ${ctx.agent}`)
-      }
-
-      const msg = await MessageV2.get({
-        scopeID: ScopeContext.current.scope.id,
-        sessionID: ctx.sessionID,
-        messageID: ctx.messageID,
-      })
-      if (msg.info.role !== "assistant") throw new Error("Not an assistant message")
-
-      const parentModel = {
-        modelID: msg.info.modelID,
-        providerID: msg.info.providerID,
-      }
-
-      // Keep the parent's provider choice while that model remains available.
-      let model =
-        ctx.extra?.subtaskModel ??
-        ((await Provider.isModelAvailable(parentModel))
-          ? parentModel
-          : ((await Agent.getAvailableModel(agent)) ?? parentModel))
-      let promptAppend = ""
-
-      const categoryConfig = await Category.resolve(params.category)
-      if (categoryConfig) {
-        if (categoryConfig.model) {
-          const parsed = Provider.parseModel(categoryConfig.model)
-          if (!parsed.providerID.trim() || !parsed.modelID.trim()) {
-            throw new Error(
-              `Model must be in provider/model format for category ${params.category}: ${categoryConfig.model}`,
-            )
-          }
-          model = { providerID: parsed.providerID, modelID: parsed.modelID }
-        }
-        promptAppend = categoryConfig.promptAppend ?? ""
-      }
-
-      const fullPrompt = promptAppend ? `${params.prompt}\n\n${promptAppend}` : params.prompt
-
-      let sessionID: string | undefined
-      if (params.session_id) {
-        sessionID = params.session_id
-      }
-
-      const { Cortex } = await import("..")
-      const task = await Cortex.launch({
-        description: params.description,
-        prompt: fullPrompt,
-        agent: params.subagent_type,
-        executionRole: "delegated_subagent",
-        category: params.category,
-        dagNodeId: params.dag_node_id,
-        parentSessionID: ctx.sessionID,
-        parentMessageID: ctx.messageID,
-        sessionID,
-        model,
-        worktree: params.worktree ? { ...params.worktree, failOnError: false } : undefined,
-        output: params.output,
-      })
-
-      await bindDagNode(ctx.sessionID, params.dag_node_id, task)
-
-      if (params.background) {
-        ctx.metadata({
-          title: `[Background] ${params.description}`,
+    const description = DESCRIPTION.replace(
+      "{agents}",
+      accessibleAgents
+        .map((a) => `- ${a.name}: ${a.description ?? "This subagent should only be called manually by the user."}`)
+        .join("\n"),
+    )
+    return {
+      description,
+      parameters,
+      async execute(params: z.infer<typeof parameters>, ctx) {
+        await ctx.ask({
+          permission: "task",
+          patterns: [params.subagent_type],
           metadata: {
-            taskId: task.id,
-            sessionId: task.sessionID,
-            background: true,
-            summary: [],
+            description: params.taskTitle,
+            subagent_type: params.subagent_type,
           },
         })
 
-        return {
-          title: `[Background] ${params.description}`,
-          metadata: {
-            taskId: task.id,
-            sessionId: task.sessionID,
-            background: true,
-            summary: [],
-          },
-          output: `Background task dispatched.
+        const agent = await Agent.get(params.subagent_type)
+        if (!agent) throw new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`)
+        const callerInfo = caller ?? (ctx.agent ? await Agent.get(ctx.agent) : undefined)
+        if (!AgentDelegation.canDelegateTo(agent, callerInfo ?? ctx.agent)) {
+          throw new Error(`Agent type ${params.subagent_type} is not visible to ${ctx.agent}`)
+        }
 
-Task ID: ${task.id}
+        const msg = await MessageV2.get({
+          scopeID: ScopeContext.current.scope.id,
+          sessionID: ctx.sessionID,
+          messageID: ctx.messageID,
+        })
+        if (msg.info.role !== "assistant") throw new Error("Not an assistant message")
+
+        const parentModel = {
+          modelID: msg.info.modelID,
+          providerID: msg.info.providerID,
+        }
+
+        // Keep the parent's provider choice while that model remains available.
+        let model =
+          ctx.extra?.subtaskModel ??
+          ((await Provider.isModelAvailable(parentModel))
+            ? parentModel
+            : ((await Agent.getAvailableModel(agent)) ?? parentModel))
+        let promptAppend = ""
+
+        const categoryConfig = await Category.resolve(params.category)
+        if (categoryConfig) {
+          if (categoryConfig.model) {
+            const parsed = Provider.parseModel(categoryConfig.model)
+            if (!parsed.providerID.trim() || !parsed.modelID.trim()) {
+              throw new Error(
+                `Model must be in provider/model format for category ${params.category}: ${categoryConfig.model}`,
+              )
+            }
+            model = { providerID: parsed.providerID, modelID: parsed.modelID }
+          }
+          promptAppend = categoryConfig.promptAppend ?? ""
+        }
+
+        const fullPrompt = promptAppend ? `${params.taskInstructions}\n\n${promptAppend}` : params.taskInstructions
+
+        let sessionID: string | undefined
+        if (params.session_id) {
+          sessionID = params.session_id
+        }
+
+        const { Cortex } = await import("..")
+        const task = await Cortex.launch({
+          description: params.taskTitle,
+          prompt: fullPrompt,
+          agent: params.subagent_type,
+          executionRole: "delegated_subagent",
+          category: params.category,
+          dagNodeId: params.dag_node_id,
+          parentSessionID: ctx.sessionID,
+          parentMessageID: ctx.messageID,
+          sessionID,
+          model,
+          worktree: params.worktree ? { ...params.worktree, failOnError: false } : undefined,
+          output: params.output,
+        })
+
+        await bindDagNode(ctx.sessionID, params.dag_node_id, task)
+
+        if (params.background) {
+          ctx.metadata({
+            title: `[Background] ${params.taskTitle}`,
+            metadata: {
+              taskId: task.id,
+              sessionId: task.sessionID,
+              background: true,
+              summary: [],
+            },
+          })
+
+          return {
+            title: `[Background] ${params.taskTitle}`,
+            metadata: {
+              taskId: task.id,
+              sessionId: task.sessionID,
+              background: true,
+              summary: [],
+            },
+            output: `Background task dispatched.
+
+taskId: ${task.id}
 Session ID: ${task.sessionID}
-Description: ${task.description}
+taskTitle: ${task.description}
 Agent: ${task.agent}${params.category ? ` (category: ${params.category})` : ""}
 Status: running
 
@@ -210,62 +212,62 @@ If you have other independent work to do, continue with it now.
 
 Otherwise, you are done for this turn — deliver your final response and stop.
 When the task completes, the system will send a lightweight notification that wakes you.
-The notification does NOT contain the final result; retrieve it once with \`task_output(task_id="${task.id}", mode="full")\`.
+The notification does NOT contain the final result; retrieve it once with \`task_output(taskId="${task.id}", mode="full")\`.
 Do not repeatedly call task_output while the task is running.
 Use diagnostic modes (progress, tail, summary) only for a one-shot check; if the task is still running, continue independent work or wait for the automatic completion notification.`,
+          }
         }
-      }
 
-      ctx.metadata({
-        title: params.description,
-        metadata: { sessionId: task.sessionID },
-      })
+        ctx.metadata({
+          title: params.taskTitle,
+          metadata: { sessionId: task.sessionID },
+        })
 
-      function cancel() {
-        void Cortex.cancel(task.id)
-      }
-      ctx.abort.addEventListener("abort", cancel)
-      using _ = defer(() => ctx.abort.removeEventListener("abort", cancel))
-
-      const parts: Record<string, { id: string; tool: string; state: { status: string; title?: string } }> = {}
-      const unsub = Bus.subscribe(MessageV2.Event.PartUpdated, async (evt) => {
-        if (evt.properties.part.sessionID !== task.sessionID) return
-        if (evt.properties.part.type !== "tool") return
-        const part = evt.properties.part
-        parts[part.id] = {
-          id: part.id,
-          tool: part.tool,
-          state: {
-            status: part.state.status,
-            title: part.state.status === "completed" ? part.state.title : undefined,
-          },
+        function cancel() {
+          void Cortex.cancel(task.id)
         }
-        ctx.metadata({
-          title: params.description,
-          metadata: {
-            summary: Object.values(parts).sort((a, b) => a.id.localeCompare(b.id)),
-            sessionId: task.sessionID,
-          },
+        ctx.abort.addEventListener("abort", cancel)
+        using _ = defer(() => ctx.abort.removeEventListener("abort", cancel))
+
+        const parts: Record<string, { id: string; tool: string; state: { status: string; title?: string } }> = {}
+        const unsub = Bus.subscribe(MessageV2.Event.PartUpdated, async (evt) => {
+          if (evt.properties.part.sessionID !== task.sessionID) return
+          if (evt.properties.part.type !== "tool") return
+          const part = evt.properties.part
+          parts[part.id] = {
+            id: part.id,
+            tool: part.tool,
+            state: {
+              status: part.state.status,
+              title: part.state.status === "completed" ? part.state.title : undefined,
+            },
+          }
+          ctx.metadata({
+            title: params.taskTitle,
+            metadata: {
+              summary: Object.values(parts).sort((a, b) => a.id.localeCompare(b.id)),
+              sessionId: task.sessionID,
+            },
+          })
         })
-      })
 
-      const completed = await Cortex.waitFor(task.id, SYNC_TIMEOUT_S, ctx.abort)
-      unsub()
+        const completed = await Cortex.waitFor(task.id, SYNC_TIMEOUT_S, ctx.abort)
+        unsub()
 
-      if (!completed || completed.status === "running") {
-        const summary = Object.values(parts).sort((a, b) => a.id.localeCompare(b.id))
-        ctx.metadata({
-          title: `[Auto-backgrounded] ${params.description}`,
-          metadata: { taskId: task.id, sessionId: task.sessionID, background: true, summary },
-        })
-        return {
-          title: `[Auto-backgrounded] ${params.description}`,
-          metadata: { taskId: task.id, sessionId: task.sessionID, background: true, summary },
-          output: `Task auto-backgrounded after ${SYNC_TIMEOUT_S}s timeout.
+        if (!completed || completed.status === "running") {
+          const summary = Object.values(parts).sort((a, b) => a.id.localeCompare(b.id))
+          ctx.metadata({
+            title: `[Auto-backgrounded] ${params.taskTitle}`,
+            metadata: { taskId: task.id, sessionId: task.sessionID, background: true, summary },
+          })
+          return {
+            title: `[Auto-backgrounded] ${params.taskTitle}`,
+            metadata: { taskId: task.id, sessionId: task.sessionID, background: true, summary },
+            output: `Task auto-backgrounded after ${SYNC_TIMEOUT_S}s timeout.
 
-Task ID: ${task.id}
+taskId: ${task.id}
 Session ID: ${task.sessionID}
-Description: ${task.description}
+taskTitle: ${task.description}
 Agent: ${task.agent}
 Status: still running
 
@@ -273,38 +275,41 @@ If you have other independent work to do, continue with it now.
 
 Otherwise, you are done for this turn — deliver your final response and stop.
 When the task completes, the system will send a lightweight notification that wakes you.
-The notification does NOT contain the final result; retrieve it once with \`task_output(task_id="${task.id}", mode="full")\`.
+The notification does NOT contain the final result; retrieve it once with \`task_output(taskId="${task.id}", mode="full")\`.
 Do not repeatedly call task_output while the task is running.
 Use diagnostic modes (progress, tail, summary) only for a one-shot check; if the task is still running, continue independent work or wait for the automatic completion notification.`,
+          }
         }
-      }
 
-      const messages = await Session.messages({ sessionID: task.sessionID })
-      const summary = messages
-        .filter((x) => x.info.role === "assistant")
-        .flatMap((msg) => msg.parts.filter((x: any) => x.type === "tool") as MessageV2.ToolPart[])
-        .map((part) => ({
-          id: part.id,
-          tool: part.tool,
-          state: {
-            status: part.state.status,
-            title: part.state.status === "completed" ? part.state.title : undefined,
+        const messages = await Session.messages({ sessionID: task.sessionID })
+        const summary = messages
+          .filter((x) => x.info.role === "assistant")
+          .flatMap((msg) => msg.parts.filter((x: any) => x.type === "tool") as MessageV2.ToolPart[])
+          .map((part) => ({
+            id: part.id,
+            tool: part.tool,
+            state: {
+              status: part.state.status,
+              title: part.state.status === "completed" ? part.state.title : undefined,
+            },
+          }))
+        const text = CortexOutput.renderTaskOutput(completed.output)
+        const output =
+          text + "\n\n" + ["<task_metadata>", `session_id: ${task.sessionID}`, "</task_metadata>"].join("\n")
+
+        return {
+          title: params.taskTitle,
+          metadata: {
+            summary,
+            sessionId: task.sessionID,
+            taskId: undefined,
+            background: false,
+            output: completed.output,
           },
-        }))
-      const text = CortexOutput.renderTaskOutput(completed.output)
-      const output = text + "\n\n" + ["<task_metadata>", `session_id: ${task.sessionID}`, "</task_metadata>"].join("\n")
-
-      return {
-        title: params.description,
-        metadata: {
-          summary,
-          sessionId: task.sessionID,
-          taskId: undefined,
-          background: false,
-          output: completed.output,
-        },
-        output,
-      }
-    },
-  }
-})
+          output,
+        }
+      },
+    }
+  },
+  { activityKind: "object" },
+)

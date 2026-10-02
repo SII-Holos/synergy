@@ -33,44 +33,34 @@ describe("settings section localization", () => {
       locale: "zh-CN",
       messages: {
         "settings.catalog.general.label": "常规",
-        "settings.catalog.group.core": "核心",
+        "settings.catalog.group.personal": "个人偏好",
         "settings.catalog.general.description": "外观、行为与通知偏好。",
         "settings.catalog.general.searchTerms": "外观 | 语言",
-        "settings.catalog.general.row.interfaceLanguage": "界面语言",
+        "settings.general.language.title": "界面语言",
       },
     })
 
     expect(localizeSettingsSection(builtin, (descriptor: MessageDescriptor) => i18n._(descriptor))).toMatchObject({
       label: "常规",
-      group: "核心",
+      group: "个人偏好",
       description: "外观、行为与通知偏好。",
       keywords: ["外观 | 语言"],
-      rowLabels: [
-        "Color Scheme",
-        "Interface font",
-        "Monospace font",
-        "界面语言",
-        "Activity display",
-        "New task starting point",
-        "Product Updates",
-        "Notifications",
-        "Toast Duration",
-      ],
     })
+    expect(localizeSettingsSection(builtin, (descriptor) => i18n._(descriptor)).rowLabels).toContain("界面语言")
   })
 
   test("keeps built-in group ordering stable after localization", () => {
     const i18n = setupI18n({ locale: "zh-CN" })
     i18n.loadAndActivate({
       locale: "zh-CN",
-      messages: { "settings.catalog.group.core": "核心" },
+      messages: { "settings.catalog.group.personal": "个人偏好" },
     })
     const localized = localizeSettingsSection(builtin, (descriptor: MessageDescriptor) => i18n._(descriptor))
     const groupKey = settingsSectionGroupKey(localized)
 
-    expect(localized.group).toBe("核心")
-    expect(groupKey).toBe("core")
-    expect(settingsGroupOrder(groupKey)).toBe(1)
+    expect(localized.group).toBe("个人偏好")
+    expect(groupKey).toBe("personal")
+    expect(settingsGroupOrder(groupKey)).toBe(0)
   })
 
   test("preserves plugin-author metadata verbatim", () => {

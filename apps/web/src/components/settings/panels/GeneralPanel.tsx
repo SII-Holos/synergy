@@ -1,5 +1,5 @@
 import { SkinPreferenceRow } from "@/plugin/skin-preference-row"
-import { For, Show } from "solid-js"
+import { createEffect, createSignal, For, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -11,11 +11,12 @@ import type { LocalePreference } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
 import { usePlatform, type DesktopUpdateMode, type DesktopPowerSnapshot } from "@/context/platform"
 import { DevicePushBlock } from "./DevicePushBlock"
-import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
+import { SettingRow } from "../components/SettingsSettingRow"
 import { SegmentPill } from "../components/SegmentPill"
+import { SettingsChoices } from "../components/SettingsChoices"
 import { ThemePicker } from "../components/ThemePicker"
 import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
-import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
+import { SettingsPage, SettingsSection, SettingsAdvanced } from "../components/SettingsPrimitives"
 import { InterfaceZoom } from "./interface-zoom"
 import { ShellPreferenceRow } from "@/plugin/shell-preference-row"
 import {
@@ -96,7 +97,8 @@ const copy = {
   activityDisplayTitle: { id: "settings.general.activityDisplay.title", message: "Activity display" },
   activityDisplayDescription: {
     id: "settings.general.activityDisplay.description",
-    message: "Choose how much activity detail Synergy shows in the interface",
+    message:
+      "Balanced shows current calls and collects completed tools; Full expands tool history; Minimal keeps progress compact. You can expand the process in every mode.",
   },
   activityFull: { id: "settings.general.activityDisplay.full", message: "Full" },
   activityBalanced: { id: "settings.general.activityDisplay.balanced", message: "Balanced" },
@@ -104,14 +106,14 @@ const copy = {
   workspaceTitle: { id: "settings.general.workspace.title", message: "New task starting point" },
   workspaceDescription: {
     id: "settings.general.workspace.description",
-    message: "Use the main folder or create a Worktree for each new Git task. Projects can override this default.",
+    message: "Use the main folder or create a worktree for each new Git task. Projects can override this default.",
   },
   workspaceMain: { id: "settings.general.workspace.main", message: "Main folder" },
   workspaceWorktree: { id: "settings.general.workspace.worktree", message: "Worktree" },
-  compactReasoningTitle: { id: "settings.general.compactReasoning.title", message: "Compact reasoning" },
+  compactReasoningTitle: { id: "settings.general.compactReasoning.title", message: "Reasoning preview" },
   compactReasoningDescription: {
     id: "settings.general.compactReasoning.description",
-    message: "Show live reasoning in a single line; completed turns keep an expandable reasoning row",
+    message: "Preview the original reasoning in one line. Reasoning remains expandable when this is off.",
   },
   preventSleepTitle: { id: "settings.general.preventSleep.title", message: "Prevent sleep while running" },
   preventSleepDescription: {
@@ -193,6 +195,11 @@ function secondsLabel(value: number) {
 }
 
 export function GeneralPanel(props: {
+  view?: "regular" | "appearance" | "notifications"
+  onViewChange?: (view: "regular" | "appearance" | "notifications") => void
+  searchField?: string
+  developerMode?: boolean
+  onDeveloperModeChange?: (enabled: boolean) => void
   general: GeneralStore
   desktopUpdateMode?: DesktopUpdateMode
   onGeneralChange: <K extends keyof GeneralStore>(key: K, value: GeneralStore[K]) => void
@@ -206,6 +213,42 @@ export function GeneralPanel(props: {
   const theme = useTheme()
   const selectedThemeId = () => props.general.theme || "synergy"
   const { _ } = useLingui()
+  const [localView, setLocalView] = createSignal<"regular" | "appearance" | "notifications">("regular")
+  const view = () => props.view ?? localView()
+  const setView = (value: "regular" | "appearance" | "notifications") => {
+    setLocalView(value)
+    props.onViewChange?.(value)
+  }
+  const tabs = () => [
+    { id: "regular" as const, label: _({ id: "settings.general.regular.title", message: "General" }) },
+    { id: "appearance" as const, label: _(copy.appearanceTitle) },
+    { id: "notifications" as const, label: _(copy.notificationsTitle) },
+  ]
+  createEffect(() => {
+    const field = props.searchField
+    if (!field) return
+    const appearance = [
+      copy.appearanceTitle,
+      copy.themeTitle,
+      copy.colorSchemeLabel,
+      copy.fontTitle,
+      copy.monoFontTitle,
+      { id: "app.plugin.shell.preference.title", message: "Workbench" },
+      { id: "app.plugin.skin.preference.title", message: "Skin" },
+      { id: "settings.general.zoom.title", message: "Interface zoom" },
+    ]
+    const notifications = [
+      copy.notificationsTitle,
+      copy.toastInfo,
+      copy.toastSuccess,
+      copy.toastWarning,
+      copy.toastError,
+      { id: "settings.catalog.general.row.toastDuration", message: "Toast Duration" },
+    ]
+    const matches = (entry: { id: string; message: string }) =>
+      _(entry).toLocaleLowerCase() === field.toLocaleLowerCase()
+    setView(appearance.some(matches) ? "appearance" : notifications.some(matches) ? "notifications" : "regular")
+  })
   const platform = usePlatform()
   const colorSchemeOptions = () => [
     {
@@ -245,151 +288,213 @@ export function GeneralPanel(props: {
 
   return (
     <SettingsPage title={_(copy.pageTitle)} description={_(copy.pageDescription)}>
-      <SettingsSection title={_(copy.appearanceTitle)}>
-        <ShellPreferenceRow popoverLayer={props.popoverLayer} />
-        <SkinPreferenceRow popoverLayer={props.popoverLayer} onThemeChange={setThemeId} />
-        <div class="settings-theme-picker-section">
-          <div class="settings-theme-picker-copy">
-            <span class="settings-row-title">{_(copy.themeTitle)}</span>
-            <span class="settings-row-description">{_(copy.themeDescription)}</span>
-          </div>
-          <ThemePicker
-            ariaLabel={_(copy.themeTitle)}
-            mode={theme.mode()}
-            themes={theme.themes()}
-            value={selectedThemeId()}
-            onChange={setThemeId}
-          />
-        </div>
-        <div class="settings-color-grid" role="radiogroup" aria-label={_(copy.colorSchemeLabel)}>
-          <For each={colorSchemeOptions()}>
-            {(option) => (
-              <button
-                type="button"
-                role="radio"
-                aria-checked={props.general.colorScheme === option.value}
-                class="settings-color-card"
-                classList={{ "settings-color-card-active": props.general.colorScheme === option.value }}
-                onClick={() => props.onGeneralChange("colorScheme", option.value)}
-              >
-                <span class="settings-color-icon">
-                  <Icon name={getSemanticIcon(option.iconToken)} size="normal" />
-                </span>
-                <span class="settings-color-label">{option.label}</span>
-                <span class="settings-color-description">{option.description}</span>
-              </button>
-            )}
-          </For>
-        </div>
-        <SettingRow
-          title={_(copy.languageTitle)}
-          description={_(copy.languageDescription)}
-          trailing={
-            <MenuField
-              value={props.general.locale}
-              ariaLabel={_(copy.languageTitle)}
+      <div class="settings-subviews" role="tablist" aria-label={_(copy.pageTitle)}>
+        <For each={tabs()}>
+          {(tab, index) => (
+            <button
+              type="button"
+              role="tab"
+              id={`settings-general-tab-${tab.id}`}
+              aria-controls={`settings-general-view-${tab.id}`}
+              aria-selected={view() === tab.id}
+              tabIndex={view() === tab.id ? 0 : -1}
+              onClick={() => setView(tab.id)}
+              onKeyDown={(event) => {
+                if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return
+                event.preventDefault()
+                const next =
+                  event.key === "Home"
+                    ? 0
+                    : event.key === "End"
+                      ? 2
+                      : (index() + (event.key === "ArrowRight" ? 1 : 2)) % 3
+                setView(tabs()[next]!.id)
+                event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus()
+              }}
+            >
+              {tab.label}
+            </button>
+          )}
+        </For>
+      </div>
+      <div role="tabpanel" id={`settings-general-view-${view()}`} aria-labelledby={`settings-general-tab-${view()}`}>
+        <Show when={view() === "appearance"}>
+          <SettingsSection title={_(copy.appearanceTitle)}>
+            <p class="settings-row-description settings-immediate-note">
+              {_({
+                id: "settings.general.appearance.immediate",
+                message: "Theme, skin, and color scheme apply immediately.",
+              })}
+            </p>
+            <ShellPreferenceRow popoverLayer={props.popoverLayer} />
+            <SkinPreferenceRow popoverLayer={props.popoverLayer} onThemeChange={setThemeId} />
+            <div class="settings-theme-picker-section">
+              <div class="settings-theme-picker-copy">
+                <span class="settings-row-title">{_(copy.themeTitle)}</span>
+                <span class="settings-row-description">{_(copy.themeDescription)}</span>
+              </div>
+              <ThemePicker
+                ariaLabel={_(copy.themeTitle)}
+                mode={theme.mode()}
+                themes={theme.themes()}
+                value={selectedThemeId()}
+                onChange={setThemeId}
+              />
+            </div>
+            <h3 class="ds-subsection-title">{_(copy.colorSchemeLabel)}</h3>
+            <SettingsChoices
+              value={props.general.colorScheme}
+              ariaLabel={_(copy.colorSchemeLabel)}
+              options={colorSchemeOptions().map((option) => ({
+                value: option.value,
+                label: option.label,
+                description: option.description,
+              }))}
+              onChange={(value) => props.onGeneralChange("colorScheme", value)}
+            />
+            <FontPreferenceRow
+              kind="sans"
+              title={_(copy.fontTitle)}
+              description={_(copy.fontDescription)}
               popoverLayer={props.popoverLayer}
-              options={[
-                { value: "system", label: _(copy.languageSystem) },
-                { value: "en", label: LANGUAGE_SELF_NAMES.en },
-                { value: "zh-CN", label: LANGUAGE_SELF_NAMES["zh-CN"] },
-              ]}
-              onChange={(value) => props.onGeneralChange("locale", value as LocalePreference)}
             />
-          }
-        />
-        <SettingRow
-          title={_(copy.activityDisplayTitle)}
-          description={_(copy.activityDisplayDescription)}
-          trailing={
-            <SegmentPill
-              value={props.general.activityDisplay}
-              options={[
-                { value: "full", label: _(copy.activityFull) },
-                { value: "balanced", label: _(copy.activityBalanced) },
-                { value: "minimal", label: _(copy.activityMinimal) },
-              ]}
-              onChange={(value) => props.onGeneralChange("activityDisplay", value as ActivityDisplay)}
+            <FontPreferenceRow
+              kind="mono"
+              title={_(copy.monoFontTitle)}
+              description={_(copy.monoFontDescription)}
+              popoverLayer={props.popoverLayer}
             />
-          }
-        />
-        <FontPreferenceRow
-          kind="sans"
-          title={_(copy.fontTitle)}
-          description={_(copy.fontDescription)}
-          popoverLayer={props.popoverLayer}
-        />
-        <FontPreferenceRow
-          kind="mono"
-          title={_(copy.monoFontTitle)}
-          description={_(copy.monoFontDescription)}
-          popoverLayer={props.popoverLayer}
-        />
-        <Show when={platform.desktopZoom}>
-          <InterfaceZoom zoom={props.desktopZoom ?? 1} onZoomChange={(factor) => props.onDesktopZoomChange?.(factor)} />
+            <Show when={platform.desktopZoom}>
+              <InterfaceZoom
+                zoom={props.desktopZoom ?? 1}
+                onZoomChange={(factor) => props.onDesktopZoomChange?.(factor)}
+              />
+            </Show>
+          </SettingsSection>
         </Show>
-      </SettingsSection>
-
-      <SettingsSection title={_(copy.behaviorTitle)}>
-        <SettingRow
-          title={_(copy.compactReasoningTitle)}
-          description={_(copy.compactReasoningDescription)}
-          trailing={
-            <Switch
-              checked={props.general.compactReasoning}
-              onChange={(value) => props.onGeneralChange("compactReasoning", value)}
-            />
-          }
-        />
-        <SettingRow
-          title={_(copy.workspaceTitle)}
-          description={_(copy.workspaceDescription)}
-          trailing={
-            <SegmentPill
-              value={props.general.defaultSessionWorkspace}
-              ariaLabel={_(copy.workspaceTitle)}
-              options={[
-                { value: "main", label: _(copy.workspaceMain) },
-                { value: "worktree", label: _(copy.workspaceWorktree) },
-              ]}
-              onChange={(value) =>
-                props.onGeneralChange("defaultSessionWorkspace", value as NewSessionWorkspacePreference)
+        <Show when={view() === "regular"}>
+          <SettingsSection title={_(copy.behaviorTitle)}>
+            <SettingRow
+              title={_({ id: "settings.general.developer.title", message: "Show developer options" })}
+              description={_({
+                id: "settings.general.developer.description",
+                message: "Show advanced development pages on this device.",
+              })}
+              stateLabel={_({ id: "settings.preference.immediate", message: "Applies immediately" })}
+              controlLayout="compact"
+              trailing={
+                <Switch
+                  checked={props.developerMode ?? false}
+                  onChange={(value) => props.onDeveloperModeChange?.(value)}
+                />
               }
             />
-          }
-        />
-        <Show when={platform.desktopPower}>
-          <SettingRow
-            title={_(copy.preventSleepTitle)}
-            description={_(copy.preventSleepDescription)}
-            stateLabel={props.desktopPower?.active ? _(copy.preventSleepActive) : _(copy.preventSleepIdle)}
-            trailing={
-              <Switch
-                checked={props.desktopPower?.keepAwakeWhileRunning ?? false}
-                onChange={(value) => props.onDesktopPowerChange?.(value)}
-              />
-            }
-          />
-        </Show>
-        <ProductUpdates mode={props.desktopUpdateMode} onModeChange={props.onDesktopUpdateModeChange} />
-      </SettingsSection>
+            <SettingRow
+              title={_(copy.languageTitle)}
+              description={_(copy.languageDescription)}
+              trailing={
+                <MenuField
+                  value={props.general.locale}
+                  ariaLabel={_(copy.languageTitle)}
+                  popoverLayer={props.popoverLayer}
+                  options={[
+                    { value: "system", label: _(copy.languageSystem) },
+                    { value: "en", label: LANGUAGE_SELF_NAMES.en },
+                    { value: "zh-CN", label: LANGUAGE_SELF_NAMES["zh-CN"] },
+                  ]}
+                  onChange={(value) => props.onGeneralChange("locale", value as LocalePreference)}
+                />
+              }
+            />
+            <SettingRow
+              title={_(copy.activityDisplayTitle)}
+              description={_(copy.activityDisplayDescription)}
+              trailing={
+                <SegmentPill
+                  value={props.general.activityDisplay}
+                  options={[
+                    { value: "full", label: _(copy.activityFull) },
+                    { value: "balanced", label: _(copy.activityBalanced) },
+                    { value: "minimal", label: _(copy.activityMinimal) },
+                  ]}
+                  onChange={(value) => props.onGeneralChange("activityDisplay", value as ActivityDisplay)}
+                />
+              }
+            />
 
-      <SettingsSection title={_(copy.notificationsTitle)} description={_(copy.notificationsDescription)}>
-        <div class="settings-toast-list">
-          <For each={TOAST_TYPES}>
-            {(type) => (
-              <ToastPreferenceRow
-                type={type}
-                muted={props.general.mutedToasts.includes(type)}
-                duration={props.general.toastDurations[type]}
-                onMutedChange={(value) => toggleMutedToast(type, value)}
-                onDurationChange={(value) => setToastDuration(type, value)}
+            <SettingRow
+              title={_(copy.compactReasoningTitle)}
+              description={_(copy.compactReasoningDescription)}
+              trailing={
+                <Switch
+                  checked={props.general.compactReasoning}
+                  onChange={(value) => props.onGeneralChange("compactReasoning", value)}
+                />
+              }
+            />
+            <SettingRow
+              title={_(copy.workspaceTitle)}
+              description={_(copy.workspaceDescription)}
+              trailing={
+                <SegmentPill
+                  value={props.general.defaultSessionWorkspace}
+                  ariaLabel={_(copy.workspaceTitle)}
+                  options={[
+                    { value: "main", label: _(copy.workspaceMain) },
+                    { value: "worktree", label: _(copy.workspaceWorktree) },
+                  ]}
+                  onChange={(value) =>
+                    props.onGeneralChange("defaultSessionWorkspace", value as NewSessionWorkspacePreference)
+                  }
+                />
+              }
+            />
+            <Show when={platform.desktopPower}>
+              <SettingRow
+                title={_(copy.preventSleepTitle)}
+                description={_(copy.preventSleepDescription)}
+                stateLabel={props.desktopPower?.active ? _(copy.preventSleepActive) : _(copy.preventSleepIdle)}
+                trailing={
+                  <Switch
+                    checked={props.desktopPower?.keepAwakeWhileRunning ?? false}
+                    onChange={(value) => props.onDesktopPowerChange?.(value)}
+                  />
+                }
               />
-            )}
-          </For>
-        </div>
-        <DevicePushBlock />
-      </SettingsSection>
+            </Show>
+            <ProductUpdates mode={props.desktopUpdateMode} onModeChange={props.onDesktopUpdateModeChange} />
+          </SettingsSection>
+        </Show>
+        <Show when={view() === "notifications"}>
+          <SettingsSection title={_(copy.notificationsTitle)} description={_(copy.notificationsDescription)}>
+            <DevicePushBlock />
+            <SettingsAdvanced
+              title={_({ id: "settings.general.notifications.inApp", message: "In-app notification details" })}
+              forceOpen={[
+                copy.toastInfo,
+                copy.toastSuccess,
+                copy.toastWarning,
+                copy.toastError,
+                { id: "settings.catalog.general.row.toastDuration", message: "Toast Duration" },
+              ].some((item) => _(item) === props.searchField)}
+            >
+              <div class="settings-toast-list">
+                <For each={[...TOAST_TYPES].reverse()}>
+                  {(type) => (
+                    <ToastPreferenceRow
+                      type={type}
+                      muted={props.general.mutedToasts.includes(type)}
+                      duration={props.general.toastDurations[type]}
+                      onMutedChange={(value) => toggleMutedToast(type, value)}
+                      onDurationChange={(value) => setToastDuration(type, value)}
+                    />
+                  )}
+                </For>
+              </div>
+            </SettingsAdvanced>
+          </SettingsSection>
+        </Show>
+      </div>
     </SettingsPage>
   )
 }
@@ -403,9 +508,10 @@ function FontPreferenceRow(props: { kind: FontKind; title: string; description: 
   const ready = () => phase() === "ready"
   const selectedFamily = () => font.selected(props.kind)
   const appliedFamily = () => font.appliedFamily(props.kind)
-  const hasCustomFont = () => Boolean(appliedFamily())
-  const hasFontChoice = () => Boolean(selectedFamily() || appliedFamily())
-  const options = () => font.fontList(props.kind).map((family) => ({ value: family, label: family }))
+  const options = () => [
+    { value: "", label: _({ id: "settings.general.font.system", message: "System default" }) },
+    ...font.fontList(props.kind).map((family) => ({ value: family, label: family })),
+  ]
   const actionDisabled = () => loading()
   const actionLabel = () => (loading() ? _(copy.fontChecking) : _(copy.fontCheck))
 
@@ -415,33 +521,39 @@ function FontPreferenceRow(props: { kind: FontKind; title: string; description: 
     if (phaseValue === "unsupported") return _(copy.fontUnsupported)
     if (phaseValue === "denied") return _(copy.fontDenied)
     if (font.dirty(props.kind)) return _(copy.fontReady)
-    if (hasCustomFont()) return _(copy.fontApplied)
-    return _(copy.fontDefault)
+    return undefined
   }
 
   return (
     <SettingRow
       title={props.title}
       description={props.description}
-      stateLabel={statusLabel()}
+      controlLayout="group"
+      stateLabel={
+        statusLabel()
+          ? _({
+              id: "settings.general.font.effectiveWithStatus",
+              message: "Current font: {font}. {status}",
+              values: {
+                font: appliedFamily() || _({ id: "settings.general.font.system", message: "System default" }),
+                status: statusLabel(),
+              },
+            })
+          : _({
+              id: "settings.general.font.effective",
+              message: "Current font: {font}",
+              values: { font: appliedFamily() || _({ id: "settings.general.font.system", message: "System default" }) },
+            })
+      }
       trailing={
         <div class="settings-font-controls">
-          <Button
-            type="button"
-            variant="ghost"
-            size="small"
-            disabled={!hasFontChoice()}
-            onClick={() => font.reset(props.kind)}
-          >
-            {_(copy.fontReset)}
-          </Button>
           <MenuField
             value={selectedFamily()}
             ariaLabel={props.title}
             popoverLayer={props.popoverLayer}
-            triggerLabel={selectedFamily() || _(copy.fontSelectPlaceholder)}
+            triggerLabel={selectedFamily() || _({ id: "settings.general.font.system", message: "System default" })}
             options={options()}
-            disabled={!ready()}
+            disabled={loading()}
             onChange={(value) => font.select(props.kind, value)}
           />
           <Show when={!ready()}>
@@ -450,6 +562,11 @@ function FontPreferenceRow(props: { kind: FontKind; title: string; description: 
               variant="secondary"
               size="small"
               disabled={actionDisabled()}
+              aria-label={_({
+                id: "settings.general.font.check.named",
+                message: "Check {font}",
+                values: { font: props.title },
+              })}
               onClick={() => void font.check(props.kind)}
             >
               {actionLabel()}

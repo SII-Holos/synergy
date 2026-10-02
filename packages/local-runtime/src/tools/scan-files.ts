@@ -283,5 +283,5 @@ export const ScanFilesTool = Tool.define(
       }
     },
   },
-  { requiresWorkspace: true },
+  { requiresWorkspace: true, activityKind: "search" },
 )

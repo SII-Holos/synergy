@@ -5,6 +5,65 @@
   padding: 4px 12px 8px;
 }
 
+[data-slot="attachment-row-layout"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  overflow: hidden;
+  padding: 2px;
+}
+[data-slot="attachment-row-entry"] {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+}
+[data-component="attachment-gallery"][data-align="end"] [data-slot="attachment-row-layout"] {
+  justify-content: flex-end;
+}
+[data-slot="attachment-rows-toggle"] {
+  min-height: 28px;
+  font-size: 12px;
+  color: var(--text-weak);
+  padding-inline: 4px;
+  cursor: pointer;
+}
+[data-component="attachment-card"][data-compact] {
+  min-height: 48px;
+  padding: 8px;
+  gap: 8px;
+  width: 216px;
+  max-width: 100%;
+}
+[data-component="attachment-card"][data-compact] .attachment-compact-filename {
+  display: flex;
+  min-width: 0;
+}
+.attachment-compact-filename > :first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.attachment-compact-filename > :last-child {
+  flex-shrink: 0;
+}
+[data-component="attachment-card"][data-compact][data-type="image"] {
+  width: 64px;
+  height: 64px;
+  min-height: 0;
+  padding: 0;
+}
+[data-component="attachment-card"][data-compact="user"][data-type="image"] {
+  width: 88px;
+  height: 88px;
+}
+[data-component="attachment-card"][data-compact][data-type="image"] img {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
 [data-slot="attachment-column-layout"] {
   display: flex;
   align-items: flex-start;

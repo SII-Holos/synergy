@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import path from "path"
 import fs from "fs/promises"
@@ -82,9 +83,9 @@ describe("AgentConfig.create", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          await expect(AgentConfig.create({ name: "synergy", prompt: "duplicate", scope: "project" })).rejects.toThrow(
-            /already exists/i,
-          )
+          await expect(
+            AgentConfig.create({ name: PrimaryAgentIdentity.names.general, prompt: "duplicate", scope: "project" }),
+          ).rejects.toThrow(/already exists/i)
 
           await expect(
             AgentConfig.create({ name: "explore", model: "openai/gpt-test", scope: "project" }),
@@ -529,7 +530,7 @@ describe("Agent.defaultAgent fallback", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          expect(await Agent.defaultAgent()).toBe("synergy")
+          expect(await Agent.defaultAgent()).toBe(PrimaryAgentIdentity.names.general)
         },
       })
     }))
@@ -540,7 +541,7 @@ describe("Agent.defaultAgent fallback", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          expect(await Agent.defaultAgent()).toBe("synergy")
+          expect(await Agent.defaultAgent()).toBe(PrimaryAgentIdentity.names.general)
         },
       })
     }))
@@ -551,7 +552,7 @@ describe("Agent.defaultAgent fallback", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          expect(await Agent.defaultAgent()).toBe("synergy")
+          expect(await Agent.defaultAgent()).toBe(PrimaryAgentIdentity.names.general)
         },
       })
     }))
@@ -567,7 +568,7 @@ describe("Agent.defaultAgent fallback", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const resolved = await Agent.defaultAgent()
-          expect(resolved).not.toBe("synergy")
+          expect(resolved).not.toBe(PrimaryAgentIdentity.names.general)
           expect(await Agent.get(resolved)).toBeDefined()
           expect((await Agent.get(resolved))?.mode).not.toBe("subagent")
         },

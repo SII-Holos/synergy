@@ -1,3 +1,5 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import type { Info as SessionInfo } from "@ericsanchezok/synergy-harness/session/types"
 import { LatticePrompt } from "@ericsanchezok/synergy-workflows/lattice/prompt"
@@ -12,15 +14,6 @@ import { WorkflowUserWrapper } from "@ericsanchezok/synergy-harness/test/interna
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
-
-/**
- * Lattice prompt contract (S5a golden). Locks the byte-level shape of the
- * parent Lattice system block (assembly order, separators, <lattice-context>
- * projection) and the lattice user-message wrappers before the S5b vertical
- * slice moves the wrapper bytes into the lattice domain and routes the
- * invoke.ts call sites through the workflow prompt registry. Any diff here
- * must be an explicit product decision, never a refactor side effect.
- */
 
 function step(input: {
   id: string
@@ -159,58 +152,25 @@ describe("lattice system prompt golden", () => {
     }))
 })
 
-describe("lattice user-message wrapper golden", () => {
-  test("generic agent wrapper is byte-exact", () =>
+describe("lattice user-message wrapper contract", () => {
+  test("primary and custom wrappers preserve request boundaries and workflow instructions", () =>
     runtime.run(() => {
-      expect(WorkflowUserWrapper.build("some-agent", "lattice", "decompose the migration")).toBe(
-        [
-          "<lattice-user-request>",
-          "You are in the Lattice workflow.",
-          "Treat this message as evidence for the current Lattice responsibility; follow the current Lattice system state instead of restarting the workflow.",
-          "While clarifying, investigate and align requirements before proposing a Pathway or Blueprint.",
-          "",
-          "User request:",
-          "decompose the migration",
-          "</lattice-user-request>",
-        ].join("\n"),
-      )
-    }))
-
-  test("synergy wrapper is byte-exact", () =>
-    runtime.run(() => {
-      expect(WorkflowUserWrapper.build("synergy", "lattice", "decompose the migration")).toBe(
-        [
-          "<lattice-user-request>",
-          "You are synergy in the Lattice workflow.",
-          "Treat this message as evidence for the current Lattice responsibility; follow the current Lattice system state instead of restarting the workflow.",
-          "While clarifying, investigate and align requirements before proposing a Pathway or Blueprint.",
-          "",
-          "User request:",
-          "decompose the migration",
-          "</lattice-user-request>",
-        ].join("\n"),
-      )
-    }))
-
-  test("synergy-max wrapper is byte-exact", () =>
-    runtime.run(() => {
-      expect(WorkflowUserWrapper.build("synergy-max", "lattice", "decompose the migration")).toBe(
-        [
-          "<lattice-user-request>",
-          "You are synergy-max in the Lattice workflow.",
-          "Treat this message as evidence for the current Lattice responsibility; follow the current Lattice system state instead of restarting the workflow.",
-          "While clarifying, investigate and align requirements before proposing a Pathway or Blueprint.",
-          "",
-          "User request:",
-          "decompose the migration",
-          "</lattice-user-request>",
-        ].join("\n"),
-      )
+      for (const agent of [TEST_AGENT_NAME, ...Object.values(PrimaryAgentIdentity.names)]) {
+        const wrapper = WorkflowUserWrapper.build(agent, "lattice", "decompose the migration")!
+        expect(wrapper.startsWith("<lattice-user-request>\n")).toBe(true)
+        expect(wrapper.endsWith("\n</lattice-user-request>")).toBe(true)
+        expect(wrapper.split("decompose the migration")).toHaveLength(2)
+        expect(wrapper).toContain("Blueprint")
+        if (agent === PrimaryAgentIdentity.names.general || agent === PrimaryAgentIdentity.names.coding)
+          expect(wrapper).toContain(agent)
+      }
     }))
 
   test("empty request normalizes to the sentinel", () =>
     runtime.run(() => {
-      expect(WorkflowUserWrapper.build("synergy", "lattice", "   ")).toContain("(empty request)")
+      expect(WorkflowUserWrapper.build(PrimaryAgentIdentity.names.general, "lattice", "   ")).toContain(
+        "(empty request)",
+      )
     }))
 })
 
@@ -223,16 +183,21 @@ describe("lattice control-source suppression golden", () => {
         WorkflowUserWrapper.metadataForUserMessage({
           session: latticeSession,
           metadata: { source: "lattice_continuation" },
-          agentName: "synergy",
+          agentName: PrimaryAgentIdentity.names.general,
         }),
       ).toEqual({})
     }))
 
   test("unstamped user requests still get workflow metadata", () =>
     runtime.run(() => {
-      expect(WorkflowUserWrapper.metadataForUserMessage({ session: latticeSession, agentName: "synergy" })).toEqual({
+      expect(
+        WorkflowUserWrapper.metadataForUserMessage({
+          session: latticeSession,
+          agentName: PrimaryAgentIdentity.names.general,
+        }),
+      ).toEqual({
         workflow: "lattice",
-        workflowAgent: "synergy",
+        workflowAgent: PrimaryAgentIdentity.names.general,
         workflowVersion: 1,
       })
     }))

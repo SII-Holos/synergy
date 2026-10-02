@@ -66,7 +66,7 @@ describe("registered task tool renderer", () => {
     registeredRender?.({
       input: {
         subagent_type: "explore",
-        description: "Inspect the tool registry",
+        taskTitle: "Inspect the tool registry",
       },
       metadata: { background: true },
       tool: "task",
@@ -87,7 +87,7 @@ describe("registered task tool renderer", () => {
     registeredRender?.({
       input: {
         subagent_type: "explore",
-        description: "Inspect the tool registry",
+        taskTitle: "Inspect the tool registry",
       },
       metadata: {
         background: false,

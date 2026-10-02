@@ -1,3 +1,4 @@
+import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { registerToolGroup } from "./tool-group-note"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
@@ -17,6 +18,27 @@ const runtimeState = RuntimeContext.state(() => ({
 }))
 
 export function registerNoteTools(): void {
+  Tool.registerInputHistory("note", {
+    note_write: {
+      id: "noteId",
+      title: "noteTitle",
+      content: "noteContent",
+      description: "blueprintDescription",
+    },
+    note_read: {
+      ids: "noteIds",
+    },
+    note_edit: {
+      id: "noteId",
+    },
+    note_delete: {
+      id: "noteId",
+    },
+    note_archive: {
+      ids: "noteIds",
+    },
+  })
+
   const instanceState = runtimeState()
 
   registerToolGroup()

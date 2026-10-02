@@ -1,15 +1,17 @@
+import { createEffect, createSignal, Show } from "solid-js"
+import { useSettingsViewState } from "../settings-view-state"
 import { useLingui } from "@lingui/solid"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { PasswordField } from "../components/PasswordField"
-import { SettingsPage, SettingsSection, SettingsSubsection } from "../components/SettingsPrimitives"
-import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
+import { SettingsPage, SettingsSection, SettingsSubsection, SettingsTabs } from "../components/SettingsPrimitives"
+import { SettingRow } from "../components/SettingsSettingRow"
 import type { EmailSettings } from "../types"
 
 const pageTitle = { id: "settings.email.page.title", message: "Email" }
 const pageDesc = { id: "settings.email.page.desc", message: "Choose the mail account Synergy can use for email tools." }
 const mailToolsSection = { id: "settings.email.mailTools.title", message: "Mail tools" }
-const mailToolsRowTitle = { id: "settings.email.mailTools.row.title", message: "Mail tools" }
+const mailToolsRowTitle = { id: "settings.email.mailTools.row.title", message: "Allow mail tools" }
 const mailToolsRowDesc = {
   id: "settings.email.mailTools.row.desc",
   message: "Allow Synergy to send messages and read inbox mail when a tool asks for it.",
@@ -23,13 +25,13 @@ const sendingSectionDesc = {
 }
 const smtpSubTitle = { id: "settings.email.smtp.title", message: "SMTP connection" }
 const smtpSubDesc = { id: "settings.email.smtp.desc", message: "Used only when Synergy sends email." }
-const smtpHostTitle = { id: "settings.email.smtp.host.title", message: "Host" }
+const smtpHostTitle = { id: "settings.email.smtp.host.title", message: "Sending host" }
 const smtpHostDesc = { id: "settings.email.smtp.host.desc", message: "SMTP server hostname." }
-const smtpPortTitle = { id: "settings.email.smtp.port.title", message: "Port" }
+const smtpPortTitle = { id: "settings.email.smtp.port.title", message: "Sending port" }
 const smtpPortDesc = { id: "settings.email.smtp.port.desc", message: "SMTP server port." }
-const smtpUserTitle = { id: "settings.email.smtp.user.title", message: "Username" }
+const smtpUserTitle = { id: "settings.email.smtp.user.title", message: "Sending username" }
 const smtpUserDesc = { id: "settings.email.smtp.user.desc", message: "SMTP authentication username." }
-const smtpPassTitle = { id: "settings.email.smtp.pass.title", message: "Password" }
+const smtpPassTitle = { id: "settings.email.smtp.pass.title", message: "Sending password" }
 const smtpPassDesc = { id: "settings.email.smtp.pass.desc", message: "SMTP authentication password." }
 const fromAddrTitle = { id: "settings.email.smtp.fromAddr.title", message: "From address" }
 const fromAddrDesc = { id: "settings.email.smtp.fromAddr.desc", message: "Email address shown as the sender." }
@@ -46,13 +48,13 @@ const readingSectionDesc = {
 }
 const imapSubTitle = { id: "settings.email.imap.title", message: "IMAP connection" }
 const imapSubDesc = { id: "settings.email.imap.desc", message: "Used only when Synergy reads email." }
-const imapHostTitle = { id: "settings.email.imap.host.title", message: "Host" }
+const imapHostTitle = { id: "settings.email.imap.host.title", message: "Reading host" }
 const imapHostDesc = { id: "settings.email.imap.host.desc", message: "IMAP server hostname." }
-const imapPortTitle = { id: "settings.email.imap.port.title", message: "Port" }
+const imapPortTitle = { id: "settings.email.imap.port.title", message: "Reading port" }
 const imapPortDesc = { id: "settings.email.imap.port.desc", message: "IMAP server port." }
-const imapUserTitle = { id: "settings.email.imap.user.title", message: "Username" }
+const imapUserTitle = { id: "settings.email.imap.user.title", message: "Reading username" }
 const imapUserDesc = { id: "settings.email.imap.user.desc", message: "IMAP authentication username." }
-const imapPassTitle = { id: "settings.email.imap.pass.title", message: "Password" }
+const imapPassTitle = { id: "settings.email.imap.pass.title", message: "Reading password" }
 const imapPassDesc = { id: "settings.email.imap.pass.desc", message: "IMAP authentication password." }
 const encImapTitle = { id: "settings.email.imap.enc.title", message: "Encrypted IMAP" }
 const encImapDesc = { id: "settings.email.imap.enc.desc", message: "Use TLS or SSL for inbox access." }
@@ -67,10 +69,38 @@ const imapUserPlaceholder = { id: "settings.email.imap.user.placeholder", messag
 
 export function EmailPanel(props: {
   email: EmailSettings
+  fieldError?: (key: keyof EmailSettings) => string | undefined
   onEmailChange: (key: keyof EmailSettings, value: string | boolean) => void
 }) {
   const { _ } = useLingui()
   const { email, onEmailChange } = props
+  const state = useSettingsViewState()
+  const [view, setView] = createSignal(state?.view?.("mail") === "reading" ? "reading" : "sending")
+  const chooseView = (next: string) => {
+    setView(next)
+    state?.setView?.("mail", next)
+  }
+  function configurationState(kind: "sending" | "reading") {
+    const values =
+      kind === "sending"
+        ? [email.smtpHost, email.smtpPort, email.smtpUsername, email.smtpPassword, email.fromAddress]
+        : [email.imapHost, email.imapPort, email.imapUsername, email.imapPassword]
+    const port = Number(kind === "sending" ? email.smtpPort : email.imapPort)
+    if (values.every((value) => value.trim()) && Number.isInteger(port) && port > 0 && port <= 65535)
+      return _({ id: "settings.email.configured", message: "Configured" })
+    if (values.some((value) => value.trim() && value !== "587" && value !== "993"))
+      return _({ id: "settings.email.incomplete", message: "Incomplete" })
+    return _({ id: "settings.email.notConfigured", message: "Not configured" })
+  }
+  createEffect(() => {
+    const field = state?.searchField()
+    if (
+      [imapHostTitle, imapPortTitle, imapUserTitle, imapPassTitle, encImapTitle].some((copy) => _(copy) === field) ||
+      props.fieldError?.("imapPort")
+    )
+      chooseView("reading")
+    else if (field || props.fieldError?.("smtpPort")) chooseView("sending")
+  })
 
   return (
     <SettingsPage title={_(pageTitle)} description={_(pageDesc)}>
@@ -87,153 +117,185 @@ export function EmailPanel(props: {
         />
       </SettingsSection>
 
-      <SettingsSection title={_(sendingSection)} description={_(sendingSectionDesc)}>
-        <SettingsSubsection title={_(smtpSubTitle)} description={_(smtpSubDesc)}>
-          <SettingRow
-            title={_(smtpHostTitle)}
-            description={_(smtpHostDesc)}
-            trailing={
-              <TextField
-                type="text"
-                placeholder={_(smtpHostPlaceholder)}
-                value={email.smtpHost}
-                onChange={(v) => onEmailChange("smtpHost", v)}
+      <div class="settings-email-summary">
+        <p class="ds-section-hint">
+          {_({
+            id: "settings.email.configurationFacts",
+            message: "Sending: {sending}. Reading: {reading}. Server connections have not been verified.",
+            values: { sending: configurationState("sending"), reading: configurationState("reading") },
+          })}
+        </p>
+      </div>
+      <SettingsTabs
+        id="settings-mail"
+        value={view()}
+        label={_(pageTitle)}
+        options={[
+          { value: "sending", label: _(sendingSection) },
+          { value: "reading", label: _(readingSection) },
+        ]}
+        onChange={chooseView}
+      />
+      <div role="tabpanel" id={`settings-mail-view-${view()}`} aria-labelledby={`settings-mail-tab-${view()}`}>
+        <Show when={view() === "sending"}>
+          <SettingsSection title={_(sendingSection)} description={_(sendingSectionDesc)}>
+            <SettingsSubsection title={_(smtpSubTitle)} description={_(smtpSubDesc)}>
+              <SettingRow
+                title={_(smtpHostTitle)}
+                description={_(smtpHostDesc)}
+                trailing={
+                  <TextField
+                    type="text"
+                    placeholder={_(smtpHostPlaceholder)}
+                    value={email.smtpHost}
+                    onChange={(v) => onEmailChange("smtpHost", v)}
+                  />
+                }
               />
-            }
-          />
-          <SettingRow
-            title={_(smtpPortTitle)}
-            description={_(smtpPortDesc)}
-            trailing={
-              <TextField
-                type="number"
-                placeholder={_(smtpPortPlaceholder)}
-                value={email.smtpPort}
-                onChange={(v) => onEmailChange("smtpPort", v)}
+              <SettingRow
+                title={_(smtpPortTitle)}
+                description={_(smtpPortDesc)}
+                trailing={
+                  <TextField
+                    type="number"
+                    placeholder={_(smtpPortPlaceholder)}
+                    value={email.smtpPort}
+                    min="1"
+                    step="1"
+                    validationState={props.fieldError?.("smtpPort") ? "invalid" : "valid"}
+                    error={props.fieldError?.("smtpPort")}
+                    onChange={(v) => onEmailChange("smtpPort", v)}
+                  />
+                }
               />
-            }
-          />
-          <SettingRow
-            title={_(smtpUserTitle)}
-            description={_(smtpUserDesc)}
-            trailing={
-              <TextField
-                type="text"
-                placeholder={_(smtpUserPlaceholder)}
-                value={email.smtpUsername}
-                onChange={(v) => onEmailChange("smtpUsername", v)}
+              <SettingRow
+                title={_(smtpUserTitle)}
+                description={_(smtpUserDesc)}
+                trailing={
+                  <TextField
+                    type="text"
+                    placeholder={_(smtpUserPlaceholder)}
+                    value={email.smtpUsername}
+                    onChange={(v) => onEmailChange("smtpUsername", v)}
+                  />
+                }
               />
-            }
-          />
-          <SettingRow
-            title={_(smtpPassTitle)}
-            description={_(smtpPassDesc)}
-            trailing={
-              <PasswordField
-                label={_(smtpPassTitle)}
-                value={email.smtpPassword}
-                onChange={(v) => onEmailChange("smtpPassword", v)}
+              <SettingRow
+                title={_(smtpPassTitle)}
+                description={_(smtpPassDesc)}
+                trailing={
+                  <PasswordField
+                    label={_(smtpPassTitle)}
+                    value={email.smtpPassword}
+                    onChange={(v) => onEmailChange("smtpPassword", v)}
+                  />
+                }
               />
-            }
-          />
-          <SettingRow
-            title={_(fromAddrTitle)}
-            description={_(fromAddrDesc)}
-            trailing={
-              <TextField
-                type="text"
-                placeholder={_(fromAddrPlaceholder)}
-                value={email.fromAddress}
-                onChange={(v) => onEmailChange("fromAddress", v)}
+              <SettingRow
+                title={_(fromAddrTitle)}
+                description={_(fromAddrDesc)}
+                trailing={
+                  <TextField
+                    type="text"
+                    placeholder={_(fromAddrPlaceholder)}
+                    value={email.fromAddress}
+                    onChange={(v) => onEmailChange("fromAddress", v)}
+                  />
+                }
               />
-            }
-          />
-          <SettingRow
-            title={_(fromNameTitle)}
-            description={_(fromNameDesc)}
-            trailing={
-              <TextField
-                type="text"
-                placeholder={_(fromNamePlaceholder)}
-                value={email.fromName}
-                onChange={(v) => onEmailChange("fromName", v)}
+              <SettingRow
+                title={_(fromNameTitle)}
+                description={_(fromNameDesc)}
+                trailing={
+                  <TextField
+                    type="text"
+                    placeholder={_(fromNamePlaceholder)}
+                    value={email.fromName}
+                    onChange={(v) => onEmailChange("fromName", v)}
+                  />
+                }
               />
-            }
-          />
-          <SettingRow
-            title={_(encSmtpTitle)}
-            description={_(encSmtpDesc)}
-            stateLabel={email.smtpSecure ? _(onLabel) : _(offLabel)}
-            trailing={
-              <Switch checked={email.smtpSecure} hideLabel onChange={(v) => onEmailChange("smtpSecure", v)}>
-                {_(encSmtpTitle)}
-              </Switch>
-            }
-          />
-        </SettingsSubsection>
-      </SettingsSection>
-
-      <SettingsSection title={_(readingSection)} description={_(readingSectionDesc)}>
-        <SettingsSubsection title={_(imapSubTitle)} description={_(imapSubDesc)}>
-          <SettingRow
-            title={_(imapHostTitle)}
-            description={_(imapHostDesc)}
-            trailing={
-              <TextField
-                type="text"
-                placeholder={_(imapHostPlaceholder)}
-                value={email.imapHost}
-                onChange={(v) => onEmailChange("imapHost", v)}
+              <SettingRow
+                title={_(encSmtpTitle)}
+                description={_(encSmtpDesc)}
+                stateLabel={email.smtpSecure ? _(onLabel) : _(offLabel)}
+                trailing={
+                  <Switch checked={email.smtpSecure} hideLabel onChange={(v) => onEmailChange("smtpSecure", v)}>
+                    {_(encSmtpTitle)}
+                  </Switch>
+                }
               />
-            }
-          />
-          <SettingRow
-            title={_(imapPortTitle)}
-            description={_(imapPortDesc)}
-            trailing={
-              <TextField
-                type="number"
-                placeholder={_(imapPortPlaceholder)}
-                value={email.imapPort}
-                onChange={(v) => onEmailChange("imapPort", v)}
+            </SettingsSubsection>
+          </SettingsSection>
+        </Show>
+        <Show when={view() === "reading"}>
+          <SettingsSection title={_(readingSection)} description={_(readingSectionDesc)}>
+            <SettingsSubsection title={_(imapSubTitle)} description={_(imapSubDesc)}>
+              <SettingRow
+                title={_(imapHostTitle)}
+                description={_(imapHostDesc)}
+                trailing={
+                  <TextField
+                    type="text"
+                    placeholder={_(imapHostPlaceholder)}
+                    value={email.imapHost}
+                    onChange={(v) => onEmailChange("imapHost", v)}
+                  />
+                }
               />
-            }
-          />
-          <SettingRow
-            title={_(imapUserTitle)}
-            description={_(imapUserDesc)}
-            trailing={
-              <TextField
-                type="text"
-                placeholder={_(imapUserPlaceholder)}
-                value={email.imapUsername}
-                onChange={(v) => onEmailChange("imapUsername", v)}
+              <SettingRow
+                title={_(imapPortTitle)}
+                description={_(imapPortDesc)}
+                trailing={
+                  <TextField
+                    type="number"
+                    placeholder={_(imapPortPlaceholder)}
+                    value={email.imapPort}
+                    min="1"
+                    step="1"
+                    validationState={props.fieldError?.("imapPort") ? "invalid" : "valid"}
+                    error={props.fieldError?.("imapPort")}
+                    onChange={(v) => onEmailChange("imapPort", v)}
+                  />
+                }
               />
-            }
-          />
-          <SettingRow
-            title={_(imapPassTitle)}
-            description={_(imapPassDesc)}
-            trailing={
-              <PasswordField
-                label={_(imapPassTitle)}
-                value={email.imapPassword}
-                onChange={(v) => onEmailChange("imapPassword", v)}
+              <SettingRow
+                title={_(imapUserTitle)}
+                description={_(imapUserDesc)}
+                trailing={
+                  <TextField
+                    type="text"
+                    placeholder={_(imapUserPlaceholder)}
+                    value={email.imapUsername}
+                    onChange={(v) => onEmailChange("imapUsername", v)}
+                  />
+                }
               />
-            }
-          />
-          <SettingRow
-            title={_(encImapTitle)}
-            description={_(encImapDesc)}
-            stateLabel={email.imapSecure ? _(onLabel) : _(offLabel)}
-            trailing={
-              <Switch checked={email.imapSecure} hideLabel onChange={(v) => onEmailChange("imapSecure", v)}>
-                {_(encImapTitle)}
-              </Switch>
-            }
-          />
-        </SettingsSubsection>
-      </SettingsSection>
+              <SettingRow
+                title={_(imapPassTitle)}
+                description={_(imapPassDesc)}
+                trailing={
+                  <PasswordField
+                    label={_(imapPassTitle)}
+                    value={email.imapPassword}
+                    onChange={(v) => onEmailChange("imapPassword", v)}
+                  />
+                }
+              />
+              <SettingRow
+                title={_(encImapTitle)}
+                description={_(encImapDesc)}
+                stateLabel={email.imapSecure ? _(onLabel) : _(offLabel)}
+                trailing={
+                  <Switch checked={email.imapSecure} hideLabel onChange={(v) => onEmailChange("imapSecure", v)}>
+                    {_(encImapTitle)}
+                  </Switch>
+                }
+              />
+            </SettingsSubsection>
+          </SettingsSection>
+        </Show>
+      </div>
     </SettingsPage>
   )
 }

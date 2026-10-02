@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME, SECONDARY_TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, test } from "bun:test"
 import type { Config } from "@ericsanchezok/synergy-sdk/client"
 import { createStore } from "solid-js/store"
@@ -195,7 +196,7 @@ describe("settings form channel accounts", () => {
             accounts: {
               "agent-id": {
                 enabled: false,
-                agent: "synergy",
+                agent: TEST_AGENT_NAME,
               },
             },
           },

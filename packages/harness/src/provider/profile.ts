@@ -111,6 +111,7 @@ export namespace ProviderProfile {
     apiMode?: ApiMode
     authKind?: AuthKind
     billingMode?: import("./billing").ProviderBilling.Mode
+    billingOrigins?: string[]
     aiSdkPackage?: string
     modelFactory?: ModelFactory
     modelsDevProviderID?: string

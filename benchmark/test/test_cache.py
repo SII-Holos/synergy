@@ -1,3 +1,4 @@
+import json
 import threading
 import time
 from types import SimpleNamespace
@@ -5,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from synergy_bench.cache import cache_lock, collect_cache, inspect_cache, publish
-from synergy_bench.storage import atomic_json
+from synergy_bench.storage import atomic_json, read_json
 
 
 def test_same_key_builders_wait_and_crashed_builder_releases(tmp_path):
@@ -39,6 +40,38 @@ def test_atomic_cache_validates_bytes_and_protects_references(tmp_path):
     assert collect_cache(tmp_path / "cache", budget_bytes=0)["removed"] == []
     (target / "data").write_text("corrupt")
     assert inspect_cache(tmp_path / "cache")["entries"][0]["valid"] is False
+
+
+def test_cache_inspection_tolerates_retired_references_and_keeps_live_inputs(tmp_path, monkeypatch):
+    cache = tmp_path / "cache"
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "data").write_text("frozen")
+    target = publish(stage, cache, {"kind": "fixture"})
+    retired = cache / "references/retired.json"
+    atomic_json(retired, {"artifacts": []})
+    atomic_json(cache / "references/live.json", {"artifacts": [target.name]})
+
+    def read_after_retirement(file):
+        if file == retired:
+            retired.unlink()
+        return read_json(file)
+
+    monkeypatch.setattr("synergy_bench.cache.read_json", read_after_retirement)
+    report = inspect_cache(cache)
+    assert not retired.exists()
+    assert len(report["entries"]) == 1
+    assert report["entries"][0]["protected"] is True
+    assert collect_cache(cache, budget_bytes=0, min_free_bytes=0)["removed"] == []
+    assert (target / "data").read_text() == "frozen"
+
+
+def test_cache_inspection_rejects_malformed_live_references(tmp_path):
+    reference = tmp_path / "cache/references/live.json"
+    reference.parent.mkdir(parents=True)
+    reference.write_text("{")
+    with pytest.raises(json.JSONDecodeError):
+        inspect_cache(tmp_path / "cache")
 
 
 def test_gc_never_claims_shared_unknown_directories(tmp_path):

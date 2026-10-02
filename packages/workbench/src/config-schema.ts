@@ -171,7 +171,7 @@ export const ConfigShape = {
     .enum(["full", "balanced", "minimal"])
     .optional()
     .describe(
-      "How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced)",
+      "Execution process detail: full = expanded process, balanced = current stage with completed process collapsed, minimal = compact progress. All modes use the same process view (default: balanced)",
     ),
   defaultSessionWorkspace: z
     .enum(["main", "worktree"])
@@ -190,7 +190,10 @@ export const ConfigShape = {
       "Execution profile for new Web/Desktop composer sessions. Omitted follows the global resource default; null disables execution selection. References an existing global profile without defining hosts or credentials.",
     ),
   keybinds: Keybinds.optional().describe("Custom keybind configurations"),
-  compactReasoning: z.boolean().optional().describe("Show live reasoning in a compact single-line viewport"),
+  compactReasoning: z
+    .boolean()
+    .optional()
+    .describe("Show a compact reasoning preview in the execution process (default: false)"),
   quick_switcher: QuickSwitcher.optional().describe("Quick switcher model visibility preferences"),
   layout: Layout.optional().describe("@deprecated Always uses stretch layout."),
   toast: z
@@ -227,7 +230,7 @@ const contribution: ConfigExtensions.Contribution = {
   normalize(raw) {
     const result = raw as ConfigValues
     if (result.activityDisplay === undefined) result.activityDisplay = "balanced"
-    if (result.compactReasoning === undefined) result.compactReasoning = true
+    if (result.compactReasoning === undefined) result.compactReasoning = false
     if (!result.keybinds) result.keybinds = Keybinds.parse({})
   },
 }

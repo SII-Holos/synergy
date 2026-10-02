@@ -137,14 +137,17 @@ async function settings() {
   })
 }
 async function folderPath(value: string) {
-  await top().getByRole("textbox", { name: "文件夹路径", exact: true }).fill(value)
-  await top().getByRole("button", { name: "前往", exact: true }).click()
+  const field = top().getByRole("textbox", { name: "文件夹路径", exact: true })
+  if (!(await field.count())) await top().getByRole("button", { name: "编辑路径", exact: true }).click()
+  await field.fill(value)
+  await field.press("Enter")
   await page.waitForFunction(
     () =>
       !Array.from(document.querySelectorAll('[role="status"]')).some((el) =>
         /正在加载文件夹|Loading folders/.test(el.textContent ?? ""),
       ),
   )
+  if (!(await top().getByRole("alert").count())) await field.waitFor({ state: "detached" })
 }
 async function createForm() {
   await picker.click()
@@ -155,7 +158,9 @@ async function submit(message: string) {
   await editor.fill(message)
   await page.getByRole("button", { name: "发送消息", exact: true }).click()
   await page.waitForURL(/\/session\/ses_/)
+  check((await page.locator(".session-work-context").count()) === 0, "accepted Session removes the whole setup strip")
   await page.getByText("已收到测试任务。", { exact: false }).first().waitFor()
+  check((await page.locator(".session-work-context").count()) === 0, "completed Session keeps setup hidden")
   return page.url().split("/").at(-1)!
 }
 try {
@@ -201,7 +206,7 @@ try {
   )
   const resourceBefore = (await client.environment.list({ scopeID }, options)).data
   const workspaceBefore = (await client.workspace.list({ scopeID }, options)).data
-  await page.locator(".session-work-context").getByRole("button", { name: "主目录", exact: true }).click()
+  await page.locator("[data-worktree-task-selector]").click()
   check((await top().innerText()).includes("其他 2 个文件夹"), "Worktree choice explains shared folders")
   await top()
     .getByRole("button", { name: /^新建 Worktree/ })
@@ -262,7 +267,7 @@ try {
     "next task uses changed main folder",
   )
   await open(scopeID)
-  await page.locator(".session-work-context").getByRole("button", { name: "主目录", exact: true }).click()
+  await page.locator("[data-worktree-task-selector]").click()
   await top()
     .getByRole("button", { name: /^新建 Worktree/ })
     .click()

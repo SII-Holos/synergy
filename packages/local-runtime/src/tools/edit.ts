@@ -178,7 +178,7 @@ export const EditTool = Tool.define(
       }
     },
   },
-  { requiresWorkspace: true },
+  { requiresWorkspace: true, activityKind: "file-change" },
 )
 
 export type Replacer = (content: string, find: string) => Generator<string, void, unknown>

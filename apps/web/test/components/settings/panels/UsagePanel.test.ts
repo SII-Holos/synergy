@@ -3,6 +3,7 @@ import { createIntlFormatter } from "@/context/locale/formatter"
 import { setupI18n } from "@lingui/core"
 import { describe, expect, test } from "bun:test"
 import {
+  completeUsageSnapshots,
   formatUsageResetCompact,
   formatUsageResetSentence,
   formatUsageWindowDetail,
@@ -14,6 +15,37 @@ import {
 
 describe("Usage panel model", () => {
   const now = Date.UTC(2026, 6, 3, 12, 0, 0)
+
+  test("queries connected services omitted by the bulk usage endpoint and retains independent failures", async () => {
+    const calls: string[] = []
+    const available = {
+      providerID: "supported",
+      status: "available" as const,
+      fetchedAt: new Date(now).toISOString(),
+      windows: [],
+      details: [],
+    }
+    const snapshots = await completeUsageSnapshots(
+      { supported: available },
+      ["supported", "unsupported", "failed"],
+      async (id) => {
+        calls.push(id)
+        if (id === "failed") throw new Error("Usage query failed")
+        return {
+          providerID: id,
+          status: "unavailable",
+          fetchedAt: new Date(now).toISOString(),
+          windows: [],
+          details: [],
+          unavailableReason: "Usage is not supported",
+        }
+      },
+    )
+    expect(calls).toEqual(["unsupported", "failed"])
+    expect(snapshots.supported).toBe(available)
+    expect(snapshots.unsupported?.status).toBe("unavailable")
+    expect(snapshots.failed?.status).toBe("error")
+  })
 
   test("does not infer a fixed duration from provider session labels", () => {
     expect(formatUsageWindowLabel("Session")).toBe("Session window")

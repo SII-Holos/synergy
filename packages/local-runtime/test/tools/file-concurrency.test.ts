@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterAll, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -14,7 +15,7 @@ afterAll(() => runtime.close())
 function context(sessionID: string, ask: Tool.Context["ask"] = async () => {}): Tool.Context {
   return {
     sessionID,
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     messageID: "message",
     callID: "call",
     abort: new AbortController().signal,

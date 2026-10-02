@@ -29,5 +29,12 @@ export function useProviders() {
     popular,
     connected,
     available,
+    ensureCatalog: () => globalSync.loadModelCatalog(currentDirectory() || "home"),
+    ensureModels: (keys: { providerID: string; modelID: string }[]) =>
+      globalSync.ensureModels(currentDirectory() || "home", keys),
+    complete: () => providers().complete !== false,
+    resolved: (key: { providerID: string; modelID: string }) =>
+      !!providers().all.find((provider) => provider.id === key.providerID)?.models[key.modelID] ||
+      providers().resolvedModels?.includes(JSON.stringify([key.providerID, key.modelID])) === true,
   }
 }

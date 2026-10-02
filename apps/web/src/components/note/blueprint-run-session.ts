@@ -1,4 +1,4 @@
-import type { Agent, NotePatchInput, SessionWorkspaceSelection } from "@ericsanchezok/synergy-sdk/client"
+import type { AgentSummary, NotePatchInput, SessionWorkspaceSelection } from "@ericsanchezok/synergy-sdk/client"
 
 export type BlueprintRunMode = "current" | "new" | "worktree"
 export type BlueprintExecutionControlProfile = "autonomous" | "full_access"
@@ -34,7 +34,7 @@ export function blueprintExecutionControlProfile(configured?: string | null): Bl
 }
 
 export function blueprintExecutionAgentOptions(
-  agents: Agent[],
+  agents: AgentSummary[],
   selectedAgent?: string | null,
 ): BlueprintExecutionAgentOption[] {
   const visible = agents

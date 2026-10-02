@@ -106,7 +106,7 @@ function groupByDisplayCategory(items: readonly ReviewAccessItem[]) {
 
 function AccessItem(props: { item: ReviewAccessItem; muted?: boolean }) {
   const { _ } = useLingui()
-  const presentation = createMemo(() => presentPluginPermission(props.item))
+  const presentation = createMemo(() => presentPluginPermission(props.item, _))
   return (
     <li classList={{ "consent-item": true, "consent-item-muted": props.muted }}>
       <div class="consent-item-row">

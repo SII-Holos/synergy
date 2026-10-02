@@ -3,7 +3,7 @@ List agenda items visible from the current scope — both watches (one-time) and
 Use `scope` to filter: "current" (project only), "global" (global only), "all" (both, default).
 
 Use this to find item IDs before calling:
-- agenda_update(id, ...) — change title, prompt, or pause/resume
-- agenda_cancel(id) — stop an item from firing
-- agenda_trigger(id) — run immediately regardless of schedule
-- agenda_logs(id) — view execution history
+- agenda_update(agendaItemId, ...) — change agendaTitle, executionInstructions, or pause/resume
+- agenda_cancel(agendaItemId) — stop an item from firing
+- agenda_trigger(agendaItemId) — run immediately regardless of schedule
+- agenda_logs(agendaItemId) — view execution history

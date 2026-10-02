@@ -45,6 +45,10 @@ A mounted surface has one plugin generation, server, Scope, optional Session, co
 
 Import `Button`, `Input`, `Select`, `Tabs`, `Menu`, `Dialog`, `Popover`, `Tooltip`, `FormField`, `SettingRow`, `EmptyState`, `ErrorState`, `Loading`, `Icon` and `HostView` from `@ericsanchezok/synergy-plugin/components`. These resolve to the host's UI implementation and shared Solid runtime. Semantic icons are typed by `@ericsanchezok/synergy-plugin/icons`; locale-sensitive number/date/relative-time/byte formatting is available from `@ericsanchezok/synergy-plugin/format`.
 
+Use semantic tokens for their declared meaning. For example, `state.cancelled` denotes a cancelled task, while `action.close` denotes dismissing a control.
+
+Surface expansion and contraction use `action.expand` (`maximize-2`, two diagonal outward arrows) and `action.collapse` (`minimize-2`, two diagonal inward arrows). Editors, panels and fullscreen content views share this pair. The stable `composer.expand` and `composer.collapse` tokens retain the same sizing meanings; `window.restore` shares the contraction glyph. These are the only same-meaning glyph aliases. New sizing controls reuse the generic action tokens; disclosure controls retain their navigation semantics.
+
 `FormField` supplies the control's ID, description and error relationships to its child function. `Popover.trigger` is a button component receiving trigger attributes, for example `trigger={props => <Button {...props}>Options</Button>}`. This preserves one accessible button and keyboard/focus behavior. Public dialogs, nested menus and popovers inherit the owning plugin's style and overlay layers; authors do not query host dialog DOM or select a global portal target.
 
 Create dialogs with `context.overlays.dialog(handle => <Dialog title="Preferences">…</Dialog>)`. Close that handle to close that dialog. `context.overlays.confirm()` uses the protected host decision surface. Disposing one plugin cannot close another plugin's dialog.
@@ -57,6 +61,7 @@ Create dialogs with `context.overlays.dialog(handle => <Dialog title="Preference
 
 - `shell.render()` and `HostView` compose native navigation, route, footer, conversation, composer, side workbench and bottom workbench views. A view unsupported on that page throws explicitly.
 - `session` reads the existing bounded message/part window, status and history state and delegates history loading, return-to-latest, refresh, rewind and fork to the session owner.
+- The optional `conversation.activityView` service reads and writes explicit process/batch/reasoning expansion by stable projection key. The host retains these choices in its session layout; replacing a view does not create a second state owner. Its absence preserves independent shared-UI use.
 - `conversation` supplies the shared turn projection, bounded render window, history controls, viewport bindings and canonical message actions. Replacing its view does not create another message store or derive message semantics. Custom viewports release their bound elements with `setScrollRef(undefined, scrollElement)` and `autoScroll.contentRef(undefined, contentElement)` so cleanup of a replaced view cannot clear its successor. Omitting the optional release element retains unconditional clearing.
 - `input` supplies revisioned text and selection, IME state, attachments, agent/model/variant choices and explicit submit/stop. Its optional native editor mounting API uses the same document as headless edits. Native workflow controls can be composed through the service's named control views.
 - `composerLayout` supplies layout state, navigation links and host-owned inbox, delegation, greeting, status and priority views. It does not expose the SDK or synchronization store.
@@ -108,3 +113,11 @@ The public `@ericsanchezok/synergy-plugin-kit/testing` entry exports isolated pr
 Start with `?safe-ui=1` to skip executable third-party UI and Skins before loading them. Recovery stays active in that browser tab across routing and reloads. Settings → General → Restart normally explicitly clears it. This path does not depend on a third-party Shell rendering successfully; a synchronous plugin loop still requires reloading into recovery.
 
 Session questions and permissions remain mounted by the host. The native composer provides an inline outlet; custom session pages without that outlet retain a protected, viewport-bounded host surface automatically.
+
+### Virtual conversation content
+
+UI API 6 conversation services may provide optional `content` methods for bounded summaries, original text, Part retention and target-window loading. A retained Part lease is released when its row unmounts; expansion and measured layout belong outside row lifetime. Message location accepts an optional Part identity after obtaining that window. Public service calls check capability and component lifetime before and after asynchronous work. Original text operations cover effective server history independently of the currently mounted content.
+
+## Tool invocation intent
+
+The host adds optional `workBrief` to the model-facing schema. Plugin authors declare only native business parameters. The host extracts common intent before execution and passes native arguments unchanged to plugin operations and MCP servers. A third-party `workBrief` field remains native: its schema is wrapped as `{ workBrief, toolInput }` for the model. Definitions and unwrap mappings are frozen per request. Registered result renderers retain precedence; otherwise the read-only result uses structured JSON or text. Common intent never changes permission admission or execution identity.

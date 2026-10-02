@@ -89,7 +89,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
         },
       },
     },
-    animation: { duration: 600, easing: "easeOutQuart" as const },
+    animation: false as const,
   }))
 
   const barData = createMemo(() => {
@@ -175,13 +175,13 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
         },
       },
     },
-    animation: { duration: 500, easing: "easeOutQuart" as const },
+    animation: false as const,
   }))
 
   return (
     <div class="library-chart-surface mt-4">
       <div class="pb-2">
-        <h3 class="text-13-medium text-text-strong">
+        <h3 class="app-panel-control text-text-strong">
           {_({ id: "app.library.stats.reward.dimensions", message: "Reward dimensions" })}
         </h3>
       </div>
@@ -211,8 +211,8 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
                 const neu = dim.distribution.find((v) => v.value === 0)?.count ?? 0
                 return (
                   <div class="flex items-center gap-3 rounded-lg bg-surface-inset-base px-2.5 py-1.5 ring-1 ring-inset ring-border-base/25">
-                    <span class="shrink-0 w-20 text-10-medium text-text-base truncate">{label}</span>
-                    <span class="shrink-0 w-12 text-11-semibold text-text-strong tabular-nums text-right">
+                    <span class="shrink-0 w-20 app-panel-caption text-text-base truncate">{label}</span>
+                    <span class="shrink-0 w-12 app-panel-caption text-text-strong tabular-nums text-right">
                       {formatR(dim.avg)}
                     </span>
                     <div class="flex-1 flex items-center gap-1 text-9-regular tabular-nums text-text-weak">
@@ -242,7 +242,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
         </div>
 
         <div class="library-chart-inner mt-3">
-          <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak mb-2">
+          <div class="app-panel-caption font-medium text-text-weak mb-2">
             {_({
               id: "app.library.stats.reward.distributionByDimension",
               message: "Reward Distribution by Dimension",

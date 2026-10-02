@@ -48,6 +48,25 @@ export type ActivityGroupItem = {
   receipt: boolean
 }
 
+export type ActivityBatchItem = {
+  kind: "activity-batch"
+  key: string
+  message: AssistantMessage
+  steps: ActivityStepProjection[]
+  entries?: ActivityBatchEntry[]
+  facts: ActivitySummaryFact[]
+  state: ActivityGroupState
+  failures: number
+  fileReads?: number
+  fileReadOperations?: number
+  searchOperations?: number
+  inspectionOperations?: number
+}
+
+export type ActivityBatchEntry =
+  | { kind: "tool"; step: ActivityStepProjection }
+  | { kind: "reasoning"; item: ActivityReasoningSummaryItem }
+
 export type ActivityTextSummary = {
   state: ActivitySummaryState | "pending"
   text?: string
@@ -95,6 +114,7 @@ export type ActivityPassthroughItem = {
 }
 
 export type ActivityTimelineItem =
+  | ActivityBatchItem
   | ActivityGroupItem
   | ActivityReasoningSummaryItem
   | ActivitySummaryItem
@@ -108,8 +128,9 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 function parsedInput(part: ToolPart): Record<string, unknown> {
-  if (Object.keys(part.state.input).length > 0) return part.state.input
-  if (part.state.status !== "pending" && part.state.status !== "generating") return part.state.input
+  const input = record(part.state.input)
+  if (Object.keys(input).length > 0) return input
+  if (part.state.status !== "pending" && part.state.status !== "generating") return input
   if (!part.state.raw) return {}
   try {
     return record(parsePartialJson(part.state.raw))
@@ -131,6 +152,12 @@ function permissionForStep(
 function stepState(part: ToolPart, permission: PermissionRequest | undefined): ActivityGroupState {
   if (permission) return "waiting-approval"
   if (part.state.status === "error") return "error"
+  if (
+    part.activityEvidence?.exitCode !== undefined &&
+    part.activityEvidence.exitCode !== null &&
+    part.activityEvidence.exitCode !== 0
+  )
+    return "error"
   if (part.state.status === "completed") return "done"
   return "running"
 }
@@ -320,6 +347,7 @@ export function isActivityTimelineItem(value: ActivityTimelineItem | unknown): v
   const kind = (value as { kind?: unknown }).kind
   return (
     kind === "activity-group" ||
+    kind === "activity-batch" ||
     kind === "activity-reasoning-summary" ||
     kind === "activity-summary" ||
     kind === "activity-receipt" ||

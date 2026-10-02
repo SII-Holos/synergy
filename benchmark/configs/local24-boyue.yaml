@@ -15,7 +15,7 @@ harnesses:
       path: ../..
       revision: 024dd683e091d9fce3d1d26b79b2e188ce636b52
     runtime: full
-    agent: synergy-max
+    agent: forge
     bun_jit: true
   candidate:
     kind: synergy
@@ -23,7 +23,7 @@ harnesses:
       path: ../..
       revision: ecf1426a47bf8bbd13b13bd9c47d28b39bdeff05
     runtime: full
-    agent: synergy-max
+    agent: forge
     bun_jit: true
 models:
   boyue-glm53flash-low:

@@ -85,7 +85,7 @@ const operation = z.union([
 ])
 
 const parameters = z.object({
-  id: z.string().describe("The note ID to edit."),
+  noteId: z.string().describe("The note ID to edit."),
   baseVersion: z.number().int().min(1).describe("Note version returned by note_read(format:'blocks'|'json')."),
   baseDocHash: z.string().optional().describe("DocHash returned by note_read. If provided, mismatches fail safely."),
   freshen: z
@@ -236,7 +236,7 @@ function errorResult(input: {
     output: [
       `Error: ${input.message}`,
       `Code: ${input.code}`,
-      `ID: ${input.id}`,
+      `noteId: ${input.id}`,
       input.failedOpIndex !== undefined
         ? `Failed operation: ${input.failedOpIndex + 1} ${input.failedAction}`
         : undefined,
@@ -736,208 +736,212 @@ function renderOperationResult(result: OperationSemanticResult) {
   return lines.join("\n")
 }
 
-export const NoteEditTool = Tool.define("note_edit", {
-  description: DESCRIPTION,
-  parameters,
-  async execute(params: Params, ctx) {
-    let existing: Awaited<ReturnType<typeof NoteStore.getAny>>
-    try {
-      existing = await NoteStore.getAny(ScopeContext.current.scope.id, params.id)
-    } catch (error) {
-      if (error instanceof Storage.NotFoundError) {
-        return errorResult({
-          id: params.id,
-          code: "NOTE_NOT_FOUND",
-          message: `note "${params.id}" not found. It may have been deleted or never existed.`,
-        })
-      }
-      throw error
-    }
-
-    const session = await Session.get(ctx.sessionID)
-    const decision = NoteBlueprintPolicy.evaluateWrite({
-      workflowKind: session.workflow?.kind,
-      action: "edit",
-      existingKind: existing.kind ?? "note",
-    })
-    if (!decision.allowed) {
-      return NoteBlueprintPolicy.blockedResult({ action: decision.action, id: params.id, title: existing.title })
-    }
-
-    const beforeDoc = NoteDocument.normalize(existing.content)
-    const beforeHash = NoteDocument.hash(beforeDoc)
-
-    let activeOps = params.ops
-    let freshened = false
-
-    if (existing.version !== params.baseVersion || (params.baseDocHash && params.baseDocHash !== beforeHash)) {
-      const code = existing.version !== params.baseVersion ? "VERSION_MISMATCH" : "DOC_HASH_MISMATCH"
-      const message =
-        code === "VERSION_MISMATCH"
-          ? `note version changed since note_read. Expected ${params.baseVersion}, current ${existing.version}.`
-          : `note docHash changed since note_read. Expected ${params.baseDocHash}, current ${beforeHash}.`
-      if (params.freshen === "never") {
-        return errorResult({ id: params.id, code, message, note: existing })
-      }
+export const NoteEditTool = Tool.define(
+  "note_edit",
+  {
+    description: DESCRIPTION,
+    parameters,
+    async execute(params: Params, ctx) {
+      let existing: Awaited<ReturnType<typeof NoteStore.getAny>>
       try {
-        assertCanFreshen(params.ops)
+        existing = await NoteStore.getAny(ScopeContext.current.scope.id, params.noteId)
       } catch (error) {
-        return errorResult({
-          id: params.id,
-          code,
-          message: error instanceof Error ? error.message : String(error),
-          note: existing,
-          blockIds: [...new Set(params.ops.flatMap(targetIds))],
-        })
+        if (error instanceof Storage.NotFoundError) {
+          return errorResult({
+            id: params.noteId,
+            code: "NOTE_NOT_FOUND",
+            message: `note "${params.noteId}" not found. It may have been deleted or never existed.`,
+          })
+        }
+        throw error
       }
-      activeOps = params.ops.map(freshenedOperation)
-      freshened = true
-    }
 
-    let applied: ReturnType<typeof applyOperations>
-    try {
-      applied = applyOperations({ doc: beforeDoc, ops: activeOps })
-    } catch (error) {
-      if (params.freshen !== "safe" || freshened) {
-        return errorResult({
-          id: params.id,
-          code: "EDIT_PRECONDITION_FAILED",
-          message: error instanceof Error ? error.message : String(error),
-          note: existing,
-          blockIds: [...new Set(params.ops.flatMap(targetIds))],
-          failedOpIndex: error instanceof ApplyOperationError ? error.opIndex : 0,
-          failedAction: error instanceof ApplyOperationError ? error.action : params.ops[0]?.action,
-        })
+      const session = await Session.get(ctx.sessionID)
+      const decision = NoteBlueprintPolicy.evaluateWrite({
+        workflowKind: session.workflow?.kind,
+        action: "edit",
+        existingKind: existing.kind ?? "note",
+      })
+      if (!decision.allowed) {
+        return NoteBlueprintPolicy.blockedResult({ action: decision.action, id: params.noteId, title: existing.title })
       }
-      try {
-        assertCanFreshen(params.ops)
+
+      const beforeDoc = NoteDocument.normalize(existing.content)
+      const beforeHash = NoteDocument.hash(beforeDoc)
+
+      let activeOps = params.ops
+      let freshened = false
+
+      if (existing.version !== params.baseVersion || (params.baseDocHash && params.baseDocHash !== beforeHash)) {
+        const code = existing.version !== params.baseVersion ? "VERSION_MISMATCH" : "DOC_HASH_MISMATCH"
+        const message =
+          code === "VERSION_MISMATCH"
+            ? `note version changed since note_read. Expected ${params.baseVersion}, current ${existing.version}.`
+            : `note docHash changed since note_read. Expected ${params.baseDocHash}, current ${beforeHash}.`
+        if (params.freshen === "never") {
+          return errorResult({ id: params.noteId, code, message, note: existing })
+        }
+        try {
+          assertCanFreshen(params.ops)
+        } catch (error) {
+          return errorResult({
+            id: params.noteId,
+            code,
+            message: error instanceof Error ? error.message : String(error),
+            note: existing,
+            blockIds: [...new Set(params.ops.flatMap(targetIds))],
+          })
+        }
         activeOps = params.ops.map(freshenedOperation)
-        applied = applyOperations({ doc: beforeDoc, ops: activeOps })
         freshened = true
-      } catch (freshenError) {
-        return errorResult({
-          id: params.id,
-          code: "EDIT_PRECONDITION_FAILED",
-          message: freshenError instanceof Error ? freshenError.message : String(freshenError),
-          note: existing,
-          blockIds: [...new Set(params.ops.flatMap(targetIds))],
-          failedOpIndex: freshenError instanceof ApplyOperationError ? freshenError.opIndex : 0,
-          failedAction: freshenError instanceof ApplyOperationError ? freshenError.action : params.ops[0]?.action,
-        })
       }
-    }
 
-    const { nextDoc, touched, operationResults } = applied
-
-    const changed = changedBlocks(beforeDoc, nextDoc, touched)
-    const nextHash = NoteDocument.hash(nextDoc)
-    const warnings = operationResults.flatMap((result) =>
-      result.warnings.map((warning) => `Operation ${result.opIndex + 1}: ${warning}`),
-    )
-    const directChangedBlockIds = new Set(
-      operationResults.flatMap((result) => result.directChangedBlocks.map((block) => block.id)),
-    )
-    const ancestorChangedBlockIds = new Set(
-      operationResults.flatMap((result) => result.ancestorChangedBlocks.map((block) => block.id)),
-    )
-    const unexpectedChangedBlockIds = new Set(
-      operationResults.flatMap((result) => result.unexpectedChangedBlocks.map((block) => block.id)),
-    )
-    const changeSummary = {
-      operations: params.ops.length,
-      changedBlocks: changed.length,
-      directChangedBlocks: directChangedBlockIds.size,
-      ancestorChangedBlocks: ancestorChangedBlockIds.size,
-      unexpectedChangedBlocks: unexpectedChangedBlockIds.size,
-      noopOperations: operationResults.filter((result) => result.status === "noop").length,
-    }
-
-    if (!params.dryRun) {
+      let applied: ReturnType<typeof applyOperations>
       try {
-        existing = await NoteStore.updateAny(ScopeContext.current.scope.id, params.id, {
-          content: nextDoc,
-          expectedVersion: existing.version,
-        })
+        applied = applyOperations({ doc: beforeDoc, ops: activeOps })
       } catch (error) {
-        if (NoteError.Conflict.isInstance(error)) {
-          const conflict = error
-          if (params.freshen === "safe") {
-            try {
-              assertCanFreshen(params.ops)
-              existing = conflict.data.note
-              const latestDoc = NoteDocument.normalize(existing.content)
-              const retryOps = params.ops.map(freshenedOperation)
-              const retry = applyOperations({ doc: latestDoc, ops: retryOps })
-              existing = await NoteStore.updateAny(ScopeContext.current.scope.id, params.id, {
-                content: retry.nextDoc,
-                expectedVersion: existing.version,
-              })
-              freshened = true
-            } catch (retryError) {
+        if (params.freshen !== "safe" || freshened) {
+          return errorResult({
+            id: params.noteId,
+            code: "EDIT_PRECONDITION_FAILED",
+            message: error instanceof Error ? error.message : String(error),
+            note: existing,
+            blockIds: [...new Set(params.ops.flatMap(targetIds))],
+            failedOpIndex: error instanceof ApplyOperationError ? error.opIndex : 0,
+            failedAction: error instanceof ApplyOperationError ? error.action : params.ops[0]?.action,
+          })
+        }
+        try {
+          assertCanFreshen(params.ops)
+          activeOps = params.ops.map(freshenedOperation)
+          applied = applyOperations({ doc: beforeDoc, ops: activeOps })
+          freshened = true
+        } catch (freshenError) {
+          return errorResult({
+            id: params.noteId,
+            code: "EDIT_PRECONDITION_FAILED",
+            message: freshenError instanceof Error ? freshenError.message : String(freshenError),
+            note: existing,
+            blockIds: [...new Set(params.ops.flatMap(targetIds))],
+            failedOpIndex: freshenError instanceof ApplyOperationError ? freshenError.opIndex : 0,
+            failedAction: freshenError instanceof ApplyOperationError ? freshenError.action : params.ops[0]?.action,
+          })
+        }
+      }
+
+      const { nextDoc, touched, operationResults } = applied
+
+      const changed = changedBlocks(beforeDoc, nextDoc, touched)
+      const nextHash = NoteDocument.hash(nextDoc)
+      const warnings = operationResults.flatMap((result) =>
+        result.warnings.map((warning) => `Operation ${result.opIndex + 1}: ${warning}`),
+      )
+      const directChangedBlockIds = new Set(
+        operationResults.flatMap((result) => result.directChangedBlocks.map((block) => block.id)),
+      )
+      const ancestorChangedBlockIds = new Set(
+        operationResults.flatMap((result) => result.ancestorChangedBlocks.map((block) => block.id)),
+      )
+      const unexpectedChangedBlockIds = new Set(
+        operationResults.flatMap((result) => result.unexpectedChangedBlocks.map((block) => block.id)),
+      )
+      const changeSummary = {
+        operations: params.ops.length,
+        changedBlocks: changed.length,
+        directChangedBlocks: directChangedBlockIds.size,
+        ancestorChangedBlocks: ancestorChangedBlockIds.size,
+        unexpectedChangedBlocks: unexpectedChangedBlockIds.size,
+        noopOperations: operationResults.filter((result) => result.status === "noop").length,
+      }
+
+      if (!params.dryRun) {
+        try {
+          existing = await NoteStore.updateAny(ScopeContext.current.scope.id, params.noteId, {
+            content: nextDoc,
+            expectedVersion: existing.version,
+          })
+        } catch (error) {
+          if (NoteError.Conflict.isInstance(error)) {
+            const conflict = error
+            if (params.freshen === "safe") {
+              try {
+                assertCanFreshen(params.ops)
+                existing = conflict.data.note
+                const latestDoc = NoteDocument.normalize(existing.content)
+                const retryOps = params.ops.map(freshenedOperation)
+                const retry = applyOperations({ doc: latestDoc, ops: retryOps })
+                existing = await NoteStore.updateAny(ScopeContext.current.scope.id, params.noteId, {
+                  content: retry.nextDoc,
+                  expectedVersion: existing.version,
+                })
+                freshened = true
+              } catch (retryError) {
+                return errorResult({
+                  id: params.noteId,
+                  code: "WRITE_CONFLICT",
+                  message: retryError instanceof Error ? retryError.message : String(retryError),
+                  note: conflict.data.note,
+                })
+              }
+            } else {
               return errorResult({
-                id: params.id,
+                id: params.noteId,
                 code: "WRITE_CONFLICT",
-                message: retryError instanceof Error ? retryError.message : String(retryError),
+                message: `note changed while applying edit. Expected ${params.baseVersion}, current ${conflict.data.note.version}.`,
                 note: conflict.data.note,
               })
             }
-          } else {
+          } else if (error instanceof Storage.NotFoundError) {
             return errorResult({
-              id: params.id,
-              code: "WRITE_CONFLICT",
-              message: `note changed while applying edit. Expected ${params.baseVersion}, current ${conflict.data.note.version}.`,
-              note: conflict.data.note,
+              id: params.noteId,
+              code: "NOTE_DELETED",
+              message: `note "${params.noteId}" was deleted while the edit was in progress.`,
             })
+          } else {
+            throw error
           }
-        } else if (error instanceof Storage.NotFoundError) {
-          return errorResult({
-            id: params.id,
-            code: "NOTE_DELETED",
-            message: `note "${params.id}" was deleted while the edit was in progress.`,
-          })
-        } else {
-          throw error
         }
       }
-    }
 
-    const finalVersion = existing.version
-    return {
-      title: existing.title,
-      output: [
-        params.dryRun ? "Note edit dry run succeeded." : "Note edited successfully.",
-        `ID: ${params.id}`,
-        `Title: ${existing.title}`,
-        `Version: ${finalVersion}`,
-        `DocHash: ${nextHash}`,
-        `Operations applied: ${params.ops.length}`,
-        freshened ? "Freshened stale anchors: yes" : undefined,
-        `Changed blocks: ${changed.length}`,
-        `Warnings: ${warnings.length ? warnings.join("; ") : "none"}`,
-        "",
-        operationResults.map(renderOperationResult).join("\n\n"),
-        "",
-        "Changed blocks:",
-        JSON.stringify(
-          changed.map(blockPreview).filter((block): block is BlockPreview => !!block),
-          null,
-          2,
-        ),
-      ].join("\n"),
-      metadata: {
-        id: params.id,
+      const finalVersion = existing.version
+      return {
         title: existing.title,
-        dryRun: params.dryRun,
-        version: finalVersion,
-        docHash: nextHash,
-        freshened,
-        opCount: params.ops.length,
-        changedBlockIds: changed.map((block) => block.id),
-        changedBlocks: changed,
-        operationResults,
-        changeSummary,
-        warnings,
-      } as Record<string, any>,
-    }
+        output: [
+          params.dryRun ? "Note edit dry run succeeded." : "Note edited successfully.",
+          `noteId: ${params.noteId}`,
+          `noteTitle: ${existing.title}`,
+          `Version: ${finalVersion}`,
+          `DocHash: ${nextHash}`,
+          `Operations applied: ${params.ops.length}`,
+          freshened ? "Freshened stale anchors: yes" : undefined,
+          `Changed blocks: ${changed.length}`,
+          `Warnings: ${warnings.length ? warnings.join("; ") : "none"}`,
+          "",
+          operationResults.map(renderOperationResult).join("\n\n"),
+          "",
+          "Changed blocks:",
+          JSON.stringify(
+            changed.map(blockPreview).filter((block): block is BlockPreview => !!block),
+            null,
+            2,
+          ),
+        ].join("\n"),
+        metadata: {
+          id: params.noteId,
+          title: existing.title,
+          dryRun: params.dryRun,
+          version: finalVersion,
+          docHash: nextHash,
+          freshened,
+          opCount: params.ops.length,
+          changedBlockIds: changed.map((block) => block.id),
+          changedBlocks: changed,
+          operationResults,
+          changeSummary,
+          warnings,
+        } as Record<string, any>,
+      }
+    },
   },
-})
+  { activityKind: "object" },
+)

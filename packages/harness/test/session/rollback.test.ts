@@ -383,18 +383,19 @@ describe("session rollback history", () => {
           expect(await Bun.file(fileA).text()).toBe("after-a")
           expect(await Bun.file(fileB).text()).toBe("after-b")
 
-          const restored = await Session.restoreFiles({
+          const preview = await SessionHistory.previewFiles({
             sessionID: session.id,
             rollbackID: rollback.id,
             files: [fileA],
           })
+          const restored = await Session.restoreFiles({ sessionID: session.id, previewID: preview.id })
           expect(restored.restoredFiles.map((file) => path.normalize(file))).toEqual([path.normalize(fileA)])
           expect(await Bun.file(fileA).text()).toBe("before-a")
           expect(await Bun.file(fileB).text()).toBe("after-b")
 
           let missing: unknown
           try {
-            await Session.restoreFiles({
+            await SessionHistory.previewFiles({
               sessionID: session.id,
               rollbackID: Identifier.ascending("history"),
             })

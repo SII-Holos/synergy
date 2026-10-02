@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { SessionSendTool } from "../../src/tools/session-send"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
@@ -12,7 +13,7 @@ const baseContext = {
   sessionID: "ses_source",
   messageID: "msg_source",
   callID: "call_source",
-  agent: "synergy",
+  agent: PrimaryAgentIdentity.names.general,
   abort: AbortSignal.any([]),
   metadata: () => {},
 }

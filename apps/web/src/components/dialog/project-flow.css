@@ -157,6 +157,13 @@
   gap: 8px;
   margin-bottom: 8px;
 }
+.project-field-heading > label {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.project-field-heading > .project-computer-control {
+  max-width: min(240px, calc(100% - 64px));
+}
 .project-folder-field {
   min-width: 0;
 }
@@ -236,8 +243,11 @@
 }
 .project-create-dialog [data-slot="dialog-header"] {
   position: relative;
-  padding: 32px 24px 24px;
+  padding: 24px 24px 16px;
   justify-content: center;
+}
+.project-create-dialog .project-form {
+  gap: 20px;
 }
 .project-create-dialog [data-slot="dialog-header"] > button {
   position: absolute;
@@ -248,21 +258,21 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 .project-create-icon {
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--workbench-control-bg);
   color: var(--icon-base);
 }
 .project-create-icon [data-component="icon"] {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
 }
 .project-create-dialog [data-slot="dialog-footer"] {
   border-top: 0;
@@ -284,6 +294,21 @@
 }
 .project-computer-menu {
   width: min(320px, calc(100vw - 24px));
+}
+.project-computer-control {
+  flex: 0 1 auto;
+  width: max-content;
+  min-width: 0;
+  max-width: 100%;
+}
+.project-computer-control[data-component="tooltip-trigger"][data-inactive] {
+  display: flex;
+}
+.project-computer-control > button {
+  width: 100%;
+}
+.project-computer-control [data-component="icon"] {
+  flex-shrink: 0;
 }
 .project-folder-actions {
   width: 220px;
@@ -341,7 +366,15 @@
   gap: 10px;
   padding: 10px 12px;
   margin-bottom: 6px;
+  border-radius: 10px;
   color: var(--icon-weak-base);
+}
+.project-menu-search:has(:focus-visible) {
+  outline: 2px solid var(--border-selected);
+  outline-offset: -2px;
+}
+.project-menu-search [data-slot="input-wrapper"]:has(:focus-visible) {
+  outline: none;
 }
 .project-menu-search [data-component="input"] {
   flex: 1;

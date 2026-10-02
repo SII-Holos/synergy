@@ -29,6 +29,40 @@ function access(capabilities: string[]) {
   }
 }
 
+test("conversation content leases and the message locator belong to the presentation lifetime", async () => {
+  const owner = access(["session.read"])
+  const pending = Promise.withResolvers<void>()
+  const released = mock(() => {})
+  const locatorReleased = mock(() => {})
+  const source = fixture<PluginConversationService>({
+    content: {
+      summaries: () => [],
+      page: () => undefined,
+      load: () => pending.promise,
+      retain: () => ({ ready: pending.promise, release: released }),
+    },
+    registerMessageLocator: () => locatorReleased,
+  })
+  const conversation = bindPluginConversation(source, owner.service)
+  const lease = conversation.content!.retain({
+    id: "part",
+    sessionID: "session",
+    messageID: "message",
+    type: "text",
+    preview: "",
+    content: { version: "one", bytes: 1 },
+  })
+  const locate = conversation.registerMessageLocator!(async () => true)
+  owner.lifetime.dispose()
+  pending.resolve()
+  await expect(lease.ready).rejects.toThrow("disposed")
+  expect(released).toHaveBeenCalledTimes(1)
+  expect(locatorReleased).toHaveBeenCalledTimes(1)
+  lease.release()
+  locate()
+  expect(released).toHaveBeenCalledTimes(1)
+})
+
 test("input and session adapters retain entity reads and reject revoked asynchronous results", async () => {
   const owner = access(["composer.read", "composer.write", "session.read", "session.submit"])
   const pending = Promise.withResolvers<void>()

@@ -34,6 +34,12 @@ function markdownText(content: unknown) {
 }
 
 describe("note_write", () => {
+  test("uses explicit note fields at the agent boundary", async () => {
+    const tool = await NoteWriteTool.init()
+    expect(tool.parameters.safeParse({ noteTitle: "Setup", noteContent: "Read me." }).success).toBe(true)
+    expect(tool.parameters.safeParse({ title: "Setup", content: "Read me." }).success).toBe(false)
+  })
+
   test("does not expose or persist a model-selected Blueprint default agent", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir()
@@ -53,8 +59,8 @@ describe("note_write", () => {
 
           const legacyInput = {
             mode: "create",
-            title: "Model-authored Blueprint",
-            content: "Execute the current Step.",
+            noteTitle: "Model-authored Blueprint",
+            noteContent: "Execute the current Step.",
             kind: "blueprint",
             defaultAgent: "implementation-engineer",
             scope: "current",
@@ -73,8 +79,8 @@ describe("note_write", () => {
           await tool.execute(
             {
               mode: "replace",
-              id: existing.id,
-              content: "Updated",
+              noteId: existing.id,
+              noteContent: "Updated",
               scope: "current",
             },
             ctx(session.id),
@@ -105,8 +111,8 @@ describe("note_write", () => {
 
           const legacyInput = {
             mode: "create",
-            title: "Model-authored Blueprint",
-            content: "Execute the current Step.",
+            noteTitle: "Model-authored Blueprint",
+            noteContent: "Execute the current Step.",
             kind: "blueprint",
             auditAgent: "reviewer",
             scope: "current",
@@ -125,8 +131,8 @@ describe("note_write", () => {
           await tool.execute(
             {
               mode: "replace",
-              id: existing.id,
-              content: "Updated",
+              noteId: existing.id,
+              noteContent: "Updated",
               scope: "current",
             },
             ctx(session.id),
@@ -156,9 +162,9 @@ describe("note_write", () => {
           })
 
           const result = await execute({
-            id: note.id,
+            noteId: note.id,
             mode: "replace",
-            content: "final content",
+            noteContent: "final content",
           })
 
           const current = await NoteStore.get(scope.id, note.id)

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -158,10 +159,10 @@ export function desktopInput(settings: Settings): Driver {
               settings.deadlineMs,
             )
           try {
-            if (agent !== "synergy") {
+            if (agent !== PrimaryAgentIdentity.names.general) {
               await page
                 .locator(".prompt-input-toolbar-main")
-                .getByRole("button", { name: "Synergy", exact: true })
+                .getByRole("button", { name: PrimaryAgentIdentity.labels.general, exact: true })
                 .click()
               const label = agent
                 .split("-")

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
 import { ScopeListTool } from "@ericsanchezok/synergy-local-runtime/tools/scope-list"
@@ -14,7 +15,7 @@ const ctx = {
   sessionID: "ses_source_scope_list",
   messageID: "msg_source_scope_list",
   callID: "call_source_scope_list",
-  agent: "synergy",
+  agent: PrimaryAgentIdentity.names.general,
   abort: AbortSignal.any([]),
   metadata: () => {},
   ask: async () => {},

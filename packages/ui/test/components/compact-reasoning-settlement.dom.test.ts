@@ -2,12 +2,13 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { JSDOM } from "jsdom"
 import { domFixture } from "../support/dom-fixtures"
 
-// Reproduces the working → settled transition on the REAL SessionTurn with the
-// REAL reactive store, without remounting: the compact reasoning row must flip
-// from the streaming line (spinner, no button) to the persistent expandable
-// row as soon as the turn settles (session status idle + terminal message).
 interface SettlementHarness {
   settle: () => void
+  reset: () => void
+  stop: () => void
+  clearStatus: () => void
+  recoverAfterError: () => void
+  setFollowing: (value: boolean) => void
 }
 
 let dom: JSDOM
@@ -75,34 +76,79 @@ afterAll(async () => {
   dom?.window.close()
 })
 
-describe("Compact reasoning settlement transition", () => {
-  test("streams as a running line and settles into a clickable row without remount", async () => {
-    expect(document.querySelector('[data-component="compact-reasoning"][data-state="running"]')).not.toBeNull()
-    expect(document.querySelector('[data-slot="compact-reasoning-trigger"]')).toBeNull()
-    expect(document.querySelector('[data-slot="compact-reasoning-leading"] [data-component="spinner"]')).not.toBeNull()
+const process = () => document.querySelector('[data-slot="turn-process-trigger"]') as HTMLButtonElement
+const reasoning = () => document.querySelector('[data-slot="process-reasoning-trigger"]') as HTMLButtonElement
 
+describe("process settlement", () => {
+  test("raw reasoning stays independently expandable through canonical completion", async () => {
+    const row = document.querySelector('[data-component="process-reasoning"]')
+    expect(process().getAttribute("aria-expanded")).toBe("true")
+    expect(reasoning().getAttribute("aria-expanded")).toBe("true")
+    expect(reasoning().getAttribute("aria-label")).toBe("Hide reasoning")
+    expect(row?.closest('[data-slot="turn-process-meta"]')).toBeNull()
+    reasoning().click()
+    await waitForUpdate()
+    expect(document.querySelector('[data-slot="process-reasoning-preview"]')).not.toBeNull()
+    reasoning().click()
+    await waitForUpdate()
+    expect(document.querySelector('[data-slot="process-reasoning-detail"]')?.textContent).toContain("Thinking through")
     harness.settle()
     await waitForUpdate()
+    expect(process().getAttribute("aria-expanded")).toBe("true")
+    process().click()
+    process().click()
     await waitForUpdate()
-
-    const settled = document.querySelector('[data-component="compact-reasoning"][data-state="settled"]')
-    expect(settled).not.toBeNull()
-    expect(document.querySelector('[data-component="compact-reasoning"][data-state="running"]')).toBeNull()
-
-    const trigger = document.querySelector('[data-slot="compact-reasoning-trigger"]') as HTMLButtonElement
-    expect(trigger).not.toBeNull()
-    expect(trigger.getAttribute("aria-expanded")).toBe("false")
-    expect(document.querySelector('[data-slot="compact-reasoning-leading"] [data-component="spinner"]')).toBeNull()
-    expect(document.querySelector('[data-slot="compact-reasoning-detail"]')).toBeNull()
-
-    trigger.click()
-    expect(trigger.getAttribute("aria-expanded")).toBe("true")
-    const detail = document.querySelector('[data-slot="compact-reasoning-detail"]')
-    expect(detail).not.toBeNull()
-    // aria-controls points at the collapsible content root, which wraps the
-    // detail region (Kobalte owns the content id).
-    const controls = trigger.getAttribute("aria-controls")
-    expect(controls).toBeTruthy()
-    expect(document.getElementById(controls!)?.contains(detail)).toBe(true)
+    expect(document.querySelector('[data-component="process-reasoning"]')).toBe(row)
+    expect(reasoning().getAttribute("aria-expanded")).toBe("true")
+    expect(reasoning().getAttribute("aria-label")).toBe("Hide reasoning")
+    const controls = reasoning().getAttribute("aria-controls")
+    expect(
+      document.getElementById(controls!)?.contains(document.querySelector('[data-slot="process-reasoning-detail"]')),
+    ).toBe(true)
+  })
+  test("completion preserves a detached reader until they return to latest", async () => {
+    harness.reset()
+    await waitForUpdate()
+    harness.setFollowing(false)
+    harness.settle()
+    await waitForUpdate()
+    expect(process().getAttribute("aria-expanded")).toBe("true")
+    harness.setFollowing(true)
+    await waitForUpdate()
+    expect(process().getAttribute("aria-expanded")).toBe("false")
+  })
+  test("explicit expansion survives completion while following", async () => {
+    harness.reset()
+    await waitForUpdate()
+    process().click()
+    process().click()
+    harness.settle()
+    await waitForUpdate()
+    expect(process().getAttribute("aria-expanded")).toBe("true")
+  })
+  test("stopped turns retain partial text and do not claim completion", async () => {
+    harness.reset()
+    await waitForUpdate()
+    harness.stop()
+    await waitForUpdate()
+    expect(process().textContent).toContain("Stopped")
+    expect(process().textContent).not.toContain("Completed")
+    expect(document.querySelector('[data-kind="text"]')?.textContent).toContain("Here is the final answer")
+    expect(document.querySelector('[data-component="error-card"]')).toBeNull()
+  })
+  test("an absent runtime bucket does not crash a completed turn", async () => {
+    harness.reset()
+    harness.settle()
+    harness.clearStatus()
+    await waitForUpdate()
+    expect(process().textContent).toContain("Worked for")
+  })
+  test("a recovered canonical reply settles the turn after an earlier assistant failure", async () => {
+    harness.recoverAfterError()
+    await waitForUpdate()
+    expect(process().textContent).toContain("Worked for")
+    expect(document.querySelector('[data-component="error-card"]')).toBeNull()
+    expect(document.querySelector('[data-kind="text"]')?.textContent).toContain("Here is the final answer")
+    expect(document.body.textContent).toContain("Recovered answer.")
   })
 })

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test, mock } from "bun:test"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
@@ -251,7 +252,7 @@ describe("SessionManager.getSession", () => {
                 role: "user",
                 sessionID: parentSession.id,
                 time: { created: Date.now() },
-                agent: "synergy",
+                agent: PrimaryAgentIdentity.names.general,
                 model: { providerID: "test-provider", modelID: "test-model" },
                 isRoot: true,
                 rootID,
@@ -378,7 +379,7 @@ describe("loop ownership", () => {
             sessionID = session.id
             const item = await SessionInbox.enqueueUser({
               sessionID,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "missing-model" },
               parts: [{ type: "text", text: "Retry after provider recovery" }],
             })

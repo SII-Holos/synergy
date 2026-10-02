@@ -38,6 +38,7 @@ import "./session-top-bar.css"
 import { SlotOutlet } from "@/plugin/slot-outlet"
 import { SessionTagMenu } from "@/components/session/session-tag-menu"
 import { ModelVariantPicker } from "@/components/provider/model-thinking-picker"
+import { TaskDetailsPopover } from "@/components/execution/popover"
 
 const selectionSaving = { id: "session.modelSelection.saving", message: "Saving…" }
 const selectionPending = { id: "session.modelSelection.pending", message: "Applies to the next request" }
@@ -94,7 +95,7 @@ function SessionActionMenu(props: {
             aria-haspopup="menu"
             aria-expanded={open()}
           >
-            <Icon name={getSemanticIcon("action.more")} size="normal" />
+            <Icon name={getSemanticIcon("action.more")} size="small" />
           </button>
         </Tooltip>
       )}
@@ -231,7 +232,7 @@ export function SessionTopBar(props: {
         aria-pressed={sideSurface().opened()}
         onClick={() => sideSurface().toggle()}
       >
-        <Icon name={getSemanticIcon("app.sideWorkspace")} size="normal" />
+        <Icon name={getSemanticIcon("app.sideWorkspace")} size="small" />
       </button>
     </Tooltip>
   )
@@ -433,7 +434,7 @@ export function SessionTopBar(props: {
               aria-label={_(topBar.openNavigation)}
               onClick={() => layout.mobileSidebar.toggle()}
             >
-              <Icon name={getSemanticIcon("app.sidebar.open")} size="normal" />
+              <Icon name={getSemanticIcon("app.sidebar.open")} size="small" />
             </button>
             <button
               type="button"
@@ -441,20 +442,21 @@ export function SessionTopBar(props: {
               aria-label={_(topBar.openTools)}
               onClick={() => layout.rightSidebar.toggle()}
             >
-              <Icon name={getSemanticIcon("app.toolsDrawer")} size="normal" />
+              <Icon name={getSemanticIcon("app.toolsDrawer")} size="small" />
             </button>
           </div>
           <div class="stb-center flex min-w-0 flex-1 items-center justify-center">
             <ModelSelectorButton />
           </div>
           <div class="flex items-center gap-1">
+            <TaskDetailsPopover />
             <button
               type="button"
               class="stb-icon-btn"
               aria-label={_(topBar.newSession)}
               onClick={() => navigate(`/${params.dir}/session`)}
             >
-              <Icon name={getSemanticIcon("action.add")} size="normal" />
+              <Icon name={getSemanticIcon("action.add")} size="small" />
             </button>
             <Show when={actionVisibility().menu}>
               <SessionActionMenu
@@ -500,6 +502,7 @@ export function SessionTopBar(props: {
           </div>
           <div class="stb-drag-region" aria-hidden="true" />
           <div class="stb-right">
+            <TaskDetailsPopover />
             <Show when={actionVisibility().menu || compact()}>
               <SessionActionMenu
                 tools={
@@ -557,7 +560,7 @@ export function SessionTopBar(props: {
                   aria-pressed={bottomSurface().opened()}
                   onClick={() => bottomSurface().toggle()}
                 >
-                  <Icon name={getSemanticIcon("app.bottomSpace")} size="normal" />
+                  <Icon name={getSemanticIcon("app.bottomSpace")} size="small" />
                 </button>
               </Tooltip>
               <Show when={!workbenchChrome?.()}>

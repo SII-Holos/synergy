@@ -29,7 +29,7 @@ async function inspect() {
           return Experiment.provide(snapshot, async () => {
             const ref = Provider.parseModel(process.argv[5])
             const model = await Provider.getModel(ref.providerID, ref.modelID)
-            const agent = await Agent.get(process.argv[6] || "synergy")
+            const agent = await Agent.get(process.argv[6] || (await Agent.defaultAgent()))
             if (!agent) throw new BenchmarkInputError("Unknown benchmark agent")
             if (process.argv[7] && !model.variants?.[process.argv[7]])
               throw new BenchmarkInputError("Unknown model variant")

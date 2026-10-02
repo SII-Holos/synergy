@@ -1,6 +1,6 @@
 # Synergy test support
 
-Private development-only helpers shared by runtime and domain tests. Production packages must not depend on this package.
+Private development-only helpers shared by runtime and domain tests. Exports resolve directly to source, and `typecheck` validates the package. Production packages must not depend on this package.
 
 | Export                                           | Responsibility                                                                                                                                                                                |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -22,6 +22,17 @@ const scopes: Scope[] = [
 ]
 
 describe("config import settings model", () => {
+  test("keeps the first parse error's line and column for inline recovery", () => {
+    let error: unknown
+    try {
+      parseImportText('{\n  "username":\n}', "pasted")
+    } catch (caught) {
+      error = caught
+    }
+    expect(error).toMatchObject({ line: 3, column: 1 })
+    expect(error).toBeInstanceOf(Error)
+  })
+
   test("parses pasted JSONC and rejects oversized input before parsing", () => {
     expect(parseImportText('{\n  // comment\n  "username": "Ada",\n}', "pasted")).toEqual({ username: "Ada" })
     expect(() => parseImportText(`{"username":"${"x".repeat(1024 * 1024)}"}`, "large.jsonc")).toThrow(

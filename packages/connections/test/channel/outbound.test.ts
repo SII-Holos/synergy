@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Channel } from "../../src/channel"
@@ -97,8 +98,8 @@ async function completedAssistant(
     id: Identifier.ascending("message"),
     role: "assistant",
     parentID: Identifier.ascending("message"),
-    mode: "synergy",
-    agent: "synergy",
+    mode: PrimaryAgentIdentity.names.general,
+    agent: PrimaryAgentIdentity.names.general,
     path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -180,7 +181,7 @@ async function completedResponseCardRequest(input: {
     role: "user",
     isRoot: true,
     rootID,
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test-provider", modelID: "test-model" },
     time: { created: Date.now() },
     metadata: { channelRequesterId: input.requesterId },
@@ -547,7 +548,7 @@ test("does not re-deliver already-delivered task attachments on a later terminal
             role: "user",
             isRoot: true,
             rootID,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test-provider", modelID: "test-model" },
             time: { created: Date.now() },
           } as MessageV2.User)
@@ -916,7 +917,7 @@ test("delivers a foreground-completed terminal that the loop did not return", ()
           role: "user",
           isRoot: true,
           rootID,
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           model: { providerID: "test-provider", modelID: "test-model" },
           time: { created: Date.now() },
         } as MessageV2.User)
@@ -996,7 +997,7 @@ test("does not re-deliver a terminal already present before the invoke", () =>
           role: "user",
           isRoot: true,
           rootID,
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           model: { providerID: "test-provider", modelID: "test-model" },
           time: { created: Date.now() },
         } as MessageV2.User)

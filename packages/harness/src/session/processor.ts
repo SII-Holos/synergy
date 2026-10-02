@@ -1,3 +1,4 @@
+import { ToolIntent } from "./tool-intent"
 import { readImageInputReceipt, publishImageInputReceipt, type ImageAttachmentSource } from "./rollout/image-receipt"
 import type { RolloutSchema } from "./rollout/schema"
 import { RolloutLedger } from "./rollout/ledger"
@@ -55,6 +56,7 @@ export namespace SessionProcessor {
         input: any
         result: {
           output: string
+          activityEvidence?: import("./activity-evidence").ToolActivityEvidence
           title: string
           metadata: Record<string, any>
           attachments?: MessageV2.AttachmentPart[]
@@ -127,6 +129,7 @@ export namespace SessionProcessor {
     memoryTurn?: LLMTurnMemory.Handle
     autoExpandable?: Set<string>
     resolverInput?: Omit<ToolResolver.Input, "processor">
+    intentBindings?: ReadonlyMap<string, ToolIntent.Binding>
   }
 
   export function shouldAskDoomLoop(parts: MessageV2.Part[], toolName: string, input: unknown) {
@@ -205,6 +208,7 @@ export namespace SessionProcessor {
     toolDisplay?: (toolName: string) => ToolDisplay | undefined
   }) {
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
+    const modelInputs = new Map<string, Record<string, unknown>>()
     const modelCalls = new Map<string, { owner: RolloutSchema.Owner; runID: string; callID: string }>()
     const executions = new Map<string, ToolExecutionSlotInternal>()
     const executionCallbacks = new Map<string, Promise<unknown>>()
@@ -308,9 +312,10 @@ export namespace SessionProcessor {
         if (outcome.status === "completed") {
           const updated = await Session.updatePart({
             ...live,
+            activityEvidence: outcome.result.activityEvidence ?? live.activityEvidence,
             state: {
               status: "completed",
-              input: SessionToolInput.normalize(outcome.input),
+              input: SessionToolInput.canonical(outcome.input),
               output: outcome.result.output,
               metadata: ToolTimeout.mergeMetadata(
                 live.state.status === "running" ? live.state.metadata : undefined,
@@ -328,7 +333,7 @@ export namespace SessionProcessor {
             ...live,
             state: {
               status: "error",
-              input: SessionToolInput.normalize(outcome.input),
+              input: SessionToolInput.canonical(outcome.input),
               error: outcome.error,
               metadata: ToolTimeout.mergeMetadata(streamingToolMetadata(live), outcome.metadata),
               time: { start: startTime, end: Date.now() },
@@ -824,6 +829,7 @@ export namespace SessionProcessor {
     function dispose(reason = "manual") {
       const before = toolSettlementSnapshot(undefined, true)
       for (const callID of Object.keys(toolcalls)) delete toolcalls[callID]
+      modelInputs.clear()
       executions.clear()
       pendingToolCallStates.clear()
       toolCallStateUpdates.clear()
@@ -850,6 +856,9 @@ export namespace SessionProcessor {
         const identity = modelCalls.get(toolCallID)
         return identity ? readImageInputReceipt(identity) : undefined
       },
+      modelInputFromToolCall(toolCallID: string) {
+        return modelInputs.get(toolCallID)
+      },
       partFromToolCall(toolCallID: string) {
         return toolcalls[toolCallID]
       },
@@ -864,6 +873,7 @@ export namespace SessionProcessor {
         tool: AITool
         executor?: import("./tool-scheduler").ToolExecutorKind
         parentCallID?: string
+        workBrief?: string
       }): Promise<ToolOutcomeCompletedResult> {
         const part = MessageV2.ToolPart.parse(
           await Session.updatePart({
@@ -873,6 +883,7 @@ export namespace SessionProcessor {
             type: "tool",
             tool: call.toolName,
             callID: call.callID,
+            workBrief: call.workBrief,
             state: { status: "running", input: call.args, time: { start: Date.now() } },
           }),
         )
@@ -921,6 +932,14 @@ export namespace SessionProcessor {
       },
       async process(streamInput: ProcessInput) {
         log.info("process")
+        const inputBindings =
+          streamInput.intentBindings ??
+          new Map(
+            streamInput.toolDefinitions.map((definition) => [
+              definition.id,
+              ToolIntent.snapshot(definition.inputSchema),
+            ]),
+          )
         let recordingFailure: InstanceType<typeof RolloutRecordingError> | undefined
         const turnTraceId = ObservabilityContext.current().traceId ?? Observability.traceId("turn")
         const autoExpandedByTool = new Map<string, ToolResolver.AutoExpandedTool>()
@@ -1045,7 +1064,7 @@ export namespace SessionProcessor {
               const deferredToolCalls: Array<{
                 callID: string
                 toolName: string
-                input: Record<string, unknown>
+                input: ReturnType<typeof SessionToolInput.canonical>
               }> = []
               SessionMemoryPressure.probe("processor.before_llm_stream", {
                 sessionID: input.sessionID,
@@ -1058,6 +1077,7 @@ export namespace SessionProcessor {
                 memoryTurn: _memoryTurn,
                 autoExpandable: _autoExpandable,
                 resolverInput: _resolverInput,
+                intentBindings: _intentBindings,
                 ...agentTurnInput
               } = streamInput
               retryEligible = true
@@ -1335,8 +1355,19 @@ export namespace SessionProcessor {
                       const pendingState = pendingToolCallStates.get(value.toolCallId)
                       pendingToolCallStates.delete(value.toolCallId)
                       const streamedRaw = generatingAccum[value.toolCallId]
-                      const toolInput = SessionToolInput.normalize(value.input)
-                      const toolInputBytes = SessionBounds.toolInputByteLength(toolInput)
+                      const rawInput = SessionToolInput.normalize(value.input)
+                      modelInputs.set(value.toolCallId, structuredClone(rawInput))
+                      const expanded = streamInput.autoExpandable?.has(value.toolName)
+                        ? await resolveAutoExpand(value.toolName)
+                        : undefined
+                      const binding =
+                        inputBindings.get(value.toolName) ??
+                        (expanded?.inputSchema ? ToolIntent.snapshot(expanded.inputSchema) : undefined)
+                      const intent = binding
+                        ? ToolIntent.decode(binding, rawInput)
+                        : { input: rawInput, workBrief: undefined, inputShape: undefined }
+                      const toolInput = SessionToolInput.canonical(intent.input)
+                      const toolInputBytes = SessionBounds.toolInputByteLength(rawInput)
                       log.info("tool.stream.tool_call.input_ready", {
                         sessionID: input.sessionID,
                         messageID: input.assistantMessage.id,
@@ -1403,6 +1434,8 @@ export namespace SessionProcessor {
                           callID: value.toolCallId,
                         }),
                         tool: value.toolName,
+                        workBrief: intent.workBrief,
+                        inputShape: intent.inputShape,
                         state: {
                           status: "running",
                           input: toolInput,
@@ -1766,15 +1799,11 @@ export namespace SessionProcessor {
                       await markAutoExpanded(call, expanded)
                     }
                   }
-                  // Deferred tools are absent from toolDefinitions, so the AI
-                  // SDK never validated these arguments, and MCP/plugin
-                  // execution paths do not revalidate. Validate against the
-                  // freshly resolved schema before dispatching the real tool.
                   if (expanded) {
                     const { ToolResolver: DynamicToolResolver } = await import("./tool-resolver")
                     const invalid = DynamicToolResolver.validateToolInput(
                       call.toolName,
-                      expanded.inputSchema,
+                      inputBindings.get(call.toolName)?.nativeSchema ?? expanded.inputSchema,
                       call.input,
                     )
                     if (invalid) {

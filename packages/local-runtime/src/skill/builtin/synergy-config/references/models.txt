@@ -42,10 +42,10 @@ You don't need to set all roles. Unset roles fall back through their chain. At m
 ## Default agent
 
 ```jsonc
-{ "default_agent": "synergy" }
+{ "default_agent": "atlas" }
 ```
 
-Must be a primary-mode agent. Falls back to `"synergy"` if not set or invalid.
+Must be a visible primary agent. When unset or invalid, Atlas is preferred, followed by another visible primary if Atlas is unavailable.
 
 ## Category model overrides
 

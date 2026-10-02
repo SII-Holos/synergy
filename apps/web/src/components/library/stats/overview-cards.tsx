@@ -68,12 +68,12 @@ function buildMetrics(
 
 function MetricCard(props: { metric: OverviewMetric; delay: number }) {
   return (
-    <div class="library-metric-card" style={{ animation: `overviewCardEnter 0.28s ease-out ${props.delay}ms both` }}>
+    <div class="library-metric-card">
       <div class="flex items-baseline gap-2">
         <span class="text-18-semibold text-text-strong tabular-nums">{props.metric.value}</span>
-        <span class="text-11-regular text-text-weak">{props.metric.label}</span>
+        <span class="app-panel-caption text-text-weak">{props.metric.label}</span>
       </div>
-      {props.metric.sub ? <div class="mt-0.5 text-10-regular text-text-weaker">{props.metric.sub}</div> : null}
+      {props.metric.sub ? <div class="mt-0.5 app-panel-caption text-text-weaker">{props.metric.sub}</div> : null}
     </div>
   )
 }

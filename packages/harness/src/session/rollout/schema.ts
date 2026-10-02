@@ -196,6 +196,14 @@ export namespace RolloutSchema {
       timing: RolloutTiming.Info.optional(),
       usageFinal: z.boolean().optional(),
       estimate: ProviderPricing.Estimate.optional(),
+      pricingEvidence: z
+        .object({
+          version: z.literal(1),
+          source: z.enum(["attempt", "historical"]),
+          pricing: ProviderPricing.Info.nullable(),
+        })
+        .strict()
+        .optional(),
       responseHeaders: z.record(z.string(), z.string()).optional(),
       error: z.string().optional(),
     })

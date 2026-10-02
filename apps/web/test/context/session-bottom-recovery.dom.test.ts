@@ -13,6 +13,7 @@ type Harness = {
     setTailMissingLatest(value: boolean): void
     setPendingLatest(value: boolean): void
     setHistoryLoading(value: boolean): void
+    setLocationPinned(value: boolean): void
   }
   recoveries(): number
   settle(): void
@@ -60,6 +61,7 @@ test("bounded-window bottom recovery fires on due transitions for engaged sessio
         const [tailMissingLatest, setTailMissingLatest] = createSignal(options.tailMissingLatest ?? false)
         const [pendingLatest, setPendingLatest] = createSignal(options.pendingLatest ?? false)
         const [historyLoading, setHistoryLoading] = createSignal(options.historyLoading ?? false)
+        const [locationPinned, setLocationPinned] = createSignal(false)
         const recover = () => {
           calls.push(1)
           if (!options.deferredRecover) return
@@ -68,10 +70,10 @@ test("bounded-window bottom recovery fires on due transitions for engaged sessio
           })
         }
         createBottomRecoveryTrigger(
-          { sessionID, scrolledUp, mode, tailMissingLatest, pendingLatest, historyLoading },
+          { sessionID, scrolledUp, mode, tailMissingLatest, pendingLatest, historyLoading, locationPinned },
           recover,
         )
-        return { setSessionID, setScrolledUp, setMode, setTailMissingLatest, setPendingLatest, setHistoryLoading, dispose }
+        return { setSessionID, setScrolledUp, setMode, setTailMissingLatest, setPendingLatest, setHistoryLoading, setLocationPinned, dispose }
       })
       return {
         setters,
@@ -100,6 +102,21 @@ test("bounded-window bottom recovery fires on due transitions for engaged sessio
     }
     // Solid flushes render effects on the microtask queue.
     const tick = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+    const located = fixture.mount({ sessionID: "located", mode: "latest" })
+    await tick()
+    located.setters.setLocationPinned(true)
+    located.setters.setHistoryLoading(true)
+    located.setters.setMode("history")
+    located.setters.setTailMissingLatest(true)
+    await tick()
+    located.setters.setHistoryLoading(false)
+    await tick()
+    expect(located.recoveries()).toBe(0)
+    located.setters.setLocationPinned(false)
+    await tick()
+    expect(located.recoveries()).toBe(1)
+    located.dispose()
 
     // Regression sequence: the user heads back to the bottom while a history
     // load is in flight. The load marks engagement; when it finishes the

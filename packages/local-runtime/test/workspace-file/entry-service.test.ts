@@ -98,7 +98,8 @@ test("node metadata and entry version come from the same filesystem observation"
           return undefined
         })
         try {
-          const node = await WorkspaceFileService.node("file.txt")
+          const node = await WorkspaceFileService.node("file.txt", { resolveGitStatus: true })
+          expect(status).toHaveBeenCalledTimes(1)
           expect(node.size).toBe(3)
           expect(node.entryVersion).toBe(before!.version)
           expect(node.entryVersion).not.toBe((await FileEntry.inspect(target))!.version)

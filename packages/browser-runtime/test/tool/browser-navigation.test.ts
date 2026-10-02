@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { BrowserProtocolError } from "@ericsanchezok/synergy-browser-core"
 import { BrowserNavigationTool } from "@ericsanchezok/synergy-browser-runtime/tools/browser-navigation"
@@ -7,6 +8,8 @@ import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 
+const originalWithTask = BrowserToolHelper.withTask
+const originalResolveOwner = BrowserToolHelper.resolveOwner
 const originalResolvePage = BrowserToolHelper.resolvePage
 const originalExecute = BrowserToolHelper.execute
 const originalWithActivity = BrowserToolHelper.withActivity
@@ -14,6 +17,13 @@ const originalGetOrCreateSession = BrowserToolHelper.getOrCreateSession
 
 beforeEach(() =>
   runtime.run(() => {
+    BrowserToolHelper.withTask = async (_ctx, fn) => fn()
+    BrowserToolHelper.resolveOwner = async () => ({
+      mode: "scope",
+      scopeID: "scope-test",
+      directory: null,
+      workspaceID: null,
+    })
     BrowserToolHelper.resolvePage = async () =>
       ({ id: "page-test", url: "https://example.com/", title: "Example", loading: false }) as never
     BrowserToolHelper.getOrCreateSession = async () =>
@@ -27,6 +37,8 @@ beforeEach(() =>
 
 afterEach(() =>
   runtime.run(() => {
+    BrowserToolHelper.withTask = originalWithTask
+    BrowserToolHelper.resolveOwner = originalResolveOwner
     BrowserToolHelper.resolvePage = originalResolvePage
     BrowserToolHelper.execute = originalExecute
     BrowserToolHelper.withActivity = originalWithActivity
@@ -39,7 +51,7 @@ function context() {
     sessionID: "ses_browser_navigation_test",
     messageID: "msg_browser_navigation_test",
     callID: "call_browser_navigation_test",
-    agent: "synergy-max",
+    agent: PrimaryAgentIdentity.names.coding,
     abort: new AbortController().signal,
     extra: {},
     metadata() {},
@@ -105,6 +117,7 @@ describe("tool.browser_navigation", () => {
             snapshot: { snapshotId: "snap-nav", elements: [{ ref: "@1-1" }] },
             page: { url: "https://example.com/target" },
           })
+          expect(result.metadata.url).toBe("https://example.com/target")
         },
       })
     }))

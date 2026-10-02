@@ -132,9 +132,32 @@ export const ViewFileTool = Tool.define(
       if (tag) recordSeenSessionLines(ctx.sessionID, filePath, [...displayed], tag)
       const output = [warning, header, ...blocks, ...continuations].filter(Boolean).join("\n")
       const primary = rangeMetadata[0]
+      const seen = [...displayed]
+      const capturedRanges: Array<{ startLine: number; lineCount: number }> = []
+      for (const line of seen) {
+        const last = capturedRanges.at(-1)
+        if (last && last.startLine + last.lineCount === line - 1) last.lineCount++
+        else capturedRanges.push({ startLine: line - 1, lineCount: 1 })
+      }
       return {
         title: display,
         output: `${output}${blocks.length ? "" : "\n"}`,
+        activityEvidence: await ctx.recordActivity?.({
+          kind: "file-read",
+          resource: {
+            path: filePath,
+            workspaceID: ctx.resources?.workspace?.id,
+            generation: ctx.resources?.workspace?.binding.generation,
+          },
+          ranges: capturedRanges,
+          range:
+            capturedRanges.length === 1
+              ? { ...capturedRanges[0], totalLines: snapshotAvailable ? lines.length : undefined }
+              : undefined,
+          text: seen.map((line) => lines[line - 1]).join("\n"),
+          mediaType: /\.md$/i.test(filePath) ? "text/markdown" : "text/plain",
+          truncated: !snapshotAvailable || rangeMetadata.some((range) => range.truncated),
+        }),
         metadata: {
           path: display,
           tag,

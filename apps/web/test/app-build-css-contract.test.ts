@@ -638,7 +638,7 @@ async function readPromptDockLayoutTokens(): Promise<PromptDockLayoutTokens> {
   const conversation = await Bun.file(new URL("conversation.tsx", sessionDir)).text()
   const clearanceLine = conversation
     .split("\n")
-    .find((line) => line.includes("md:pb-[calc(var(--prompt-height,10rem)+96px)]"))
+    .find((line) => line.includes("md:pb-[calc(var(--prompt-height,10rem)+32px)]"))
   const clearanceMatch = clearanceLine?.match(/"([^"]+)"/)
   if (!clearanceMatch || !clearanceMatch[1]!.includes("pb-6")) {
     throw new Error("conversation.tsx must keep the mobile pb-6 prompt clearance")
@@ -699,7 +699,7 @@ async function expectPromptDockAndMobileFloatFlow(css: string) {
     expect(desktop.dockPaddingTop).toBe("0px")
     expect(desktop.floatPosition).toBe("absolute")
     expect(desktop.composerOffset).toBe(0)
-    expect(desktop.contentPaddingBottom).toBe("256px")
+    expect(desktop.contentPaddingBottom).toBe("192px")
 
     // Mobile: the band collapses to zero, the float layer flows in normal
     // document order, so a busy control pushes the composer down instead of

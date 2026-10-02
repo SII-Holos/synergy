@@ -1,17 +1,24 @@
+import { PrimaryAgentIdentity } from "../primary-identity"
 import { AgentDelegation, type DelegationCaller } from "../delegation"
 import type { AgentInfo } from "./types"
 
 /**
  * Agents a given primary can delegate work to.
  */
-export function getDelegatableAgents(agents: AgentInfo[], caller: string | DelegationCaller = "synergy"): AgentInfo[] {
+export function getDelegatableAgents(
+  agents: AgentInfo[],
+  caller: string | DelegationCaller = PrimaryAgentIdentity.names.general,
+): AgentInfo[] {
   return agents.filter((agent) => AgentDelegation.canDelegateTo(agent, caller))
 }
 
 /**
  * Build the agent table showing available subagents.
  */
-export function buildAgentTable(agents: AgentInfo[], caller: string | DelegationCaller = "synergy"): string {
+export function buildAgentTable(
+  agents: AgentInfo[],
+  caller: string | DelegationCaller = PrimaryAgentIdentity.names.general,
+): string {
   const callerName = typeof caller === "string" ? caller : caller.name
   const available = getDelegatableAgents(agents, caller)
 

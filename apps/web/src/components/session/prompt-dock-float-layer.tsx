@@ -1,10 +1,8 @@
 import { Show, type JSX } from "solid-js"
-import { SessionProgressPanel } from "./session-progress-panel"
-import { SubagentDock } from "./subagent-dock"
 import { selectPromptDockControl } from "./prompt-dock-control-model"
 import "./prompt-dock-float-layer.css"
 
-export function PromptDockControlSlot(props: { priorityControl?: JSX.Element; fallback: JSX.Element }) {
+export function PromptDockControlSlot(props: { priorityControl?: JSX.Element; fallback?: JSX.Element }) {
   const control = () =>
     selectPromptDockControl({
       workflowOfferVisible: props.priorityControl !== undefined,
@@ -21,11 +19,7 @@ export function PromptDockControlSlot(props: { priorityControl?: JSX.Element; fa
 export function PromptDockFloatLayer(props: { sessionID: string; priorityControl?: JSX.Element }) {
   return (
     <div class="prompt-dock-float-layer relative w-full md:absolute md:inset-x-0 md:bottom-full flex flex-col items-center">
-      <SubagentDock sessionID={props.sessionID} />
-      <PromptDockControlSlot
-        priorityControl={props.priorityControl}
-        fallback={<SessionProgressPanel sessionID={props.sessionID} />}
-      />
+      <PromptDockControlSlot priorityControl={props.priorityControl} />
     </div>
   )
 }

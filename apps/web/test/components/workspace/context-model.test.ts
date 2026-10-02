@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, test } from "bun:test"
 import type { AssistantMessage, Message, Session, UserMessage } from "@ericsanchezok/synergy-sdk/client"
 import {
@@ -87,7 +88,7 @@ function user(id = "msg_001", input: Partial<UserMessage> = {}): UserMessage {
     role: "user",
     isRoot: true,
     time: { created: 10 },
-    agent: "synergy",
+    agent: TEST_AGENT_NAME,
     model: { providerID: "provider_a", modelID: "model_a" },
     ...input,
   }

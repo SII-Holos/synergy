@@ -111,6 +111,40 @@ describe("applyLatestPage", () => {
 // ---------------------------------------------------------------------------
 
 describe("prependOlderPage", () => {
+  test("keeps the visible prefix of a large turn even when earlier complete turns share its window", () => {
+    const earlier = [
+      { ...msg("earlier", 0), rootID: "earlier" },
+      { ...msg("earlier-answer", 1), rootID: "earlier" },
+    ]
+    const current = window(
+      [
+        { ...msg("large-root", 2), rootID: "large-root" },
+        ...Array.from({ length: 600 }, (_, index) => ({
+          ...msg(`large-answer-${index}`, index + 3),
+          rootID: "large-root",
+        })),
+      ],
+      { mode: "history" },
+    )
+    const result = prependOlderPage(current, earlier, 500)
+    expect(result.window.messages).toHaveLength(500)
+    expect(result.window.messages.some((message) => message.id === "large-answer-0")).toBe(true)
+    expect(result.window.messages.at(-1)?.id).toBe("large-answer-496")
+  })
+
+  test("retains a bounded readable window when one turn exceeds the entire history cap", () => {
+    const input = [
+      { ...msg("root", 0), rootID: "root" },
+      ...Array.from({ length: 600 }, (_, index) => ({ ...msg(`answer-${index}`, index + 1), rootID: "root" })),
+    ]
+    const result = prependOlderPage(window(input.slice(500), { mode: "history" }), input.slice(0, 500), 500)
+    expect(result.window.messages).toHaveLength(500)
+    expect(result.window.messages[0].id).toBe("root")
+    expect(result.window.messages.at(-1)?.id).toBe("answer-498")
+    expect(result.window.tailMissingLatest).toBe(true)
+    expect(result.droppedIds).toHaveLength(101)
+  })
+
   test("deduplicates by ID — older message already in window is skipped", () => {
     const current = window([msg("c", 3), msg("d", 4)], { mode: "history" })
     const older = [msg("a", 1), msg("b", 2), msg("c", 3)] // c duplicates
@@ -444,8 +478,8 @@ describe("tailMissingLatest semantics", () => {
 // Turn-aware history cap — never leave a partial tail turn at the boundary
 // ---------------------------------------------------------------------------
 
-describe("turn-aware history cap", () => {
-  test("cap inside a root turn drops the whole partial tail turn", () => {
+describe("Part-row history cap", () => {
+  test("cap inside a root turn preserves its readable prefix", () => {
     const cap = 5
     const current = window(
       [
@@ -461,10 +495,9 @@ describe("turn-aware history cap", () => {
       { ...msg("root-0-a", 1), rootID: "root-0" },
     ]
     const result = prependOlderPage(current, older, cap)
-    // Cap would land inside root-1's turn; the partial tail turn is dropped.
-    expect(result.window.messages.map((m) => m.id)).toEqual(["root-0", "root-0-a"])
+    expect(result.window.messages.map((m) => m.id)).toEqual(["root-0", "root-0-a", "root-1", "root-1-a", "root-1-b"])
     expect(result.window.messages.length).toBeLessThanOrEqual(cap)
-    expect(result.droppedIds).toEqual(["root-1", "root-1-a", "root-1-b", "root-1-c"])
+    expect(result.droppedIds).toEqual(["root-1-c"])
     expect(result.window.tailMissingLatest).toBe(true)
   })
 
@@ -489,7 +522,7 @@ describe("turn-aware history cap", () => {
     expect(result.droppedIds).toEqual(["root-2", "root-2-a"])
   })
 
-  test("cap drops every kept member of a turn that continues past the boundary", () => {
+  test("cap evicts only the unseen suffix of interleaved turns", () => {
     const cap = 6
     const current = window(
       [
@@ -506,8 +539,15 @@ describe("turn-aware history cap", () => {
       { ...msg("root-0-a", 1), rootID: "root-0" },
     ]
     const result = prependOlderPage(current, older, cap)
-    expect(result.window.messages.map((m) => m.id)).toEqual(["root-0", "root-0-a", "root-2", "root-2-a"])
-    expect(result.droppedIds).toEqual(["root-1", "root-1-a", "root-1-late"])
+    expect(result.window.messages.map((m) => m.id)).toEqual([
+      "root-0",
+      "root-0-a",
+      "root-1",
+      "root-1-a",
+      "root-2",
+      "root-2-a",
+    ])
+    expect(result.droppedIds).toEqual(["root-1-late"])
     expect(result.window.tailMissingLatest).toBe(true)
   })
 

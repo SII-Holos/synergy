@@ -465,5 +465,5 @@ ${r.after}`,
       }
     },
   },
-  { requiresWorkspace: true },
+  { requiresWorkspace: true, activityKind: "file-change" },
 )

@@ -292,3 +292,16 @@ test("home transfer preserves identities and clear suppression while advancing t
     expect(after.items).toHaveLength(0)
     expect(after.revision).toBeGreaterThan(before.revision + 100)
   }))
+
+test("historical and current primary identities share reporting without rewriting billing records", () =>
+  runtime.run(async () => {
+    const { owner: legacy } = await invocation({ purpose: "synergy-max", usageRole: "conversation" })
+    const { owner: current } = await invocation({ purpose: "forge", usageRole: "conversation" })
+    const before = await Storage.readMany(await Storage.list(["usage", legacy.scopeID]))
+    expect((await UsageQuery.summary({ scopeID: legacy.scopeID, agent: "forge" })).accounting.attempts).toBe(1)
+    expect((await UsageQuery.summary({ scopeID: current.scopeID, agent: "synergy-max" })).accounting.attempts).toBe(1)
+    const summary = await UsageQuery.summary({ agent: "forge" })
+    expect(summary.agents.forge?.attempts).toBe(2)
+    expect(summary.agents["synergy-max"]).toBeUndefined()
+    expect(await Storage.readMany(await Storage.list(["usage", legacy.scopeID]))).toEqual(before)
+  }))

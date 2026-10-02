@@ -1,558 +1,288 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, Show, onMount, type JSX } from "solid-js"
-import type { CalendarEvent } from "./expand"
-import {
-  startOfDay,
-  startOfWeek,
-  addDays,
-  addMonths,
-  monthRange,
-  formatHour,
-  getMonthNamesShort,
-  getDayLabelsShort,
-  formatLocaleDate,
-} from "./date"
+import { createMemo, createSignal, For, Show } from "solid-js"
+import { AppPanel } from "@/components/app-panel"
+import { useLocale } from "@/context/locale"
+import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { calendarKeyDate } from "./calendar-navigation"
+import { addDays, addMonths, getDayLabelsShort, startOfDay } from "./date"
+import { agendaRange, type AgendaViewMode, type CalendarEvent } from "./forecast"
+import { MiniCalendar } from "./mini-calendar"
 import { A } from "./agenda-i18n"
-import { useLocale, type IntlFormatter } from "@/context/locale"
+import "./calendar.css"
 
-export type ViewMode = "list" | "day" | "week" | "month"
+export type ViewMode = AgendaViewMode
 
-const HOUR_HEIGHT = 58
-const TIME_COL = 72
-const HOURS = Array.from({ length: 24 }, (_, i) => i)
-const EVENT_DURATION_MS = 30 * 60_000
-const MONTH_MAX_EVENTS = 4
-
-interface LayoutEvent {
-  event: CalendarEvent
-  col: number
-  totalCols: number
-}
-
-function layoutOverlapping(events: CalendarEvent[]): LayoutEvent[] {
-  if (events.length === 0) return []
-
-  const sorted = [...events].sort((a, b) => a.time - b.time)
-  const ends: number[] = []
-  const cols: number[] = []
-
-  for (const ev of sorted) {
-    let placed = -1
-    for (let c = 0; c < ends.length; c++) {
-      if (ends[c] <= ev.time) {
-        placed = c
-        break
-      }
-    }
-    if (placed === -1) {
-      placed = ends.length
-      ends.push(0)
-    }
-    ends[placed] = ev.time + EVENT_DURATION_MS
-    cols.push(placed)
-  }
-
-  const groups: { start: number; end: number; indices: number[] }[] = []
-  for (let i = 0; i < sorted.length; i++) {
-    const evStart = sorted[i].time
-    const evEnd = evStart + EVENT_DURATION_MS
-    let merged = false
-    for (const g of groups) {
-      if (evStart < g.end && evEnd > g.start) {
-        g.start = Math.min(g.start, evStart)
-        g.end = Math.max(g.end, evEnd)
-        g.indices.push(i)
-        merged = true
-        break
-      }
-    }
-    if (!merged) groups.push({ start: evStart, end: evEnd, indices: [i] })
-  }
-
-  const totalColsMap = new Map<number, number>()
-  for (const g of groups) {
-    let maxCol = 0
-    for (const idx of g.indices) maxCol = Math.max(maxCol, cols[idx])
-    for (const idx of g.indices) totalColsMap.set(idx, maxCol + 1)
-  }
-
-  return sorted.map((event, i) => ({
-    event,
-    col: cols[i],
-    totalCols: totalColsMap.get(i) ?? 1,
-  }))
-}
-
-interface CalendarGridProps {
+export function CalendarGrid(props: {
   viewMode: ViewMode
   anchor: number
   events: CalendarEvent[]
-  listContent?: JSX.Element
+  now?: number
+  scopeLabel?: (event: CalendarEvent) => string
   onViewModeChange?: (mode: ViewMode) => void
   onAnchorChange?: (anchor: number) => void
   onEventClick?: (event: CalendarEvent, e: MouseEvent) => void
-  onRangeChange?: (start: number, end: number) => void
-}
-
-function formatDayHeader(ts: number, fmt: IntlFormatter): { label: string; day: number; isToday: boolean } {
-  const d = new Date(ts)
-  const now = new Date()
-  const dayLabels = getDayLabelsShort(fmt)
-  return {
-    label: dayLabels[d.getDay()],
-    day: d.getDate(),
-    isToday: d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(),
-  }
-}
-
-function formatDateRange(weekStart: number, fmt: IntlFormatter): string {
-  const s = new Date(weekStart)
-  const e = new Date(addDays(weekStart, 6))
-  const months = getMonthNamesShort(fmt)
-  if (s.getMonth() === e.getMonth()) return `${months[s.getMonth()]} ${s.getDate()} – ${e.getDate()}`
-  return `${months[s.getMonth()]} ${s.getDate()} – ${months[e.getMonth()]} ${e.getDate()}`
-}
-
-function formatEventTime(ts: number): string {
-  const d = new Date(ts)
-  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`
-}
-
-function eventTop(ts: number, dayStart: number): number {
-  return ((ts - dayStart) / 3_600_000) * HOUR_HEIGHT
-}
-
-function eventHeight(): number {
-  return (EVENT_DURATION_MS / 3_600_000) * HOUR_HEIGHT
-}
-
-const TIME_EVENT_CLASSES: Record<string, string> = {
-  active: "agenda-event-surface",
-  paused: "agenda-event-surface agenda-event-paused",
-  pending: "agenda-event-surface agenda-event-muted",
-  done: "agenda-event-surface agenda-event-muted",
-  cancelled: "agenda-event-surface agenda-event-cancelled",
-}
-
-const MONTH_DOT_CLASSES: Record<string, string> = {
-  active: "bg-icon-success-base",
-  paused: "bg-icon-warning-base",
-  pending: "bg-text-weaker",
-  done: "bg-text-weaker",
-  cancelled: "bg-text-diff-delete-base",
-}
-
-export function CalendarGrid(props: CalendarGridProps) {
-  let scrollRef: HTMLDivElement | undefined
+  onHistory?: () => void
+}) {
   const { i18n, fmt } = useLocale()
-  const weekStart = createMemo(() => startOfWeek(props.anchor))
-  const dayStart = createMemo(() => startOfDay(props.anchor))
-
-  const rangeStart = createMemo(() => {
-    if (props.viewMode === "month") return monthRange(props.anchor).start
-    return props.viewMode === "week" || props.viewMode === "list" ? weekStart() : dayStart()
+  const _ = (d: { id: string; message: string }, values?: Record<string, unknown>) => i18n._({ ...d, values })
+  const range = createMemo(() => agendaRange(props.anchor, props.viewMode))
+  const [dateOpen, setDateOpen] = createSignal(false)
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const days = createMemo(() => {
+    const count =
+      props.viewMode === "month"
+        ? Math.round((range().end - range().start) / 86_400_000)
+        : props.viewMode === "day"
+          ? 1
+          : 7
+    return Array.from({ length: count }, (_, index) => addDays(range().start, index))
   })
-  const rangeEnd = createMemo(() => {
-    if (props.viewMode === "month") return monthRange(props.anchor).end
-    return addDays(rangeStart(), props.viewMode === "week" || props.viewMode === "list" ? 7 : 1)
-  })
-
-  createEffect(() => {
-    props.onRangeChange?.(rangeStart(), rangeEnd())
-  })
-
-  const dayColumns = createMemo(() => {
-    const count = props.viewMode === "week" || props.viewMode === "list" ? 7 : 1
-    const start = props.viewMode === "week" || props.viewMode === "list" ? weekStart() : dayStart()
-    const f = fmt
-    return Array.from({ length: count }, (_, i) => {
-      const ts = addDays(start, i)
-      return { ts, ...formatDayHeader(ts, f) }
-    })
-  })
-
   const eventsByDay = createMemo(() => {
     const map = new Map<number, CalendarEvent[]>()
-    for (const event of props.events) {
+    for (const event of [...props.events].sort((a, b) => a.time - b.time)) {
+      if (event.time < range().start || event.time >= range().end) continue
       const day = startOfDay(event.time)
-      const list = map.get(day)
-      if (list) list.push(event)
-      else map.set(day, [event])
+      map.set(day, [...(map.get(day) ?? []), event])
     }
     return map
   })
-
-  const [nowTs, setNowTs] = createSignal(Date.now())
-
-  createEffect(() => {
-    const tick = () => setNowTs(Date.now())
-    tick()
-    const id = window.setInterval(tick, 60_000)
-    onCleanup(() => window.clearInterval(id))
-  })
-
-  const currentTimeOffset = createMemo(() => eventTop(nowTs(), startOfDay(nowTs())))
-
-  const currentDayTs = createMemo(() => startOfDay(nowTs()))
-
-  const isCurrentDayVisible = createMemo(() => {
-    const now = currentDayTs()
-    return now >= rangeStart() && now < rangeEnd()
-  })
-
-  function goToday() {
-    props.onAnchorChange?.(Date.now())
+  const selected = () => startOfDay(props.anchor)
+  const visibleCount = () => [...eventsByDay().values()].reduce((count, events) => count + events.length, 0)
+  const selectedEvents = () => eventsByDay().get(selected()) ?? []
+  const dateTitle = () => {
+    if (props.viewMode === "month") return fmt.date(props.anchor, { year: "numeric", month: "long" })
+    if (props.viewMode === "week")
+      return _(
+        { id: "app.agenda.arrangements.weekRange", message: "{start} – {end}" },
+        {
+          start: fmt.date(range().start, { month: "short", day: "numeric" }),
+          end: fmt.date(addDays(range().start, 6), { month: "short", day: "numeric", year: "numeric" }),
+        },
+      )
+    if (props.viewMode === "list")
+      return _(
+        { id: "app.agenda.arrangements.listRange", message: "7 days from {date}" },
+        { date: fmt.date(props.anchor, { year: "numeric", month: "short", day: "numeric" }) },
+      )
+    return fmt.date(props.anchor, { year: "numeric", month: "short", day: "numeric", weekday: "short" })
   }
-  function goPrev() {
-    if (props.viewMode === "month") props.onAnchorChange?.(addMonths(props.anchor, -1))
-    else props.onAnchorChange?.(addDays(props.anchor, props.viewMode === "week" || props.viewMode === "list" ? -7 : -1))
+  const previous = () =>
+    props.viewMode === "month"
+      ? _({ id: "app.agenda.calendar.previousMonth", message: "Previous month" })
+      : props.viewMode === "day"
+        ? _({ id: "app.agenda.calendar.previousDay", message: "Previous day" })
+        : _({ id: "app.agenda.calendar.previousWeek", message: "Previous 7 days" })
+  const next = () =>
+    props.viewMode === "month"
+      ? _({ id: "app.agenda.calendar.nextMonth", message: "Next month" })
+      : props.viewMode === "day"
+        ? _({ id: "app.agenda.calendar.nextDay", message: "Next day" })
+        : _({ id: "app.agenda.calendar.nextWeek", message: "Next 7 days" })
+  function move(direction: number) {
+    props.onAnchorChange?.(
+      props.viewMode === "month"
+        ? addMonths(props.anchor, direction)
+        : addDays(props.anchor, direction * (props.viewMode === "day" ? 1 : 7)),
+    )
   }
-  function goNext() {
-    if (props.viewMode === "month") props.onAnchorChange?.(addMonths(props.anchor, 1))
-    else props.onAnchorChange?.(addDays(props.anchor, props.viewMode === "week" || props.viewMode === "list" ? 7 : 1))
+  function selectDay(day: number, keyboard?: KeyboardEvent) {
+    props.onAnchorChange?.(day)
+    if (keyboard)
+      requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`[data-agenda-date="${day}"]`)?.focus())
   }
-
-  function navTitle(): string {
-    const f = fmt
-    if (props.viewMode === "month") {
-      const d = new Date(props.anchor)
-      const months = getMonthNamesShort(f)
-      return `${months[d.getMonth()]} ${d.getFullYear()}`
-    }
-    if (props.viewMode === "week" || props.viewMode === "list") return formatDateRange(weekStart(), f)
-    const d = new Date(dayStart())
-    const months = getMonthNamesShort(f)
-    const days = getDayLabelsShort(f)
-    return `${days[d.getDay()]}, ${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`
-  }
-
-  onMount(() => {
-    if (scrollRef) {
-      const targetHour = Math.max(0, new Date().getHours() - 2)
-      scrollRef.scrollTop = targetHour * HOUR_HEIGHT
-    }
-  })
-
-  return (
-    <div classList={{ "flex flex-col flex-1 min-h-0": true, "min-h-[760px]": props.viewMode === "month" }}>
-      <NavBar
-        title={navTitle()}
-        viewMode={props.viewMode}
-        onToday={goToday}
-        onPrev={goPrev}
-        onNext={goNext}
-        onViewModeChange={props.onViewModeChange}
-      />
-      <Show when={props.viewMode === "list"}>{props.listContent}</Show>
-      <Show when={props.viewMode === "day" || props.viewMode === "week"}>
-        <TimeGrid
-          ref={(el) => (scrollRef = el)}
-          columns={dayColumns()}
-          eventsByDay={eventsByDay()}
-          currentTimeDayTs={currentDayTs()}
-          currentTimeOffset={currentTimeOffset()}
-          isCurrentDayVisible={isCurrentDayVisible()}
-          onEventClick={props.onEventClick}
-        />
-      </Show>
-      <Show when={props.viewMode === "month"}>
-        <MonthGrid
-          anchor={props.anchor}
-          rangeStart={rangeStart()}
-          rangeEnd={rangeEnd()}
-          eventsByDay={eventsByDay()}
-          onEventClick={props.onEventClick}
-          onDateClick={(ts) => {
-            props.onAnchorChange?.(ts)
-            props.onViewModeChange?.("day")
-          }}
-        />
+  const empty = () => (
+    <div class="agenda-arrangement-empty">
+      <p class="app-panel-row-title">
+        {_({ id: "app.agenda.arrangements.empty", message: "No upcoming arrangements in this range" })}
+      </p>
+      <p class="app-panel-caption text-text-weak">
+        {range().end <= (props.now ?? Date.now())
+          ? _({
+              id: "app.agenda.arrangements.pastHint",
+              message: "This period is in the past. History contains actual executions.",
+            })
+          : _({
+              id: "app.agenda.arrangements.emptyHint",
+              message:
+                "Only enabled tasks with future trigger times appear here. Manual and event-triggered tasks are in Tasks.",
+            })}
+      </p>
+      <Show when={props.onHistory && range().end <= (props.now ?? Date.now())}>
+        <button type="button" class="agenda-secondary-action" onClick={props.onHistory}>
+          {_({ id: "app.agenda.arrangements.openHistory", message: "View execution history" })}
+        </button>
       </Show>
     </div>
   )
-}
-
-function NavBar(props: {
-  title: string
-  viewMode: ViewMode
-  onToday: () => void
-  onPrev: () => void
-  onNext: () => void
-  onViewModeChange?: (mode: ViewMode) => void
-}) {
-  const { i18n } = useLocale()
-  const modes: ViewMode[] = ["list", "day", "week", "month"]
-  const labels: Record<ViewMode, () => string> = {
-    list: () => i18n._({ id: "app.agenda.calendar.list", message: "List" }),
-    day: () => i18n._(A.calendarDay),
-    week: () => i18n._(A.calendarWeek),
-    month: () => i18n._(A.calendarMonth),
-  }
+  const eventList = (events: CalendarEvent[]) => (
+    <OccurrenceList events={events} scopeLabel={props.scopeLabel} onSelect={props.onEventClick} empty={empty()} />
+  )
 
   return (
-    <div class="agenda-calendar-frame agenda-calendar-toolbar flex shrink-0 items-center gap-2 px-3.5 py-3">
-      <button
-        type="button"
-        class="workbench-control-surface rounded-full bg-surface-raised-base px-2.5 py-1 text-10-medium text-text-strong transition-colors hover:bg-surface-raised-base-hover"
-        onClick={props.onToday}
-      >
-        {i18n._(A.calendarToday)}
-      </button>
-      <button
-        type="button"
-        class="flex size-7 items-center justify-center rounded-full text-text-weak transition-colors hover:bg-surface-raised-base-hover"
-        aria-label={i18n._({ id: "app.agenda.calendar.previous", message: "Previous date range" })}
-        onClick={props.onPrev}
-      >
-        ‹
-      </button>
-      <button
-        type="button"
-        class="flex size-7 items-center justify-center rounded-full text-text-weak transition-colors hover:bg-surface-raised-base-hover"
-        aria-label={i18n._({ id: "app.agenda.calendar.next", message: "Next date range" })}
-        onClick={props.onNext}
-      >
-        ›
-      </button>
-      <span class="min-w-max flex-1 whitespace-nowrap text-13-medium text-text-strong">{props.title}</span>
-      <div class="workbench-control-surface flex shrink-0 items-center overflow-hidden rounded-lg bg-surface-raised-base p-0.75">
-        <For each={modes}>
-          {(mode) => (
-            <button
-              type="button"
-              classList={{
-                "px-2.5 py-1 rounded-md text-11-medium transition-all": true,
-                "bg-text-strong text-background-base": props.viewMode === mode,
-                "text-text-weaker hover:text-text-weak": props.viewMode !== mode,
+    <div class="agenda-calendar">
+      <div class="agenda-calendar-toolbar">
+        <div class="agenda-date-navigation">
+          <button type="button" class="agenda-secondary-action" onClick={() => props.onAnchorChange?.(Date.now())}>
+            {_(A.calendarToday)}
+          </button>
+          <button type="button" class="agenda-icon-action" aria-label={previous()} onClick={() => move(-1)}>
+            <Icon name={getSemanticIcon("navigation.back")} size="small" />
+          </button>
+          <button type="button" class="agenda-icon-action" aria-label={next()} onClick={() => move(1)}>
+            <Icon name={getSemanticIcon("navigation.forward")} size="small" />
+          </button>
+          <Popover
+            open={dateOpen()}
+            onOpenChange={setDateOpen}
+            title={_({ id: "app.agenda.calendar.chooseDate", message: "Choose a date" })}
+            class="agenda-calendar-picker"
+            placement="bottom-start"
+            triggerAs={(triggerProps) => (
+              <button {...triggerProps} type="button" class="agenda-range-button app-panel-control">
+                <span>{dateTitle()}</span>
+                <Icon name={getSemanticIcon("navigation.expand")} size="small" class="rotate-90" />
+              </button>
+            )}
+          >
+            <MiniCalendar
+              anchor={props.anchor}
+              onDateNavigate={(day) => props.onAnchorChange?.(day)}
+              onDateClick={(day) => {
+                props.onAnchorChange?.(day)
+                setDateOpen(false)
               }}
-              aria-pressed={props.viewMode === mode}
-              onClick={() => props.onViewModeChange?.(mode)}
-            >
-              {labels[mode]()}
-            </button>
-          )}
-        </For>
+            />
+          </Popover>
+        </div>
+        <AppPanel.Selection
+          label={_({ id: "app.agenda.calendar.views", message: "Calendar view" })}
+          items={[
+            { id: "list", label: _({ id: "app.agenda.calendar.list", message: "List" }) },
+            { id: "day", label: _(A.calendarDay) },
+            { id: "week", label: _(A.calendarWeek) },
+            { id: "month", label: _(A.calendarMonth) },
+          ]}
+          active={props.viewMode}
+          onChange={(mode) => props.onViewModeChange?.(mode as ViewMode)}
+        />
       </div>
-    </div>
-  )
-}
+      <div class="agenda-arrangement-context app-panel-caption text-text-weak">
+        <span>
+          {_({ id: "app.agenda.arrangements.predicted", message: "Expected trigger times · {timezone}" }, { timezone })}
+        </span>
+        <span>
+          {_(
+            {
+              id: "app.agenda.arrangements.count",
+              message: "{count, plural, one {# upcoming trigger} other {# upcoming triggers}}",
+            },
+            { count: visibleCount() },
+          )}
+        </span>
+      </div>
 
-function TimeGrid(props: {
-  ref: (el: HTMLDivElement) => void
-  columns: { ts: number; label: string; day: number; isToday: boolean }[]
-  eventsByDay: Map<number, CalendarEvent[]>
-  currentTimeDayTs: number
-  currentTimeOffset: number
-  isCurrentDayVisible: boolean
-  onEventClick?: (event: CalendarEvent, e: MouseEvent) => void
-}) {
-  const colTemplate = () => `${TIME_COL}px repeat(${props.columns.length}, 1fr)`
-
-  return (
-    <div class="agenda-calendar-frame agenda-calendar-body flex min-h-0 flex-1 flex-col overflow-hidden">
-      <Show when={props.columns.length > 1}>
-        <div class="agenda-time-header grid shrink-0 bg-transparent" style={{ "grid-template-columns": colTemplate() }}>
-          <div />
-          <For each={props.columns}>
-            {(col) => (
-              <div
-                classList={{
-                  "agenda-day-header-cell flex flex-col items-center py-1.5 text-center": true,
-                  "text-text-strong": col.isToday,
-                }}
-              >
-                <span class="text-10-medium text-text-weaker">{col.label}</span>
-                <span
-                  classList={{
-                    "text-12-medium w-6 h-6 flex items-center justify-center rounded-full": true,
-                    "bg-text-strong text-background-base ring-1 ring-border-weaker-selected": col.isToday,
-                    "text-text-strong": !col.isToday,
-                  }}
+      <Show when={props.viewMode === "list"}>
+        <Show when={visibleCount()} fallback={empty()}>
+          <For each={days().filter((day) => eventsByDay().has(day))}>
+            {(day) => (
+              <section class="agenda-date-section">
+                <h2 class="app-panel-section-title">{fmt.date(day, { dateStyle: "full" })}</h2>
+                {eventList(eventsByDay().get(day) ?? [])}
+              </section>
+            )}
+          </For>
+        </Show>
+      </Show>
+      <Show when={props.viewMode === "day"}>
+        <section class="agenda-day-agenda">{eventList(selectedEvents())}</section>
+      </Show>
+      <Show when={props.viewMode === "week"}>
+        <div class="agenda-week-overview">
+          <For each={days()}>
+            {(day) => (
+              <div class="agenda-week-column">
+                <button
+                  type="button"
+                  class="agenda-week-date"
+                  aria-pressed={day === selected()}
+                  aria-current={day === startOfDay(props.now ?? Date.now()) ? "date" : undefined}
+                  onClick={() => selectDay(day)}
                 >
-                  {col.day}
-                </span>
+                  <span class="app-panel-caption">{fmt.date(day, { weekday: "short" })}</span>
+                  <span class="app-panel-section-title">{new Date(day).getDate()}</span>
+                  <span class="app-panel-caption text-text-weak">{eventsByDay().get(day)?.length || "—"}</span>
+                </button>
+                <div class="agenda-week-events">{eventList(eventsByDay().get(day) ?? [])}</div>
               </div>
             )}
           </For>
         </div>
+        <section class="agenda-week-day-list agenda-date-section">
+          <h2 class="app-panel-section-title">{fmt.date(selected(), { dateStyle: "full" })}</h2>
+          {eventList(selectedEvents())}
+        </section>
       </Show>
-
-      <div ref={props.ref} class="agenda-grid-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-        <div
-          class="agenda-grid-surface relative grid"
-          style={{ "grid-template-columns": colTemplate(), height: `${24 * HOUR_HEIGHT}px` }}
-        >
-          <div class="relative">
-            <For each={HOURS}>
-              {(h) => (
-                <div
-                  class="agenda-time-label absolute text-10-medium text-text-weaker leading-none"
-                  style={{ top: `${h * HOUR_HEIGHT}px` }}
-                >
-                  {h > 0 ? formatHour(h) : ""}
-                </div>
-              )}
-            </For>
+      <Show when={props.viewMode === "month"}>
+        <div class="agenda-month-overview">
+          <div class="agenda-month-header">
+            <For each={getDayLabelsShort(fmt)}>{(label) => <span class="app-panel-caption">{label}</span>}</For>
           </div>
-
-          <For each={props.columns}>
-            {(col) => {
-              const laid = createMemo(() => layoutOverlapping(props.eventsByDay.get(col.ts) ?? []))
-              return (
-                <div class="agenda-day-column relative">
-                  <For each={HOURS}>
-                    {(h) => (
-                      <div
-                        class="agenda-hour-line absolute left-0 right-0"
-                        style={{ top: `${h * HOUR_HEIGHT}px`, height: `${HOUR_HEIGHT}px` }}
-                      />
-                    )}
-                  </For>
-
-                  <For each={laid()}>
-                    {(le) => {
-                      const top = eventTop(le.event.time, col.ts)
-                      const height = eventHeight()
-                      const classes = TIME_EVENT_CLASSES[le.event.status] ?? TIME_EVENT_CLASSES.active
-                      const widthPct = 100 / le.totalCols
-                      const leftPct = le.col * widthPct
-                      return (
-                        <button
-                          type="button"
-                          class={`text-left focus-visible:outline-2 focus-visible:outline-border-interactive-focus absolute cursor-pointer overflow-hidden rounded-md px-1.5 py-1 transition-opacity hover:opacity-90 ${classes}`}
-                          style={{
-                            top: `${top}px`,
-                            height: `${Math.max(height, 18)}px`,
-                            left: `calc(${leftPct}% + 2px)`,
-                            width: `calc(${widthPct}% - 4px)`,
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            props.onEventClick?.(le.event, e)
-                          }}
-                          title={`${le.event.title}\n${formatEventTime(le.event.time)}`}
-                        >
-                          <div class="text-10-medium text-text-strong truncate leading-tight">{le.event.title}</div>
-                          <Show when={height >= 26}>
-                            <div class="text-9 text-text-weak truncate leading-tight">
-                              {formatEventTime(le.event.time)}
-                            </div>
-                          </Show>
-                        </button>
-                      )
-                    }}
-                  </For>
-                </div>
-              )
-            }}
-          </For>
-
-          <Show when={props.isCurrentDayVisible}>
-            <div
-              class="absolute z-10 pointer-events-none flex items-center"
-              style={{
-                top: `${props.currentTimeOffset}px`,
-                left: `calc(${TIME_COL}px + ((100% - ${TIME_COL}px) / ${props.columns.length}) * ${props.columns.findIndex((col) => col.ts === props.currentTimeDayTs)})`,
-                width: `calc((100% - ${TIME_COL}px) / ${props.columns.length})`,
-              }}
-            >
-              <div class="w-2 h-2 rounded-full bg-text-diff-delete-base -ml-1 shrink-0" />
-              <div class="flex-1 h-[1.5px] bg-text-diff-delete-base" />
-            </div>
-          </Show>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function MonthGrid(props: {
-  anchor: number
-  rangeStart: number
-  rangeEnd: number
-  eventsByDay: Map<number, CalendarEvent[]>
-  onEventClick?: (event: CalendarEvent, e: MouseEvent) => void
-  onDateClick?: (ts: number) => void
-}) {
-  const { i18n, fmt } = useLocale()
-  const today = createMemo(() => startOfDay(Date.now()))
-  const anchorMonth = createMemo(() => new Date(props.anchor).getMonth())
-  const dayLabels = createMemo(() => getDayLabelsShort(fmt))
-  const weeks = createMemo(() => {
-    const result: { ts: number; day: number; isCurrentMonth: boolean; isToday: boolean }[][] = []
-    let cursor = props.rangeStart
-    while (cursor < props.rangeEnd) {
-      const week: (typeof result)[number] = []
-      for (let d = 0; d < 7; d++) {
-        const date = new Date(cursor)
-        week.push({
-          ts: cursor,
-          day: date.getDate(),
-          isCurrentMonth: date.getMonth() === anchorMonth(),
-          isToday: cursor === today(),
-        })
-        cursor = addDays(cursor, 1)
-      }
-      result.push(week)
-    }
-    return result
-  })
-
-  return (
-    <div class="agenda-calendar-frame agenda-calendar-body min-h-0 flex-1 overflow-y-auto">
-      <div class="agenda-month-header grid grid-cols-7 bg-transparent">
-        <For each={dayLabels()}>
-          {(label) => <div class="py-2.5 text-center text-11-medium text-text-weaker">{label}</div>}
-        </For>
-      </div>
-      <div class="agenda-grid-surface grid grid-cols-7">
-        <For each={weeks()}>
-          {(week) => (
-            <For each={week}>
-              {(cell) => {
-                const events = createMemo(() => props.eventsByDay.get(cell.ts) ?? [])
-                const visible = createMemo(() => events().slice(0, MONTH_MAX_EVENTS))
-                const overflow = createMemo(() => Math.max(0, events().length - MONTH_MAX_EVENTS))
+          <div class="agenda-month-grid">
+            <For each={days()}>
+              {(day) => {
+                const events = () => eventsByDay().get(day) ?? []
                 return (
-                  <div class="agenda-month-cell min-h-[118px] cursor-pointer px-2 py-1.5 transition-colors hover:bg-surface-raised-base-hover">
+                  <div
+                    class="agenda-month-cell"
+                    data-current-month={new Date(day).getMonth() === new Date(props.anchor).getMonth()}
+                  >
                     <button
                       type="button"
-                      aria-label={fmt.date(cell.ts, { dateStyle: "full" })}
-                      onClick={() => props.onDateClick?.(cell.ts)}
-                      classList={{
-                        "mb-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-12-medium": true,
-                        "bg-text-strong text-background-base ring-1 ring-border-weaker-selected": cell.isToday,
-                        "text-text-strong": !cell.isToday && cell.isCurrentMonth,
-                        "text-text-weaker/40": !cell.isToday && !cell.isCurrentMonth,
+                      class="agenda-month-date"
+                      aria-label={fmt.date(day, { dateStyle: "full" })}
+                      aria-pressed={day === selected()}
+                      aria-current={day === startOfDay(props.now ?? Date.now()) ? "date" : undefined}
+                      tabindex={day === selected() ? 0 : -1}
+                      data-agenda-date={day}
+                      onClick={() => selectDay(day)}
+                      onKeyDown={(event) => {
+                        const next = calendarKeyDate(day, event.key, event.shiftKey)
+                        if (next !== undefined) {
+                          event.preventDefault()
+                          selectDay(next, event)
+                        }
                       }}
                     >
-                      {cell.day}
+                      {new Date(day).getDate()}
+                      <span class="agenda-month-count app-panel-caption">{events().length || ""}</span>
                     </button>
-                    <div class="flex flex-col gap-0.5">
-                      <For each={visible()}>
+                    <div class="agenda-month-events">
+                      <For each={events().slice(0, 3)}>
                         {(event) => (
-                          <button
-                            type="button"
-                            class="text-left focus-visible:outline-2 focus-visible:outline-border-interactive-focus flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 transition-colors hover:bg-surface-raised-base-hover"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              props.onEventClick?.(event, e)
-                            }}
-                          >
-                            <div
-                              class={`w-1 h-1 rounded-full shrink-0 ${MONTH_DOT_CLASSES[event.status] ?? MONTH_DOT_CLASSES.active}`}
-                            />
-                            <span class="shrink-0 text-10-regular text-text-weaker">{formatEventTime(event.time)}</span>
-                            <span class="truncate text-10-regular text-text-weak">{event.title}</span>
-                          </button>
+                          <Tooltip value={event.title}>
+                            <button
+                              type="button"
+                              class="agenda-month-occurrence"
+                              aria-haspopup="dialog"
+                              onClick={(e) => props.onEventClick?.(event, e)}
+                            >
+                              <time class="app-panel-caption" dateTime={new Date(event.time).toISOString()}>
+                                {fmt.time(event.time, { hour: "2-digit", minute: "2-digit", hour12: false })}
+                              </time>
+                              <span class="app-panel-caption line-clamp-2">{event.title}</span>
+                            </button>
+                          </Tooltip>
                         )}
                       </For>
-                      <Show when={overflow() > 0}>
+                      <Show when={events().length > 3}>
                         <button
                           type="button"
-                          class="text-left px-0.5 text-10-regular text-text-weaker"
-                          onClick={() => props.onDateClick?.(cell.ts)}
+                          class="agenda-month-more app-panel-caption"
+                          onClick={() => selectDay(day)}
                         >
-                          {i18n._({ ...A.calendarMore, values: { count: overflow() } })}
+                          {_(A.calendarMore, { count: events().length - 3 })}
                         </button>
                       </Show>
                     </div>
@@ -560,9 +290,53 @@ function MonthGrid(props: {
                 )
               }}
             </For>
+          </div>
+        </div>
+        <section class="agenda-month-day-list agenda-date-section">
+          <h2 class="app-panel-section-title">{fmt.date(selected(), { dateStyle: "full" })}</h2>
+          {eventList(selectedEvents())}
+        </section>
+      </Show>
+    </div>
+  )
+}
+
+function OccurrenceList(props: {
+  events: CalendarEvent[]
+  scopeLabel?: (event: CalendarEvent) => string
+  onSelect?: (event: CalendarEvent, e: MouseEvent) => void
+  empty: import("solid-js").JSX.Element
+}) {
+  const { fmt } = useLocale()
+  return (
+    <div class="agenda-occurrences" data-panel-list>
+      <Show when={props.events.length} fallback={props.empty}>
+        <For each={props.events}>
+          {(event) => (
+            <Tooltip value={event.title}>
+              <button
+                type="button"
+                class="agenda-occurrence"
+                data-panel-item={event.id}
+                data-panel-focus-entry
+                aria-haspopup="dialog"
+                onClick={(e) => props.onSelect?.(event, e)}
+              >
+                <time class="app-panel-control" dateTime={new Date(event.time).toISOString()}>
+                  {fmt.time(event.time, { hour: "2-digit", minute: "2-digit", hour12: false })}
+                </time>
+                <span class="agenda-occurrence-dot" aria-hidden="true" />
+                <span class="agenda-occurrence-copy">
+                  <span class="app-panel-row-title line-clamp-2">{event.title}</span>
+                  <Show when={props.scopeLabel}>
+                    <span class="app-panel-caption text-text-weak">{props.scopeLabel?.(event)}</span>
+                  </Show>
+                </span>
+              </button>
+            </Tooltip>
           )}
         </For>
-      </div>
+      </Show>
     </div>
   )
 }

@@ -89,7 +89,7 @@ describe("pending attachment card upload feedback", () => {
     expect(await card.getAttribute("aria-busy")).toBe("true")
     expect(await card.locator('[data-component="spinner"]').count()).toBe(1)
     expect(await card.locator('[data-slot="attachment-card-filename"]').textContent()).toBe("video.mp4")
-    expect(await card.locator('[data-slot="attachment-card-meta"]').textContent()).toBe("5.0 MB · Uploading…")
+    expect(await card.locator('[data-slot="attachment-card-meta"]').textContent()).toBe("MP4 · 5.0 MB · Uploading…")
   })
 
   test("switches to the uploaded state with a success icon once the upload settles", async () => {
@@ -110,7 +110,7 @@ describe("pending attachment card upload feedback", () => {
     )
     expect(await card.getAttribute("aria-busy")).toBe("false")
     expect(await card.locator('[data-component="spinner"]').count()).toBe(0)
-    expect(await card.locator('[data-slot="attachment-card-meta"]').textContent()).toBe("Uploaded")
+    expect(await card.locator('[data-slot="attachment-card-meta"]').textContent()).toBe("MP4 · 5.0 MB · Uploaded")
   })
 
   test("removing the card reports the pending entry id", async () => {

@@ -106,8 +106,10 @@ msgstr ""
     expect(translations.get("session.permission.mode.fullAccess")).toBe("全权限")
     expect(translations.get("session.permission.mode.fullAccess.short")).toBe("全权限")
     expect(translations.get("settings.controlProfile.autonomous.label")).toBe("无人值守")
-    expect(translations.get("settings.controlProfile.fullAccess.label")).toBe("全权限")
-    expect(translations.get("settings.catalog.controlProfile.searchTerms")).toBe("权限模式 | 受控 | 无人值守 | 全权限")
+    expect(translations.get("settings.controlProfile.fullAccess.label")).toBe("完全访问权限")
+    expect(translations.get("settings.catalog.controlProfile.searchTerms")).toBe(
+      "权限模式 | 受控 | 无人值守 | 完全访问权限 | 全权限",
+    )
     expect(translations.get("settings.permissions.page.desc")).toBe("默认权限模式和智能放行策略。")
     expect(translations.get("settings.library.learning.page.title")).toBe("学习")
     expect(translations.get("settings.library.learning.capture.title")).toBe("自动整理")

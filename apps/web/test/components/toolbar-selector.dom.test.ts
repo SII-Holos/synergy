@@ -73,7 +73,7 @@ beforeAll(async () => {
         <WorkspaceLocationButton project="Demo" location={{state:"bound",path:"/fixture/project",isolated:false}} onChoose={()=>setChosen(value=>value+1)}/>
         <span data-testid="chosen">{chosen()}</span>
         {["pending","error","unknown","settled","idle"].map(status=><button onClick={()=>setSubmission({status,...(["error","unknown"].includes(status)?{error:new Error("Offline")}: {})})}>State {status}</button>)}
-        <RequestSubmissionNotice state={submission()} onRetry={()=>setRetries(value=>value+1)}/>
+        <div data-testid="submission-notice"><RequestSubmissionNotice state={submission()} onRetry={()=>setRetries(value=>value+1)}/></div>
         <span data-testid="retries">{retries()}</span>
       </>
     }
@@ -279,23 +279,31 @@ test("working location popover returns keyboard focus and opens its existing cho
   expect(await page.getByRole("button", { name: "Choose Workspace", exact: true }).count()).toBe(0)
 })
 
-test("submission notices distinguish pending, failed, unknown and settled decisions", async () => {
+test("submission notices expose recoverable errors without duplicate pending or settled banners", async () => {
+  const notice = page.getByTestId("submission-notice")
   await page.getByRole("button", { name: "State pending", exact: true }).click()
-  expect(await page.locator('div[role="status"]').textContent()).toContain("Submitting your decision")
+  expect(await notice.getByRole("status").count()).toBe(0)
+  expect(await notice.getByRole("alert").count()).toBe(0)
   await page.getByRole("button", { name: "State error", exact: true }).click()
-  expect(await page.getByRole("alert").textContent()).toContain("Your selection is preserved")
-  await page.getByText("Error details", { exact: true }).click()
-  expect(await page.getByText("Offline", { exact: true }).isVisible()).toBe(true)
-  await page.getByRole("button", { name: "Retry submission", exact: true }).click()
+  expect(await notice.getByRole("alert").count()).toBe(1)
+  expect(await notice.getByRole("alert").textContent()).toContain("Submission failed.")
+  expect(await notice.getByText("Offline", { exact: true }).isVisible()).toBe(false)
+  await notice.getByText("Error details", { exact: true }).click()
+  expect(await notice.getByText("Offline", { exact: true }).isVisible()).toBe(true)
+  await notice.getByRole("button", { name: "Retry submission", exact: true }).click()
   expect(await page.getByTestId("retries").textContent()).toBe("1")
   await page.getByRole("button", { name: "State unknown", exact: true }).click()
-  await page.getByRole("button", { name: "Check and retry", exact: true }).click()
+  expect(await notice.getByRole("alert").textContent()).toContain("The result could not be confirmed.")
+  expect(await notice.getByRole("button", { name: "Retry submission", exact: true }).count()).toBe(0)
+  await notice.getByRole("button", { name: "Check status", exact: true }).click()
   expect(await page.getByTestId("retries").textContent()).toBe("2")
   await page.getByRole("button", { name: "State settled", exact: true }).click()
-  expect(await page.locator('div[role="status"]').textContent()).toContain("no longer pending")
+  expect(await notice.getByRole("status").count()).toBe(0)
+  expect(await notice.getByRole("alert").count()).toBe(0)
   await page.getByRole("button", { name: "State idle", exact: true }).click()
-  expect(await page.locator('div[role="status"]').count()).toBe(0)
-  expect(await page.getByRole("alert").count()).toBe(0)
+  expect(await notice.getByRole("status").count()).toBe(0)
+  expect(await notice.getByRole("alert").count()).toBe(0)
+  expect(errors).toEqual([])
 })
 
 test("Add is a circular standalone control with stable geometry", async () => {

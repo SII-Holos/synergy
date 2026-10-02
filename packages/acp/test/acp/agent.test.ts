@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, test } from "bun:test"
 import { ACP } from "../../src/agent"
 import type { AgentSideConnection } from "@agentclientprotocol/sdk"
@@ -99,7 +100,9 @@ function makeSdk(
         },
       },
     ] as Array<Record<string, unknown>>)
-  const agents = options.agents ?? [{ name: "synergy", mode: "primary", description: "Primary agent", hidden: false }]
+  const agents = options.agents ?? [
+    { name: TEST_AGENT_NAME, mode: "primary", description: "Primary agent", hidden: false },
+  ]
   const sdk = {
     controlProfile: {
       effective: async () => ({ data: {} }),
@@ -255,8 +258,10 @@ describe("ACP agent lifecycle", () => {
         expect(result.sessionId).toBe("session-/tmp/acp")
         expect(result.models.availableModels).toEqual([{ modelId: "p1/m1", name: "Provider One/Model One" }])
         expect(result.models.currentModelId).toBe("p1/m1")
-        expect(result.modes.availableModes).toEqual([{ id: "synergy", name: "synergy", description: "Primary agent" }])
-        expect(result.modes.currentModeId).toBe("synergy")
+        expect(result.modes.availableModes).toEqual([
+          { id: TEST_AGENT_NAME, name: TEST_AGENT_NAME, description: "Primary agent" },
+        ])
+        expect(result.modes.currentModeId).toBe(TEST_AGENT_NAME)
         expect(harness.calls.sessionCreate[0]).toMatchObject({ directory: "/tmp/acp" })
       })
     }))
@@ -371,12 +376,12 @@ describe("ACP agent lifecycle", () => {
         await agent.newSession(newSessionArgs())
         const result = await agent.setSessionModel({ sessionId: "session-/tmp/acp", modelId: "p1/m1" } as never)
         expect(result._meta).toEqual({})
-        await agent.setSessionMode({ sessionId: "session-/tmp/acp", modeId: "synergy" } as never)
+        await agent.setSessionMode({ sessionId: "session-/tmp/acp", modeId: TEST_AGENT_NAME } as never)
         const session = (
           agent as never as { sessionManager: { get: (id: string) => { model: unknown; modeId: string } } }
         ).sessionManager.get("session-/tmp/acp")
         expect(session.model).toEqual({ providerID: "p1", modelID: "m1" })
-        expect(session.modeId).toBe("synergy")
+        expect(session.modeId).toBe(TEST_AGENT_NAME)
       })
     }))
 
@@ -554,11 +559,24 @@ describe("ACP event subscriptions", () => {
         async (agent, h) => {
           await agent.newSession(newSessionArgs())
           const stream = h.eventStreams[0]!
-          const tool = (callID: string, name: string, state: Record<string, unknown>) =>
+          const tool = (
+            callID: string,
+            name: string,
+            state: Record<string, unknown>,
+            extra: Record<string, unknown> = {},
+          ) =>
             stream.push({
               type: "message.part.updated",
               properties: {
-                part: { sessionID: "session-/tmp/acp", messageID: "msg-1", type: "tool", callID, tool: name, state },
+                part: {
+                  sessionID: "session-/tmp/acp",
+                  messageID: "msg-1",
+                  type: "tool",
+                  callID,
+                  tool: name,
+                  state,
+                  ...extra,
+                },
               },
             })
           tool("edit-1", "edit", { status: "pending" })
@@ -581,6 +599,12 @@ describe("ACP event subscriptions", () => {
             metadata: {},
           })
           tool("read-1", "read", { status: "error", input: { filePath: "/fixture/missing" }, error: "File is missing" })
+          tool(
+            "native-array",
+            "mcp-array",
+            { status: "completed", input: ["one", "two"], output: "Observed", title: "Labels", metadata: {} },
+            { inputShape: "envelope", workBrief: "Inspect labels" },
+          )
           tool("todos-1", "todowrite", {
             status: "completed",
             input: {},
@@ -611,6 +635,12 @@ describe("ACP event subscriptions", () => {
         },
       )
       const updates = harness.sessionUpdates.map((event) => event.update)
+      expect(updates).toContainEqual(
+        expect.objectContaining({
+          toolCallId: "native-array",
+          rawInput: { workBrief: "Inspect labels", toolInput: ["one", "two"] },
+        }),
+      )
       expect(updates).toContainEqual(
         expect.objectContaining({ sessionUpdate: "tool_call", toolCallId: "edit-1", status: "pending" }),
       )

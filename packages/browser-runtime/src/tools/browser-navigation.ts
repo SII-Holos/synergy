@@ -39,85 +39,99 @@ export const BrowserNavigationTool = Tool.define<
     "List or open browser pages; navigate, inspect or recover a page by pageId. Pages keep their identity and do not change the user's selected tab. Inspect page state before repeating an uncertain action.",
   parameters,
   async execute(params, ctx) {
-    const owner = BrowserOwner.fromToolContext(ctx)
-    const browser = await BrowserToolHelper.getOrCreateSession(owner)
-    if (params.action === "list") {
-      const identities = await BrowserProfiles.list()
-      return {
-        title: "Browser pages",
-        output: formatBrowserJSON({
-          pages: browser.pages,
-          defaultProfileId: identities.defaultProfileId,
-          identities: identities.profiles.map(({ id, name, enabled }) => ({ id, name, enabled })),
-        }).output,
-        metadata: { action: "list", count: browser.pages.length },
+    return BrowserToolHelper.withTask(ctx, async () => {
+      const owner =
+        params.action === "open" && params.url?.startsWith("file:")
+          ? BrowserOwner.fromToolContext(ctx)
+          : params.pageId
+            ? await BrowserToolHelper.resolveOwner(ctx, params.pageId)
+            : BrowserOwner.shared()
+      const browser = await BrowserToolHelper.getOrCreateSession(owner)
+      if (params.action === "list") {
+        const identities = await BrowserProfiles.list()
+        const historical = await BrowserToolHelper.getOrCreateSession(BrowserOwner.fromToolContext(ctx))
+        const pages = [...browser.pages, ...historical.pages]
+        return {
+          title: "Browser pages",
+          output: formatBrowserJSON({
+            pages,
+            defaultProfileId: identities.defaultProfileId,
+            identities: identities.profiles.map(({ id, name, enabled }) => ({ id, name, enabled })),
+          }).output,
+          metadata: { action: "list", count: pages.length },
+        }
       }
-    }
-    if (params.action === "open") {
-      const profile = params.profileId
-        ? await BrowserProfiles.requireEnabled(params.profileId)
-        : await BrowserProfiles.defaultProfile()
-      await BrowserToolHelper.authorize(ctx, profile.id, params.url ?? "about:blank", "access")
-      ctx.abort.throwIfAborted()
-      const page = await BrowserRuntime.withinOwner(owner, async () => {
-        const fresh = await BrowserProfiles.requireEnabled(profile.id)
-        if (fresh.revision !== profile.revision)
-          throw new BrowserProtocolError({
-            code: "browser_permission_changed",
-            message: "Identity permissions changed. Review the page before continuing.",
-            retryable: true,
+      if (params.action === "open") {
+        const profile = params.profileId
+          ? await BrowserProfiles.requireEnabled(params.profileId)
+          : await BrowserProfiles.defaultProfile()
+        await BrowserToolHelper.authorize(ctx, profile.id, params.url ?? "about:blank", "access")
+        ctx.abort.throwIfAborted()
+        const page = await BrowserRuntime.withinOwner(owner, async () => {
+          const fresh = await BrowserProfiles.requireEnabled(profile.id)
+          if (fresh.revision !== profile.revision)
+            throw new BrowserProtocolError({
+              code: "browser_permission_changed",
+              message: "Identity permissions changed. Review the page before continuing.",
+              retryable: true,
+            })
+          return browser.openPage({
+            url: params.url,
+            profileId: profile.id,
+            requestId: BrowserToolHelper.operationID(ctx, "open"),
           })
-        return browser.openPage({
-          url: params.url,
-          profileId: profile.id,
-          requestId: `${ctx.callID ?? ctx.messageID}:open`,
         })
-      })
-      const state = browser.pages.find((item) => item.id === page.id)!
-      return {
-        title: "Browser page opened",
-        output: formatBrowserJSON(state).output,
-        metadata: { action: "open", pageId: page.id, url: page.url, profileId: profile.id },
+        const state = browser.pages.find((item) => item.id === page.id)!
+        return {
+          title: "Browser page opened",
+          output: formatBrowserJSON(state).output,
+          metadata: { action: "open", pageId: page.id, url: page.url, profileId: profile.id },
+        }
       }
-    }
-    const pageId = params.pageId!
-    if (params.action === "current") {
-      const page = browser.pages.find((page) => page.id === pageId)
-      if (!page)
-        throw new BrowserProtocolError({
-          code: "browser_page_missing",
-          message: "Page not found. List pages to choose an available pageId.",
-          retryable: false,
-          pageId,
-        })
-      return {
-        title: page.title || "Browser page",
-        output: formatBrowserJSON(page).output,
-        metadata: { action: "current", pageId, url: page.url },
+      const pageId = params.pageId!
+      if (params.action === "current") {
+        const page = browser.pages.find((page) => page.id === pageId)
+        if (!page)
+          throw new BrowserProtocolError({
+            code: "browser_page_missing",
+            message: "Page not found. List pages to choose an available pageId.",
+            retryable: false,
+            pageId,
+          })
+        return {
+          title: page.title || "Browser page",
+          output: formatBrowserJSON(page).output,
+          metadata: { action: "current", pageId, url: page.url },
+        }
       }
-    }
-    const settle = {
-      settleMode: params.settleMode,
-      settleTimeoutMs: params.settleTimeoutMs,
-      includeSnapshot: params.includeSnapshot,
-    }
-    try {
-      const command =
-        params.action === "goto"
-          ? { type: "navigate" as const, url: params.url!, source: "agent" as const, ...settle }
-          : params.action === "back" || params.action === "forward"
-            ? { type: "history" as const, direction: params.action, ...settle }
-            : params.action === "reload"
-              ? { type: "reload" as const, ignoreCache: params.ignoreCache, ...settle }
-              : { type: params.action }
-      const result = await BrowserToolHelper.execute(ctx, pageId, command)
-      return {
-        title: `Browser: ${params.action}`,
-        output: formatBrowserJSON(result).output,
-        metadata: { action: params.action, pageId, resultType: result.type },
+      const settle = {
+        settleMode: params.settleMode,
+        settleTimeoutMs: params.settleTimeoutMs,
+        includeSnapshot: params.includeSnapshot,
       }
-    } catch (error) {
-      throw withUnknownOutcomeGuidance(error, `browser_navigation ${params.action}`)
-    }
+      try {
+        const command =
+          params.action === "goto"
+            ? { type: "navigate" as const, url: params.url!, source: "agent" as const, ...settle }
+            : params.action === "back" || params.action === "forward"
+              ? { type: "history" as const, direction: params.action, ...settle }
+              : params.action === "reload"
+                ? { type: "reload" as const, ignoreCache: params.ignoreCache, ...settle }
+                : { type: params.action }
+        const result = await BrowserToolHelper.execute(ctx, pageId, command)
+        return {
+          title: `Browser: ${params.action}`,
+          output: formatBrowserJSON(result).output,
+          metadata: {
+            action: params.action,
+            pageId,
+            resultType: result.type,
+            ...("page" in result && result.page ? { url: result.page.url } : {}),
+          },
+        }
+      } catch (error) {
+        throw withUnknownOutcomeGuidance(error, `browser_navigation ${params.action}`)
+      }
+    })
   },
 })

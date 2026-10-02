@@ -13,7 +13,7 @@ type Harness = {
   dispose: () => void
 }
 
-test("an initial latest load requests the rendered-bound page while history and refresh paths keep the larger page", async () => {
+test("an initial latest load requests the rendered-bound page while history and refresh paths retain the summary page budget", async () => {
   const dir = await mkdtemp(path.join(import.meta.dir, ".sync-page-limit-"))
   const entry = path.join(dir, "main.tsx"),
     stub = path.join(dir, "stub.tsx")
@@ -23,9 +23,9 @@ test("an initial latest load requests the rendered-bound page while history and 
     stub,
     `
 import {createStore} from 'solid-js/store';
-const state=createStore({status:'ready',path:{directory:''},scopeID:'home',session:[],message:{},messageWindow:{},latestContextMessage:{},part:{},permission:{},question:{},inbox:{},todo:{},dag:{},session_diff:{},cortex:[]});
+const state=createStore({status:'ready',path:{directory:''},scopeID:'home',session:[],message:{},messageWindow:{},latestContextMessage:{},part:{},partSummary:{},partPage:{},partVersion:{},permission:{},question:{},inbox:{},todo:{},dag:{},session_diff:{},cortex:[]});
 export const calls={messagePage:[],permissionList:[]};
-export const useGlobalSync=()=>({
+export const useGlobalSync=()=>({retainContentCache:(_key,create)=>({cache:create(),release(){}}),
   data:{scope:[]},
   retainScopeState:()=>({state,release:()=>{}}),
   scopeReconnectVersion:()=>0,
@@ -49,7 +49,7 @@ export const useSDK=()=>({scopeKey:'probe',scopeID:'home',directory:'/probe',isH
   session:{
     get:()=>Promise.resolve({data:{id:'ses_probe',time:{created:0,updated:0}}}),
     inbox:()=>Promise.resolve({data:[]}),
-    messagePage:(input)=>{
+    timelinePage:(input)=>{
       calls.messagePage.push({sessionID:input.sessionID,limit:input.limit,...(input.cursor?{cursor:input.cursor}:{})});
       return Promise.resolve(page());
     },
@@ -108,8 +108,8 @@ export const harness={calls,dispose,run:async()=>{
     expect(harness.calls.permissionList).toEqual([{ sessionID: "ses_initial" }, { sessionID: "ses_other" }])
     expect(harness.calls.messagePage).toEqual([
       { sessionID: "ses_initial", limit: 100 },
-      { sessionID: "ses_initial", limit: 200, cursor: "cursor_1" },
-      { sessionID: "ses_initial", limit: 200 },
+      { sessionID: "ses_initial", limit: 100, cursor: "cursor_1" },
+      { sessionID: "ses_initial", limit: 100 },
       { sessionID: "ses_other", limit: 100 },
     ])
     harness.dispose()

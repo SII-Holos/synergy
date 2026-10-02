@@ -287,6 +287,8 @@ export namespace WorkspaceFile {
 
   export const StatusSummary = z
     .object({
+      sync: z.object({ epoch: z.string(), seq: z.number().int().nonnegative() }).optional(),
+      generatedAt: z.number().optional(),
       capability: SearchCapability.optional(),
       files: z.array(
         z.object({

@@ -1,3 +1,4 @@
+import { upgradeImportedConfig } from "../migration/import"
 import fs from "fs/promises"
 import path from "path"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
@@ -156,7 +157,7 @@ export namespace ConfigImport {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       throw new SourceParseError({ source, message: "CONFIG_INVALID_JSONC: Import payload must be an object" })
     }
-    const result = Schema.Info.safeParse(parsed)
+    const result = Schema.Info.safeParse(upgradeImportedConfig(parsed))
     if (!result.success) {
       throw new SourceParseError({
         source,
@@ -197,7 +198,7 @@ export namespace ConfigImport {
   }
 
   export async function plan(input: PlanInput): Promise<Plan> {
-    const parsed = PlanInput.parse(input)
+    const parsed = PlanInput.parse({ ...input, config: upgradeImportedConfig(input.config) })
     assertConfigSize(parsed.config, parsed.source ?? "direct")
     const target = resolveTarget(parsed.scope ?? "global")
     const selected = new Set(parsed.only ?? ConfigDomain.definitions().map((domain) => domain.id))
@@ -244,7 +245,7 @@ export namespace ConfigImport {
   }
 
   export async function apply(input: ApplyInput, options: ApplyOptions = {}): Promise<ApplyResult> {
-    const parsed = ApplyInput.parse(input)
+    const parsed = ApplyInput.parse({ ...input, config: upgradeImportedConfig(input.config) })
     assertConfigSize(parsed.config, parsed.source ?? "direct")
     const target = resolveTarget(parsed.scope ?? "global")
     const release = await acquireLock(target)

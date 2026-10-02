@@ -5,7 +5,12 @@ import { Editor } from "@tiptap/core"
 import { Fragment as TiptapFragment } from "@tiptap/pm/model"
 import { Fragment as ProseMirrorFragment } from "prosemirror-model"
 import type { SynergyClient } from "@ericsanchezok/synergy-sdk/client"
-import { createDocumentEditorExtensions } from "../../../src/components/note/document-editor-core"
+import {
+  createDocumentEditorExtensions,
+  mountDocumentEditor,
+  unmountDocumentEditor,
+  type DocumentEditorRetention,
+} from "../../../src/components/note/document-editor-core"
 
 let editor: Editor | undefined
 
@@ -37,6 +42,46 @@ afterEach(() => {
 })
 
 describe("Note document editor", () => {
+  test("retained documents preserve selection and undo when remounted into another tab view", () => {
+    const retained: DocumentEditorRetention = { scroll: 0 }
+    const first = document.createElement("div")
+    const second = document.createElement("div")
+    document.body.append(first, second)
+    const config = {
+      sdkClient: { asset: { upload: async () => ({ data: undefined }) } } as unknown as SynergyClient,
+      sdkUrl: "http://localhost",
+      onUploadFile: async () => "",
+      bubbleRef: document.createElement("div"),
+      lingui,
+    }
+    editor = mountDocumentEditor({ element: first, config, content: "<p>Base</p>", retained, onUpdate: () => {} })
+    expect(retained.hasHistory?.()).toBe(false)
+    editor.commands.setTextSelection(5)
+    editor.commands.insertContent(" edited")
+    const selection = editor.state.selection.from
+    const previousView = editor.view
+    const lateTransaction = previousView.state.tr.setMeta("decoration", true)
+    unmountDocumentEditor(editor)
+    expect(retained.hasHistory?.()).toBe(true)
+    const restoredBubble = document.createElement("div")
+    editor = mountDocumentEditor({
+      element: second,
+      config: { ...config, bubbleRef: restoredBubble },
+      content: "<p>Ignored</p>",
+      retained,
+      onUpdate: () => {},
+    })
+    expect(restoredBubble.style.visibility).toBe("hidden")
+    expect(restoredBubble.style.position).toBe("absolute")
+    expect(editor.getText()).toBe("Base edited")
+    expect(editor.state.selection.from).toBe(selection)
+    expect(editor.commands.undo()).toBe(true)
+    expect(retained.hasHistory?.()).toBe(true)
+    expect(editor.getText()).toBe("Base")
+    expect(() => previousView.dispatch(lateTransaction)).not.toThrow()
+    expect(editor.getText()).toBe("Base")
+  })
+
   test("uses one ProseMirror model identity across direct and Tiptap imports", () => {
     expect(TiptapFragment).toBe(ProseMirrorFragment)
   })

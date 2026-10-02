@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { afterAll, describe, expect, test } from "bun:test"
 import { Session } from "../../src/session"
 import { SessionModelSelection } from "../../src/session/model-selection"
@@ -87,7 +88,7 @@ describe("durable session model selection", () => {
           sessionID,
           role: "user",
           isRoot: true,
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           model,
           time: { created: index },
           variant: index === 0 ? "high" : "low",

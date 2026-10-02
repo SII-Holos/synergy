@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import "../session-schema"
 import { WorkflowKindRegistry } from "@ericsanchezok/synergy-harness/session/workflow-kind-registry"
 import { WorkflowPromptRegistry } from "@ericsanchezok/synergy-harness/session/workflow-prompt-registry"
@@ -10,10 +11,10 @@ import { WorkflowSessionService, WorkflowConflictError } from "./workflow"
 import { SessionBlueprintState } from "./blueprint-state"
 import { isActiveLightLoopWorkflow } from "./light-loop-state"
 import { WorkflowRecovery } from "./recovery"
-import { genericPlan, synergyPlan, synergyMaxPlan } from "./plan-wrapper"
+import { genericPlan, generalPlan, codingPlan } from "./plan-wrapper"
 import PLAN from "./prompt/plan.txt"
-import PLAN_SYNERGY from "./prompt/plan-synergy.txt"
-import PLAN_SYNERGY_MAX from "./prompt/plan-synergy-max.txt"
+import PLAN_GENERAL from "./prompt/plan-general.txt"
+import PLAN_CODING from "./prompt/plan-coding.txt"
 import { z } from "zod"
 
 export function registerWorkflowSessions() {
@@ -46,12 +47,20 @@ export function registerWorkflowSessions() {
     kind: "plan",
     buildSystem(_session, ctx) {
       const parts = [PLAN.trim()]
-      if (ctx.agentName === "synergy") parts.push(PLAN_SYNERGY.trim())
-      if (ctx.agentName === "synergy-max") parts.push(PLAN_SYNERGY_MAX.trim())
+      if (ctx.agentName === PrimaryAgentIdentity.names.general)
+        parts.push(PrimaryAgentIdentity.render("general", PLAN_GENERAL.trim()))
+      if (ctx.agentName === PrimaryAgentIdentity.names.coding)
+        parts.push(PrimaryAgentIdentity.render("coding", PLAN_CODING.trim()))
       return parts
     },
     projectUserMessage(query, agentName) {
-      return (agentName === "synergy" ? synergyPlan : agentName === "synergy-max" ? synergyMaxPlan : genericPlan)(query)
+      return (
+        agentName === PrimaryAgentIdentity.names.general
+          ? generalPlan
+          : agentName === PrimaryAgentIdentity.names.coding
+            ? codingPlan
+            : genericPlan
+      )(query)
     },
     isActive: async () => false,
   })

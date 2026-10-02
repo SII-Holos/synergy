@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { BrowserProtocolError } from "@ericsanchezok/synergy-browser-core"
 import { BrowserActionTool } from "@ericsanchezok/synergy-browser-runtime/tools/browser-action"
@@ -45,7 +46,7 @@ function context() {
     sessionID: "ses_browser_action_test",
     messageID: "msg_browser_action_test",
     callID: "call_browser_action_test",
-    agent: "synergy-max",
+    agent: PrimaryAgentIdentity.names.coding,
     abort: new AbortController().signal,
     extra: {},
     metadata() {},

@@ -35,7 +35,7 @@ export function installedProvider() {
                 type: "function",
                 function: {
                   name: "bash",
-                  arguments: JSON.stringify({ command, description: "Execute installed acceptance task" }),
+                  arguments: JSON.stringify({ command, workBrief: "Execute installed acceptance task" }),
                 },
               },
             ],

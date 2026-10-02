@@ -1,7 +1,11 @@
+import { useSettingRow } from "./setting-row-context"
 import { TextField as Kobalte } from "@kobalte/core/text-field"
 import { Show, splitProps } from "solid-js"
 import type { ComponentProps } from "solid-js"
 import { createCopyController } from "./clipboard"
+import { useLingui } from "@lingui/solid"
+import { Icon } from "./icon"
+import { getSemanticIcon } from "./semantic-icon"
 import { IconButton } from "./icon-button"
 import { Tooltip } from "./tooltip"
 
@@ -31,6 +35,8 @@ export interface TextFieldProps
 }
 
 export function TextField(props: TextFieldProps) {
+  const row = useSettingRow()
+  const { _ } = useLingui()
   const [local, others] = splitProps(props, [
     "name",
     "defaultValue",
@@ -83,15 +89,41 @@ export function TextField(props: TextFieldProps) {
       <div data-slot="input-wrapper">
         <Show
           when={local.multiline}
-          fallback={<Kobalte.Input {...others} data-slot="input-input" class={local.class} />}
+          fallback={
+            <Kobalte.Input
+              aria-labelledby={!local.label && !others["aria-label"] ? row?.titleId : undefined}
+              aria-describedby={row?.descriptionId || undefined}
+              {...others}
+              data-slot="input-input"
+              class={local.class}
+            />
+          }
         >
-          <Kobalte.TextArea {...others} autoResize data-slot="input-input" class={local.class} />
+          <Kobalte.TextArea
+            aria-labelledby={!local.label && !others["aria-label"] ? row?.titleId : undefined}
+            aria-describedby={row?.descriptionId || undefined}
+            {...others}
+            autoResize
+            data-slot="input-input"
+            class={local.class}
+          />
         </Show>
         <Show when={local.copyable}>
           <Tooltip value={copy.tooltip()} placement="top" gutter={8}>
             <IconButton
               type="button"
               icon={copy.icon()}
+              aria-label={_({
+                id: "ui.input.copy.named",
+                message: "Copy {field}",
+                values: {
+                  field:
+                    local.label ??
+                    props["aria-label"] ??
+                    row?.title ??
+                    _({ id: "ui.input.copy.value", message: "field value" }),
+                },
+              })}
               variant="ghost"
               data-copy-state={copy.state()}
               disabled={copy.disabled()}
@@ -107,7 +139,12 @@ export function TextField(props: TextFieldProps) {
       <Show when={local.description}>
         <Kobalte.Description data-slot="input-description">{local.description}</Kobalte.Description>
       </Show>
-      <Kobalte.ErrorMessage data-slot="input-error">{local.error}</Kobalte.ErrorMessage>
+      <Kobalte.ErrorMessage data-slot="input-error">
+        <Show when={local.error}>
+          <Icon name={getSemanticIcon("state.error")} size="small" />
+          {local.error}
+        </Show>
+      </Kobalte.ErrorMessage>
     </Kobalte>
   )
 }

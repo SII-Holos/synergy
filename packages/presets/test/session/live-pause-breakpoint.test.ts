@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -17,6 +18,8 @@ import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecyc
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionInteraction } from "@ericsanchezok/synergy-harness/session/interaction"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
+import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import { SessionProgress } from "@ericsanchezok/synergy-harness/session/progress"
 import { AgentTurn } from "@ericsanchezok/synergy-harness/session/agent-turn"
 import { Snapshot } from "@ericsanchezok/synergy-harness/session/snapshot"
@@ -142,7 +145,7 @@ function installLiveTurnMocks() {
   ;(ExperienceEncoder.onComplete as any) = mock(() => {})
   ;(Snapshot.track as any) = mock(async () => undefined)
   ;(AgentTurn.stream as any) = mock(async (input: { agent?: { name?: string }; abort: AbortSignal }) => {
-    if (input.agent?.name !== "synergy") {
+    if (input.agent?.name !== PrimaryAgentIdentity.names.general) {
       return {
         fullStream: (async function* () {})(),
         usage: Promise.resolve(undefined),
@@ -183,7 +186,7 @@ async function createSessionWithRoot(options?: { interaction?: SessionInteractio
     role: "user",
     sessionID: session.id,
     isRoot: true,
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test-provider", modelID: "test-model" },
     time: { created: Date.now() },
   })
@@ -234,12 +237,22 @@ describe("a live user stop preserves the resume breakpoint", () => {
               // alone, not by an inbox item the stop happened to leave behind.
               expect(await SessionInbox.list(session.id)).toHaveLength(0)
 
+              const rootID = await SessionInbox.latestRootID(session.id)
+              const owner = RolloutLifecycle.owner(session)
+              await RolloutLifecycle.reconcile(session.id, rootID!)
+              expect((await RolloutLedger.getRun(owner, rootID!)).status).toBe("running")
+              expect((await RolloutLedger.segments(owner, rootID!)).map((segment) => segment.status)).toEqual([
+                "interrupted",
+              ])
+
               expect(await continueSession(session.id)).toBe(true)
               expect(harness.turnCalls()).toBe(2)
 
               const resumed = await latestAssistant(session.id)
               expect(SessionProgress.isTerminalAssistant(resumed!)).toBe(true)
               expect(resumed!.finish).toBe("stop")
+              await RolloutLifecycle.reconcile(session.id, rootID!)
+              expect((await RolloutLedger.getRun(owner, rootID!)).status).toBe("completed")
             } finally {
               SessionManager.unregisterRuntime(session.id)
             }

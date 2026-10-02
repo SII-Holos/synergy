@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { describe, test, expect, beforeEach, spyOn } from "bun:test"
 import { AgentCall } from "../../src/agent/call"
 import { Session } from "../../src/session"
@@ -244,7 +245,7 @@ describe("SmartAllow classifier session attribution", () => {
             id: Identifier.ascending("message"),
             sessionID: session.id,
             role: "user",
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test" },
             time: { created: Date.now() },
             system: "Root-only prompt",

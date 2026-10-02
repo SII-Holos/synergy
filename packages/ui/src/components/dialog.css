@@ -404,8 +404,11 @@
 
 @media (prefers-reduced-motion: reduce) {
   [data-component="dialog-overlay"],
+  [data-component="dialog-overlay"][data-expanded],
   [data-slot="dialog-overlay"],
-  [data-component="dialog"] [data-slot="dialog-content"] {
+  [data-slot="dialog-overlay"][data-expanded],
+  [data-component="dialog"] [data-slot="dialog-container"] [data-slot="dialog-content"],
+  [data-component="dialog"] [data-slot="dialog-container"] [data-slot="dialog-content"][data-expanded] {
     animation: none;
   }
 }

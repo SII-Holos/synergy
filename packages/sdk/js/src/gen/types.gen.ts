@@ -117,6 +117,71 @@ export type ProjectDirectoriesUpdate = {
   revision: number
 }
 
+export type WorktreeInventoryEntry = {
+  id: string
+  name: string
+  branch?: string
+  path: string
+  scopeID: string
+  sourceWorkspaceID?: string
+  sourceDirectory?: string
+  head?: string
+  baseRef?: string
+  baseRevision?: string
+  resolvedBaseCommit?: string
+  detached?: boolean
+  bare?: boolean
+  isMain?: boolean
+  managed?: boolean
+  stale?: boolean
+  owner?:
+    | {
+        type: "session"
+        sessionID: string
+      }
+    | {
+        type: "superplan"
+        runID: string
+        nodeID?: string
+        mergeID?: string
+      }
+    | {
+        type: "user"
+      }
+    | {
+        type: "external"
+      }
+  bindings?: Array<string>
+  lifecycle?: "active" | "detached" | "gc_candidate" | "deleted"
+  createdAt?: number
+  updatedAt?: number
+  lastUsedAt?: number
+  setupFailed?: boolean
+  setupError?: string
+  locked?: string
+  prunable?: boolean
+}
+
+export type ProjectWorktreeInventory = {
+  items: Array<WorktreeInventoryEntry>
+  version: string
+  generatedAt: number
+  sync: {
+    epoch: string
+    seq: number
+  }
+}
+
+export type WorktreeDetails = {
+  id: string
+  state: "ready" | "unavailable"
+  computedAt: number
+  dirty?: boolean
+  diskBytes?: number
+  cleanupEligible: boolean
+  cleanupReason?: string
+}
+
 export type Worktree = {
   id: string
   name: string
@@ -241,6 +306,54 @@ export type RolloutAccountingSummary = {
       [key: string]: number
     }
     unreported: number
+  }
+  costCoverage?: {
+    version: 1
+    api: {
+      attempts: number
+      unreportedRequests?: number
+      unreported: {
+        known: number
+        unknown: number
+        total: number | null
+      }
+      maximum: {
+        known: number
+        unknown: number
+        total: number | null
+      }
+    }
+    subscription: {
+      attempts: number
+      unreportedRequests?: number
+      unreported: {
+        known: number
+        unknown: number
+        total: number | null
+      }
+      maximum: {
+        known: number
+        unknown: number
+        total: number | null
+      }
+    }
+    unclassified: {
+      attempts: number
+      unreportedRequests?: number
+      unreported: {
+        known: number
+        unknown: number
+        total: number | null
+      }
+      maximum: {
+        known: number
+        unknown: number
+        total: number | null
+      }
+    }
+    local: number
+    historical: number
+    historicalAmount?: number
   }
   units: {
     [key: string]: {
@@ -467,7 +580,7 @@ export type UsageSummary = {
         currency: "USD"
         unitTokens: 1000000
         source: {
-          kind: "catalog" | "configuration" | "mixed"
+          kind: "catalog" | "configuration" | "mixed" | "official"
           providerID: string
           modelID: string
         }
@@ -515,6 +628,27 @@ export type UsageSummary = {
           }
         }
         raw: unknown
+        policy?: {
+          id: "deepseek-2026-10-01"
+          effectiveAt: number
+          clock: "request-start"
+          phase: "peak" | "off-peak" | "unknown"
+          calendar: string | null
+          offPeak: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          peak: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+        }
       } | null
       /**
        * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
@@ -569,6 +703,10 @@ export type UsageSummary = {
       total: number | null
       known: number
       missing: Array<string>
+      range?: {
+        minimum: number
+        maximum: number
+      }
     }
     timing?: {
       source: "transport"
@@ -590,6 +728,85 @@ export type UsageSummary = {
       backpressured?: boolean
     }
     usageFinal: boolean
+    pricingEvidence?: {
+      version: 1
+      source: "attempt" | "historical"
+      pricing: {
+        version: 1
+        currency: "USD"
+        unitTokens: 1000000
+        source: {
+          kind: "catalog" | "configuration" | "mixed" | "official"
+          providerID: string
+          modelID: string
+        }
+        capturedAt: number
+        rates: {
+          input: number | null
+          output: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+          cacheWrite1h: number | null
+        }
+        over200K?: {
+          input: number | null
+          output: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+          cacheWrite1h: number | null
+        }
+        contextTiers?: Array<{
+          above: number
+          rates: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+        }>
+        units?: {
+          audio_seconds?: {
+            price: number
+            per: number
+          }
+          audio_input_tokens?: {
+            price: number
+            per: number
+          }
+          audio_output_tokens?: {
+            price: number
+            per: number
+          }
+          characters?: {
+            price: number
+            per: number
+          }
+        }
+        raw: unknown
+        policy?: {
+          id: "deepseek-2026-10-01"
+          effectiveAt: number
+          clock: "request-start"
+          phase: "peak" | "off-peak" | "unknown"
+          calendar: string | null
+          offPeak: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          peak: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+        }
+      } | null
+    }
     httpStatus?: number
     responseModel?: string
   } | null
@@ -710,7 +927,7 @@ export type UsageRecord =
           currency: "USD"
           unitTokens: 1000000
           source: {
-            kind: "catalog" | "configuration" | "mixed"
+            kind: "catalog" | "configuration" | "mixed" | "official"
             providerID: string
             modelID: string
           }
@@ -758,6 +975,27 @@ export type UsageRecord =
             }
           }
           raw: unknown
+          policy?: {
+            id: "deepseek-2026-10-01"
+            effectiveAt: number
+            clock: "request-start"
+            phase: "peak" | "off-peak" | "unknown"
+            calendar: string | null
+            offPeak: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+            peak: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+          }
         } | null
         /**
          * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
@@ -811,6 +1049,10 @@ export type UsageRecord =
         total: number | null
         known: number
         missing: Array<string>
+        range?: {
+          minimum: number
+          maximum: number
+        }
       }
       hasAttempts: boolean
     }
@@ -850,7 +1092,7 @@ export type UsageRecord =
           currency: "USD"
           unitTokens: 1000000
           source: {
-            kind: "catalog" | "configuration" | "mixed"
+            kind: "catalog" | "configuration" | "mixed" | "official"
             providerID: string
             modelID: string
           }
@@ -898,6 +1140,27 @@ export type UsageRecord =
             }
           }
           raw: unknown
+          policy?: {
+            id: "deepseek-2026-10-01"
+            effectiveAt: number
+            clock: "request-start"
+            phase: "peak" | "off-peak" | "unknown"
+            calendar: string | null
+            offPeak: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+            peak: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+          }
         } | null
         /**
          * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
@@ -952,6 +1215,10 @@ export type UsageRecord =
         total: number | null
         known: number
         missing: Array<string>
+        range?: {
+          minimum: number
+          maximum: number
+        }
       }
       timing?: {
         source: "transport"
@@ -973,6 +1240,85 @@ export type UsageRecord =
         backpressured?: boolean
       }
       usageFinal: boolean
+      pricingEvidence?: {
+        version: 1
+        source: "attempt" | "historical"
+        pricing: {
+          version: 1
+          currency: "USD"
+          unitTokens: 1000000
+          source: {
+            kind: "catalog" | "configuration" | "mixed" | "official"
+            providerID: string
+            modelID: string
+          }
+          capturedAt: number
+          rates: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          over200K?: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          contextTiers?: Array<{
+            above: number
+            rates: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+          }>
+          units?: {
+            audio_seconds?: {
+              price: number
+              per: number
+            }
+            audio_input_tokens?: {
+              price: number
+              per: number
+            }
+            audio_output_tokens?: {
+              price: number
+              per: number
+            }
+            characters?: {
+              price: number
+              per: number
+            }
+          }
+          raw: unknown
+          policy?: {
+            id: "deepseek-2026-10-01"
+            effectiveAt: number
+            clock: "request-start"
+            phase: "peak" | "off-peak" | "unknown"
+            calendar: string | null
+            offPeak: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+            peak: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+          }
+        } | null
+      }
       httpStatus?: number
       responseModel?: string
     }
@@ -1039,7 +1385,7 @@ export type UsageRecord =
           currency: "USD"
           unitTokens: 1000000
           source: {
-            kind: "catalog" | "configuration" | "mixed"
+            kind: "catalog" | "configuration" | "mixed" | "official"
             providerID: string
             modelID: string
           }
@@ -1087,6 +1433,27 @@ export type UsageRecord =
             }
           }
           raw: unknown
+          policy?: {
+            id: "deepseek-2026-10-01"
+            effectiveAt: number
+            clock: "request-start"
+            phase: "peak" | "off-peak" | "unknown"
+            calendar: string | null
+            offPeak: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+            peak: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+          }
         } | null
         /**
          * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
@@ -1183,6 +1550,31 @@ export type UsageRecordsPage = {
   nextCursor: string | null
 }
 
+export type ExecutionCostPresentation = {
+  state: "unrecorded" | "local" | "subscription" | "reported" | "estimated" | "mixed" | "partial" | "unknown"
+  reported: Array<{
+    currency: string
+    amount: number
+  }>
+  estimates: Array<{
+    basis: "api" | "unclassified" | "subscription" | "historical"
+    currency: "USD"
+    known: number
+    maximum: number
+    unknown: number
+  }>
+  equivalent: {
+    basis: "api" | "unclassified" | "subscription" | "historical"
+    currency: "USD"
+    known: number
+    maximum: number
+    unknown: number
+  } | null
+  missing: number
+  historical: number
+  knownUSD: number
+}
+
 export type StatsSnapshot = {
   overview: {
     totalSessions: number
@@ -1207,6 +1599,7 @@ export type StatsSnapshot = {
     }
     cost: number
     accounting?: RolloutAccountingSummary
+    costPresentation?: ExecutionCostPresentation
     cacheHitRate: number
     avgCostPerTurn: number
     avgTokensPerTurn: number
@@ -2923,7 +3316,7 @@ export type Model = {
     currency: "USD"
     unitTokens: 1000000
     source: {
-      kind: "catalog" | "configuration" | "mixed"
+      kind: "catalog" | "configuration" | "mixed" | "official"
       providerID: string
       modelID: string
     }
@@ -2971,6 +3364,27 @@ export type Model = {
       }
     }
     raw: unknown
+    policy?: {
+      id: "deepseek-2026-10-01"
+      effectiveAt: number
+      clock: "request-start"
+      phase: "peak" | "off-peak" | "unknown"
+      calendar: string | null
+      offPeak: {
+        input: number | null
+        output: number | null
+        cacheRead: number | null
+        cacheWrite: number | null
+        cacheWrite1h: number | null
+      }
+      peak: {
+        input: number | null
+        output: number | null
+        cacheRead: number | null
+        cacheWrite: number | null
+        cacheWrite1h: number | null
+      }
+    }
   } | null
   /**
    * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
@@ -3093,7 +3507,7 @@ export type ProviderModelCatalogState = {
   failure?: "timeout" | "network" | "rate_limited" | "upstream" | "invalid_response"
 }
 
-export type ProviderListResponse = {
+export type ProviderSelection = {
   all: Array<Provider>
   default: {
     [key: string]: string
@@ -3116,6 +3530,209 @@ export type ProviderListResponse = {
   modelCatalog: {
     [key: string]: ProviderModelCatalogState
   }
+  complete: false
+  version: string
+}
+
+export type ModelRole = "vision" | "nano" | "mini" | "mid" | "thinking" | "long" | "creative"
+
+export type ExternalAgentInfo = {
+  adapter: string
+  path?: string
+  version?: string
+  config?: {
+    [key: string]: unknown
+  }
+}
+
+export type AgentSummary = {
+  name: string
+  description?: string
+  mode: "subagent" | "primary" | "all"
+  native?: boolean
+  hidden?: boolean
+  visibleTo?: Array<string>
+  delegationGroups?: Array<string>
+  topP?: number
+  temperature?: number
+  color?: string
+  controlProfile?: "guarded" | "autonomous" | "full_access"
+  model?: {
+    modelID: string
+    providerID: string
+  }
+  modelRole?: ModelRole
+  modelSource?: "role" | "explicit"
+  source?: "builtin" | "config" | "plugin" | "external"
+  steps?: number
+  external?: ExternalAgentInfo
+  defaultVariant?: string
+}
+
+/**
+ * Prompt attachment upload limits (count and byte sizes)
+ */
+export type AttachmentConfig = {
+  /**
+   * Maximum number of prompt attachments per batch (default: 20)
+   */
+  maxFiles?: number
+  /**
+   * Maximum prompt attachment size in bytes per file (default: 209715200 = 200 MiB)
+   */
+  maxFileBytes?: number
+  /**
+   * Maximum aggregate prompt attachment size in bytes per batch (default: 2147483648 = 2 GiB)
+   */
+  maxTotalBytes?: number
+}
+
+export type QuickSwitcherModelConfig = {
+  /**
+   * Provider id for the quick switcher model preference
+   */
+  providerID: string
+  /**
+   * Model id for the quick switcher model preference
+   */
+  modelID: string
+  /**
+   * Whether to force-add or force-remove the model from the quick switcher
+   */
+  state: "add" | "remove"
+}
+
+/**
+ * Quick switcher model visibility preferences
+ */
+export type QuickSwitcherConfig = {
+  /**
+   * Per-model quick switcher visibility preferences
+   */
+  models?: Array<QuickSwitcherModelConfig>
+}
+
+export type ScopeUiPreferences = {
+  /**
+   * Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5. null clears the role
+   */
+  model?: string | null
+  /**
+   * Default agent to use when none is specified. Must be a visible primary agent. Falls back to the general-purpose primary, then another visible primary if unavailable.
+   */
+  default_agent?: string
+  /**
+   * Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant. A null value clears the role's variant
+   */
+  role_variant?: {
+    [key: string]: string | null
+  }
+  controlProfile?: ControlProfileId
+  attachment?: AttachmentConfig
+  quick_switcher?: QuickSwitcherConfig
+  /**
+   * Default workspace for new sessions started from the Web composer: main = run in the main checkout, worktree = start each new session in an isolated git worktree (default: main). Programmatic session creation (API, channels, Cortex) always uses the main checkout.
+   */
+  defaultSessionWorkspace?: "main" | "worktree"
+  /**
+   * Execution profile for new Web/Desktop composer sessions. Omitted follows the global resource default; null disables execution selection. References an existing global profile without defining hosts or credentials.
+   */
+  defaultSessionEnvironmentProfile?: string | null
+  /**
+   * Execution process detail: full = expanded process, balanced = current stage with completed process collapsed, minimal = compact progress. All modes use the same process view (default: balanced)
+   */
+  activityDisplay?: "full" | "balanced" | "minimal"
+  /**
+   * Show a compact reasoning preview in the execution process (default: false)
+   */
+  compactReasoning?: boolean
+  /**
+   * UI locale (system = follow OS, default: system)
+   */
+  locale?: "system" | "en" | "zh-CN"
+  /**
+   * Records that the human accepted the risk of running with Full Access. Set by the confirmation dialog when Full Access is enabled from the UI; it is an awareness record, not a security boundary.
+   */
+  fullAccessAcknowledged?: boolean
+  boss?: {
+    enabled?: boolean
+  }
+  voice?: {
+    stt?: {
+      model?: string
+    }
+  }
+}
+
+export type SessionWorkspace = {
+  id?: string
+  generation?: number
+  type: string
+  path: string
+  scopeID: string
+  [key: string]: unknown | string | number | string | undefined
+}
+
+export type Path = {
+  home: string
+  state: string
+  config: string
+  worktree: string | null
+  directory: string | null
+  workspace: SessionWorkspace | null
+}
+
+export type SessionScope =
+  | {
+      type: "home"
+      id: "home"
+      local: null
+    }
+  | {
+      type: "project"
+      id: string
+      local: {
+        directory: string
+        worktree: string
+        vcs?: "git"
+        sandboxes: Array<string>
+      } | null
+      name?: string
+      icon?: {
+        url?: string
+        color?: string
+      }
+      pinned?: number
+      time: {
+        created: number
+        updated: number
+        initialized?: number
+        archived?: number
+      }
+    }
+
+export type SessionTags = Array<string>
+
+export type SnapshotWorkspace = {
+  id: string
+  generation: number
+  root: string
+  pathKind?: "workspace"
+}
+
+export type FileDiff = {
+  file: string
+  operationID?: string
+  workspace?: SnapshotWorkspace
+  legacyRoot?: string
+  additions: number
+  deletions: number
+  binary?: boolean
+  preview?: string
+  patch?: string
+  beforeBytes?: number
+  afterBytes?: number
+  truncated?: boolean
 }
 
 export type PermissionAction = "allow" | "deny" | "ask"
@@ -3128,14 +3745,493 @@ export type PermissionRule = {
 
 export type PermissionRuleset = Array<PermissionRule>
 
-export type ModelRole = "vision" | "nano" | "mini" | "mid" | "thinking" | "long" | "creative"
+export type SessionCompletionNotice = {
+  unread: boolean
+  unreadCount: number
+  silent: boolean
+}
 
-export type ExternalAgentInfo = {
-  adapter: string
-  path?: string
-  version?: string
-  config?: {
+export type SessionThinkingSelection =
+  | {
+      mode: "provider-default"
+    }
+  | {
+      mode: "off"
+    }
+  | {
+      mode: "variant"
+      variant: string
+    }
+
+export type SessionModelChoice = {
+  model: {
+    providerID: string
+    modelID: string
+  }
+  thinking: SessionThinkingSelection
+}
+
+export type SessionModelSelection = {
+  revision: number
+  selected: SessionModelChoice
+  preferences: {
+    [key: string]: SessionThinkingSelection
+  }
+  lastUsed?: {
+    model: {
+      providerID: string
+      modelID: string
+    }
+    thinking: SessionThinkingSelection
+    revision: number
+    rootID: string
+    messageID: string
+  }
+  pendingReason?: "next-request" | "tool-turn"
+}
+
+export type SessionPaused = {
+  reason: SessionPausedReason
+  description?: string
+  since: number
+}
+
+export type SessionInteractionMode = "interactive" | "unattended"
+
+export type SessionInteraction = {
+  mode: SessionInteractionMode
+  /**
+   * Why this interaction mode applies, e.g. 'agenda' or 'channel:feishu'
+   */
+  source?: string
+}
+
+export type SessionHistoryInfo = {
+  rollback?: {
+    id: string
+    numTurns: number
+    created: number
+    messageID?: string
+    droppedMessageIDs: Array<string>
+    droppedUserMessageIDs: Array<string>
+    cutMessageID?: string
+    files: Array<string>
+    patchPartIDs: Array<string>
+    canUnrollback: boolean
+  }
+}
+
+export type SessionRollbackAck = {
+  rollbackID: string
+  acknowledgedAt: number
+}
+
+export type SessionCortexDelegation = {
+  taskID: string
+  parentSessionID: string
+  parentMessageID: string
+  description: string
+  agent: string
+  executionRole?: "primary" | "delegated_subagent"
+  startedAt: number
+  completedAt?: number
+  settledAt?: number
+  status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+  model?: {
+    providerID: string
+    modelID: string
+  }
+  error?: string
+  launchFailure?: boolean
+  notifyParentOnComplete?: boolean
+  deliveryNotifiedAt?: number
+  visibility?: "visible" | "hidden"
+  tools?: {
+    [key: string]: boolean
+  }
+  outputConfig?:
+    | {
+        mode?: "summary"
+      }
+    | {
+        mode: "final_response"
+      }
+    | {
+        mode: "structured"
+        schema: {
+          [key: string]: unknown
+        }
+        maxRepairTurns?: 0 | 1 | 2 | 3
+      }
+  output?:
+    | {
+        mode: "summary"
+        value: string
+      }
+    | {
+        mode: "final_response"
+        value: string
+      }
+    | {
+        mode: "structured"
+        value: unknown
+      }
+  owner?: {
+    pluginId: string
+    pluginGeneration: string
+    scopeId: string
+    correlationId: string
+  }
+  timeoutMs?: number
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    reasoningTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
+    cost: number
+    accounting?: RolloutAccountingSummary
+  }
+}
+
+export type SessionWorkingInfo =
+  | {
+      status: "busy"
+      description?: string
+    }
+  | {
+      status: "retry"
+      attempt: number
+      message: string
+      next: number
+    }
+  | {
+      status: "paused"
+      reason: SessionPausedReason
+      description?: string
+      since: number
+    }
+
+export type WorkflowExtension = {
+  kind: string
+  payload?: unknown
+}
+
+export type SessionWorkflowExtension = {
+  kind: "extension"
+  extension: WorkflowExtension
+}
+
+export type SessionWorkflowInfo =
+  | {
+      kind: "plan"
+    }
+  | {
+      kind: "lightloop"
+      instructions: string
+      status?: "running" | "reviewing" | "completed" | "failed" | "cancelled" | "timed_out" | "iteration_exhausted"
+      executionAgent?: string
+      reviewAgent?: string
+      pluginOwner?: {
+        pluginId: string
+        pluginGeneration: string
+        scopeId: string
+        correlationId?: string
+      }
+      budget?: {
+        maxRuntimeMs: number
+        maxIterations: number
+      }
+      deadlineAt?: number
+      terminalError?: string
+      terminalHookDeliveredAt?: number
+      terminalHookError?: string
+      reviewTools?: {
+        [key: string]: boolean
+      }
+      stopRequest?: {
+        summary: string
+        completed?: Array<string>
+        evidence?: Array<string>
+        remaining?: Array<string>
+        requestedAt: number
+        requesterSessionID: string
+        requesterMessageID: string
+        reviewTaskID?: string
+        reviewSessionID?: string
+        reviewToolRecoveryAttempts?: number
+      }
+      review?: {
+        attempts: number
+        lastReason?: string
+        lastReviewedAt?: number
+      }
+    }
+  | {
+      kind: "lattice"
+      runID: string
+      mode: "auto" | "collaborative"
+    }
+  | {
+      kind: "boss"
+      role: "boss" | "worker"
+      workerRole?: string
+      rootID?: string
+      instructions?: string
+    }
+  | SessionWorkflowExtension
+
+export type SessionSuperPlanInfo = {
+  runID: string
+  role: "planner" | "node" | "merge" | "audit"
+  nodeID?: string
+  mergeID?: string
+}
+
+export type Session = {
+  id: string
+  scope: SessionScope
+  parentID?: string
+  forkedFrom?: {
+    sessionID: string
+    messageID?: string
+    title?: string
+  }
+  category?: "project" | "home" | "channel" | "background" | "github"
+  tags?: SessionTags
+  provenance?: "github"
+  endpoint?: SessionEndpoint
+  summary?: {
+    additions: number
+    deletions: number
+    files: number
+    diffs?: Array<FileDiff>
+    diffState?:
+      | {
+          status: "pending"
+          deadlineAt: number
+        }
+      | {
+          status: "ready"
+        }
+      | {
+          status: "partial"
+          code: "timeout" | "git_failure" | "incomplete" | "unknown"
+        }
+      | {
+          status: "error"
+          code: "timeout" | "git_failure" | "incomplete" | "unknown"
+        }
+    diffIssues?: Array<{
+      workspace?: SnapshotWorkspace
+      file?: string
+      code:
+        | "baseline_unavailable"
+        | "capture_failed"
+        | "interrupted"
+        | "legacy_range"
+        | "comparison_failed"
+        | "size_limit"
+        | "read_failed"
+    }>
+  }
+  title: string
+  version: string
+  time: {
+    created: number
+    updated: number
+    compacting?: number
+    archived?: number
+  }
+  pinned?: number
+  permission?: PermissionRuleset
+  controlProfile?: "guarded" | "autonomous" | "full_access"
+  /**
+   * Tool names pre-authorized by the user via system scheduling (e.g. agenda wake). Bypasses the ask gate for these tools within this session only.
+   */
+  preAuthorizedActions?: Array<string>
+  toolState?: {
+    expandedGroups?: Array<string>
+    activatedTools?: Array<string>
+  }
+  completionNotice?: SessionCompletionNotice
+  /**
+   * Legacy model preference projection; modelSelection owns live model and thinking choices
+   */
+  modelOverride?: {
+    providerID: string
+    modelID: string
+  }
+  modelSelection?: SessionModelSelection
+  /**
+   * Per-session agent override set by session control
+   */
+  agentOverride?: string
+  paused?: SessionPaused
+  interaction?: SessionInteraction
+  lastExchange?: {
+    user?: string
+    assistant?: string
+  }
+  history?: SessionHistoryInfo
+  rollbackAck?: SessionRollbackAck
+  cortex?: SessionCortexDelegation
+  working?: SessionWorkingInfo
+  workspace: SessionWorkspace | null
+  workspaceID?: string | null
+  environmentID?: string | null
+  workspaceError?: string
+  workflow?: SessionWorkflowInfo
+  agenda?: {
+    itemID: string
+  }
+  superplan?: SessionSuperPlanInfo
+  blueprint?: {
+    loopID?: string
+    loopRole?: "execution" | "audit"
+    phase?: "running" | "auditing"
+  }
+}
+
+export type ScopeBootstrapSessions = {
+  data: Array<Session>
+  total: number
+  offset: number
+  limit: number
+}
+
+export type EnvironmentTarget = {
+  environmentID: string
+  allocationID: string
+  generation: number
+}
+
+export type WorkspaceInfo = {
+  id: string
+  scopeID: string
+  type: string
+  revision: number
+  binding: {
+    state: "bound" | "unbound"
+    hostID: string
+    path: string | null
+    physicalID?: string
+    generation: number
+  }
+  backend?: {
+    provider: string
+    spec: {
+      [key: string]: unknown
+    }
+  }
+  content?: {
+    revision: number
+    manifest: string | null
+  }
+  mountGeneration?: number
+  activeMount?: {
+    id: string
+    generation: number
+    target: EnvironmentTarget
+    path: string
+    state: "preparing" | "active" | "saving" | "unavailable"
+    readOnly?: boolean
+  }
+  importedFrom?: {
+    workspaceID: string
+    hostID: string
+  }
+  metadata: {
     [key: string]: unknown
+  }
+  sharedWritableWorkspaceIDs: Array<string>
+  lifecycle: "active" | "deleting" | "deleted"
+  createdAt: number
+  updatedAt: number
+  [key: string]:
+    | unknown
+    | string
+    | number
+    | {
+        state: "bound" | "unbound"
+        hostID: string
+        path: string | null
+        physicalID?: string
+        generation: number
+      }
+    | {
+        provider: string
+        spec: {
+          [key: string]: unknown
+        }
+      }
+    | {
+        revision: number
+        manifest: string | null
+      }
+    | number
+    | {
+        id: string
+        generation: number
+        target: EnvironmentTarget
+        path: string
+        state: "preparing" | "active" | "saving" | "unavailable"
+        readOnly?: boolean
+      }
+    | {
+        workspaceID: string
+        hostID: string
+      }
+    | {
+        [key: string]: unknown
+      }
+    | Array<string>
+    | "active"
+    | "deleting"
+    | "deleted"
+    | number
+    | undefined
+}
+
+export type ScopeBootstrapCore = {
+  scopeID: string
+  provider: ProviderSelection
+  agent: Array<AgentSummary>
+  config: ScopeUiPreferences
+  path: Path
+  sessions: ScopeBootstrapSessions
+  /**
+   * Non-idle status for sessions included in the navigation page
+   */
+  sessionStatus: {
+    [key: string]: SessionStatus
+  }
+  workspaces: Array<WorkspaceInfo>
+  workspacesComplete: false
+}
+
+export type ProviderListResponse = {
+  all: Array<Provider>
+  default: {
+    [key: string]: string
+  }
+  connected: Array<string>
+  configProviders: Array<string>
+  catalogProviders: Array<string>
+  profiles: {
+    [key: string]: ProviderProfileMetadata
+  }
+  connections: {
+    [key: string]: ProviderConnection
+  }
+  authHealth: {
+    [key: string]: ProviderAuthHealth
+  }
+  runtimeAvailability: {
+    [key: string]: ProviderRuntimeAvailability
+  }
+  modelCatalog: {
+    [key: string]: ProviderModelCatalogState
   }
 }
 
@@ -3194,24 +4290,6 @@ export type ServerConfig = {
    * Additional origins allowed for CORS and Browser viewer WebSockets
    */
   cors?: Array<string>
-}
-
-/**
- * Prompt attachment upload limits (count and byte sizes)
- */
-export type AttachmentConfig = {
-  /**
-   * Maximum number of prompt attachments per batch (default: 20)
-   */
-  maxFiles?: number
-  /**
-   * Maximum prompt attachment size in bytes per file (default: 209715200 = 200 MiB)
-   */
-  maxFileBytes?: number
-  /**
-   * Maximum aggregate prompt attachment size in bytes per batch (default: 2147483648 = 2 GiB)
-   */
-  maxTotalBytes?: number
 }
 
 export type PermissionActionConfig = "ask" | "allow" | "deny"
@@ -4940,6 +6018,10 @@ export type McpDefaultsConfig = {
  */
 export type VoiceSttConfig = {
   /**
+   * Enable voice input. When omitted, a configured model enables it.
+   */
+  enabled?: boolean
+  /**
    * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
    */
   billingMode?: "api" | "subscription" | "local" | "unknown"
@@ -4990,13 +6072,13 @@ export type VoiceSttConfig = {
     }
   }
   /**
-   * Base URL for the speech-to-text API (OpenAI-compatible)
+   * OpenAI-compatible endpoint. Null restores the default endpoint.
    */
-  baseURL?: string
+  baseURL?: string | null
   /**
-   * API key for the speech-to-text service
+   * Speech-to-text credential. Null removes the credential.
    */
-  apiKey?: string
+  apiKey?: string | null
   /**
    * Speech-to-text model name. Voice input is disabled when not set.
    */
@@ -5004,13 +6086,17 @@ export type VoiceSttConfig = {
   /**
    * BCP-47 language hint for transcription, e.g. zh, en. Auto-detected when not set.
    */
-  language?: string
+  language?: string | null
 }
 
 /**
  * Text-to-speech service configuration
  */
 export type VoiceTtsConfig = {
+  /**
+   * Enable speech output. When omitted, a configured model enables it.
+   */
+  enabled?: boolean
   /**
    * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
    */
@@ -5062,25 +6148,25 @@ export type VoiceTtsConfig = {
     }
   }
   /**
-   * Base URL for the text-to-speech API (OpenAI-compatible)
+   * OpenAI-compatible endpoint. Null restores the default endpoint.
    */
-  baseURL?: string
+  baseURL?: string | null
   /**
-   * API key for the text-to-speech service
+   * Text-to-speech credential. Null removes the credential.
    */
-  apiKey?: string
+  apiKey?: string | null
   /**
    * Text-to-speech model name. The speak tool is disabled when not set.
    */
   model?: string
   /**
-   * Voice name for synthesis (provider-specific, e.g. alloy)
+   * Voice name for synthesis. Null restores the service default.
    */
-  voice?: string
+  voice?: string | null
   /**
    * Natural-language delivery instructions applied to synthesized speech, e.g. tone and pace
    */
-  instructions?: string
+  instructions?: string | null
 }
 
 /**
@@ -5437,31 +6523,6 @@ export type KeybindsConfig = {
   tips_toggle?: string
 }
 
-export type QuickSwitcherModelConfig = {
-  /**
-   * Provider id for the quick switcher model preference
-   */
-  providerID: string
-  /**
-   * Model id for the quick switcher model preference
-   */
-  modelID: string
-  /**
-   * Whether to force-add or force-remove the model from the quick switcher
-   */
-  state: "add" | "remove"
-}
-
-/**
- * Quick switcher model visibility preferences
- */
-export type QuickSwitcherConfig = {
-  /**
-   * Per-model quick switcher visibility preferences
-   */
-  models?: Array<QuickSwitcherModelConfig>
-}
-
 /**
  * @deprecated Always uses stretch layout.
  */
@@ -5733,7 +6794,7 @@ export type Config = {
     [key: string]: string | null
   }
   /**
-   * Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid.
+   * Default agent to use when none is specified. Must be a visible primary agent. Falls back to the general-purpose primary, then another visible primary if unavailable.
    */
   default_agent?: string
   /**
@@ -5744,9 +6805,9 @@ export type Config = {
    * Agent configuration
    */
   agent?: {
-    synergy?: AgentConfig
-    "synergy-max"?: AgentConfig
-    "synergy-flash"?: AgentConfig
+    atlas?: AgentConfig
+    forge?: AgentConfig
+    pico?: AgentConfig
     developer?: AgentConfig
     general?: AgentConfig
     explore?: AgentConfig
@@ -5977,7 +7038,7 @@ export type Config = {
    */
   theme?: string
   /**
-   * How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced)
+   * Execution process detail: full = expanded process, balanced = current stage with completed process collapsed, minimal = compact progress. All modes use the same process view (default: balanced)
    */
   activityDisplay?: "full" | "balanced" | "minimal"
   /**
@@ -5990,7 +7051,7 @@ export type Config = {
   defaultSessionEnvironmentProfile?: string | null
   keybinds?: KeybindsConfig
   /**
-   * Show live reasoning in a compact single-line viewport
+   * Show a compact reasoning preview in the execution process (default: false)
    */
   compactReasoning?: boolean
   quick_switcher?: QuickSwitcherConfig
@@ -6012,118 +7073,7 @@ export type Config = {
   }
 }
 
-export type SessionWorkspace = {
-  id?: string
-  generation?: number
-  type: string
-  path: string
-  scopeID: string
-  [key: string]: unknown | string | number | string | undefined
-}
-
-export type Path = {
-  home: string
-  state: string
-  config: string
-  worktree: string | null
-  directory: string | null
-  workspace: SessionWorkspace | null
-}
-
-export type EnvironmentTarget = {
-  environmentID: string
-  allocationID: string
-  generation: number
-}
-
-export type WorkspaceInfo = {
-  id: string
-  scopeID: string
-  type: string
-  revision: number
-  binding: {
-    state: "bound" | "unbound"
-    hostID: string
-    path: string | null
-    physicalID?: string
-    generation: number
-  }
-  backend?: {
-    provider: string
-    spec: {
-      [key: string]: unknown
-    }
-  }
-  content?: {
-    revision: number
-    manifest: string | null
-  }
-  mountGeneration?: number
-  activeMount?: {
-    id: string
-    generation: number
-    target: EnvironmentTarget
-    path: string
-    state: "preparing" | "active" | "saving" | "unavailable"
-    readOnly?: boolean
-  }
-  importedFrom?: {
-    workspaceID: string
-    hostID: string
-  }
-  metadata: {
-    [key: string]: unknown
-  }
-  sharedWritableWorkspaceIDs: Array<string>
-  lifecycle: "active" | "deleting" | "deleted"
-  createdAt: number
-  updatedAt: number
-  [key: string]:
-    | unknown
-    | string
-    | number
-    | {
-        state: "bound" | "unbound"
-        hostID: string
-        path: string | null
-        physicalID?: string
-        generation: number
-      }
-    | {
-        provider: string
-        spec: {
-          [key: string]: unknown
-        }
-      }
-    | {
-        revision: number
-        manifest: string | null
-      }
-    | number
-    | {
-        id: string
-        generation: number
-        target: EnvironmentTarget
-        path: string
-        state: "preparing" | "active" | "saving" | "unavailable"
-        readOnly?: boolean
-      }
-    | {
-        workspaceID: string
-        hostID: string
-      }
-    | {
-        [key: string]: unknown
-      }
-    | Array<string>
-    | "active"
-    | "deleting"
-    | "deleted"
-    | number
-    | undefined
-}
-
-export type Command = {
+export type CommandSummary = {
   name: string
   description?: string
   kind?: "prompt" | "action"
@@ -6134,388 +7084,7 @@ export type Command = {
   mcp?: boolean
   source?: "command" | "mcp" | "skill"
   action?: string
-  template?: string
   hints: Array<string>
-}
-
-export type SessionScope =
-  | {
-      type: "home"
-      id: "home"
-      local: null
-    }
-  | {
-      type: "project"
-      id: string
-      local: {
-        directory: string
-        worktree: string
-        vcs?: "git"
-        sandboxes: Array<string>
-      } | null
-      name?: string
-      icon?: {
-        url?: string
-        color?: string
-      }
-      pinned?: number
-      time: {
-        created: number
-        updated: number
-        initialized?: number
-        archived?: number
-      }
-    }
-
-export type SessionTags = Array<string>
-
-export type SnapshotWorkspace = {
-  id: string
-  generation: number
-  root: string
-  pathKind?: "workspace"
-}
-
-export type FileDiff = {
-  file: string
-  operationID?: string
-  workspace?: SnapshotWorkspace
-  legacyRoot?: string
-  additions: number
-  deletions: number
-  binary?: boolean
-  preview?: string
-  patch?: string
-  beforeBytes?: number
-  afterBytes?: number
-  truncated?: boolean
-}
-
-export type SessionCompletionNotice = {
-  unread: boolean
-  unreadCount: number
-  silent: boolean
-}
-
-export type SessionThinkingSelection =
-  | {
-      mode: "provider-default"
-    }
-  | {
-      mode: "off"
-    }
-  | {
-      mode: "variant"
-      variant: string
-    }
-
-export type SessionModelChoice = {
-  model: {
-    providerID: string
-    modelID: string
-  }
-  thinking: SessionThinkingSelection
-}
-
-export type SessionModelSelection = {
-  revision: number
-  selected: SessionModelChoice
-  preferences: {
-    [key: string]: SessionThinkingSelection
-  }
-  lastUsed?: {
-    model: {
-      providerID: string
-      modelID: string
-    }
-    thinking: SessionThinkingSelection
-    revision: number
-    rootID: string
-    messageID: string
-  }
-  pendingReason?: "next-request" | "tool-turn"
-}
-
-export type SessionPaused = {
-  reason: SessionPausedReason
-  description?: string
-  since: number
-}
-
-export type SessionInteractionMode = "interactive" | "unattended"
-
-export type SessionInteraction = {
-  mode: SessionInteractionMode
-  /**
-   * Why this interaction mode applies, e.g. 'agenda' or 'channel:feishu'
-   */
-  source?: string
-}
-
-export type SessionHistoryInfo = {
-  rollback?: {
-    id: string
-    numTurns: number
-    created: number
-    messageID?: string
-    droppedMessageIDs: Array<string>
-    droppedUserMessageIDs: Array<string>
-    cutMessageID?: string
-    files: Array<string>
-    patchPartIDs: Array<string>
-    canUnrollback: boolean
-  }
-}
-
-export type SessionRollbackAck = {
-  rollbackID: string
-  acknowledgedAt: number
-}
-
-export type SessionCortexDelegation = {
-  taskID: string
-  parentSessionID: string
-  parentMessageID: string
-  description: string
-  agent: string
-  executionRole?: "primary" | "delegated_subagent"
-  startedAt: number
-  completedAt?: number
-  settledAt?: number
-  status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
-  model?: {
-    providerID: string
-    modelID: string
-  }
-  error?: string
-  launchFailure?: boolean
-  notifyParentOnComplete?: boolean
-  deliveryNotifiedAt?: number
-  visibility?: "visible" | "hidden"
-  tools?: {
-    [key: string]: boolean
-  }
-  outputConfig?:
-    | {
-        mode?: "summary"
-      }
-    | {
-        mode: "final_response"
-      }
-    | {
-        mode: "structured"
-        schema: {
-          [key: string]: unknown
-        }
-        maxRepairTurns?: 0 | 1 | 2 | 3
-      }
-  output?:
-    | {
-        mode: "summary"
-        value: string
-      }
-    | {
-        mode: "final_response"
-        value: string
-      }
-    | {
-        mode: "structured"
-        value: unknown
-      }
-  owner?: {
-    pluginId: string
-    pluginGeneration: string
-    scopeId: string
-    correlationId: string
-  }
-  timeoutMs?: number
-  usage?: {
-    inputTokens: number
-    outputTokens: number
-    reasoningTokens: number
-    cacheReadTokens: number
-    cacheWriteTokens: number
-    cost: number
-    accounting?: RolloutAccountingSummary
-  }
-}
-
-export type SessionWorkingInfo =
-  | {
-      status: "busy"
-      description?: string
-    }
-  | {
-      status: "retry"
-      attempt: number
-      message: string
-      next: number
-    }
-  | {
-      status: "paused"
-      reason: SessionPausedReason
-      description?: string
-      since: number
-    }
-
-export type WorkflowExtension = {
-  kind: string
-  payload?: unknown
-}
-
-export type SessionWorkflowExtension = {
-  kind: "extension"
-  extension: WorkflowExtension
-}
-
-export type SessionWorkflowInfo =
-  | {
-      kind: "plan"
-    }
-  | {
-      kind: "lightloop"
-      instructions: string
-      status?: "running" | "reviewing" | "completed" | "failed" | "cancelled" | "timed_out" | "iteration_exhausted"
-      executionAgent?: string
-      reviewAgent?: string
-      pluginOwner?: {
-        pluginId: string
-        pluginGeneration: string
-        scopeId: string
-        correlationId?: string
-      }
-      budget?: {
-        maxRuntimeMs: number
-        maxIterations: number
-      }
-      deadlineAt?: number
-      terminalError?: string
-      terminalHookDeliveredAt?: number
-      terminalHookError?: string
-      reviewTools?: {
-        [key: string]: boolean
-      }
-      stopRequest?: {
-        summary: string
-        completed?: Array<string>
-        evidence?: Array<string>
-        remaining?: Array<string>
-        requestedAt: number
-        requesterSessionID: string
-        requesterMessageID: string
-        reviewTaskID?: string
-        reviewSessionID?: string
-        reviewToolRecoveryAttempts?: number
-      }
-      review?: {
-        attempts: number
-        lastReason?: string
-        lastReviewedAt?: number
-      }
-    }
-  | {
-      kind: "lattice"
-      runID: string
-      mode: "auto" | "collaborative"
-    }
-  | {
-      kind: "boss"
-      role: "boss" | "worker"
-      workerRole?: string
-      rootID?: string
-      instructions?: string
-    }
-  | SessionWorkflowExtension
-
-export type SessionSuperPlanInfo = {
-  runID: string
-  role: "planner" | "node" | "merge" | "audit"
-  nodeID?: string
-  mergeID?: string
-}
-
-export type Session = {
-  id: string
-  scope: SessionScope
-  parentID?: string
-  forkedFrom?: {
-    sessionID: string
-    messageID?: string
-    title?: string
-  }
-  category?: "project" | "home" | "channel" | "background" | "github"
-  tags?: SessionTags
-  provenance?: "github"
-  endpoint?: SessionEndpoint
-  summary?: {
-    additions: number
-    deletions: number
-    files: number
-    diffs?: Array<FileDiff>
-  }
-  title: string
-  version: string
-  time: {
-    created: number
-    updated: number
-    compacting?: number
-    archived?: number
-  }
-  pinned?: number
-  permission?: PermissionRuleset
-  controlProfile?: "guarded" | "autonomous" | "full_access"
-  /**
-   * Tool names pre-authorized by the user via system scheduling (e.g. agenda wake). Bypasses the ask gate for these tools within this session only.
-   */
-  preAuthorizedActions?: Array<string>
-  toolState?: {
-    expandedGroups?: Array<string>
-    activatedTools?: Array<string>
-  }
-  completionNotice?: SessionCompletionNotice
-  /**
-   * Legacy model preference projection; modelSelection owns live model and thinking choices
-   */
-  modelOverride?: {
-    providerID: string
-    modelID: string
-  }
-  modelSelection?: SessionModelSelection
-  /**
-   * Per-session agent override set by session control
-   */
-  agentOverride?: string
-  paused?: SessionPaused
-  interaction?: SessionInteraction
-  lastExchange?: {
-    user?: string
-    assistant?: string
-  }
-  history?: SessionHistoryInfo
-  rollbackAck?: SessionRollbackAck
-  cortex?: SessionCortexDelegation
-  working?: SessionWorkingInfo
-  workspace: SessionWorkspace | null
-  workspaceID?: string | null
-  environmentID?: string | null
-  workspaceError?: string
-  workflow?: SessionWorkflowInfo
-  agenda?: {
-    itemID: string
-  }
-  superplan?: SessionSuperPlanInfo
-  blueprint?: {
-    loopID?: string
-    loopRole?: "execution" | "audit"
-    phase?: "running" | "auditing"
-  }
-}
-
-export type ScopeBootstrapSessions = {
-  data: Array<Session>
-  total: number
-  offset: number
-  limit: number
 }
 
 export type CortexTask = {
@@ -6689,7 +7258,7 @@ export type ScopeBootstrapResponse = {
   config: Config
   path?: Path
   workspaces?: Array<WorkspaceInfo>
-  command?: Array<Command>
+  command?: Array<CommandSummary>
   sessionStatus?: {
     [key: string]: SessionStatus
   }
@@ -7282,6 +7851,300 @@ export type SessionAgendaResponse = {
   hasMore: boolean
 }
 
+export type ExecutionTask = {
+  sessionID: string
+  nodeID: string | null
+  parentID: string | null
+  title: string
+  status: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown"
+  elapsedMs: number | null
+  elapsedActive: boolean
+  tokens: {
+    known: number
+    unknown: number
+    total: number | null
+  }
+  runs: Array<string>
+}
+
+export type ExecutionTrajectoryNode = {
+  id: string
+  sessionID: string
+  runID: string
+  rootRunID?: string | null
+  parentID: string | null
+  kind:
+    | "turn"
+    | "input"
+    | "context"
+    | "reasoning"
+    | "output"
+    | "model"
+    | "retry"
+    | "tool"
+    | "process"
+    | "compaction"
+    | "subtask"
+  title: string
+  preview: string
+  started: number
+  ended?: number
+  status: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown"
+  revision: number
+  messageID?: string
+  tool?: string
+  modelID?: string
+  modelKind?: "chat" | "embedding" | "rerank" | "transcription" | "speech"
+  agent?: string
+  callID?: string
+  source: "recorded" | "messages"
+  evidenceKind?: "run" | "segment" | "call" | "attempt" | "tool" | "process"
+  attemptIndex?: number
+  purpose?: string
+  usageRole?: string
+  attribution?: "known" | "unassigned"
+  tokens?: {
+    known: number
+    unknown: number
+    total: number | null
+  }
+  group?: {
+    id: string
+    started?: number
+    callCount?: number
+    memberCount: number
+    attemptCount: number
+    retryCount: number
+    anomalies: number
+    purpose: string | null
+  }
+  ancestors?: Array<{
+    id: string
+    title: string
+    kind:
+      | "turn"
+      | "input"
+      | "context"
+      | "reasoning"
+      | "output"
+      | "model"
+      | "retry"
+      | "tool"
+      | "process"
+      | "compaction"
+      | "subtask"
+  }>
+  activity?: {
+    index: number
+    count: number
+    endIndex: number
+    instruction: boolean
+  }
+}
+
+export type ExecutionSummary = {
+  sessionID: string
+  revision: number
+  runID?: string
+  computedAt: number
+  status: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown"
+  elapsedMs: number | null
+  elapsedActive: boolean
+  accounting: RolloutAccountingSummary
+  cost: ExecutionCostPresentation
+  own: RolloutAccountingSummary
+  descendants: RolloutAccountingSummary
+  rates: {
+    generation: {
+      value: number | null
+      tokens: number
+      milliseconds: number
+      samples: number
+      excluded: number
+      reasons?: {
+        [key: string]: number
+      }
+    }
+    endToEnd: {
+      value: number | null
+      tokens: number
+      milliseconds: number
+      samples: number
+      excluded: number
+      reasons?: {
+        [key: string]: number
+      }
+    }
+  }
+  cache: {
+    ratio: number | null
+    observedRatio: number | null
+    read: number
+    input: number
+    samples: number
+    excluded: number
+  }
+  context: {
+    attemptID: string
+    callID: string
+    modelID: string
+    inputTokens: number | null
+    limit: number | null
+    ratio: number | null
+    stale: boolean
+    observedAt: number
+  } | null
+  contextDistribution: {
+    version: 1
+    modelID: string
+    providerID: string
+    totalInput: number
+    contextLimit?: number
+    usableInputLimit?: number
+    categories: {
+      conversation: {
+        estimatedTokens: number
+        attributedTokens: number
+        items?: number
+      }
+      toolActivity: {
+        estimatedTokens: number
+        attributedTokens: number
+        items?: number
+      }
+      filesReferences: {
+        estimatedTokens: number
+        attributedTokens: number
+        items?: number
+      }
+      instructions: {
+        estimatedTokens: number
+        attributedTokens: number
+        items?: number
+      }
+    }
+    overhead: {
+      attributedTokens: number
+    }
+    estimator:
+      | {
+          kind: "model-tokenizer"
+          encoding?: string
+        }
+      | {
+          kind: "bounded-utf8"
+          sampledCharacters: number
+          truncated: boolean
+        }
+    reconciliation: {
+      mode: "residual" | "scaled-down"
+      factor: number
+    }
+    capturedAt: number
+  } | null
+  tasks: Array<ExecutionTask>
+  rounds: Array<{
+    id: string
+    title: string
+    started: number
+    status: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown"
+    elapsedMs: number | null
+  }>
+  coverage: {
+    recorded: number
+    messages: number
+    gaps: number
+    partial: boolean
+  }
+  lanes: Array<{
+    kind: "input" | "model" | "tool"
+    start: number
+    end: number
+    nodes: Array<ExecutionTrajectoryNode>
+    total: number
+  }>
+  activityTotal: number
+  activitySegments?: Array<{
+    runID: string | null
+    from: number
+    to: number
+    count: number
+    rounds: number
+  }>
+  humanInputs: number
+  taskInstructions: number
+}
+
+export type ExecutionTrajectoryPage = {
+  sessionID: string
+  revision: number
+  total: number
+  items: Array<ExecutionTrajectoryNode>
+  nextCursor: string | null
+  previousCursor: string | null
+}
+
+export type ExecutionJson = unknown
+
+export type RolloutArtifactRef = {
+  version: 1
+  id: string
+  mediaType: string
+  bytes: number
+  chunks: number
+  sha256: string | null
+  status: "partial" | "complete"
+}
+
+export type ExecutionNodeDetail = {
+  node: ExecutionTrajectoryNode
+  record: ExecutionJson | null
+  sources: Array<{
+    field: string
+    artifact: RolloutArtifactRef
+  }>
+  definitions: ExecutionJson | null
+  related: Array<ExecutionTrajectoryNode>
+}
+
+export type RolloutEvidenceContent = {
+  mediaType: string
+  text: string
+  offset: number
+  nextOffset: number | null
+  bytes: number
+  status: "partial" | "complete"
+  contentVersion: string
+  sha256: string | null
+}
+
+export type ExecutionContentSections = {
+  contentVersion: string
+  format: "json" | "text" | "partial"
+  items: Array<{
+    path: Array<string>
+    kind: "object" | "array" | "string" | "number" | "boolean" | "null"
+    offset: number
+    bytes: number
+    role?: string
+    preview: string
+  }>
+  total: number
+  nextCursor: string | null
+  truncated: boolean
+}
+
+export type ExecutionContentSearch = {
+  contentVersion: string
+  status: "partial" | "complete"
+  items: Array<{
+    offset: number
+    bytes: number
+    preview: string
+  }>
+  nextCursor: string | null
+}
+
 export type ProjectTaskDefaults = {
   defaultSessionWorkspace?: "main" | "worktree"
   defaultSessionEnvironmentProfile?: string | null
@@ -7318,14 +8181,231 @@ export type SessionNavResponse = {
   total: number
 }
 
-export type RolloutArtifactRef = {
-  version: 1
+export type TurnExecutionState = {
+  rootID: string
+  status: "preparing" | "running" | "approval" | "completed" | "failed" | "stopped" | "interrupted"
+  startedAt: number
+  endedAt?: number
+  segmentID?: string
+  stoppedAt: Array<number>
+}
+
+export type ToolActivityEvidence = {
+  kind: "file-read" | "file-change" | "command" | "search" | "object" | "media" | "structured"
+  resource?: {
+    path?: string
+    workspaceID?: string
+    generation?: number
+    objectID?: string
+  }
+  range?: {
+    startLine: number
+    lineCount: number
+    totalLines?: number
+  }
+  ranges?: Array<{
+    startLine: number
+    lineCount: number
+  }>
+  content?: RolloutArtifactRef
+  mediaType?: string
+  truncated?: boolean
+  processID?: string
+  directory?: string
+  exitCode?: number | null
+  signal?: string | null
+  background?: boolean
+}
+
+export type ToolStatePending = {
+  status: "pending"
+  input: {
+    [key: string]: unknown
+  }
+  raw: string
+  metadata?: {
+    [key: string]: unknown
+  }
+}
+
+export type ToolStateGenerating = {
+  status: "generating"
+  input: {
+    [key: string]: unknown
+  }
+  raw: string
+  charsReceived: number
+  metadata?: {
+    [key: string]: unknown
+  }
+}
+
+export type ToolStateInput =
+  | {
+      [key: string]: unknown
+    }
+  | Array<unknown>
+  | string
+  | number
+  | boolean
+  | null
+
+export type ToolStateRunning = {
+  status: "running"
+  input: ToolStateInput
+  title?: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  time: {
+    start: number
+  }
+}
+
+export type AttachmentSourceText = {
+  value: string
+  start: number
+  end: number
+}
+
+export type FileSource = {
+  text: AttachmentSourceText
+  type: "file"
+  path: string
+}
+
+export type Range = {
+  start: {
+    line: number
+    character: number
+  }
+  end: {
+    line: number
+    character: number
+  }
+}
+
+export type SymbolSource = {
+  text: AttachmentSourceText
+  type: "symbol"
+  path: string
+  range: Range
+  name: string
+  kind: number
+}
+
+export type ResourceSource = {
+  text: AttachmentSourceText
+  type: "resource"
+  clientName: string
+  uri: string
+}
+
+export type AttachmentSource = FileSource | SymbolSource | ResourceSource
+
+export type AttachmentPresentation = {
+  hidden?: boolean
+  renderer?: "image" | "video" | "audio" | "thumbnail" | "file"
+  size?: "original" | "small" | "medium" | "large"
+  crop?: boolean
+}
+
+export type AttachmentModelPolicy =
+  | {
+      mode: "summary"
+      summary?: string
+    }
+  | {
+      mode: "content"
+      text?: string
+    }
+  | {
+      mode: "provider-file"
+      summary?: string
+    }
+  | {
+      mode: "none"
+    }
+
+export type AttachmentPart = {
   id: string
-  mediaType: string
-  bytes: number
-  chunks: number
-  sha256: string | null
-  status: "partial" | "complete"
+  sessionID: string
+  messageID: string
+  type: "attachment"
+  artifact?: RolloutArtifactRef
+  mime: string
+  filename?: string
+  url: string
+  localPath?: string
+  source?: AttachmentSource
+  presentation?: AttachmentPresentation
+  model?: AttachmentModelPolicy
+  metadata?: {
+    [key: string]: unknown
+  }
+}
+
+export type ToolStateCompleted = {
+  status: "completed"
+  input: ToolStateInput
+  output: string
+  outputBytes?: number
+  outputArtifact?: RolloutArtifactRef
+  outputTruncated?: boolean
+  title: string
+  metadata: {
+    [key: string]: unknown
+  }
+  time: {
+    start: number
+    end: number
+    compacted?: number
+  }
+  attachments?: Array<AttachmentPart>
+}
+
+export type ToolStateError = {
+  status: "error"
+  input: ToolStateInput
+  error: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  time: {
+    start: number
+    end: number
+  }
+}
+
+export type ToolState = ToolStatePending | ToolStateGenerating | ToolStateRunning | ToolStateCompleted | ToolStateError
+
+export type ToolPart = {
+  id: string
+  sessionID: string
+  messageID: string
+  type: "tool"
+  callID: string
+  tool: string
+  workBrief?: string
+  inputShape?: "flat" | "envelope"
+  activityEvidence?: ToolActivityEvidence
+  state: ToolState
+  metadata?: {
+    [key: string]: unknown
+  }
+}
+
+export type ToolActivityResult = {
+  part: ToolPart
+  text?: string
+  evidenceMissing: boolean
+  truncated?: boolean
+  process?: {
+    status: "running" | "completed" | "interrupted" | "failed"
+    exitCode?: number | null
+    signal?: string | null
+    endedAt?: number
+  }
 }
 
 export type ExperimentOverrides = {
@@ -7430,7 +8510,7 @@ export type ExperimentOverrides = {
   }
 }
 
-export type ExperimentRuntime = {
+export type ExperimentSnapshotRuntime = {
   lsp?:
     | false
     | {
@@ -7571,9 +8651,6 @@ export type ExperimentRuntime = {
      * Grace period for active ToolTasks during runtime shutdown (default: 3000)
      */
     toolCancelGraceMs?: number
-    /**
-     * Optional concurrency limits for each Tool Executor class
-     */
     toolExecutorConcurrency?: {
       [key: string]: number
     }
@@ -7593,7 +8670,7 @@ export type ExperimentSnapshot = {
   fingerprint: string
   effective: ExperimentOverrides
   overrides: ExperimentOverrides
-  runtime: ExperimentRuntime
+  runtime: ExperimentSnapshotRuntime
   sources: {
     [key: string]:
       | "default"
@@ -7739,7 +8816,7 @@ export type RolloutCallRecord = {
       currency: "USD"
       unitTokens: 1000000
       source: {
-        kind: "catalog" | "configuration" | "mixed"
+        kind: "catalog" | "configuration" | "mixed" | "official"
         providerID: string
         modelID: string
       }
@@ -7787,6 +8864,27 @@ export type RolloutCallRecord = {
         }
       }
       raw: unknown
+      policy?: {
+        id: "deepseek-2026-10-01"
+        effectiveAt: number
+        clock: "request-start"
+        phase: "peak" | "off-peak" | "unknown"
+        calendar: string | null
+        offPeak: {
+          input: number | null
+          output: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+          cacheWrite1h: number | null
+        }
+        peak: {
+          input: number | null
+          output: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+          cacheWrite1h: number | null
+        }
+      }
     } | null
     /**
      * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
@@ -7811,6 +8909,10 @@ export type RolloutCallRecord = {
     total: number | null
     known: number
     missing: Array<string>
+    range?: {
+      minimum: number
+      maximum: number
+    }
   }
   transportCaptured: boolean
   error?: string
@@ -7906,6 +9008,89 @@ export type RolloutAttemptRecord = {
     total: number | null
     known: number
     missing: Array<string>
+    range?: {
+      minimum: number
+      maximum: number
+    }
+  }
+  pricingEvidence?: {
+    version: 1
+    source: "attempt" | "historical"
+    pricing: {
+      version: 1
+      currency: "USD"
+      unitTokens: 1000000
+      source: {
+        kind: "catalog" | "configuration" | "mixed" | "official"
+        providerID: string
+        modelID: string
+      }
+      capturedAt: number
+      rates: {
+        input: number | null
+        output: number | null
+        cacheRead: number | null
+        cacheWrite: number | null
+        cacheWrite1h: number | null
+      }
+      over200K?: {
+        input: number | null
+        output: number | null
+        cacheRead: number | null
+        cacheWrite: number | null
+        cacheWrite1h: number | null
+      }
+      contextTiers?: Array<{
+        above: number
+        rates: {
+          input: number | null
+          output: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+          cacheWrite1h: number | null
+        }
+      }>
+      units?: {
+        audio_seconds?: {
+          price: number
+          per: number
+        }
+        audio_input_tokens?: {
+          price: number
+          per: number
+        }
+        audio_output_tokens?: {
+          price: number
+          per: number
+        }
+        characters?: {
+          price: number
+          per: number
+        }
+      }
+      raw: unknown
+      policy?: {
+        id: "deepseek-2026-10-01"
+        effectiveAt: number
+        clock: "request-start"
+        phase: "peak" | "off-peak" | "unknown"
+        calendar: string | null
+        offPeak: {
+          input: number | null
+          output: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+          cacheWrite1h: number | null
+        }
+        peak: {
+          input: number | null
+          output: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+          cacheWrite1h: number | null
+        }
+      }
+    } | null
   }
   responseHeaders?: {
     [key: string]: string
@@ -8194,71 +9379,6 @@ export type SessionAbortResult = {
   paused: boolean
 }
 
-export type AttachmentSourceText = {
-  value: string
-  start: number
-  end: number
-}
-
-export type FileSource = {
-  text: AttachmentSourceText
-  type: "file"
-  path: string
-}
-
-export type Range = {
-  start: {
-    line: number
-    character: number
-  }
-  end: {
-    line: number
-    character: number
-  }
-}
-
-export type SymbolSource = {
-  text: AttachmentSourceText
-  type: "symbol"
-  path: string
-  range: Range
-  name: string
-  kind: number
-}
-
-export type ResourceSource = {
-  text: AttachmentSourceText
-  type: "resource"
-  clientName: string
-  uri: string
-}
-
-export type AttachmentSource = FileSource | SymbolSource | ResourceSource
-
-export type AttachmentPresentation = {
-  hidden?: boolean
-  renderer?: "image" | "video" | "audio" | "thumbnail" | "file"
-  size?: "original" | "small" | "medium" | "large"
-  crop?: boolean
-}
-
-export type AttachmentModelPolicy =
-  | {
-      mode: "summary"
-      summary?: string
-    }
-  | {
-      mode: "content"
-      text?: string
-    }
-  | {
-      mode: "provider-file"
-      summary?: string
-    }
-  | {
-      mode: "none"
-    }
-
 export type OriginUser = {
   type: "user" | "cortex" | "agenda" | "blueprint" | "channel" | "compaction" | "agent" | "plugin" | "system"
   sessionID?: string
@@ -8406,6 +9526,162 @@ export type SessionInputResult =
       runID?: string
     }
 
+export type ExperimentRuntime = {
+  lsp?:
+    | false
+    | {
+        [key: string]:
+          | {
+              disabled: true
+            }
+          | {
+              command?: Array<string>
+              extensions?: Array<string>
+              disabled?: boolean
+              env?: {
+                [key: string]: string
+              }
+              initialization?: {
+                [key: string]: unknown
+              }
+            }
+      }
+  formatter?:
+    | false
+    | {
+        [key: string]: {
+          disabled?: boolean
+          command?: Array<string>
+          environment?: {
+            [key: string]: string
+          }
+          extensions?: Array<string>
+        }
+      }
+  execution?: {
+    /**
+     * Reap idle language servers (default: true)
+     */
+    lspIdleReap?: boolean
+    /**
+     * Maximum number of isolated Agent workers (default: derived from the effective memory limit, capped by available CPUs and 64, never below agentWorkerMinIdle). Pass null to clear the explicit ceiling and derive it from the machine.
+     */
+    agentWorkers?: number | null
+    /**
+     * Minimum number of idle Agent workers kept warm (default: 1 on resident servers, 0 for one-shot runs; cannot exceed agentWorkers)
+     */
+    agentWorkerMinIdle?: number
+    /**
+     * Time an excess idle Agent worker remains warm before retirement (default: 60000)
+     */
+    agentWorkerIdleTimeoutMs?: number
+    /**
+     * Maximum queued Agent turns waiting for a worker (default: 256)
+     */
+    agentQueueMax?: number
+    /**
+     * Maximum aggregate queued Agent-turn payload size in MiB (default: 256)
+     */
+    agentQueueMaxMb?: number
+    /**
+     * Turns completed before an Agent worker is recycled (default: 64)
+     */
+    agentWorkerMaxTurns?: number
+    /**
+     * Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 3072)
+     */
+    agentWorkerMaxRssMb?: number
+    /**
+     * Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 2048)
+     */
+    agentWorkerMaxHeapMb?: number
+    /**
+     * Recycle idle Agent workers after post-GC memory grows beyond their warm baseline (default: Linux only)
+     */
+    agentWorkerIdleBaselineRecycle?: boolean
+    /**
+     * Allowed post-GC RSS growth above an Agent worker's warm idle baseline in MiB (default: 256)
+     */
+    agentWorkerIdleBaselineRssGrowthMb?: number
+    /**
+     * Allowed post-GC external-memory growth above an Agent worker's warm idle baseline in MiB (default: 128)
+     */
+    agentWorkerIdleBaselineExternalGrowthMb?: number
+    /**
+     * Grace period before terminating an Agent worker that ignores cancellation (default: 5000)
+     */
+    agentCancelGraceMs?: number
+    /**
+     * Maximum time without an Agent worker heartbeat before forced replacement (default: 45000)
+     */
+    agentHeartbeatTimeoutMs?: number
+    /**
+     * Number of isolated Policy workers (default: min(2, available CPUs - 1), at least 1)
+     */
+    policyWorkers?: number
+    /**
+     * Maximum queued Policy classifications waiting for a worker (default: 256)
+     */
+    policyQueueMax?: number
+    /**
+     * Maximum aggregate queued Policy-classification payload size in MiB (default: 64)
+     */
+    policyQueueMaxMb?: number
+    /**
+     * Maximum total time for a Policy classification before conservative fallback (default: 1000)
+     */
+    policyTimeoutMs?: number
+    /**
+     * Classifications completed before a Policy worker is recycled (default: 512)
+     */
+    policyWorkerMaxRequests?: number
+    /**
+     * RSS threshold in MiB for terminating or recycling a Policy worker (default: 512)
+     */
+    policyWorkerMaxRssMb?: number
+    /**
+     * Heap-used threshold in MiB for terminating or recycling a Policy worker (default: 256)
+     */
+    policyWorkerMaxHeapMb?: number
+    /**
+     * Shutdown grace period before terminating a Policy worker (default: 25)
+     */
+    policyCancelGraceMs?: number
+    /**
+     * Maximum time without a Policy worker heartbeat before forced replacement (default: 15000)
+     */
+    policyHeartbeatTimeoutMs?: number
+    /**
+     * Maximum process-wide concurrent ToolTasks (default: twice available CPUs, bounded to 4-32)
+     */
+    toolConcurrency?: number
+    /**
+     * Maximum queued ToolTasks waiting for execution capacity (default: 32 per tool slot)
+     */
+    toolQueueMax?: number
+    /**
+     * Maximum aggregate queued ToolTask input size in MiB (default: 128)
+     */
+    toolQueueMaxMb?: number
+    /**
+     * Grace period for active ToolTasks during runtime shutdown (default: 3000)
+     */
+    toolCancelGraceMs?: number
+    /**
+     * Optional concurrency limits for each Tool Executor class
+     */
+    toolExecutorConcurrency?: {
+      [key: string]: number
+    }
+  }
+  cortex?: {
+    /**
+     * Maximum number of Cortex subagent tasks that may run concurrently (default: 8)
+     */
+    maxConcurrentTasks?: number
+  }
+}
+
 export type ExperimentFile = {
   version: 1
   label: string
@@ -8477,9 +9753,25 @@ export type UserMessage = {
           status: "ready"
         }
       | {
-          status: "error"
-          code: "timeout" | "git_failure" | "unknown" | "incomplete"
+          status: "partial"
+          code: "timeout" | "git_failure" | "incomplete" | "unknown"
         }
+      | {
+          status: "error"
+          code: "timeout" | "git_failure" | "incomplete" | "unknown"
+        }
+    diffIssues?: Array<{
+      workspace?: SnapshotWorkspace
+      file?: string
+      code:
+        | "baseline_unavailable"
+        | "capture_failed"
+        | "interrupted"
+        | "legacy_range"
+        | "comparison_failed"
+        | "size_limit"
+        | "read_failed"
+    }>
   }
   agent: string
   model: {
@@ -8730,112 +10022,6 @@ export type ReasoningPart = {
   }
 }
 
-export type AttachmentPart = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "attachment"
-  artifact?: RolloutArtifactRef
-  mime: string
-  filename?: string
-  url: string
-  localPath?: string
-  source?: AttachmentSource
-  presentation?: AttachmentPresentation
-  model?: AttachmentModelPolicy
-  metadata?: {
-    [key: string]: unknown
-  }
-}
-
-export type ToolStatePending = {
-  status: "pending"
-  input: {
-    [key: string]: unknown
-  }
-  raw: string
-  metadata?: {
-    [key: string]: unknown
-  }
-}
-
-export type ToolStateGenerating = {
-  status: "generating"
-  input: {
-    [key: string]: unknown
-  }
-  raw: string
-  charsReceived: number
-  metadata?: {
-    [key: string]: unknown
-  }
-}
-
-export type ToolStateRunning = {
-  status: "running"
-  input: {
-    [key: string]: unknown
-  }
-  title?: string
-  metadata?: {
-    [key: string]: unknown
-  }
-  time: {
-    start: number
-  }
-}
-
-export type ToolStateCompleted = {
-  status: "completed"
-  input: {
-    [key: string]: unknown
-  }
-  output: string
-  outputBytes?: number
-  outputArtifact?: RolloutArtifactRef
-  outputTruncated?: boolean
-  title: string
-  metadata: {
-    [key: string]: unknown
-  }
-  time: {
-    start: number
-    end: number
-    compacted?: number
-  }
-  attachments?: Array<AttachmentPart>
-}
-
-export type ToolStateError = {
-  status: "error"
-  input: {
-    [key: string]: unknown
-  }
-  error: string
-  metadata?: {
-    [key: string]: unknown
-  }
-  time: {
-    start: number
-    end: number
-  }
-}
-
-export type ToolState = ToolStatePending | ToolStateGenerating | ToolStateRunning | ToolStateCompleted | ToolStateError
-
-export type ToolPart = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "tool"
-  callID: string
-  tool: string
-  state: ToolState
-  metadata?: {
-    [key: string]: unknown
-  }
-}
-
 export type StepStartPart = {
   id: string
   sessionID: string
@@ -8898,6 +10084,24 @@ export type PatchPart = {
   messageID: string
   type: "patch"
   hash: string
+  checkpoint?: {
+    version: 1
+    rootID: string
+    segmentID: string
+    started: number
+    ended?: number
+    status: "pending" | "complete" | "incomplete"
+    afterHash?: string
+    omissions?: Array<{
+      file: string
+      reason: "size_limit" | "read_failed"
+    }>
+    baselineOmissions?: Array<{
+      file: string
+      reason: "size_limit" | "read_failed"
+    }>
+    error?: "baseline_unavailable" | "capture_failed" | "interrupted" | "legacy_range"
+  }
   operation?:
     | {
         status: "pending"
@@ -8959,6 +10163,75 @@ export type Part =
   | RetryPart
   | CompactionPart
   | CompactionRecoveryPart
+
+export type SessionPartContentReference = {
+  version: string
+  bytes: number
+}
+
+export type SessionTimelineMessage = {
+  info: Message
+  order: string
+  version: string
+  content: SessionPartContentReference
+}
+
+export type SessionTimelinePage = {
+  items: Array<SessionTimelineMessage>
+  referencedRoots: Array<SessionTimelineMessage>
+  nextCursor: string | null
+  hasMore: boolean
+  total: number
+  generation: number
+}
+
+export type SessionHistorySearchPage = {
+  items: Array<{
+    sessionID: string
+    messageID: string
+    partID: string
+    version: string
+    category: "text" | "reasoning" | "tool"
+    role: "user" | "assistant"
+    offset: number
+    text: string
+  }>
+  nextCursor: string | null
+  preparing: boolean
+  prepared: number
+  scanned: number
+  indexed: boolean
+}
+
+export type SessionMessageDetails = {
+  info: Message
+  version: string
+}
+
+export type SessionPartSummary = {
+  id: string
+  sessionID: string
+  messageID: string
+  type: string
+  preview: string
+  render?: boolean
+  status?: string
+  tool?: string
+  content: SessionPartContentReference
+}
+
+export type SessionPartPage = {
+  items: Array<SessionPartSummary>
+  nextCursor: string | null
+  previousCursor: string | null
+  hasMore: boolean
+  hasEarlier: boolean
+}
+
+export type SessionPartContent = {
+  part: Part
+  version: string
+}
 
 export type SessionMessagePage = {
   items: Array<{
@@ -9038,6 +10311,24 @@ export type SessionRollbackSummary = {
   files: Array<string>
   patchPartIDs: Array<string>
   canUnrollback: boolean
+}
+
+export type SessionFileRestorePreview = {
+  id: string
+  expiresAt: number
+  files: Array<{
+    file: string
+    workspace: SnapshotWorkspace
+    version: {
+      entry: string | null
+      content?: string
+    }
+    before: string
+    after: string
+    action: "create" | "replace" | "delete"
+    truncated: boolean
+    binary: boolean
+  }>
 }
 
 export type SessionFileRestoreResult = {
@@ -9205,6 +10496,23 @@ export type CortexConcurrencyStatus = {
    * Cortex tasks waiting for an admission slot
    */
   queued: number
+}
+
+export type ProviderDirectoryModel = {
+  providerID: string
+  model: Model
+}
+
+export type ProviderDirectoryPage = {
+  version: string
+  models: Array<ProviderDirectoryModel>
+  nextCursor?: string
+  total: number
+}
+
+export type ProviderModelLookup = {
+  version: string
+  models: Array<ProviderDirectoryModel>
 }
 
 export type ProviderConnectionCreateInput = {
@@ -9601,6 +10909,11 @@ export type WorkspaceFileSearchResponse = {
 }
 
 export type WorkspaceFileStatusSummary = {
+  sync?: {
+    epoch: string
+    seq: number
+  }
+  generatedAt?: number
   capability?: WorkspaceSearchCapability
   files: Array<{
     path: string
@@ -10895,7 +12208,7 @@ export type BrowserManageProfile =
     }
 
 export type BrowserAnnotationResponse = {
-  protocolVersion: 4
+  protocolVersion: 5
   annotation: {
     id: string
     pageURL: string
@@ -10911,7 +12224,7 @@ export type BrowserAnnotationResponse = {
 }
 
 export type BrowserAnnotationRequest = {
-  protocolVersion: 4
+  protocolVersion: 5
   pageId: string
   x: number
   y: number
@@ -10922,14 +12235,14 @@ export type BrowserAnnotationRequest = {
 }
 
 export type BrowserDiagnosticsResponse = {
-  protocolVersion: 4
+  protocolVersion: 5
   pageId: string
   action: string
   data: unknown
 }
 
 export type BrowserDiagnosticsRequest = {
-  protocolVersion: 4
+  protocolVersion: 5
   pageId: string
   commandId: string
   action: "console" | "network" | "elements" | "assets" | "downloads" | "clear"
@@ -10938,11 +12251,11 @@ export type BrowserDiagnosticsRequest = {
 
 export type BrowserApiSessionState = {
   type: "session.state"
-  protocolVersion: 4
+  protocolVersion: 5
   ownerKey: string
   status: "empty" | "suspended" | "active" | "failed"
   presentation: {
-    protocolVersion: 4
+    protocolVersion: 5
     kind: "native"
     capabilities: {
       native: boolean
@@ -10967,7 +12280,7 @@ export type BrowserApiSessionState = {
 
 export type BrowserControlResponse = {
   type: "control.result"
-  protocolVersion: 4
+  protocolVersion: 5
   result:
     | {
         type: "void"
@@ -11062,7 +12375,7 @@ export type BrowserControlResponse = {
 
 export type BrowserControlRequest = {
   pageId: string
-  protocolVersion: 4
+  protocolVersion: 5
   command:
     | {
         type: "navigate"
@@ -11647,6 +12960,10 @@ export type VoiceTranscriptionResult = {
   text: string
 }
 
+export type VoicePreviewInput = {
+  text: string
+}
+
 export type ModelRoleUsage = {
   name: string
   description?: string
@@ -11856,6 +13173,10 @@ export type EventMessageUpdated = {
   type: "message.updated"
   properties: {
     info: Message
+    content?: {
+      version: string
+      bytes: number
+    }
   }
 }
 
@@ -11872,6 +13193,27 @@ export type EventMessagePartUpdated = {
   properties: {
     part: Part
     delta?: string
+  }
+}
+
+export type EventMessagePartSummary = {
+  type: "message.part.summary"
+  properties: {
+    summary: SessionPartSummary
+    delta?: string
+    subscription?: number
+    checkpointEpoch?: string
+    checkpointSeq?: number
+    content?:
+      | {
+          kind: "checkpoint"
+          part: Part
+        }
+      | {
+          kind: "delta"
+          baseVersion: string
+          delta: string
+        }
   }
 }
 
@@ -11934,6 +13276,111 @@ export type EventUsageUpdated = {
     status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
     phase: "queued" | "request" | "generating" | "tool" | "terminal"
     record: UsageRecord
+  }
+}
+
+export type RolloutEvidenceRecord =
+  | {
+      kind: "run"
+      value: RolloutRunRecord
+    }
+  | {
+      kind: "segment"
+      value: {
+        version: 1
+        id: string
+        owner:
+          | {
+              kind: "session"
+              scopeID: string
+              sessionID: string
+            }
+          | {
+              kind: "operation"
+              scopeID: string
+              operationID: string
+            }
+        runID: string
+        started: number
+        ended?: number
+        status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+      }
+    }
+  | {
+      kind: "call"
+      value: RolloutCallRecord
+    }
+  | {
+      kind: "attempt"
+      value: RolloutAttemptRecord
+    }
+  | {
+      kind: "tool"
+      value: RolloutToolExecutionRecord
+    }
+  | {
+      kind: "process"
+      value: {
+        version: 1
+        id: string
+        owner:
+          | {
+              kind: "session"
+              scopeID: string
+              sessionID: string
+            }
+          | {
+              kind: "operation"
+              scopeID: string
+              operationID: string
+            }
+        runID: string
+        toolExecutionID: string
+        started: number
+        ended?: number
+        status: "running" | "completed" | "interrupted" | "failed"
+        stream: RolloutArtifactRef
+        pid?: number
+        exitCode?: number | null
+        signal?: string | null
+      }
+    }
+
+export type EventRolloutUpdated = {
+  type: "rollout.updated"
+  properties: {
+    owner:
+      | {
+          kind: "session"
+          scopeID: string
+          sessionID: string
+        }
+      | {
+          kind: "operation"
+          scopeID: string
+          operationID: string
+        }
+    revision: number
+    record: RolloutEvidenceRecord
+  }
+}
+
+export type EventSessionExecutionUpdated = {
+  type: "session.execution.updated"
+  properties: {
+    sessionID: string
+    rootID: string
+  }
+}
+
+export type EventSessionToolActivity = {
+  type: "session.tool.activity"
+  properties: {
+    sessionID: string
+    messageID: string
+    callID: string
+    processID: string
+    revision: number
   }
 }
 
@@ -12338,6 +13785,21 @@ export type EventVcsBranchUpdated = {
   }
 }
 
+export type EventExecutionUpdated = {
+  type: "execution.updated"
+  properties: {
+    sessionID: string
+    revision: number
+    summary: ExecutionSummary
+    roundSummaries: Array<ExecutionSummary>
+    previousRevision?: number
+    upserts: Array<ExecutionTrajectoryNode>
+    processUpserts?: Array<ExecutionTrajectoryNode>
+    processRemoved?: Array<string>
+    removed: Array<string>
+  }
+}
+
 export type EventBlueprintLoopCreated = {
   type: "blueprint_loop.created"
   properties: {
@@ -12491,12 +13953,16 @@ export type Event =
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
+  | EventMessagePartSummary
   | EventMessagePartRemoved
   | EventProviderAuthUpdated
   | EventConfigUpdated
   | EventPermissionAsked
   | EventPermissionReplied
   | EventUsageUpdated
+  | EventRolloutUpdated
+  | EventSessionExecutionUpdated
+  | EventSessionToolActivity
   | EventSessionInputProgress
   | EventSessionUpdated
   | EventSessionDeleted
@@ -12546,6 +14012,7 @@ export type Event =
   | EventNoteArchived
   | EventNoteUnarchived
   | EventVcsBranchUpdated
+  | EventExecutionUpdated
   | EventBlueprintLoopCreated
   | EventBlueprintLoopUpdated
   | EventBlueprintLoopCompleted
@@ -12813,6 +14280,72 @@ export type ProjectUpdateDirectoriesResponses = {
 
 export type ProjectUpdateDirectoriesResponse =
   ProjectUpdateDirectoriesResponses[keyof ProjectUpdateDirectoriesResponses]
+
+export type ProjectWorktreeInventoryData = {
+  body?: never
+  path: {
+    scopeID: string
+  }
+  query?: never
+  url: "/global/project/{scopeID}/worktree-inventory"
+}
+
+export type ProjectWorktreeInventoryErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectWorktreeInventoryError = ProjectWorktreeInventoryErrors[keyof ProjectWorktreeInventoryErrors]
+
+export type ProjectWorktreeInventoryResponses = {
+  /**
+   * Project folders
+   */
+  200: ProjectWorktreeInventory
+}
+
+export type ProjectWorktreeInventoryResponse =
+  ProjectWorktreeInventoryResponses[keyof ProjectWorktreeInventoryResponses]
+
+export type ProjectWorktreeDetailsData = {
+  body?: never
+  path: {
+    scopeID: string
+  }
+  query: {
+    target: string
+    sourceWorkspaceID?: string
+  }
+  url: "/global/project/{scopeID}/worktree-details"
+}
+
+export type ProjectWorktreeDetailsErrors = {
+  /**
+   * Project folders
+   */
+  400: ProjectDirectoriesInvalid
+  /**
+   * Project folders
+   */
+  409: ProjectDirectoriesConflict
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectWorktreeDetailsError = ProjectWorktreeDetailsErrors[keyof ProjectWorktreeDetailsErrors]
+
+export type ProjectWorktreeDetailsResponses = {
+  /**
+   * Project folders
+   */
+  200: WorktreeDetails
+}
+
+export type ProjectWorktreeDetailsResponse = ProjectWorktreeDetailsResponses[keyof ProjectWorktreeDetailsResponses]
 
 export type ProjectWorktreesData = {
   body?: never
@@ -13145,6 +14678,7 @@ export type GlobalStatsProgressResponses = {
         }
         cost: number
         accounting?: RolloutAccountingSummary
+        costPresentation?: ExecutionCostPresentation
         cacheHitRate: number
         avgCostPerTurn: number
         avgTokensPerTurn: number
@@ -15043,6 +16577,42 @@ export type ScopeUpdateResponses = {
 
 export type ScopeUpdateResponse = ScopeUpdateResponses[keyof ScopeUpdateResponses]
 
+export type ScopeBootstrapCoreData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/scope/bootstrap-core"
+}
+
+export type ScopeBootstrapCoreErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ScopeBootstrapCoreError = ScopeBootstrapCoreErrors[keyof ScopeBootstrapCoreErrors]
+
+export type ScopeBootstrapCoreResponses = {
+  /**
+   * Essential Scope state; model catalog and auxiliary panels load separately
+   */
+  200: ScopeBootstrapCore
+}
+
+export type ScopeBootstrapCoreResponse = ScopeBootstrapCoreResponses[keyof ScopeBootstrapCoreResponses]
+
 export type ScopeBootstrapData = {
   body?: never
   path?: never
@@ -16606,6 +18176,336 @@ export type SessionAgendaResponses = {
 
 export type SessionAgendaResponse2 = SessionAgendaResponses[keyof SessionAgendaResponses]
 
+export type SessionExecutionSummaryData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    runID?: string
+  }
+  url: "/session/{sessionID}/execution/summary"
+}
+
+export type SessionExecutionSummaryErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionSummaryError = SessionExecutionSummaryErrors[keyof SessionExecutionSummaryErrors]
+
+export type SessionExecutionSummaryResponses = {
+  /**
+   * Read a compact session execution summary
+   */
+  200: ExecutionSummary
+}
+
+export type SessionExecutionSummaryResponse = SessionExecutionSummaryResponses[keyof SessionExecutionSummaryResponses]
+
+export type SessionExecutionTrajectoryData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "process" | "records"
+    order?: "time" | "round" | "call"
+    runID?: string
+    session?: string
+    actor?: "main" | "all"
+    query?: string
+    kind?:
+      | "turn"
+      | "input"
+      | "context"
+      | "reasoning"
+      | "output"
+      | "model"
+      | "retry"
+      | "tool"
+      | "process"
+      | "compaction"
+      | "subtask"
+    status?: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown"
+    kinds?: string
+    statuses?: string
+    anomalies?: boolean
+    from?: number
+    to?: number
+    activityFrom?: number
+    activityTo?: number
+    cursor?: string
+    anchor?: string
+    position?: "before" | "after" | "around"
+    limit?: number
+  }
+  url: "/session/{sessionID}/execution/trajectory"
+}
+
+export type SessionExecutionTrajectoryErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionTrajectoryError = SessionExecutionTrajectoryErrors[keyof SessionExecutionTrajectoryErrors]
+
+export type SessionExecutionTrajectoryResponses = {
+  /**
+   * Page through session execution records
+   */
+  200: ExecutionTrajectoryPage
+}
+
+export type SessionExecutionTrajectoryResponse =
+  SessionExecutionTrajectoryResponses[keyof SessionExecutionTrajectoryResponses]
+
+export type SessionExecutionNodeData = {
+  body?: never
+  path: {
+    sessionID: string
+    nodeID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    runID?: string
+  }
+  url: "/session/{sessionID}/execution/nodes/{nodeID}"
+}
+
+export type SessionExecutionNodeErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionNodeError = SessionExecutionNodeErrors[keyof SessionExecutionNodeErrors]
+
+export type SessionExecutionNodeResponses = {
+  /**
+   * Inspect one session execution record
+   */
+  200: ExecutionNodeDetail
+}
+
+export type SessionExecutionNodeResponse = SessionExecutionNodeResponses[keyof SessionExecutionNodeResponses]
+
+export type SessionExecutionContentData = {
+  body?: never
+  path: {
+    sessionID: string
+    nodeID: string
+  }
+  query: {
+    directory?: string
+    scopeID?: string
+    field: string
+    runID?: string
+    version?: string
+    offset?: number
+    limit?: number
+  }
+  url: "/session/{sessionID}/execution/nodes/{nodeID}/content"
+}
+
+export type SessionExecutionContentErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionContentError = SessionExecutionContentErrors[keyof SessionExecutionContentErrors]
+
+export type SessionExecutionContentResponses = {
+  /**
+   * Read a bounded execution content page
+   */
+  200: RolloutEvidenceContent
+}
+
+export type SessionExecutionContentResponse = SessionExecutionContentResponses[keyof SessionExecutionContentResponses]
+
+export type SessionExecutionContentSectionsData = {
+  body?: never
+  path: {
+    sessionID: string
+    nodeID: string
+  }
+  query: {
+    directory?: string
+    scopeID?: string
+    field: string
+    runID?: string
+    version?: string
+    cursor?: string
+    limit?: number
+  }
+  url: "/session/{sessionID}/execution/nodes/{nodeID}/content/sections"
+}
+
+export type SessionExecutionContentSectionsErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionContentSectionsError =
+  SessionExecutionContentSectionsErrors[keyof SessionExecutionContentSectionsErrors]
+
+export type SessionExecutionContentSectionsResponses = {
+  /**
+   * Read structured execution content sections
+   */
+  200: ExecutionContentSections
+}
+
+export type SessionExecutionContentSectionsResponse =
+  SessionExecutionContentSectionsResponses[keyof SessionExecutionContentSectionsResponses]
+
+export type SessionExecutionContentSearchData = {
+  body?: never
+  path: {
+    sessionID: string
+    nodeID: string
+  }
+  query: {
+    directory?: string
+    scopeID?: string
+    field: string
+    runID?: string
+    version?: string
+    cursor?: string
+    limit?: number
+    query: string
+    caseSensitive?: boolean
+  }
+  url: "/session/{sessionID}/execution/nodes/{nodeID}/content/search"
+}
+
+export type SessionExecutionContentSearchErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionContentSearchError =
+  SessionExecutionContentSearchErrors[keyof SessionExecutionContentSearchErrors]
+
+export type SessionExecutionContentSearchResponses = {
+  /**
+   * Search an entire version of execution content
+   */
+  200: ExecutionContentSearch
+}
+
+export type SessionExecutionContentSearchResponse =
+  SessionExecutionContentSearchResponses[keyof SessionExecutionContentSearchResponses]
+
+export type SessionExecutionContentDownloadData = {
+  body?: never
+  path: {
+    sessionID: string
+    nodeID: string
+  }
+  query: {
+    directory?: string
+    scopeID?: string
+    field: string
+    runID?: string
+    version?: string
+  }
+  url: "/session/{sessionID}/execution/nodes/{nodeID}/content/download"
+}
+
+export type SessionExecutionContentDownloadErrors = {
+  /**
+   * Invalid execution content query or version
+   */
+  400: unknown
+  /**
+   * Execution content was not found
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionContentDownloadError =
+  SessionExecutionContentDownloadErrors[keyof SessionExecutionContentDownloadErrors]
+
+export type SessionExecutionContentDownloadResponses = {
+  /**
+   * Verified execution content
+   */
+  200: Blob | File
+}
+
+export type SessionExecutionContentDownloadResponse =
+  SessionExecutionContentDownloadResponses[keyof SessionExecutionContentDownloadResponses]
+
 export type ProjectTaskDefaultsGetData = {
   body?: never
   path?: never
@@ -16733,6 +18633,87 @@ export type SessionIndexResponses = {
 }
 
 export type SessionIndexResponse = SessionIndexResponses[keyof SessionIndexResponses]
+
+export type SessionTurnExecutionData = {
+  body?: {
+    rootIDs: Array<string>
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/turn-execution"
+}
+
+export type SessionTurnExecutionErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionTurnExecutionError = SessionTurnExecutionErrors[keyof SessionTurnExecutionErrors]
+
+export type SessionTurnExecutionResponses = {
+  /**
+   * Execution states for the requested roots
+   */
+  200: Array<TurnExecutionState>
+}
+
+export type SessionTurnExecutionResponse = SessionTurnExecutionResponses[keyof SessionTurnExecutionResponses]
+
+export type SessionToolActivityData = {
+  body?: never
+  path: {
+    sessionID: string
+    messageID: string
+    partID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    callID?: string
+  }
+  url: "/session/{sessionID}/message/{messageID}/part/{partID}/activity"
+}
+
+export type SessionToolActivityErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionToolActivityError = SessionToolActivityErrors[keyof SessionToolActivityErrors]
+
+export type SessionToolActivityResponses = {
+  /**
+   * Captured result of the selected tool invocation
+   */
+  200: ToolActivityResult
+}
+
+export type SessionToolActivityResponse = SessionToolActivityResponses[keyof SessionToolActivityResponses]
 
 export type SessionCancelRunData = {
   body?: never
@@ -18159,6 +20140,295 @@ export type SessionPromptResponses = {
 
 export type SessionPromptResponse = SessionPromptResponses[keyof SessionPromptResponses]
 
+export type SessionTimelinePageData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    cursor?: string
+    limit?: number
+    messageID?: string
+  }
+  url: "/session/{sessionID}/timeline/page"
+}
+
+export type SessionTimelinePageErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionTimelinePageError = SessionTimelinePageErrors[keyof SessionTimelinePageErrors]
+
+export type SessionTimelinePageResponses = {
+  /**
+   * Bounded message summaries and lightweight referenced roots
+   */
+  200: SessionTimelinePage
+}
+
+export type SessionTimelinePageResponse = SessionTimelinePageResponses[keyof SessionTimelinePageResponses]
+
+export type SessionHistorySearchData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query: {
+    directory?: string
+    scopeID?: string
+    query: string
+    reasoning?: boolean
+    tools?: boolean
+    cursor?: string
+    limit?: number
+  }
+  url: "/session/{sessionID}/history/search"
+}
+
+export type SessionHistorySearchErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionHistorySearchError = SessionHistorySearchErrors[keyof SessionHistorySearchErrors]
+
+export type SessionHistorySearchResponses = {
+  /**
+   * Stable message and Part matches with resumable preparation and bounded cursors
+   */
+  200: SessionHistorySearchPage
+}
+
+export type SessionHistorySearchResponse = SessionHistorySearchResponses[keyof SessionHistorySearchResponses]
+
+export type SessionHistoryTextData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    messageID?: string
+    rootID?: string
+    role?: "user" | "assistant"
+    latest?: boolean
+    reasoning?: boolean
+    tools?: boolean
+  }
+  url: "/session/{sessionID}/history/text"
+}
+
+export type SessionHistoryTextErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionHistoryTextError = SessionHistoryTextErrors[keyof SessionHistoryTextErrors]
+
+export type SessionHistoryTextResponses = {
+  /**
+   * Original text independent of the mounted window
+   */
+  200: {
+    text: string
+  }
+}
+
+export type SessionHistoryTextResponse = SessionHistoryTextResponses[keyof SessionHistoryTextResponses]
+
+export type SessionMessageDetailsData = {
+  body?: never
+  path: {
+    sessionID: string
+    messageID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    version?: string
+  }
+  url: "/session/{sessionID}/message/{messageID}/details"
+}
+
+export type SessionMessageDetailsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionMessageDetailsError = SessionMessageDetailsErrors[keyof SessionMessageDetailsErrors]
+
+export type SessionMessageDetailsResponses = {
+  /**
+   * Original message metadata without Part bodies
+   */
+  200: SessionMessageDetails
+}
+
+export type SessionMessageDetailsResponse = SessionMessageDetailsResponses[keyof SessionMessageDetailsResponses]
+
+export type SessionPartPageData = {
+  body?: never
+  path: {
+    sessionID: string
+    messageID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    cursor?: string
+    limit?: number
+    partID?: string
+    older?: boolean
+  }
+  url: "/session/{sessionID}/message/{messageID}/part/page"
+}
+
+export type SessionPartPageErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionPartPageError = SessionPartPageErrors[keyof SessionPartPageErrors]
+
+export type SessionPartPageResponses = {
+  /**
+   * Bounded Part summaries with versioned content references
+   */
+  200: SessionPartPage
+}
+
+export type SessionPartPageResponse = SessionPartPageResponses[keyof SessionPartPageResponses]
+
+export type SessionPartContentData = {
+  body?: never
+  path: {
+    sessionID: string
+    messageID: string
+    partID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    version?: string
+  }
+  url: "/session/{sessionID}/message/{messageID}/part/{partID}/content"
+}
+
+export type SessionPartContentErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionPartContentError = SessionPartContentErrors[keyof SessionPartContentErrors]
+
+export type SessionPartContentResponses = {
+  /**
+   * Canonical Part content and its version
+   */
+  200: SessionPartContent
+}
+
+export type SessionPartContentResponse = SessionPartContentResponses[keyof SessionPartContentResponses]
+
 export type SessionMessagePageData = {
   body?: never
   path: {
@@ -18698,12 +20968,113 @@ export type SessionUnrollbackResponses = {
 
 export type SessionUnrollbackResponse = SessionUnrollbackResponses[keyof SessionUnrollbackResponses]
 
-export type SessionFilesRestoreData = {
+export type SessionFilesPreviewData = {
   body?: {
     rollbackID?: string
     messageID?: string
     partID?: string
     files?: Array<string>
+    selectedFiles?: Array<{
+      workspaceID: string
+      generation: number
+      file: string
+    }>
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/files/preview"
+}
+
+export type SessionFilesPreviewErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionFilesPreviewError = SessionFilesPreviewErrors[keyof SessionFilesPreviewErrors]
+
+export type SessionFilesPreviewResponses = {
+  /**
+   * Restore preview and version identity
+   */
+  200: SessionFileRestorePreview
+}
+
+export type SessionFilesPreviewResponse = SessionFilesPreviewResponses[keyof SessionFilesPreviewResponses]
+
+export type SessionFilesDiffData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query: {
+    directory?: string
+    scopeID?: string
+    messageID?: string
+    workspaceID: string
+    generation: number
+    file: string
+  }
+  url: "/session/{sessionID}/files/diff"
+}
+
+export type SessionFilesDiffErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionFilesDiffError = SessionFilesDiffErrors[keyof SessionFilesDiffErrors]
+
+export type SessionFilesDiffResponses = {
+  /**
+   * Historical file diff
+   */
+  200: FileDiff
+}
+
+export type SessionFilesDiffResponse = SessionFilesDiffResponses[keyof SessionFilesDiffResponses]
+
+export type SessionFilesRestoreData = {
+  body?: {
+    previewID: string
   }
   path: {
     sessionID: string
@@ -19338,10 +21709,91 @@ export type CommandListResponses = {
   /**
    * List of commands
    */
-  200: Array<Command>
+  200: Array<CommandSummary>
 }
 
 export type CommandListResponse = CommandListResponses[keyof CommandListResponses]
+
+export type ProviderCatalogPageData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    cursor?: string
+    limit?: number
+    query?: string
+    providerID?: string
+    connectedOnly: boolean
+  }
+  url: "/provider/catalog-page"
+}
+
+export type ProviderCatalogPageErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProviderCatalogPageError = ProviderCatalogPageErrors[keyof ProviderCatalogPageErrors]
+
+export type ProviderCatalogPageResponses = {
+  /**
+   * Model directory page
+   */
+  200: ProviderDirectoryPage
+}
+
+export type ProviderCatalogPageResponse = ProviderCatalogPageResponses[keyof ProviderCatalogPageResponses]
+
+export type ProviderModelsByIdData = {
+  body?: {
+    models: Array<{
+      providerID: string
+      modelID: string
+    }>
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/models-by-id"
+}
+
+export type ProviderModelsByIdErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProviderModelsByIdError = ProviderModelsByIdErrors[keyof ProviderModelsByIdErrors]
+
+export type ProviderModelsByIdResponses = {
+  /**
+   * Resolved model metadata
+   */
+  200: ProviderModelLookup
+}
+
+export type ProviderModelsByIdResponse = ProviderModelsByIdResponses[keyof ProviderModelsByIdResponses]
 
 export type ProviderListData = {
   body?: never
@@ -26570,6 +29022,38 @@ export type VoiceTranscribeResponses = {
 
 export type VoiceTranscribeResponse = VoiceTranscribeResponses[keyof VoiceTranscribeResponses]
 
+export type VoicePreviewData = {
+  body?: VoicePreviewInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/voice/preview"
+}
+
+export type VoicePreviewErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type VoicePreviewError = VoicePreviewErrors[keyof VoicePreviewErrors]
+
+export type VoicePreviewResponses = {
+  /**
+   * Synthesized audio
+   */
+  200: Blob | File
+}
+
+export type VoicePreviewResponse = VoicePreviewResponses[keyof VoicePreviewResponses]
+
 export type AppLogData = {
   body?: {
     /**
@@ -27595,6 +30079,7 @@ export type EventReplayData = {
     scopeID?: string
     since: number
     epoch?: string
+    mode?: "full" | "projection"
   }
   url: "/event/replay"
 }

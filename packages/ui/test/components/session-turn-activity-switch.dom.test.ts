@@ -6,6 +6,8 @@ type ActivityDisplayMode = "full" | "balanced" | "minimal"
 
 interface ActivitySwitchHarness {
   setMode: (mode: ActivityDisplayMode) => void
+  openedTools: { sessionID: string; messageID: string; partID: string; callID?: string }[]
+  setExecutionStatus: (status: "completed" | "stopped" | "failed") => void
 }
 
 let dom: JSDOM
@@ -72,54 +74,85 @@ afterAll(async () => {
 })
 
 describe("SessionTurn activity display switching", () => {
-  test("switches minimal to full without remounting or losing timeline items", async () => {
+  test("all modes share the same process and preserve mounted part identity", async () => {
     const turn = document.querySelector('[data-component="session-turn"]')
     const sentinel = document.querySelector("#activity-switch-sentinel")
     const answer = document.querySelector('[data-slot="session-turn-timeline-item"][data-kind="text"]')
-
-    expect(turn?.getAttribute("data-activity-display")).toBe("minimal")
-    expect(document.querySelector('[data-component="minimal-activity-summary"]')).not.toBeNull()
+    const process = document.querySelector('[data-slot="turn-process-trigger"]') as HTMLButtonElement
+    const batches = Array.from(document.querySelectorAll('[data-component="activity-batch"]'))
+    expect(batches).toHaveLength(1)
+    expect(process.getAttribute("aria-expanded")).toBe("false")
+    expect(document.querySelector('[data-component="minimal-activity-summary"]')).toBeNull()
     expect(answer?.textContent).toContain("Representative answer survives mode switches.")
-
-    expect(
-      document.querySelector(`[data-test-slot="message.before"][data-test-message="assistant-activity-switch-second"]`),
-    ).not.toBeNull()
-    expect(
-      document.querySelector(
-        `[data-test-slot="message.actions"][data-test-message="assistant-activity-switch-second"]`,
-      ),
-    ).not.toBeNull()
-    expect(
-      document.querySelector(`[data-test-slot="message.after"][data-test-message="assistant-activity-switch-second"]`),
-    ).not.toBeNull()
-
-    harness.setMode("balanced")
-    await waitForUpdate()
-
-    const activityGroups = document.querySelectorAll(
-      '[data-slot="session-turn-timeline-item"][data-kind="activity-group"]',
-    )
-    const activityRows = document.querySelectorAll('[data-kind="activity-group"] [data-slot="activity-step"]')
-    expect(activityGroups).toHaveLength(2)
-    expect(activityRows).toHaveLength(2)
-    expect(activityRows[0]?.textContent).toContain("Scholight")
-    expect(activityRows[0]?.textContent).toContain("checkpoint convergence")
-    expect(activityRows[1]?.textContent).toContain("Scholight Extract")
-    expect(activityRows[1]?.textContent).toContain("https://example.com/paper")
-    expect(document.querySelector('[data-slot="activity-trace-header"]')).toBeNull()
-    expect(document.querySelector('[data-slot="activity-trace-marker"]')).toBeNull()
-    expect(document.querySelector('[data-slot="activity-trace-connector"]')).toBeNull()
-    expect(activityGroups[0]?.hasAttribute("data-activity-continues")).toBe(true)
-    expect(activityGroups[1]?.hasAttribute("data-activity-follows")).toBe(true)
-
+    for (const slot of ["message.before", "message.actions", "message.after"]) {
+      expect(
+        document.querySelector(`[data-test-slot="${slot}"][data-test-message="assistant-activity-switch-second"]`),
+      ).not.toBeNull()
+    }
     harness.setMode("full")
     await waitForUpdate()
+    expect(process.getAttribute("aria-expanded")).toBe("true")
+    expect(document.querySelectorAll('[data-slot="activity-step"]')).toHaveLength(3)
+    process.click()
+    await waitForUpdate()
+    expect(process.getAttribute("aria-expanded")).toBe("false")
+    for (const mode of ["balanced", "minimal", "full"] as const) {
+      harness.setMode(mode)
+      await waitForUpdate()
+      expect(document.querySelector('[data-component="session-turn"]')).toBe(turn)
+      expect(document.querySelector("#activity-switch-sentinel")).toBe(sentinel)
+      expect(document.querySelector('[data-slot="session-turn-timeline-item"][data-kind="text"]')).toBe(answer)
+      expect(Array.from(document.querySelectorAll('[data-component="activity-batch"]'))).toEqual(batches)
+      expect(process.getAttribute("aria-expanded")).toBe("false")
+    }
+  })
+  test("tool rows open the owned detail target without constructing an inline result", async () => {
+    harness.setMode("full")
+    const process = document.querySelector('[data-slot="turn-process-trigger"]') as HTMLButtonElement
+    process.click()
+    await waitForUpdate()
+    const tool = document.querySelector('[data-slot="activity-step-trigger"]') as HTMLButtonElement
+    tool.click()
+    await waitForUpdate()
+    expect(harness.openedTools).toEqual([
+      {
+        sessionID: "session-activity-switch",
+        messageID: "assistant-activity-switch",
+        partID: "tool-activity-switch",
+        callID: "call-activity-switch",
+      },
+    ])
+    expect(tool.hasAttribute("aria-expanded")).toBe(false)
+    expect(document.querySelector('[data-component="tool-result-body"]')).toBeNull()
+  })
 
-    expect(document.querySelector('[data-component="session-turn"]')).toBe(turn)
-    expect(document.querySelector("#activity-switch-sentinel")).toBe(sentinel)
-    expect(turn?.getAttribute("data-activity-display")).toBe("full")
-    expect(document.querySelectorAll('[data-slot="session-turn-timeline-item"][data-kind="tool"]')).toHaveLength(2)
-    expect(document.querySelector('[data-slot="session-turn-timeline-item"][data-kind="text"]')).toBe(answer)
-    expect(document.querySelectorAll('[data-slot="session-turn-timeline-item"]')).toHaveLength(4)
+  test("process metadata begins the answer without a repeated agent brand row", () => {
+    const timeline = document.querySelector('[data-slot="session-turn-timeline"]')!
+    expect(timeline.firstElementChild?.getAttribute("data-slot")).toBe("turn-process-meta")
+    expect(document.querySelector('[data-slot="turn-agent-identity"]')).toBeNull()
+  })
+
+  test("a tool failure remains on its call without duplicating counters in process controls", async () => {
+    harness.setExecutionStatus("completed")
+    await waitForUpdate()
+    const process = document.querySelector('[data-slot="turn-process-trigger"]')!
+    const batch = document.querySelector('[data-slot="activity-batch-trigger"]')!
+    expect(process.textContent).not.toContain("failed")
+    expect(batch.textContent).not.toContain("failed")
+    const failed = document.querySelector('[data-slot="activity-step"][data-state="error"]')!
+    expect(failed.textContent).toContain("Inspect missing.json without changing files.")
+    expect(failed.textContent).not.toContain("Failed")
+    expect(failed.querySelector('[data-slot="activity-step-trigger"]')?.getAttribute("aria-label")).toContain("Failed")
+  })
+
+  test("process controls still report the canonical stopped or failed root", async () => {
+    const process = document.querySelector('[data-slot="turn-process-trigger"]')!
+    harness.setExecutionStatus("stopped")
+    await waitForUpdate()
+    expect(process.textContent?.trim()).toBe("Stopped")
+    harness.setExecutionStatus("failed")
+    await waitForUpdate()
+    expect(process.textContent?.trim()).toBe("Execution failed")
+    harness.setExecutionStatus("completed")
   })
 })

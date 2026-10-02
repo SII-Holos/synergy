@@ -12,7 +12,7 @@ export type TranslateModelRoleDescriptor = (descriptor: MessageDescriptor) => st
 type ModelRoleCopySource = Pick<ModelRoleSummary, "label" | "summary"> & { field: string }
 
 export const modelRoleDraftCopy = {
-  useFallback: { id: "settings.modelRole.fallback", message: "Use fallback" },
+  useFallback: { id: "settings.modelRole.fallback", message: "Automatic" },
   willUseAfterSaving: { id: "settings.modelRole.willUseAfterSaving", message: "Will use {model} after saving" },
   willResolveToVia: {
     id: "settings.modelRole.willResolveToVia",

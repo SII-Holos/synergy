@@ -12,6 +12,7 @@ import { resolveWorkspaceModule } from "./shared"
 import path from "node:path"
 import { readdir, readFile } from "node:fs/promises"
 import ts from "typescript"
+import { ToolIntent } from "../../packages/harness/src/session/tool-intent"
 import {
   findAssign,
   findBlock,
@@ -293,6 +294,10 @@ export async function generate(): Promise<string> {
     "# Tools Reference",
     "",
     "Generated from the builtin tool registry in `packages/harness/src/tool/registry.ts` and the canonical taxonomy in `packages/harness/src/tool/taxonomy.ts`.",
+    "",
+    "## Invocation intent",
+    "",
+    `Every model-visible tool schema includes optional \`workBrief\`: ${ToolIntent.description} Tool authors define only business parameters. The common intent is passed through the invocation context and does not affect execution identity or permissions. Conflicting or non-flat third-party schemas use \`{ workBrief, toolInput }\`, preserving native input.`,
     "",
     "## Tools",
     "",

@@ -220,7 +220,7 @@ export function apiLazy(input: Settings): Driver {
               const proof = crypto.randomUUID().replaceAll("-", "")
               const answer = await prompt(sessionID, "bash", {
                 command: `printf '${proof}\\n' > api-proof.txt; cat api-proof.txt`,
-                description: "Write remote acceptance proof",
+                workBrief: "Write remote acceptance proof",
               })
               const allocated = await observe("first-bash")
               if (allocated.containers.length !== 1 || !allocated.allocation)

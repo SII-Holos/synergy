@@ -34,7 +34,11 @@ export async function withinBrowserOwner<T>(
       const scope = session?.scope ?? (await Scope.resolve({ scopeID: owner.scopeID }))
       const workspaceID = session
         ? session.workspaceID
-        : (owner.workspaceID ?? (ScopeContext.tryScope()?.id === scope.id ? ScopeContext.tryWorkspace()?.id : null))
+        : owner.workspaceID !== undefined
+          ? owner.workspaceID
+          : ScopeContext.tryScope()?.id === scope.id
+            ? ScopeContext.tryWorkspace()?.id
+            : null
       const workspace = workspaceID ? await WorkspaceBinding.validate(workspaceID, scope.id, owner.generation) : null
       if (
         scope.id !== owner.scopeID ||

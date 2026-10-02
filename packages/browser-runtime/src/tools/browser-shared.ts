@@ -10,6 +10,13 @@ import { BrowserCommandService } from "../command-service.js"
 import { BrowserOwner } from "../owner.js"
 import type { BrowserPageBackend } from "../page.js"
 import type { BrowserSession } from "../types.js"
+import { AsyncLocalStorage } from "node:async_hooks"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionWorkspaceRuntime } from "@ericsanchezok/synergy-harness/session/workspace-runtime"
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
+import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 
 export class BrowserPageNotFoundError extends BrowserProtocolError {
   constructor(pageId?: string) {
@@ -25,6 +32,50 @@ export class BrowserPageNotFoundError extends BrowserProtocolError {
 }
 
 export namespace BrowserToolHelper {
+  export function operationID(ctx: Tool.Context, suffix: string): string {
+    return JSON.stringify([ctx.sessionID, ctx.callID ?? ctx.messageID, suffix])
+  }
+
+  export function withTask<T>(ctx: Tool.Context, fn: () => Promise<T>): Promise<T> {
+    return SessionWorkspaceRuntime.withBinding(
+      ctx.sessionID,
+      async () => {
+        ctx.abort.throwIfAborted()
+        const task = await Session.get(ctx.sessionID)
+        if (task.scope.id !== ScopeContext.current.scope.id) throw new Error("Browser task belongs to another Scope")
+        const environment = task.environmentID ? await Environment.get(task.environmentID, task.scope.id) : undefined
+        if (environment?.provider !== "native")
+          throw new BrowserProtocolError({
+            code: "browser_environment_unavailable",
+            message: "The selected Environment has no Browser provider.",
+            retryable: false,
+          })
+        const workspace = task.workspaceID
+          ? await WorkspaceBinding.validate(task.workspaceID, task.scope.id, task.workspace?.generation)
+          : null
+        return ScopeContext.provide({
+          scope: task.scope,
+          workspace,
+          fn: () =>
+            WorkspaceAccess.withinTask(async () => {
+              if (workspace) await WorkspaceAccess.use([workspace])
+              return fn()
+            }, ctx.abort),
+        })
+      },
+      ctx.abort,
+    )
+  }
+
+  export async function resolveOwner(ctx: Tool.Context, pageId: string): Promise<BrowserOwner.Info> {
+    return withTask(ctx, async () => {
+      const shared = BrowserOwner.shared()
+      if ((await getOrCreateSession(shared)).pages.some((page) => page.id === pageId)) return shared
+      const historical = BrowserOwner.fromToolContext(ctx)
+      if ((await getOrCreateSession(historical)).pages.some((page) => page.id === pageId)) return historical
+      throw new BrowserPageNotFoundError(pageId)
+    })
+  }
   export async function getOrCreateSession(owner: BrowserOwner.Info): Promise<BrowserSession> {
     return BrowserCommandService.session(owner)
   }
@@ -35,14 +86,17 @@ export namespace BrowserToolHelper {
     command: BrowserBackendCommand,
     suffix: string = command.type,
   ): Promise<BrowserBackendResult> {
-    const owner = BrowserOwner.fromToolContext(ctx)
-    return BrowserCommandService.execute(owner, {
-      command,
-      pageId,
-      authorize: ({ profileId, url, command }) =>
-        authorize(ctx, profileId, url, command.type === "upload" ? "uploads" : "access"),
-      commandId: commandId(ctx, suffix),
-      signal: ctx.abort,
+    return withTask(ctx, async () => {
+      const owner = await resolveOwner(ctx, pageId)
+      const taskContext = AsyncLocalStorage.snapshot()
+      return BrowserCommandService.execute(owner, {
+        command,
+        pageId,
+        authorize: ({ profileId, url, command }) =>
+          taskContext(() => authorize(ctx, profileId, url, command.type === "upload" ? "uploads" : "access")),
+        commandId: operationID(ctx, suffix),
+        signal: ctx.abort,
+      })
     })
   }
 
@@ -95,7 +149,7 @@ export namespace BrowserToolHelper {
   }
 
   export async function resolvePage(ctx: Tool.Context, pageId: string): Promise<BrowserPageBackend> {
-    return getPage(BrowserOwner.fromToolContext(ctx), pageId)
+    return getPage(await resolveOwner(ctx, pageId), pageId)
   }
 
   export async function markActivity(
@@ -104,9 +158,11 @@ export namespace BrowserToolHelper {
     kind: "reading" | "acting",
     tool: string,
     label: string,
-  ): Promise<void> {
-    const session = await BrowserCommandService.session(BrowserOwner.fromToolContext(ctx))
+  ): Promise<BrowserSession> {
+    const session = await BrowserCommandService.session(await resolveOwner(ctx, page.id))
     await session.notifyAgentActivity({
+      sessionID: ctx.sessionID,
+      operationID: operationID(ctx, tool),
       pageId: page.id,
       url: page.url,
       title: page.title,
@@ -114,11 +170,19 @@ export namespace BrowserToolHelper {
       tool,
       label,
     })
+    return session
   }
 
-  export async function markIdle(ctx: Tool.Context, page: BrowserPageBackend, tool: string): Promise<void> {
-    const session = await BrowserCommandService.session(BrowserOwner.fromToolContext(ctx))
+  export async function markIdle(
+    ctx: Tool.Context,
+    page: BrowserPageBackend,
+    tool: string,
+    activeSession?: BrowserSession,
+  ): Promise<void> {
+    const session = activeSession ?? (await BrowserCommandService.session(await resolveOwner(ctx, page.id)))
     await session.notifyAgentActivity({
+      sessionID: ctx.sessionID,
+      operationID: operationID(ctx, tool),
       pageId: page.id,
       url: page.url,
       title: page.title,
@@ -136,17 +200,13 @@ export namespace BrowserToolHelper {
     label: string,
     fn: () => Promise<T>,
   ): Promise<T> {
-    await markActivity(ctx, page, kind, tool, label)
+    const session = await markActivity(ctx, page, kind, tool, label)
     try {
       return await fn()
     } finally {
-      await markIdle(ctx, page, tool)
+      await markIdle(ctx, page, tool, session)
     }
   }
-}
-
-function commandId(ctx: Tool.Context, suffix: string): string {
-  return `${ctx.callID ?? ctx.messageID}:${suffix}`
 }
 
 interface FormatOptions {
@@ -277,4 +337,17 @@ export function withUnknownOutcomeGuidance(error: unknown, commandType: string):
     },
     { cause: error },
   )
+}
+
+export function browserAgentRecord(value: unknown, identity: string, collection: string): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value
+  const record = value as Record<string, unknown>
+  const { id, ...fields } = record
+  return {
+    ...fields,
+    ...(id === undefined ? {} : { [identity]: id }),
+    ...(Array.isArray(record[collection])
+      ? { [collection]: record[collection].map((item) => browserAgentRecord(item, identity, collection)) }
+      : {}),
+  }
 }

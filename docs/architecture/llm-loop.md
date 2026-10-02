@@ -348,6 +348,8 @@ When the inner loop reaches a terminal assistant:
 - completion notification state is updated;
 - waiters receive the selected terminal assistant.
 
+Run reconciliation also revisits earlier roots owning settled delegations. A later terminal reply can consume their materialized child continuation, allowing the earlier root with its own terminal reply to close once segments, calls, children and pending inputs are settled. A later root without a terminal reply cannot close it. Persisted lifecycle remains the execution-detail completion source; presentation does not infer completion from session idle.
+
 Provider, auth, output-length, timeout, abort, and unknown failures are persisted on the assistant message with terminal timing and canonical `finish: "error"`. A terminal assistant error is then propagated to callers such as Cortex so a failed task cannot be reported as completed.
 
 Startup reconciliation, Abort, and the pre-wake guard share one root-anchored, idempotent terminal repair. It canonicalizes a failed assistant that has an error or completion time but lacks a terminal finish without replacing its structured error, terminalizes a genuinely incomplete assistant with an aborted error, or creates one terminal aborted assistant when the latest reply-required root has none. Repair also settles that turn's non-terminal tool parts to `error`, in every branch, because a process that died mid-call can leave a part running on a message that is already terminal; [Sessions and Messages](session-and-messages.md#recovery) owns that behavior. Repair clears stale `pendingReply` and never invokes the model or tools.

@@ -102,5 +102,5 @@ export const GlobTool = Tool.define(
       }
     },
   },
-  { requiresWorkspace: true },
+  { requiresWorkspace: true, activityKind: "search" },
 )

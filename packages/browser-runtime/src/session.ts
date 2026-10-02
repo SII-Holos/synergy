@@ -41,6 +41,7 @@ export class BrowserSessionImpl implements BrowserSession {
   private saveTail: Promise<void> = Promise.resolve()
   private disposed = false
   private openings = new Map<string, { fingerprint: string; result: Promise<BrowserPageBackend> }>()
+  private activity = new Map<string, string>()
 
   constructor(
     readonly owner: BrowserOwner.Info,
@@ -207,6 +208,7 @@ export class BrowserSessionImpl implements BrowserSession {
     await entry.flight?.catch(() => undefined)
     await entry.live?.close()
     this.entries.delete(id)
+    this.activity.delete(id)
     await this.save()
     BrowserEvent.publish(this.owner, { type: "page.closed", pageId: id })
   }
@@ -420,6 +422,10 @@ export class BrowserSessionImpl implements BrowserSession {
   }
 
   async notifyAgentActivity(activity: BrowserAgentActivity): Promise<void> {
+    if (this.disposed) return
+    if (activity.kind === "idle" && this.activity.get(activity.pageId) !== activity.operationID) return
+    if (activity.kind === "idle") this.activity.delete(activity.pageId)
+    else this.activity.set(activity.pageId, activity.operationID)
     BrowserEvent.publish(this.owner, { type: "agent.activity", ...activity })
   }
 

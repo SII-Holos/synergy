@@ -5,6 +5,8 @@ import { useLingui } from "@lingui/solid"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { resourceMenuKeyDown } from "../workspace/resource-menu"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -17,12 +19,13 @@ import { workspaceFileOwner, workspaceFilePath } from "@/context/file/workspace"
 import { fileWriteErrorMessage, isFileWriteConflictError, isFileWriteDeniedError } from "@/context/file/errors"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { FileExplorer } from "./explorer"
+import { WorkspaceNavigator, type WorkspaceNavigatorController } from "../workspace/workspace-navigator"
 import { classifyFilePreview, resolveWorkspaceRelativePath } from "./model"
 import { buildWorkspaceFileBrowserUrl, buildWorkspaceFilePreviewUrl } from "@/utils/workspace-file-url"
 import { AttachmentPdfPreview } from "@/components/attachment-workbench/pdf-preview"
 import { FileSourceView, type FileSourceViewApi } from "./source-view"
 import "./styles.css"
-import { fileWorkbench as F } from "@/locales/messages"
+import { panels as P, fileWorkbench as F } from "@/locales/messages"
 import { useLocale } from "@/context/locale"
 import "@/components/attachment-workbench/styles.css"
 import type { PdfDocumentState } from "@/context/file"
@@ -413,6 +416,8 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
   const [editing, setEditing] = createSignal(!!file.draft.get(path()))
   const dirty = createMemo(() => file.draft.dirty(path()))
   const [saving, setSaving] = createSignal(false)
+  const [moreOpen, setMoreOpen] = createSignal(false)
+  const [navigator, setNavigator] = createSignal<WorkspaceNavigatorController>()
   let sourceApi: FileSourceViewApi | undefined
   const canEdit = createMemo(
     () => mode() === "source" && !!textContent()?.contentVersion && textContent()?.truncationReason !== "size",
@@ -502,7 +507,11 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
   return (
     <div class="file-workbench">
       <div class="file-workbench-toolbar">
-        <nav class="file-breadcrumb" aria-label={lingui._({ id: F.filePath.id, message: F.filePath.message })}>
+        <nav
+          class="file-breadcrumb"
+          title={path()}
+          aria-label={lingui._({ id: F.filePath.id, message: F.filePath.message })}
+        >
           <Show when={file.workspace && fileWorkspaceLabel(file.workspace)}>
             {(root) => (
               <button
@@ -546,29 +555,6 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
           </For>
         </nav>
         <div class="file-toolbar-actions">
-          <Show when={selectedLines()}>
-            {(range) => (
-              <button
-                type="button"
-                class="file-add-context"
-                onClick={() =>
-                  prompt.context.add({
-                    type: "file",
-                    path: path(),
-                    selection: {
-                      startLine: Math.min(range().start, range().end),
-                      endLine: Math.max(range().start, range().end),
-                      startChar: 0,
-                      endChar: 0,
-                    },
-                  })
-                }
-              >
-                <span>{selectionLabel(range())}</span>
-                <span>{lingui._({ id: F.addToContext.id, message: F.addToContext.message })}</span>
-              </button>
-            )}
-          </Show>
           <Show when={capability().dual}>
             <div
               class="file-view-toggle"
@@ -632,43 +618,115 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
               </button>
             </Show>
           </Show>
-          <Show when={isHtml()}>
-            <button
-              type="button"
-              class="file-open-in-browser"
-              onClick={() =>
-                platform.openLink(
-                  buildWorkspaceFileBrowserUrl(sdk.url, path(), { scopeID: sdk.scopeID, ...file.reference() }),
-                )
-              }
-            >
-              <Icon name={getSemanticIcon("action.open")} size="small" />
-              <span>{lingui._({ id: F.openInBrowser.id, message: F.openInBrowser.message })}</span>
-            </button>
-          </Show>
           <Show when={path()}>
-            <a
-              class="file-download"
-              href={`${buildWorkspaceFileBrowserUrl(sdk.url, path(), { scopeID: sdk.scopeID, ...file.reference() })}?download=1`}
-              download={breadcrumb().at(-1)}
-              target="_blank"
-              rel="noopener noreferrer"
+            <Popover
+              open={moreOpen()}
+              onOpenChange={setMoreOpen}
+              placement="bottom-end"
+              class="file-options-popover"
+              triggerAs={(triggerProps) => (
+                <IconButton
+                  {...triggerProps}
+                  icon={getSemanticIcon("action.more")}
+                  variant="ghost"
+                  aria-label={lingui._({ id: "fileWorkbench.options", message: "File options" })}
+                  aria-haspopup="menu"
+                />
+              )}
             >
-              <Icon name={getSemanticIcon("action.download")} size="small" />
-              <span>{lingui._({ id: F.download.id, message: F.download.message })}</span>
-            </a>
+              <div
+                class="file-options-menu"
+                role="menu"
+                onKeyDown={resourceMenuKeyDown}
+                onClick={(event) => {
+                  if ((event.target as HTMLElement).closest("button, a")) setMoreOpen(false)
+                }}
+              >
+                <Show when={selectedLines()}>
+                  {(range) => (
+                    <button
+                      type="button"
+                      class="file-add-context"
+                      role="menuitem"
+                      onClick={() =>
+                        prompt.context.add({
+                          type: "file",
+                          path: path(),
+                          selection: {
+                            startLine: Math.min(range().start, range().end),
+                            endLine: Math.max(range().start, range().end),
+                            startChar: 0,
+                            endChar: 0,
+                          },
+                        })
+                      }
+                    >
+                      <span>{selectionLabel(range())}</span>
+                      <span>{lingui._({ id: F.addToContext.id, message: F.addToContext.message })}</span>
+                    </button>
+                  )}
+                </Show>
+                <Show when={isHtml()}>
+                  <button
+                    type="button"
+                    class="file-open-in-browser"
+                    role="menuitem"
+                    onClick={() =>
+                      platform.openLink(
+                        buildWorkspaceFileBrowserUrl(sdk.url, path(), { scopeID: sdk.scopeID, ...file.reference() }),
+                      )
+                    }
+                  >
+                    <Icon name={getSemanticIcon("action.open")} size="small" />
+                    <span>{lingui._({ id: F.openInBrowser.id, message: F.openInBrowser.message })}</span>
+                  </button>
+                </Show>
+                <Show when={path()}>
+                  <a
+                    class="file-download"
+                    role="menuitem"
+                    href={`${buildWorkspaceFileBrowserUrl(sdk.url, path(), { scopeID: sdk.scopeID, ...file.reference() })}?download=1`}
+                    download={breadcrumb().at(-1)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Icon name={getSemanticIcon("action.download")} size="small" />
+                    <span>{lingui._({ id: F.download.id, message: F.download.message })}</span>
+                  </a>
+                </Show>
+              </div>
+            </Popover>
           </Show>
           <IconButton
             icon={getSemanticIcon("workspace.files")}
             variant="ghost"
             class="file-tree-toggle"
-            aria-label={lingui._({ id: F.toggleFileTree.id, message: F.toggleFileTree.message })}
-            aria-pressed={file.explorer.open()}
-            onClick={() => file.explorer.setOpen(!file.explorer.open())}
+            aria-label={
+              navigator()?.opened()
+                ? lingui._({ id: "fileWorkbench.navigation.hide", message: "Hide files list" })
+                : lingui._({ id: "fileWorkbench.navigation.show", message: "Show files list" })
+            }
+            aria-expanded={navigator()?.opened() ?? false}
+            aria-controls={navigator()?.id}
+            data-workspace-navigation-toggle
+            onClick={() => navigator()?.toggle()}
           />
         </div>
       </div>
       <div class="file-workbench-main">
+        <WorkspaceNavigator
+          id={`file-navigation-${props.tab.id}`}
+          label={lingui._(P.files)}
+          header={false}
+          open={file.explorer.open()}
+          width={file.explorer.width()}
+          onResize={file.explorer.setWidth}
+          onReady={setNavigator}
+          onOpen={() => file.explorer.setOpen(true)}
+          onClose={() => file.explorer.setOpen(false)}
+        >
+          <FileExplorer onClose={() => navigator()?.close()} onOpenResource={() => navigator()?.closeDrawer()} />
+        </WorkspaceNavigator>
         <main class="file-viewer">
           <Show when={file.draft.backupUnavailable()}>
             <div class="file-state-banner" role="alert">
@@ -778,9 +836,6 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
             </Match>
           </Switch>
         </main>
-        <Show when={file.explorer.open()}>
-          <FileExplorer onClose={() => file.explorer.setOpen(false)} />
-        </Show>
       </div>
     </div>
   )

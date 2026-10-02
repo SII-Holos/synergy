@@ -55,7 +55,7 @@ export class SqliteWorkerClient {
   private state: "healthy" | "busy" | "exited" | "latched" = "healthy"
   private monitoring?: Promise<boolean>
 
-  constructor(readonly role: "reader" | "writer") {
+  constructor(readonly role: "reader" | "maintenance-reader" | "writer") {
     const entry = fileURLToPath(new URL("./sqlite-worker.ts", import.meta.url))
     this.worker = Bun.spawn({
       cmd:

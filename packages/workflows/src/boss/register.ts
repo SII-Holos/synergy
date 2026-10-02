@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ContinuationKernel } from "@ericsanchezok/synergy-harness/session/continuation-kernel"
 import type { Info as SessionInfo } from "@ericsanchezok/synergy-harness/session/types"
@@ -73,13 +74,13 @@ export function registerBossDomain(): void {
     },
     projectUserMessage(query: string, agentName: string) {
       const header =
-        agentName === "synergy"
-          ? "You are synergy in the Boss Mode workflow."
-          : agentName === "synergy-max"
-            ? "You are synergy-max in the Boss Mode workflow."
+        agentName === PrimaryAgentIdentity.names.general
+          ? `You are ${PrimaryAgentIdentity.names.general} in the Boss Mode workflow.`
+          : agentName === PrimaryAgentIdentity.names.coding
+            ? `You are ${PrimaryAgentIdentity.names.coding} in the Boss Mode workflow.`
             : "You are in the Boss Mode workflow."
       const discipline =
-        agentName === "synergy" || agentName === "synergy-max"
+        agentName === PrimaryAgentIdentity.names.general || agentName === PrimaryAgentIdentity.names.coding
           ? "You are the boss of a worker tree. Decide whether to answer directly, delegate to a specialist worker (boss_spawn / boss_assign), monitor progress (boss_status), or cancel work (boss_cancel). Summarize results back to the human."
           : "You are the boss: you decide, delegate, monitor, and summarize. Route this request yourself — answer directly or assign it to a worker."
       return ["<boss-user-request>", header, discipline, "", "User request:", query, "</boss-user-request>"].join("\n")

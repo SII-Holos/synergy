@@ -7,6 +7,53 @@ type PartID = Identifier.PartID
 type HistoryID = Identifier.HistoryID
 
 export namespace StoragePath {
+  export const sessionTextState = (scopeID: string, sessionID: string) => ["sessions", scopeID, sessionID, "text_state"]
+  export const sessionTextDirty = (scopeID: string, sessionID: string, messageID: string, partID: string) => [
+    "sessions",
+    scopeID,
+    sessionID,
+    "text_dirty",
+    messageID,
+    partID,
+  ]
+  export const sessionDisplayState = (scopeID: string, sessionID: string) => [
+    "sessions",
+    scopeID,
+    sessionID,
+    "display_state",
+  ]
+  export const sessionDisplayMessage = (scopeID: string, sessionID: string, messageID: string) => [
+    "sessions",
+    scopeID,
+    sessionID,
+    "display_message",
+    messageID,
+  ]
+  export const sessionDisplayTimeline = (scopeID: string, sessionID: string, order: string) => [
+    "sessions",
+    scopeID,
+    sessionID,
+    "display_timeline",
+    order,
+  ]
+  export const sessionDisplayRoot = (scopeID: string, sessionID: string, order: string) => [
+    "sessions",
+    scopeID,
+    sessionID,
+    "display_root",
+    order,
+  ]
+  export const sessionDisplayParts = (scopeID: string, sessionID: string, messageID: string) => [
+    "sessions",
+    scopeID,
+    sessionID,
+    "display_part",
+    messageID,
+  ]
+  export const sessionDisplayPart = (scopeID: string, sessionID: string, messageID: string, partID: string) => [
+    ...sessionDisplayParts(scopeID, sessionID, messageID),
+    partID,
+  ]
   export const projectDirectories = (scopeID: string) => ["project_directories", scopeID]
   export const environmentCredential = (provider: string, requestID: string) => [
     "environment_credential",
@@ -184,6 +231,11 @@ export namespace StoragePath {
   export const sessionSummaryCursor = (scopeID: ScopeID, sessionID: SessionID) => [
     ...sessionRoot(scopeID, sessionID),
     "summary_cursor",
+  ]
+  export const sessionFileRestore = (scopeID: ScopeID, sessionID: SessionID, previewID: string) => [
+    ...sessionRoot(scopeID, sessionID),
+    "file_restore",
+    previewID,
   ]
   export const sessionTodo = (scopeID: ScopeID, sessionID: SessionID) => [...sessionRoot(scopeID, sessionID), "todo"]
   export const sessionDag = (scopeID: ScopeID, sessionID: SessionID) => [...sessionRoot(scopeID, sessionID), "dag"]

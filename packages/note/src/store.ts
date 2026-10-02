@@ -1,4 +1,5 @@
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import type { StoreTransaction } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import z from "zod"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -156,6 +157,10 @@ export namespace NoteStore {
   // --- Index management ---
 
   const INDEX_ID = "_index"
+
+  export async function invalidateStorageIndexes(tx: StoreTransaction) {
+    for (const scopeID of await tx.scan(["notes"])) await tx.remove(["notes", scopeID, INDEX_ID])
+  }
 
   function indexPath(sid: Identifier.ScopeID) {
     return StoragePath.note(sid, INDEX_ID)

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { appendFile, mkdir } from "node:fs/promises"
 import path from "node:path"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -47,7 +48,7 @@ export async function fixture(
             role: "user",
             isRoot: true,
             rootID,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test" },
             time: { created: Date.now() },
           })
@@ -57,8 +58,8 @@ export async function fixture(
             role: "assistant",
             parentID: root.id,
             rootID: root.id,
-            agent: "synergy",
-            mode: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
+            mode: PrimaryAgentIdentity.names.general,
             modelID: "test",
             providerID: "test",
             time: { created: Date.now(), completed: Date.now() },

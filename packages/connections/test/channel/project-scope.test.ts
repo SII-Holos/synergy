@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import * as ConnectionsConfigSchema from "@ericsanchezok/synergy-connections/config-schema"
 import { describe, expect, mock, test } from "bun:test"
 import { Channel } from "../../src/channel"
@@ -256,7 +257,7 @@ describe("Channel account project scope", () => {
             await Session.updateMessage({
               id: rootID,
               role: "user",
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               time: { created: Date.now() },
               isRoot: true,
@@ -268,8 +269,8 @@ describe("Channel account project scope", () => {
               role: "assistant",
               parentID: rootID,
               rootID,
-              mode: "synergy",
-              agent: "synergy",
+              mode: PrimaryAgentIdentity.names.general,
+              agent: PrimaryAgentIdentity.names.general,
               path: { cwd: scope.local!.directory, root: scope.local!.directory },
               cost: 0,
               tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

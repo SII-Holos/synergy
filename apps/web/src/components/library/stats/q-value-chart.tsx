@@ -102,7 +102,7 @@ export function QValueChart(props: {
         },
       },
     },
-    animation: { duration: 500, easing: "easeOutQuart" as const },
+    animation: false as const,
   }))
 
   const trendData = createMemo(() => ({
@@ -162,7 +162,7 @@ export function QValueChart(props: {
         },
       },
     },
-    animation: { duration: 500, easing: "easeOutQuart" as const },
+    animation: false as const,
   }))
 
   const hasData = () => total() > 0
@@ -170,7 +170,7 @@ export function QValueChart(props: {
   return (
     <div class="library-chart-surface mt-4">
       <div class="pb-2">
-        <h3 class="text-13-medium text-text-strong">
+        <h3 class="app-panel-control text-text-strong">
           {_({ id: "app.library.stats.q.distribution", message: "Q‑value distribution" })}
         </h3>
       </div>
@@ -185,40 +185,40 @@ export function QValueChart(props: {
       >
         <div class="mb-3 grid grid-cols-5 gap-2">
           <div class="rounded-xl bg-surface-inset-base px-2.5 py-2 ring-1 ring-inset ring-border-base/45">
-            <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak">
+            <div class="app-panel-caption font-medium text-text-weak">
               {_({ id: "app.library.stats.q.avgQ", message: "Avg Q" })}
             </div>
-            <div class="mt-0.5 text-13-semibold tabular-nums text-text-strong">{formatQ(dist().avgCompositeQ)}</div>
+            <div class="mt-0.5 app-panel-control tabular-nums text-text-strong">{formatQ(dist().avgCompositeQ)}</div>
           </div>
           <div class="rounded-xl bg-surface-inset-base px-2.5 py-2 ring-1 ring-inset ring-border-base/45">
-            <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak">
+            <div class="app-panel-caption font-medium text-text-weak">
               {_({ id: "app.library.stats.q.median", message: "Median" })}
             </div>
-            <div class="mt-0.5 text-13-semibold tabular-nums text-text-strong">{formatQ(dist().medianCompositeQ)}</div>
+            <div class="mt-0.5 app-panel-control tabular-nums text-text-strong">{formatQ(dist().medianCompositeQ)}</div>
           </div>
           <div class="rounded-xl bg-surface-inset-base px-2.5 py-2 ring-1 ring-inset ring-border-base/45">
-            <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak">
+            <div class="app-panel-caption font-medium text-text-weak">
               {_({ id: "app.library.stats.q.sigma", message: "σ Q" })}
             </div>
-            <div class="mt-0.5 text-13-semibold tabular-nums text-text-strong">{dist().stdCompositeQ.toFixed(3)}</div>
+            <div class="mt-0.5 app-panel-control tabular-nums text-text-strong">{dist().stdCompositeQ.toFixed(3)}</div>
           </div>
           <div class="rounded-xl bg-surface-inset-base px-2.5 py-2 ring-1 ring-inset ring-border-base/45">
-            <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak">
+            <div class="app-panel-caption font-medium text-text-weak">
               {_({ id: "app.library.stats.q.unused", message: "Unused" })}
             </div>
-            <div class="mt-0.5 text-13-semibold tabular-nums text-text-strong">{props.rl.neverRetrieved}</div>
+            <div class="mt-0.5 app-panel-control tabular-nums text-text-strong">{props.rl.neverRetrieved}</div>
           </div>
           <div class="rounded-xl bg-surface-inset-base px-2.5 py-2 ring-1 ring-inset ring-border-base/45">
-            <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak">
+            <div class="app-panel-caption font-medium text-text-weak">
               {_({ id: "app.library.stats.q.active", message: "Active" })}
             </div>
-            <div class="mt-0.5 text-13-semibold tabular-nums text-text-strong">{props.rl.frequentlyRetrieved}</div>
+            <div class="mt-0.5 app-panel-control tabular-nums text-text-strong">{props.rl.frequentlyRetrieved}</div>
           </div>
         </div>
 
         <div class="grid grid-cols-1 gap-2.5">
           <div class="library-chart-inner">
-            <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak mb-1.5">
+            <div class="app-panel-caption font-medium text-text-weak mb-1.5">
               {_({ id: "app.library.stats.q.compositeHistogram", message: "Composite Q Histogram" })}
             </div>
             <div class="h-32">
@@ -228,7 +228,7 @@ export function QValueChart(props: {
 
           <Show when={dist().trend.length >= 2}>
             <div class="library-chart-inner">
-              <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak mb-1.5">
+              <div class="app-panel-caption font-medium text-text-weak mb-1.5">
                 {_({ id: "app.library.stats.q.weeklyTrend", message: "Median Q · Weekly Trend" })}
               </div>
               <div class="h-28">

@@ -1,3 +1,4 @@
+import { ConfigReferenceMigration } from "./reference-migration"
 import { RuntimeContext } from "../lifecycle/context"
 import fs from "fs/promises"
 import path from "path"
@@ -1372,6 +1373,13 @@ export const migrations: Migration[] = [
       await normalizeProviderProfileConfigs()
       progress(1, 1)
     },
+  },
+  {
+    id: "20261002-config-primary-agent-identities",
+    description: "Upgrade primary agent references in stored configuration and Markdown definitions",
+    scope: "global",
+    upgradeConfig: ConfigReferenceMigration.upgradeConfig,
+    up: ConfigReferenceMigration.up,
   },
 ]
 export function registerConfigMigrations() {
