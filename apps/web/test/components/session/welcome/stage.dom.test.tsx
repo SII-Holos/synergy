@@ -108,6 +108,7 @@ test("the background covers the pane, while the game has no pointer focus frame 
   expect(await board.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe("none")
   expect(await page.getByRole("button", { name: /Pause scene|Make my own version/ }).count()).toBe(0)
   expect(await page.locator(".welcome-topline,.welcome-bottomline").count()).toBe(0)
+  await page.waitForFunction(() => document.querySelector(".welcome-stack")?.getAttribute("data-height") === "1")
   expect(await page.locator(".welcome-stack").getAttribute("data-height")).toBe("1")
 })
 
@@ -207,6 +208,7 @@ test("reduced motion stops decorative frames and supports explicit keyboard play
   expect(await canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())).toBe(before)
   await page.locator(".welcome-game-canvas").focus()
   await page.keyboard.press("Space")
+  await page.waitForFunction(() => document.querySelector(".welcome-stack")?.getAttribute("data-height") === "1")
   expect(await page.locator(".welcome-stack").getAttribute("data-height")).toBe("1")
   await page.emulateMedia({ reducedMotion: "no-preference" })
 })
@@ -279,6 +281,7 @@ test("same-mode theme changes redraw canvas without losing progress, and remount
   const board = page.locator(".welcome-game-canvas")
   await board.focus()
   await page.keyboard.press("Space")
+  await page.waitForFunction(() => document.querySelector(".welcome-stack")?.getAttribute("data-height") === "1")
   await page.keyboard.press("Escape")
   const before = await board.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
   await page.getByRole("button", { name: "Theme", exact: true }).click()
@@ -286,6 +289,7 @@ test("same-mode theme changes redraw canvas without losing progress, and remount
   expect(await board.evaluate((el) => (el as HTMLCanvasElement).toDataURL())).not.toBe(before)
   await page.getByRole("button", { name: "Mount", exact: true }).click()
   await page.getByRole("button", { name: "Mount", exact: true }).click()
+  await page.waitForFunction(() => document.querySelector(".welcome-stack")?.getAttribute("data-height") === "1")
   expect(await page.locator(".welcome-stack").getAttribute("data-height")).toBe("1")
   expect(errors).toEqual([])
   await page.emulateMedia({ reducedMotion: "no-preference" })
@@ -342,4 +346,28 @@ test("Escape cancels a captured falling-block gesture without starting the round
   await page.mouse.up()
   expect(await page.locator(".welcome-blocks").getAttribute("data-phase")).toBe("ready")
   expect(await page.locator(".welcome-stage").getAttribute("data-active")).toBeNull()
+})
+
+test("settled tower floors remain opaque across their contact at normal and doubled scale", async () => {
+  for (const zoom of [1, 2]) {
+    await page.setViewportSize({ width: 960, height: 920 })
+    await page.emulateMedia({ reducedMotion: "reduce" })
+    await open("stack")
+    await page.evaluate((value) => (document.documentElement.style.zoom = String(value)), zoom)
+    const board = page.locator(".welcome-game-canvas")
+    await board.press("Space")
+    await page.waitForFunction(() => document.querySelector(".welcome-stack")?.getAttribute("data-height") === "1")
+    const solid = await board.evaluate((element) => {
+      const canvas = element as HTMLCanvasElement
+      const scale = Math.min(canvas.width / 720, canvas.height / 340)
+      const x = Math.round((canvas.width - 720 * scale) / 2 + 360 * scale)
+      const top = Math.ceil(canvas.height - 340 * scale + 284 * scale)
+      const bottom = Math.floor(canvas.height - 340 * scale + 305 * scale)
+      const data = canvas.getContext("2d")!.getImageData(x, top, 1, bottom - top).data
+      return Array.from(data)
+        .filter((_, i) => i % 4 === 3)
+        .every((alpha) => alpha === 255)
+    })
+    expect(solid).toBe(true)
+  }
 })

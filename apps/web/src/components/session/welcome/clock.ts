@@ -8,7 +8,7 @@ export function useSceneClock(active: Accessor<boolean>, update: (seconds: numbe
     let frame = requestAnimationFrame(tick)
     function tick(now: number) {
       if (disposed) return
-      if (previous !== undefined) update(Math.min((now - previous) / 1000, 0.05))
+      if (previous !== undefined) update(Math.min((now - previous) / 1000, 0.1))
       previous = now
       if (!disposed) frame = requestAnimationFrame(tick)
     }
