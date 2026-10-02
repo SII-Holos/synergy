@@ -55,6 +55,24 @@ async function fixture(config: object, run: (ctx: FixtureContext) => Promise<voi
         type: "text",
         text: "Investigate why the sidebar keeps showing the session as running.",
       })
+      const context = await Session.updateMessage({
+        ...user,
+        id: Identifier.ascending("message"),
+        rootID: user.id,
+        isRoot: false,
+        visible: false,
+        includeInContext: true,
+        origin: { type: "system", detail: "context_update" },
+        time: { created: Date.now() },
+      })
+      await Session.updatePart({
+        id: Identifier.ascending("part"),
+        messageID: context.id,
+        sessionID: session.id,
+        type: "text",
+        origin: "system",
+        text: "<context-update>Retained environment</context-update>",
+      })
       const assistant = await Session.updateMessage({
         id: Identifier.ascending("message"),
         sessionID: session.id,
@@ -130,6 +148,23 @@ test(
     }),
   30_000,
 )
+
+test("encoding failures retain source attribution across hidden context", () =>
+  runtime.run(async () => {
+    mocks.push(
+      spyOn(Provider, "getModel").mockResolvedValue({ providerID: "test", id: "test" } as never),
+      spyOn(AgentCall, "text").mockRejectedValue(new Error("fixture encoding failure")),
+    )
+    await fixture({}, async (ctx) => {
+      await SessionContextContributions.onAssistantComplete(ctx.assistant)
+      await LoopJob.settleDetached(ctx.sessionID)
+      expect(LibraryDB.Experience.get(ctx.userMessageID)).toMatchObject({
+        reward_status: "encoding_failed",
+        source_provider_id: "test",
+        source_model_id: "test",
+      })
+    })
+  }))
 
 test("non-abort assistant failures skip encoding entirely", () =>
   runtime.run(async () => {
