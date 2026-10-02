@@ -22,6 +22,8 @@ The landscape module runs a bounded cellular simulation in a dedicated Worker an
 
 The illustrated bookshop is an authored eight-node story with three reachable endings. Its node-owned choices update local scene state and bounded reading history; invalid actions cannot jump between nodes. Object hotspots and equivalent text buttons share the same actions. Backtracking and restart preserve keyboard focus, and the editable task starter includes the current story direction without automatically submitting it.
 
+Environmental animation pauses at its current position rather than restarting. Simulated water, vegetation and built materials use distinct ordinal visualization tokens; themes remain the authority for their colors. Road dragging previews the destination before release. Shared browser fixtures cover all scenes, narrow and doubled-scale layouts, same-mode theme changes, explicit new-task navigation, stale loads and retry without draft loss.
+
 ## Alternatives considered
 
 **Independent random selection on every render.** It interrupts interaction and can immediately repeat the same introduction.

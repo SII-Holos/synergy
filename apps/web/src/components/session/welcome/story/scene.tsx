@@ -53,13 +53,18 @@ export default function StoryScene(props: WelcomeSceneProps) {
         aria-label={i18n._({ id: "welcome.story.scene", message: "The bookshop by the sea" })}
       >
         <g aria-hidden="true">
-          <circle cx="566" cy="70" r="23" fill="var(--surface-interactive-selected)" />
+          <circle
+            cx="566"
+            cy="70"
+            r="23"
+            fill="color-mix(in srgb, var(--chart-series-1) 30%, var(--surface-raised-base))"
+          />
           <path
             d="M27 252Q83 209 151 231T343 240Q453 152 693 196L705 308Q564 360 398 341T44 314Z"
-            fill="var(--surface-interactive-selected)"
+            fill="color-mix(in srgb, var(--chart-series-1) 30%, var(--surface-raised-base))"
             opacity=".45"
           />
-          <g class="story-waves" fill="none" stroke="var(--icon-brand-base)" opacity=".25" stroke-linecap="round">
+          <g class="story-waves" fill="none" stroke="var(--chart-series-1)" opacity=".4" stroke-linecap="round">
             <path d="M45 280q28-8 56 0m438-59q28-8 56 0M507 314q28-8 56 0M574 262q19-8 38 0M94 319q20-8 40 0" />
             <path d="M126 246q12-5 24 0m431 46q18-5 36 0m-214 54q18-5 36 0" />
           </g>
@@ -84,7 +89,7 @@ export default function StoryScene(props: WelcomeSceneProps) {
             fill="var(--surface-raised-base)"
             stroke="var(--border-strong-base)"
           />
-          <path d="m233 83 84 124 166-60-93-113Z" fill="var(--icon-brand-base)" opacity=".72" />
+          <path d="m233 83 84 124 166-60-93-113Z" fill="var(--chart-series-2)" opacity=".85" />
           <path
             d="m242 82 86 119m-64-125 86 117m-64-124 86 115m-64-122 86 113m-64-120 86 111m-64-118 86 109"
             stroke="var(--surface-raised-base)"
@@ -104,16 +109,27 @@ export default function StoryScene(props: WelcomeSceneProps) {
               fill="var(--surface-raised-stronger-non-alpha)"
               stroke="var(--border-base)"
             />
-            <path d="m274 302 75 31-31 12-47-40Z" fill="var(--surface-interactive-selected)" />
+            <path
+              d="m274 302 75 31-31 12-47-40Z"
+              fill="color-mix(in srgb, var(--chart-series-1) 30%, var(--surface-raised-base))"
+            />
           </Show>
-          <path d="m218 196 30 17v30l-30-17Z" fill="var(--surface-interactive-selected)" stroke="var(--border-base)" />
+          <path
+            d="m218 196 30 17v30l-30-17Z"
+            fill="color-mix(in srgb, var(--chart-series-1) 30%, var(--surface-raised-base))"
+            stroke="var(--border-base)"
+          />
           <path d="m233 204v31m-15-25 30 17" stroke="var(--surface-raised-stronger-non-alpha)" stroke-width="3" />
           <path d="m337 215 111-35v55l-111 36Z" fill="var(--surface-base-active)" stroke="var(--border-base)" />
-          <g class="story-books" stroke="var(--surface-raised-stronger-non-alpha)" stroke-width="4">
+          <g class="story-books" stroke="var(--chart-series-2)" stroke-width="4">
             <path d="m347 217v23m8-25v23m9-26v23m9-27v23m9-26v23m10-26v23m9-26v23m9-26v23m10-26v23m9-26v23" />
             <path d="m344 245 96-31" stroke-width="2" />
           </g>
-          <path class="story-curtain" d="m337 215 18-6-4 33-14 29Z" fill="var(--surface-interactive-selected)" />
+          <path
+            class="story-curtain"
+            d="m337 215 18-6-4 33-14 29Z"
+            fill="color-mix(in srgb, var(--chart-series-1) 30%, var(--surface-raised-base))"
+          />
           <path d="m337 278 34-11 21 11-33 12Z" fill="var(--surface-raised-base)" stroke="var(--border-strong-base)" />
           <path d="M347 284v24m36-29v21" stroke="var(--border-strong-base)" stroke-width="3" />
           <path
@@ -125,7 +141,7 @@ export default function StoryScene(props: WelcomeSceneProps) {
           <g transform="translate(481 295)" class="story-visitor">
             <ellipse cy="8" rx="15" ry="6" fill="var(--border-weaker-base)" />
             <path d="M-6-13-8 7m12-20 5 20" stroke="var(--text-weak)" stroke-width="4" stroke-linecap="round" />
-            <path d="M-10-14q-2-17 7-23l9 2 7 23Z" fill="var(--icon-brand-base)" />
+            <path d="M-10-14q-2-17 7-23l9 2 7 23Z" fill="var(--chart-series-1)" />
             <circle cy="-43" r="7" fill="var(--text-weak)" />
             <path d="M-9-39Q-12-50 0-52q12 2 9 13" fill="var(--surface-raised-strong)" stroke="var(--text-weak)" />
           </g>
@@ -136,10 +152,10 @@ export default function StoryScene(props: WelcomeSceneProps) {
               stroke="var(--border-base)"
             />
             <path d="M0 6V-42L23-5Z" fill="var(--surface-raised-base)" stroke="var(--border-base)" />
-            <path d="M-3 1V-35L-22-5Z" fill="var(--icon-brand-base)" opacity=".6" />
+            <path d="M-3 1V-35L-22-5Z" fill="var(--chart-series-1)" opacity=".6" />
           </g>
           <Show when={node().ending}>
-            <g fill="var(--icon-brand-base)" opacity=".75">
+            <g fill="var(--chart-series-1)" opacity=".75">
               <circle cx="232" cy="220" r="5" />
               <circle cx="381" cy="230" r="4" />
               <circle cx="418" cy="218" r="4" />
@@ -181,7 +197,7 @@ export default function StoryScene(props: WelcomeSceneProps) {
                       fill="var(--surface-raised-stronger-non-alpha)"
                       stroke="var(--icon-brand-base)"
                     />
-                    <circle cx={spot.x + spot.width - 4} cy={spot.y + 4} r="2" fill="var(--icon-brand-base)" />
+                    <circle cx={spot.x + spot.width - 4} cy={spot.y + 4} r="2" fill="var(--chart-series-1)" />
                   </g>
                 )}
               </Show>

@@ -39,10 +39,10 @@ export default function NatureScene(props: WelcomeSceneProps) {
       canvas,
       latest,
       {
-        ground: resolveThemeColor(tokens, "surface-raised-strong"),
+        ground: resolveThemeColor(tokens, "chart-series-2"),
         edge: resolveThemeColor(tokens, "text-weak"),
-        water: resolveThemeColor(tokens, "surface-interactive-selected"),
-        leaf: resolveThemeColor(tokens, "icon-brand-base"),
+        water: resolveThemeColor(tokens, "chart-series-1"),
+        leaf: resolveThemeColor(tokens, "chart-series-3"),
         seed: resolveThemeColor(tokens, "text-base"),
         light: resolveThemeColor(tokens, "surface-raised-stronger-non-alpha"),
       },
@@ -51,6 +51,8 @@ export default function NatureScene(props: WelcomeSceneProps) {
   }
   createEffect(draw)
   function initialize() {
+    if (drawFrame !== undefined) cancelAnimationFrame(drawFrame)
+    drawFrame = undefined
     generation++
     post({ type: "init", generation, state: latest })
     post({ type: "active", generation, value: props.active() })
@@ -68,8 +70,9 @@ export default function NatureScene(props: WelcomeSceneProps) {
       if (drawFrame !== undefined) cancelAnimationFrame(drawFrame)
       drawFrame = requestAnimationFrame(() => {
         drawFrame = undefined
+        if (worker !== owned || data.generation !== generation) return
         draw()
-        post({ type: "ack", generation })
+        post({ type: "ack", generation: data.generation })
       })
     }
     owned.onerror = () => {

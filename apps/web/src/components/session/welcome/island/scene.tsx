@@ -29,9 +29,9 @@ function Tree(props: { x: number; y: number; scale?: number }) {
     <g transform={`translate(${props.x} ${props.y}) scale(${props.scale ?? 1})`} class="island-tree">
       <ellipse cy="5" rx="15" ry="6" fill="var(--border-weaker-base)" />
       <path d="M0 4V-24" stroke="var(--text-weak)" stroke-width="4" />
-      <path d="M-17-13 0-43 17-13Z" fill="var(--surface-interactive-selected)" />
-      <path d="M0-43 17-13H0Z" fill="var(--icon-brand-base)" opacity=".45" />
-      <path d="M-14-25 0-49 14-25Z" fill="var(--surface-interactive-solid)" opacity=".8" />
+      <path d="M-17-13 0-43 17-13Z" fill="var(--chart-series-3)" opacity=".6" />
+      <path d="M0-43 17-13H0Z" fill="var(--chart-series-3)" opacity=".85" />
+      <path d="M-14-25 0-49 14-25Z" fill="var(--chart-series-3)" opacity=".8" />
     </g>
   )
 }
@@ -41,6 +41,7 @@ export default function IslandScene(props: WelcomeSceneProps) {
   const [state, setState] = createSignal(props.memory.read(createIsland))
   const [tool, setTool] = createSignal<RoadKind>("road")
   const [focus, setFocus] = createSignal(16)
+  const [placement, setPlacement] = createSignal<Cell>()
   let svg!: SVGSVGElement
   const cells = new Map<number, SVGGElement>()
   const roads = createMemo(() => state().roads)
@@ -66,12 +67,17 @@ export default function IslandScene(props: WelcomeSceneProps) {
       road && road.kind === tool() ? rotateRoad(state(), cell.x, cell.y) : placeRoad(state(), cell.x, cell.y, tool()),
     )
   }
-  function drop(event: PointerEvent, kind: RoadKind) {
+  function destination(event: PointerEvent) {
     const matrix = svg.getScreenCTM()?.inverse()
     if (!matrix) return
     const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix)
     const cell = unprojectCell(point.x, point.y)
-    update(placeRoad(state(), cell.x, cell.y, kind))
+    if (cell.x >= 0 && cell.x < 7 && cell.y >= 0 && cell.y < 5) return cell
+  }
+  function drop(event: PointerEvent, kind: RoadKind) {
+    const cell = destination(event)
+    if (cell) update(placeRoad(state(), cell.x, cell.y, kind))
+    setPlacement(undefined)
   }
   function key(event: KeyboardEvent, cell: Cell) {
     const offset = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[event.key]
@@ -114,7 +120,8 @@ export default function IslandScene(props: WelcomeSceneProps) {
         <g
           class="island-ripples"
           fill="none"
-          stroke="var(--surface-interactive-selected)"
+          stroke="var(--chart-series-1)"
+          opacity=".18"
           stroke-width="1.5"
           aria-hidden="true"
         >
@@ -162,15 +169,29 @@ export default function IslandScene(props: WelcomeSceneProps) {
                 <path
                   class="island-tile"
                   d="M0-21 42 0 0 21-42 0Z"
-                  fill={cell.x === 3 ? "var(--surface-interactive-selected)" : "var(--surface-raised-base)"}
+                  fill={
+                    cell.x === 3
+                      ? "color-mix(in srgb, var(--chart-series-1) 28%, var(--surface-raised-base))"
+                      : "color-mix(in srgb, var(--chart-series-3) 9%, var(--surface-raised-base))"
+                  }
                   stroke="var(--border-weaker-base)"
                 />
+                <Show when={cell.y === 2 && !road()}>
+                  <path
+                    d="M0-15 30 0 0 15-30 0Z"
+                    fill="none"
+                    stroke="var(--border-interactive-base)"
+                    stroke-dasharray="3 4"
+                    opacity=".65"
+                    pointer-events="none"
+                  />
+                </Show>
                 <Show when={cell.x === 3 && !road()}>
                   <path
                     class="island-water"
                     d="m-20-2 17 8m0-13 17 8"
                     fill="none"
-                    stroke="var(--icon-brand-base)"
+                    stroke="var(--chart-series-1)"
                     opacity=".4"
                   />
                 </Show>
@@ -206,6 +227,20 @@ export default function IslandScene(props: WelcomeSceneProps) {
             )
           }}
         </For>
+        <Show when={placement()}>
+          {(cell) => (
+            <path
+              data-placement-preview
+              d="M0-20 40 0 0 20-40 0Z"
+              transform={`translate(${projectCell(cell().x, cell().y).x} ${projectCell(cell().x, cell().y).y})`}
+              fill="var(--surface-interactive-selected)"
+              stroke="var(--border-focus)"
+              stroke-width="2"
+              stroke-dasharray="4 3"
+              pointer-events="none"
+            />
+          )}
+        </Show>
         <g aria-hidden="true" pointer-events="none">
           <Tree x={278} y={106} />
           <Tree x={218} y={136} scale={0.78} />
@@ -219,7 +254,14 @@ export default function IslandScene(props: WelcomeSceneProps) {
               stroke="var(--border-strong-base)"
             />
             <path d="M0-18V-54L22-43V-7Z" fill="var(--surface-raised-strong)" />
-            <path d="m-26-44 26-30 26 30L0-31Z" fill="var(--icon-brand-base)" />
+            <path d="m-26-44 0-4a26 26 0 0 1 52 0v4Q0-31-26-44Z" fill="var(--chart-series-2)" />
+            <path
+              d="M0-73v35m-26-10q26 12 52 0"
+              fill="none"
+              stroke="var(--surface-raised-stronger-non-alpha)"
+              opacity=".6"
+            />
+            <path d="m5-66 18-15 5 5-18 15Z" fill="var(--text-weak)" />
             <path
               d="M-13-28v11l7-3v-11Z"
               fill={arrived() || state().night ? "var(--surface-interactive-solid)" : "var(--border-base)"}
@@ -254,10 +296,16 @@ export default function IslandScene(props: WelcomeSceneProps) {
               aria-pressed={tool() === item.kind}
               onClick={() => setTool(item.kind)}
               onPointerDown={(event) => {
+                if (event.button !== 0) return
                 setTool(item.kind)
                 event.currentTarget.setPointerCapture(event.pointerId)
               }}
+              onPointerMove={(event) => {
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) setPlacement(destination(event))
+              }}
               onPointerUp={(event) => drop(event, item.kind)}
+              onPointerCancel={() => setPlacement(undefined)}
+              onLostPointerCapture={() => setPlacement(undefined)}
             >
               {translateDescriptor(item.label, i18n)}
             </button>

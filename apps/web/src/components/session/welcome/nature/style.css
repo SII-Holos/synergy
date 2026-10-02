@@ -17,8 +17,12 @@
   cursor: crosshair;
   touch-action: none;
 }
-.welcome-nature[data-playing] .nature-clouds {
+.nature-clouds {
   animation: nature-breeze 12s ease-in-out infinite alternate;
+  animation-play-state: paused;
+}
+.welcome-nature[data-playing] .nature-clouds {
+  animation-play-state: running;
 }
 .welcome-scene-error {
   display: flex;
@@ -40,7 +44,7 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .welcome-nature[data-playing] .nature-clouds {
+  .nature-clouds {
     animation: none;
   }
 }

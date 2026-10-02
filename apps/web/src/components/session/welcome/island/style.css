@@ -18,14 +18,22 @@
   transform-box: fill-box;
   transform-origin: bottom center;
 }
-.welcome-island[data-playing] .island-tree {
+.island-tree {
   animation: welcome-tree-sway 5s ease-in-out infinite alternate;
+  animation-play-state: paused;
 }
-.welcome-island[data-playing] .island-water {
+.island-water {
   animation: welcome-water-flow 2.8s ease-in-out infinite alternate;
+  animation-play-state: paused;
 }
-.welcome-island[data-playing] .island-ripples {
+.island-ripples {
   animation: welcome-ripples 6s ease-in-out infinite alternate;
+  animation-play-state: paused;
+}
+.welcome-island[data-playing] .island-tree,
+.welcome-island[data-playing] .island-water,
+.welcome-island[data-playing] .island-ripples {
+  animation-play-state: running;
 }
 .welcome-island[data-night] .island-art {
   filter: contrast(1.08);
@@ -50,9 +58,9 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .welcome-island[data-playing] .island-tree,
-  .welcome-island[data-playing] .island-water,
-  .welcome-island[data-playing] .island-ripples {
+  .welcome-island .island-tree,
+  .welcome-island .island-water,
+  .island-ripples {
     animation: none;
   }
 }

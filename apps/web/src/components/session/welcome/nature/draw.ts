@@ -21,6 +21,7 @@ export function drawNature(
   context.setTransform(width / state.width, 0, 0, height / state.height, 0, 0)
   context.clearRect(0, 0, state.width, state.height)
   for (const material of [1, 2]) {
+    context.globalAlpha = material === 1 ? 0.18 : 0.65
     context.fillStyle = material === 1 ? colors.ground : colors.water
     for (let y = 0; y < state.height; y++) {
       let start = -1
@@ -34,6 +35,7 @@ export function drawNature(
       }
     }
   }
+  context.globalAlpha = 1
   context.strokeStyle = colors.edge
   context.lineWidth = 0.3
   context.beginPath()
