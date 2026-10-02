@@ -22,6 +22,7 @@ import { BrowserStorage } from "../src/storage"
 import { BrowserBroker, type BrowserBrokerSocket } from "../src/broker"
 import { BrowserEvent } from "../src/event"
 import { testRuntime } from "./support/runtime"
+import { BrowserToolHelper } from "../src/tools/browser-shared"
 
 const runtime = await testRuntime(() => {
   registerLocalRuntime()
@@ -167,6 +168,65 @@ class WorkspaceHost implements BrowserBrokerSocket {
     })
   }
 }
+
+test("shared pages survive task Workspace and Environment changes while task authority stays local", () =>
+  runtime.run(async () => {
+    await using first = await tmpdir(),
+      second = await tmpdir()
+    await ScopeContext.provide({
+      scope: await first.scope(),
+      async fn() {
+        const one = await Session.create({}),
+          two = await Session.create({}),
+          shared = BrowserOwner.shared()
+        const host = new WorkspaceHost()
+        host.attach()
+        BrowserBroker.prepare(shared, first.path, "native")
+        const browser = await BrowserRuntime.getOrCreateSession(shared)
+        const page = await browser.openPage({ url: "https://example.com" })
+        const target = WorkspaceCatalog.projection(await WorkspaceBinding.register(one.scope.id, second.path))
+        if (!target) throw new Error("Workspace projection was not created")
+        await Session.updateWorkspace(one.id, target)
+        expect(browser.getPage(page.id)).toBe(page)
+        const ctx = (sessionID: string) => ({
+          sessionID,
+          messageID: "message",
+          callID: "call",
+          agent: "synergy",
+          abort: new AbortController().signal,
+          extra: {},
+          metadata() {},
+          async ask() {},
+        })
+        await BrowserToolHelper.withTask(ctx(one.id), async () => {
+          expect(ScopeContext.current.workspace?.id).toBe(target.id)
+        })
+        await BrowserToolHelper.withTask(ctx(two.id), async () => {
+          expect(ScopeContext.current.workspace?.path).toBe(first.path)
+        })
+        const remote = await Environment.bind({
+          ownerID: "shared-browser-test",
+          provider: "remote-fixture",
+          scopeID: one.scope.id,
+          spec: {},
+        })
+        await Session.updateEnvironment(one.id, { environmentID: remote.id, expectedEnvironmentID: one.environmentID! })
+        await expect(BrowserToolHelper.resolveOwner(ctx(one.id), page.id)).rejects.toMatchObject({
+          code: "browser_environment_unavailable",
+        })
+        expect(await BrowserToolHelper.resolveOwner(ctx(two.id), page.id)).toEqual(shared)
+        expect(host.requests.filter((request) => request.type === "page.close")).toHaveLength(0)
+        await Session.remove(two.id)
+        expect(browser.getPage(page.id)).toBe(page)
+        await BrowserCommandService.execute(shared, {
+          pageId: page.id,
+          commandId: "human-close",
+          command: { type: "close" },
+        })
+        expect(browser.pages).toEqual([])
+      },
+    })
+  }))
 
 test("dialog replies unblock a pending page command and retain response replay", () =>
   runtime.run(async () => {

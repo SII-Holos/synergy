@@ -1469,6 +1469,10 @@ msgstr "OK"
 msgid "app.browser.address.placeholder"
 msgstr "Enter URL or search"
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.address.recent"
+msgstr "Recently opened"
+
 #. ── Agent ──
 msgid "app.browser.agent.activity"
 msgstr "Agent {kind} {host}"
@@ -5308,10 +5312,6 @@ msgstr "Library views"
 #. js-lingui-explicit-id
 msgid "app.name.synergy"
 msgstr "Synergy"
-
-#. js-lingui-explicit-id
-msgid "app.note.blueprint.pluginOwner"
-msgstr "From {plugin}"
 
 #. js-lingui-explicit-id
 msgid "app.note.blueprint.runMode.active"
@@ -12505,6 +12505,37 @@ msgstr "View"
 msgid "execution.wrap"
 msgstr "Wrap text"
 
+msgid "files.close.description"
+msgstr "Save changes to {name} before leaving this file."
+
+#. js-lingui-explicit-id
+msgid "files.close.discard"
+msgstr "Discard"
+
+#. js-lingui-explicit-id
+msgid "files.close.failed"
+msgstr "File could not be saved"
+
+#. js-lingui-explicit-id
+msgid "files.close.save"
+msgstr "Save"
+
+#. js-lingui-explicit-id
+msgid "files.close.title"
+msgstr "Save changes?"
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.navigation.hide"
+msgstr "Hide files list"
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.navigation.show"
+msgstr "Show files list"
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.options"
+msgstr "File options"
+
 #. js-lingui-explicit-id
 msgid "list.for-label"
 msgstr "for"
@@ -12652,6 +12683,90 @@ msgstr "Tools"
 #. js-lingui-explicit-id
 msgid "nav.tools.title"
 msgstr "Tools"
+
+#. js-lingui-explicit-id
+msgid "note.document.backupFailed"
+msgstr "Local backup is unavailable. Keep this window open until your changes are saved."
+
+#. js-lingui-explicit-id
+msgid "note.document.close"
+msgstr "Close note"
+
+#. js-lingui-explicit-id
+msgid "note.document.conflict"
+msgstr "This note changed elsewhere. Review the remote version or keep your draft."
+
+#. js-lingui-explicit-id
+msgid "note.document.deleted"
+msgstr "This note was deleted. Your draft is preserved."
+
+#. js-lingui-explicit-id
+msgid "note.document.exportDraft"
+msgstr "Export draft"
+
+#. js-lingui-explicit-id
+msgid "note.document.loading"
+msgstr "Loading…"
+
+#. js-lingui-explicit-id
+msgid "note.document.more"
+msgstr "Note options"
+
+#. js-lingui-explicit-id
+msgid "note.document.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "note.document.saved"
+msgstr "Saved"
+
+#. js-lingui-explicit-id
+msgid "note.document.saveFailed"
+msgstr "Changes could not be saved. Your draft is preserved."
+
+#. js-lingui-explicit-id
+msgid "note.document.saving"
+msgstr "Saving…"
+
+#. js-lingui-explicit-id
+msgid "note.document.title"
+msgstr "Note title"
+
+#. js-lingui-explicit-id
+msgid "note.document.unavailable"
+msgstr "Unavailable"
+
+#. js-lingui-explicit-id
+msgid "note.document.unsaved"
+msgstr "Unsaved changes"
+
+#. js-lingui-explicit-id
+msgid "note.list.clearFilters"
+msgstr "Clear filters"
+
+#. js-lingui-explicit-id
+msgid "note.list.options"
+msgstr "Notes list options"
+
+#. js-lingui-explicit-id
+msgid "note.navigation.hide"
+msgstr "Hide notes list"
+
+#. js-lingui-explicit-id
+msgid "note.navigation.show"
+msgstr "Show notes list"
+
+#. js-lingui-explicit-id
+msgid "note.scope.archived"
+msgstr "Archived"
+
+#. js-lingui-explicit-id
+msgid "note.scope.archivedProject"
+msgstr "Archived project"
+
+#. js-lingui-explicit-id
+msgid "note.tag.remove"
+msgstr "Remove tag {tag}"
 
 #. js-lingui-explicit-id
 msgid "plugin.textAction.back"
@@ -25261,6 +25376,10 @@ msgid "workbench.discard.title"
 msgstr "Discard unsaved changes?"
 
 #. js-lingui-explicit-id
+msgid "workspace.collapse"
+msgstr "Collapse workspace"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.applyBinding"
 msgstr "Rebind Workspace"
 
@@ -25377,6 +25496,26 @@ msgid "workspace.dialog.unavailable"
 msgstr "Workspace unavailable"
 
 #. js-lingui-explicit-id
+msgid "workspace.document.newTab"
+msgstr "Open in new tab"
+
+#. js-lingui-explicit-id
+msgid "workspace.fullscreen.enter"
+msgstr "Full screen"
+
+#. js-lingui-explicit-id
+msgid "workspace.fullscreen.exit"
+msgstr "Exit full screen"
+
+#. js-lingui-explicit-id
+msgid "workspace.home.newTab"
+msgstr "New tab"
+
+#. js-lingui-explicit-id
+msgid "workspace.home.unavailable"
+msgstr "No resources are available in this project."
+
+#. js-lingui-explicit-id
 msgid "workspace.location.directory"
 msgstr "Local directory"
 
@@ -25403,3 +25542,27 @@ msgstr "Stored Workspace"
 #. js-lingui-explicit-id
 msgid "workspace.location.unavailable"
 msgstr "Workspace unavailable"
+
+#. js-lingui-explicit-id
+msgid "workspace.navigation.close"
+msgstr "Close navigation"
+
+#. js-lingui-explicit-id
+msgid "workspace.navigation.resize"
+msgstr "Resize navigation"
+
+#. js-lingui-explicit-id
+msgid "workspace.output.ready"
+msgstr "New resource ready"
+
+#. js-lingui-explicit-id
+msgid "workspace.output.view"
+msgstr "View"
+
+#. js-lingui-explicit-id
+msgid "workspace.resource.open"
+msgstr "Open a resource"
+
+#. js-lingui-explicit-id
+msgid "workspace.tab.new"
+msgstr "New tab"

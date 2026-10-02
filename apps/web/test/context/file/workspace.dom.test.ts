@@ -1,5 +1,5 @@
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
-import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test"
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
@@ -44,6 +44,8 @@ beforeAll(async () => {
       event: { listen(cb) { listeners.add(cb); return () => listeners.delete(cb) } } })
     export const useSync = () => ({ data: { workspaces: [{id:"wsp_objects",scopeID:"scope",type:"objects",binding:{state:"bound",path:null,generation:1},backend:{provider:"objects"},metadata:{name:"Research"},lifecycle:"active"}], path: { directory: "/a", workspace: a } }, session: { get: () => state.session } })
     export const useParams = () => ({ id: "session" })
+    export const useDialog = () => ({ push() {}, close() {} })
+    export const useLocale = () => ({ i18n: { _: value => value.message } })
     export const useWorkbenchPanels = () => ({ surface: () => ({ tabs: () => state.tabs, activeTab: () => state.active }),
       async openPanel(panelId, { init }) { const tab = { id: String(state.tabs.length), panelId, ...init }; setState("tabs", list => [...list, tab]); setState("active", tab); return tab },
       updateTab() {} })
@@ -81,14 +83,22 @@ beforeAll(async () => {
         resolveId(source, importer) {
           if (
             importer?.endsWith("/context/file/index.tsx") &&
-            ["../sdk", "../sync", "../workbench", "@solidjs/router", "@/utils/persist"].includes(source)
+            [
+              "../sdk",
+              "../sync",
+              "../workbench",
+              "@solidjs/router",
+              "@/utils/persist",
+              "@/context/locale",
+              "@ericsanchezok/synergy-ui/context/dialog",
+            ].includes(source)
           )
             return stubs
         },
       },
       solid(),
     ],
-    resolve: { alias: { "@": appSrc } },
+    resolve: { alias: { "@/context/locale": stubs, "@": appSrc } },
     optimizeDeps: { include: ["solid-js", "solid-js/web", "solid-js/store"], noDiscovery: true },
     server: {
       host: "127.0.0.1",
@@ -99,8 +109,6 @@ beforeAll(async () => {
   await server.listen()
   base = server.resolvedUrls!.local[0]!
   browser = await chromium.launch({ headless: true })
-  page = await browser.newPage()
-  page.on("pageerror", (error) => errors.push(error.message))
 }, 30_000)
 afterAll(async () => {
   await browser?.close()
@@ -109,7 +117,13 @@ afterAll(async () => {
 })
 
 beforeEach(async () => {
-  if (page.url().startsWith(base)) await page.evaluate(() => localStorage.clear())
+  errors.length = 0
+  page = await browser.newPage()
+  page.on("dialog", (dialog) => void dialog.accept())
+  page.on("pageerror", (error) => errors.push(error.message))
+})
+afterEach(async () => {
+  await page?.context().close()
 })
 
 test("switching Workspaces isolates late reads, cache entries, and watcher invalidation", async () => {

@@ -24,7 +24,7 @@ import { HostView } from "@/plugin/host-view"
 import type { PluginSessionService, PluginSessionLayoutService } from "@ericsanchezok/synergy-plugin"
 import { DefaultSession } from "@/plugin/default-session"
 import { PluginPageOutlet } from "@/plugin/shell-outlet"
-import { BrowserViewEffects } from "@/components/workspace/browser/browser-view-effects"
+import { WorkspaceOutputEffects } from "@/components/workspace/workspace-output-effects"
 import { createPromptInputController } from "@/components/prompt-input/prompt-controller"
 import { SessionDecisionHost } from "@/components/session/decision-surface"
 import {
@@ -95,7 +95,6 @@ import { AP } from "@/app-i18n"
 import { MobileWorkspaceDialog } from "@/components/workspace/mobile-workspace-dialog"
 import { WorkbenchSurface } from "@/components/workspace/workbench-surface"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
-import { blueprintNoteCreateFocusRequest } from "@/context/plan-blueprint-offer"
 import {
   createNewSessionWorkspaceAcceptedProgress,
   createNewSessionWorkspaceSuccessProgress,
@@ -1123,28 +1122,6 @@ function SessionPageContent() {
   const sessionHasMessages = createMemo(() => (messageSnapshot()?.length ?? 0) > 0)
 
   const sessionMeta = useSessionMeta(currentSession, sessionHasMessages)
-  const focusedBlueprintCreateParts = new Set<string>()
-  const unsubBlueprintNoteCreate = sdk.event.on("message.part.updated", (event) => {
-    const sessionID = params.id
-    if (!sessionID) return
-
-    const request = blueprintNoteCreateFocusRequest(event.properties.part, sessionID)
-    if (!request) return
-
-    const key = `${event.properties.part.sessionID}:${event.properties.part.id}:${request.noteID}`
-    if (focusedBlueprintCreateParts.has(key)) return
-    focusedBlueprintCreateParts.add(key)
-
-    void workbench.openPanel("notes", {
-      reuseExisting: true,
-      init: {
-        resourceId: request.noteID,
-        source:
-          request.scopeID === "home" ? HOME_SCOPE_KEY : request.scopeID || (sdk.isHome ? HOME_SCOPE_KEY : sdk.scopeKey),
-      },
-    })
-  })
-  onCleanup(unsubBlueprintNoteCreate)
 
   createEffect(() => {
     const session = currentSession()
@@ -2198,7 +2175,7 @@ function SessionPageContent() {
         {/* Mobile side workspace overlay */}
         <Show when={sideWorkspaceMounts().mobile}>
           <MobileWorkspaceDialog onClose={() => sideSurface().close()}>
-            <WorkbenchSurface surface="side" />
+            <WorkbenchSurface surface="side" modalHost />
           </MobileWorkspaceDialog>
         </Show>
       </>
@@ -2263,7 +2240,7 @@ function SessionPageContent() {
   }
   return (
     <>
-      <BrowserViewEffects timeline={timeline} />
+      <WorkspaceOutputEffects />
       <Show when={composer()}>{(controller) => controller().extensions()}</Show>
       <SessionDecisionHost
         sessionId={params.id}

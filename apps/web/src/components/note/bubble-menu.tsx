@@ -4,10 +4,14 @@ import type { Editor } from "@tiptap/core"
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { bubbleMenu as B } from "@/locales/messages"
 
-export function createBubbleMenu(element: HTMLElement) {
+export function prepareBubbleMenuElement(element: HTMLElement) {
   element.style.position = "absolute"
   element.style.visibility = "hidden"
   element.style.opacity = "0"
+}
+
+export function createBubbleMenu(element: HTMLElement) {
+  prepareBubbleMenuElement(element)
 
   return BubbleMenuExtension.configure({
     element,

@@ -266,6 +266,7 @@ export const browser = {
   stop: { id: "app.browser.nav.stop", message: "Stop" },
   reload: { id: "app.browser.nav.reload", message: "Reload" },
   enterUrl: { id: "app.browser.address.placeholder", message: "Enter URL or search" },
+  recentAddresses: { id: "app.browser.address.recent", message: "Recently opened" },
   options: { id: "app.browser.menu.options", message: "Browser options" },
   controls: { id: "app.browser.menu.controls", message: "Browser controls" },
   followAgent: { id: "app.browser.menu.followAgent", message: "Follow agent" },

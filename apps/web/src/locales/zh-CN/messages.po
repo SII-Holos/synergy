@@ -1469,6 +1469,10 @@ msgstr "确定"
 msgid "app.browser.address.placeholder"
 msgstr "输入 URL 或搜索"
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.address.recent"
+msgstr "最近打开"
+
 #. ── Agent ──
 msgid "app.browser.agent.activity"
 msgstr "智能体 {kind} {host}"
@@ -5308,10 +5312,6 @@ msgstr "知识库视图"
 #. js-lingui-explicit-id
 msgid "app.name.synergy"
 msgstr "Synergy"
-
-#. js-lingui-explicit-id
-msgid "app.note.blueprint.pluginOwner"
-msgstr "来自 {plugin}"
 
 #. js-lingui-explicit-id
 msgid "app.note.blueprint.runMode.active"
@@ -12505,6 +12505,37 @@ msgstr "视图"
 msgid "execution.wrap"
 msgstr "自动换行"
 
+msgid "files.close.description"
+msgstr "离开此文件前，保存 {name} 的更改。"
+
+#. js-lingui-explicit-id
+msgid "files.close.discard"
+msgstr "丢弃"
+
+#. js-lingui-explicit-id
+msgid "files.close.failed"
+msgstr "文件保存失败。你的更改仍保留在此标签页中。"
+
+#. js-lingui-explicit-id
+msgid "files.close.save"
+msgstr "保存"
+
+#. js-lingui-explicit-id
+msgid "files.close.title"
+msgstr "保存文件更改？"
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.navigation.hide"
+msgstr "隐藏文件列表"
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.navigation.show"
+msgstr "显示文件列表"
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.options"
+msgstr "文件选项"
+
 #. js-lingui-explicit-id
 msgid "list.for-label"
 msgstr "用于"
@@ -12652,6 +12683,90 @@ msgstr "工具"
 #. js-lingui-explicit-id
 msgid "nav.tools.title"
 msgstr "工具"
+
+#. js-lingui-explicit-id
+msgid "note.document.backupFailed"
+msgstr "本地备份不可用。请保持此窗口打开，直到更改保存成功。"
+
+#. js-lingui-explicit-id
+msgid "note.document.close"
+msgstr "关闭笔记"
+
+#. js-lingui-explicit-id
+msgid "note.document.conflict"
+msgstr "此笔记已在别处更新。请查看远端版本或保留你的草稿。"
+
+#. js-lingui-explicit-id
+msgid "note.document.deleted"
+msgstr "此笔记已被删除。你的草稿仍保留在这里。"
+
+#. js-lingui-explicit-id
+msgid "note.document.exportDraft"
+msgstr "导出草稿"
+
+#. js-lingui-explicit-id
+msgid "note.document.loading"
+msgstr "加载中…"
+
+#. js-lingui-explicit-id
+msgid "note.document.more"
+msgstr "笔记选项"
+
+#. js-lingui-explicit-id
+msgid "note.document.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "note.document.saved"
+msgstr "已保存"
+
+#. js-lingui-explicit-id
+msgid "note.document.saveFailed"
+msgstr "更改保存失败。你的草稿仍保留在这里。"
+
+#. js-lingui-explicit-id
+msgid "note.document.saving"
+msgstr "正在保存…"
+
+#. js-lingui-explicit-id
+msgid "note.document.title"
+msgstr "笔记标题"
+
+#. js-lingui-explicit-id
+msgid "note.document.unavailable"
+msgstr "不可用"
+
+#. js-lingui-explicit-id
+msgid "note.document.unsaved"
+msgstr "未保存的更改"
+
+#. js-lingui-explicit-id
+msgid "note.list.clearFilters"
+msgstr "清除筛选"
+
+#. js-lingui-explicit-id
+msgid "note.list.options"
+msgstr "笔记列表选项"
+
+#. js-lingui-explicit-id
+msgid "note.navigation.hide"
+msgstr "隐藏笔记列表"
+
+#. js-lingui-explicit-id
+msgid "note.navigation.show"
+msgstr "显示笔记列表"
+
+#. js-lingui-explicit-id
+msgid "note.scope.archived"
+msgstr "已归档"
+
+#. js-lingui-explicit-id
+msgid "note.scope.archivedProject"
+msgstr "已归档项目"
+
+#. js-lingui-explicit-id
+msgid "note.tag.remove"
+msgstr "移除标签 {tag}"
 
 #. js-lingui-explicit-id
 msgid "plugin.textAction.back"
@@ -25261,6 +25376,10 @@ msgid "workbench.discard.title"
 msgstr "放弃未保存的更改？"
 
 #. js-lingui-explicit-id
+msgid "workspace.collapse"
+msgstr "收起工作区"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.applyBinding"
 msgstr "重新绑定 Workspace"
 
@@ -25377,6 +25496,26 @@ msgid "workspace.dialog.unavailable"
 msgstr "Workspace 不可用"
 
 #. js-lingui-explicit-id
+msgid "workspace.document.newTab"
+msgstr "在新标签页打开"
+
+#. js-lingui-explicit-id
+msgid "workspace.fullscreen.enter"
+msgstr "全屏"
+
+#. js-lingui-explicit-id
+msgid "workspace.fullscreen.exit"
+msgstr "退出全屏"
+
+#. js-lingui-explicit-id
+msgid "workspace.home.newTab"
+msgstr "新标签页"
+
+#. js-lingui-explicit-id
+msgid "workspace.home.unavailable"
+msgstr "此项目暂无可用资源。"
+
+#. js-lingui-explicit-id
 msgid "workspace.location.directory"
 msgstr "本地目录"
 
@@ -25403,3 +25542,27 @@ msgstr "存储型 Workspace"
 #. js-lingui-explicit-id
 msgid "workspace.location.unavailable"
 msgstr "Workspace 不可用"
+
+#. js-lingui-explicit-id
+msgid "workspace.navigation.close"
+msgstr "关闭导航"
+
+#. js-lingui-explicit-id
+msgid "workspace.navigation.resize"
+msgstr "调整导航宽度"
+
+#. js-lingui-explicit-id
+msgid "workspace.output.ready"
+msgstr "新资源已就绪"
+
+#. js-lingui-explicit-id
+msgid "workspace.output.view"
+msgstr "查看"
+
+#. js-lingui-explicit-id
+msgid "workspace.resource.open"
+msgstr "打开资源"
+
+#. js-lingui-explicit-id
+msgid "workspace.tab.new"
+msgstr "新建标签页"

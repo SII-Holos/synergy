@@ -4,7 +4,7 @@ These rules apply to the private `@ericsanchezok/synergy-browser-core` workspace
 
 ## Ownership
 
-- This package owns strict Protocol v4 schemas and types, the transport-independent CDP controller, structured locators and errors, navigation leases, redaction, staging, and filename safety.
+- This package owns strict Protocol v5 schemas and types, the transport-independent CDP controller, structured locators and errors, navigation leases, redaction, staging, and filename safety.
 - It does not own Synergy sessions, persistence, routes, permissions, the network gateway, Electron lifecycle, or Web presentation state.
 - Keep protocol unions strict, versioned, bounded, and backend-neutral. Desktop native pages share command and result semantics; test transports do not authorize additional product engines.
 - Owner keys are encoded here, but the server is their canonical source for clients. Do not derive client owner identity from route directories.

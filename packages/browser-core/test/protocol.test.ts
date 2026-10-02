@@ -22,7 +22,24 @@ import {
   selectBrowserPresentation,
 } from "../src/protocol"
 
-describe("browser protocol v4", () => {
+describe("browser protocol v5", () => {
+  test("shared activity identifies the initiating task and operation", () => {
+    const event = {
+      type: "agent.activity",
+      protocolVersion: 5,
+      seq: 1,
+      epoch: "epoch",
+      pageId: "page-1",
+      sessionID: "ses_one",
+      operationID: "ses_one:call",
+      url: "https://example.com",
+      kind: "acting",
+      tool: "browser_action",
+      label: "Click",
+    }
+    expect(BrowserEventSchema.safeParse(event).success).toBe(true)
+    expect(BrowserEventSchema.safeParse({ ...event, operationID: undefined }).success).toBe(false)
+  })
   test("accepts workspace file checkpoints without granting path access", () => {
     expect(
       BrowserCheckpointSchema.parse({
@@ -36,11 +53,11 @@ describe("browser protocol v4", () => {
     ).toBe("file:///workspace/index.html")
   })
   test("uses a versioned strict protocol", () => {
-    expect(BROWSER_PROTOCOL_VERSION).toBe(4)
+    expect(BROWSER_PROTOCOL_VERSION).toBe(5)
     expect(
       BrowserSessionStateSchema.parse({
         type: "session.state",
-        protocolVersion: 4,
+        protocolVersion: 5,
         ownerKey: "owner-1",
         status: "empty",
         pages: [],
@@ -53,7 +70,7 @@ describe("browser protocol v4", () => {
     expect(() =>
       BrowserSessionStateSchema.parse({
         type: "session.state",
-        protocolVersion: 4,
+        protocolVersion: 5,
         ownerKey: "owner-1",
         status: "empty",
         pages: [],
@@ -80,7 +97,7 @@ describe("browser protocol v4", () => {
     expect(
       BrowserHostMessageSchema.safeParse({
         type: "page.signaling.ticket",
-        protocolVersion: 4,
+        protocolVersion: 5,
         ownerKey: "owner-1",
         pageId: "page-1",
         signalingTicket: "ticket",
@@ -233,7 +250,7 @@ describe("browser protocol v4", () => {
     expect(
       BrowserEventSchema.parse({
         type: "page.closed",
-        protocolVersion: 4,
+        protocolVersion: 5,
         seq: 1,
         epoch: "epoch-1",
         pageId: "page-1",
@@ -251,7 +268,7 @@ describe("browser protocol v4", () => {
     expect(
       BrowserEventSchema.safeParse({
         type: "page.closed",
-        protocolVersion: 4,
+        protocolVersion: 5,
         seq: 1,
         epoch: "epoch-1",
         pageId: "page-1",
@@ -260,7 +277,7 @@ describe("browser protocol v4", () => {
     ).toBe(false)
     expect(
       BrowserNativeAttachRequestSchema.safeParse({
-        protocolVersion: 4,
+        protocolVersion: 5,
         ownerKey: "scope:scope:session:session",
         pageId: "page-1",
         bounds: { x: 0, y: 0, width: 800, height: 600 },
@@ -269,7 +286,7 @@ describe("browser protocol v4", () => {
     ).toBe(true)
     expect(
       BrowserNativeAttachRequestSchema.safeParse({
-        protocolVersion: 4,
+        protocolVersion: 5,
         ownerKey: "scope:scope:session:session",
         pageId: "page-1",
         visible: "hidden",
@@ -277,7 +294,7 @@ describe("browser protocol v4", () => {
     ).toBe(false)
     expect(
       BrowserNativeAttachRequestSchema.safeParse({
-        protocolVersion: 4,
+        protocolVersion: 5,
         ownerKey: "scope:scope:session:session",
         pageId: "page-1",
         sessionID: "retired-field",
@@ -286,7 +303,7 @@ describe("browser protocol v4", () => {
     expect(
       BrowserNativeViewEventSchema.safeParse({
         type: "native.loaded",
-        protocolVersion: 4,
+        protocolVersion: 5,
         pageId: "page-1",
         url: "https://example.com/",
         title: "Example",
@@ -395,7 +412,7 @@ describe("browser URL normalization and presentation preference", () => {
 describe("browser Host page lifecycle messages", () => {
   const baseCreate = {
     type: "page.create",
-    protocolVersion: 4,
+    protocolVersion: 5,
     requestId: "request-1",
     ownerKey: "scope:scope-1:session:session-1",
     owner: { mode: "session", scopeID: "scope-1", directory: "/workspace", sessionID: "session-1" },
@@ -442,7 +459,7 @@ describe("browser Host page lifecycle messages", () => {
   test("requires exactly one of result or error on page.result", () => {
     const baseResult = {
       type: "page.result",
-      protocolVersion: 4,
+      protocolVersion: 5,
       requestId: "request-1",
       result: { type: "void" },
     }

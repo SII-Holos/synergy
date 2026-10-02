@@ -58,6 +58,7 @@ beforeAll(async () => {
     import { NativeBrowserSurface } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/native-browser-surface.tsx`)}
     import { BrowserSettings } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-settings.tsx`)}
     import { AddressBar } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/address-bar.tsx`)}
+    import { BrowserNewTab } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-new-tab.tsx`)}
     import { BrowserStoreProvider, createBrowserStore } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-store.tsx`)}
     import { messages } from ${JSON.stringify(`/@fs/${source}/locales/en/messages.po`)}
     import "@ericsanchezok/synergy-ui/styles"
@@ -73,6 +74,10 @@ beforeAll(async () => {
     function App() {
       let container
       const dialog = useDialog()
+      const [recent,setRecent] = createSignal([])
+      window.setRecent = setRecent
+      const [newTab,setNewTab] = createSignal(false)
+      window.setNewTab = setNewTab
       const [request,setRequest] = createSignal()
       window.showPageDialog = (type, defaultValue = "Default draft") => setRequest({type,defaultValue,pageId:"page-one",requestId:"request-one",message:"Name this draft"})
       return <div class="synergy-workbench-canvas">
@@ -81,9 +86,10 @@ beforeAll(async () => {
         <button onClick={() => dialog.show(() => <BrowserDataDialog ownerKey="owner-one" pageId="page-one" url="https://example.test/login" section="passwords" />)}>Open passwords</button>
         <button onClick={() => dialog.show(() => <BrowserResultDialog initial={{type:"capture", dataUrl:"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4xkAAAAASUVORK5CYII=",width:100,height:100,url:"https://example.test/page",title:"Capture",capturedAt:1}} recapture={async () => {throw new Error("Unused")}} attach={async (file,text) => {window.captureResult = {name:file.name,type:file.type,text}}} />)}>Open screenshot</button>
         <div class="browser-workspace" style="height:500px">
-          <AddressBar onPageAction={async action => {window.commands.push(action);if(action.type === "state" && window.holdPageState) return await new Promise(resolve => window.pageStateReplies.push(resolve));return {type:"state",back:false,forward:false,zoom:1}}} activeUrl={() => store.page()?.url ?? ""} isLoading={() => false} hasPage={() => true} onNavigate={() => {}} onHistory={() => {}} onReload={() => {}} onStop={() => {}} onRequestDiagnostics={() => {}} onSettings={() => dialog.show(() => <BrowserSettings sessionID="session-one" createTicket={async () => "ticket"} />)} />
+          <AddressBar recent={recent} onExternal={() => window.commands.push({type:"external"})} onPageAction={async action => {window.commands.push(action);if(action.type === "state" && window.holdPageState) return await new Promise(resolve => window.pageStateReplies.push(resolve));if(action.type === "zoom") return {type:"zoom",factor:action.factor};return {type:"state",back:false,forward:false,zoom:1}}} activeUrl={() => store.page()?.url ?? ""} isLoading={() => false} hasPage={() => true} onNavigate={url => window.commands.push({type:"navigate",url})} onHistory={() => {}} onReload={() => {}} onStop={() => {}} onRequestDiagnostics={() => {}} onSettings={() => dialog.show(() => <BrowserSettings sessionID="session-one" createTicket={async () => "ticket"} />)} />
           <div ref={container} style="position:relative;height:400px"><NativeBrowserSurface container={() => container} ownerKey="owner-one" /></div>
         </div>
+        <Show when={newTab()}><div class="browser-workspace" style="height:360px"><BrowserNewTab onNavigate={url => window.commands.push({type:"navigate",url})} onImport={() => dialog.show(() => <BrowserImportDialog ownerKey="owner-one" pageId="page-one" />)} /></div></Show>
         <Show when={request()} keyed>{request => <BrowserPageDialog request={request} onRespond={(accept,promptText) => {window.commands.push({accept,promptText});setRequest(undefined)}} />}</Show>
       </div>
     }
@@ -130,7 +136,9 @@ type Fixture = Window & {
   holdPageState?: boolean
   pageStateReplies: Array<(state: { type: "state"; back: boolean; forward: boolean; zoom: number }) => void>
   captureResult?: { name: string; type: string; text: string }
-  commands: Array<{ accept?: boolean; promptText?: string }>
+  commands: Array<{ accept?: boolean; promptText?: string; type?: string; url?: string }>
+  setRecent(entries: Array<{ url: string; title: string }>): void
+  setNewTab(value: boolean): void
   attachments: Array<{ pageId: string; visible: boolean }>
   detachments: unknown[]
   showPageDialog(type: string, value?: string): void
@@ -141,6 +149,187 @@ type Fixture = Window & {
     setAnnotationTarget(target: unknown): void
   }
 }
+
+test("navigation controls stay quiet while disabled and keep their bounds through hover and menu opening", async () => {
+  await page.goto(url)
+  const back = page.getByRole("button", { name: "Back", exact: true })
+  const menu = page.getByRole("button", { name: "Browser options", exact: true })
+  const disabled = await back.evaluate((node) => getComputedStyle(node).backgroundColor)
+  expect(disabled).toBe("rgba(0, 0, 0, 0)")
+  await back.hover({ force: true })
+  expect(await back.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe(disabled)
+  const bounds = await menu.boundingBox()
+  await menu.hover()
+  await page.waitForFunction(() => {
+    const trigger = document.querySelector<HTMLButtonElement>('[aria-label="Browser options"]')
+    return trigger && getComputedStyle(trigger).backgroundColor !== "rgba(0, 0, 0, 0)"
+  })
+  expect(await menu.boundingBox()).toEqual(bounds)
+  await menu.click()
+  expect(await menu.boundingBox()).toEqual(bounds)
+})
+
+test("browser actions use one menu surface, mute unavailable rows, and support directional focus", async () => {
+  await page.goto(url)
+  await page.getByRole("button", { name: "Browser options", exact: true }).click()
+  expect(await page.getByRole("button", { name: "Dismiss", exact: true }).count()).toBe(0)
+  const find = page.getByRole("button", { name: "Find in page", exact: true })
+  const settings = page.getByRole("button", { name: "Browser settings", exact: true })
+  expect(await find.isDisabled()).toBe(true)
+  expect(await find.evaluate((node) => getComputedStyle(node).color)).not.toBe(
+    await settings.evaluate((node) => getComputedStyle(node).color),
+  )
+  const resting = await find.evaluate((node) => getComputedStyle(node).backgroundColor)
+  await find.hover({ force: true })
+  expect(await find.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe(resting)
+  await settings.focus()
+  await settings.press("ArrowUp")
+  expect(await page.locator("summary").evaluate((node) => document.activeElement === node)).toBe(true)
+  await page.locator("summary").press("Enter")
+  await page.locator("summary").press("ArrowDown")
+  expect(
+    await page
+      .getByRole("button", { name: "Console", exact: true })
+      .evaluate((node) => document.activeElement === node),
+  ).toBe(true)
+  await page.getByRole("button", { name: "Console", exact: true }).press("Escape")
+  await page.getByRole("button", { name: "Downloads", exact: true }).waitFor({ state: "hidden" })
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Browser options")
+})
+
+test("external navigation stays inside the address field and follows the current page availability", async () => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto(url)
+  const external = page.getByRole("button", { name: "Open in default browser", exact: true })
+  expect(await external.isDisabled()).toBe(true)
+  await page.evaluate(() =>
+    (window as unknown as Fixture).browserFixture.replacePages([
+      { id: "page-one", profileId: "personal", status: "active", url: "https://example.test/page", title: "Page" },
+    ]),
+  )
+  await external.waitFor()
+  expect(await external.isEnabled()).toBe(true)
+  const field = await page.getByRole("combobox").evaluate((node) => {
+    const rect = node.parentElement!.getBoundingClientRect()
+    return { x: rect.x, right: rect.right, top: rect.top, bottom: rect.bottom }
+  })
+  const bounds = await external.boundingBox()
+  expect(bounds!.x).toBeGreaterThan(field.x)
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(field.right)
+  expect(bounds!.y).toBeGreaterThanOrEqual(field.top)
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(field.bottom)
+  await external.click()
+  expect(await page.evaluate(() => (window as unknown as Fixture).commands.at(-1))).toEqual({ type: "external" })
+  await page.evaluate(() =>
+    (window as unknown as Fixture).browserFixture.replacePages([
+      { id: "page-one", profileId: "personal", status: "suspended", url: "https://example.test/page", title: "Page" },
+    ]),
+  )
+  expect(await external.isDisabled()).toBe(true)
+})
+
+test("recent addresses can be selected from the keyboard and Escape keeps the address focus", async () => {
+  await page.goto(url)
+  await page.evaluate(() =>
+    (window as unknown as Fixture).setRecent([
+      { url: "https://example.test/one", title: "One" },
+      { url: "https://example.test/two", title: "Two" },
+    ]),
+  )
+  const address = page.getByRole("combobox", { name: "Enter URL or search", exact: true })
+  await address.fill("example.test")
+  await address.press("ArrowDown")
+  await address.press("ArrowDown")
+  expect(
+    await page.getByRole("option", { name: "Two https://example.test/two", exact: true }).getAttribute("aria-selected"),
+  ).toBe("true")
+  expect(await address.evaluate((node) => document.activeElement === node)).toBe(true)
+  await address.press("Enter")
+  expect(await page.evaluate(() => (window as unknown as Fixture).commands.at(-1))).toEqual({
+    type: "navigate",
+    url: "https://example.test/two",
+  })
+  await address.fill("unfinished")
+  await address.press("Escape")
+  expect(await address.inputValue()).toBe("")
+  expect(await address.evaluate((node) => document.activeElement === node)).toBe(true)
+  expect(await page.getByRole("listbox").count()).toBe(0)
+  await address.press("ArrowDown")
+  await page.getByRole("listbox").waitFor()
+  await address.evaluate((node) =>
+    node.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true })),
+  )
+  expect(
+    await page.evaluate(
+      () => (window as unknown as Fixture).commands.filter((action) => action.type === "navigate").length,
+    ),
+  ).toBe(1)
+  await address.press("Escape")
+  await page.waitForFunction(() => (window as unknown as Fixture).attachments.at(-1)?.visible === true)
+})
+
+test("browser menus fit a narrow viewport and skip disabled and collapsed controls with Home and End", async () => {
+  await page.setViewportSize({ width: 375, height: 520 })
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.goto(url)
+  await page.getByRole("button", { name: "Browser options", exact: true }).click()
+  const menu = page.getByRole("dialog", { name: "Browser options", exact: true })
+  const bounds = await menu.boundingBox()
+  expect(bounds!.x).toBeGreaterThanOrEqual(0)
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(375)
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(520)
+  expect(await menu.evaluate((node) => getComputedStyle(node).animationName)).toBe("none")
+  const settings = page.getByRole("button", { name: "Browser settings", exact: true })
+  await settings.focus()
+  await settings.press("Home")
+  expect(
+    await page
+      .getByRole("button", { name: "Downloads", exact: true })
+      .evaluate((node) => node === document.activeElement),
+  ).toBe(true)
+  await page.getByRole("button", { name: "Downloads", exact: true }).press("End")
+  expect(
+    await page
+      .getByRole("button", { name: "Browser settings", exact: true })
+      .evaluate((node) => node === document.activeElement),
+  ).toBe(true)
+})
+
+test("the new-tab import entry stays quiet and accessible at 375px and opens the import dialog", async () => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto(url)
+  await page.evaluate(() => (window as unknown as Fixture).setNewTab(true))
+  const entry = page.getByRole("button", { name: "Import browser data", exact: true })
+  expect(await entry.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe("rgba(0, 0, 0, 0)")
+  expect(await entry.evaluate((node) => getComputedStyle(node).borderTopColor)).toBe("rgba(0, 0, 0, 0)")
+  const bounds = await entry.boundingBox()
+  expect(bounds!.height).toBeGreaterThanOrEqual(32)
+  expect(bounds!.x).toBeGreaterThanOrEqual(0)
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(375)
+  await entry.focus()
+  await entry.press("Enter")
+  await page.getByRole("dialog", { name: "Import browser data", exact: true }).waitFor()
+  await page.getByRole("dialog").press("Escape")
+  await page.getByRole("dialog").waitFor({ state: "hidden" })
+  await page.waitForFunction(() => document.activeElement?.textContent === "Import browser data")
+})
+
+test("new-tab search ignores composing Enter and navigates only on explicit submission", async () => {
+  await page.goto(url)
+  await page.evaluate(() => (window as unknown as Fixture).setNewTab(true))
+  const search = page.getByRole("textbox", { name: "Enter URL or search", exact: true }).last()
+  await search.fill("  example.test  ")
+  const count = await page.evaluate(() => (window as unknown as Fixture).commands.length)
+  await search.evaluate((node) =>
+    node.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true })),
+  )
+  expect(await page.evaluate(() => (window as unknown as Fixture).commands.length)).toBe(count)
+  await search.press("Enter")
+  expect(await page.evaluate(() => (window as unknown as Fixture).commands.at(-1))).toEqual({
+    type: "navigate",
+    url: "example.test",
+  })
+})
 
 test("address controls retain the current navigation when an older state reply arrives last", async () => {
   await page.goto(url)
@@ -278,9 +467,13 @@ test("browser settings returns focus to its durable menu trigger and preserves t
   await page.waitForFunction(() => (window as unknown as Fixture).attachments.at(-1)?.visible === false)
   await settings.press("Escape")
   await settings.waitFor({ state: "hidden" })
-  await page.waitForFunction(() => document.activeElement?.getAttribute("title") === "Browser options", undefined, {
-    timeout: 2000,
-  })
+  await page.waitForFunction(
+    () => document.activeElement?.getAttribute("aria-label") === "Browser options",
+    undefined,
+    {
+      timeout: 2000,
+    },
+  )
   expect(await menu.evaluate((node) => document.activeElement === node)).toBe(true)
   await page.waitForFunction(() => (window as unknown as Fixture).attachments.at(-1)?.visible === true)
   expect(await page.evaluate(() => (window as unknown as Fixture).detachments)).toEqual([])

@@ -77,11 +77,27 @@ interface MobileWindow extends Window {
   unmount(): void
 }
 
+test("the mobile host leaves the resource chrome at the top without a second header", async () => {
+  await page.goto(baseUrl)
+  await page.getByRole("button", { name: "Open mobile workspace" }).click()
+  await page.getByRole("dialog", { name: "Workspace", exact: true }).waitFor()
+  try {
+    await page.waitForFunction(() => document.querySelector('[role="dialog"]')?.getBoundingClientRect().y === 0)
+    const action = await page.getByRole("button", { name: "Workspace action" }).boundingBox()
+    expect(action?.y).toBe(0)
+    expect(await page.getByRole("button", { name: "Close workspace", exact: true }).count()).toBe(0)
+  } finally {
+    await page.keyboard.press("Escape")
+    await page.getByRole("dialog").waitFor({ state: "detached" })
+  }
+})
+
 test("mobile workspace contains focus, fits the viewport and returns to its entry", async () => {
   errors.length = 0
   await page.goto(baseUrl)
   await page.getByRole("button", { name: "Open mobile workspace" }).click()
   await page.getByRole("dialog", { name: "Workspace", exact: true }).waitFor()
+  await page.waitForFunction(() => !!document.activeElement?.closest('[role="dialog"]'))
   for (let i = 0; i < 8; i++) {
     await page.keyboard.press(i < 4 ? "Tab" : "Shift+Tab")
     expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true)

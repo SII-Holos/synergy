@@ -95,7 +95,7 @@ function SessionActionMenu(props: {
             aria-haspopup="menu"
             aria-expanded={open()}
           >
-            <Icon name={getSemanticIcon("action.more")} size="normal" />
+            <Icon name={getSemanticIcon("action.more")} size="small" />
           </button>
         </Tooltip>
       )}
@@ -232,7 +232,7 @@ export function SessionTopBar(props: {
         aria-pressed={sideSurface().opened()}
         onClick={() => sideSurface().toggle()}
       >
-        <Icon name={getSemanticIcon("app.sideWorkspace")} size="normal" />
+        <Icon name={getSemanticIcon("app.sideWorkspace")} size="small" />
       </button>
     </Tooltip>
   )
@@ -434,7 +434,7 @@ export function SessionTopBar(props: {
               aria-label={_(topBar.openNavigation)}
               onClick={() => layout.mobileSidebar.toggle()}
             >
-              <Icon name={getSemanticIcon("app.sidebar.open")} size="normal" />
+              <Icon name={getSemanticIcon("app.sidebar.open")} size="small" />
             </button>
             <button
               type="button"
@@ -442,7 +442,7 @@ export function SessionTopBar(props: {
               aria-label={_(topBar.openTools)}
               onClick={() => layout.rightSidebar.toggle()}
             >
-              <Icon name={getSemanticIcon("app.toolsDrawer")} size="normal" />
+              <Icon name={getSemanticIcon("app.toolsDrawer")} size="small" />
             </button>
           </div>
           <div class="stb-center flex min-w-0 flex-1 items-center justify-center">
@@ -456,7 +456,7 @@ export function SessionTopBar(props: {
               aria-label={_(topBar.newSession)}
               onClick={() => navigate(`/${params.dir}/session`)}
             >
-              <Icon name={getSemanticIcon("action.add")} size="normal" />
+              <Icon name={getSemanticIcon("action.add")} size="small" />
             </button>
             <Show when={actionVisibility().menu}>
               <SessionActionMenu
@@ -560,7 +560,7 @@ export function SessionTopBar(props: {
                   aria-pressed={bottomSurface().opened()}
                   onClick={() => bottomSurface().toggle()}
                 >
-                  <Icon name={getSemanticIcon("app.bottomSpace")} size="normal" />
+                  <Icon name={getSemanticIcon("app.bottomSpace")} size="small" />
                 </button>
               </Tooltip>
               <Show when={!workbenchChrome?.()}>

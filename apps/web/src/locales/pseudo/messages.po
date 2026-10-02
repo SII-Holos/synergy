@@ -1469,6 +1469,10 @@ msgstr "⟦OK⟧"
 msgid "app.browser.address.placeholder"
 msgstr "⟦Enter URL or search⟧"
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.address.recent"
+msgstr ""
+
 #. ── Agent ──
 msgid "app.browser.agent.activity"
 msgstr "⟦Agent {kind} {host}⟧"
@@ -5314,6 +5318,7 @@ msgid "app.note.blueprint.pluginOwner"
 msgstr "⟦From {plugin}⟧"
 
 #. js-lingui-explicit-id
+
 msgid "app.note.blueprint.runMode.active"
 msgstr "⟦Active run⟧"
 
@@ -12506,6 +12511,38 @@ msgid "execution.wrap"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "files.close.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "files.close.discard"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "files.close.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "files.close.save"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "files.close.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.navigation.hide"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.navigation.show"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.options"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "list.for-label"
 msgstr "⟦for⟧"
 
@@ -12652,6 +12689,90 @@ msgstr "⟦Tools⟧"
 #. js-lingui-explicit-id
 msgid "nav.tools.title"
 msgstr "⟦Tools⟧"
+
+#. js-lingui-explicit-id
+msgid "note.document.backupFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.close"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.conflict"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.deleted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.exportDraft"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.more"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.saved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.saveFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.saving"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.document.unsaved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.list.clearFilters"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.list.options"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.navigation.hide"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.navigation.show"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.scope.archived"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.scope.archivedProject"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.tag.remove"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "plugin.textAction.back"
@@ -25261,6 +25382,10 @@ msgid "workbench.discard.title"
 msgstr "⟦Discard unsaved changes?⟧"
 
 #. js-lingui-explicit-id
+msgid "workspace.collapse"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.applyBinding"
 msgstr "⟦Rebind Workspace⟧"
 
@@ -25377,6 +25502,26 @@ msgid "workspace.dialog.unavailable"
 msgstr "⟦Workspace unavailable⟧"
 
 #. js-lingui-explicit-id
+msgid "workspace.document.newTab"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.fullscreen.enter"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.fullscreen.exit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.home.newTab"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.home.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "workspace.location.directory"
 msgstr "⟦Local directory⟧"
 
@@ -25403,3 +25548,29 @@ msgstr "⟦Stored Workspace⟧"
 #. js-lingui-explicit-id
 msgid "workspace.location.unavailable"
 msgstr "⟦Workspace unavailable⟧"
+
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.navigation.close"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.navigation.resize"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.output.ready"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.output.view"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.resource.open"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.tab.new"
+msgstr ""

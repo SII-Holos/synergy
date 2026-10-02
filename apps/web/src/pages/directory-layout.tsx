@@ -5,6 +5,7 @@ import { SyncProvider, useSync } from "@/context/sync"
 import { LocalProvider } from "@/context/local"
 import { FileProvider } from "@/context/file"
 import { ExecutionProvider } from "@/context/execution"
+import { BrowserCatalogProvider } from "@/components/workspace/browser/browser-catalog"
 import { useGlobalSync } from "@/context/global-sync"
 import { createSessionDataRuntime } from "@/context/session-data-view"
 
@@ -51,7 +52,7 @@ export default function Layout(props: ParentProps) {
                 >
                   <ExecutionProvider>
                     <LocalProvider>
-                      <FileProvider>{props.children}</FileProvider>
+                      <FileProvider><BrowserCatalogProvider>{props.children}</BrowserCatalogProvider></FileProvider>
                     </LocalProvider>
                   </ExecutionProvider>
                 </DataProvider>

@@ -13,7 +13,7 @@ export function DefaultSession(props: PluginComponentProps<{ layout: PluginSessi
         data-default-session
       >
         <div ref={setChrome} class="session-workbench-controls" />
-        <div class="flex-1 min-h-0 flex flex-col md:flex-row relative">
+        <div class="session-workbench-body flex-1 min-h-0 flex flex-col md:flex-row relative">
           <div
             class="session-workbench-pane synergy-workbench-canvas @container relative min-w-0 flex flex-1 flex-col bg-background-stronger pt-3 pb-0 md:py-3"
             style={{

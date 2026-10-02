@@ -27,8 +27,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 }
 
 export function BrowserSurface(props: {
-  sessionID: string
-  routeDirectory?: string
+  route: import("./browser-workbench-model").BrowserWorkbenchRoute
   ownerKey: string
   clientPresentation: "native"
   onRetryNative?: () => void

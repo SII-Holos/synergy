@@ -25,7 +25,14 @@ mock.module("@solidjs/router", () => ({
 mock.module("@/context/sdk", () => ({
   useSDK: () => ({ scopeID: "home", scopeKey: "home", url: "http://localhost", client: { browser: {} } }),
 }))
-mock.module("@/context/platform", () => ({ usePlatform: () => ({ browserNative: {} }) }))
+const [nativeBrowser, setNativeBrowser] = createSignal(true)
+mock.module("@/context/platform", () => ({
+  usePlatform: () => ({
+    get browserNative() {
+      return nativeBrowser() ? {} : undefined
+    },
+  }),
+}))
 mock.module("@/context/workbench", () => ({ useWorkbenchPanels: () => ({ surface: () => ({ tabs: () => [] }) }) }))
 
 mock.module("@/context/terminal", () => ({
@@ -44,9 +51,15 @@ mock.module("@/context/locale", () => ({
   }),
 }))
 
+mock.module("@/components/note/documents", () => ({
+  useNoteDocuments: () => ({ get: () => ({ flush: async () => true }) }),
+}))
+mock.module("../../../src/components/workspace/browser/browser-catalog", () => ({ useBrowserCatalog: () => ({}) }))
+
 const { BuiltinWorkbenchPanelsProvider } = await import("../../../src/components/workspace/builtin-workbench-panels")
 
 const BUILTIN_PANEL_IDS = [
+  "resource-home",
   "notes",
   "context",
   "session-review",
@@ -65,9 +78,49 @@ function panelIds(): string[] {
 afterEach(() => {
   clearWorkbenchPanels()
   setSelected(undefined)
+  setNativeBrowser(true)
 })
 
 describe("built-in workbench panels", () => {
+  test("Browser registration requires both the native bridge and the runtime capability", async () => {
+    setSelected(["browser-runtime"])
+    setNativeBrowser(false)
+    const dispose = createRoot((done) => {
+      BuiltinWorkbenchPanelsProvider({ children: null })
+      return done
+    })
+    try {
+      await Bun.sleep(1)
+      expect(panelIds()).not.toContain("browser")
+      setNativeBrowser(true)
+      await Bun.sleep(1)
+      expect(panelIds()).toContain("browser")
+      setSelected([])
+      await Bun.sleep(1)
+      expect(panelIds()).not.toContain("browser")
+      setSelected(["browser-runtime"])
+      await Bun.sleep(1)
+      expect(panelIds()).toContain("browser")
+      setNativeBrowser(false)
+      await Bun.sleep(1)
+      expect(panelIds()).not.toContain("browser")
+    } finally {
+      dispose()
+    }
+  })
+
+  test("each explicit new resource tab gets an independent empty slot", () => {
+    const dispose = createRoot((done) => {
+      BuiltinWorkbenchPanelsProvider({ children: null })
+      return done
+    })
+    try {
+      expect(listWorkbenchPanels().find((panel) => panel.id === "resource-home")?.cardinality).toBe("multi")
+    } finally {
+      dispose()
+    }
+  })
+
   test("registers only selected optional panels and removes them after reconnection", async () => {
     setSelected(["note"])
     const dispose = createRoot((done) => {

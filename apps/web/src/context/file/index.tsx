@@ -11,6 +11,11 @@ import {
 } from "solid-js"
 import { sharedRequests } from "@/utils/shared-requests"
 import { createFileDraftStorage, type FileDraft } from "./draft-storage"
+import { canLeaveFileDocument } from "./close-policy"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { useLocale } from "@/context/locale"
+import type { WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
 export type { FileDraft } from "./draft-storage"
 import { createStore, produce } from "solid-js/store"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
@@ -161,7 +166,7 @@ function createViewSession(dir: string, id: string | undefined) {
       explorer: { open: boolean; width: number }
     }>({
       file: {},
-      explorer: { open: false, width: 296 },
+      explorer: { open: false, width: 260 },
     }),
   )
   const meta = { pruned: false }
@@ -206,7 +211,7 @@ function createViewSession(dir: string, id: string | undefined) {
     setImageScaleMode: (path: string, mode: "fit" | "actual") => patchFile(path, { imageScaleMode: mode }),
     explorerOpen: () => view.explorer?.open === true,
     setExplorerOpen: (open: boolean) => setView("explorer", "open", open),
-    explorerWidth: () => view.explorer?.width ?? 296,
+    explorerWidth: () => view.explorer?.width ?? 260,
     setExplorerWidth: (width: number) => setView("explorer", "width", width),
     snapshot: () => ({
       file: Object.fromEntries(Object.entries(view.file).map(([path, state]) => [path, { ...state }])),
@@ -215,7 +220,7 @@ function createViewSession(dir: string, id: string | undefined) {
     restore: (snapshot: { file: Record<string, FileViewState>; explorer: { open: boolean; width: number } }) => {
       setView({ file: snapshot.file, explorer: snapshot.explorer })
     },
-    clear: () => setView({ file: {}, explorer: { open: false, width: 296 } }),
+    clear: () => setView({ file: {}, explorer: { open: false, width: 260 } }),
   }
 }
 
@@ -734,14 +739,17 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
     if (path && store.documents[path]) setStore("documents", path, "draft", undefined)
   }
 
-  const openWorkspaceFile = (input: string) => {
+  const openWorkspaceFile = (input: string, options?: { newTab?: boolean }) => {
     const path = normalize(input)
     if (disposed || !workspace || !path) return Promise.resolve(undefined)
-    const existing = openInflight.get(path)
+    const openKey = JSON.stringify([path, options?.newTab === true])
+    const existing = openInflight.get(openKey)
     if (existing) return existing
     const promise = workbench
       .openPanel("file", {
         replaceEmpty: true,
+        replaceCurrent: !options?.newTab,
+        forceNew: options?.newTab,
         init: {
           resourceId: workspaceFileResource(workspace, path),
           title: getFilename(path),
@@ -750,13 +758,13 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
         },
       })
       .then((tab) => {
-        if (disposed) return tab
+        if (disposed || !tab) return tab
         void load(path)
         if (view().explorerOpen()) void reveal(path)
         return tab
       })
-      .finally(() => openInflight.delete(path))
-    openInflight.set(path, promise)
+      .finally(() => openInflight.delete(openKey))
+    openInflight.set(openKey, promise)
     return promise
   }
 
@@ -1271,6 +1279,8 @@ const { use: useFileManager, provider: FileProvider } = createSimpleContext({
     const sync = useSync()
     const params = useParams()
     const owner = getOwner()
+    const dialog = useDialog()
+    const { i18n } = useLocale()
     const entries = new Map<string, { value: WorkspaceFiles; dispose: VoidFunction; users: number }>()
     const [taskWorkspace, setTaskWorkspace] = createSignal<FileWorkspace | null | undefined>(undefined, {
       equals: (a, b) =>
@@ -1316,8 +1326,54 @@ const { use: useFileManager, provider: FileProvider } = createSimpleContext({
     const roots = createMemo(() => projectFileWorkspaces(selected(), sync.data.workspaces))
     return {
       roots,
+      async canClose(tab: WorkbenchPanelTab) {
+        if (!tab.resourceId) return true
+        const workspace = workspaceFileOwner(tab)
+        if (!workspace || workspace.scopeID !== sdk.scopeID) return false
+        const entry = getEntry(workspace)
+        const path = workspaceFilePath(tab.resourceId)
+        entry.users++
+        try {
+          return await canLeaveFileDocument({
+            dirty: () => entry.value.draft.dirty(path),
+            draft: () => entry.value.draft.get(path),
+            save: (content) => entry.value.save(path, content),
+            discard: () => entry.value.draft.discard(path),
+            choose: async () => {
+              const { FileCloseDialog } = await import("@/components/file-workbench/close-dialog")
+              return new Promise<"save" | "discard" | "cancel">((resolve) => {
+                let id: string | undefined
+                id = dialog.push(
+                  () => (
+                    <FileCloseDialog
+                      name={getFilename(path)}
+                      choose={(choice) => {
+                        resolve(choice)
+                        dialog.close(id)
+                      }}
+                    />
+                  ),
+                  () => resolve("cancel"),
+                  { protected: true },
+                )
+              })
+            },
+          })
+        } catch (error) {
+          showToast({
+            type: "error",
+            title: i18n._({ id: "files.close.failed", message: "File could not be saved" }),
+            description: fileWriteErrorMessage(error),
+          })
+          return false
+        } finally {
+          entry.users--
+          prune()
+        }
+      },
       setTaskWorkspace,
-      open: (workspace: FileWorkspace, path: string) => getEntry(workspace).value.openWorkspaceFile(path),
+      open: (workspace: FileWorkspace, path: string, options?: { newTab?: boolean }) =>
+        getEntry(workspace).value.openWorkspaceFile(path, options),
       async search(query: string, signal?: AbortSignal) {
         return (
           await Promise.all(

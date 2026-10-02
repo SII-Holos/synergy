@@ -148,7 +148,12 @@ describe("migrateWorkbenchLayout", () => {
     expect(migrated.sideWorkspaceDiscovered).toBeUndefined()
     expect(migrated.workbenchSurfaces).toEqual({
       "home/session-1": {
-        side: { opened: true, active: "notes", tabs: [{ id: "notes", panelId: "notes" }] },
+        side: {
+          opened: true,
+          active: "notes",
+          tabs: [{ id: "notes", panelId: "notes" }],
+          reveal: { interacted: true, consumed: false },
+        },
       },
     })
   })
@@ -206,9 +211,51 @@ test("versioned resource layouts retain recoverable dirty state and reject malfo
     version: number
     workbenchSurfaces: typeof source.workbenchSurfaces
   }
-  expect(result.version).toBe(1)
+  expect(result.version).toBe(2)
   expect(result.workbenchSurfaces.session.side.tabs[1]).toMatchObject({ dirty: true, state: { draft: "unsaved" } })
   expect(result.workbenchSurfaces.session.side.tabs[2]?.dirty).toBeUndefined()
   expect(migrateWorkbenchLayout(result)).toEqual(result)
-  expect(migrateWorkbenchLayout({})).toMatchObject({ version: 1, workbenchSurfaces: {} })
+  expect(migrateWorkbenchLayout({})).toMatchObject({ version: 2, workbenchSurfaces: {} })
+})
+
+test("v2 preserves resource order, presentation and historical browser owners", () => {
+  const input = {
+    version: 1,
+    workbenchSurfaces: {
+      task: {
+        side: {
+          opened: true,
+          active: "notes",
+          size: 680,
+          resized: true,
+          fullscreen: true,
+          tabs: [
+            { id: "notes", panelId: "notes", resourceId: "note-1", source: "home" },
+            {
+              id: "browser:page",
+              panelId: "browser",
+              resourceId: "page",
+              state: {
+                browserRoute: { sessionID: "task-1", path_directory: "home", scopeID: "home" },
+              },
+            },
+          ],
+        },
+      },
+    },
+  }
+  const migrated = migrateWorkbenchLayout(input) as typeof input
+  expect(migrated.version).toBe(2)
+  expect(migrated.workbenchSurfaces.task.side).toMatchObject({
+    opened: true,
+    active: "notes",
+    size: 680,
+    fullscreen: true,
+  })
+  expect(migrated.workbenchSurfaces.task.side.tabs.map((tab) => tab.id)).toEqual(["notes", "browser:page"])
+  expect(migrated.workbenchSurfaces.task.side.tabs[1]?.state?.browserRoute).toMatchObject({
+    mode: "session",
+    sessionID: "task-1",
+  })
+  expect(migrateWorkbenchLayout(migrated)).toEqual(migrated)
 })

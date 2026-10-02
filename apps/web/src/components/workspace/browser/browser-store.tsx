@@ -40,6 +40,8 @@ export interface AccessibilityElement {
 export type DownloadEntry = BrowserDownloadEntry & { pageId?: string }
 
 export interface AgentActivity {
+  sessionID?: string
+  operationID?: string
   pageId: string | null
   url: string | null
   title?: string
@@ -257,6 +259,13 @@ export function createBrowserStore() {
   }
 
   function applyAgentActivity(activity: AgentActivity) {
+    if (
+      activity.kind === "idle" &&
+      activity.pageId &&
+      activity.operationID &&
+      activities[activity.pageId]?.operationID !== activity.operationID
+    )
+      return
     setAgentActivity(activity)
     if (activity.pageId) setActivities(activity.pageId, activity)
   }

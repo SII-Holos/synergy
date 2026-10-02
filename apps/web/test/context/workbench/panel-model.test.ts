@@ -10,9 +10,122 @@ import {
   resolveWorkbenchEscapeAction,
   updateWorkbenchPanelTab,
   workbenchPanelMountKey,
+  workbenchForNewSession,
 } from "../../../src/context/workbench/panel-model"
 
+test("starting a session preserves resources and dimensions while closing both surfaces", () => {
+  const source = {
+    side: {
+      opened: true,
+      active: "note",
+      size: 620,
+      resized: true,
+      fullscreen: true,
+      tabs: [{ id: "note", panelId: "notes", resourceId: "one", source: "project" }],
+    },
+    bottom: { opened: true, tabs: [{ id: "terminal", panelId: "terminal" }] },
+  }
+  const next = workbenchForNewSession(source)
+  expect(next.side).toMatchObject({
+    opened: false,
+    active: "note",
+    size: 620,
+    resized: true,
+    fullscreen: true,
+    tabs: source.side.tabs,
+  })
+  expect(next.bottom?.opened).toBe(false)
+  expect(source.side.opened).toBe(true)
+})
+
 describe("openWorkbenchPanelTab", () => {
+  test("choosing a resource fills its empty tab without adding an intermediate tab", () => {
+    const result = openWorkbenchPanelTab({
+      panelId: "notes",
+      cardinality: "multi",
+      tabs: [
+        { id: "retained", panelId: "file", resourceId: "a.md", dirty: true },
+        { id: "empty", panelId: "resource-home" },
+      ],
+      replaceTab: "empty",
+      init: { resourceId: "note", source: "project" },
+      createId: () => "unexpected",
+    })
+    expect(result.tabs).toHaveLength(2)
+    expect(result.active).toBe("empty")
+    expect(result.tabs[1]).toMatchObject({ id: "empty", panelId: "notes", resourceId: "note" })
+    expect(result.tabs[0]?.dirty).toBe(true)
+  })
+
+  test("a stale empty-tab action cannot replace a document or duplicate an open resource", () => {
+    const tabs: WorkbenchPanelTab[] = [
+      { id: "used", panelId: "file", resourceId: "draft.md", dirty: true },
+      { id: "note", panelId: "notes", resourceId: "one", source: "project" },
+    ]
+    const result = openWorkbenchPanelTab({
+      panelId: "notes",
+      cardinality: "multi",
+      tabs,
+      replaceTab: "used",
+      init: { resourceId: "one", source: "project" },
+      createId: () => "unexpected",
+    })
+    expect(result.tabs).toEqual(tabs)
+    expect(result.active).toBe("note")
+  })
+
+  test("document navigation replaces the current same-type tab without accumulating resources", () => {
+    let tabs: WorkbenchPanelTab[] = [{ id: "notes", panelId: "notes", resourceId: "note", source: "home" }]
+    let active = "notes"
+    for (let index = 0; index < 20; index++) {
+      const next = openWorkbenchPanelTab({
+        panelId: "file",
+        cardinality: "multi",
+        tabs,
+        active,
+        replaceCurrent: true,
+        init: { resourceId: `src/${index}.ts` },
+        createId: () => `file:${index}`,
+      })
+      tabs = next.tabs
+      active = next.active
+    }
+    expect(tabs).toHaveLength(2)
+    expect(tabs[1]).toMatchObject({ id: "file:0", resourceId: "src/19.ts" })
+    const retained = openWorkbenchPanelTab({
+      panelId: "file",
+      cardinality: "multi",
+      tabs,
+      active,
+      init: { resourceId: "src/retained.ts" },
+      createId: () => "retained",
+    })
+    expect(retained.tabs).toHaveLength(3)
+    const deduplicated = openWorkbenchPanelTab({
+      panelId: "file",
+      cardinality: "multi",
+      tabs: retained.tabs,
+      active: "retained",
+      replaceCurrent: true,
+      init: { resourceId: "src/19.ts" },
+      createId: () => "duplicate",
+    })
+    expect(deduplicated.tabs).toHaveLength(3)
+    expect(deduplicated.active).toBe("file:0")
+  })
+
+  test("notes with the same local ID in different Scopes remain distinct resources", () => {
+    const result = openWorkbenchPanelTab({
+      panelId: "notes",
+      cardinality: "multi",
+      tabs: [{ id: "home", panelId: "notes", resourceId: "note-1", source: "home" }],
+      init: { resourceId: "note-1", source: "project-1" },
+      createId: () => "project",
+    })
+    expect(result.tabs).toHaveLength(2)
+    expect(result.active).toBe("project")
+  })
+
   test("exclusive panels replace existing tabs", () => {
     const result = openWorkbenchPanelTab({
       panelId: "notes",
@@ -295,6 +408,7 @@ describe("workbench tab updates", () => {
 
     expect(workbenchPanelMountKey(after)).toBe(workbenchPanelMountKey(before))
     expect(workbenchPanelMountKey({ id: "notes:2", panelId: "notes" })).not.toBe(workbenchPanelMountKey(before))
+    expect(workbenchPanelMountKey({ ...before, panelId: "resource-home" })).not.toBe(workbenchPanelMountKey(before))
   })
 
   test("moves a tab to the requested stable index", () => {
