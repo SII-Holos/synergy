@@ -3003,6 +3003,10 @@
           "ref": "VoiceSttConfig",
           "type": "object",
           "properties": {
+            "enabled": {
+              "description": "Enable voice input. When omitted, a configured model enables it.",
+              "type": "boolean"
+            },
             "billingMode": {
               "description": "Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.",
               "type": "string",
@@ -3097,15 +3101,21 @@
               },
               "additionalProperties": false
             },
-            "baseURL": { "description": "Base URL for the speech-to-text API (OpenAI-compatible)", "type": "string" },
-            "apiKey": { "description": "API key for the speech-to-text service", "type": "string" },
+            "baseURL": {
+              "description": "OpenAI-compatible endpoint. Null restores the default endpoint.",
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
+            },
+            "apiKey": {
+              "description": "Speech-to-text credential. Null removes the credential.",
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
+            },
             "model": {
               "description": "Speech-to-text model name. Voice input is disabled when not set.",
               "type": "string"
             },
             "language": {
               "description": "BCP-47 language hint for transcription, e.g. zh, en. Auto-detected when not set.",
-              "type": "string"
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
             }
           },
           "additionalProperties": false
@@ -3115,6 +3125,10 @@
           "ref": "VoiceTtsConfig",
           "type": "object",
           "properties": {
+            "enabled": {
+              "description": "Enable speech output. When omitted, a configured model enables it.",
+              "type": "boolean"
+            },
             "billingMode": {
               "description": "Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.",
               "type": "string",
@@ -3209,16 +3223,25 @@
               },
               "additionalProperties": false
             },
-            "baseURL": { "description": "Base URL for the text-to-speech API (OpenAI-compatible)", "type": "string" },
-            "apiKey": { "description": "API key for the text-to-speech service", "type": "string" },
+            "baseURL": {
+              "description": "OpenAI-compatible endpoint. Null restores the default endpoint.",
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
+            },
+            "apiKey": {
+              "description": "Text-to-speech credential. Null removes the credential.",
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
+            },
             "model": {
               "description": "Text-to-speech model name. The speak tool is disabled when not set.",
               "type": "string"
             },
-            "voice": { "description": "Voice name for synthesis (provider-specific, e.g. alloy)", "type": "string" },
+            "voice": {
+              "description": "Voice name for synthesis. Null restores the service default.",
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
+            },
             "instructions": {
               "description": "Natural-language delivery instructions applied to synthesized speech, e.g. tone and pace",
-              "type": "string"
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
             }
           },
           "additionalProperties": false
