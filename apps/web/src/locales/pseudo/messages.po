@@ -10841,6 +10841,622 @@ msgid "environment.dialog.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "execution.activity"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.activityOrder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.actor"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.actualRequest"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.allRounds"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.allStatuses"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.allTasks"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.allTypes"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.anomalies"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.back"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.callCount"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.calls"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.callsTruncated"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.cancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.cancelRead"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.chartEvents"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.chartExpand"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.children"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.clear"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.collapse"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.completed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.connected"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.contentActions"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.contentBlock"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.contentError"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.context"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.contextHelp"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.contextStale"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.contextUnknown"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.copied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.copy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.copyBlock"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.copyFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.copyFull"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.copying"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.copyText"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.cost"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.definitions"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.diagnostics"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.disconnected"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.download"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.downloadPartial"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.elapsed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.end"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.environment"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.error"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.errorDetails"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.estimate"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.eventCount"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.expand"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.export"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.filter"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.filteredNode"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.firstRequest"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.free"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.full"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.historicalCost"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.history"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.humanInputs"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.idle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.input"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.inspect"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.interrupted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.kind.compaction"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.kind.context"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.kind.input"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.kind.model"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.kind.output"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.kind.process"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.kind.reasoning"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.kind.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.kind.subtask"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.kind.tool"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.kind.turn"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.knownEstimate"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.latest"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.legacy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.loadContent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.loadMore"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.localCost"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.matches"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.message"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.missingCost"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.missingTimes"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.more"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.moreSections"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.multipleRounds"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.newEvents"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.newOutput"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.next"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.noContent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.noCost"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.noMatches"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.observation"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.openSession"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.output"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.outsideFilters"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.overview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.own"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.partial"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.partialContent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.partialHelp"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.previous"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.priceEvidence"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.processView"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.purpose"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.raw"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.rawJson"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.rawStructure"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.realTime"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.recorded"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.recordedDefinition"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.recordsView"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.refreshContent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.reported"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.request"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.response"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.result"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.retries"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.retryAttempt"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.round"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.rounds"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.running"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.savedRequest"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.search"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.searchContent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.sections"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.sectionsTruncated"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.start"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.status"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.subscription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.taskInstructions"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.tasks"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.time"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.timing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.tokens"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.toolInput"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.toolOutput"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.totalHelp"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.trajectory"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.type"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.unassigned"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.unclassified"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.unknown"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.unknownBilling"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.used"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.versionError"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.view"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.wrap"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "list.for-label"
 msgstr ""
 
@@ -22953,6 +23569,34 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "ui.errorCard.unknownError"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.execution.cancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.execution.completed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.execution.details"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.execution.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.execution.interrupted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.execution.running"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.execution.unknown"
 msgstr ""
 
 #. js-lingui-explicit-id

@@ -100,9 +100,21 @@ Derive activity steps and counts from canonical tool parts. Display preferences 
 6. Update `PRODUCT.md` when an interaction or visual rule should survive refactors.
 7. For imperative renderers, use the dependency's typed live-update API and cover it with a boundary test. Do not hide an unsupported method behind a cast; same-mode theme changes must repaint already-mounted renderers.
 
+Use the shared MenuField and Checkbox for ordinary choices; keep selected indicators, native selection semantics and keyboard dismissal consistent across consumers. In scrollable choice menus, position hidden absolute inputs within their rows and verify that Tab reveals the visible control without scrolling the outer popup. Size a custom Dialog through its outer `--dialog-width` and `--dialog-max-height` variables rather than widening the inner content class. Validate the compiled component and real CSS layers at narrow and short viewports, and settle entrance animations before measuring geometry. Use `dialog.push` when closing a child dialog must restore the containing dialog and its connected focus target.
+
 For streaming-sync changes, test a checkpoint followed by a delta in one hidden-page flush, both with and without an existing part. Exercise background repair against the actual store provider while entering history and while compaction is pending. Evaluate all snapshot rejection conditions before advancing a resource watermark; preserve stronger reload ownership when requests share a loader.
 
 Rewind and redo must converge through the server's effective message window, including retained caches with earlier rollback branches. Observe rollback identity and redo-validity transitions separately from ordinary metadata events, force message reloads after transitions, and verify removed messages also lose their part buckets without reconnecting. A new root can invalidate redo without changing the rollback ID and expose previously prefix-hidden injections. A latest rollback summary is only an immediate display filter; it cannot reconstruct the complete history projection.
+
+## Execution details
+
+1. Read execution summaries and trajectories through the generated session execution SDK methods; retain Harness accounting and lifecycle as the source of truth. Verify root Scope, round and descendant ownership in Workbench queries.
+2. Keep full trajectories and raw bodies behind the task-details interaction. Default to task process, preserve the `context` panel identity, and let a narrow inspector replace global controls. Use stable IDs, a shared 500-node branch/list budget, at most 120 rendered rows and an 8MiB content cache. Buffer updates through snapshot loading and recover revision gaps around the reading identity.
+3. Exercise parent-idle/child-running state, completed-child retention, cancellation followed by another round, observed retry usage, missing historical evidence and cross-Scope access before changing execution presentation.
+4. Present inspector evidence as titled code blocks with local copy actions. Keep tool result and diagnostics views distinct; do not require a representation switch or field directory before reading. Preserve full-version validation behind block-local actions and test actual copy/download payloads.
+5. Separate cumulative usage, latest main-task context and root interval elapsed time. An active child must not make a closed root's timer grow. Retain saved tool definitions and distinguish raw tool output from model observations.
+6. Verify ten thousand events, at least 20MB of multibyte evidence, full-object search, exact-version complete copy/download, checksums, cancellation, historical scroll stability and reconnect. Exercise upward wheel input during virtual-list measurement; delayed programmatic positioning must not resume following. Check compact summary height, 426px inspector content near the top, zoom, narrow Back focus and reduced motion. Reopening without a target preserves panel state. Failed tools remain readable when the only evidence is a saved error. Closing or switching nodes must abort readers and ignore late results.
+7. Fault-inject a missed evidence notification and assert consecutive live updates through child completion without another read request. Recover revision gaps before accounting, drain events arriving during asynchronous hydration, and preserve subscribed roots after transient projection failures.
 
 ## Preserve Loading Boundaries
 
@@ -164,6 +176,8 @@ bun run localization:check
 ## Handoff
 
 When a menu suppresses its trigger Tooltip, preserve the trigger element and focus listeners. Exercise focus → open → Escape → focus return with the real composed controls. A menu action that opens a Dialog must hand off a connected return-focus target; an unmounted menu item is not one. Distinguish a visible path Tooltip consuming Escape from a parent dialog failing to close.
+
+When a nested Solid control must consume Escape before a document-level workspace listener, use a native `on:keydown` handler at the active control boundary; delegated `onKeyDown` runs after document listeners. Test that Escape closes only the nested control and returns focus without navigating or closing its parent surface.
 
 Report state ownership, API path, semantic icon token, shared primitives, accessibility states, tests, visual checks, and any durable `PRODUCT.md` or Skill update.
 

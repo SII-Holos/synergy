@@ -229,8 +229,23 @@ export namespace RolloutLifecycle {
     if (!outcome && (await SessionInbox.list(sessionID)).some((item) => item.mode === "steer")) return run
     const messages = await SessionHistory.modelMessages({ sessionID })
     const terminal = SessionProgress.findTerminalReply(messages, runID)
-    if (!outcome && (!terminal || SessionProgress.needsModelCall(messages, runID))) return run
+    const latestRoot = messages.findLast((message) => message.info.role === "user" && message.info.isRoot)
+    const answeredLater =
+      latestRoot &&
+      latestRoot.info.id !== runID &&
+      SessionProgress.findTerminalReply(messages, latestRoot.info.id) &&
+      !SessionProgress.needsModelCall(messages, latestRoot.info.id)
+    if (!outcome && (!terminal || (SessionProgress.needsModelCall(messages, runID) && !answeredLater))) return run
     const status = outcome ?? (terminal?.info.role === "assistant" && terminal.info.error ? "failed" : "completed")
     return RolloutLedger.finishRun(identity, runID, status)
+  }
+
+  export async function reconcileDelegatedRuns(sessionID: string, excluded: ReadonlySet<string>) {
+    const runs = new Set<string>()
+    for (const child of await Session.children(sessionID)) {
+      const lineage = await parent(child)
+      if (lineage?.runID && !excluded.has(lineage.runID)) runs.add(lineage.runID)
+    }
+    for (const runID of runs) await reconcile(sessionID, runID)
   }
 }

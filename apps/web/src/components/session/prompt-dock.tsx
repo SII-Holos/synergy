@@ -48,9 +48,6 @@ export function PromptDock(props: PluginComponentProps<PluginComposerLayoutServi
             </div>
           </Show>
         </Show>
-        <div class="session-prompt-dock-footer">
-          <div class="pointer-events-auto">{layout.render("status")}</div>
-        </div>
       </div>
     </div>
   )

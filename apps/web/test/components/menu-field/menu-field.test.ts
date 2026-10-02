@@ -99,6 +99,9 @@ describe("MenuField interaction contract", () => {
     const beta = page.getByRole("option", { name: "Beta" })
     expect(await alpha.getAttribute("aria-selected")).toBe("true")
     expect(await beta.getAttribute("aria-selected")).toBe("false")
+    expect(await alpha.locator(".menu-field-selection svg").count()).toBe(1)
+    expect(await beta.locator(".menu-field-selection svg").count()).toBe(0)
+    expect(await alpha.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(36)
     expect(await trigger.getAttribute("aria-expanded")).toBe("true")
 
     // 2. Selecting an option reports the change once.
@@ -125,5 +128,9 @@ describe("MenuField interaction contract", () => {
     const changes = await page.evaluate(() => (window as unknown as { __changes: () => string[] }).__changes())
     expect(changes.at(-1)).toBe("c")
     expect((await trigger.textContent()) ?? "").toContain("Gamma")
+    await trigger.click()
+    await page.getByRole("listbox").press("Escape")
+    await page.getByRole("listbox").waitFor({ state: "hidden" })
+    await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label")?.startsWith("Pick an option:"))
   })
 })

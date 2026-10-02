@@ -42,6 +42,17 @@ export function registerBuiltinProviderProfiles() {
   instanceState.registered = true
 
   ProviderProfile.register({
+    id: "deepseek",
+    name: "DeepSeek",
+    authKind: "api_key",
+    billingMode: "api",
+    billingOrigins: ["https://api.deepseek.com"],
+    baseURL: "https://api.deepseek.com",
+    aiSdkPackage: "@ai-sdk/openai-compatible",
+    modelsDevProviderID: "deepseek",
+  })
+
+  ProviderProfile.register({
     id: "openai",
     billingMode: "api",
     name: "OpenAI",

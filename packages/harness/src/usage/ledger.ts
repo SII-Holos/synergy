@@ -340,6 +340,7 @@ export namespace UsageLedger {
         estimate: value.estimate,
         timing: value.timing,
         usageFinal: value.usageFinal ?? value.status === "completed",
+        pricingEvidence: value.pricingEvidence,
         httpStatus: value.httpStatus,
         responseModel: value.responseModel,
       },
@@ -397,9 +398,10 @@ export namespace UsageLedger {
             attempt.usageFinal =
               capture.hasFinalUsage() || (attempt.status === "completed" && attempt.response.status === "complete")
             attempt.estimate ??= ProviderPricing.estimate(
-              call.model.pricing,
+              attempt.pricingEvidence ? attempt.pricingEvidence.pricing : call.model.pricing,
               usage,
               call.model.billingMode ?? "unknown",
+              attempt.ended,
             )
             event.value = JSON.parse(JSON.stringify(attempt))
           }

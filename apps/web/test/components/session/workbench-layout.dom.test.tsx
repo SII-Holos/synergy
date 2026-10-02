@@ -126,11 +126,16 @@ async function bounds(selector: string) {
   return page.locator(selector).evaluate((element) => element.getBoundingClientRect().toJSON())
 }
 
-test("new and existing tasks keep their status actions available", async () => {
+test("new and existing tasks keep input actions without a reserved status footer", async () => {
   await open()
-  expect(await page.getByRole("button", { name: "Connection details" }).isVisible()).toBe(true)
+  expect(await page.locator("[data-status]").count()).toBe(0)
+  expect(await page.locator("[data-send]").isVisible()).toBe(true)
   await page.locator("[data-send]").click()
-  expect(await page.getByRole("button", { name: "Connection details" }).isVisible()).toBe(true)
+  expect(await page.locator("[data-status]").count()).toBe(0)
+  expect(await page.locator("[data-send]").isVisible()).toBe(true)
+  const dock = await bounds(".session-prompt-dock-content")
+  const input = await bounds(".prompt-input-shell")
+  expect(Math.abs(dock.bottom - input.bottom)).toBeLessThanOrEqual(1)
 })
 
 test("first send keeps the composer anchored and the editor mounted", async () => {

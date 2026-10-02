@@ -19,7 +19,7 @@ const requirements: Record<"settings" | "navigation" | "panel", Readonly<Record<
     library: "library",
     performance: "workbench",
   },
-  panel: { notes: "note", lattice: "workflows", boss: "workflows", browser: "browser-runtime" },
+  panel: { context: "workbench", notes: "note", lattice: "workflows", boss: "workflows", browser: "browser-runtime" },
 }
 
 export function runtimeFeatureAvailable(

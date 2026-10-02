@@ -65,6 +65,7 @@ export const SemanticIconToken = {
   "session.rewind": "undo-dot",
   "session.archive": "message-square-more",
   "session.context": "chart-pie",
+  "session.taskDetails": "file-clock",
 
   // Product domains
   "blueprint.main": "clipboard-list",

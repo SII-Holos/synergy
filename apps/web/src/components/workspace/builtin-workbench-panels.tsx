@@ -21,6 +21,7 @@ import { useLocale } from "@/context/locale"
 import { createContextWorkbenchPanel } from "./context-panel-entry"
 import { createLatticeWorkbenchPanel } from "./lattice-panel-entry"
 import { createBossWorkbenchPanel } from "./boss-panel-entry"
+import { E } from "@/components/execution/i18n"
 export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
   const { capabilities } = useGlobalSDK()
   const platform = usePlatform()
@@ -94,7 +95,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         order: 10,
         loader: async () => ({ default: (await import("./tool-notes")).NotesWorkbenchContent }),
       }),
-      register(createContextWorkbenchPanel(i18n._(P.context))),
+      register(createContextWorkbenchPanel(i18n._(E.title))),
       register({
         id: "session-review",
         label: i18n._(P.review),

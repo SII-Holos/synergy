@@ -38,6 +38,7 @@ import "./session-top-bar.css"
 import { SlotOutlet } from "@/plugin/slot-outlet"
 import { SessionTagMenu } from "@/components/session/session-tag-menu"
 import { ModelVariantPicker } from "@/components/provider/model-thinking-picker"
+import { TaskDetailsPopover } from "@/components/execution/popover"
 
 const selectionSaving = { id: "session.modelSelection.saving", message: "Saving…" }
 const selectionPending = { id: "session.modelSelection.pending", message: "Applies to the next request" }
@@ -448,6 +449,7 @@ export function SessionTopBar(props: {
             <ModelSelectorButton />
           </div>
           <div class="flex items-center gap-1">
+            <TaskDetailsPopover />
             <button
               type="button"
               class="stb-icon-btn"
@@ -500,6 +502,7 @@ export function SessionTopBar(props: {
           </div>
           <div class="stb-drag-region" aria-hidden="true" />
           <div class="stb-right">
+            <TaskDetailsPopover />
             <Show when={actionVisibility().menu || compact()}>
               <SessionActionMenu
                 tools={

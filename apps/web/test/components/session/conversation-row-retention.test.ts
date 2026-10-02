@@ -35,6 +35,7 @@ function aliasConfig(stubPath: string) {
     "@/utils/perf",
     "@/components/workspace/browser/browser-view-effects",
     "@/context/locale",
+    "@/context/execution",
     "@/context/session-optimistic-message",
     "./session-timeline",
     "./session-transition-card",
@@ -86,6 +87,7 @@ beforeAll(async () => {
         })
         export const SessionTimeline = () => null
         export const SessionTransitionCard = () => null
+        export const useExecution = () => ({ round: () => undefined, open: () => {} })
         export const messageAllowsCanonicalActions = () => false
       `,
     ),

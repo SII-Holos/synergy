@@ -47,7 +47,7 @@ export const ACTIVITY_TRACE_DESC = {
     "inspect-local": d("activity.trace.family.inspect-local", "Inspected"),
     "research-web": d("activity.trace.family.research-web", "Researched"),
     "modify-files": d("activity.trace.family.modify-files", "Changed"),
-    execute: d("activity.trace.family.execute", "Ran"),
+    execute: d("activity.trace.family.execute", "Run command"),
     browser: d("activity.trace.family.browser", "Browsed"),
     delegate: d("activity.trace.family.delegate", "Delegated"),
     produce: d("activity.trace.family.produce", "Produced"),

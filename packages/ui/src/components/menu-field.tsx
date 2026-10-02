@@ -71,33 +71,48 @@ export function MenuField<T extends string>(props: MenuFieldProps<T>) {
 
   const content = () => (
     <PortalStyleOwner>
-      <Popover.Content class={`menu-field-surface ${props.surfaceClass ?? ""}`}>
-        {props.leading?.(() => setOpen(false))}
-        <Listbox
-          class="menu-field-list"
-          options={props.options}
-          optionValue={(option) => option.value}
-          optionTextValue={(option) => option.label}
-          optionDisabled={(option) => option.disabled ?? false}
-          selectionMode={multiple() ? "multiple" : "single"}
-          disallowEmptySelection={!multiple()}
-          allowDuplicateSelectionEvents={!multiple()}
-          value={selected()}
-          onChange={handleChange}
-          renderItem={(node) => {
-            const option = node.rawValue as MenuFieldOption<T>
-            return (
-              <Item item={node} class="menu-field-item">
-                <ItemLabel class="menu-field-item-label">
-                  {props.children ? props.children(option) : option.label}
-                </ItemLabel>
-                <Show when={option.count !== undefined}>
-                  <span class="menu-field-count">{option.count}</span>
-                </Show>
-              </Item>
-            )
+      <Popover.Content aria-label={props.ariaLabel} class={`menu-field-surface ${props.surfaceClass ?? ""}`}>
+        <div
+          on:keydown={(event) => {
+            if (event.key !== "Escape") return
+            event.preventDefault()
+            event.stopPropagation()
+            setOpen(false)
           }}
-        />
+        >
+          {props.leading?.(() => setOpen(false))}
+          <Listbox
+            class="menu-field-list"
+            aria-label={props.ariaLabel}
+            options={props.options}
+            optionValue={(option) => option.value}
+            optionTextValue={(option) => option.label}
+            optionDisabled={(option) => option.disabled ?? false}
+            selectionMode={multiple() ? "multiple" : "single"}
+            disallowEmptySelection={!multiple()}
+            allowDuplicateSelectionEvents={!multiple()}
+            value={selected()}
+            onChange={handleChange}
+            renderItem={(node) => {
+              const option = node.rawValue as MenuFieldOption<T>
+              return (
+                <Item item={node} class="menu-field-item">
+                  <ItemLabel class="menu-field-item-label">
+                    {props.children ? props.children(option) : option.label}
+                  </ItemLabel>
+                  <Show when={option.count !== undefined}>
+                    <span class="menu-field-count">{option.count}</span>
+                  </Show>
+                  <span class="menu-field-selection" aria-hidden="true">
+                    <Show when={selected().includes(option.value)}>
+                      <Icon name="check" size="small" />
+                    </Show>
+                  </span>
+                </Item>
+              )
+            }}
+          />
+        </div>
       </Popover.Content>
     </PortalStyleOwner>
   )

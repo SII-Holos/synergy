@@ -10,6 +10,7 @@ import { RankList } from "./rank-list"
 import { CodeSummary } from "./code-summary"
 import { ActivityHeatmap } from "./hourly-heatmap"
 import { Milestones } from "./milestones"
+import { CostBreakdown } from "../execution/overview"
 import {
   buildOverviewMetrics,
   buildModelRows,
@@ -170,17 +171,24 @@ function StatsContent(props: {
           longest: snapshot().overview.longestStreak,
         }}
       />
-      <Show when={snapshot().tokenCost.accounting}>
-        {(accounting) => (
-          <p class="text-small text-text-weak">
-            {i18n._(S.accountingDetail.id, {
-              api: fmt.currency(accounting().apiEstimate.known, "USD"),
-              subscription: fmt.currency(accounting().subscriptionEquivalent.known, "USD"),
-              unknown: accounting().subscriptionEquivalent.unknown,
-              legacy: fmt.currency(accounting().legacy.cost, "USD"),
-            })}
-          </p>
-        )}
+      <Show
+        when={snapshot().tokenCost.costPresentation}
+        fallback={
+          <Show when={snapshot().tokenCost.accounting}>
+            {(accounting) => (
+              <p class="text-small text-text-weak">
+                {i18n._(S.accountingDetail.id, {
+                  api: fmt.currency(accounting().apiEstimate.known, "USD"),
+                  subscription: fmt.currency(accounting().subscriptionEquivalent.known, "USD"),
+                  unknown: accounting().subscriptionEquivalent.unknown,
+                  legacy: fmt.currency(accounting().legacy.cost, "USD"),
+                })}
+              </p>
+            )}
+          </Show>
+        }
+      >
+        {(cost) => <CostBreakdown cost={cost()} />}
       </Show>
       <DailyTrend days={snapshot().timeSeries.days} computedAt={snapshot().computedAt} />
       <ActivityHeatmap

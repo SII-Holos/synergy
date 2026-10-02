@@ -6,6 +6,8 @@ import { SessionProgress } from "../../src/session/progress"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
 import { RolloutLifecycle } from "../../src/session/rollout/lifecycle"
 import { afterAll as afterRuntimeTests } from "bun:test"
+import { Session } from "../../src/session"
+import { Identifier } from "../../src/id/id"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 
@@ -42,3 +44,28 @@ test("a materialized continuation keeps its rollout open", () =>
   }))
 
 afterRuntimeTests(() => runtime.close())
+
+test("a newer root reply closes an older acknowledged continuation without fabricating its result", () =>
+  runtime.run(() =>
+    fixture(async ({ session, rootID, call }) => {
+      await RolloutLedger.finishCall(call.owner, rootID, call.id, { status: "completed" })
+      await notify(session.id, rootID)
+      const messages = await SessionHistory.modelMessages({ sessionID: session.id })
+      const oldRoot = messages.find((message) => message.info.id === rootID)!.info
+      const oldReply = messages.find((message) => message.info.role === "assistant")!.info
+      if (oldRoot.role !== "user" || oldReply.role !== "assistant") throw new Error("Fixture messages are missing")
+      const next = Identifier.ascending("message")
+      await Session.updateMessage({ ...oldRoot, id: next, rootID: next, time: { created: Date.now() } })
+      await RolloutLifecycle.reconcile(session.id, rootID)
+      expect((await RolloutLedger.getRun(call.owner, rootID)).status).toBe("running")
+      await Session.updateMessage({
+        ...oldReply,
+        id: Identifier.ascending("message"),
+        parentID: next,
+        rootID: next,
+        time: { created: Date.now(), completed: Date.now() },
+      })
+      await RolloutLifecycle.reconcile(session.id, rootID)
+      expect((await RolloutLedger.getRun(call.owner, rootID)).status).toBe("completed")
+    }),
+  ))

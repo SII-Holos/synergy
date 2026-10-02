@@ -5,7 +5,6 @@ import { handleComposerTypingAutofocus } from "@/components/prompt-input/typing-
 import { useGlobalSDK } from "@/context/global-sdk"
 import { SessionPreparation } from "@/components/session/session-preparation"
 import type { PluginComposerLayoutService } from "@ericsanchezok/synergy-plugin"
-import { StatusBar } from "@/components/status-bar"
 import { NewSessionGreeting } from "@/components/session/session-new-view"
 import { prepareTaskStarter } from "@/components/session/task-starter"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
@@ -2001,7 +2000,6 @@ function SessionPageContent() {
             <SlotOutlet slot="session.empty" sessionId={params.id} />
           </>
         )
-      if (part === "status") return <StatusBar />
       if (part === "inbox")
         return (
           <Show when={params.id}>

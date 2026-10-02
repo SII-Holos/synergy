@@ -6,8 +6,14 @@ import { RolloutPending } from "./pending"
 import type { RolloutSchema } from "./schema"
 import { record } from "./error"
 import { UsageLedger } from "../../usage/ledger"
+import { Bus } from "../../bus"
+import { RolloutEvents } from "./events"
+import { ScopeContext } from "../../scope/context"
+import { Scope } from "../../scope"
+import { Log } from "../../util/log"
 
 export namespace RolloutJournal {
+  const log = Log.create({ service: "rollout.journal" })
   const Revision = z.number().int().nonnegative().safe()
   const Head = z
     .object({ allocated: Revision, committed: Revision })
@@ -110,6 +116,15 @@ export namespace RolloutJournal {
         await UsageLedger.committed(owner, seq)
         await Storage.write([...root(owner), "head"], { allocated: seq, committed: seq })
       })
+      await ScopeContext.provide({
+        scope: ScopeContext.tryScope() ?? Scope.home(),
+        fn: () =>
+          Bus.publish(RolloutEvents.Updated, {
+            owner,
+            revision: seq,
+            record: RolloutEvents.parse(event.key, event.value),
+          }),
+      }).catch((error) => log.warn("execution notification failed", { error }))
       return seq
     })
   }

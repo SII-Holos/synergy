@@ -27,7 +27,7 @@ msgstr "Delegated"
 
 #. js-lingui-explicit-id
 msgid "activity.trace.family.execute"
-msgstr "Ran"
+msgstr "Run command"
 
 #. js-lingui-explicit-id
 msgid "activity.trace.family.external-action"
@@ -10839,6 +10839,622 @@ msgstr "{state, select, idle {Not allocated} allocating {Starting} ready {Ready}
 #. js-lingui-explicit-id
 msgid "environment.dialog.title"
 msgstr "Choose Environment"
+
+#. js-lingui-explicit-id
+msgid "execution.activity"
+msgstr "Activity"
+
+#. js-lingui-explicit-id
+msgid "execution.activityOrder"
+msgstr "Activity order"
+
+#. js-lingui-explicit-id
+msgid "execution.actor"
+msgstr "Executor"
+
+#. js-lingui-explicit-id
+msgid "execution.actualRequest"
+msgstr "Actual provider request"
+
+#. js-lingui-explicit-id
+msgid "execution.allRounds"
+msgstr "All rounds"
+
+#. js-lingui-explicit-id
+msgid "execution.allStatuses"
+msgstr "All states"
+
+#. js-lingui-explicit-id
+msgid "execution.allTasks"
+msgstr "All tasks"
+
+#. js-lingui-explicit-id
+msgid "execution.allTypes"
+msgstr "All events"
+
+#. js-lingui-explicit-id
+msgid "execution.anomalies"
+msgstr "Exceptions and retries"
+
+#. js-lingui-explicit-id
+msgid "execution.back"
+msgstr "Back to trajectory"
+
+#. js-lingui-explicit-id
+msgid "execution.callCount"
+msgstr "{count} model calls"
+
+#. js-lingui-explicit-id
+msgid "execution.calls"
+msgstr "Calls"
+
+#. js-lingui-explicit-id
+msgid "execution.callsTruncated"
+msgstr "Showing {shown} of {total} calls. All records are available in the trajectory."
+
+#. js-lingui-explicit-id
+msgid "execution.cancelled"
+msgstr "Cancelled"
+
+#. js-lingui-explicit-id
+msgid "execution.cancelRead"
+msgstr "Cancel reading"
+
+#. js-lingui-explicit-id
+msgid "execution.chartEvents"
+msgstr "{count} events · {start}–{end}"
+
+#. js-lingui-explicit-id
+msgid "execution.chartExpand"
+msgstr "Explore activity"
+
+#. js-lingui-explicit-id
+msgid "execution.children"
+msgstr "Subtasks"
+
+#. js-lingui-explicit-id
+msgid "execution.clear"
+msgstr "Clear filters"
+
+#. js-lingui-explicit-id
+msgid "execution.collapse"
+msgstr "Collapse task details"
+
+#. js-lingui-explicit-id
+msgid "execution.completed"
+msgstr "Completed"
+
+#. js-lingui-explicit-id
+msgid "execution.connected"
+msgstr "Connected"
+
+#. js-lingui-explicit-id
+msgid "execution.contentActions"
+msgstr "Content actions"
+
+#. js-lingui-explicit-id
+msgid "execution.contentBlock"
+msgstr "Bytes {start}–{end} of {total}"
+
+#. js-lingui-explicit-id
+msgid "execution.contentError"
+msgstr "Could not read or verify this content. Try again."
+
+#. js-lingui-explicit-id
+msgid "execution.context"
+msgstr "Context"
+
+#. js-lingui-explicit-id
+msgid "execution.contextHelp"
+msgstr "Latest main-task request; separate from cumulative usage. Reasoning tokens are included in output."
+
+#. js-lingui-explicit-id
+msgid "execution.contextStale"
+msgstr "Context has changed since this request."
+
+#. js-lingui-explicit-id
+msgid "execution.contextUnknown"
+msgstr "Context limit or usage was not recorded."
+
+#. js-lingui-explicit-id
+msgid "execution.copied"
+msgstr "Copied complete content"
+
+#. js-lingui-explicit-id
+msgid "execution.copy"
+msgstr "Copy JSON"
+
+#. js-lingui-explicit-id
+msgid "execution.copyBlock"
+msgstr "Copy {label}"
+
+#. js-lingui-explicit-id
+msgid "execution.copyFailed"
+msgstr "Clipboard unavailable. The complete content was downloaded."
+
+#. js-lingui-explicit-id
+msgid "execution.copyFull"
+msgstr "Copy complete JSON"
+
+#. js-lingui-explicit-id
+msgid "execution.copying"
+msgstr "Reading complete content… {percent}%"
+
+#. js-lingui-explicit-id
+msgid "execution.copyText"
+msgstr "Copy complete content"
+
+#. js-lingui-explicit-id
+msgid "execution.cost"
+msgstr "Cost"
+
+#. js-lingui-explicit-id
+msgid "execution.definitions"
+msgstr "Tool definitions"
+
+#. js-lingui-explicit-id
+msgid "execution.diagnostics"
+msgstr "Parameters and diagnostics"
+
+#. js-lingui-explicit-id
+msgid "execution.disconnected"
+msgstr "Reconnecting…"
+
+#. js-lingui-explicit-id
+msgid "execution.download"
+msgstr "Download complete content"
+
+#. js-lingui-explicit-id
+msgid "execution.downloadPartial"
+msgstr "Download recorded partial content"
+
+#. js-lingui-explicit-id
+msgid "execution.elapsed"
+msgstr "Execution time"
+
+#. js-lingui-explicit-id
+msgid "execution.empty"
+msgstr "No recorded events match these filters."
+
+#. js-lingui-explicit-id
+msgid "execution.end"
+msgstr "Ended"
+
+#. js-lingui-explicit-id
+msgid "execution.environment"
+msgstr "Connection"
+
+#. js-lingui-explicit-id
+msgid "execution.error"
+msgstr "Could not load execution records."
+
+#. js-lingui-explicit-id
+msgid "execution.errorDetails"
+msgstr "Error details"
+
+#. js-lingui-explicit-id
+msgid "execution.estimate"
+msgstr "Estimated"
+
+#. js-lingui-explicit-id
+msgid "execution.eventCount"
+msgstr "{count} events"
+
+#. js-lingui-explicit-id
+msgid "execution.expand"
+msgstr "Expand task details"
+
+#. js-lingui-explicit-id
+msgid "execution.export"
+msgstr "Export trajectory"
+
+#. js-lingui-explicit-id
+msgid "execution.failed"
+msgstr "Failed"
+
+#. js-lingui-explicit-id
+msgid "execution.filter"
+msgstr "Filters"
+
+#. js-lingui-explicit-id
+msgid "execution.filteredNode"
+msgstr "Opened from activity · your filters are preserved"
+
+#. js-lingui-explicit-id
+msgid "execution.firstRequest"
+msgstr "Initial request"
+
+#. js-lingui-explicit-id
+msgid "execution.free"
+msgstr "Unused context"
+
+#. js-lingui-explicit-id
+msgid "execution.full"
+msgstr "View full trajectory"
+
+#. js-lingui-explicit-id
+msgid "execution.historicalCost"
+msgstr "Historical amount"
+
+#. js-lingui-explicit-id
+msgid "execution.history"
+msgstr "Normalized message"
+
+#. js-lingui-explicit-id
+msgid "execution.humanInputs"
+msgstr "{count} user inputs"
+
+#. js-lingui-explicit-id
+msgid "execution.idle"
+msgstr "{duration} without recorded activity"
+
+#. js-lingui-explicit-id
+msgid "execution.input"
+msgstr "Input"
+
+#. js-lingui-explicit-id
+msgid "execution.inspect"
+msgstr "Inspect event"
+
+#. js-lingui-explicit-id
+msgid "execution.interrupted"
+msgstr "Interrupted"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.compaction"
+msgstr "Compaction"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.context"
+msgstr "Context and instructions"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.input"
+msgstr "User input"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.model"
+msgstr "Model call"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.output"
+msgstr "Reply"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.process"
+msgstr "Process output"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.reasoning"
+msgstr "Reasoning"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.retry"
+msgstr "Provider attempt"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.subtask"
+msgstr "Subtask"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.tool"
+msgstr "Tool execution"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.turn"
+msgstr "Round"
+
+#. js-lingui-explicit-id
+msgid "execution.knownEstimate"
+msgstr "Known estimate"
+
+#. js-lingui-explicit-id
+msgid "execution.latest"
+msgstr "Go to latest"
+
+#. js-lingui-explicit-id
+msgid "execution.legacy"
+msgstr "Message history only. Requests and timings were not recorded."
+
+#. js-lingui-explicit-id
+msgid "execution.loadContent"
+msgstr "Load recorded content"
+
+#. js-lingui-explicit-id
+msgid "execution.loading"
+msgstr "Loading execution records…"
+
+#. js-lingui-explicit-id
+msgid "execution.loadMore"
+msgstr "Read next content block"
+
+#. js-lingui-explicit-id
+msgid "execution.localCost"
+msgstr "No API charge"
+
+#. js-lingui-explicit-id
+msgid "execution.matches"
+msgstr "Search matches"
+
+#. js-lingui-explicit-id
+msgid "execution.message"
+msgstr "Recorded message"
+
+#. js-lingui-explicit-id
+msgid "execution.missingCost"
+msgstr "{count} requests with missing cost evidence"
+
+#. js-lingui-explicit-id
+msgid "execution.missingTimes"
+msgstr "Some event times were not recorded"
+
+#. js-lingui-explicit-id
+msgid "execution.more"
+msgstr "More details"
+
+#. js-lingui-explicit-id
+msgid "execution.moreSections"
+msgstr "More sections"
+
+#. js-lingui-explicit-id
+msgid "execution.multipleRounds"
+msgstr "{count} rounds"
+
+#. js-lingui-explicit-id
+msgid "execution.newEvents"
+msgstr "{count} new events"
+
+#. js-lingui-explicit-id
+msgid "execution.newOutput"
+msgstr "New output is available"
+
+#. js-lingui-explicit-id
+msgid "execution.next"
+msgstr "Later events"
+
+#. js-lingui-explicit-id
+msgid "execution.noContent"
+msgstr "This content was not recorded."
+
+#. js-lingui-explicit-id
+msgid "execution.noCost"
+msgstr "Cost not recorded"
+
+#. js-lingui-explicit-id
+msgid "execution.noMatches"
+msgstr "No matches in this content"
+
+#. js-lingui-explicit-id
+msgid "execution.observation"
+msgstr "Model observation"
+
+#. js-lingui-explicit-id
+msgid "execution.openSession"
+msgstr "Open subtask conversation"
+
+#. js-lingui-explicit-id
+msgid "execution.output"
+msgstr "Output"
+
+#. js-lingui-explicit-id
+msgid "execution.outsideFilters"
+msgstr "Outside current filters"
+
+#. js-lingui-explicit-id
+msgid "execution.overview"
+msgstr "Overview"
+
+#. js-lingui-explicit-id
+msgid "execution.own"
+msgstr "Main task"
+
+#. js-lingui-explicit-id
+msgid "execution.partial"
+msgstr "Partial record"
+
+#. js-lingui-explicit-id
+msgid "execution.partialContent"
+msgstr "Partial content · recording is incomplete"
+
+#. js-lingui-explicit-id
+msgid "execution.partialHelp"
+msgstr "Some execution evidence is missing. Only recorded values are shown."
+
+#. js-lingui-explicit-id
+msgid "execution.previous"
+msgstr "Earlier events"
+
+#. js-lingui-explicit-id
+msgid "execution.priceEvidence"
+msgstr "Saved rates"
+
+#. js-lingui-explicit-id
+msgid "execution.processView"
+msgstr "Task process"
+
+#. js-lingui-explicit-id
+msgid "execution.purpose"
+msgstr "Purpose"
+
+#. js-lingui-explicit-id
+msgid "execution.raw"
+msgstr "Raw result"
+
+#. js-lingui-explicit-id
+msgid "execution.rawJson"
+msgstr "Raw JSON"
+
+#. js-lingui-explicit-id
+msgid "execution.rawStructure"
+msgstr "Read the saved fields"
+
+#. js-lingui-explicit-id
+msgid "execution.realTime"
+msgstr "Elapsed time"
+
+#. js-lingui-explicit-id
+msgid "execution.recorded"
+msgstr "Recorded evidence"
+
+#. js-lingui-explicit-id
+msgid "execution.recordedDefinition"
+msgstr "Definitions saved with the model request at execution time."
+
+#. js-lingui-explicit-id
+msgid "execution.recordsView"
+msgstr "All records"
+
+#. js-lingui-explicit-id
+msgid "execution.refreshContent"
+msgstr "Read latest version"
+
+#. js-lingui-explicit-id
+msgid "execution.reported"
+msgstr "Reported"
+
+#. js-lingui-explicit-id
+msgid "execution.request"
+msgstr "Semantic request"
+
+#. js-lingui-explicit-id
+msgid "execution.response"
+msgstr "Provider response"
+
+#. js-lingui-explicit-id
+msgid "execution.result"
+msgstr "Result"
+
+#. js-lingui-explicit-id
+msgid "execution.retries"
+msgstr "{count} retries"
+
+#. js-lingui-explicit-id
+msgid "execution.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "execution.retryAttempt"
+msgstr "Retry {number}"
+
+#. js-lingui-explicit-id
+msgid "execution.round"
+msgstr "Round {number}"
+
+#. js-lingui-explicit-id
+msgid "execution.rounds"
+msgstr "Rounds"
+
+#. js-lingui-explicit-id
+msgid "execution.running"
+msgstr "Running"
+
+#. js-lingui-explicit-id
+msgid "execution.savedRequest"
+msgstr "Saved request"
+
+#. js-lingui-explicit-id
+msgid "execution.search"
+msgstr "Search all recorded events"
+
+#. js-lingui-explicit-id
+msgid "execution.searchContent"
+msgstr "Search this entire content"
+
+#. js-lingui-explicit-id
+msgid "execution.sections"
+msgstr "Sections"
+
+#. js-lingui-explicit-id
+msgid "execution.sectionsTruncated"
+msgstr "Some sections are omitted from this directory. Raw JSON and download retain the recorded content."
+
+#. js-lingui-explicit-id
+msgid "execution.start"
+msgstr "Started"
+
+#. js-lingui-explicit-id
+msgid "execution.status"
+msgstr "Status"
+
+#. js-lingui-explicit-id
+msgid "execution.subscription"
+msgstr "Subscription equivalent"
+
+#. js-lingui-explicit-id
+msgid "execution.taskInstructions"
+msgstr "{count} task instructions"
+
+#. js-lingui-explicit-id
+msgid "execution.tasks"
+msgstr "Subtasks"
+
+#. js-lingui-explicit-id
+msgid "execution.time"
+msgstr "Time"
+
+#. js-lingui-explicit-id
+msgid "execution.timing"
+msgstr "Timing"
+
+#. js-lingui-explicit-id
+msgid "execution.title"
+msgstr "Task details"
+
+#. js-lingui-explicit-id
+msgid "execution.tokens"
+msgstr "Total tokens"
+
+#. js-lingui-explicit-id
+msgid "execution.toolInput"
+msgstr "Tool input"
+
+#. js-lingui-explicit-id
+msgid "execution.toolOutput"
+msgstr "Tool output"
+
+#. js-lingui-explicit-id
+msgid "execution.totalHelp"
+msgstr "Cumulative input and output across this task and its subtasks, including observed retries."
+
+#. js-lingui-explicit-id
+msgid "execution.trajectory"
+msgstr "Execution trajectory"
+
+#. js-lingui-explicit-id
+msgid "execution.type"
+msgstr "Event type"
+
+#. js-lingui-explicit-id
+msgid "execution.unassigned"
+msgstr "Round not recorded"
+
+#. js-lingui-explicit-id
+msgid "execution.unclassified"
+msgstr "Unclassified model call"
+
+#. js-lingui-explicit-id
+msgid "execution.unknown"
+msgstr "Unknown"
+
+#. js-lingui-explicit-id
+msgid "execution.unknownBilling"
+msgstr "Billing mode not recorded"
+
+#. js-lingui-explicit-id
+msgid "execution.used"
+msgstr "Used context"
+
+#. js-lingui-explicit-id
+msgid "execution.versionError"
+msgstr "This content version is no longer available. Read the latest version."
+
+#. js-lingui-explicit-id
+msgid "execution.view"
+msgstr "View"
+
+#. js-lingui-explicit-id
+msgid "execution.wrap"
+msgstr "Wrap text"
 
 #. js-lingui-explicit-id
 msgid "list.for-label"
@@ -22954,6 +23570,34 @@ msgstr "Tool input"
 #. js-lingui-explicit-id
 msgid "ui.errorCard.unknownError"
 msgstr "Unknown error"
+
+#. js-lingui-explicit-id
+msgid "ui.execution.cancelled"
+msgstr "Cancelled"
+
+#. js-lingui-explicit-id
+msgid "ui.execution.completed"
+msgstr "Completed"
+
+#. js-lingui-explicit-id
+msgid "ui.execution.details"
+msgstr "Details"
+
+#. js-lingui-explicit-id
+msgid "ui.execution.failed"
+msgstr "Failed"
+
+#. js-lingui-explicit-id
+msgid "ui.execution.interrupted"
+msgstr "Interrupted"
+
+#. js-lingui-explicit-id
+msgid "ui.execution.running"
+msgstr "Running"
+
+#. js-lingui-explicit-id
+msgid "ui.execution.unknown"
+msgstr "Status not recorded"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.close"

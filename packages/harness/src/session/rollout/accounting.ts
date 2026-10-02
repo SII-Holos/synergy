@@ -12,6 +12,25 @@ export namespace RolloutAccounting {
     })
     .strict()
   export type Metric = z.infer<typeof Metric>
+  const CostBucket = z
+    .object({
+      attempts: z.number().int().nonnegative(),
+      unreportedRequests: z.number().int().nonnegative().optional(),
+      unreported: Metric,
+      maximum: Metric,
+    })
+    .strict()
+  export const CostCoverage = z
+    .object({
+      version: z.literal(1),
+      api: CostBucket,
+      subscription: CostBucket,
+      unclassified: CostBucket,
+      local: z.number().int().nonnegative(),
+      historical: z.number().int().nonnegative(),
+      historicalAmount: z.number().finite().nonnegative().optional(),
+    })
+    .strict()
   const tokenKeys = ["input", "uncached", "cacheRead", "cacheWrite", "output", "reasoning", "total"] as const
   export const Summary = z
     .object({
@@ -43,6 +62,7 @@ export namespace RolloutAccounting {
           unreported: z.number().int().nonnegative(),
         })
         .strict(),
+      costCoverage: CostCoverage.optional(),
       units: z.record(z.string(), Metric),
       cacheWrites: z.record(z.string(), Metric),
     })
@@ -50,6 +70,7 @@ export namespace RolloutAccounting {
     .meta({ ref: "RolloutAccountingSummary" })
   export type Summary = z.infer<typeof Summary>
   const zero = (): Metric => ({ known: 0, unknown: 0, total: 0 })
+  const costBucket = () => ({ attempts: 0, unreportedRequests: 0, unreported: zero(), maximum: zero() })
   export function empty(): Summary {
     return {
       version: 1,
@@ -73,6 +94,14 @@ export namespace RolloutAccounting {
       subscriptionEquivalent: zero(),
       unclassifiedEquivalent: zero(),
       reported: { currencies: {}, unreported: 0 },
+      costCoverage: {
+        version: 1,
+        api: costBucket(),
+        subscription: costBucket(),
+        unclassified: costBucket(),
+        local: 0,
+        historical: 0,
+      },
       units: {},
       cacheWrites: {},
     }
@@ -101,6 +130,30 @@ export namespace RolloutAccounting {
       add(result.subscriptionEquivalent, summary.subscriptionEquivalent)
       add(result.unclassifiedEquivalent, summary.unclassifiedEquivalent ?? zero())
       result.reported.unreported += summary.reported.unreported
+      const coverage = result.costCoverage!
+      if (summary.costCoverage) {
+        for (const key of ["api", "subscription", "unclassified"] as const) {
+          coverage[key].attempts += summary.costCoverage[key].attempts
+          coverage[key].unreportedRequests =
+            (coverage[key].unreportedRequests ?? 0) +
+            (summary.costCoverage[key].unreportedRequests ??
+              Number(!!summary.costCoverage[key].unreported.known || !!summary.costCoverage[key].unreported.unknown))
+          add(coverage[key].unreported, summary.costCoverage[key].unreported)
+          add(coverage[key].maximum, summary.costCoverage[key].maximum)
+        }
+        coverage.local += summary.costCoverage.local
+        coverage.historical += summary.costCoverage.historical
+        coverage.historicalAmount = new Decimal(coverage.historicalAmount ?? 0)
+          .add(summary.costCoverage.historicalAmount ?? 0)
+          .toNumber()
+      } else {
+        coverage.local += summary.localCalls
+        coverage.historical += summary.attempts + summary.unobservedCalls
+        const known = Object.keys(summary.reported.currencies).length
+          ? 0
+          : new Decimal(summary.apiEstimate.known).add(summary.unclassifiedEquivalent.known).toNumber()
+        coverage.historicalAmount = new Decimal(coverage.historicalAmount ?? 0).add(known).toNumber()
+      }
       for (const [currency, value] of Object.entries(summary.reported.currencies))
         result.reported.currencies[currency] = new Decimal(result.reported.currencies[currency] ?? 0)
           .add(value)
@@ -121,6 +174,20 @@ export namespace RolloutAccounting {
         cache: { read: summary.tokens.cacheRead.known, write: summary.tokens.cacheWrite.known },
       },
     }
+  }
+
+  export function knownExpense(summary: Summary, currency = "USD") {
+    const reported = summary.reported.currencies[currency] ?? 0
+    if (currency !== "USD") return reported
+    const coverage = summary.costCoverage
+    const estimated = coverage
+      ? new Decimal(coverage.api.unreported.known)
+          .add(coverage.unclassified.unreported.known)
+          .add(coverage.historicalAmount ?? 0)
+      : Object.keys(summary.reported.currencies).length
+        ? new Decimal(0)
+        : new Decimal(summary.apiEstimate.known).add(summary.unclassifiedEquivalent.known)
+    return estimated.add(reported).add(summary.legacy.cost).toNumber()
   }
 
   export type CallInput = Pick<
@@ -177,7 +244,10 @@ export namespace RolloutAccounting {
         ),
       }
       if (usage?.billing !== "units") for (const key of tokenKeys) add(result.tokens[key], values[key])
-      if (call.execution === "local" || call.model.billingMode === "local") return
+      if (call.model.billingMode === "local") {
+        result.costCoverage!.local++
+        return
+      }
       const estimate = attempt ? attempt.estimate : call.sdkEstimate
       const basis =
         estimate?.basis ??
@@ -193,6 +263,20 @@ export namespace RolloutAccounting {
             ? result.apiEstimate
             : result.unclassifiedEquivalent
       add(target, amount(estimate?.total, estimate?.known ?? 0))
+      const bucket =
+        result.costCoverage![
+          basis === "subscription_api_equivalent"
+            ? "subscription"
+            : basis === "api_price_estimate"
+              ? "api"
+              : "unclassified"
+        ]
+      bucket.attempts++
+      if (!usage?.reported) {
+        bucket.unreportedRequests = (bucket.unreportedRequests ?? 0) + 1
+        add(bucket.unreported, amount(estimate?.range?.minimum ?? estimate?.total, estimate?.known ?? 0))
+        add(bucket.maximum, amount(estimate?.range?.maximum ?? estimate?.total, estimate?.known ?? 0))
+      }
     }
     for (const attempt of snapshot.attempts) {
       if (attempts.has(attempt.id)) throw new Error("Duplicate rollout attempt in accounting input")
@@ -210,6 +294,7 @@ export namespace RolloutAccounting {
       if (call.source) continue
       if (call.execution === "local") {
         result.localCalls++
+        result.costCoverage!.local++
         continue
       }
       if (observed.has(call.id)) continue
@@ -220,6 +305,7 @@ export namespace RolloutAccounting {
     if (snapshot.gaps.length) {
       for (const key of tokenKeys) add(result.tokens[key], { known: 0, total: null, unknown: snapshot.gaps.length })
       add(result.unclassifiedEquivalent, { known: 0, total: null, unknown: snapshot.gaps.length })
+      result.costCoverage!.historical += snapshot.gaps.length
     }
     return Summary.parse(result)
   }

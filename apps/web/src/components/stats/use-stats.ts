@@ -3,6 +3,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useLocale } from "@/context/locale"
 import { S } from "./stats-i18n"
 import { requestErrorMessage } from "@/utils/error"
+import { executionMoney } from "../execution/cost"
 
 type StatsSnapshot = import("@ericsanchezok/synergy-sdk").StatsSnapshot
 
@@ -125,7 +126,5 @@ export function formatCompact(n: number): string {
 }
 
 export function formatCost(n: number): string {
-  if (n >= 1_000) return "$" + (n / 1_000).toFixed(1) + "K"
-  if (n >= 1) return "$" + n.toFixed(2)
-  return "$" + n.toFixed(4)
+  return executionMoney(n)
 }
