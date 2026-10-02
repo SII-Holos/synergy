@@ -58,7 +58,7 @@ beforeAll(async () => {
   await Bun.write(
     path.join(directory, "main.tsx"),
     `
-    import { render } from "solid-js/web"
+    import { render, Portal } from "solid-js/web"
     import { setupI18n } from "@lingui/core"
     import { I18nProvider } from "@lingui/solid"
     import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -67,14 +67,19 @@ beforeAll(async () => {
     import { WorkspaceNavigator } from ${JSON.stringify(`/@fs/${source}/components/workspace/workspace-navigator.tsx`)}
     import { DefaultSession } from ${JSON.stringify(`/@fs/${source}/plugin/default-session.tsx`)}
     import { DefaultShell } from ${JSON.stringify(`/@fs/${source}/plugin/default-shell.tsx`)}
+    import { SessionWorkbenchChrome } from ${JSON.stringify(`/@fs/${source}/components/session/workbench-chrome.ts`)}
     import ${JSON.stringify(`/@fs/${source}/components/top-bar/session-top-bar.css`)}
     import ${JSON.stringify(`/@fs/${source}/components/sidebar/sidebar.css`)}
-    import { createSignal } from "solid-js"
+    import { createSignal, useContext } from "solid-js"
     import { messages as en } from ${JSON.stringify(`/@fs/${source}/locales/en/messages.po`)}
     import "./state"
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
     const i18n = setupI18n({ locale: "en", messages: { en } })
+    function WorkspaceToggleProbe() {
+      const mount = useContext(SessionWorkbenchChrome)
+      return <Show when={mount?.()}>{element => <Portal mount={element()}><button class="stb-icon-btn" onClick={() => window.fixture.open("side")}>Open side</button></Portal>}</Show>
+    }
     function NavigatorProbe(props = {}) {
       const [open, setOpen] = createSignal(true)
       const [revision, setRevision] = createSignal(1)
@@ -96,8 +101,8 @@ beforeAll(async () => {
       if (location.search === "?navigator-nested") return <button onClick={() => dialog.push(() => <Dialog title="Workspace"><NavigatorProbe /></Dialog>)}>Open host</button>
       if (location.search === "?composed") return <div style="height:100dvh;display:flex;flex-direction:column">
         <DefaultShell context={{ shell: { render: part => part === "navigation" ?
-          <div data-plugin-ui="synergy" style="display:contents"><aside class="sb-integrated sb-expanded" style="width:260px"><div class="sb-navigation"><button>Navigation</button></div></aside></div> : part === "route" ?
-          <DefaultSession context={{ layout: { minimumWidth: () => 350, promptHeight: () => 120, render: view => view === "workbench.side" ? <WorkbenchSurface surface="side" /> : view === "conversation" ? <button onClick={() => window.fixture.open("side")}>Open side</button> : view === "composer" ? <div style="position:absolute;bottom:0;left:0;right:0;z-index:50"><input aria-label="Composer draft" /></div> : null } }} /> : null }}} />
+          <div data-plugin-ui="synergy" style="display:contents"><aside class="sb-root sb-integrated sb-expanded" style="width:260px"><div class="sb-navigation"><button>Navigation</button></div></aside></div> : part === "route" ?
+          <DefaultSession context={{ layout: { minimumWidth: () => 350, promptHeight: () => 120, render: view => view === "workbench.side" ? <WorkbenchSurface surface="side" /> : view === "conversation" ? <WorkspaceToggleProbe /> : view === "composer" ? <div style="position:absolute;bottom:0;left:0;right:0;z-index:50"><input aria-label="Composer draft" /></div> : null } }} /> : null }}} />
       </div>
       if (location.search && location.search !== "?restored") return <NavigatorProbe />
       return <>
@@ -181,6 +186,137 @@ async function openSurfaces() {
   await page.getByRole("button", { name: "Open bottom", exact: true }).click()
   await page.getByRole("button", { name: "bottom action" }).waitFor()
 }
+
+function captureWorkspaceFrames() {
+  return page.evaluate(
+    () =>
+      new Promise<Array<{ left: number; right: number; width: number; controlLeft: number; collapseLeft: number }>>(
+        (resolve) => {
+          const frames: Array<{
+            left: number
+            right: number
+            width: number
+            controlLeft: number
+            collapseLeft: number
+          }> = []
+          const started = performance.now()
+          function capture() {
+            const root = document.querySelector<HTMLElement>(".workbench-surface--side")!
+            const bounds = root.getBoundingClientRect()
+            const control = root.querySelector<HTMLElement>(".workbench-surface-controls [aria-pressed]")!
+            const collapse = root.querySelector<HTMLElement>('[aria-label="Collapse workspace"]')!
+            frames.push({
+              left: bounds.left,
+              right: bounds.right,
+              width: bounds.width,
+              controlLeft: control.getBoundingClientRect().left,
+              collapseLeft: collapse.getBoundingClientRect().left,
+            })
+            if (performance.now() - started < 600) requestAnimationFrame(capture)
+            else resolve(frames)
+          }
+          capture()
+        },
+      ),
+  )
+}
+
+test("the closed workspace entry and open collapse control share the same bounds", async () => {
+  await page.goto(baseUrl + "?composed")
+  const opener = page.getByRole("button", { name: "Open side", exact: true })
+  const closed = (await opener.boundingBox())!
+  await opener.click()
+  await page.waitForFunction(
+    () => document.querySelector(".workbench-surface--side")!.getBoundingClientRect().width === 360,
+  )
+  const opened = (await page.getByRole("button", { name: "Collapse workspace", exact: true }).boundingBox())!
+  for (const key of ["x", "y", "width", "height"] as const) {
+    expect(Math.abs(opened[key] - closed[key])).toBeLessThanOrEqual(1)
+  }
+  await page.getByRole("button", { name: "Collapse workspace", exact: true }).click()
+  expect(await opener.boundingBox()).toEqual(closed)
+  expect(errors).toEqual([])
+})
+
+test("opening a workspace keeps its collapse control at the right edge throughout the reveal", async () => {
+  await page.goto(baseUrl + "?composed")
+  await page.getByRole("button", { name: "Open side", exact: true }).click()
+  await page.waitForFunction(
+    () => document.querySelector(".workbench-surface--side")!.getBoundingClientRect().width === 360,
+  )
+  const expected = (await page.getByRole("button", { name: "Collapse workspace", exact: true }).boundingBox())!.x
+  await page.getByRole("button", { name: "Collapse workspace", exact: true }).click()
+  await page.waitForFunction(
+    () => document.querySelector(".workbench-surface--side")!.getBoundingClientRect().width === 0,
+  )
+  const recording = captureWorkspaceFrames()
+  await page.getByRole("button", { name: "Open side", exact: true }).click()
+  const frames = await recording
+  const revealed = frames.filter((frame) => frame.width >= 24)
+  expect(revealed.some((frame) => frame.width < 144)).toBe(true)
+  expect(Math.max(...revealed.map((frame) => Math.abs(frame.collapseLeft - expected)))).toBeLessThanOrEqual(1)
+  expect(frames.every((frame) => Math.abs(frame.right - 1200) <= 1)).toBe(true)
+  expect(errors).toEqual([])
+})
+
+for (const reducedMotion of ["no-preference", "reduce"] as const) {
+  test(`fullscreen grows leftward with stationary controls and restores from the same edge with ${reducedMotion} motion`, async () => {
+    await page.emulateMedia({ reducedMotion })
+    await page.goto(baseUrl + "?composed")
+    await page.getByRole("button", { name: "Open side", exact: true }).click()
+    await page.waitForFunction(
+      () => document.querySelector(".workbench-surface--side")!.getBoundingClientRect().width === 360,
+    )
+    const expected = (await page.getByRole("button", { name: "Full screen", exact: true }).boundingBox())!.x
+    const enterRecording = captureWorkspaceFrames()
+    await page.getByRole("button", { name: "Full screen", exact: true }).click()
+    const enter = await enterRecording
+    expect(Math.max(...enter.map((frame) => Math.abs(frame.right - 1200)))).toBeLessThanOrEqual(1)
+    expect(Math.max(...enter.map((frame) => Math.abs(frame.controlLeft - expected)))).toBeLessThanOrEqual(1)
+    expect(enter.every((frame, index) => index === 0 || frame.left <= enter[index - 1].left + 1)).toBe(true)
+    expect(enter.some((frame) => frame.width > 360 && frame.width < 1200)).toBe(reducedMotion === "no-preference")
+    const exitRecording = captureWorkspaceFrames()
+    await page.getByRole("button", { name: "Exit full screen", exact: true }).click()
+    const exit = await exitRecording
+    expect(Math.max(...exit.map((frame) => Math.abs(frame.right - 1200)))).toBeLessThanOrEqual(1)
+    expect(Math.max(...exit.map((frame) => Math.abs(frame.controlLeft - expected)))).toBeLessThanOrEqual(1)
+    expect(exit.every((frame, index) => index === 0 || frame.left >= exit[index - 1].left - 1)).toBe(true)
+    expect(exit.at(-1)!.width).toBe(360)
+    expect(errors).toEqual([])
+  })
+}
+
+test("reversing fullscreen during expansion preserves the anchor, resource and preferred width", async () => {
+  await page.goto(baseUrl + "?composed")
+  await page.getByRole("button", { name: "Open side", exact: true }).click()
+  await page.getByRole("textbox", { name: "side draft" }).fill("Retained during fullscreen reversal")
+  await page.waitForFunction(
+    () => document.querySelector(".workbench-surface--side")!.getBoundingClientRect().width === 360,
+  )
+  const bounds = (await page.getByRole("button", { name: "Full screen", exact: true }).boundingBox())!
+  const recording = captureWorkspaceFrames()
+  await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+  await page.waitForFunction(() => {
+    const width = document.querySelector(".workbench-surface--side")!.getBoundingClientRect().width
+    return width > 360 && width < 1200
+  })
+  await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+  const frames = await recording
+  expect(Math.max(...frames.map((frame) => Math.abs(frame.right - 1200)))).toBeLessThanOrEqual(1)
+  expect(Math.max(...frames.map((frame) => Math.abs(frame.controlLeft - bounds.x)))).toBeLessThanOrEqual(1)
+  expect(Math.max(...frames.map((frame) => frame.width))).toBeGreaterThan(360)
+  expect(Math.max(...frames.map((frame) => frame.width))).toBeLessThan(1200)
+  expect(frames.at(-1)!.width).toBe(360)
+  expect(await page.getByRole("button", { name: "Full screen", exact: true }).getAttribute("aria-pressed")).toBe(
+    "false",
+  )
+  expect(await page.getByRole("textbox", { name: "side draft" }).inputValue()).toBe(
+    "Retained during fullscreen reversal",
+  )
+  expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).mounts.side)).toBe(1)
+  expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).fixture.size("side"))).toBe(360)
+  expect(errors).toEqual([])
+})
 
 test("converting a tab to another resource type mounts the corresponding panel", async () => {
   await page.goto(baseUrl)

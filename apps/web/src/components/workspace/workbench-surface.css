@@ -58,7 +58,9 @@
 
 .workbench-surface--overlay {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
   z-index: 40;
 }
 
@@ -100,6 +102,7 @@
   height: 48px;
   min-height: 48px;
   align-items: center;
+  justify-content: flex-end;
   gap: 4px;
   border-bottom: 1px solid var(--workbench-border, var(--border-weak-base));
   background: color-mix(
@@ -257,6 +260,7 @@
   [data-component="icon-button"]:focus:not(:focus-visible):not(:hover):not([aria-expanded="true"]) {
   background-color: transparent;
 }
+.session-workbench-controls .stb-icon-btn,
 .workbench-surface-controls [data-component="icon-button"] {
   height: 32px;
   width: 32px;
