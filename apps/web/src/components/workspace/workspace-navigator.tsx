@@ -26,6 +26,17 @@ export type WorkspaceNavigatorController = {
   closeDrawer: () => void
 }
 
+function tabStops(root: Element) {
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex], [contenteditable="true"]',
+    ),
+  ).filter(
+    (element) =>
+      element.tabIndex >= 0 && element.getClientRects().length > 0 && !element.closest('[inert], [aria-hidden="true"]'),
+  )
+}
+
 export function WorkspaceNavigator(
   props: ParentProps<{
     id?: string
@@ -140,20 +151,29 @@ export function WorkspaceNavigator(
                 width: `${presentation().width}px`,
               }}
               aria-label={props.label}
+              onOpenAutoFocus={(event) => {
+                // Cancel Kobalte's delayed default so it cannot replace a newer focus choice.
+                // https://kobalte.dev/docs/core/components/dialog/#content
+                event.preventDefault()
+                const target = drawer()
+                const active = document.activeElement
+                queueMicrotask(() => {
+                  if (
+                    !target?.isConnected ||
+                    target !== drawer() ||
+                    !drawerOpen() ||
+                    document.activeElement !== active ||
+                    target.contains(active)
+                  )
+                    return
+                  ;(tabStops(target)[0] ?? target).focus({ preventScroll: true })
+                })
+              }}
               onKeyDown={(event: KeyboardEvent) => {
                 if (event.defaultPrevented || event.key !== "Tab") return
                 const modalHost = frame()?.closest('[aria-modal="true"], [data-slot="dialog-content"]')
                 if (!modalHost) return
-                const focusable = Array.from(
-                  modalHost.querySelectorAll<HTMLElement>(
-                    'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex], [contenteditable="true"]',
-                  ),
-                ).filter(
-                  (element) =>
-                    element.tabIndex >= 0 &&
-                    element.getClientRects().length > 0 &&
-                    !element.closest('[inert], [aria-hidden="true"]'),
-                )
+                const focusable = tabStops(modalHost)
                 const index = focusable.indexOf(document.activeElement as HTMLElement)
                 if ((event.shiftKey && index <= 0) || (!event.shiftKey && index === focusable.length - 1)) {
                   event.preventDefault()

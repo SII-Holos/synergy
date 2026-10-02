@@ -996,6 +996,7 @@ test("navigation drawers start closed and preserve the wide navigation preferenc
   expect(await page.getByRole("dialog").count()).toBe(0)
   await page.getByRole("button", { name: "Toggle navigation" }).click()
   await page.getByRole("dialog", { name: "Documents" }).waitFor()
+  await page.waitForFunction(() => document.activeElement?.closest("[data-workspace-navigation]"))
   await page.getByRole("button", { name: "Select document" }).click()
   await page.getByRole("dialog").waitFor({ state: "detached" })
   await page.waitForFunction(() => document.activeElement?.textContent === "Toggle navigation")
@@ -1027,10 +1028,20 @@ test("leaving document navigation with Tab preserves the enclosing mobile worksp
   await page.goto(baseUrl + "?navigator-nested")
   await page.getByRole("button", { name: "Open host", exact: true }).click()
   const host = page.getByRole("dialog", { name: "Workspace", exact: true })
-  await page.getByRole("button", { name: "Toggle navigation", exact: true }).click()
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Close dialog")
+  await page.getByRole("button", { name: "Toggle navigation", exact: true }).evaluate((element) => {
+    ;(element as HTMLButtonElement).click()
+    const choice = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-workspace-navigation] button")).find(
+      (button) => button.textContent === "Select document",
+    )
+    choice?.focus()
+  })
   const drawer = page.getByRole("dialog", { name: "Documents", exact: true })
   await drawer.waitFor()
-  await page.getByRole("button", { name: "Select document", exact: true }).focus()
+  await drawer.evaluate(async (element) => {
+    await Promise.all(element.getAnimations({ subtree: true }).map((animation) => animation.finished))
+  })
+  expect(await page.evaluate(() => document.activeElement?.textContent)).toBe("Select document")
   await page.keyboard.press("Tab")
   await drawer.waitFor({ state: "detached" })
   await page.waitForFunction(
