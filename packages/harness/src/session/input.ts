@@ -1,3 +1,4 @@
+import { SessionPromptContext } from "./prompt-context"
 import { RuntimeContext } from "../lifecycle/context"
 import { ModelSelection } from "./model-selection-schema"
 import { RolloutArtifact } from "./rollout/artifact"
@@ -238,7 +239,7 @@ async function materializeUserMessage(
     noReply: input.noReply,
     agentName: agent.name,
   })
-  const externalMetadata = WorkflowUserWrapper.stripReservedMetadata(input.metadata)
+  const externalMetadata = SessionPromptContext.stripMetadata(WorkflowUserWrapper.stripReservedMetadata(input.metadata))
   const messageID = input.messageID ?? Identifier.ascending("message")
   const origin = input.origin ?? MessageV2.originFromMetadata(input.metadata)
   const isRoot = input.noReply !== true

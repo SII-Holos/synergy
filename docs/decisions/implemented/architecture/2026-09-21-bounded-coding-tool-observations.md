@@ -14,7 +14,7 @@ Search recovery distinguishes a requested result-count limit from the shared byt
 
 Read evidence retains the content version captured with the snapshot, including AST searches. A later edit compares that version with current bytes; a budget-limited observation does not authorize unseen rows, and a changed file requires fresh evidence. The public tool registrations and test fixtures retain the Workspace ownership and explicit Runtime boundaries.
 
-Anchored edits return final tags and compact previews while preserving the existing UI diff. Previously known unchanged rows and submitted rows that survive formatting remain known across versions. A partial write reports committed sections and the remaining error instead of silently appearing complete. Specialist selection context and the task catalog are retained. Truncation recovery permits targeted inspection without requiring delegation.
+Anchored edits return final tags and compact previews while preserving the existing UI diff. Previously known unchanged rows and submitted rows that survive formatting remain known across versions. A partial write reports committed sections and the remaining error instead of silently appearing complete. Truncation recovery permits targeted inspection without requiring delegation. Specialist selection principles remain in the primary prompt; the full permission-filtered catalog belongs to the task description under the [single-owner guidance decision](../simplification/2026-09-24-single-owner-tool-guidance.md).
 
 The entire edit reply, including diagnostics, warnings, reload results and the recovery footer, fits 50 KiB and 2,000 lines. Commit summaries and tag invalidation precede previews; complete feedback exceeding the budget is retained through the existing tool-output file mechanism. Displayed-line evidence is recorded only after selecting complete preview rows. The same accounting covers no-op feedback, whose diagnostics can also exceed the budget.
 
@@ -30,7 +30,7 @@ Local adaptation: retain Synergy's zero-based offsets, hashline language, format
 
 **History rewriting or learned compression.** Both require separate long-task and provider-protocol validation. This change shapes new observations before they enter history.
 
-**Specialist catalog deduplication.** Removing primary-prompt descriptions reduced constant input but the combined pilot regressed on the delegation task in both repetitions. This does not establish causality; retain the original selection context until an isolated change satisfies the quality and efficiency checks. Deferred discovery could also introduce another model round trip.
+**Couple specialist catalog deduplication to the initial observation change.** The combined pilot regressed on the delegation task in both repetitions without establishing causality, so its selected tool candidate retained the original catalog. That experimental disposition is preserved in the [pilot report](../../../research/context-efficiency/2026-09-21-coding-observations-pilot.md). The [separate single-owner guidance decision](../simplification/2026-09-24-single-owner-tool-guidance.md) owns the implemented catalog deduplication and its later evidence; this observation decision does not require duplicate catalogs.
 
 ## Consequences
 

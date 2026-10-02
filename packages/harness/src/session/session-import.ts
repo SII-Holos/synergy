@@ -1,3 +1,4 @@
+import { SessionPromptContext } from "./prompt-context"
 import { WorkspaceCatalog } from "../workspace/catalog"
 import { normalizeSessionWorkspaceInfo } from "./migration"
 import { ModelSelection } from "./model-selection-schema"
@@ -447,7 +448,9 @@ export namespace SessionImport {
     sessionID: string,
     idMap: Map<string, string>,
   ): Promise<MessageV2.Info> {
-    const metadata = info.metadata ? (remapSessionIDs(info.metadata, idMap) as Record<string, any>) : undefined
+    const metadata = SessionPromptContext.stripMetadata(
+      info.metadata ? (remapSessionIDs(info.metadata, idMap) as Record<string, unknown>) : undefined,
+    )
     if (info.role === "assistant") {
       return {
         ...info,

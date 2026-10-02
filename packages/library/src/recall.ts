@@ -77,7 +77,7 @@ export async function buildMemoryContext(
 }
 
 function extractLastUserText(messages: MessageV2.WithParts[]): string | undefined {
-  const lastUserMsg = messages.findLast((m) => m.info.role === "user")
+  const lastUserMsg = messages[MessageV2.lastUserInputIndex(messages)]
   if (!lastUserMsg) return undefined
   const text = lastUserMsg.parts
     .filter((p): p is MessageV2.TextPart => p.type === "text" && !MessageV2.isSystemPart(p))
