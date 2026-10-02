@@ -74,7 +74,12 @@ export function sprite(
       ctx.fillRect(Math.round(x + col * scale), Math.round(y + row * scale), scale, scale)
     }
 }
-export function usePixelCanvas(draw: (ctx: CanvasRenderingContext2D, ink: Ink) => void, width: number, height: number) {
+export function usePixelCanvas(
+  draw: (ctx: CanvasRenderingContext2D, ink: Ink) => void,
+  width: number,
+  height: number,
+  align: "center" | "end" = "center",
+) {
   const theme = useTheme()
   const [size, setSize] = createSignal({ width: 0, height: 0, dpr: 1 })
   let canvas!: HTMLCanvasElement
@@ -133,7 +138,7 @@ export function usePixelCanvas(draw: (ctx: CanvasRenderingContext2D, ink: Ink) =
     ctx.drawImage(
       buffer,
       ((bounds.width - width * scale) * bounds.dpr) / 2,
-      ((bounds.height - height * scale) * bounds.dpr) / 2,
+      (bounds.height - height * scale) * bounds.dpr * (align === "end" ? 1 : 0.5),
       width * scale * bounds.dpr,
       height * scale * bounds.dpr,
     )
@@ -148,7 +153,7 @@ export function usePixelCanvas(draw: (ctx: CanvasRenderingContext2D, ink: Ink) =
       const scale = Math.min(rect.width / width, rect.height / height)
       return {
         x: (event.clientX - rect.left - (rect.width - width * scale) / 2) / scale,
-        y: (event.clientY - rect.top - (rect.height - height * scale) / 2) / scale,
+        y: (event.clientY - rect.top - (rect.height - height * scale) * (align === "end" ? 1 : 0.5)) / scale,
       }
     },
   }

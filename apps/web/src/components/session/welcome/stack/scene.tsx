@@ -95,6 +95,7 @@ export default function StackScene(props: WelcomeSceneProps) {
     },
     720,
     340,
+    "end",
   )
   return (
     <div class="welcome-game welcome-stack" data-phase={state().phase} data-height={state().blocks.length - 1}>

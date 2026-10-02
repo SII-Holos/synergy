@@ -151,7 +151,13 @@ test("gravity aiming responds to hover before launch, supports cancellation and 
 
 test("falling blocks rotate and drop with keyboard, and flight follows the pointer before playing", async () => {
   await open("blocks")
-  await page.locator(".welcome-game-canvas").focus()
+  const blockBoard = page.locator(".welcome-game-canvas")
+  const column = await page.locator(".welcome-blocks").getAttribute("data-column")
+  const blockBounds = (await blockBoard.boundingBox())!
+  await page.mouse.move(blockBounds.x + blockBounds.width * 0.8, blockBounds.y + blockBounds.height * 0.5)
+  expect(await page.locator(".welcome-blocks").getAttribute("data-column")).not.toBe(column)
+  expect(await page.locator(".welcome-blocks").getAttribute("data-phase")).toBe("ready")
+  await blockBoard.focus()
   await page.keyboard.press("ArrowUp")
   await page.keyboard.press("Space")
   expect(await page.locator(".welcome-blocks").getAttribute("data-locked")).toBe("4")

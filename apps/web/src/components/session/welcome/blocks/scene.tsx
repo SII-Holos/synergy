@@ -17,6 +17,8 @@ import {
 
 export default function BlocksScene(props: WelcomeSceneProps) {
   const { i18n } = useLocale()
+  const blockSize = 20
+  const boardLeft = 150
   const [state, setState] = createSignal(props.memory.read(() => createBlocks(props.seed)))
   let touch: { id: number; x: number; y: number } | undefined
   createEffect(() => props.memory.write(state()))
@@ -43,8 +45,8 @@ export default function BlocksScene(props: WelcomeSceneProps) {
   const canvas = usePixelCanvas(
     (ctx, ink) => {
       const s = state(),
-        size = 17,
-        left = 275,
+        size = blockSize,
+        left = boardLeft,
         top = 16
       const cell = (x: number, y: number, kind: number, alpha = 1) => {
         if (y < 0) return
@@ -62,7 +64,7 @@ export default function BlocksScene(props: WelcomeSceneProps) {
       ctx.fillStyle = ink.strong
       ctx.globalAlpha = 0.1
       for (let y = 0; y <= 20; y++) for (let x = 0; x <= 10; x++) ctx.fillRect(left + x * size, top + y * size, 1, 1)
-      ctx.fillRect(left - 5, top + 342, 180, 2)
+      ctx.fillRect(left - 5, top + size * 20 + 2, size * 10 + 10, 2)
       ctx.globalAlpha = 1
       s.board.forEach((kind, index) => {
         if (kind) cell(index % 10, Math.floor(index / 10), kind - 1)
@@ -76,18 +78,19 @@ export default function BlocksScene(props: WelcomeSceneProps) {
       if (s.flash > 0) {
         ctx.fillStyle = ink.strong
         ctx.globalAlpha = s.flash * 0.7
-        for (const row of s.cleared) ctx.fillRect(left - 10, top + row * size, 190, size)
+        for (const row of s.cleared) ctx.fillRect(left - 10, top + row * size, size * 10 + 20, size)
         ctx.globalAlpha = 1
       }
     },
-    720,
-    380,
+    520,
+    440,
   )
   return (
     <div
       class="welcome-game welcome-blocks"
       data-phase={state().phase}
       data-locked={state().board.filter(Boolean).length}
+      data-column={state().piece.x}
     >
       <GameSurface
         scene={props}
@@ -125,6 +128,19 @@ export default function BlocksScene(props: WelcomeSceneProps) {
           tabIndex={0}
           role="group"
           aria-label={i18n._({ id: "welcome.blocks.field", message: "Falling-block playfield" })}
+          onPointerMove={(e) => {
+            if (!props.active() || state().phase !== "ready" || e.pointerType === "touch") return
+            const desired = Math.max(0, Math.min(9, Math.floor((canvas.point(e).x - boardLeft) / blockSize) - 1))
+            setState((current) => {
+              let next = current
+              for (let i = 0; i < 10 && next.piece.x !== desired; i++) {
+                const moved = moveBlocks(next, desired - next.piece.x)
+                if (moved === next) break
+                next = moved
+              }
+              return next
+            })
+          }}
           onPointerDown={(e) => {
             if (e.button !== 0) return
             canvas.element().focus({ preventScroll: true })
@@ -146,7 +162,7 @@ export default function BlocksScene(props: WelcomeSceneProps) {
             }
             if (dy > 28 && dy > Math.abs(dx)) setState(dropBlocks)
             else if (Math.abs(dx) > 18)
-              for (let i = 0; i < Math.min(10, Math.round(Math.abs(dx) / 17)); i++)
+              for (let i = 0; i < Math.min(10, Math.round(Math.abs(dx) / blockSize)); i++)
                 setState((s) => moveBlocks(s, Math.sign(dx)))
             else setState(rotateBlocks)
           }}
