@@ -145,10 +145,11 @@ describe("session tool output evidence", () => {
               time: { created: 0 },
             })
             SessionManager.bindRootTask(lease, part.messageID)
-            using write = spyOn(Storage, "writeBinary").mockRejectedValue(
+            using write = spyOn(Storage, "prepareBinary").mockRejectedValue(
               Object.assign(new Error("disk full"), { code: "ENOSPC" }),
             )
             await expect(Session.updatePart(part)).rejects.toBeInstanceOf(RolloutRecordingError)
+            expect(write).toHaveBeenCalled()
             expect(lease.signal.aborted).toBe(true)
             await expect(
               Storage.read(

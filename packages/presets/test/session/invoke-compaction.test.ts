@@ -1639,12 +1639,13 @@ describe("remote compaction rollout", () => {
   test("does not downgrade a remote recording failure to optional metadata", () =>
     runtime.run(async () => {
       using config = spyOn(Config, "current").mockResolvedValue({ compaction: { codexRemote: true } } as Config.Info)
-      using write = spyOn(Storage, "writeBinary").mockRejectedValue(new Error("disk full"))
+      using write = spyOn(Storage, "prepareBinary").mockRejectedValue(new Error("disk full"))
       using remote = spyOn(CodexProvider, "requestRemoteCompactionV2").mockImplementation(async () => {
         throw new Error("must not issue request")
       })
       const observed = await runCompactionProcessCase({ providerID: CodexProvider.PROVIDER_ID, text: "Local summary" })
       expect(observed.thrown).toMatchObject({ name: "RolloutRecordingError" })
+      expect(write).toHaveBeenCalled()
       expect(remote).not.toHaveBeenCalled()
       expect(observed.result).toBeUndefined()
     }))

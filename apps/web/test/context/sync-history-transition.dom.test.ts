@@ -13,7 +13,7 @@ type Harness = {
   dispose: () => void
 }
 
-test("history transitions replace dropped branches and restore effective messages and parts without a reconnect", async () => {
+test("history transitions replace branches while reconnect preserves the retained history window", async () => {
   const dir = await mkdtemp(path.join(import.meta.dir, ".sync-history-"))
   const entry = path.join(dir, "main.tsx"),
     stub = path.join(dir, "stub.tsx")
@@ -28,7 +28,7 @@ export const calls={messagePage:[],permissionList:[]};
 export const useGlobalSync=()=>({retainContentCache:(_key,create)=>({cache:create(),release(){}}),
   data:{scope:[]},
   retainScopeState:()=>({state,release:()=>{}}),
-  scopeReconnectVersion:()=>0,
+  scopeReconnectVersion:()=>generation,
   capturePartSnapshotRequest:()=>({}),
   captureResourceRequest:()=>({}),
   beginContextProjection:()=>0,
@@ -43,17 +43,20 @@ export const useGlobalSync=()=>({retainContentCache:(_key,create)=>({cache:creat
 });
 export const refreshPlanBlueprintOfferFromLoadedParts=()=>{};
 export const updatePlanBlueprintOfferState=()=>{};
+let generation=0;export const setGeneration=value=>{generation=value};
+let historyIds;export const setHistoryPage=value=>{historyIds=value};
 let ids=['root-old','answer-old','injection'];
 export const setPage = value => {ids=value};
-const page=()=>({data:{items:ids.map((id,index)=>({info:{id,sessionID:'ses_probe',role:'user',time:{created:index}},parts:[{id:'part-'+id,type:'text',text:'fixture'}]})),referencedRoots:[],nextCursor:null,hasMore:false,total:ids.length},response:{headers:{get:()=>null}}});
+const page=(input)=>({data:{items:(input.messageID?(historyIds??ids):ids).map((id,index)=>({info:{id,sessionID:'ses_probe',role:'user',time:{created:index}},parts:[{id:'part-'+id,type:'text',text:'fixture'}]})),referencedRoots:[],nextCursor:null,hasMore:false,total:ids.length},response:{headers:{get:()=>null}}});
 export const useSDK=()=>({scopeKey:'probe',scopeID:'home',directory:'/probe',isHome:true,client:{
   permission:{list:(input)=>{calls.permissionList.push(input);return Promise.resolve({data:[]})}},
   session:{
     get:()=>Promise.resolve({data:{id:'ses_probe',time:{created:0,updated:0}}}),
     inbox:()=>Promise.resolve({data:[]}),
+    partPage:()=>Promise.resolve({data:{items:[],nextCursor:null,hasMore:false,previousCursor:null,hasEarlier:false}}),
     timelinePage:(input)=>{
       calls.messagePage.push({sessionID:input.sessionID,limit:input.limit,...(input.cursor?{cursor:input.cursor}:{})});
-      return Promise.resolve(page());
+      return Promise.resolve(page(input));
     },
   },
 }});
@@ -62,7 +65,7 @@ export const useSDK=()=>({scopeKey:'probe',scopeID:'home',directory:'/probe',isH
   await Bun.write(
     entry,
     `
-import {render} from 'solid-js/web';import {SyncProvider,useSync} from ${JSON.stringify(sync)};import {calls,setPage} from ${JSON.stringify(stub)};
+import {render} from 'solid-js/web';import {SyncProvider,useSync} from ${JSON.stringify(sync)};import {calls,setPage,setGeneration,setHistoryPage} from ${JSON.stringify(stub)};
 let api;function Child(){api=useSync();return <div>probe</div>}
 const dispose=render(()=><SyncProvider><Child/></SyncProvider>,document.getElementById('root'));
 export const harness={calls,dispose,run:async()=>{
@@ -75,6 +78,14 @@ export const harness={calls,dispose,run:async()=>{
   await api.session.sync('ses_probe',{trigger:{type:'history-transition'}});snapshot();
   setPage(['root-retry','answer-retry']);
   await api.session.sync('ses_probe',{trigger:{type:'history-transition'}});snapshot();
+  setPage(['older-root','older-answer']);
+  await api.session.history.locate('ses_probe','older-root');
+  setHistoryPage(['older-root','older-answer']);
+  setPage(['latest-root','latest-answer']);
+  setGeneration(1);
+  await api.session.sync('ses_probe');
+  if(api.session.history.mode('ses_probe')!=='history') throw new Error('Recovery discarded history mode');
+  snapshot();
   return snapshots;
 }};
 `,
@@ -116,8 +127,9 @@ export const harness={calls,dispose,run:async()=>{
       { messages: ["root-retry", "answer-retry"], parts: ["answer-retry", "root-retry"] },
       { messages: ["injection", "root-new"], parts: ["injection", "root-new"] },
       { messages: ["root-retry", "answer-retry"], parts: ["answer-retry", "root-retry"] },
+      { messages: ["older-root", "older-answer"], parts: ["older-answer", "older-root"] },
     ])
-    expect(harness.calls.messagePage).toHaveLength(4)
+    expect(harness.calls.messagePage).toHaveLength(7)
   } finally {
     harness?.dispose()
     root.remove()

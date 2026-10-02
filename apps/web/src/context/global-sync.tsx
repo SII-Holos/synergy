@@ -382,8 +382,11 @@ function createGlobalSync() {
       }
       setStore(
         produce((draft) => {
-          for (const messages of Object.values(draft.message))
-            for (const message of messages) clearConversationContent(draft, message.id)
+          for (const [sessionID, messages] of Object.entries(draft.message))
+            for (const message of messages)
+              clearConversationContent(draft, message.id, {
+                preserveSummaries: draft.messageWindow[sessionID]?.mode === "history",
+              })
         }),
       )
     }

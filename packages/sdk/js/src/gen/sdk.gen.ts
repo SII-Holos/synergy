@@ -3555,7 +3555,7 @@ export class Session extends HeyApiClient {
   /**
    * Submit session input
    *
-   * Persist input before scheduling it. Input on a paused session with an existing task steers that task before its next model call and resumes it; other ordinary input queues a new task. Idle no-reply input starts directly.
+   * Persist input before scheduling it. Input on a paused session with an existing task steers that task before its next model call and resumes it; other ordinary input queues a new task. Idle no-reply input queues durable passive materialization without model execution.
    */
   public input<ThrowOnError extends boolean = false>(
     parameters: {

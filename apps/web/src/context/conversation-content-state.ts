@@ -7,10 +7,14 @@ export type ConversationContentState = {
   partVersion: Record<string, string>
 }
 
-export function clearConversationContent(state: ConversationContentState, messageID: string) {
+export function clearConversationContent(
+  state: ConversationContentState,
+  messageID: string,
+  options?: { preserveSummaries?: boolean },
+) {
   for (const part of state.partSummary[messageID] ?? []) delete state.partVersion[part.id]
   for (const part of state.part[messageID] ?? []) delete state.partVersion[part.id]
   delete state.part[messageID]
-  delete state.partSummary[messageID]
+  if (!options?.preserveSummaries) delete state.partSummary[messageID]
   delete state.partPage[messageID]
 }

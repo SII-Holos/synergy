@@ -83,15 +83,16 @@ export function VirtualConversationRows(input: { context: PluginConversationServ
     const next = keys()
     const virtual = untrack(handle)
     const scroller = input.scrollRef
-    if (virtual && previous.length && scroller && props.scrolledUp()) {
+    const leading = previous[0]?.endsWith(":earlier") ? previous[1] : previous[0]
+    const prepended = leading !== undefined && next.indexOf(leading) > previous.indexOf(leading)
+    if (virtual && prepended && scroller && props.scrolledUp()) {
       const saved = anchor
       const target = saved ? next.indexOf(saved.key) : -1
       if (saved && target >= 0 && target !== previous.indexOf(saved.key)) {
         if (anchorFrame !== undefined) cancelAnimationFrame(anchorFrame)
         anchorFrame = requestAnimationFrame(() => {
           anchorFrame = undefined
-          virtual.scrollTo(virtual.getItemOffset(target) + saved.offset)
-          captureAnchor()
+          scroller.scrollTop = virtual.getItemOffset(target) + saved.offset
         })
       }
     }
@@ -232,9 +233,23 @@ function ConversationDisplayRow(input: { context: PluginConversationService; row
     if (row().kind === "load") void load()
   })
   const retainedParts = new Map<string, { version: string; lease: ReturnType<typeof content.retain> }>()
+  let alive = true
   onCleanup(() => {
+    alive = false
     for (const entry of retainedParts.values()) entry.lease.release()
     retainedParts.clear()
+  })
+  createEffect(() => {
+    const current = row()
+    if (current.kind !== "body" || content.page(current.message.id)) return
+    void content
+      .load(current.message.id)
+      .then(() => {
+        if (alive) void load()
+      })
+      .catch((error) => {
+        if (alive) setFailure(error instanceof Error ? error.message : String(error))
+      })
   })
   createEffect(() => {
     retry()

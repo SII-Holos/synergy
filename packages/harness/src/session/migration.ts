@@ -1525,13 +1525,13 @@ export const migrations: Migration[] = [
     description: "Prepare ordered presentation headers in resumable batches",
     async upSession(owner, progress) {
       const { SessionHistory } = await import("./history")
-      await SessionHistory.prepareDisplay(owner.sessionID, progress)
+      await SessionHistory.prepareDisplayOwner(owner, progress)
     },
     async up(progress) {
       const { SessionHistory } = await import("./history")
       for (const scopeID of await SessionMigrationTarget.scopes()) {
         for (const sessionID of await SessionMigrationTarget.sessions(scopeID))
-          await SessionHistory.prepareDisplay(sessionID, progress)
+          await SessionHistory.prepareDisplayOwner({ scopeID, sessionID }, progress)
       }
     },
   },

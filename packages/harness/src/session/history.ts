@@ -39,15 +39,21 @@ export namespace SessionHistory {
   }
 
   async function prepareSessionDisplay(session: Info, progress?: (current: number, total: number) => void) {
-    const sessionID = session.id
+    return prepareDisplayOwner({ scopeID: session.scope.id, sessionID: session.id }, progress)
+  }
+
+  export async function prepareDisplayOwner(
+    owner: { scopeID: string; sessionID: string },
+    progress?: (current: number, total: number) => void,
+  ) {
+    const scopeID = asScopeID(owner.scopeID)
+    const sessionID = asSessionID(owner.sessionID)
     await SessionHistoryDisplay.prepare(
-      session.scope.id,
+      scopeID,
       sessionID,
       async () => {
-        const infos = await readMessageInfo(sessionID)
-        return deriveInfoSemantics(infos, (messageID) =>
-          MessageV2.parts({ scopeID: session.scope.id, sessionID, messageID }),
-        )
+        const infos = await MessageV2.readInfoList({ scopeID, sessionID })
+        return deriveInfoSemantics(infos, (messageID) => MessageV2.parts({ scopeID, sessionID, messageID }))
       },
       progress,
     )

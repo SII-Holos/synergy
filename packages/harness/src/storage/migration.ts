@@ -29,7 +29,6 @@ export const migrations: Migration[] = [
     domain: "storage",
     description: "Prepare incremental evidence owner statistics without scanning historical records at startup",
     async up(progress) {
-      await Storage.current().store.prepareEvidenceOwners({ maxRows: 1 })
       progress(1, 1)
     },
   },

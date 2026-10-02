@@ -22,7 +22,8 @@ import {
   type TrackedSessionSync,
   type SessionSyncTrigger,
 } from "./session-sync-plan"
-import { hasMessageWindowSnapshot, type MessageWindowState } from "./session-message-window"
+import { compareByTimeThenId, hasMessageWindowSnapshot, type MessageWindowState } from "./session-message-window"
+import { findLatestSessionContextUsageMessage } from "./session-context-usage"
 import { planMessagePageApply } from "./session-message-page"
 import { loadOlderOrRecoverLatest } from "./session-message-page-recovery"
 import type { SyncResourceRequest } from "./sync-resource-freshness"
@@ -231,6 +232,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       response: SessionMessagePageResponse
       request?: SyncResourceRequest
       contextProjectionRevision?: number
+      latestContextMessage?: Message | null
       partSnapshotRequest: ReturnType<typeof globalSync.capturePartSnapshotRequest>
     }
     type MessagePageLoadInput = {
@@ -239,26 +241,65 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       reconnectVersion?: number
       limit: number
       targetMessageID?: string
+      retainedWindow?: { first: Message; last: Message; count: number }
     }
     const messageLoader = createSessionMessageLoader<SessionMessagePageLoadResult, MessagePageLoadInput>({
       request: async (sessionID, signal, input) => {
         const request =
-          input?.mode === "latest" ? globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "message") : undefined
+          input?.mode === "latest" || input?.retainedWindow
+            ? globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "message")
+            : undefined
         const contextProjectionRevision =
-          input?.mode === "latest" ? globalSync.beginContextProjection(sdk.scopeKey, sessionID) : undefined
+          input?.mode === "latest" || input?.retainedWindow
+            ? globalSync.beginContextProjection(sdk.scopeKey, sessionID)
+            : undefined
         const partSnapshotRequest = globalSync.capturePartSnapshotRequest(sdk.scopeKey, sessionID)
-        const response = await retry(() =>
-          sdk.client.session.timelinePage(
-            {
-              sessionID,
-              cursor: input?.cursor,
-              limit: Math.min(100, input?.limit ?? chunk),
-              messageID: input?.targetMessageID,
-            },
-            { signal, throwOnError: true },
-          ),
+        const read = (cursor?: string, limit = 100, messageID?: string) =>
+          retry(() =>
+            sdk.client.session.timelinePage(
+              {
+                sessionID,
+                cursor,
+                limit,
+                messageID,
+              },
+              { signal, throwOnError: true },
+            ),
+          )
+        const retained = input?.retainedWindow
+        let response = await read(
+          input?.cursor,
+          Math.min(100, retained?.count ?? input?.limit ?? chunk),
+          retained?.last.id ?? input?.targetMessageID,
         )
-        return { response, request, contextProjectionRevision, partSnapshotRequest }
+        const initial = response
+        let latestContextMessage: Message | null | undefined
+        if (retained && response.data) {
+          const items = [...response.data.items]
+          const roots = new Map(response.data.referencedRoots.map((entry) => [entry.info.id, entry]))
+          while (
+            response.data.hasMore &&
+            response.data.nextCursor &&
+            items.length < retained.count &&
+            items[0] &&
+            compareByTimeThenId(items[0].info, retained.first) > 0
+          ) {
+            response = await read(response.data.nextCursor, Math.min(100, retained.count - items.length))
+            if (!response.data?.items.length) break
+            items.unshift(...response.data.items)
+            for (const entry of response.data.referencedRoots) roots.set(entry.info.id, entry)
+          }
+          if (response.data)
+            response = {
+              ...initial,
+              data: { ...response.data, items, referencedRoots: [...roots.values()] },
+            }
+          const latest = await read()
+          latestContextMessage = findLatestSessionContextUsageMessage(
+            latest.data?.items.map((entry) => entry.info) ?? [],
+          )
+        }
+        return { response, request, contextProjectionRevision, partSnapshotRequest, latestContextMessage }
       },
       apply: (sessionID, result, input) => {
         const page = result.response.data
@@ -275,7 +316,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           page,
           current,
           mode: input?.mode,
-          replace: !!input?.targetMessageID,
+          replace: !!input?.targetMessageID || !!input?.retainedWindow,
         })
         const partActions = new Map(
           Object.keys(plan.parts).map((messageID) => [
@@ -296,11 +337,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             )
             setStore("message", sessionID, reconcile(internMessages(plan.window.messages), { key: "id" }))
             setStore("messageWindow", sessionID, reconcile(plan.metadata))
-            if (plan.latestContextMessage !== undefined) {
+            const latestContextMessage =
+              result.latestContextMessage !== undefined ? result.latestContextMessage : plan.latestContextMessage
+            if (latestContextMessage !== undefined) {
               globalSync.setLatestContextMessage(
                 sdk.scopeKey,
                 sessionID,
-                plan.latestContextMessage,
+                latestContextMessage,
                 result.contextProjectionRevision,
               )
             }
@@ -313,7 +356,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           refreshPlanBlueprintOfferFromLoadedParts(store, setStore, sessionID)
         }
 
-        if (input?.mode === "latest" && result.request) {
+        if (result.request) {
           const accepted = globalSync.applyResourceResponse(
             sdk.scopeKey,
             sessionID,
@@ -322,7 +365,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             result.response.response?.headers,
             apply,
           )
-          if (accepted && input.reconnectVersion !== undefined) {
+          if (accepted && input?.reconnectVersion !== undefined) {
             markSessionSynced(sessionID, input.reconnectVersion)
           }
           return accepted ? "applied" : "superseded"
@@ -561,12 +604,29 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             forceSession: plan.forceSession,
             forceMessages: plan.forceMessages,
           }
+          const reloadMessages = () => {
+            const messages = store.message[sessionID]
+            if (
+              store.messageWindow[sessionID]?.mode === "history" &&
+              messages?.length &&
+              !plan.needsDerivedHistoryRefresh &&
+              options?.trigger?.type !== "history-transition"
+            )
+              return loadMessagePage(
+                sessionID,
+                {
+                  mode: "history",
+                  limit: 100,
+                  retainedWindow: { first: messages[0], last: messages.at(-1)!, count: messages.length },
+                },
+                { force: true, reconnectVersion: currentReconnectVersion },
+              )
+            return loadLatestMessages(sessionID, { force: true, reconnectVersion: currentReconnectVersion })
+          }
           const runBaseSync = async () => {
             await Promise.all([
               plan.forceSession ? loadSession(sessionID, { force: true }) : Promise.resolve(),
-              plan.forceMessages
-                ? loadLatestMessages(sessionID, { force: true, reconnectVersion: currentReconnectVersion })
-                : Promise.resolve(),
+              plan.forceMessages ? reloadMessages() : Promise.resolve(),
             ])
             if (!plan.forceMessages) markSessionSynced(sessionID, currentReconnectVersion)
           }
