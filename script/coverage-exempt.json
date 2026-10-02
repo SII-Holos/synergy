@@ -739,8 +739,12 @@
           "reason": "Source selection, data switches, narrow layout and partial results are exercised by browser-interaction.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
         },
         {
+          "glob": "src/components/workspace/browser/browser-new-tab.tsx",
+          "reason": "New-tab search composition/submission, footer styles and keyboard import/focus return are exercised by browser-interaction.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
+        },
+        {
           "glob": "src/components/workspace/browser/browser-panel.tsx",
-          "reason": "workspace/browser surfaces require a live runtime"
+          "reason": "Native presentation initialization and peer page switching are exercised by browser-panel-presentation.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
         },
         {
           "glob": "src/components/workspace/browser/browser-result-dialog.tsx",

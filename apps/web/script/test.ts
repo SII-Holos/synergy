@@ -24,6 +24,7 @@ const playwrightIsolated = [
   "test/components/app-shell/mobile-tools-drawer.dom.test.tsx",
   "test/components/library/library-interaction.dom.test.tsx",
   "test/components/workspace/browser/browser-interaction.dom.test.tsx",
+  "test/components/workspace/browser/browser-panel-presentation.dom.test.tsx",
   "test/components/workspace/browser/browser-workbench-sync.dom.test.tsx",
   "test/components/session/session-recovery.dom.test.ts",
   "test/components/search/session-search-dialog.dom.test.ts",

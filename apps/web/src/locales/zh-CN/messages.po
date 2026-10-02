@@ -1143,6 +1143,10 @@ msgstr "确定"
 msgid "app.browser.address.placeholder"
 msgstr "输入 URL 或搜索"
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.address.recent"
+msgstr "最近打开"
+
 #. ── Agent ──
 msgid "app.browser.agent.activity"
 msgstr "智能体 {kind} {host}"

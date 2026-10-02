@@ -34,6 +34,8 @@ Human input and Agent operations may run concurrently. Agent commands do not act
 
 Native attachment and UI controls require fresh owner/server-bound Desktop tickets. The broker accepts loopback servers only. There is no WebRTC, iframe, screenshot-stream or headless presentation fallback. Screenshots remain deliberate artifacts.
 
+The frontend catalog initializes presentation from its metadata snapshot before opening the WebSocket, which owns subsequent updates. Mounting a page panel consumes that state without clearing it; the snapshot or transport may already have delivered native readiness before a lazy panel mounts. Catalog reads attach no native view, while visible panels attach only the existing selected page.
+
 ## Identities and authorization
 
 The versioned global identity catalog stores names, stable partitions, enablement, revision, default selection and per-origin policies. The default Personal identity persists across tasks and Scopes. Named persistent identities isolate accounts; temporary identities use non-persistent partitions and disappear after their last live page closes. Pages never change identity in place: opening a copy makes that choice explicit. Login is normal user interaction with the native page, including native popup flows; the Agent resumes with new observations after the user completes login.

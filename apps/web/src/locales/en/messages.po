@@ -1143,6 +1143,10 @@ msgstr "OK"
 msgid "app.browser.address.placeholder"
 msgstr "Enter URL or search"
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.address.recent"
+msgstr "Recently opened"
+
 #. ── Agent ──
 msgid "app.browser.agent.activity"
 msgstr "Agent {kind} {host}"

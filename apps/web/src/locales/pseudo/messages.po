@@ -1143,6 +1143,10 @@ msgstr ""
 msgid "app.browser.address.placeholder"
 msgstr ""
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.address.recent"
+msgstr ""
+
 #. ── Agent ──
 msgid "app.browser.agent.activity"
 msgstr ""

@@ -34,6 +34,10 @@ Use the workbench's semantic theme tokens, shared controls, localized descriptor
 
 ## Verification
 
+For toolbar and menu changes, render the actual controls and inspect computed disabled, hover and focus styles plus bounds; variant names alone do not establish presentation. Use the shared menu variant as the sole painted surface, and forward Tooltip-composed trigger props to the native button. Keyboard navigation must exclude descendants of collapsed disclosures even when Chromium reports their layout rectangles. Test address suggestion selection, composing Enter, Escape dismissal, native visibility after the final blocker, and the new-tab import entry at narrow widths.
+
+Initialize shared presentation from catalog metadata before creating its transport. Page panels must not reset shared presentation when mounting: transport state may already have arrived. Cover metadata reads without native allocation, presentation delivered before mounting, and peer resource switches using the rendered catalog and page panel.
+
 1. Add a failing public behavioral test in the owning package's `test/` tree. Prefer real temporary Runtime/Scope/storage fixtures; mock only the external transport when testing policy.
 2. Run affected Browser runtime/core tests, Desktop lifecycle tests and shared renderer tests. Use the Web batch runner with `SYNERGY_TEST_FILES` for selected files; DOM/Playwright suites need its serial isolation and timeout. Never run the whole folder directly when suites launch Chromium or register conflicting mocks.
    Cross-domain Browser fixtures must explicitly select the Desktop component set; ordinary CLI/Web fixtures must keep it absent. Check source CLI help, migration/tool registration, peer-tab behavior and shared theme/localization contracts when retiring browser surfaces. Remove coverage exemptions for deleted files and validate the manifest; retain behavior tests for the native broker itself, since child Electron smoke tests do not contribute Bun coverage.

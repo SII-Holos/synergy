@@ -70,6 +70,7 @@ export const { use: useBrowserCatalog, provider: BrowserCatalogProvider } = crea
               store.replacePages(initial.pages)
               store.setSession("seq", initial.seq)
               store.setSession("epoch", initial.epoch)
+              store.setPresentation(initial.presentation)
               for (const page of initial.pages)
                 store.setHostStatus(page.id, page.status === "active" ? initial.hostStatus : "detached")
               const transport = createBrowserWebSocket(store, {

@@ -4,6 +4,7 @@ import { useBrowserDraft } from "./browser-draft"
 import { BrowserDataDialog } from "./browser-data-settings"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
+import { BrowserNewTab } from "./browser-new-tab"
 import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -106,7 +107,6 @@ function BrowserPanelInner(props: {
     dialog.show(() => <BrowserDataDialog ownerKey={ownerKey} pageId={page.id} url={page.url} section={section} />)
   }
   if (props.tab.resourceId) browser.setSession("selectedPageId", props.tab.resourceId)
-  browser.setPresentation(props.clientPresentation === "native" ? null : props.catalog.initial.presentation)
 
   createEffect(
     on(
@@ -378,30 +378,7 @@ function BrowserPanelInner(props: {
             fallback={
               <Show
                 when={page() && page()?.url !== "about:blank"}
-                fallback={
-                  <div class="browser-new-tab">
-                    <div class="browser-new-tab-center">
-                      <div class="browser-new-tab-search">
-                        <Icon name={getSemanticIcon("action.search")} size="small" />
-                        <input
-                          aria-label={_(B.enterUrl)}
-                          placeholder={_(B.enterUrl)}
-                          onKeyDown={(event) => {
-                            if (event.key !== "Enter" || event.isComposing || !event.currentTarget.value.trim()) return
-                            event.preventDefault()
-                            browser.navigate(event.currentTarget.value.trim())
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <div class="browser-new-tab-footer">
-                      <Button size="small" variant="secondary" onClick={() => openData("import")}>
-                        <Icon name={getSemanticIcon("action.import")} size="small" />
-                        <Trans id={B.importData.id} message={B.importData.message} />
-                      </Button>
-                    </div>
-                  </div>
-                }
+                fallback={<BrowserNewTab onNavigate={browser.navigate} onImport={() => openData("import")} />}
               >
                 <BrowserSurface
                   route={route}
