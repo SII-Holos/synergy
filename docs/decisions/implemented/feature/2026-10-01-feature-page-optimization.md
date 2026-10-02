@@ -8,6 +8,8 @@ Agenda, Kanban, Library, Performance and Plugins contain different content types
 
 ## Decision
 
+The Agenda-specific mixed list and calendar-card layout below is superseded by [separate arrangements, tasks and history](2026-10-02-agenda-arrangements-tasks-history.md). The shared feature-page, theme, modal, Scope submission and recovery decisions remain applicable.
+
 The five pages use the App-owned [AppPanel](../../../../apps/web/src/components/app-panel.tsx) for headers and semantic page tabs, with shared Dialogs and controls for interaction behavior. The standing visual and responsive rules live in [the product specification](../../../../apps/web/PRODUCT.md#feature-pages). Product-specific layouts stay in the Web application; the shared UI package remains independent of feature data and copy.
 
 Library and plugin discovery use bounded browsing areas. Library memory and experience inspection and agenda details use centered wide Dialogs with retained underlying lists. Narrow dialogs fill the viewport. Agenda forms guard unsaved dismissal and preserve failed input. Creation uses the selected Scope and editing keeps the item's owner and unsupported trigger configuration.

@@ -1,5 +1,15 @@
 import type { AgendaActivityEntry, AgendaActivityPage, SynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { requestErrorMessage } from "@/utils/error"
+import { startOfDay } from "./date"
+
+export function groupAgendaActivity(items: AgendaActivityEntry[]) {
+  const groups = new Map<number, AgendaActivityEntry[]>()
+  for (const entry of [...items].sort((a, b) => b.run.time.started - a.run.time.started)) {
+    const day = startOfDay(entry.run.time.started)
+    groups.set(day, [...(groups.get(day) ?? []), entry])
+  }
+  return [...groups].map(([day, entries]) => ({ day, entries }))
+}
 
 export type AgendaActivityState = {
   items: AgendaActivityEntry[]

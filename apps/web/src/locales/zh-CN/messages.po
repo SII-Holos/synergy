@@ -117,10 +117,13 @@ msgstr "使用 Anysearch 提取内容"
 msgid "anysearch.title.search"
 msgstr "使用 Anysearch 搜索"
 
-#. Runtime Lingui descriptors for agenda host labels and wrappers.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
+msgid "app.agenda.action.accepted"
+msgstr "已提交"
+
+#. action buttons
 msgid "app.agenda.action.activate"
-msgstr "激活"
+msgstr "启用"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -131,6 +134,10 @@ msgstr "取消"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.action.complete"
 msgstr "完成"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.action.enableRun"
+msgstr "启用并立即运行"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -151,18 +158,38 @@ msgstr "暂停"
 msgid "app.agenda.action.requestFailed"
 msgstr "请求失败"
 
-#. action buttons
-msgid "app.agenda.action.trigger"
-msgstr "触发运行"
+#. js-lingui-explicit-id
+msgid "app.agenda.action.runNow"
+msgstr "立即运行"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.activity.clear"
-msgstr "清除筛选"
+msgid "app.agenda.action.submitted"
+msgstr "已提交执行"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.action.submittedHint"
+msgstr "执行结果可在历史中查看。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.description"
+msgstr "按发生时间查看真实执行、结果和关联会话。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.loaded"
+msgstr "已加载 {shown} / {total} 条执行记录"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.loadingMore"
+msgstr "加载中…"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.activity.loadMore"
 msgstr "加载更多"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.moreHint"
+msgstr "还有未加载的执行记录。"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -172,6 +199,22 @@ msgstr "未找到历史记录"
 #. js-lingui-explicit-id
 msgid "app.agenda.activity.noMatch"
 msgstr "没有匹配的执行记录"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.noSession"
+msgstr "暂无可用的关联会话"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.openSession"
+msgstr "打开会话"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.refresh"
+msgstr "刷新"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.refreshing"
+msgstr "刷新中…"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.activity.retry"
@@ -189,7 +232,7 @@ msgstr "{count, plural, one {# 次运行} other {# 次运行}}"
 
 #. activity-view.tsx
 msgid "app.agenda.activity.searchPlaceholder"
-msgstr "搜索历史、议程标题、错误…"
+msgstr "搜索任务标题、执行内容或错误…"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -205,14 +248,62 @@ msgstr "执行历史暂不可用。"
 msgid "app.agenda.activity.unavailableShort"
 msgstr "活动暂不可用"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.count"
+msgstr "{count, plural, one {# 次预计触发} other {# 次预计触发}}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.description"
+msgstr "查看已启用任务的预计触发时间；选择日期即可更改展示范围。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.empty"
+msgstr "这段时间没有未来安排"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.emptyHint"
+msgstr "安排仅展示已启用任务的未来触发时间。手动任务和事件触发任务可在「任务」中查看。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.invalid"
+msgstr "有 {count} 条任务规则无法预测，请在「任务」中检查触发设置。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.limited"
+msgstr "当前预览不完整：{count} 条任务规则超过范围上限（每个触发器最多 200 次 cron 或 500 次间隔触发）。缩小日期范围可查看更多。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.listRange"
+msgstr "{date} 起 7 天"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.openHistory"
+msgstr "查看执行历史"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.pastHint"
+msgstr "这段时间已过去，可在历史中查看实际执行。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.predicted"
+msgstr "预计触发时间 · {timezone}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.relative"
+msgstr "部分间隔或延迟任务的时间取决于启用和实际执行；这里只显示已知的下一次触发。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.weekRange"
+msgstr "{start} – {end}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.calendar.chooseDate"
+msgstr "选择日期"
+
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.calendar.day"
 msgstr "日"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.calendar.dayEmpty"
-msgstr "这一天没有预计执行"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.calendar.list"
@@ -229,24 +320,28 @@ msgid "app.agenda.calendar.more"
 msgstr "+{count} 个更多"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.calendar.next"
-msgstr "下一时间范围"
+msgid "app.agenda.calendar.nextDay"
+msgstr "下一天"
 
 #. ---------------------------------------------------------------------------
 msgid "app.agenda.calendar.nextMonth"
 msgstr "下个月"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.calendar.planned"
-msgstr "预计执行"
+msgid "app.agenda.calendar.nextWeek"
+msgstr "后 7 天"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.calendar.previous"
-msgstr "上一时间范围"
+msgid "app.agenda.calendar.previousDay"
+msgstr "上一天"
 
 #. ---------------------------------------------------------------------------
 msgid "app.agenda.calendar.previousMonth"
 msgstr "上个月"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.calendar.previousWeek"
+msgstr "前 7 天"
 
 #. calendar.tsx
 msgid "app.agenda.calendar.today"
@@ -260,10 +355,6 @@ msgstr "日历视图"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.calendar.week"
 msgstr "周"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.dateTools"
-msgstr "日期：{date}"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -290,6 +381,10 @@ msgstr "创建于 {date}"
 msgid "app.agenda.detail.delete"
 msgstr "删除"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.disabledPreview"
+msgstr "这条规则未在启用状态；以下仅为时间预览，任务不会执行。"
+
 #. detail dialog
 msgid "app.agenda.detail.edit"
 msgstr "编辑"
@@ -298,6 +393,14 @@ msgstr "编辑"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.detail.errors"
 msgstr "{count, plural, one {# 个错误} other {# 个错误}}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.expectedHint"
+msgstr "这是预计触发时间，不是执行记录，也不代表执行时长。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.expectedTrigger"
+msgstr "预计触发"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.detail.historyFailed"
@@ -313,14 +416,42 @@ msgstr "上次运行：{date}"
 msgid "app.agenda.detail.next"
 msgstr "下次：{time}"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.noLongerEnabled"
+msgstr "这项任务已停止启用，因此不会在这个时间触发。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.noPreview"
+msgstr "未来 7 天内没有可预测的触发时间。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.previewFirst"
+msgstr "仅展示前 8 个时间。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.previewHint"
+msgstr "以下是这条规则的预计时间，实际执行可在历史中查看。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.previewInvalid"
+msgstr "部分触发设置无法预测。"
+
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.detail.recentRuns"
 msgstr "最近运行"
 
 #. js-lingui-explicit-id
+msgid "app.agenda.detail.relativePreview"
+msgstr "间隔和延迟时间取决于何时启用及实际执行，仅能预览已启用任务的已知下一次时间。"
+
+#. js-lingui-explicit-id
 msgid "app.agenda.detail.retry"
 msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.rulePreview"
+msgstr "规则预览 · 未来 7 天"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -330,7 +461,7 @@ msgstr "{count, plural, one {# 次运行} other {# 次运行}}"
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.detail.taskLabel"
-msgstr "任务"
+msgstr "执行内容"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -365,6 +496,10 @@ msgstr "{count}毫秒"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.duration.seconds"
 msgstr "{count}秒"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.filters.clear"
+msgstr "清除筛选"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -638,12 +773,7 @@ msgstr "编辑议程"
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.panel.newAgenda"
-msgstr "新建议程"
-
-#. Runtime Lingui descriptors for agenda host labels and wrappers.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.agenda.panel.noTodoItems"
-msgstr "没有待办项"
+msgstr "新建任务"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -653,16 +783,15 @@ msgstr "历史"
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.panel.tab.schedule"
-msgstr "计划"
+msgstr "安排"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.panel.tab.tasks"
+msgstr "任务"
 
 #. panel.tsx — header, tabs, detail dialog, action buttons
 msgid "app.agenda.panel.title"
 msgstr "日程"
-
-#. Runtime Lingui descriptors for agenda host labels and wrappers.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.agenda.panel.todoLabel"
-msgstr "待办"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.rawTriggers"
@@ -701,52 +830,28 @@ msgid "app.agenda.runStatus.skipped"
 msgstr "已跳过"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.scope.unknown"
-msgstr "Scope 不可用"
+msgid "app.agenda.scope.all"
+msgstr "所有范围"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.scope.filter"
+msgstr "范围"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.search.clear"
+msgstr "清除搜索"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.series.active"
 msgstr "已启用"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.series.all"
-msgstr "全部系列"
-
-#. js-lingui-explicit-id
 msgid "app.agenda.series.cancelled"
 msgstr "已取消"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.series.clearFilters"
-msgstr "清除筛选"
-
-#. js-lingui-explicit-id
 msgid "app.agenda.series.done"
 msgstr "已完成"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.empty"
-msgstr "暂无符合条件的日程"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.failed"
-msgstr "上次执行失败"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.filter"
-msgstr "日程筛选"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.missingStatus"
-msgstr "缺少最近运行状态"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.next"
-msgstr "下次执行：{time}"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.noRuns"
-msgstr "暂无运行记录"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.series.paused"
@@ -754,23 +859,55 @@ msgstr "已暂停"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.series.pending"
-msgstr "待办"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.previewCount"
-msgstr "预览 {count, plural, one {# 个计划时间} other {# 个计划时间}}"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.previewHint"
-msgstr "以下为计划时间预览，实际执行情况请查看“历史”。"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.resultCount"
-msgstr "{count, plural, one {# 条日程} other {# 条日程}}"
+msgstr "未启用"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.status.unknown"
 msgstr "状态未知"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.all"
+msgstr "全部"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.archived"
+msgstr "已结束"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.count"
+msgstr "{count, plural, one {# 项任务} other {# 项任务}}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.description"
+msgstr "管理全部任务规则，包括手动、事件触发、未启用和已结束的任务。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.empty"
+msgstr "没有可显示的任务"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.emptyHint"
+msgstr "新建任务，或清除筛选以查看已有规则。"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.failed"
+msgstr "最近失败"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.filter"
+msgstr "任务状态"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.noRuns"
+msgstr "暂无执行记录"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.search"
+msgstr "搜索任务"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.unknownResult"
+msgstr "执行结果未知"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -796,6 +933,10 @@ msgstr "延迟 {delay}"
 msgid "app.agenda.trigger.every"
 msgstr "每 {interval}"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.trigger.github"
+msgstr "GitHub 事件"
+
 #. trigger summaries
 msgid "app.agenda.trigger.manual"
 msgstr "手动执行"
@@ -804,6 +945,10 @@ msgstr "手动执行"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.trigger.poll"
 msgstr "轮询：{command}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.trigger.session"
+msgstr "关联会话事件"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -819,6 +964,10 @@ msgstr "未知"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.trigger.watch"
 msgstr "监视：{glob}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.trigger.webhook"
+msgstr "Webhook 事件"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.trigger.weekly"

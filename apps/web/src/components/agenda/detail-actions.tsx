@@ -5,6 +5,9 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { A } from "./agenda-i18n"
+import { triggerActionLabel } from "./shared"
+import { useLocale } from "@/context/locale"
+import { translateDescriptor } from "@/locales/translate"
 
 export type AgendaAction = "trigger" | "activate" | "pause" | "complete" | "cancel" | "remove"
 
@@ -16,6 +19,7 @@ export function AgendaDetailActions(props: {
   _: (d: { id: string; message: string }) => string
 }) {
   const { _ } = props
+  const { i18n } = useLocale()
   const status = () => props.item.status
 
   const [moreOpen, setMoreOpen] = createSignal(false)
@@ -25,7 +29,8 @@ export function AgendaDetailActions(props: {
     <div class="flex items-center gap-1.5 flex-wrap">
       <Show when={status() === "active" || status() === "paused" || status() === "pending"}>
         <ActionButton
-          label={_(A.actionTrigger)}
+          label={translateDescriptor(triggerActionLabel(status()), i18n)}
+          doneLabel={_({ id: "app.agenda.action.accepted", message: "Submitted" })}
           loading={props.isLoading(props.item.id, "trigger")}
           done={props.isDone(props.item.id, "trigger")}
           onClick={() => props.onAction("trigger")}
@@ -101,6 +106,7 @@ function ActionButton(props: {
   label: string
   loading: boolean
   done?: boolean
+  doneLabel?: string
   onClick: () => void
   variant?: "primary" | "danger" | "default"
 }) {
@@ -124,7 +130,7 @@ function ActionButton(props: {
       onClick={props.onClick}
       disabled={props.loading || done()}
     >
-      <Show when={props.loading} fallback={done() ? `${props.label} ✓` : props.label}>
+      <Show when={props.loading} fallback={done() ? props.doneLabel : props.label}>
         <Spinner class="size-3 inline-block mr-1" />
         {props.label}
       </Show>

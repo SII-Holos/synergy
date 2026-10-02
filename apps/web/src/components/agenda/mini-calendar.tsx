@@ -2,12 +2,11 @@ import { calendarKeyDate } from "./calendar-navigation"
 import { createEffect, createMemo, createSignal, For } from "solid-js"
 import { startOfDay, startOfWeek, addDays, addMonths, getMonthNamesShort, getDayLabelsMini } from "./date"
 import { useLocale } from "@/context/locale"
-import type { ViewMode } from "./calendar"
 
 interface MiniCalendarProps {
   anchor: number
-  viewMode: ViewMode
   onDateClick?: (date: number) => void
+  onDateNavigate?: (date: number) => void
 }
 
 export function MiniCalendar(props: MiniCalendarProps) {
@@ -29,8 +28,6 @@ export function MiniCalendar(props: MiniCalendarProps) {
   const today = createMemo(() => startOfDay(Date.now()))
 
   const anchorDay = createMemo(() => startOfDay(props.anchor))
-
-  const anchorWeekStart = createMemo(() => startOfWeek(props.anchor))
 
   const gridDays = createMemo(() => {
     const d = new Date(displayMonth())
@@ -70,15 +67,10 @@ export function MiniCalendar(props: MiniCalendarProps) {
     setDisplayMonth((m) => addMonths(m, 1))
   }
 
-  function isInAnchorWeek(ts: number): boolean {
-    return props.viewMode === "week" && ts >= anchorWeekStart() && ts < addDays(anchorWeekStart(), 7)
-  }
-
   function cellClass(ts: number): string {
     const isToday = ts === today()
     const isCurrentMonth = new Date(ts).getMonth() === currentMonth()
-    const isAnchorDay = ts === anchorDay() && props.viewMode === "day"
-    const inWeek = isInAnchorWeek(ts)
+    const isAnchorDay = ts === anchorDay()
 
     if (isToday) {
       return "bg-text-strong text-background-base ring-1 ring-border-weaker-selected"
@@ -88,14 +80,7 @@ export function MiniCalendar(props: MiniCalendarProps) {
     }
 
     const base = isCurrentMonth ? "text-text-base" : "text-text-weak"
-    if (inWeek) {
-      return `workbench-selected-surface ${base}`
-    }
     return `${base} hover:bg-surface-raised-base-hover`
-  }
-
-  function weekRowClass(ts: number): string {
-    return isInAnchorWeek(ts) ? "rounded-[0.9rem] workbench-selected-surface" : ""
   }
 
   return (
@@ -135,7 +120,7 @@ export function MiniCalendar(props: MiniCalendarProps) {
 
         <For each={gridWeeks()}>
           {(week) => (
-            <div class={`grid grid-cols-7 gap-0.5 px-0.5 py-0.5 ${weekRowClass(week[0])}`}>
+            <div class="grid grid-cols-7 gap-0.5 px-0.5 py-0.5">
               <For each={week}>
                 {(ts) => (
                   <button
@@ -150,7 +135,7 @@ export function MiniCalendar(props: MiniCalendarProps) {
                       const next = calendarKeyDate(ts, event.key, event.shiftKey)
                       if (next === undefined) return
                       event.preventDefault()
-                      props.onDateClick?.(next)
+                      ;(props.onDateNavigate ?? props.onDateClick)?.(next)
                       requestAnimationFrame(() =>
                         document.querySelector<HTMLButtonElement>(`[data-mini-date="${next}"]`)?.focus(),
                       )

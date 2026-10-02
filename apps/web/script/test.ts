@@ -18,7 +18,7 @@ const playwrightIsolated = [
   "test/components/workspace/browser/browser-draft.test.ts",
   "test/components/workspace/browser/browser-ws-reconnect.test.ts",
   "test/components/sidebar/sidebar-collections.dom.test.tsx",
-  "test/components/agenda/series-list.dom.test.tsx",
+  "test/components/agenda/agenda-interaction.dom.test.tsx",
   "test/components/app-shell/mobile-tools-drawer.dom.test.tsx",
   "test/components/library/library-interaction.dom.test.tsx",
   "test/components/workspace/browser/browser-interaction.dom.test.tsx",

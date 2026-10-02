@@ -1,5 +1,5 @@
 import { translateDescriptor } from "@/locales/translate"
-import { AgendaSeriesList } from "./series-list"
+import { AgendaTaskList } from "./task-list"
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -18,9 +18,9 @@ import { useWorkspaceMobileHeaderClose } from "@/components/workspace/mobile-hea
 import { relativeTime, absoluteDate } from "@/utils/time"
 import type { AgendaItem, AgendaRunLog } from "@ericsanchezok/synergy-sdk/client"
 import { CalendarGrid, type ViewMode } from "./calendar"
-import { MiniCalendar } from "./mini-calendar"
 import { AgendaFormDialog } from "./form"
-import { expandItems, hasTimeTriggers, type CalendarEvent } from "./expand"
+import { agendaRange, forecastAgenda, filterAgendaTasks, type AgendaTaskFilter, type CalendarEvent } from "./forecast"
+import { addDays, startOfDay } from "./date"
 import { ActivityView } from "./activity-view"
 import {
   defaultAgendaActivityState,
@@ -45,7 +45,7 @@ import { A } from "./agenda-i18n"
 
 import { AgendaDetailActions, type AgendaAction } from "./detail-actions"
 
-type PanelTab = "schedule" | "activity"
+type PanelTab = "schedule" | "tasks" | "activity"
 
 export function AgendaPanel() {
   const sdk = useGlobalSDK()
@@ -68,14 +68,19 @@ export function AgendaPanel() {
     if (detailDialogID) dialog.close(detailDialogID)
   })
   const [runsError, setRunsError] = createSignal(new Set<string>())
-  const [dateToolsExpanded, setDateToolsExpanded] = createSignal(false)
   const [runsCache, setRunsCache] = createSignal<Record<string, AgendaRunLog[]>>({})
   const [actionLoading, setActionLoading] = createSignal<Set<string>>(new Set())
   const [actionDone, setActionDone] = createSignal<Set<string>>(new Set())
 
   const [viewMode, setViewMode] = createSignal<ViewMode>("list")
   const [anchor, setAnchor] = createSignal(Date.now())
-  const [calendarRange, setCalendarRange] = createSignal<{ start: number; end: number }>({ start: 0, end: 0 })
+  const [scopeFilter, setScopeFilter] = createSignal("")
+  const [taskQuery, setTaskQuery] = createSignal("")
+  const [taskFilter, setTaskFilter] = createSignal<AgendaTaskFilter>("all")
+  const [now, setNow] = createSignal(Date.now())
+  const clock = window.setInterval(() => setNow(Date.now()), 60_000)
+  onCleanup(() => window.clearInterval(clock))
+  let searchInput: HTMLInputElement | undefined
 
   const [activity, setActivity] = createSignal<AgendaActivityState>(defaultAgendaActivityState())
   const [activityLoading, setActivityLoading] = createSignal(false)
@@ -86,16 +91,21 @@ export function AgendaPanel() {
 
   const items = createMemo(() => globalSync.agenda)
 
-  const todoItems = createMemo(() => items().filter((item) => !hasTimeTriggers(item)))
-  const scheduleItems = createMemo(() => items().filter((item) => hasTimeTriggers(item)))
-
-  const calendarEvents = createMemo(() => {
-    const range = calendarRange()
-    if (!range.start || !range.end) return []
-    return expandItems(scheduleItems(), range.start, range.end)
-  })
-
-  const triggerSummary = (triggers: AgendaItem["triggers"]) => makeTriggerSummary(triggers, _)
+  const matchingItems = createMemo(() => filterAgendaTasks(items(), { query: taskQuery(), scopeID: scopeFilter() }))
+  const taskItems = createMemo(() =>
+    filterAgendaTasks(matchingItems(), { query: "", scopeID: "", filter: taskFilter() }),
+  )
+  const forecast = createMemo(() => forecastAgenda(matchingItems(), agendaRange(anchor(), viewMode()), { now: now() }))
+  const historyScope = () => scopeFilter() || directory() || "home"
+  const scopeLabel = (item: AgendaItem) =>
+    globalSync.data.scope.find((scope) => scope.id === item.origin.scope.id)?.name ??
+    (item.origin.scope.type === "home" ? _({ id: "app.sidebar.section.home", message: "Home" }) : item.origin.scope.id)
+  function clearFilters() {
+    setTaskQuery("")
+    setTaskFilter("all")
+    setScopeFilter("")
+    searchInput?.focus()
+  }
 
   function itemById(id: string): AgendaItem | undefined {
     return items().find((i) => i.id === id)
@@ -147,6 +157,7 @@ export function AgendaPanel() {
   )
 
   async function performAction(id: string, action: AgendaAction, options?: { throwOnError?: boolean }) {
+    if ([...actionLoading()].some((key) => key.startsWith(`${id}-`))) return
     const item = itemById(id)
     const dir = item ? directoryForItem(item) : directory()
     if (!dir) return
@@ -170,6 +181,11 @@ export function AgendaPanel() {
         })
       } else if (activeDetailItemID() === id) void loadRuns(id)
       if (action === "trigger") {
+        showToast({
+          type: "success",
+          title: _({ id: "app.agenda.action.submitted", message: "Execution submitted" }),
+          description: _({ id: "app.agenda.action.submittedHint", message: "Check History for the execution result." }),
+        })
         const key = `${id}-${action}`
         setActionDone((prev) => new Set(prev).add(key))
         setTimeout(
@@ -205,7 +221,7 @@ export function AgendaPanel() {
 
   function formDirectory(item?: AgendaItem): string {
     if (item) return directoryForItem(item) ?? directory() ?? "home"
-    return directory() ?? "home"
+    return scopeFilter() || directory() || "home"
   }
 
   function openForm(item?: AgendaItem) {
@@ -226,7 +242,7 @@ export function AgendaPanel() {
     openForm(item)
   }
 
-  function openDetail(item: AgendaItem) {
+  function openDetail(item: AgendaItem, occurrence?: CalendarEvent) {
     const restoreFocus = capturePanelFocusReturn()
     const current = () => itemById(item.id) ?? item
     detailDialogID = dialog.show(
@@ -252,6 +268,8 @@ export function AgendaPanel() {
         >
           <AgendaDetails
             item={current()}
+            occurrence={occurrence}
+            now={now()}
             scopeName={
               globalSync.data.scope.find((scope) => scope.id === current().origin.scope.id)?.name ??
               (current().origin.scope.type === "home"
@@ -288,13 +306,9 @@ export function AgendaPanel() {
     void performAction(item.id, action)
   }
 
-  function handleEventClick(event: CalendarEvent, e?: MouseEvent) {
+  function handleEventClick(event: CalendarEvent) {
     const item = itemById(event.itemId)
-    if (item) openDetail(item)
-  }
-
-  function handleDateClick(ts: number) {
-    setAnchor(ts)
+    if (item) openDetail(item, event)
   }
 
   let activityRequest = 0
@@ -304,7 +318,7 @@ export function AgendaPanel() {
   })
   async function loadActivity(options?: { reset?: boolean; append?: boolean; query?: string }) {
     if (!sdk?.client?.agenda) return
-    const scopeID = directory() ?? "home"
+    const scopeID = historyScope()
     const query = (options?.query ?? activityQuery()).trim()
     const context = JSON.stringify([scopeID, query])
     if (activityLoading() && context === activityContext) return
@@ -314,8 +328,7 @@ export function AgendaPanel() {
     if (changed) setActivity(defaultAgendaActivityState(activity().limit))
     setActivityLoading(true)
     setActivityError(null)
-    const current = () =>
-      request === activityRequest && (directory() ?? "home") === scopeID && activityQuery().trim() === query
+    const current = () => request === activityRequest && historyScope() === scopeID && activityQuery().trim() === query
     try {
       const page = await requestAgendaActivity({
         client: sdk.client,
@@ -334,7 +347,7 @@ export function AgendaPanel() {
   }
 
   createEffect(
-    on([tab, directory], ([currentTab]) => {
+    on([tab, directory, scopeFilter], ([currentTab]) => {
       if (currentTab === "activity") void loadActivity()
     }),
   )
@@ -351,12 +364,8 @@ export function AgendaPanel() {
           <div class="agenda-header-inner">
             <AppPanel.HeaderRow>
               <AppPanel.Title>{_(A.panelTitle)}</AppPanel.Title>
-              <button
-                type="button"
-                class="inline-flex h-9 items-center gap-2 rounded-xl bg-text-strong px-3.5 app-panel-control text-background-base ring-1 ring-inset ring-border-weaker-selected shadow-sm transition-colors hover:bg-text-base"
-                onClick={openCreate}
-              >
-                <Icon name={getSemanticIcon("action.add")} size="small" class="text-background-base" />
+              <button type="button" class="agenda-create-action app-panel-control" onClick={openCreate}>
+                <Icon name={getSemanticIcon("action.add")} size="small" />
                 <span>{_(A.newAgenda)}</span>
               </button>
             </AppPanel.HeaderRow>
@@ -365,98 +374,146 @@ export function AgendaPanel() {
               label={_(A.panelTitle)}
               items={[
                 { id: "schedule", label: _(A.scheduleTab) },
+                { id: "tasks", label: _({ id: "app.agenda.panel.tab.tasks", message: "Tasks" }) },
                 { id: "activity", label: _(A.activityTab) },
               ]}
               active={tab()}
-              onChange={(id) => setTab(id as PanelTab)}
+              onChange={(value) => setTab(value as PanelTab)}
             />
           </div>
         </AppPanel.Header>
-
-        <Show when={tab() === "schedule"}>
-          <AppPanel.Body padding={false} class="agenda-body" tab={{ id: "agenda", value: tab() }}>
-            <div class="agenda-stage">
-              <Show when={viewMode() !== "list"}>
-                <div class="grid w-full grid-cols-1 items-stretch gap-3 pb-1 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
-                  <div class="agenda-main-surface h-full p-3.5">
+        <AppPanel.Body padding={false} class="agenda-body" tab={{ id: "agenda", value: tab() }}>
+          <div class="agenda-stage">
+            <p class="app-panel-copy text-text-weak">
+              {tab() === "schedule"
+                ? _({
+                    id: "app.agenda.arrangements.description",
+                    message:
+                      "See when your enabled tasks are expected to run. Select a date to change the displayed range.",
+                  })
+                : tab() === "tasks"
+                  ? _({
+                      id: "app.agenda.tasks.description",
+                      message: "Manage all task rules, including manual, event-triggered, disabled and archived tasks.",
+                    })
+                  : _({
+                      id: "app.agenda.activity.description",
+                      message: "Review actual executions, results and related sessions, newest first.",
+                    })}
+            </p>
+            <div class="agenda-page-tools">
+              <label class="agenda-scope-filter app-panel-control">
+                <span>{_({ id: "app.agenda.scope.filter", message: "Scope" })}</span>
+                <select
+                  aria-label={_({ id: "app.agenda.scope.filter", message: "Scope" })}
+                  value={tab() === "activity" ? historyScope() : scopeFilter()}
+                  onChange={(event) => setScopeFilter(event.currentTarget.value)}
+                >
+                  <Show when={tab() !== "activity"}>
+                    <option value="">{_({ id: "app.agenda.scope.all", message: "All Scopes" })}</option>
+                  </Show>
+                  <option value="home">{_({ id: "app.sidebar.section.home", message: "Home" })}</option>
+                  <For each={globalSync.data.scope.filter((scope) => scope.id !== "home")}>
+                    {(scope) => <option value={scope.id}>{scope.name || scope.id}</option>}
+                  </For>
+                </select>
+              </label>
+              <Show when={tab() !== "activity"}>
+                <div class="agenda-search">
+                  <input
+                    ref={searchInput}
+                    value={taskQuery()}
+                    aria-label={_({ id: "app.agenda.tasks.search", message: "Search tasks" })}
+                    placeholder={_({ id: "app.agenda.tasks.search", message: "Search tasks" })}
+                    onInput={(event) => setTaskQuery(event.currentTarget.value)}
+                  />
+                  <Show when={taskQuery()}>
                     <button
                       type="button"
-                      class="agenda-date-selector-trigger"
-                      aria-expanded={dateToolsExpanded()}
-                      onClick={() => setDateToolsExpanded((value) => !value)}
+                      class="agenda-secondary-action"
+                      onClick={() => {
+                        setTaskQuery("")
+                        searchInput?.focus()
+                      }}
                     >
-                      {_(
-                        { id: "app.agenda.dateTools", message: "Date: {date}" },
-                        { date: fmt.date(new Date(anchor())) },
-                      )}
+                      {_({ id: "app.agenda.search.clear", message: "Clear search" })}
                     </button>
-                    <div class="agenda-date-selector-body" data-expanded={dateToolsExpanded()}>
-                      <MiniCalendar anchor={anchor()} viewMode={viewMode()} onDateClick={handleDateClick} />
-                    </div>
-                  </div>
-                  <div class="agenda-main-surface min-w-0 flex h-full flex-col p-3">
-                    <Show
-                      when={todoItems().length > 0}
-                      fallback={
-                        <div class="agenda-inner-surface flex min-h-0 flex-1 items-center justify-center px-3 py-4">
-                          <span class="app-panel-caption font-medium text-text-weaker/60">{_(A.noTodoItems)}</span>
-                        </div>
-                      }
-                    >
-                      <div class="flex items-center justify-between gap-2 mb-2 px-0.5">
-                        <div class="flex items-center gap-1.5 min-w-0">
-                          <span class="app-panel-caption font-medium text-text-weaker">{_(A.todoLabel)}</span>
-                          <span class="app-panel-caption text-text-weaker">{todoItems().length}</span>
-                        </div>
-                      </div>
-                      <div class="min-h-0 flex-1 overflow-y-auto flex flex-col [scrollbar-width:thin]" data-panel-list>
-                        <For each={todoItems()}>
-                          {(item) => (
-                            <TodoCard item={item} onClick={() => openDetail(item)} triggerSummary={triggerSummary} />
-                          )}
-                        </For>
-                      </div>
-                    </Show>
-                  </div>
+                  </Show>
+                </div>
+                <Show when={scopeFilter() || taskQuery() || (tab() === "tasks" && taskFilter() !== "all")}>
+                  <button type="button" class="agenda-secondary-action" onClick={clearFilters}>
+                    {_({ id: "app.agenda.filters.clear", message: "Clear filters" })}
+                  </button>
+                </Show>
+              </Show>
+            </div>
+            <Show when={tab() === "schedule"}>
+              <Show when={forecast().limited.length || forecast().invalid.length || forecast().relative.length}>
+                <div class="agenda-forecast-warning app-panel-caption" role="status">
+                  <Show when={forecast().relative.length}>
+                    <p>
+                      {_({
+                        id: "app.agenda.arrangements.relative",
+                        message:
+                          "Some interval or delayed tasks depend on activation and execution times; only their known next trigger is shown.",
+                      })}
+                    </p>
+                  </Show>
+                  <Show when={forecast().limited.length}>
+                    <p>
+                      {_(
+                        {
+                          id: "app.agenda.arrangements.limited",
+                          message:
+                            "Partial preview: {count} task rules exceed this range's limit (200 cron or 500 interval times per trigger). Narrow the range to see more.",
+                        },
+                        { count: forecast().limited.length },
+                      )}
+                    </p>
+                  </Show>
+                  <Show when={forecast().invalid.length}>
+                    <p>
+                      {_(
+                        {
+                          id: "app.agenda.arrangements.invalid",
+                          message: "{count} task rules could not be predicted. Review their trigger settings in Tasks.",
+                        },
+                        { count: forecast().invalid.length },
+                      )}
+                    </p>
+                  </Show>
                 </div>
               </Show>
-              <div
-                class="relative flex flex-1 flex-col"
-                classList={{ "min-h-[560px]": viewMode() === "day" || viewMode() === "week" }}
-              >
-                <CalendarGrid
-                  viewMode={viewMode()}
-                  anchor={anchor()}
-                  events={calendarEvents()}
-                  listContent={
-                    <AgendaSeriesList
-                      items={items()}
-                      events={calendarEvents()}
-                      onSelect={openDetail}
-                      onAction={requestAction}
-                      isLoading={isLoading}
-                      scopeLabel={(item) =>
-                        globalSync.data.scope.find((scope) => scope.id === item.origin?.scope.id)?.name ??
-                        (item.origin?.scope.type === "home"
-                          ? _({ id: "app.sidebar.section.home", message: "Home" })
-                          : (item.origin?.scope.id ??
-                            _({ id: "app.agenda.scope.unknown", message: "Scope unavailable" })))
-                      }
-                    />
-                  }
-                  onViewModeChange={setViewMode}
-                  onAnchorChange={setAnchor}
-                  onEventClick={handleEventClick}
-                  onRangeChange={(start, end) => setCalendarRange({ start, end })}
-                />
-              </div>
-            </div>
-          </AppPanel.Body>
-        </Show>
-
-        <Show when={tab() === "activity"}>
-          <AppPanel.Body padding={false} class="agenda-body" tab={{ id: "agenda", value: tab() }}>
-            <div class="agenda-stage">
+              <CalendarGrid
+                viewMode={viewMode()}
+                anchor={anchor()}
+                events={forecast().events}
+                now={now()}
+                scopeLabel={(event) => {
+                  const item = itemById(event.itemId)
+                  return item ? scopeLabel(item) : ""
+                }}
+                onViewModeChange={setViewMode}
+                onAnchorChange={setAnchor}
+                onEventClick={handleEventClick}
+                onHistory={() => setTab("activity")}
+              />
+            </Show>
+            <Show when={tab() === "tasks"}>
+              <AgendaTaskList
+                items={taskItems()}
+                filter={taskFilter()}
+                onFilterChange={setTaskFilter}
+                onSelect={(item) => openDetail(item)}
+                onAction={requestAction}
+                isLoading={isLoading}
+                scopeLabel={scopeLabel}
+                onClear={clearFilters}
+                filtered={!!scopeFilter() || !!taskQuery() || taskFilter() !== "all"}
+                now={now()}
+              />
+            </Show>
+            <Show when={tab() === "activity"}>
               <ActivityView
                 items={activity().items}
                 total={activity().total}
@@ -464,52 +521,31 @@ export function AgendaPanel() {
                 loading={activityLoading()}
                 query={activityQuery()}
                 error={activityError()}
-                onQueryChange={(value: string) => {
+                onQueryChange={(value) => {
                   setActivityQuery(value)
                   void loadActivity({ reset: true, query: value })
                 }}
                 onRetry={() => void loadActivity({ query: activityQuery() })}
+                onRefresh={() => void loadActivity()}
                 onLoadMore={() => void loadActivity({ append: true })}
                 onNavigate={navigateToSession}
-                onItemClick={(itemId) => {
-                  const item = itemById(itemId)
+                onItemClick={(id) => {
+                  const item = itemById(id)
                   if (item) openDetail(item)
                 }}
               />
-            </div>
-          </AppPanel.Body>
-        </Show>
+            </Show>
+          </div>
+        </AppPanel.Body>
       </AppPanel.Content>
     </AppPanel.Root>
   )
 }
 
-function TodoCard(props: {
-  item: AgendaItem
-  onClick: (e: MouseEvent) => void
-  triggerSummary: (triggers: AgendaItem["triggers"]) => string
-}) {
-  return (
-    <button
-      type="button"
-      data-panel-item={props.item.id}
-      data-panel-focus-entry
-      class="agenda-todo-row w-full text-left flex cursor-pointer items-center gap-2.5 px-2.5 py-2 transition-colors hover:bg-surface-raised-base-hover"
-      onClick={props.onClick}
-    >
-      <span
-        class={`shrink-0 w-1.5 h-1.5 rounded-full ${props.item.status === "active" ? "bg-icon-success-base" : props.item.status === "paused" ? "bg-icon-warning-base" : props.item.status === "done" ? "bg-text-weaker" : "bg-border-base"}`}
-      />
-      <span class="min-w-0 flex-1 line-clamp-2 app-panel-row-title text-text-strong">{props.item.title}</span>
-      <span class="shrink-0 max-w-[40%] app-panel-caption text-text-weak text-right">
-        {props.triggerSummary(props.item.triggers)}
-      </span>
-    </button>
-  )
-}
-
 function AgendaDetails(props: {
   item: AgendaItem
+  occurrence?: CalendarEvent
+  now: number
   scopeName: string
   runs: AgendaRunLog[] | undefined
   runsError: boolean
@@ -518,13 +554,47 @@ function AgendaDetails(props: {
 }) {
   const { i18n, fmt } = useLocale()
   const { _ } = props
-  const triggerSummary = (triggers: AgendaItem["triggers"]) => makeTriggerSummary(triggers, _)
+  const triggerSummary = (triggers: AgendaItem["triggers"]) =>
+    makeTriggerSummary(triggers, _, (time) => fmt.dateTime(time))
 
   const state = () => props.item.state
+  const preview = createMemo(() =>
+    forecastAgenda(
+      [props.item],
+      { start: startOfDay(props.now), end: addDays(startOfDay(props.now), 7) },
+      { now: props.now, preview: true },
+    ),
+  )
   return (
     <div class="agenda-details">
       <div class="agenda-detail-body flex-1 min-h-0 overflow-y-auto px-4 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <div class="flex flex-col gap-3">
+          <Show when={props.occurrence}>
+            {(occurrence) => (
+              <div class="agenda-occurrence-detail">
+                <span class="app-panel-caption text-text-weak">
+                  {_({ id: "app.agenda.detail.expectedTrigger", message: "Expected trigger" })}
+                </span>
+                <time class="app-panel-section-title" dateTime={new Date(occurrence().time).toISOString()}>
+                  {fmt.dateTime(occurrence().time, { dateStyle: "full", timeStyle: "short" })}
+                </time>
+                <p class="app-panel-caption text-text-weak">
+                  {_({
+                    id: "app.agenda.detail.expectedHint",
+                    message: "This is a predicted time, not an execution record. No execution duration is implied.",
+                  })}
+                </p>
+                <Show when={props.item.status !== "active"}>
+                  <p class="app-panel-caption text-text-weak">
+                    {_({
+                      id: "app.agenda.detail.noLongerEnabled",
+                      message: "This task is no longer enabled and will not run at this time.",
+                    })}
+                  </p>
+                </Show>
+              </div>
+            )}
+          </Show>
           <p class="app-panel-caption text-text-weak">{props.scopeName}</p>
           <div class="agenda-detail-title-row">
             <span class={`agenda-detail-status ${agendaStatusTone(props.item.status)}`}>
@@ -551,8 +621,8 @@ function AgendaDetails(props: {
             </Show>
           </div>
 
-          <Show when={state()?.nextRunAt}>
-            <div class="agenda-detail-meta">{_(A.detailNext, { time: relativeTime(fmt, state()!.nextRunAt!) })}</div>
+          <Show when={props.item.status === "active" && state()?.nextRunAt && state()!.nextRunAt! >= props.now}>
+            <div class="agenda-detail-meta">{_(A.detailNext, { time: fmt.dateTime(state()!.nextRunAt!) })}</div>
           </Show>
 
           <Show when={state()?.lastRunAt}>
@@ -564,11 +634,65 @@ function AgendaDetails(props: {
                   {translateDescriptor(agendaRunStatusLabel(state()!.lastRunStatus!), i18n)}
                 </span>
               </Show>
-              <Show when={state()?.lastRunDuration}>
+              <Show when={state()?.lastRunDuration != null}>
                 {" · "}
                 {formatAgendaDuration(state()!.lastRunDuration!)}
               </Show>
             </div>
+          </Show>
+          <Show when={props.item.triggers?.some((trigger) => ["at", "every", "cron", "delay"].includes(trigger.type))}>
+            <details class="agenda-detail-trigger-details">
+              <summary class="app-panel-control">
+                {_({ id: "app.agenda.detail.rulePreview", message: "Rule preview · next 7 days" })}
+              </summary>
+              <p class="app-panel-caption text-text-weak">
+                {props.item.status === "active"
+                  ? _({
+                      id: "app.agenda.detail.previewHint",
+                      message: "Predicted times for this rule. See History for actual executions.",
+                    })
+                  : _({
+                      id: "app.agenda.detail.disabledPreview",
+                      message: "This rule is disabled. These times are a preview only; the task will not run.",
+                    })}
+              </p>
+              <Show when={preview().relative.length}>
+                <p class="app-panel-caption text-text-weak">
+                  {_({
+                    id: "app.agenda.detail.relativePreview",
+                    message:
+                      "Interval and delayed times depend on when the task is enabled and runs. Only an enabled task's known next time can be previewed.",
+                  })}
+                </p>
+              </Show>
+              <ul class="agenda-rule-preview">
+                <For each={preview().events.slice(0, 8)}>
+                  {(event) => (
+                    <li class="app-panel-caption">
+                      <time dateTime={new Date(event.time).toISOString()}>{fmt.dateTime(event.time)}</time>
+                    </li>
+                  )}
+                </For>
+              </ul>
+              <Show when={!preview().events.length}>
+                <p class="app-panel-caption text-text-weak">
+                  {_({ id: "app.agenda.detail.noPreview", message: "No predictable time within the next 7 days." })}
+                </p>
+              </Show>
+              <Show when={preview().events.length > 8 || preview().limited.length}>
+                <p class="app-panel-caption text-text-weak">
+                  {_({ id: "app.agenda.detail.previewFirst", message: "Showing the first 8 times only." })}
+                </p>
+              </Show>
+              <Show when={preview().invalid.length}>
+                <p class="app-panel-caption text-text-weak">
+                  {_({
+                    id: "app.agenda.detail.previewInvalid",
+                    message: "Some trigger settings could not be predicted.",
+                  })}
+                </p>
+              </Show>
+            </details>
           </Show>
 
           <Show when={state()?.lastRunError}>

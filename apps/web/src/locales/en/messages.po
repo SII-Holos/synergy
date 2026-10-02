@@ -117,10 +117,13 @@ msgstr "Extract content with Anysearch"
 msgid "anysearch.title.search"
 msgstr "Search with Anysearch"
 
-#. Runtime Lingui descriptors for agenda host labels and wrappers.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
+msgid "app.agenda.action.accepted"
+msgstr "Submitted"
+
+#. action buttons
 msgid "app.agenda.action.activate"
-msgstr "Activate"
+msgstr "Enable"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -131,6 +134,10 @@ msgstr "Cancel"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.action.complete"
 msgstr "Complete"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.action.enableRun"
+msgstr "Enable and run now"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -151,18 +158,38 @@ msgstr "Pause"
 msgid "app.agenda.action.requestFailed"
 msgstr "Request failed"
 
-#. action buttons
-msgid "app.agenda.action.trigger"
-msgstr "Trigger"
+#. js-lingui-explicit-id
+msgid "app.agenda.action.runNow"
+msgstr "Run now"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.activity.clear"
-msgstr "Clear filters"
+msgid "app.agenda.action.submitted"
+msgstr "Execution submitted"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.action.submittedHint"
+msgstr "Check History for the execution result."
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.description"
+msgstr "Review actual executions, results and related sessions, newest first."
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.loaded"
+msgstr "{shown} of {total} executions loaded"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.loadingMore"
+msgstr "Loading…"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.activity.loadMore"
 msgstr "Load more"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.moreHint"
+msgstr "More executions are available beyond the loaded records."
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -172,6 +199,22 @@ msgstr "No history found"
 #. js-lingui-explicit-id
 msgid "app.agenda.activity.noMatch"
 msgstr "No matching executions"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.noSession"
+msgstr "No related conversation available"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.openSession"
+msgstr "Open conversation"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.refresh"
+msgstr "Refresh"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.refreshing"
+msgstr "Refreshing…"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.activity.retry"
@@ -205,14 +248,62 @@ msgstr "Execution history is unavailable right now."
 msgid "app.agenda.activity.unavailableShort"
 msgstr "Activity is unavailable right now"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.count"
+msgstr "{count, plural, one {# upcoming trigger} other {# upcoming triggers}}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.description"
+msgstr "See when your enabled tasks are expected to run. Select a date to change the displayed range."
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.empty"
+msgstr "No upcoming arrangements in this range"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.emptyHint"
+msgstr "Only enabled tasks with future trigger times appear here. Manual and event-triggered tasks are in Tasks."
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.invalid"
+msgstr "{count} task rules could not be predicted. Review their trigger settings in Tasks."
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.limited"
+msgstr "Partial preview: {count} task rules exceed this range's limit (200 cron or 500 interval times per trigger). Narrow the range to see more."
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.listRange"
+msgstr "7 days from {date}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.openHistory"
+msgstr "View execution history"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.pastHint"
+msgstr "This period is in the past. History contains actual executions."
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.predicted"
+msgstr "Expected trigger times · {timezone}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.relative"
+msgstr "Some interval or delayed tasks depend on activation and execution times; only their known next trigger is shown."
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.weekRange"
+msgstr "{start} – {end}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.calendar.chooseDate"
+msgstr "Choose a date"
+
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.calendar.day"
 msgstr "Day"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.calendar.dayEmpty"
-msgstr "No planned executions on this date"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.calendar.list"
@@ -229,24 +320,28 @@ msgid "app.agenda.calendar.more"
 msgstr "+{count} more"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.calendar.next"
-msgstr "Next date range"
+msgid "app.agenda.calendar.nextDay"
+msgstr "Next day"
 
 #. ---------------------------------------------------------------------------
 msgid "app.agenda.calendar.nextMonth"
 msgstr "Next month"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.calendar.planned"
-msgstr "Planned executions"
+msgid "app.agenda.calendar.nextWeek"
+msgstr "Next 7 days"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.calendar.previous"
-msgstr "Previous date range"
+msgid "app.agenda.calendar.previousDay"
+msgstr "Previous day"
 
 #. ---------------------------------------------------------------------------
 msgid "app.agenda.calendar.previousMonth"
 msgstr "Previous month"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.calendar.previousWeek"
+msgstr "Previous 7 days"
 
 #. calendar.tsx
 msgid "app.agenda.calendar.today"
@@ -260,10 +355,6 @@ msgstr "Calendar view"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.calendar.week"
 msgstr "Week"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.dateTools"
-msgstr "Date: {date}"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -290,6 +381,10 @@ msgstr "Created {date}"
 msgid "app.agenda.detail.delete"
 msgstr "Delete"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.disabledPreview"
+msgstr "This rule is disabled. These times are a preview only; the task will not run."
+
 #. detail dialog
 msgid "app.agenda.detail.edit"
 msgstr "Edit"
@@ -298,6 +393,14 @@ msgstr "Edit"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.detail.errors"
 msgstr "{count, plural, one {# error} other {# errors}}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.expectedHint"
+msgstr "This is a predicted time, not an execution record. No execution duration is implied."
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.expectedTrigger"
+msgstr "Expected trigger"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.detail.historyFailed"
@@ -313,14 +416,42 @@ msgstr "Last run: {date}"
 msgid "app.agenda.detail.next"
 msgstr "Next: {time}"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.noLongerEnabled"
+msgstr "This task is no longer enabled and will not run at this time."
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.noPreview"
+msgstr "No predictable time within the next 7 days."
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.previewFirst"
+msgstr "Showing the first 8 times only."
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.previewHint"
+msgstr "Predicted times for this rule. See History for actual executions."
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.previewInvalid"
+msgstr "Some trigger settings could not be predicted."
+
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.detail.recentRuns"
 msgstr "Recent runs"
 
 #. js-lingui-explicit-id
+msgid "app.agenda.detail.relativePreview"
+msgstr "Interval and delayed times depend on when the task is enabled and runs. Only an enabled task's known next time can be previewed."
+
+#. js-lingui-explicit-id
 msgid "app.agenda.detail.retry"
 msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.rulePreview"
+msgstr "Rule preview · next 7 days"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -330,7 +461,7 @@ msgstr "{count, plural, one {# run} other {# runs}}"
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.detail.taskLabel"
-msgstr "Task"
+msgstr "Execution content"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -365,6 +496,10 @@ msgstr "{count}ms"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.duration.seconds"
 msgstr "{count}s"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.filters.clear"
+msgstr "Clear filters"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -638,12 +773,7 @@ msgstr "Edit Agenda"
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.panel.newAgenda"
-msgstr "New Agenda"
-
-#. Runtime Lingui descriptors for agenda host labels and wrappers.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.agenda.panel.noTodoItems"
-msgstr "No todo items"
+msgstr "New task"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -653,16 +783,15 @@ msgstr "History"
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.panel.tab.schedule"
-msgstr "Plans"
+msgstr "Arrangements"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.panel.tab.tasks"
+msgstr "Tasks"
 
 #. panel.tsx — header, tabs, detail dialog, action buttons
 msgid "app.agenda.panel.title"
 msgstr "Agenda"
-
-#. Runtime Lingui descriptors for agenda host labels and wrappers.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.agenda.panel.todoLabel"
-msgstr "Todo"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.rawTriggers"
@@ -701,52 +830,28 @@ msgid "app.agenda.runStatus.skipped"
 msgstr "Skipped"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.scope.unknown"
-msgstr "Scope unavailable"
+msgid "app.agenda.scope.all"
+msgstr "All Scopes"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.scope.filter"
+msgstr "Scope"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.search.clear"
+msgstr "Clear search"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.series.active"
-msgstr "Active"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.all"
-msgstr "All series"
+msgstr "Enabled"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.series.cancelled"
 msgstr "Cancelled"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.series.clearFilters"
-msgstr "Clear filters"
-
-#. js-lingui-explicit-id
 msgid "app.agenda.series.done"
 msgstr "Done"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.empty"
-msgstr "No matching agenda items"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.failed"
-msgstr "Last run failed"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.filter"
-msgstr "Agenda filter"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.missingStatus"
-msgstr "Latest run status unavailable"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.next"
-msgstr "Next run: {time}"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.noRuns"
-msgstr "No run record available"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.series.paused"
@@ -754,23 +859,55 @@ msgstr "Paused"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.series.pending"
-msgstr "Pending"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.previewCount"
-msgstr "Preview {count, plural, one {# planned time} other {# planned times}}"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.previewHint"
-msgstr "Planned times are a preview. See History for completed runs."
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.resultCount"
-msgstr "{count, plural, one {# agenda} other {# agendas}}"
+msgstr "Not enabled"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.status.unknown"
 msgstr "Unknown status"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.all"
+msgstr "All"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.archived"
+msgstr "Finished"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.count"
+msgstr "{count, plural, one {# task} other {# tasks}}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.description"
+msgstr "Manage all task rules, including manual, event-triggered, disabled and archived tasks."
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.empty"
+msgstr "No tasks to display"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.emptyHint"
+msgstr "Create a task or clear filters to see your rules."
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.failed"
+msgstr "Last run failed"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.filter"
+msgstr "Task status"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.noRuns"
+msgstr "No execution record"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.search"
+msgstr "Search tasks"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.unknownResult"
+msgstr "Result unavailable"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -796,6 +933,10 @@ msgstr "delay {delay}"
 msgid "app.agenda.trigger.every"
 msgstr "every {interval}"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.trigger.github"
+msgstr "GitHub event"
+
 #. trigger summaries
 msgid "app.agenda.trigger.manual"
 msgstr "Manual execution"
@@ -804,6 +945,10 @@ msgstr "Manual execution"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.trigger.poll"
 msgstr "poll: {command}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.trigger.session"
+msgstr "Related session event"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -819,6 +964,10 @@ msgstr "unknown"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.trigger.watch"
 msgstr "watch: {glob}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.trigger.webhook"
+msgstr "Webhook event"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.trigger.weekly"

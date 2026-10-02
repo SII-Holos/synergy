@@ -117,8 +117,11 @@ msgstr ""
 msgid "anysearch.title.search"
 msgstr ""
 
-#. Runtime Lingui descriptors for agenda host labels and wrappers.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
+msgid "app.agenda.action.accepted"
+msgstr ""
+
+#. action buttons
 msgid "app.agenda.action.activate"
 msgstr ""
 
@@ -130,6 +133,10 @@ msgstr ""
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.action.complete"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.action.enableRun"
 msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
@@ -151,17 +158,37 @@ msgstr ""
 msgid "app.agenda.action.requestFailed"
 msgstr ""
 
-#. action buttons
-msgid "app.agenda.action.trigger"
+#. js-lingui-explicit-id
+msgid "app.agenda.action.runNow"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.agenda.activity.clear"
+msgid "app.agenda.action.submitted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.action.submittedHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.loaded"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.loadingMore"
 msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.activity.loadMore"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.moreHint"
 msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
@@ -171,6 +198,22 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.agenda.activity.noMatch"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.noSession"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.openSession"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.activity.refreshing"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -205,13 +248,61 @@ msgstr ""
 msgid "app.agenda.activity.unavailableShort"
 msgstr ""
 
-#. Runtime Lingui descriptors for agenda host labels and wrappers.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.agenda.calendar.day"
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.count"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.agenda.calendar.dayEmpty"
+msgid "app.agenda.arrangements.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.emptyHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.invalid"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.limited"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.listRange"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.openHistory"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.pastHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.predicted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.relative"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.arrangements.weekRange"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.calendar.chooseDate"
+msgstr ""
+
+#. Runtime Lingui descriptors for agenda host labels and wrappers.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.agenda.calendar.day"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -229,7 +320,7 @@ msgid "app.agenda.calendar.more"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.agenda.calendar.next"
+msgid "app.agenda.calendar.nextDay"
 msgstr ""
 
 #. ---------------------------------------------------------------------------
@@ -237,15 +328,19 @@ msgid "app.agenda.calendar.nextMonth"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.agenda.calendar.planned"
+msgid "app.agenda.calendar.nextWeek"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.agenda.calendar.previous"
+msgid "app.agenda.calendar.previousDay"
 msgstr ""
 
 #. ---------------------------------------------------------------------------
 msgid "app.agenda.calendar.previousMonth"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.calendar.previousWeek"
 msgstr ""
 
 #. calendar.tsx
@@ -259,10 +354,6 @@ msgstr ""
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.calendar.week"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.agenda.dateTools"
 msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
@@ -290,6 +381,10 @@ msgstr ""
 msgid "app.agenda.detail.delete"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.disabledPreview"
+msgstr ""
+
 #. detail dialog
 msgid "app.agenda.detail.edit"
 msgstr ""
@@ -297,6 +392,14 @@ msgstr ""
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.detail.errors"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.expectedHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.expectedTrigger"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -313,13 +416,41 @@ msgstr ""
 msgid "app.agenda.detail.next"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.noLongerEnabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.noPreview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.previewFirst"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.previewHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.previewInvalid"
+msgstr ""
+
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.detail.recentRuns"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.agenda.detail.relativePreview"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.agenda.detail.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.detail.rulePreview"
 msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
@@ -364,6 +495,10 @@ msgstr ""
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.duration.seconds"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.filters.clear"
 msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
@@ -642,11 +777,6 @@ msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.agenda.panel.noTodoItems"
-msgstr ""
-
-#. Runtime Lingui descriptors for agenda host labels and wrappers.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.panel.tab.activity"
 msgstr ""
 
@@ -655,13 +785,12 @@ msgstr ""
 msgid "app.agenda.panel.tab.schedule"
 msgstr ""
 
-#. panel.tsx — header, tabs, detail dialog, action buttons
-msgid "app.agenda.panel.title"
+#. js-lingui-explicit-id
+msgid "app.agenda.panel.tab.tasks"
 msgstr ""
 
-#. Runtime Lingui descriptors for agenda host labels and wrappers.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.agenda.panel.todoLabel"
+#. panel.tsx — header, tabs, detail dialog, action buttons
+msgid "app.agenda.panel.title"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -701,7 +830,15 @@ msgid "app.agenda.runStatus.skipped"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.agenda.scope.unknown"
+msgid "app.agenda.scope.all"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.scope.filter"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.search.clear"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -709,43 +846,11 @@ msgid "app.agenda.series.active"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.agenda.series.all"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "app.agenda.series.cancelled"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.agenda.series.clearFilters"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "app.agenda.series.done"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.empty"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.failed"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.filter"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.missingStatus"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.next"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.noRuns"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -757,19 +862,51 @@ msgid "app.agenda.series.pending"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.agenda.series.previewCount"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.previewHint"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.agenda.series.resultCount"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "app.agenda.status.unknown"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.all"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.archived"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.count"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.emptyHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.filter"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.noRuns"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.search"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.tasks.unknownResult"
 msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
@@ -796,6 +933,10 @@ msgstr ""
 msgid "app.agenda.trigger.every"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "app.agenda.trigger.github"
+msgstr ""
+
 #. trigger summaries
 msgid "app.agenda.trigger.manual"
 msgstr ""
@@ -803,6 +944,10 @@ msgstr ""
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.trigger.poll"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.trigger.session"
 msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
@@ -818,6 +963,10 @@ msgstr ""
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.trigger.watch"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.agenda.trigger.webhook"
 msgstr ""
 
 #. js-lingui-explicit-id

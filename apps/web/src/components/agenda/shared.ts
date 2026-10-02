@@ -2,16 +2,23 @@ import type { AgendaItem } from "@ericsanchezok/synergy-sdk/client"
 import { A, agendaWeekdays } from "./agenda-i18n"
 
 export const agendaStatuses = {
-  active: { id: "app.agenda.series.active", message: "Active" },
+  active: { id: "app.agenda.series.active", message: "Enabled" },
   paused: { id: "app.agenda.series.paused", message: "Paused" },
-  pending: { id: "app.agenda.series.pending", message: "Pending" },
+  pending: { id: "app.agenda.series.pending", message: "Not enabled" },
   done: { id: "app.agenda.series.done", message: "Done" },
   cancelled: { id: "app.agenda.series.cancelled", message: "Cancelled" },
+}
+
+export function triggerActionLabel(status: AgendaItem["status"]) {
+  return status === "active"
+    ? { id: "app.agenda.action.runNow", message: "Run now" }
+    : { id: "app.agenda.action.enableRun", message: "Enable and run now" }
 }
 
 export function makeTriggerSummary(
   triggers: AgendaItem["triggers"],
   _: (d: { id: string; message: string }, values?: Record<string, unknown>) => string,
+  formatTime: (time: number) => string,
 ): string {
   if (!triggers || triggers.length === 0) return _(A.triggerManual)
   return triggers
@@ -37,7 +44,7 @@ export function makeTriggerSummary(
         case "every":
           return _(A.triggerEvery, { interval: t.interval })
         case "at":
-          return _(A.triggerAt, { time: new Date(t.at).toISOString() })
+          return _(A.triggerAt, { time: formatTime(t.at) })
         case "delay":
           return _(A.triggerDelay, { delay: String(t.delay) })
         case "watch": {
@@ -46,6 +53,12 @@ export function makeTriggerSummary(
           if ("tool" in w) return _(A.triggerTool, { tool: w.tool })
           return _(A.triggerWatch, { glob: w.glob })
         }
+        case "webhook":
+          return _({ id: "app.agenda.trigger.webhook", message: "Webhook event" })
+        case "session":
+          return _({ id: "app.agenda.trigger.session", message: "Related session event" })
+        case "github":
+          return _({ id: "app.agenda.trigger.github", message: "GitHub event" })
         default:
           return _(A.triggerUnknown)
       }

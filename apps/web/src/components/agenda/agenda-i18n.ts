@@ -4,12 +4,10 @@
 export const A = {
   // panel.tsx — header, tabs, detail dialog, action buttons
   panelTitle: { id: "app.agenda.panel.title", message: "Agenda" },
-  newAgenda: { id: "app.agenda.panel.newAgenda", message: "New Agenda" },
+  newAgenda: { id: "app.agenda.panel.newAgenda", message: "New task" },
   editAgenda: { id: "app.agenda.panel.editAgenda", message: "Edit Agenda" },
-  scheduleTab: { id: "app.agenda.panel.tab.schedule", message: "Plans" },
+  scheduleTab: { id: "app.agenda.panel.tab.schedule", message: "Arrangements" },
   activityTab: { id: "app.agenda.panel.tab.activity", message: "History" },
-  todoLabel: { id: "app.agenda.panel.todoLabel", message: "Todo" },
-  noTodoItems: { id: "app.agenda.panel.noTodoItems", message: "No todo items" },
 
   // trigger summaries
   triggerManual: { id: "app.agenda.trigger.manual", message: "Manual execution" },
@@ -31,15 +29,14 @@ export const A = {
   detailAgent: { id: "app.agenda.detail.agent", message: "agent" },
   detailNext: { id: "app.agenda.detail.next", message: "Next: {time}" },
   detailLastRun: { id: "app.agenda.detail.lastRun", message: "Last run: {date}" },
-  detailTaskLabel: { id: "app.agenda.detail.taskLabel", message: "Task" },
+  detailTaskLabel: { id: "app.agenda.detail.taskLabel", message: "Execution content" },
   detailAgentLabel: { id: "app.agenda.detail.agentLabel", message: "Agent: {agent}" },
   detailRecentRuns: { id: "app.agenda.detail.recentRuns", message: "Recent runs" },
   detailCreated: { id: "app.agenda.detail.created", message: "Created {date}" },
   detailUpdated: { id: "app.agenda.detail.updated", message: "updated {date}" },
 
   // action buttons
-  actionTrigger: { id: "app.agenda.action.trigger", message: "Trigger" },
-  actionActivate: { id: "app.agenda.action.activate", message: "Activate" },
+  actionActivate: { id: "app.agenda.action.activate", message: "Enable" },
   actionPause: { id: "app.agenda.action.pause", message: "Pause" },
   actionComplete: { id: "app.agenda.action.complete", message: "Complete" },
   actionCancel: { id: "app.agenda.action.cancel", message: "Cancel" },
