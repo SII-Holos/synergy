@@ -1032,6 +1032,7 @@ test("leaving document navigation with Tab preserves the enclosing mobile worksp
   await drawer.waitFor()
   await page.getByRole("button", { name: "Select document", exact: true }).focus()
   await page.keyboard.press("Tab")
+  await drawer.waitFor({ state: "detached" })
   await page.waitForFunction(
     () => document.querySelector('[role="dialog"]')?.contains(document.activeElement),
     undefined,

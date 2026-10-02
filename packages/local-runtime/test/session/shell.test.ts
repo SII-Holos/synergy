@@ -202,7 +202,7 @@ test.skipIf(process.platform === "win32")("user shell records full output before
             sessionID: session.id,
             agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test" },
-            command: `"${process.execPath}" -e 'process.stdout.write("x".repeat(180000));process.stderr.write("y".repeat(90000))'`,
+            command: `"${process.execPath}" -e 'await Bun.write(Bun.stdout, "x".repeat(180000));await Bun.write(Bun.stderr, "y".repeat(90000))'`,
           })
           const snapshot = await RolloutSnapshot.read({
             kind: "session",
