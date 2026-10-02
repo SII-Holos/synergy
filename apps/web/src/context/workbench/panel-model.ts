@@ -72,6 +72,13 @@ export function isWorkbenchPanelLaunchable(entry: WorkbenchPanelEntry) {
   return entry.launchable !== false
 }
 
+export function workbenchAddablePanels(panels: WorkbenchPanelEntry[], tabs: WorkbenchPanelTab[]) {
+  const openPanelIds = new Set(tabs.map((tab) => tab.panelId))
+  return panels.filter(
+    (panel) => isWorkbenchPanelLaunchable(panel) && (panel.cardinality === "multi" || !openPanelIds.has(panel.id)),
+  )
+}
+
 export type WorkbenchEscapeAction = "none" | "close-surface"
 
 export function resolveWorkbenchEscapeAction(input: {

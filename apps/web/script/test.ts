@@ -29,6 +29,7 @@ const playwrightIsolated = [
   "test/components/search/session-search-dialog.dom.test.ts",
   "test/components/toolbar-selector.dom.test.ts",
   "test/components/workspace/workbench-surface.dom.test.ts",
+  "test/components/workspace/resource-home.dom.test.ts",
   "test/components/workspace/mobile-workspace-dialog.dom.test.ts",
   "test/components/performance/snapshot-boundary.dom.test.ts",
   "test/plugin/global-themes-registrar-lifecycle.test.tsx",

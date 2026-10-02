@@ -1,14 +1,15 @@
-import { For, Show } from "solid-js"
+import { For, Show, createMemo } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { useWorkbenchPanels } from "@/context/workbench"
+import { workbenchAddablePanels } from "@/context/workbench/panel-model"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 
 export function ResourceHome(props: WorkbenchPanelContentProps) {
   const workbench = useWorkbenchPanels()
   const lingui = useLingui()
-  const resources = () => workbench.panels("side").filter((panel) => ["notes", "file", "browser"].includes(panel.id))
+  const resources = createMemo(() => workbenchAddablePanels(workbench.panels("side"), workbench.surface("side").tabs()))
   return (
     <div class="resource-home">
       <div class="resource-home-content">

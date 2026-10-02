@@ -26,7 +26,7 @@ import { useWorkbenchPanels } from "@/context/workbench"
 import {
   resolveWorkbenchEscapeAction,
   isEditableEscapeTarget,
-  isWorkbenchPanelLaunchable,
+  workbenchAddablePanels,
   workbenchPanelMountKey,
 } from "@/context/workbench/panel-model"
 import {
@@ -368,7 +368,6 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
     overflow: false,
   })
   const state = createMemo(() => workbench.surface(props.surface))
-  const panels = createMemo(() => workbench.panels(props.surface).filter(isWorkbenchPanelLaunchable))
   const activeTab = createMemo(() => state().activeTab())
   const activeEntry = createMemo(() => workbench.panelForTab(activeTab()))
   const activePanel = createMemo(() => {
@@ -381,14 +380,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
     const panel = activePanel()
     return panel ? workbenchPanelMountKey(panel.tab) : undefined
   })
-  const addablePanels = createMemo(() => {
-    const openPanelIds = new Set(
-      state()
-        .tabs()
-        .map((tab) => tab.panelId),
-    )
-    return panels().filter((panel) => panel.cardinality === "multi" || !openPanelIds.has(panel.id))
-  })
+  const addablePanels = createMemo(() => workbenchAddablePanels(workbench.panels(props.surface), state().tabs()))
   const showTabActions = createMemo(() => {
     const tabs = state().tabs()
     return tabs.length > 1 && activeTab() !== undefined && local.overflow
