@@ -144,7 +144,16 @@ test("progress stays inside a short viewport when a request pushes its anchor ne
   await page.waitForFunction(
     () => {
       const rect = document.querySelector(".session-progress-island-panel")?.getBoundingClientRect()
-      return rect && rect.top >= 0 && rect.bottom <= innerHeight
+      return (
+        rect &&
+        rect.top >= 0 &&
+        rect.bottom <= innerHeight &&
+        rect.left >= 0 &&
+        rect.right <= innerWidth &&
+        !!document
+          .elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)
+          ?.closest(".session-progress-island-panel")
+      )
     },
     undefined,
     { timeout: 4000 },
