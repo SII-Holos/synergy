@@ -205,11 +205,11 @@ describe("BossModePanel", () => {
     await expect(switchInput.count()).resolves.toBe(1)
     expect(await switchInput.getAttribute("aria-checked")).toBe("true")
 
-    const personality = page.locator('[role="group"][aria-label="Personality"]')
+    const personality = page.getByRole("group", { name: "Collaboration style" })
     await expect(personality.count()).resolves.toBe(1)
     expect(await personality.locator("button").count()).toBe(4)
 
-    const nameInput = page.locator('input[data-slot="input-input"]')
+    const nameInput = page.getByRole("textbox", { name: "Assistant name" })
     await expect(nameInput.count()).resolves.toBe(1)
     expect(await nameInput.inputValue()).toBe("")
     expect(await nameInput.isDisabled()).toBe(false)
@@ -307,9 +307,9 @@ describe("BossModePanel", () => {
     ])
     expect(await nameInput.inputValue()).toBe("")
 
-    // 5b. The Open boss session button invokes the injected host handler,
+    // 5b. The task-entry button invokes the injected host handler,
     //     disables while the open is pending, and surfaces failures as a toast.
-    const openButton = page.getByRole("button", { name: "Open boss session" })
+    const openButton = page.getByRole("button", { name: "Open task entry" })
     await expect(openButton.count()).resolves.toBe(1)
     expect(await openButton.isDisabled()).toBe(false)
     await openButton.click()
@@ -329,9 +329,7 @@ describe("BossModePanel", () => {
     await openButton.click()
     await page.waitForFunction(() => (window as unknown as { __bossToasts: Array<unknown> }).__bossToasts.length >= 1)
     expect(await bossOpenStats()).toEqual({ calls: 2, mode: "reject" })
-    expect(await bossToasts()).toEqual([
-      { type: "error", title: "Could not open the boss session", description: "boom" },
-    ])
+    expect(await bossToasts()).toEqual([{ type: "error", title: "Could not open the task entry", description: "boom" }])
     await expect(busyButton.count()).resolves.toBe(0)
     expect(await openButton.isDisabled()).toBe(false)
     await page.evaluate(() =>
