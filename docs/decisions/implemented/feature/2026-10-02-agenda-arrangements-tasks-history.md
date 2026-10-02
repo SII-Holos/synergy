@@ -28,7 +28,7 @@ This replaces the Agenda-specific mixed list and calendar-card layout in [the fe
 
 ## Consequences
 
-The page explains what selecting a date changes and keeps rule management available without date controls. Responsive transitions preserve date, view, query and task filters. Details preserve list context and return focus through the shared dialog behaviour. Obsolete series expansion, mixed-list presentation and history group animation are removed rather than maintained as a second path.
+The page explains what selecting a date changes and keeps rule management available without date controls. Responsive transitions preserve date, view, query and task filters. Each peer destination owns its scroll position: first entry starts at its controls, and returning restores that destination's position rather than inheriting another view's offset. Details preserve list context and return focus through the shared dialog behaviour. Obsolete series expansion, mixed-list presentation and history group animation are removed rather than maintained as a second path.
 
 Forecasts are bounded previews, not promises of execution. Dense rules disclose their limit, and local-time presentation can differ from the timezone used by a cron rule. Cross-refresh live execution state and date-filtered history require separate backend capabilities. No new route, public SDK type or persistence migration is introduced.
 

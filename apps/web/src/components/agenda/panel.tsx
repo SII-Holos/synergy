@@ -59,6 +59,19 @@ export function AgendaPanel() {
     i18n._(values ? { ...d, values } : d)
 
   const [tab, setTab] = createSignal<PanelTab>("schedule")
+  const scrollPositions = new Map<PanelTab, number>()
+  let scrollArea: HTMLDivElement | undefined
+  let scrollOwner: PanelTab = "schedule"
+  function selectTab(value: PanelTab) {
+    if (value === tab()) return
+    if (scrollOwner === tab()) scrollPositions.set(tab(), scrollArea?.scrollTop ?? 0)
+    setTab(value)
+    requestAnimationFrame(() => {
+      if (tab() !== value || !scrollArea?.isConnected) return
+      scrollArea.scrollTop = scrollPositions.get(value) ?? 0
+      scrollOwner = value
+    })
+  }
   const onCloseWorkspace = useWorkspaceMobileHeaderClose()
   let detailDialogID: string | undefined
   const [activeDetailItemID, setActiveDetailItemID] = createSignal<string>()
@@ -378,11 +391,18 @@ export function AgendaPanel() {
                 { id: "activity", label: _(A.activityTab) },
               ]}
               active={tab()}
-              onChange={(value) => setTab(value as PanelTab)}
+              onChange={(value) => selectTab(value as PanelTab)}
             />
           </div>
         </AppPanel.Header>
-        <AppPanel.Body padding={false} class="agenda-body" tab={{ id: "agenda", value: tab() }}>
+        <AppPanel.Body
+          ref={(element) => {
+            scrollArea = element
+          }}
+          padding={false}
+          class="agenda-body"
+          tab={{ id: "agenda", value: tab() }}
+        >
           <div class="agenda-stage">
             <p class="app-panel-copy text-text-weak">
               {tab() === "schedule"
@@ -496,7 +516,7 @@ export function AgendaPanel() {
                 onViewModeChange={setViewMode}
                 onAnchorChange={setAnchor}
                 onEventClick={handleEventClick}
-                onHistory={() => setTab("activity")}
+                onHistory={() => selectTab("activity")}
               />
             </Show>
             <Show when={tab() === "tasks"}>

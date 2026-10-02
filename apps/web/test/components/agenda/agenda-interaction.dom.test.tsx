@@ -26,7 +26,7 @@ beforeAll(async () => {
   directory = await mkdtemp(path.join(import.meta.dir, ".agenda-interaction-fixture-"))
   await Bun.write(
     path.join(directory, "index.html"),
-    '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module" src="/main.tsx"></script></body></html>',
+    '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>#root{height:100vh}</style></head><body><div id="root"></div><script type="module" src="/main.tsx"></script></body></html>',
   )
   await Bun.write(
     path.join(directory, "main.tsx"),
@@ -627,4 +627,41 @@ test("creating from a selected Scope keeps that context without changing an exis
   await page.getByRole("button", { name: "Create", exact: true }).click()
   await page.getByRole("dialog").waitFor({ state: "detached" })
   expect(received()?.scopeID).toBe("scope-target")
+})
+
+test("peer destinations keep independent scroll positions so a new destination exposes its controls", async () => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto(baseUrl + "?panel")
+  await page.getByRole("radio", { name: "Month", exact: true }).press("Space")
+  const arrangements = page.getByRole("tabpanel", { name: "Arrangements", exact: true })
+  await arrangements.evaluate((element) => {
+    element.scrollTop = 240
+  })
+  const arrangementPosition = await arrangements.evaluate((element) => element.scrollTop)
+  expect(arrangementPosition).toBeGreaterThan(0)
+  await page.getByRole("tab", { name: "Tasks", exact: true }).press("Enter")
+  const tasks = page.getByRole("tabpanel", { name: "Tasks", exact: true })
+  await page.waitForFunction(() => document.querySelector('[role="tabpanel"]')?.scrollTop === 0, undefined, {
+    timeout: 1000,
+  })
+  expect(await tasks.evaluate((element) => element.scrollTop)).toBe(0)
+  await tasks.evaluate((element) => {
+    element.scrollTop = 100
+  })
+  const taskPosition = await tasks.evaluate((element) => element.scrollTop)
+  expect(taskPosition).toBeGreaterThan(0)
+  await page.getByRole("tab", { name: "Arrangements", exact: true }).press("Enter")
+  await page.waitForFunction(
+    (position) => document.querySelector('[role="tabpanel"]')?.scrollTop === position,
+    arrangementPosition,
+    { timeout: 1000 },
+  )
+  expect(await arrangements.evaluate((element) => element.scrollTop)).toBe(arrangementPosition)
+  await page.getByRole("tab", { name: "Tasks", exact: true }).press("Enter")
+  await page.waitForFunction(
+    (position) => document.querySelector('[role="tabpanel"]')?.scrollTop === position,
+    taskPosition,
+    { timeout: 1000 },
+  )
+  expect(await tasks.evaluate((element) => element.scrollTop)).toBe(taskPosition)
 })

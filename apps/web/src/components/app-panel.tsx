@@ -100,10 +100,18 @@ function Action(props: { icon: IconName; label?: string; title?: string; disable
   )
 }
 
-function Body(props: ParentProps<{ class?: string; padding?: boolean; tab?: { id: string; value: string } }>) {
+function Body(
+  props: ParentProps<{
+    class?: string
+    padding?: boolean
+    tab?: { id: string; value: string }
+    ref?: (element: HTMLDivElement) => void
+  }>,
+) {
   const px = props.padding === false ? "" : "px-4 sm:px-6"
   return (
     <div
+      ref={props.ref}
       class={`app-panel-body flex-1 min-h-0 overflow-y-auto ${px} pb-6 ${props.class ?? ""}`}
       role={props.tab ? "tabpanel" : undefined}
       id={props.tab ? `${props.tab.id}-${props.tab.value}-panel` : undefined}
