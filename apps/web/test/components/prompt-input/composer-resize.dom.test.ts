@@ -123,7 +123,7 @@ test("compact controls add no header row and appear only around the corner or on
   expect(await expand.evaluate((element) => getComputedStyle(element).opacity)).toBe("1")
   expect(await expand.locator("svg.lucide-maximize-2").count()).toBe(1)
   await expand.press("Enter")
-  expect(await page.getByRole("button", { name: "Collapse editor" }).locator("svg.lucide-shrink").count()).toBe(1)
+  expect(await page.getByRole("button", { name: "Collapse editor" }).locator("svg.lucide-minimize-2").count()).toBe(1)
 })
 
 test("touch keeps the corner control visible and inside a 320px composer", async () => {

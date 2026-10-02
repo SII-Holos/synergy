@@ -139,7 +139,7 @@ export function ComposerResizeControls(props: { input: Pick<PluginInputService, 
         </button>
         <div class="composer-resize-cue" role="status">
           <Show when={progress() > 0}>
-            <Icon name={getSemanticIcon("composer.expand")} size="small" aria-hidden="true" />
+            <Icon name={getSemanticIcon("action.expand")} size="small" aria-hidden="true" />
             <span>
               {armed()
                 ? _({ id: "prompt.long.releaseExpand", message: "Release to expand" })

@@ -36,7 +36,7 @@ export function ComposerExpandButton(props: { input: Pick<PluginInputService, "c
             aria-expanded={expanded()}
             onClick={() => (expanded() ? binding?.state.collapse() : binding?.state.expand())}
           >
-            <Icon name={getSemanticIcon(expanded() ? "composer.collapse" : "composer.expand")} size="small" />
+            <Icon name={getSemanticIcon(expanded() ? "action.collapse" : "action.expand")} size="small" />
           </button>
         </Tooltip>
       </div>

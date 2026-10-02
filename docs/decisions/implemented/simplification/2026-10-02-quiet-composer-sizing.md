@@ -8,7 +8,7 @@ A separate sizing row and menu consume writing space while duplicating the drag 
 
 ## Decision
 
-The normal composer reserves only eight pixels at its top. A two-pixel grip floats on the edge with an independent 24-pixel pointer target. The expansion control floats in the top corner without adding a row. It uses outward diagonal arrows for expansion and inward arrows for contraction, with dedicated composer semantic tokens; desktop window icons keep their existing meanings.
+The normal composer reserves only eight pixels at its top. A two-pixel grip floats on the edge with an independent 24-pixel pointer target. The expansion control floats in the top corner without adding a row. All editor, panel and fullscreen-content sizing controls use the same two-arrow diagonal expansion/contraction pair through the [public sizing actions](../../../plugins/ui-contributions.md#public-components). Stable composer tokens preserve public IDs with the same meaning, while the window-restore token shares the contraction glyph. The icon regression gate permits exactly these same-meaning aliases and rejects unrelated glyph reuse.
 
 On pointer devices, the control appears when the pointer enters its corner region or keyboard focus reaches it. On touch devices it remains visible with a 44-pixel target. The corner is reserved beside the attachment rail and the editor's existing trailing gutter. Focus indicators and tooltips remain available. The size menu is removed; the separator provides arrow-key resizing, Home for automatic height, End for maximum manual height and Enter for expansion.
 

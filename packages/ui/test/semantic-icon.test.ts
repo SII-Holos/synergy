@@ -90,9 +90,12 @@ function componentIconNames(): Set<string> {
 }
 
 describe("semantic icons", () => {
-  test("composer sizing uses diagonal expansion and contraction arrows", () => {
+  test("surface sizing uses one pair of diagonal expansion and contraction arrows", () => {
+    expect(getSemanticIcon("action.expand")).toBe("maximize-2")
+    expect(getSemanticIcon("action.collapse")).toBe("minimize-2")
     expect(getSemanticIcon("composer.expand")).toBe("maximize-2")
-    expect(getSemanticIcon("composer.collapse")).toBe("shrink")
+    expect(getSemanticIcon("composer.collapse")).toBe("minimize-2")
+    expect(getSemanticIcon("window.restore")).toBe("minimize-2")
     expect(getSemanticIcon("window.maximize")).toBe("square")
   })
   test("every token resolves to its configured icon key", () => {
@@ -116,7 +119,10 @@ describe("semantic icons", () => {
       .filter(([, tokens]) => tokens.length > 1)
       .map(([icon, tokens]) => `${icon}: ${tokens.sort().join(", ")}`)
 
-    expect(duplicates).toEqual([])
+    expect(duplicates).toEqual([
+      "maximize-2: action.expand, composer.expand",
+      "minimize-2: action.collapse, composer.collapse, window.restore",
+    ])
   })
 
   test("semantic token glyphs are registered and renderable built-in icons", () => {
