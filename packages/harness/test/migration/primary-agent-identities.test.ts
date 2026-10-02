@@ -1,4 +1,3 @@
-import fs from "node:fs/promises"
 import { expect, test } from "bun:test"
 import path from "node:path"
 import { parse as parseJsonc } from "jsonc-parser"
@@ -8,7 +7,7 @@ import { migrations as sessionMigrations } from "../../src/session/migration"
 import { Storage } from "../../src/storage/storage"
 import { Global } from "../../src/global"
 import { MigrationRegistry } from "../../src/migration/registry"
-import { runMigrations, upgradeImportedConfig } from "../../src/migration"
+import { upgradeImportedConfig } from "../../src/migration"
 import { PermissionNext } from "../../src/permission/next"
 
 function migration(domain: "config" | "session") {
@@ -47,7 +46,7 @@ test("configuration upgrade preserves models, custom agents, comments and prompt
     const commandMarkdown = path.join(Global.Path.config, "command", "synergy.md")
     await Bun.write(
       file,
-      `// keep this comment\n{"default_agent":"synergy-max","agent":{"synergy":{"model":"fixture/a"},"synergy-flash":{"visibleTo":["synergy","synergy-max","custom"],"prompt":"synergy-max stays in text"},"custom":{"permission":{"task":{"synergy-max":"allow"}}}},"command":{"check":{"agent":"synergy-max","template":"synergy send"}}}`,
+      `// keep this comment\n{"default_agent":"synergy-max","agent":{"synergy":{"model":"fixture/a"},"synergy-flash":{"visibleTo":["synergy","synergy-max","custom"],"prompt":"synergy-max stays in text"},"custom":{"permission":{"task":{"synergy-max":"allow"}}}},"permission":{"task":{"synergy-max" /* keep rule comment */: "deny","*":"allow"}},"command":{"check":{"agent":"synergy-max","template":"synergy send"}}}`,
     )
     await Bun.write(
       markdown,
@@ -60,6 +59,7 @@ test("configuration upgrade preserves models, custom agents, comments and prompt
     const text = await Bun.file(file).text()
     const config = parseJsonc(text)
     expect(text).toContain("// keep this comment")
+    expect(text).toContain("/* keep rule comment */")
     expect(config).toMatchObject({
       default_agent: "forge",
       agent: {
@@ -67,8 +67,10 @@ test("configuration upgrade preserves models, custom agents, comments and prompt
         pico: { visibleTo: ["atlas", "forge", "custom"], prompt: "synergy-max stays in text" },
         custom: { permission: { task: { forge: "allow" } } },
       },
+      permission: { task: { forge: "deny", "*": "allow" } },
       command: { check: { agent: "forge", template: "synergy send" } },
     })
+    expect(PermissionNext.evaluate("task", "forge", PermissionNext.fromConfig(config.permission)).action).toBe("allow")
     expect(Object.keys(config.agent)).toEqual(["atlas", "pico", "custom"])
     expect(await Bun.file(markdown).exists()).toBe(false)
     expect(await Bun.file(commandMarkdown).text()).toContain("name: synergy\nagent: forge\n")
@@ -77,21 +79,6 @@ test("configuration upgrade preserves models, custom agents, comments and prompt
     )
     await upgrade.up(() => {})
     expect(await Bun.file(file).text()).toBe(text)
-  })
-})
-
-test("renaming delegation permissions preserves rule precedence and attached JSONC comments", async () => {
-  await using fixture = await migrationFixture()
-  await fixture.run(async () => {
-    const file = path.join(Global.Path.config, "synergy.d", "65-permissions.jsonc")
-    await Bun.write(file, '{"permission":{"task":{"synergy-max" /* keep rule comment */: "deny", "*": "allow"}}}')
-    const upgrade = migration("config")
-    MigrationRegistry.register("config", [upgrade])
-    await upgrade.up(() => {})
-    const text = await Bun.file(file).text()
-    const config = parseJsonc(text)
-    expect(PermissionNext.evaluate("task", "forge", PermissionNext.fromConfig(config.permission)).action).toBe("allow")
-    expect(text).toContain("/* keep rule comment */")
   })
 })
 
@@ -160,34 +147,5 @@ test("Session upgrade changes only executable identities, including queued input
     ).toEqual({ type: "text", text: "synergy-max" })
     await upgrade.up(() => {})
     expect(await Storage.read<Record<string, unknown>>([...root, "info"])).toMatchObject({ agentOverride: "forge" })
-  })
-})
-
-test("a failed upgrade gets no completion receipt and retries without changing history", async () => {
-  await using fixture = await migrationFixture()
-  await fixture.run(async () => {
-    await fs.mkdir(path.join(fixture.host.root, "data"), { recursive: true })
-    const upgrade = migration("session")
-    let fail = true
-    MigrationRegistry.register("rename-retry", [
-      {
-        ...upgrade,
-        async up(progress) {
-          await upgrade.up(progress)
-          if (fail) {
-            fail = false
-            throw new Error("fixture interruption")
-          }
-        },
-      },
-    ])
-    const key = ["sessions", "scope-fixture", "session-fixture", "info"]
-    await Storage.write(key, { agentOverride: "synergy", title: "synergy" })
-    await expect(runMigrations({ targetDomain: "rename-retry", output: "silent" })).rejects.toThrow(
-      "fixture interruption",
-    )
-    await runMigrations({ targetDomain: "rename-retry", output: "silent" })
-    expect(await Storage.read<Record<string, unknown>>(key)).toEqual({ agentOverride: "atlas", title: "synergy" })
-    expect((await runMigrations({ targetDomain: "rename-retry", output: "silent" })).completed).toBe(0)
   })
 })

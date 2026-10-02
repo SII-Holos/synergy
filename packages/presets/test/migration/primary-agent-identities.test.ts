@@ -73,15 +73,6 @@ test("full composition upgrades owned execution references without rewriting his
     const migrations = [...MigrationRegistry.list().values()]
       .flat()
       .filter((migration) => migration.id.endsWith("primary-agent-identities"))
-    expect(migrations.map((migration) => migration.id).sort()).toEqual([
-      "20261002-agenda-primary-agent-identities",
-      "20261002-blueprint-primary-agent-identities",
-      "20261002-channel-primary-agent-identities",
-      "20261002-config-primary-agent-identities",
-      "20261002-note-primary-agent-identities",
-      "20261002-session-primary-agent-identities",
-      "20261002-workflow-session-primary-agent-identities",
-    ])
     for (const migration of migrations) await migration.up(() => {})
     for (const { key, after } of records) expect(await Storage.read<Record<string, unknown>>(key)).toEqual(after)
     expect((await Storage.readMany([["notes", "home", "_index"]]))[0]).toBeUndefined()

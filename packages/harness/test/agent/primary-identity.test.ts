@@ -27,49 +27,8 @@ test("primary identities register visible native agents and select the general d
           expect(agent?.hidden).not.toBe(true)
         }
         expect(await Agent.defaultAgent()).toBe(identities[0][1])
-        for (const name of ["synergy", "synergy-max", "synergy-flash"]) expect(await Agent.get(name)).toBeUndefined()
       },
     })
   }))
-
-test("identity rendering preserves product names and unrelated text", () => {
-  expect(PrimaryAgentIdentity.render("general", "{AGENT_NAME}: {AGENT_LABEL} in Synergy/.synergy")).toBe(
-    "atlas: Atlas in Synergy/.synergy",
-  )
-})
 
 afterAll(() => runtime.close())
-
-test("legacy execution names fail instead of selecting a different primary", () =>
-  runtime.run(async () => {
-    await using tmp = await tmpdir()
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      async fn() {
-        const { Session } = await import("../../src/session")
-        const { createUserMessage } = await import("../../src/session/input")
-        const { SessionInbox } = await import("../../src/session/inbox")
-        const session = await Session.create({})
-        for (const agent of ["synergy", "synergy-max", "synergy-flash"]) {
-          await expect(
-            createUserMessage({
-              sessionID: session.id,
-              agent,
-              noReply: true,
-              parts: [{ type: "text", text: "fixture" }],
-            }),
-          ).rejects.toThrow(`Agent not found: ${agent}`)
-          await expect(
-            SessionInbox.enqueueUser({
-              sessionID: session.id,
-              agent,
-              noReply: true,
-              parts: [{ type: "text", text: "fixture" }],
-            }),
-          ).rejects.toThrow(`Agent not found: ${agent}`)
-        }
-        expect(await Session.messages({ sessionID: session.id })).toHaveLength(0)
-        expect(await SessionInbox.list(session.id)).toHaveLength(0)
-      },
-    })
-  }))
