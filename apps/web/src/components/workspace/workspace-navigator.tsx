@@ -16,6 +16,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { OverlayLayerProvider } from "@ericsanchezok/synergy-ui/context/overlay-layer"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { workspaceNavigatorWidth } from "@/context/layout/workspace"
+import { workspaceTabStops } from "./focus"
 import "./workspace-navigator.css"
 
 export type WorkspaceNavigatorController = {
@@ -24,17 +25,6 @@ export type WorkspaceNavigatorController = {
   toggle: () => void
   close: () => void
   closeDrawer: () => void
-}
-
-function tabStops(root: Element) {
-  return Array.from(
-    root.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex], [contenteditable="true"]',
-    ),
-  ).filter(
-    (element) =>
-      element.tabIndex >= 0 && element.getClientRects().length > 0 && !element.closest('[inert], [aria-hidden="true"]'),
-  )
 }
 
 export function WorkspaceNavigator(
@@ -166,14 +156,14 @@ export function WorkspaceNavigator(
                     target.contains(active)
                   )
                     return
-                  ;(tabStops(target)[0] ?? target).focus({ preventScroll: true })
+                  ;(workspaceTabStops(target)[0] ?? target).focus({ preventScroll: true })
                 })
               }}
               onKeyDown={(event: KeyboardEvent) => {
                 if (event.defaultPrevented || event.key !== "Tab") return
                 const modalHost = frame()?.closest('[aria-modal="true"], [data-slot="dialog-content"]')
                 if (!modalHost) return
-                const focusable = tabStops(modalHost)
+                const focusable = workspaceTabStops(modalHost)
                 const index = focusable.indexOf(document.activeElement as HTMLElement)
                 if ((event.shiftKey && index <= 0) || (!event.shiftKey && index === focusable.length - 1)) {
                   event.preventDefault()
