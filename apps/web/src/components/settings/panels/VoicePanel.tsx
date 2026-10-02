@@ -2,6 +2,7 @@ import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { requestErrorMessage } from "@/utils/error"
@@ -295,21 +296,21 @@ export function VoicePanel(props: { controller: VoiceController; searchField?: s
                     title={_(copy.template)}
                     description=""
                     trailing={
-                      <select
-                        class="settings-native-select"
-                        aria-label={contextLabel(copy.template)}
+                      <MenuField
+                        ariaLabel={contextLabel(copy.template)}
                         value={
                           value().baseURL.trim() && value().baseURL.trim() !== "https://api.openai.com/v1"
                             ? "custom"
                             : "openai"
                         }
-                        onChange={(event) =>
-                          controller.setDraft(side, "baseURL", event.currentTarget.value === "openai" ? "" : "https://")
+                        options={[
+                          { value: "openai", label: "OpenAI" },
+                          { value: "custom", label: _(copy.compatible) },
+                        ]}
+                        onChange={(template) =>
+                          controller.setDraft(side, "baseURL", template === "openai" ? "" : "https://")
                         }
-                      >
-                        <option value="openai">OpenAI</option>
-                        <option value="custom">{_(copy.compatible)}</option>
-                      </select>
+                      />
                     }
                   />
                   <SettingRow

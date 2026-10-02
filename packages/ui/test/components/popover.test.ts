@@ -1,5 +1,5 @@
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
-import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test"
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
@@ -94,13 +94,12 @@ beforeAll(async () => {
   await server.listen()
   await server.warmupRequest("/main.tsx")
   browser = await chromium.launch({ headless: true })
-  page = await browser.newPage()
-  page.on("pageerror", (error) => errors.push(error.message))
-  await page.goto(server.resolvedUrls!.local[0]!)
 }, 60000)
 
 beforeEach(async () => {
   errors.length = 0
+  page = await browser.newPage()
+  page.on("pageerror", (error) => errors.push(error.message))
   await page.goto(server.resolvedUrls!.local[0]!)
   await page
     .getByRole("button", { name: "Plugin actions", exact: true })
@@ -108,6 +107,10 @@ beforeEach(async () => {
     .catch((error) => {
       throw new Error(JSON.stringify({ errors }), { cause: error })
     })
+})
+
+afterEach(async () => {
+  await page?.close()
 })
 
 test("settings controls retain their names, descriptions and inline errors", async () => {
@@ -150,6 +153,31 @@ test("Escape from a focused multiple-choice option closes the menu without clear
   await page.getByRole("option", { name: "Chinese source", exact: true }).waitFor({ state: "detached" })
   await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Sources: Selected sources")
   expect(await page.locator("[data-selected-sources]").textContent()).toBe("en,zh")
+  expect(errors).toEqual([])
+})
+
+test("menu checkmarks follow single and multiple selection without changing accessible option names", async () => {
+  await page.getByRole("button", { name: "Advanced options", exact: true }).click()
+  await page.getByRole("button", { name: "Language: English", exact: true }).click()
+  const english = page.getByRole("option", { name: "English", exact: true })
+  expect(await english.locator(".menu-field-item-indicator").isVisible()).toBe(true)
+  expect(
+    await page.getByRole("option", { name: "Chinese", exact: true }).locator(".menu-field-item-indicator").count(),
+  ).toBe(0)
+  await english.press("Escape")
+  await english.waitFor({ state: "detached" })
+  await page.getByRole("button", { name: "Language: English", exact: true }).press("Escape")
+  const trigger = page.getByRole("button", { name: "Sources: Selected sources", exact: true })
+  await trigger.click()
+  const first = page.getByRole("option", { name: "English source", exact: true })
+  const second = page.getByRole("option", { name: "Chinese source", exact: true })
+  expect(await page.locator(".menu-field-item-indicator").count()).toBe(2)
+  await first.click()
+  expect(await first.getAttribute("aria-selected")).toBe("false")
+  expect(await first.locator(".menu-field-item-indicator").count()).toBe(0)
+  expect(await second.locator(".menu-field-item-indicator").isVisible()).toBe(true)
+  await second.press("Escape")
+  expect(await page.locator("[data-selected-sources]").textContent()).toBe("zh")
   expect(errors).toEqual([])
 })
 

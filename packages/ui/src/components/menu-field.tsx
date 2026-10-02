@@ -3,7 +3,7 @@ import { restorePopoverFocus } from "./popover"
 import { useOverlayLayer } from "../context/overlay-layer"
 import { PortalStyleOwner } from "../context/ui-style"
 import { Popover } from "@kobalte/core/popover"
-import { Listbox, Item, ItemLabel } from "@kobalte/core/listbox"
+import { Listbox, Item, ItemLabel, ItemIndicator } from "@kobalte/core/listbox"
 import { createSignal, Show, type JSX } from "solid-js"
 import { Icon } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
@@ -17,6 +17,7 @@ export type MenuFieldOption<T extends string> = {
 }
 
 type MenuFieldBaseProps<T extends string> = {
+  id?: string
   options: MenuFieldOption<T>[]
   ariaLabel: string
   ariaDescribedBy?: string
@@ -92,6 +93,7 @@ export function MenuField<T extends string>(props: MenuFieldProps<T>) {
           optionValue={(option) => option.value}
           optionTextValue={(option) => option.label}
           optionDisabled={(option) => option.disabled ?? false}
+          shouldFocusOnHover
           selectionMode={multiple() ? "multiple" : "single"}
           disallowEmptySelection={!multiple()}
           allowDuplicateSelectionEvents={!multiple()}
@@ -113,6 +115,11 @@ export function MenuField<T extends string>(props: MenuFieldProps<T>) {
                 <Show when={option.count !== undefined}>
                   <span class="menu-field-count">{option.count}</span>
                 </Show>
+                <span class="menu-field-item-mark" aria-hidden="true">
+                  <ItemIndicator as="span" class="menu-field-item-indicator">
+                    <Icon name={getSemanticIcon("state.success")} size="small" />
+                  </ItemIndicator>
+                </span>
               </Item>
             )
           }}
@@ -125,6 +132,7 @@ export function MenuField<T extends string>(props: MenuFieldProps<T>) {
     <Popover open={open()} onOpenChange={setOpen} placement={props.placement ?? "bottom-start"} gutter={8}>
       <Popover.Trigger
         ref={trigger}
+        id={props.id}
         as="button"
         type="button"
         class={props.triggerClass ?? "menu-field-trigger"}

@@ -28,6 +28,7 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { OverlayLayerProvider } from "@ericsanchezok/synergy-ui/context/overlay-layer"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
@@ -1599,272 +1600,274 @@ export function SettingsPanel(props: SettingsPanelProps) {
       >
         <Icon name={getSemanticIcon("action.close")} size="small" />
       </button>
-      <AppPanel.Root class="settings-panel-root">
-        <AppPanel.Nav
-          ref={(element) => (settingsNavigation = element)}
-          class={`settings-panel-navigation ${!isDesktop() && mobileDetailOpen() ? "settings-panel-mobile-hidden" : ""}`}
-        >
-          <div class="settings-panel-navigation-header px-3 pt-4 pb-2 flex flex-col gap-2">
-            <div>
-              <div class="settings-nav-title truncate">{_(copy.globalConfig)}</div>
+      <OverlayLayerProvider layer={settingsPopoverLayer}>
+        <AppPanel.Root class="settings-panel-root">
+          <AppPanel.Nav
+            ref={(element) => (settingsNavigation = element)}
+            class={`settings-panel-navigation ${!isDesktop() && mobileDetailOpen() ? "settings-panel-mobile-hidden" : ""}`}
+          >
+            <div class="settings-panel-navigation-header px-3 pt-4 pb-2 flex flex-col gap-2">
+              <div>
+                <div class="settings-nav-title truncate">{_(copy.globalConfig)}</div>
+              </div>
+              <div class="ds-settings-search">
+                <Icon name={getSemanticIcon("action.search")} size="small" />
+                <input
+                  value={search()}
+                  placeholder={_(copy.searchPlaceholder)}
+                  aria-label={_(copy.searchPlaceholder)}
+                  onInput={(event) => setSearch(event.currentTarget.value)}
+                />
+                <Show when={search()}>
+                  <button
+                    type="button"
+                    aria-label={_({ id: "settings.search.clear", message: "Clear search" })}
+                    onClick={() => setSearch("")}
+                  >
+                    <Icon name={getSemanticIcon("action.close")} size="small" />
+                  </button>
+                </Show>
+              </div>
             </div>
-            <div class="ds-settings-search">
-              <Icon name={getSemanticIcon("action.search")} size="small" />
-              <input
-                value={search()}
-                placeholder={_(copy.searchPlaceholder)}
-                aria-label={_(copy.searchPlaceholder)}
-                onInput={(event) => setSearch(event.currentTarget.value)}
-              />
-              <Show when={search()}>
-                <button
-                  type="button"
-                  aria-label={_({ id: "settings.search.clear", message: "Clear search" })}
-                  onClick={() => setSearch("")}
-                >
-                  <Icon name={getSemanticIcon("action.close")} size="small" />
-                </button>
+
+            <div class="flex-1 overflow-y-auto px-2 pb-3">
+              <For each={navGroups()}>
+                {(group) => (
+                  <AppPanel.NavSection label={group.label}>
+                    <For each={group.sections}>
+                      {(section) => (
+                        <div>
+                          <AppPanel.NavItem
+                            icon={sectionIcon(section)}
+                            label={section.label}
+                            active={activeTab() === section.id}
+                            onClick={() => selectSection(section.id)}
+                          />
+                          <For each={matchingFields(section.id)}>
+                            {(label) => (
+                              <button
+                                class="settings-search-result"
+                                type="button"
+                                onClick={() => selectField(section.id, label)}
+                              >
+                                {label}
+                              </button>
+                            )}
+                          </For>
+                        </div>
+                      )}
+                    </For>
+                  </AppPanel.NavSection>
+                )}
+              </For>
+              <Show when={navGroups().length === 0}>
+                <div class="settings-empty-text px-3 py-6 text-text-weaker">
+                  {_(copy.noSettings)}
+                  <Button variant="ghost" onClick={() => setSearch("")}>
+                    {_({ id: "settings.search.clear", message: "Clear search" })}
+                  </Button>
+                </div>
               </Show>
             </div>
-          </div>
+          </AppPanel.Nav>
 
-          <div class="flex-1 overflow-y-auto px-2 pb-3">
-            <For each={navGroups()}>
-              {(group) => (
-                <AppPanel.NavSection label={group.label}>
-                  <For each={group.sections}>
-                    {(section) => (
-                      <div>
-                        <AppPanel.NavItem
-                          icon={sectionIcon(section)}
-                          label={section.label}
-                          active={activeTab() === section.id}
-                          onClick={() => selectSection(section.id)}
-                        />
-                        <For each={matchingFields(section.id)}>
-                          {(label) => (
-                            <button
-                              class="settings-search-result"
-                              type="button"
-                              onClick={() => selectField(section.id, label)}
-                            >
-                              {label}
-                            </button>
-                          )}
-                        </For>
-                      </div>
-                    )}
-                  </For>
-                </AppPanel.NavSection>
-              )}
-            </For>
-            <Show when={navGroups().length === 0}>
-              <div class="settings-empty-text px-3 py-6 text-text-weaker">
-                {_(copy.noSettings)}
-                <Button variant="ghost" onClick={() => setSearch("")}>
-                  {_({ id: "settings.search.clear", message: "Clear search" })}
-                </Button>
-              </div>
-            </Show>
-          </div>
-        </AppPanel.Nav>
-
-        <AppPanel.Content
-          class={`settings-panel-content ${!isDesktop() && !mobileDetailOpen() ? "settings-panel-mobile-hidden" : ""}`}
-        >
-          <div class="settings-panel-mobile-detail-header">
-            <button
-              ref={mobileBackButton}
-              type="button"
-              class="settings-panel-mobile-back flex shrink-0 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus-base"
-              aria-label={_(copy.backLabel)}
-              onClick={showMobileSectionList}
-            >
-              <Icon name={getSemanticIcon("navigation.back")} size="small" />
-            </button>
-            <div class="min-w-0 truncate text-15-medium text-text-strong">{activeSection()?.label}</div>
-          </div>
-          <Show when={diagnosticsResource.error()}>
-            <div class="settings-resource-error" role="alert">
-              <div>{_(copy.diagnosticsLoadFailed)}</div>
-              <Button
-                variant="secondary"
-                disabled={diagnosticsResource.loading()}
-                onClick={() => void diagnosticsResource.retry()}
-              >
-                {_(copy.retrySection)}
-              </Button>
-            </div>
-          </Show>
-          <Show when={(configDiagnostics()?.length ?? 0) > 0}>
-            <div class="settings-config-diagnostics-banner" role="alert">
-              <div class="settings-config-diagnostics-title">{_(copy.configDiagnosticsTitle)}</div>
-              <div class="settings-config-diagnostics-description">{_(copy.configDiagnosticsDescription)}</div>
-              <ul class="settings-config-diagnostics-list">
-                <For each={configDiagnostics()}>
-                  {(issue) => (
-                    <li>
-                      {_({
-                        ...copy.configDiagnosticsDetail,
-                        values: { path: issue.path, error: issue.error },
-                      })}
-                      <Show when={issue.quarantinedPath}>
-                        {_({
-                          ...copy.configDiagnosticsQuarantined,
-                          values: { path: issue.quarantinedPath! },
-                        })}
-                      </Show>
-                    </li>
-                  )}
-                </For>
-              </ul>
-            </div>
-          </Show>
-          <AppPanel.Body
-            padding={false}
-            ref={(element) => {
-              settingsBody = element
-            }}
+          <AppPanel.Content
+            class={`settings-panel-content ${!isDesktop() && !mobileDetailOpen() ? "settings-panel-mobile-hidden" : ""}`}
           >
-            <Show when={failedResources().length > 0}>
+            <div class="settings-panel-mobile-detail-header">
+              <button
+                ref={mobileBackButton}
+                type="button"
+                class="settings-panel-mobile-back flex shrink-0 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus-base"
+                aria-label={_(copy.backLabel)}
+                onClick={showMobileSectionList}
+              >
+                <Icon name={getSemanticIcon("navigation.back")} size="small" />
+              </button>
+              <div class="min-w-0 truncate text-15-medium text-text-strong">{activeSection()?.label}</div>
+            </div>
+            <Show when={diagnosticsResource.error()}>
               <div class="settings-resource-error" role="alert">
-                <div>
-                  {_({ ...copy.sectionLoadFailed, values: { label: activeSection()?.label ?? _(copy.dialogLabel) } })}
-                </div>
-                <Button variant="secondary" disabled={sectionLoading()} onClick={retrySection}>
+                <div>{_(copy.diagnosticsLoadFailed)}</div>
+                <Button
+                  variant="secondary"
+                  disabled={diagnosticsResource.loading()}
+                  onClick={() => void diagnosticsResource.retry()}
+                >
                   {_(copy.retrySection)}
                 </Button>
               </div>
             </Show>
-            <Show
-              when={sectionReady()}
-              fallback={
-                <Show when={failedResources().length === 0}>
-                  <div class="settings-panel-loading" role="status">
-                    {_(copy.loading)}
-                  </div>
-                </Show>
-              }
-            >
-              <SettingsViewStateContext.Provider
-                value={{
-                  view: (key) => settingsSubviews.get(`${activeTab()}:${key}`),
-                  setView: (key, view) => settingsSubviews.set(`${activeTab()}:${key}`, view),
-                  expanded: (key) => expandedSections.get(`${activeTab()}:${key}`),
-                  setExpanded: (key, open) => expandedSections.set(`${activeTab()}:${key}`, open),
-                  searchField: () => (searchTarget()?.section === activeTab() ? searchTarget()?.label : undefined),
-                }}
-              >
-                <Show keyed when={activeTab()}>
-                  {(id) => (
-                    <div ref={setContentRoot} class="settings-page-transition" data-settings-page={id}>
-                      {renderActiveContent()}
-                    </div>
-                  )}
-                </Show>
-              </SettingsViewStateContext.Provider>
+            <Show when={(configDiagnostics()?.length ?? 0) > 0}>
+              <div class="settings-config-diagnostics-banner" role="alert">
+                <div class="settings-config-diagnostics-title">{_(copy.configDiagnosticsTitle)}</div>
+                <div class="settings-config-diagnostics-description">{_(copy.configDiagnosticsDescription)}</div>
+                <ul class="settings-config-diagnostics-list">
+                  <For each={configDiagnostics()}>
+                    {(issue) => (
+                      <li>
+                        {_({
+                          ...copy.configDiagnosticsDetail,
+                          values: { path: issue.path, error: issue.error },
+                        })}
+                        <Show when={issue.quarantinedPath}>
+                          {_({
+                            ...copy.configDiagnosticsQuarantined,
+                            values: { path: issue.quarantinedPath! },
+                          })}
+                        </Show>
+                      </li>
+                    )}
+                  </For>
+                </ul>
+              </div>
             </Show>
-            <SlotOutlet slot="settings.section" />
-          </AppPanel.Body>
-
-          <AppPanel.Footer class="settings-panel-footer">
-            <div class="settings-panel-footer-status flex flex-1 items-center gap-3">
-              <SaveIndicator status={saveFooterStatus()} />
+            <AppPanel.Body
+              padding={false}
+              ref={(element) => {
+                settingsBody = element
+              }}
+            >
+              <Show when={failedResources().length > 0}>
+                <div class="settings-resource-error" role="alert">
+                  <div>
+                    {_({ ...copy.sectionLoadFailed, values: { label: activeSection()?.label ?? _(copy.dialogLabel) } })}
+                  </div>
+                  <Button variant="secondary" disabled={sectionLoading()} onClick={retrySection}>
+                    {_(copy.retrySection)}
+                  </Button>
+                </div>
+              </Show>
               <Show
-                when={["invalid", "error", "partial"].includes(saveFooterStatus()) && failedSaveSources().length > 0}
+                when={sectionReady()}
+                fallback={
+                  <Show when={failedResources().length === 0}>
+                    <div class="settings-panel-loading" role="status">
+                      {_(copy.loading)}
+                    </div>
+                  </Show>
+                }
               >
-                <button
-                  type="button"
-                  class="settings-save-recovery"
-                  onClick={() => {
-                    const page = failedSaveSources()[0]?.page
-                    if (page) setActiveTab(page)
+                <SettingsViewStateContext.Provider
+                  value={{
+                    view: (key) => settingsSubviews.get(`${activeTab()}:${key}`),
+                    setView: (key, view) => settingsSubviews.set(`${activeTab()}:${key}`, view),
+                    expanded: (key) => expandedSections.get(`${activeTab()}:${key}`),
+                    setExpanded: (key, open) => expandedSections.set(`${activeTab()}:${key}`, open),
+                    searchField: () => (searchTarget()?.section === activeTab() ? searchTarget()?.label : undefined),
                   }}
                 >
-                  {_({
-                    id: "settings.save.failedPages",
-                    message: "Review: {pages}",
-                    values: {
-                      pages: failedSaveSources()
-                        .map((source) => source.name)
-                        .filter(Boolean)
-                        .join(" · "),
-                    },
-                  })}
-                </button>
+                  <Show keyed when={activeTab()}>
+                    {(id) => (
+                      <div ref={setContentRoot} class="settings-page-transition" data-settings-page={id}>
+                        {renderActiveContent()}
+                      </div>
+                    )}
+                  </Show>
+                </SettingsViewStateContext.Provider>
               </Show>
-              <Show when={saveFooterStatus() === "partial" && successfulSaveSources().length > 0}>
-                <span class="settings-row-description">
-                  {_({
-                    id: "settings.save.successfulPages",
-                    message: "Saved: {pages}",
-                    values: {
-                      pages: successfulSaveSources()
-                        .map((source) => source.name)
-                        .filter(Boolean)
-                        .join(" · "),
-                    },
-                  })}
-                </span>
-              </Show>
-              <Show when={save.refreshPending()}>
+              <SlotOutlet slot="settings.section" />
+            </AppPanel.Body>
+
+            <AppPanel.Footer class="settings-panel-footer">
+              <div class="settings-panel-footer-status flex flex-1 items-center gap-3">
+                <SaveIndicator status={saveFooterStatus()} />
+                <Show
+                  when={["invalid", "error", "partial"].includes(saveFooterStatus()) && failedSaveSources().length > 0}
+                >
+                  <button
+                    type="button"
+                    class="settings-save-recovery"
+                    onClick={() => {
+                      const page = failedSaveSources()[0]?.page
+                      if (page) setActiveTab(page)
+                    }}
+                  >
+                    {_({
+                      id: "settings.save.failedPages",
+                      message: "Review: {pages}",
+                      values: {
+                        pages: failedSaveSources()
+                          .map((source) => source.name)
+                          .filter(Boolean)
+                          .join(" · "),
+                      },
+                    })}
+                  </button>
+                </Show>
+                <Show when={saveFooterStatus() === "partial" && successfulSaveSources().length > 0}>
+                  <span class="settings-row-description">
+                    {_({
+                      id: "settings.save.successfulPages",
+                      message: "Saved: {pages}",
+                      values: {
+                        pages: successfulSaveSources()
+                          .map((source) => source.name)
+                          .filter(Boolean)
+                          .join(" · "),
+                      },
+                    })}
+                  </span>
+                </Show>
+                <Show when={save.refreshPending()}>
+                  <Button
+                    variant="ghost"
+                    size="small"
+                    disabled={save.status() === "saving"}
+                    onClick={async () => {
+                      const outcome = await save.retryRead()
+                      const remaining = failedSaveSources().filter((source) => !source.server)
+                      const failures =
+                        outcome.domains
+                          ?.filter((domain) => domain.phase === "write")
+                          .map((domain) => {
+                            const summary = domainSummaries()?.find((item) => item.id === domain.domain)
+                            const section = summary && getBuiltinSettingsSection(summary.uiSection)
+                            return {
+                              server: true,
+                              name: section ? _(section.copy.label) : (summary?.label ?? domain.domain),
+                              page: summary?.uiSection,
+                            }
+                          }) ?? []
+                      setFailedSaveSources([...remaining, ...failures])
+                      setAggregateSaveStatus(
+                        remaining.length || failures.length
+                          ? "partial"
+                          : outcome.phase === "complete"
+                            ? "saved"
+                            : "refresh",
+                      )
+                      setSaveResultFingerprint(draftFingerprint())
+                    }}
+                  >
+                    {_({ id: "settings.save.retryRead", message: "Retry reading" })}
+                  </Button>
+                </Show>
+              </div>
+              <div class="settings-panel-footer-actions">
                 <Button
+                  type="button"
                   variant="ghost"
-                  size="small"
-                  disabled={save.status() === "saving"}
-                  onClick={async () => {
-                    const outcome = await save.retryRead()
-                    const remaining = failedSaveSources().filter((source) => !source.server)
-                    const failures =
-                      outcome.domains
-                        ?.filter((domain) => domain.phase === "write")
-                        .map((domain) => {
-                          const summary = domainSummaries()?.find((item) => item.id === domain.domain)
-                          const section = summary && getBuiltinSettingsSection(summary.uiSection)
-                          return {
-                            server: true,
-                            name: section ? _(section.copy.label) : (summary?.label ?? domain.domain),
-                            page: summary?.uiSection,
-                          }
-                        }) ?? []
-                    setFailedSaveSources([...remaining, ...failures])
-                    setAggregateSaveStatus(
-                      remaining.length || failures.length
-                        ? "partial"
-                        : outcome.phase === "complete"
-                          ? "saved"
-                          : "refresh",
-                    )
-                    setSaveResultFingerprint(draftFingerprint())
-                  }}
+                  size="large"
+                  disabled={saving() || save.status() === "saving" || personalizeController.status() === "saving"}
+                  onClick={save.closeWithGuard}
                 >
-                  {_({ id: "settings.save.retryRead", message: "Retry reading" })}
+                  {_(copy.cancel)}
                 </Button>
-              </Show>
-            </div>
-            <div class="settings-panel-footer-actions">
-              <Button
-                type="button"
-                variant="ghost"
-                size="large"
-                disabled={saving() || save.status() === "saving" || personalizeController.status() === "saving"}
-                onClick={save.closeWithGuard}
-              >
-                {_(copy.cancel)}
-              </Button>
-              <Button
-                type="button"
-                variant="primary"
-                size="large"
-                disabled={!hasExplicitChanges() || explicitSaveBlocked()}
-                onClick={() => void saveExplicitChanges()}
-              >
-                {saving() ? _(copy.saving) : _(copy.saveChanges)}
-              </Button>
-            </div>
-          </AppPanel.Footer>
-        </AppPanel.Content>
-      </AppPanel.Root>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="large"
+                  disabled={!hasExplicitChanges() || explicitSaveBlocked()}
+                  onClick={() => void saveExplicitChanges()}
+                >
+                  {saving() ? _(copy.saving) : _(copy.saveChanges)}
+                </Button>
+              </div>
+            </AppPanel.Footer>
+          </AppPanel.Content>
+        </AppPanel.Root>
+      </OverlayLayerProvider>
       <div class="settings-popover-layer" ref={setSettingsPopoverLayer} />
     </div>
   )

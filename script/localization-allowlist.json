@@ -433,7 +433,7 @@
   },
   {
     "path": "apps/web/src/components/settings/panels/VoicePanel.tsx",
-    "kind": "jsx-text",
+    "kind": "user-visible-property",
     "literal": "OpenAI",
     "occurrence": 1,
     "category": "brand",

@@ -278,7 +278,8 @@ describe("VoicePanel", () => {
     const readAloud = page.getByRole("switch", { name: "Read answers aloud", exact: true })
     await readAloud.focus()
     await readAloud.press("Space")
-    await page.getByRole("combobox", { name: "Read answers aloud: Service", exact: true }).selectOption("custom")
+    await page.getByRole("button", { name: "Read answers aloud: Service: OpenAI", exact: true }).click()
+    await page.getByRole("option", { name: "Custom compatible service", exact: true }).click()
     await page
       .getByRole("textbox", { name: "Read answers aloud: API endpoint", exact: true })
       .last()

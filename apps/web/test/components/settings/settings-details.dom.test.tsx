@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test"
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
@@ -55,7 +55,9 @@ beforeAll(async () => {
     import { createStore } from "solid-js/store"
     import { setupI18n } from "@lingui/core"
     import { I18nProvider } from "@lingui/solid"
+    import { ThemeProvider, useTheme } from "@ericsanchezok/synergy-ui/theme"
     import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
+    import { OverlayLayerProvider } from "@ericsanchezok/synergy-ui/context/overlay-layer"
     import { TextField } from "@ericsanchezok/synergy-ui/text-field"
     import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
     import { EmailPanel } from "/@fs/${source}/components/settings/panels/EmailPanel.tsx"
@@ -65,6 +67,8 @@ beforeAll(async () => {
     import { SettingsPathRow, SettingsPage } from "/@fs/${source}/components/settings/components/SettingsPrimitives.tsx"
     import { SettingRow } from "/@fs/${source}/components/settings/components/SettingsSettingRow.tsx"
     import { SettingsChoices } from "/@fs/${source}/components/settings/components/SettingsChoices.tsx"
+    import { ModelRoleRow } from "/@fs/${source}/components/settings/components/ModelRoleRow.tsx"
+    import { DeclarativeSettingsForm } from "/@fs/${source}/plugin/components/declarative-settings-form.tsx"
     import { SettingsStepScale } from "/@fs/${source}/components/settings/components/SettingsStepScale.tsx"
     import { defaultSettingsState } from "/@fs/${source}/components/settings/types.ts"
     import "/@fs/${source}/components/settings/settings-panel.css"
@@ -74,27 +78,33 @@ beforeAll(async () => {
     import { domains, scopes, refresh } from "./sdk"
     const query = new URLSearchParams(location.search)
     const i18n = setupI18n({ locale: query.get("locale") || "en", messages: { en, "zh-CN": zh } })
-    document.documentElement.dataset.colorScheme = query.get("theme") || "light"
     function Fixture() {
+      useTheme().setColorScheme(query.get("theme") || "light")
       const [view, setView] = createSignal("email")
       const [email, setEmail] = createStore(defaultSettingsState().email)
       const [choice, setChoice] = createSignal("ask")
+      const [font, setFont] = createSignal("")
+      const [layer, setLayer] = createSignal()
+      const [plugin, setPlugin] = createSignal({ mode: "first" })
+      const [models, setModels] = createStore({ ...defaultSettingsState().models, model: "fixture/first" })
       const [safety, setSafety] = createStore(defaultSettingsState().safety)
-      return <div class="settings-panel-frame"><nav><button onClick={() => setView("import")}>Import page</button><button onClick={() => setView("formatter")}>Formatter page</button><button onClick={() => setView("controls")}>Controls page</button><button onClick={() => setView("paths")}>Config files page</button><button onClick={() => setView("profiles")}>Permissions page</button></nav><main class="settings-panel-content">
+      return <OverlayLayerProvider layer={layer}><div class="settings-panel-frame"><nav><button onClick={() => setView("import")}>Import page</button><button onClick={() => setView("formatter")}>Formatter page</button><button onClick={() => setView("controls")}>Controls page</button><button onClick={() => setView("paths")}>Config files page</button><button onClick={() => setView("profiles")}>Permissions page</button><button onClick={() => setView("models")}>Models page</button><button onClick={() => setView("plugin")}>Plugin page</button></nav><main class="settings-panel-content">
         <Show when={view() === "email"}><EmailPanel email={email} onEmailChange={(key, value) => setEmail(key, value)} /></Show>
         <Show when={view() === "import"}><ImportPanel domains={domains} scopes={scopes} onImported={refresh} /></Show>
         <Show when={view() === "formatter"}><LanguageToolsPanel kind="formatter" title="Formatter" description="Formatter configuration" config={{ formatter: { custom: { command: ["fixture"], extensions: [".tsx"] } }, lsp: { unrelated: { command: ["do-not-show"] } }, timeout: { invoke: 123 } }} scopes={scopes} domains={[]} /></Show>
         <Show when={view() === "paths"}><SettingsPage title="Config Files"><SettingsPathRow compact label="90-channels.jsonc" path={"/fixture/config/" + "long-directory/".repeat(12) + "90-channels.jsonc"} status="Empty" ownedKeys={["channel"]} mergePolicy="merge" /></SettingsPage></Show>
         <Show when={view() === "profiles"}><ControlProfilePanel safety={safety} controlProfiles={[]} onSafetyChange={(key, value) => setSafety(key, value)} /></Show>
+        <Show when={view() === "models"}><SettingsPage title="Models"><ModelRoleRow summary={{ id: "primary", field: "model", label: "Primary model", summary: "", fallbackChain: ["model"], usedBy: [], resolvedModel: { providerID: "fixture", modelID: "first", via: "model" } }} value={models.model} draftModels={models} savedModels={models} providers={[{ providerId: "fixture", providerName: "Fixture", models: [{ id: "first", name: "First model", variantKeys: ["low", "high"] }, { id: "second", name: "Second model", variantKeys: [] }] }]} availableVariants={["low", "high"]} popoverLayer={layer()} onChange={(key, value) => setModels(key, value)} onVariantChange={() => {}} /></SettingsPage></Show>
+        <Show when={view() === "plugin"}><SettingsPage title="Plugin settings"><DeclarativeSettingsForm schema={{ properties: { mode: { type: "string", title: "Plugin mode", description: "Choose a plugin mode", enum: ["first", "second"] } } }} values={plugin()} onChange={setPlugin} /><output data-testid="plugin-values">{JSON.stringify(plugin())}</output></SettingsPage></Show>
         <Show when={view() === "controls"}><div class="ds-page-inner">
           <SettingRow title="Sending port" description="Use a valid port" stateLabel="Unsaved" trailing={<TextField type="number" validationState="invalid" error="Enter a whole number" value="0" copyable />} />
           <SettingRow title="Policy" description="Requests wait for approval" trailing={<SettingsChoices ariaLabel="Policy" value={choice()} options={[{ value: "ask", label: "Ask" }, { value: "allow", label: "Allow" }, { value: "deny", label: "Deny" }]} onChange={setChoice} />} />
           <SettingRow title="Duration" description="Ordered durations" trailing={<SettingsStepScale ariaLabel="Duration" value="37" options={[{ value: "10", label: "Short" }, { value: "60", label: "Long" }]} onChange={() => {}} />} />
-          <SettingRow title="Font" description="Choose a typeface" stateLabel="Current font: system" trailing={<MenuField value="" ariaLabel="Font" options={[{ value: "", label: "System default" }]} onChange={() => {}} />} />
+          <SettingRow title="Font" description="Choose a typeface" stateLabel="Current font: system" trailing={<MenuField value={font()} ariaLabel="Font" options={[{ value: "", label: "System default" }, { value: "serif", label: "Serif" }, { value: "unavailable", label: "Unavailable font", disabled: true }]} onChange={setFont} />} />
         </div></Show>
-      </main></div>
+      </main><div class="settings-popover-layer" ref={setLayer} /></div></OverlayLayerProvider>
     }
-    render(() => <I18nProvider i18n={i18n}><DialogProvider><Fixture /></DialogProvider></I18nProvider>, document.getElementById("root"))
+    render(() => <I18nProvider i18n={i18n}><ThemeProvider><DialogProvider><Fixture /></DialogProvider></ThemeProvider></I18nProvider>, document.getElementById("root"))
   `,
   )
   server = await createServer({
@@ -104,7 +114,16 @@ beforeAll(async () => {
     cacheDir: path.join(fixture, ".vite"),
     optimizeDeps: {
       noDiscovery: true,
-      include: ["solid-js", "solid-js/web", "solid-js/store", "@lingui/core", "@lingui/solid", "jsonc-parser"],
+      include: [
+        "solid-js",
+        "solid-js/web",
+        "solid-js/store",
+        "@lingui/core",
+        "@lingui/solid",
+        "jsonc-parser",
+        "fuzzysort",
+        "remeda",
+      ],
     },
     resolve: {
       alias: [
@@ -123,15 +142,18 @@ beforeAll(async () => {
   await server.listen()
   url = server.resolvedUrls!.local[0]!
   browser = await chromium.launch({ headless: true })
-  page = await browser.newPage()
-  page.setDefaultTimeout(5000)
-  page.on("pageerror", (error) => errors.push(error.message))
 }, 60000)
 
 beforeEach(async () => {
   errors.length = 0
+  page = await browser.newPage()
+  page.setDefaultTimeout(5000)
+  page.on("pageerror", (error) => errors.push(error.message))
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 })
   await page.getByRole("heading", { name: "Email", exact: true }).waitFor({ timeout: 30000 })
+})
+afterEach(async () => {
+  await page?.close()
 })
 afterAll(async () => {
   await browser?.close()
@@ -271,6 +293,124 @@ test("expanded configuration details inset readable paths and keep actions reach
   }
   await summary.press("Enter")
   expect(await page.getByRole("button", { name: "Copy path: 90-channels.jsonc" }).isVisible()).toBe(false)
+  expect(errors).toEqual([])
+})
+
+test("settings dropdowns distinguish the saved choice from hover and keep a visible keyboard focus", async () => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  for (const theme of ["light", "dark"]) {
+    await page.goto(url + "?theme=" + theme)
+    await page.getByRole("button", { name: "Controls page", exact: true }).click()
+    const trigger = page.getByRole("button", { name: "Font: System default", exact: true })
+    await page.mouse.move(0, 0)
+    expect(await trigger.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none")
+    expect(await trigger.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe("0px")
+    await trigger.press("Enter")
+    const selected = page.getByRole("option", { name: "System default", exact: true })
+    const alternative = page.getByRole("option", { name: "Serif", exact: true })
+    await alternative.hover()
+    expect(await selected.getAttribute("aria-selected")).toBe("true")
+    expect(await selected.locator(".menu-field-item-indicator").isVisible()).toBe(true)
+    expect(await alternative.locator(".menu-field-item-indicator").count()).toBe(0)
+    const hoverColor = await alternative.evaluate((element) => {
+      const reference = document.createElement("span")
+      reference.style.backgroundColor = "var(--surface-raised-stronger-hover)"
+      element.append(reference)
+      const color = getComputedStyle(reference).backgroundColor
+      reference.remove()
+      return color
+    })
+    expect(hoverColor).not.toBe("rgba(0, 0, 0, 0)")
+    await page.waitForFunction((expected) => {
+      const current = document.querySelector('.menu-field-item[aria-selected="true"]')!
+      const hover = document.querySelector('.menu-field-item[data-highlighted]:not([aria-selected="true"])')!
+      const surface = document.querySelector(".menu-field-surface")!
+      return (
+        getComputedStyle(current).backgroundColor === "rgba(0, 0, 0, 0)" &&
+        getComputedStyle(hover).backgroundColor === expected &&
+        getComputedStyle(hover).backgroundColor !== getComputedStyle(surface).backgroundColor
+      )
+    }, hoverColor)
+    const surface = page.locator(".menu-field-surface")
+    expect((await surface.boundingBox())!.width).toBeGreaterThanOrEqual((await trigger.boundingBox())!.width - 1)
+    const disabled = page.getByRole("option", { name: "Unavailable font", exact: true })
+    await disabled.hover()
+    expect(await disabled.getAttribute("aria-disabled")).toBe("true")
+    expect(await disabled.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgba(0, 0, 0, 0)")
+    await alternative.focus()
+    await page.keyboard.press("Enter")
+    await selected.waitFor({ state: "detached" })
+    await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Font: Serif")
+    const updated = page.getByRole("button", { name: "Font: Serif", exact: true })
+    expect(await updated.evaluate((element) => getComputedStyle(element).boxShadow)).not.toBe("none")
+    await updated.press("Enter")
+    await page.getByRole("option", { name: "Serif", exact: true }).press("Escape")
+    expect(errors).toEqual([])
+  }
+})
+
+test("model and thinking menus use the same borderless triggers and quiet pointer feedback", async () => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.getByRole("button", { name: "Models page", exact: true }).click()
+  const model = page.locator(".settings-model-trigger")
+  const thinking = page.getByRole("button", { name: "Select thinking effort: Default", exact: true })
+  for (const trigger of [model, thinking]) {
+    await page.mouse.move(0, 0)
+    expect(await trigger.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe("0px")
+    expect(await trigger.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none")
+    await trigger.click()
+    const selected = page.locator('[data-slot="list-item"][data-selected="true"]')
+    const alternative = page.locator('[data-slot="list-item"][data-selected="false"]').last()
+    await alternative.hover()
+    expect(await selected.locator('[data-slot="list-item-selected-icon"]').isVisible()).toBe(true)
+    const feedback = await alternative.evaluate((element) => getComputedStyle(element).backgroundColor)
+    const swatch = await alternative.evaluate((element) => {
+      const reference = document.createElement("span")
+      reference.style.backgroundColor = "var(--surface-raised-stronger-hover)"
+      element.append(reference)
+      const color = getComputedStyle(reference).backgroundColor
+      reference.remove()
+      return color
+    })
+    expect(swatch).not.toBe("rgba(0, 0, 0, 0)")
+    expect(feedback).toBe(swatch)
+    await page.keyboard.press("Escape")
+    await selected.waitFor({ state: "detached" })
+  }
+  expect(errors).toEqual([])
+})
+
+test("touch menus retain reachable option rows within narrow settings widths", async () => {
+  for (const width of [375, 320]) {
+    await page.close()
+    page = await browser.newPage({ hasTouch: true, viewport: { width, height: 720 } })
+    page.on("pageerror", (error) => errors.push(error.message))
+    await page.goto(url, { waitUntil: "domcontentloaded" })
+    await page.getByRole("button", { name: "Controls page", exact: true }).click()
+    const trigger = page.getByRole("button", { name: "Font: System default", exact: true })
+    await trigger.click()
+    const option = page.getByRole("option", { name: "Serif", exact: true })
+    expect((await option.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+    const bounds = (await page.locator(".menu-field-surface").boundingBox())!
+    expect(bounds.x).toBeGreaterThanOrEqual(0)
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(width)
+    await option.press("Escape")
+    expect(await trigger.isVisible()).toBe(true)
+  }
+  expect(errors).toEqual([])
+})
+
+test("declarative plugin choices share the menu presentation while retaining labels and staged values", async () => {
+  await page.getByRole("button", { name: "Plugin page", exact: true }).click()
+  const trigger = page.getByRole("button", { name: "Plugin mode: first", exact: true })
+  await trigger.click()
+  expect(await page.getByRole("option", { name: "first", exact: true }).getAttribute("aria-selected")).toBe("true")
+  await page.getByRole("option", { name: "second", exact: true }).click()
+  const updated = page.getByRole("button", { name: "Plugin mode: second", exact: true })
+  await updated.waitFor()
+  expect(await page.getByTestId("plugin-values").textContent()).toBe('{"mode":"second"}')
+  expect(await updated.getAttribute("id")).toBe("plugin-setting-mode")
+  expect(await updated.getAttribute("aria-describedby")).toContain("plugin-setting-mode-description")
   expect(errors).toEqual([])
 })
 

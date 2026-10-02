@@ -122,10 +122,22 @@
 }
 
 .menu-field-item-label {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.menu-field-item-mark,
+.menu-field-item-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  color: var(--icon-strong-base);
 }
 
 .menu-field-count {

@@ -1281,7 +1281,7 @@
   gap: 10px;
   padding: 7px 10px 7px 12px;
   border-radius: 10px;
-  border: 1px solid var(--settings-border);
+  border: 0;
   background: var(--settings-control-bg);
   color: var(--text-base);
   text-align: left;
@@ -1293,7 +1293,6 @@
 
 .settings-model-trigger:hover {
   background: var(--settings-control-bg-hover);
-  border-color: color-mix(in oklch, var(--border-base) 62%, transparent);
 }
 
 .settings-model-trigger:focus-visible {
@@ -1337,11 +1336,15 @@
 }
 
 .settings-model-variant {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   min-height: 36px;
   flex-shrink: 0;
   padding: 4px 10px;
   border-radius: 8px;
-  border: 1px solid var(--settings-border);
+  border: 0;
   background: var(--settings-input-bg);
   color: var(--text-base);
   font-size: var(--settings-type-control-size);
@@ -1352,11 +1355,20 @@
 
 .settings-model-variant:hover {
   background: var(--settings-input-bg-hover);
-  border-color: color-mix(in oklch, var(--border-base) 62%, transparent);
 }
 
-.settings-model-variant:focus {
+.settings-model-variant:focus-visible {
   box-shadow: var(--settings-focus-ring);
+}
+
+.settings-panel-frame .settings-model-trigger-icon {
+  flex-shrink: 0;
+  color: var(--icon-weak);
+  transition: transform 120ms ease;
+}
+
+.settings-panel-frame [aria-expanded="true"] > .settings-model-trigger-icon {
+  transform: rotate(180deg);
 }
 
 .settings-model-picker-popover {
@@ -4321,6 +4333,11 @@
   color: var(--text-base);
   text-align: start;
   justify-content: space-between;
+  border: 0;
+  box-shadow: none;
+}
+.settings-panel-frame .menu-field-trigger:focus-visible {
+  box-shadow: var(--settings-focus-ring);
 }
 .settings-panel-frame .menu-field-value {
   flex: 1;
@@ -4328,6 +4345,48 @@
 }
 .settings-panel-frame .menu-field-chevron {
   margin-inline-start: auto;
+}
+
+:is(.settings-panel-frame, .settings-dialog-panel, .settings-popover-layer) .menu-field-surface {
+  min-width: min(var(--kb-popper-anchor-width, 9rem), calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  border-radius: 12px;
+  padding: 4px;
+  box-shadow: var(--shadow-popover);
+}
+:is(.settings-panel-frame, .settings-dialog-panel, .settings-popover-layer) .menu-field-item {
+  min-height: var(--settings-control-height, 36px);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: var(--settings-type-control-size, 0.875rem);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--settings-type-control-line-height, 1.25rem);
+  background: transparent;
+  transition: background-color 120ms ease;
+}
+:is(.settings-panel-frame, .settings-dialog-panel, .settings-popover-layer)
+  .menu-field-item:not([data-disabled]):is(:hover, [data-highlighted], :focus-visible) {
+  background: var(--surface-raised-stronger-hover);
+  box-shadow: none;
+}
+:is(.settings-panel-frame, .settings-dialog-panel, .settings-popover-layer) .menu-field-item[data-disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+:is(.settings-panel-frame, .settings-dialog-panel, .settings-popover-layer) .menu-field-item[data-selected] {
+  background: transparent;
+}
+:is(.settings-panel-frame, .settings-dialog-panel, .settings-popover-layer)
+  [data-slot="list-item"][data-active="true"] {
+  background: var(--surface-raised-stronger-hover);
+  border-radius: 8px;
+}
+:is(.settings-panel-frame, .settings-dialog-panel, .settings-popover-layer) [data-slot="list-item"] {
+  justify-content: space-between;
+  gap: 12px;
+}
+.declarative-settings-form .menu-field-trigger {
+  width: 100%;
 }
 .settings-panel-frame [data-slot="input-wrapper"],
 .settings-panel-frame textarea {
