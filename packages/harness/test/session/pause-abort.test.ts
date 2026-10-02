@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -148,7 +149,7 @@ describe("abort leaves an interactive session paused", () => {
           const session = await Session.create({ title: "Stop before next task" })
           const item = await SessionInbox.enqueueUser({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test" },
             parts: [{ type: "text", text: "Wait for continue" }],
           })

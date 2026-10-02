@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import { pathToFileURL } from "url"
@@ -56,7 +57,7 @@ describe("session input identity anchors", () => {
 
           await writeUser({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: primaryModel,
             text: "primary request",
           })

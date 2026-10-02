@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, test } from "bun:test"
 import { createRoot } from "solid-js"
 import {
@@ -123,7 +124,7 @@ describe("session transition state", () => {
         lightLoop: false,
         boss: false,
         blueprintSlot: null,
-        agent: "synergy",
+        agent: TEST_AGENT_NAME,
         model: { providerID: "provider", modelID: "model" },
         autoSubmit: true,
       }

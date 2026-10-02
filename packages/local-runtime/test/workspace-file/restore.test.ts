@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterAll, expect, test, spyOn } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -405,7 +406,7 @@ test("file restore owns and drains the session loop through cancellation", () =>
           sessionID: session.id,
           role: "user",
           time: { created: 1 },
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           model: { providerID: "test", modelID: "test" },
         })
         await Session.updateMessage({
@@ -417,7 +418,7 @@ test("file restore owns and drains the session loop through cancellation", () =>
           modelID: "test",
           providerID: "test",
           mode: "build",
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           path: { cwd: directory.path, root: directory.path },
           cost: 0,
           tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

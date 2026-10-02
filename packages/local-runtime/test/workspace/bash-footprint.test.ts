@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterAll, expect, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -20,7 +21,7 @@ function context(options: {
   return {
     sessionID: crypto.randomUUID(),
     messageID: "message",
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     abort: options.abort ?? new AbortController().signal,
     metadata() {},
     async ask() {},

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -33,7 +34,7 @@ describe("Note blueprint fields", () => {
             blueprint: {
               description: "Run CI checks",
               status: "ready",
-              defaultAgent: "synergy-max",
+              defaultAgent: PrimaryAgentIdentity.names.coding,
               auditAgent: "security-reviewer",
             } as any,
           })
@@ -66,7 +67,7 @@ describe("Note blueprint fields", () => {
             blueprint: {
               description: "Fresh blueprint",
               status: "draft",
-              defaultAgent: "synergy",
+              defaultAgent: PrimaryAgentIdentity.names.general,
             } as any,
           })
           expect(note.kind).toBe("blueprint")

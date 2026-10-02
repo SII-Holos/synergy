@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import { tmpdir } from "../support/fixture"
@@ -31,7 +32,7 @@ test.each([false, true])(
               sessionID: session.id,
               role: "user",
               time: { created: Date.now() },
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "openai", modelID: "gpt-4.1" },
               isRoot: true,
               visible: true,

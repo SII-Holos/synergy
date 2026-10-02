@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -164,7 +165,7 @@ test.each([
                 sessionID,
                 role: "user",
                 time: { created: Date.now() },
-                agent: "synergy",
+                agent: PrimaryAgentIdentity.names.general,
                 model: { providerID: "test", modelID: "test" },
                 summary: { diffs: [diff] },
               })

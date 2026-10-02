@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { jsonSchema } from "ai"
 import z from "zod"
@@ -109,7 +110,7 @@ function toolContext(sessionID: string): Tool.Context {
   return {
     sessionID,
     messageID: "message_test",
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     abort: new AbortController().signal,
     extra: { model },
     metadata() {},

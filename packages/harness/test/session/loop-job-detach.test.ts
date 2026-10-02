@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { LoopJob } from "../../src/session/loop-job"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -10,7 +11,7 @@ function context(sessionID: string, abort?: AbortSignal): LoopJob.Context {
     sessionID,
     role: "user",
     time: { created: Date.now() },
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test", modelID: "test" },
   } as LoopJob.Context["lastUser"]
   return {

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { WorkflowUserWrapper } from "@ericsanchezok/synergy-harness/test/internal/session/workflow-user-wrapper"
 // Product domains register workflow contributions via the L4 manifest
@@ -30,7 +31,7 @@ describe("light loop user-message wrapper golden", () => {
 
   test("synergy wrapper is byte-exact", () =>
     runtime.run(() => {
-      expect(WorkflowUserWrapper.build("synergy", "lightloop", "ship the importer")).toBe(
+      expect(WorkflowUserWrapper.build(PrimaryAgentIdentity.names.general, "lightloop", "ship the importer")).toBe(
         [
           "<lightloop-user-request>",
           "You are synergy in the Light Loop workflow.",
@@ -45,7 +46,7 @@ describe("light loop user-message wrapper golden", () => {
 
   test("synergy-max wrapper is byte-exact", () =>
     runtime.run(() => {
-      expect(WorkflowUserWrapper.build("synergy-max", "lightloop", "ship the importer")).toBe(
+      expect(WorkflowUserWrapper.build(PrimaryAgentIdentity.names.coding, "lightloop", "ship the importer")).toBe(
         [
           "<lightloop-user-request>",
           "You are synergy-max in the Light Loop workflow.",
@@ -60,7 +61,9 @@ describe("light loop user-message wrapper golden", () => {
 
   test("empty request normalizes to the sentinel", () =>
     runtime.run(() => {
-      expect(WorkflowUserWrapper.build("synergy", "lightloop", "   ")).toContain("(empty request)")
+      expect(WorkflowUserWrapper.build(PrimaryAgentIdentity.names.general, "lightloop", "   ")).toContain(
+        "(empty request)",
+      )
     }))
 })
 

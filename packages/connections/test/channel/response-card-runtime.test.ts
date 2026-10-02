@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { Channel } from "../../src/channel"
 import { ResponseCardRuntime } from "../../src/channel/response-card"
@@ -69,7 +70,7 @@ async function createTask(input: { sessionID: string; requesterId: string }) {
     role: "user",
     isRoot: true,
     rootID,
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test-provider", modelID: "test-model" },
     time: { created: Date.now() },
     metadata: {
@@ -93,8 +94,8 @@ async function createTask(input: { sessionID: string; requesterId: string }) {
     parentID: rootID,
     rootID,
     role: "assistant",
-    mode: "synergy",
-    agent: "synergy",
+    mode: PrimaryAgentIdentity.names.general,
+    agent: PrimaryAgentIdentity.names.general,
     path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -128,8 +129,8 @@ async function createTask(input: { sessionID: string; requesterId: string }) {
     parentID: rootID,
     rootID,
     role: "assistant",
-    mode: "synergy",
-    agent: "synergy",
+    mode: PrimaryAgentIdentity.names.general,
+    agent: PrimaryAgentIdentity.names.general,
     path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

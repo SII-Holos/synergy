@@ -1,6 +1,6 @@
 # harness Package
 
-Own Harness composition/lifecycle and public exports.
+Own composition, lifecycle and exports. Public `agent/primary-identity` maps responsibilities to primary names.
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - Keep optional product schemas out of the harness. `SessionSchemaRegistry` composes owner session fields, creation/import behavior and indexes; workflow state and execution/recovery policy belong to their domain packages. `ConfigExtensions` composes owner contracts; unregistered fields remain on disk and stay out of client output. Full product composition explicitly completes schema registration.

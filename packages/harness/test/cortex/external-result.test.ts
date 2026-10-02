@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { describe, expect, test, beforeAll } from "bun:test"
 import { Cortex } from "../../src/cortex"
 import { ScopeContext } from "../../src/scope/context"
@@ -22,7 +23,7 @@ async function createSessionWithAssistantText(
     id: userMsgID,
     sessionID: session.id,
     role: "user" as const,
-    agent: "synergy-max",
+    agent: PrimaryAgentIdentity.names.coding,
     model: { providerID: "openai", modelID: "gpt-5.5" },
     time: { created: Date.now() },
   })
@@ -132,7 +133,7 @@ describe("extractExternalTaskResult", () => {
             id: userMsgID,
             sessionID: session.id,
             role: "user" as const,
-            agent: "synergy-max",
+            agent: PrimaryAgentIdentity.names.coding,
             model: { providerID: "openai", modelID: "gpt-5.5" },
             time: { created: Date.now() },
           })
@@ -223,7 +224,7 @@ describe("extractExternalTaskResult", () => {
             id: userMsgID,
             sessionID: session.id,
             role: "user" as const,
-            agent: "synergy-max",
+            agent: PrimaryAgentIdentity.names.coding,
             model: { providerID: "openai", modelID: "gpt-5.5" },
             time: { created: Date.now() },
           })

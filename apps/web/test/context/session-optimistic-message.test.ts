@@ -1,3 +1,4 @@
+import { SECONDARY_TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, test } from "bun:test"
 import type { Part, UserMessage } from "@ericsanchezok/synergy-sdk/client"
 import {
@@ -14,7 +15,7 @@ const message = (id: string, created: number): UserMessage => ({
   sessionID: "session",
   role: "user",
   time: { created },
-  agent: "synergy-max",
+  agent: SECONDARY_TEST_AGENT_NAME,
   model: { providerID: "openai", modelID: "gpt-5" },
   origin: { type: "user" },
   isRoot: true,

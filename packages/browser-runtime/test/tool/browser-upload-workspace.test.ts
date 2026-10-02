@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterAll, expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -17,7 +18,7 @@ function context(signal = new AbortController().signal) {
     sessionID: "upload-session",
     messageID: "upload-message",
     callID: "upload-call",
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     abort: signal,
     extra: {},
     metadata() {},

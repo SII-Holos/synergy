@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { ChannelHost } from "../../src/channel/host"
 import { ManagedProjectOwnership } from "../../src/channel/managed-project-ownership"
@@ -129,7 +130,7 @@ describe("ChannelHost", () => {
         deliveryKey: "run-1-attempt-1",
         title: "External task",
         text: "Do the work",
-        agent: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
       })
       const replay = await host.tasks.dispatch({
         externalProjectId: "project",
@@ -137,7 +138,7 @@ describe("ChannelHost", () => {
         deliveryKey: "run-1-attempt-1",
         title: "External task",
         text: "Do the work",
-        agent: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
       })
       const nextRun = await host.tasks.dispatch({
         externalProjectId: "project",

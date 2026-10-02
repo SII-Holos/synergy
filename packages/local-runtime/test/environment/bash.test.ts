@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import { testRuntime } from "../support/runtime"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -22,7 +23,7 @@ test("Bash uses the selected Environment without requiring a Workspace", async (
           sessionID: session.id,
           messageID: "message",
           callID: "call",
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           abort: new AbortController().signal,
           environmentID: session.environmentID,
           extra: { shellAuthorizationResolved: true, shellBypassSandbox: true, controlProfile: "full_access" },
@@ -82,7 +83,7 @@ test.skipIf(process.platform === "win32")(
               sessionID: session.id,
               messageID: "message",
               callID: "utf8",
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               abort: new AbortController().signal,
               environmentID: session.environmentID,
               extra: { shellAuthorizationResolved: true, shellBypassSandbox: true, controlProfile: "full_access" },

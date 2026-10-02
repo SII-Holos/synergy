@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { createPluginInvocationContext } from "../../src/plugin-runtime/context-factory"
 
@@ -17,7 +18,12 @@ function context(capabilities: string[]) {
         scopeId: "scope-one",
         sessionId: "session-one",
         directory: "/workspace",
-        actor: { type: "agent", agent: "synergy-max", messageId: "message-one", callId: "call-one" },
+        actor: {
+          type: "agent",
+          agent: PrimaryAgentIdentity.names.coding,
+          messageId: "message-one",
+          callId: "call-one",
+        },
       },
       signal: AbortSignal.any([]),
       capabilities: new Set(capabilities),

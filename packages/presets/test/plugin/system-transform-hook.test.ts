@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import fs from "fs/promises"
@@ -120,7 +121,7 @@ describe.serial("process plugin system transform hook", () => {
             try {
               const plan = await PromptBudgeter.buildPlan({
                 sessionID: "ses_transform",
-                agent: "synergy",
+                agent: PrimaryAgentIdentity.names.general,
                 messageID: "msg_transform",
                 model: model(),
                 system: ["base system"],
@@ -132,7 +133,7 @@ describe.serial("process plugin system transform hook", () => {
               expect(await Bun.file(fixture.inputPath).json()).toEqual({
                 phase: "budget",
                 sessionID: "ses_transform",
-                agent: "synergy",
+                agent: PrimaryAgentIdentity.names.general,
                 model: { providerID: "test-provider", modelID: "test-model" },
                 messageID: "msg_transform",
                 system: ["base system"],

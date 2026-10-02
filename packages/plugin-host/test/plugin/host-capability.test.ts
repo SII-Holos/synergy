@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { capability, compilePluginManifest, definePlugin } from "@ericsanchezok/synergy-plugin"
@@ -61,7 +62,7 @@ describe("plugin Host Service capability boundary", () => {
                 pluginDir: tmp.path,
                 sessionID: session.id,
                 messageID: "msg_persistent_permission",
-                agent: "synergy-max",
+                agent: PrimaryAgentIdentity.names.coding,
                 directory: tmp.path,
                 abort: AbortSignal.timeout(5_000),
               },

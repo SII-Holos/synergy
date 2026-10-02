@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterAll, expect, test } from "bun:test"
 import path from "node:path"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -27,7 +28,7 @@ async function captured() {
     sessionID: session.id,
     role: "user",
     time: { created: 1 },
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test", modelID: "test" },
   })
   await Session.updateMessage({
@@ -39,7 +40,7 @@ async function captured() {
     modelID: "test",
     providerID: "test",
     mode: "build",
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -76,7 +77,7 @@ test(
           )
           const running = shell({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test" },
             command: `"${process.execPath}" "${root}"`,
           })
@@ -133,7 +134,7 @@ test(
           const blocker = await WorkspaceAccess.hostClaim({ id: crypto.randomUUID(), kind: "process", roots: null })
           const running = shell({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test" },
             command: `echo started > "${marker}"`,
           })
@@ -172,7 +173,7 @@ test.skipIf(process.platform === "win32")("user shell records full output before
         try {
           const result = await shell({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test" },
             command: `"${process.execPath}" -e 'process.stdout.write("x".repeat(180000));process.stderr.write("y".repeat(90000))'`,
           })
@@ -224,7 +225,7 @@ test.skipIf(process.platform === "win32")(
           const session = await Session.create({ workspace: null })
           const result = await shell({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test" },
             command: "printf environment-shell",
           })

@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, test } from "bun:test"
 import { ACP } from "../../src/agent"
 import type { AgentSideConnection } from "@agentclientprotocol/sdk"
@@ -99,7 +100,9 @@ function makeSdk(
         },
       },
     ] as Array<Record<string, unknown>>)
-  const agents = options.agents ?? [{ name: "synergy", mode: "primary", description: "Primary agent", hidden: false }]
+  const agents = options.agents ?? [
+    { name: TEST_AGENT_NAME, mode: "primary", description: "Primary agent", hidden: false },
+  ]
   const sdk = {
     controlProfile: {
       effective: async () => ({ data: {} }),
@@ -255,8 +258,10 @@ describe("ACP agent lifecycle", () => {
         expect(result.sessionId).toBe("session-/tmp/acp")
         expect(result.models.availableModels).toEqual([{ modelId: "p1/m1", name: "Provider One/Model One" }])
         expect(result.models.currentModelId).toBe("p1/m1")
-        expect(result.modes.availableModes).toEqual([{ id: "synergy", name: "synergy", description: "Primary agent" }])
-        expect(result.modes.currentModeId).toBe("synergy")
+        expect(result.modes.availableModes).toEqual([
+          { id: TEST_AGENT_NAME, name: TEST_AGENT_NAME, description: "Primary agent" },
+        ])
+        expect(result.modes.currentModeId).toBe(TEST_AGENT_NAME)
         expect(harness.calls.sessionCreate[0]).toMatchObject({ directory: "/tmp/acp" })
       })
     }))
@@ -371,12 +376,12 @@ describe("ACP agent lifecycle", () => {
         await agent.newSession(newSessionArgs())
         const result = await agent.setSessionModel({ sessionId: "session-/tmp/acp", modelId: "p1/m1" } as never)
         expect(result._meta).toEqual({})
-        await agent.setSessionMode({ sessionId: "session-/tmp/acp", modeId: "synergy" } as never)
+        await agent.setSessionMode({ sessionId: "session-/tmp/acp", modeId: TEST_AGENT_NAME } as never)
         const session = (
           agent as never as { sessionManager: { get: (id: string) => { model: unknown; modeId: string } } }
         ).sessionManager.get("session-/tmp/acp")
         expect(session.model).toEqual({ providerID: "p1", modelID: "m1" })
-        expect(session.modeId).toBe("synergy")
+        expect(session.modeId).toBe(TEST_AGENT_NAME)
       })
     }))
 

@@ -28,6 +28,7 @@ beforeAll(async () => {
     `
       import { I18nProvider } from "@lingui/solid"
       import { render } from "solid-js/web"
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
       import { DataProvider } from ${JSON.stringify(dataContextPath)}
       import { DialogProvider } from ${JSON.stringify(dialogContextPath)}
       import { DiffComponentProvider } from ${JSON.stringify(diffContextPath)}
@@ -44,7 +45,7 @@ beforeAll(async () => {
         sessionID,
         role: "user",
         time: { created: 1 },
-        agent: "synergy",
+        agent: TEST_AGENT_NAME,
         model: { providerID: "provider", modelID: "model" },
         isRoot: true,
         rootID,
@@ -57,7 +58,7 @@ beforeAll(async () => {
         parentID: rootID,
         rootID,
         mode: "test",
-        agent: "synergy",
+        agent: TEST_AGENT_NAME,
         path: { cwd: "/workspace", root: "/workspace" },
         cost: 0,
         tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

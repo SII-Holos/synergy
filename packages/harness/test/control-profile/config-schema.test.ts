@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { ControlProfileId } from "../../src/config/schema"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -69,7 +70,7 @@ describe("Config schema accepts controlProfile", () => {
       const result = Info.safeParse({
         $schema: "file:///test/schema.json",
         agent: {
-          "synergy-max": {
+          [PrimaryAgentIdentity.names.coding]: {
             controlProfile: "autonomous",
           },
         },
@@ -83,7 +84,7 @@ describe("Config schema accepts controlProfile", () => {
       const result = Info.safeParse({
         $schema: "file:///test/schema.json",
         agent: {
-          "synergy-max": {
+          [PrimaryAgentIdentity.names.coding]: {
             controlProfile: "bogus",
           },
         },

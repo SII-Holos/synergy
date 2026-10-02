@@ -69,6 +69,8 @@ For transport shutdown changes, exercise a server-initiated WebSocket close thro
 4. When replacing expensive acceptance, demonstrate that the retained test rejects a relevant fault such as a missing file edit, lost recording or failed continuation. Preserve public lifecycle, installation, migration, cancellation and recovery checks and coverage floors. Repetition and long sessions need an identified size, duration or accumulation failure; duplicate historical stress belongs in an explicit diagnostic.
 5. Measure preparation, execution, cleanup, upload and queues for changes to expensive fixtures, matrices or CI. Compare equivalent cold and warm runs, report the incremental cost and its useful coverage, and update task weights from observed time. Diagnose flakes at their observed stage; blanket retries, longer sleeps and hidden skips cannot justify growth. Use [CI cost policy](../../../docs/operations/ci.md#维护验证成本) when reviewing a longer critical path.
 
+Use stable primary responsibilities for built-in behavior tests. Keep concrete primary names in the single identity contract and historical upgrade/input-rejection fixtures. Unrelated message, protocol and UI fixtures use shared synthetic agent names; tests resolving an agent explicitly register that fixture. Consolidate duplicate coverage without removing distinct permission, lifecycle, migration or rendered-prompt budget checks.
+
 ## Define the Invariant First
 
 When a dedicated CI task activates opt-in tests, declare its mandatory scenario names in the verification catalog. Verify the actual JUnit report rejects skipped or missing scenarios; process exit status cannot prove that an external capability was exercised. Cover both source and test-only changes in affected planning.

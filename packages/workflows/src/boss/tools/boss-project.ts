@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import path from "path"
 import { mkdir } from "fs/promises"
 import { existsSync } from "fs"
@@ -59,7 +60,7 @@ export const BossProjectTool = Tool.define("boss_project", {
 
     // 3. Create the project boss session in that scope.
     const title = params.title?.trim() || path.basename(directory)
-    const agent = params.agent?.trim() || caller?.agentOverride || "synergy"
+    const agent = params.agent?.trim() || caller?.agentOverride || PrimaryAgentIdentity.names.general
     const agentInfo = await Agent.get(agent).catch(() => undefined)
     if (!agentInfo) {
       throw new Error(`boss_project: unknown agent "${agent}"`)

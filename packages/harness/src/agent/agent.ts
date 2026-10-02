@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "./primary-identity"
 import { Config } from "../config/config"
 import z from "zod"
 import { Provider } from "../provider/provider"
@@ -10,9 +11,9 @@ import { createBuiltinLegacySubagents } from "./builtin-legacy-subagents"
 import { createBuiltinPrimaryAgents } from "./builtin-primary"
 import { createBuiltinMaxSubagents } from "./builtin-max-subagents"
 import { AgentCall } from "./call"
-import { buildSynergyPrompt } from "./prompt/synergy/builder"
-import { buildSynergyMaxPrompt } from "./prompt/synergy-max/builder"
-import { buildSynergyFlashPrompt } from "./prompt/synergy-flash/builder"
+import { buildGeneralPrompt } from "./prompt/general/builder"
+import { buildCodingPrompt } from "./prompt/coding/builder"
+import { buildLightweightPrompt } from "./prompt/lightweight/builder"
 import { buildSupervisorPrompt } from "./prompt/supervisor/builder"
 import { buildLightLoopReviewerPrompt } from "./prompt/lightloop-reviewer/builder"
 
@@ -390,9 +391,12 @@ export namespace Agent {
       visibleTo: agent.visibleTo,
       delegationGroups: agent.delegationGroups,
     }))
-    if (result.synergy) result.synergy.prompt = buildSynergyPrompt(agentInfos)
-    if (result["synergy-max"]) result["synergy-max"].prompt = buildSynergyMaxPrompt(agentInfos)
-    if (result["synergy-flash"]) result["synergy-flash"].prompt = buildSynergyFlashPrompt()
+    if (result[PrimaryAgentIdentity.names.general])
+      result[PrimaryAgentIdentity.names.general].prompt = buildGeneralPrompt()
+    if (result[PrimaryAgentIdentity.names.coding])
+      result[PrimaryAgentIdentity.names.coding].prompt = buildCodingPrompt()
+    if (result[PrimaryAgentIdentity.names.lightweight])
+      result[PrimaryAgentIdentity.names.lightweight].prompt = buildLightweightPrompt()
     if (result.supervisor) result.supervisor.prompt = buildSupervisorPrompt(agentInfos)
     if (result["lightloop-reviewer"]) {
       result["lightloop-reviewer"].prompt = buildLightLoopReviewerPrompt(agentInfos)
@@ -444,7 +448,10 @@ export namespace Agent {
     return pipe(
       await state(),
       values(),
-      sortBy([(x) => (cfg.default_agent ? x.name === cfg.default_agent : x.name === "synergy"), "desc"]),
+      sortBy([
+        (x) => (cfg.default_agent ? x.name === cfg.default_agent : x.name === PrimaryAgentIdentity.names.general),
+        "desc",
+      ]),
     )
   }
 
@@ -527,7 +534,9 @@ export namespace Agent {
           : `default_agent "${configured}" is hidden`
       log.warn(`${reason}; falling back`)
     }
-    const fallback = agents.find((agent) => agent.name === "synergy" && eligible(agent)) ?? agents.find(eligible)
+    const fallback =
+      agents.find((agent) => agent.name === PrimaryAgentIdentity.names.general && eligible(agent)) ??
+      agents.find(eligible)
     if (!fallback)
       throw new Error("No visible primary agent is available. Enable a primary agent in the agents configuration.")
     return fallback.name

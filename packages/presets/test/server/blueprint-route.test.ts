@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { Hono } from "hono"
 import { BlueprintLoopStore } from "@ericsanchezok/synergy-workflows/blueprint"
@@ -90,7 +91,7 @@ describe("BlueprintRoute start prompt", () => {
               title: "Prompt split",
               sessionID: session.id,
               runMode: "current",
-              executionAgent: "synergy-max",
+              executionAgent: PrimaryAgentIdentity.names.coding,
               model: { providerID: "openai", modelID: "gpt-test" },
             }),
           })

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test"
 import { Channel } from "@ericsanchezok/synergy-connections/channel"
 import type { OutboundPart, Provider } from "@ericsanchezok/synergy-connections/channel/types"
@@ -53,7 +54,7 @@ function ctx(sessionID: string, messageID: string): Tool.Context {
     sessionID,
     messageID,
     callID: "call-channel-push-test",
-    agent: "synergy-max",
+    agent: PrimaryAgentIdentity.names.coding,
     abort: AbortSignal.any([]),
     metadata: () => {},
     ask: async () => {},
@@ -94,7 +95,7 @@ async function createBossTurn(input: {
     id: rootID,
     role: "user",
     sessionID: session.id,
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test-provider", modelID: "test-model" },
     isRoot: true,
     rootID,
@@ -125,8 +126,8 @@ async function createBossTurn(input: {
     sessionID: session.id,
     parentID: rootID,
     rootID,
-    mode: "synergy",
-    agent: "synergy",
+    mode: PrimaryAgentIdentity.names.general,
+    agent: PrimaryAgentIdentity.names.general,
     path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -407,7 +408,7 @@ describe("channel_push tool", () => {
           id: rootID,
           role: "user",
           sessionID: session.id,
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           model: { providerID: "test-provider", modelID: "test-model" },
           isRoot: true,
           rootID,
@@ -426,8 +427,8 @@ describe("channel_push tool", () => {
           sessionID: session.id,
           parentID: rootID,
           rootID,
-          mode: "synergy",
-          agent: "synergy",
+          mode: PrimaryAgentIdentity.names.general,
+          agent: PrimaryAgentIdentity.names.general,
           path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
           cost: 0,
           tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

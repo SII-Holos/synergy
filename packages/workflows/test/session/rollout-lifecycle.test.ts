@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import { fixture, complete } from "@ericsanchezok/synergy-harness/test/support/rollout"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
@@ -24,7 +25,7 @@ test("a task remains open until its child result is durably settled", () =>
           parentSessionID: session.id,
           parentMessageID: (await Session.messages({ sessionID: session.id })).at(-1)!.info.id,
           description: "child",
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           startedAt: Date.now(),
           status: "completed",
         },

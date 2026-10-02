@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -133,7 +134,7 @@ test("file tools are undiscoverable without a workspace and a previously obtaine
             {
               sessionID: session.id,
               messageID: "msg_test",
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               abort: new AbortController().signal,
               metadata() {},
               async ask() {
@@ -192,7 +193,7 @@ test("plugin workspace metadata controls discovery and remains enforced on a ret
         const context = {
           sessionID: session.id,
           messageID: "msg_test",
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           abort: new AbortController().signal,
           metadata() {},
           async ask() {},

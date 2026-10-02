@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { mock } from "bun:test"
 import { AgendaStore } from "@ericsanchezok/synergy-workflows/agenda/store"
@@ -27,7 +28,7 @@ describe("SessionInbox", () => {
 
           const item = await SessionInbox.enqueueUser({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test-model" },
             parts: [{ type: "text", text: "please adjust the current run" }],
           })
@@ -52,7 +53,7 @@ describe("SessionInbox", () => {
           const session = await Session.create({})
           const queued = await SessionInbox.enqueueUser({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test-model" },
             parts: [{ type: "text", text: "persist across the handoff" }],
           })
@@ -127,7 +128,7 @@ describe("SessionInbox", () => {
             mode: "task" as const,
             message: {
               role: "user" as const,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test", modelID: "test-model" },
               parts: [{ type: "text" as const, text: "materialize once" }],
             },
@@ -197,7 +198,7 @@ describe("SessionInbox", () => {
           const session = await Session.create({})
           const queued = await SessionInbox.enqueueUser({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test-model" },
             parts: [{ type: "text", text: "remain the first task" }],
           })
@@ -224,7 +225,7 @@ describe("SessionInbox", () => {
           const session = await Session.create({})
           const first = await SessionInbox.enqueueUser({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test-model" },
             parts: [{ type: "text", text: "establish the root" }],
           })
@@ -232,7 +233,7 @@ describe("SessionInbox", () => {
           await SessionInbox.commitReady(session.id, [first.id])
           const queued = await SessionInbox.enqueueUser({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test-model" },
             parts: [{ type: "text", text: "steer sooner" }],
           })
@@ -282,7 +283,7 @@ describe("SessionInbox", () => {
           const session = await Session.create({})
           const first = await SessionInbox.enqueueUser({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test-model" },
             parts: [{ type: "text", text: "establish the root" }],
           })
@@ -291,7 +292,7 @@ describe("SessionInbox", () => {
 
           const queued = await SessionInbox.enqueueUser({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test-model" },
             variant: "high",
             parts: [{ type: "text", text: "use high for the next task" }],
@@ -311,7 +312,7 @@ describe("SessionInbox", () => {
 
           const steer = await SessionInbox.enqueueUser({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test-model" },
             variant: "max",
             parts: [{ type: "text", text: "guide without changing effort" }],
@@ -394,7 +395,7 @@ describe("SessionInbox", () => {
             target: session.id,
             mail: {
               type: "user",
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test", modelID: "test-model" },
               metadata: { source: "cortex" },
               parts: [
@@ -562,7 +563,7 @@ describe("SessionInbox", () => {
               waitForProcessing: false,
               mail: {
                 type: "user",
-                agent: "synergy",
+                agent: PrimaryAgentIdentity.names.general,
                 model: { providerID: "test", modelID: "test-model" },
                 parts: [
                   {
@@ -748,13 +749,13 @@ describe("inbox peek / commit", () => {
 
           await SessionInbox.enqueueUser({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test-model" },
             parts: [{ type: "text", text: "first" }],
           })
           await SessionInbox.enqueueUser({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test-model" },
             parts: [{ type: "text", text: "second" }],
           })
@@ -787,13 +788,13 @@ describe("inbox peek / commit", () => {
 
           const first = await SessionInbox.enqueueUser({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test-model" },
             parts: [{ type: "text", text: "keep" }],
           })
           const second = await SessionInbox.enqueueUser({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test-model" },
             parts: [{ type: "text", text: "delete" }],
           })
@@ -819,7 +820,7 @@ describe("inbox peek / commit", () => {
 
           const item = await SessionInbox.enqueueUser({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test-model" },
             parts: [{ type: "text", text: "do not lose me" }],
           })
@@ -853,7 +854,7 @@ describe("inbox peek / commit", () => {
 
           await SessionInbox.enqueueUser({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test-model" },
             parts: [{ type: "text", text: "gone" }],
           })
@@ -880,13 +881,13 @@ describe("inbox peek / commit", () => {
 
           const first = await SessionInbox.enqueueUser({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test-model" },
             parts: [{ type: "text", text: "first" }],
           })
           const second = await SessionInbox.enqueueUser({
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test-model" },
             parts: [{ type: "text", text: "second" }],
           })
@@ -992,7 +993,7 @@ describe("SessionInbox startup discovery", () => {
           const corrupt = await Session.create({ title: "corrupt" })
           await SessionInbox.enqueueUser({
             sessionID: corrupt.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test-model" },
             parts: [{ type: "text", text: "will be corrupted" }],
           })

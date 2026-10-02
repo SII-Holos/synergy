@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../agent/primary-identity"
 import { Env } from "../util/env"
 import { RuntimeContext } from "../lifecycle/context"
 import { AsyncLocalStorage } from "node:async_hooks"
@@ -331,7 +332,7 @@ export namespace Config {
     // Apply centralized defaults for fields shown in Settings UI.
     // These fill undefined values only — user-set values are preserved.
     if (result.snapshot === undefined) result.snapshot = true
-    if (result.default_agent === undefined) result.default_agent = "synergy"
+    if (result.default_agent === undefined) result.default_agent = PrimaryAgentIdentity.names.general
     if (result.project_doc_fallback_filenames === undefined) result.project_doc_fallback_filenames = []
     if (result.project_doc_max_bytes === undefined) result.project_doc_max_bytes = 32 * 1024
     if (result.question === undefined) result.question = { timeout: 3600 }

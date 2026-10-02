@@ -1,3 +1,4 @@
+import { SECONDARY_TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, test } from "bun:test"
 import { createOptimisticUserMessage } from "../../../src/components/prompt-input/optimistic-user-message"
 import { DEFAULT_CAP, reconcileMessage } from "../../../src/context/session-message-window"
@@ -9,7 +10,7 @@ describe("optimistic user message", () => {
       id: "msg_optimistic",
       sessionID: "ses_long",
       created: 123,
-      agent: "synergy-max",
+      agent: SECONDARY_TEST_AGENT_NAME,
       model: { providerID: "openai", modelID: "gpt-5" },
       variant: "high",
       metadata: { promptDraft: { text: "Continue" } },
@@ -35,7 +36,7 @@ describe("optimistic user message", () => {
         id: `msg_${index.toString().padStart(3, "0")}`,
         sessionID: "ses_long",
         created: index,
-        agent: "synergy-max",
+        agent: SECONDARY_TEST_AGENT_NAME,
         model: { providerID: "openai", modelID: "gpt-5" },
       }),
     )
@@ -44,7 +45,7 @@ describe("optimistic user message", () => {
       id: "msg_latest",
       sessionID: "ses_long",
       created: DEFAULT_CAP,
-      agent: "synergy-max",
+      agent: SECONDARY_TEST_AGENT_NAME,
       model: { providerID: "openai", modelID: "gpt-5" },
     })
 

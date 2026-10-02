@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, mock, test } from "bun:test"
 import * as fs from "node:fs"
 import * as os from "node:os"
@@ -76,7 +77,7 @@ async function resolveBash(sessionID: string) {
       modelID: "test-model",
       providerID: "test-provider",
       mode: "build",
-      agent: "synergy",
+      agent: PrimaryAgentIdentity.names.general,
       path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
       cost: 0,
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { expect, test } from "bun:test"
 import { Identifier } from "../../src/id/id"
 import { WorkspaceBinding } from "../../src/workspace/binding"
@@ -175,7 +176,7 @@ test("transcripts include and remap every historical Workspace without inheritin
           sessionID: session.id,
           role: "user",
           time: { created: 1 },
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           model: { providerID: "test", modelID: "test" },
           summary: { title: "History", diffs: [{ file: "same.txt", workspace: source, additions: 1, deletions: 0 }] },
         })
@@ -188,7 +189,7 @@ test("transcripts include and remap every historical Workspace without inheritin
           modelID: "test",
           providerID: "test",
           mode: "build",
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           path: { cwd: historical.path, root: historical.path },
           cost: 0,
           tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

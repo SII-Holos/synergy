@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, expect, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -13,7 +14,7 @@ const runtime = await testRuntime()
 const ctx = {
   sessionID: "memory-tool-session",
   messageID: "memory-tool-message",
-  agent: "synergy",
+  agent: PrimaryAgentIdentity.names.general,
   abort: new AbortController().signal,
   metadata() {},
   async ask() {},

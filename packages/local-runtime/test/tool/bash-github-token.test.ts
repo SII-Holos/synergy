@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
@@ -13,7 +14,7 @@ function testContext() {
   return {
     sessionID: "ses_bash_github_token",
     messageID: "msg_bash_github_token",
-    agent: "synergy-max",
+    agent: PrimaryAgentIdentity.names.coding,
     abort: new AbortController().signal,
     extra: { shellBypassSandbox: true },
     metadata() {},

@@ -10,7 +10,8 @@
     "./fixture": "./src/fixture.ts",
     "./models-api.json": "./fixtures/models-api.json",
     "./pptx": "./src/pptx.ts",
-    "./oauth-mcp-server": "./src/oauth-mcp-server.ts"
+    "./oauth-mcp-server": "./src/oauth-mcp-server.ts",
+    "./agent-fixture": "./src/agent-fixture.ts"
   },
   "scripts": {
     "test": "bun ../testing/script/test-ci.ts",

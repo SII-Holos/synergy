@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import type { Info as SessionInfo } from "@ericsanchezok/synergy-harness/session/types"
 import { LatticePrompt } from "@ericsanchezok/synergy-workflows/lattice/prompt"
@@ -178,7 +179,7 @@ describe("lattice user-message wrapper golden", () => {
 
   test("synergy wrapper is byte-exact", () =>
     runtime.run(() => {
-      expect(WorkflowUserWrapper.build("synergy", "lattice", "decompose the migration")).toBe(
+      expect(WorkflowUserWrapper.build(PrimaryAgentIdentity.names.general, "lattice", "decompose the migration")).toBe(
         [
           "<lattice-user-request>",
           "You are synergy in the Lattice workflow.",
@@ -194,7 +195,7 @@ describe("lattice user-message wrapper golden", () => {
 
   test("synergy-max wrapper is byte-exact", () =>
     runtime.run(() => {
-      expect(WorkflowUserWrapper.build("synergy-max", "lattice", "decompose the migration")).toBe(
+      expect(WorkflowUserWrapper.build(PrimaryAgentIdentity.names.coding, "lattice", "decompose the migration")).toBe(
         [
           "<lattice-user-request>",
           "You are synergy-max in the Lattice workflow.",
@@ -210,7 +211,9 @@ describe("lattice user-message wrapper golden", () => {
 
   test("empty request normalizes to the sentinel", () =>
     runtime.run(() => {
-      expect(WorkflowUserWrapper.build("synergy", "lattice", "   ")).toContain("(empty request)")
+      expect(WorkflowUserWrapper.build(PrimaryAgentIdentity.names.general, "lattice", "   ")).toContain(
+        "(empty request)",
+      )
     }))
 })
 
@@ -223,16 +226,21 @@ describe("lattice control-source suppression golden", () => {
         WorkflowUserWrapper.metadataForUserMessage({
           session: latticeSession,
           metadata: { source: "lattice_continuation" },
-          agentName: "synergy",
+          agentName: PrimaryAgentIdentity.names.general,
         }),
       ).toEqual({})
     }))
 
   test("unstamped user requests still get workflow metadata", () =>
     runtime.run(() => {
-      expect(WorkflowUserWrapper.metadataForUserMessage({ session: latticeSession, agentName: "synergy" })).toEqual({
+      expect(
+        WorkflowUserWrapper.metadataForUserMessage({
+          session: latticeSession,
+          agentName: PrimaryAgentIdentity.names.general,
+        }),
+      ).toEqual({
         workflow: "lattice",
-        workflowAgent: "synergy",
+        workflowAgent: PrimaryAgentIdentity.names.general,
         workflowVersion: 1,
       })
     }))

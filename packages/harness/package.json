@@ -320,8 +320,8 @@
     "./test/internal/agent/builtin-legacy-subagents": "./src/agent/builtin-legacy-subagents.ts",
     "./test/internal/agent/builtin-max-subagents": "./src/agent/builtin-max-subagents.ts",
     "./test/internal/agent/builtin-primary": "./src/agent/builtin-primary.ts",
-    "./test/internal/agent/prompt/synergy-max/builder": "./src/agent/prompt/synergy-max/builder.ts",
-    "./test/internal/agent/prompt/synergy/builder": "./src/agent/prompt/synergy/builder.ts",
+    "./test/internal/agent/prompt/coding/builder": "./src/agent/prompt/coding/builder.ts",
+    "./test/internal/agent/prompt/general/builder": "./src/agent/prompt/general/builder.ts",
     "./test/internal/observability/migration": "./src/observability/migration.ts",
     "./test/internal/observability/linux-runtime-memory": "./src/observability/linux-runtime-memory.ts",
     "./test/internal/session/agent-turn/protocol": "./src/session/agent-turn/protocol.ts",
@@ -359,7 +359,8 @@
     "./test/support/runtime-home": "./test/support/runtime-home.ts",
     "./enforcement/policy-worker/process-host": "./src/enforcement/policy-worker/process-host.ts",
     "./process/handle": "./src/process/handle.ts",
-    "./config/reload-contributions": "./src/config/reload-contributions.ts"
+    "./config/reload-contributions": "./src/config/reload-contributions.ts",
+    "./agent/primary-identity": "./src/agent/primary-identity.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

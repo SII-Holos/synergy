@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { expect, test } from "bun:test"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SnapshotRanges } from "../../src/session/snapshot-ranges"
@@ -18,8 +19,8 @@ function message(parts: MessageV2.Part[]): MessageV2.WithParts {
       role: "assistant",
       providerID: "test",
       modelID: "test",
-      mode: "synergy",
-      agent: "synergy",
+      mode: PrimaryAgentIdentity.names.general,
+      agent: PrimaryAgentIdentity.names.general,
       time: { created: 1 },
       path: { cwd: workspace.root, root: workspace.root },
       cost: 0,

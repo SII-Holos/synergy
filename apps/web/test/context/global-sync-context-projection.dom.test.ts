@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { expect, test } from "bun:test"
 import type { AssistantMessage, Message } from "@ericsanchezok/synergy-sdk/client"
 import { mkdtemp, rm } from "node:fs/promises"
@@ -165,8 +166,8 @@ test("context usage advances without rewriting retained transcript messages", as
         visible: true,
         time: { created, completed: created + 1 },
         finish: "stop",
-        mode: "synergy",
-        agent: "synergy",
+        mode: TEST_AGENT_NAME,
+        agent: TEST_AGENT_NAME,
         modelID: "model",
         providerID: "fixture",
         path: { cwd: null, root: null },
@@ -183,7 +184,7 @@ test("context usage advances without rewriting retained transcript messages", as
           isRoot: true,
           visible: true,
           time: { created: turn * 10 },
-          agent: "synergy",
+          agent: TEST_AGENT_NAME,
           model: { providerID: "fixture", modelID: "model" },
         }
         const reply = assistant(`assistant-${turn}`, rootID, turn * 10 + 1)

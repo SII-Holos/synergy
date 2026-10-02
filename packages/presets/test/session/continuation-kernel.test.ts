@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { Agenda } from "@ericsanchezok/synergy-workflows/agenda"
 import { AgendaDelivery } from "@ericsanchezok/synergy-workflows/agenda/delivery"
@@ -49,7 +50,7 @@ async function terminalSession() {
     role: "user",
     sessionID: session.id,
     time: { created: Date.now() },
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model,
   })) as MessageV2.User
   await Session.updatePart({
@@ -64,8 +65,8 @@ async function terminalSession() {
     role: "assistant",
     sessionID: session.id,
     parentID: user.id,
-    mode: "synergy",
-    agent: "synergy",
+    mode: PrimaryAgentIdentity.names.general,
+    agent: PrimaryAgentIdentity.names.general,
     path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
     cost: 0,
     tokens,

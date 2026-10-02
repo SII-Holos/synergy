@@ -2,16 +2,17 @@ import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 import { expect, test } from "bun:test"
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { Agent } from "../../src/agent/agent"
 import { AgentDelegation } from "../../src/agent/delegation"
-import { buildSynergyPrompt } from "../../src/agent/prompt/synergy/builder"
-import { buildSynergyMaxPrompt } from "../../src/agent/prompt/synergy-max/builder"
+import { buildGeneralPrompt } from "../../src/agent/prompt/general/builder"
+import { buildCodingPrompt } from "../../src/agent/prompt/coding/builder"
 import { TaskTool } from "../../src/cortex/tools/task"
 import { PermissionNext } from "../../src/permission/next"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../support/fixture"
 
-const builders = { synergy: buildSynergyPrompt, "synergy-max": buildSynergyMaxPrompt }
+const builders = { general: buildGeneralPrompt, coding: buildCodingPrompt }
 
 for (const [name, buildPrompt] of Object.entries(builders)) {
   for (const denySpecialist of [false, true]) {
@@ -21,7 +22,7 @@ for (const [name, buildPrompt] of Object.entries(builders)) {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           async fn() {
-            const caller = await Agent.get(name)
+            const caller = await Agent.get(PrimaryAgentIdentity.names[name as keyof typeof builders])
             expect(caller).toBeDefined()
             if (!caller) throw new Error("Missing primary agent")
             const agents = await Agent.list()
@@ -41,7 +42,7 @@ for (const [name, buildPrompt] of Object.entries(builders)) {
                 }
               : caller
             const tool = await TaskTool.init({ agent })
-            const prompt = buildPrompt(agents.map((item) => ({ ...item, description: item.description ?? "" })))
+            const prompt = buildPrompt()
             const request = `${prompt}\n${tool.description}`
 
             if (denied) expect(request.includes(denied.description!)).toBe(false)

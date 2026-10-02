@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { Identifier } from "../../src/id/id"
 import { ScopeContext } from "../../src/scope/context"
@@ -15,7 +16,7 @@ async function writeUser(sessionID: string, text: string): Promise<MessageV2.Use
     id: Identifier.ascending("message"),
     role: "user",
     sessionID,
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test-provider", modelID: "test-model" },
     time: { created: Date.now() },
   })) as MessageV2.User
@@ -196,7 +197,7 @@ describe("SessionHistory.modelMessages", () => {
             id: Identifier.ascending("message"),
             role: "user",
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test-provider", modelID: "test-model" },
             metadata: { noReply: true },
             time: { created: rollback.time.created + 1 },
@@ -241,7 +242,7 @@ describe("SessionHistory.modelMessages", () => {
             id: legacyID,
             role: "user",
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test-provider", modelID: "test-model" },
             isRoot: false,
             rootID: root.id,
@@ -289,7 +290,7 @@ describe("SessionHistory.modelMessages", () => {
             id: delayedRootID,
             role: "user",
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test-provider", modelID: "test-model" },
             isRoot: true,
             rootID: delayedRootID,

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceCatalog, WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
@@ -68,7 +69,7 @@ test("default file search includes the shared folder while explicit paths remain
           sessionID: "test",
           messageID: "",
           callID: "",
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           abort: AbortSignal.any([]),
           metadata() {},
           async ask() {},
