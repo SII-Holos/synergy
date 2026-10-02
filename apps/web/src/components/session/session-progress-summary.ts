@@ -1,6 +1,5 @@
 import type { DagNode } from "@ericsanchezok/synergy-ui/dag-graph"
-import type { I18n } from "@lingui/core"
-import { S } from "./session-i18n"
+import type { Todo } from "@ericsanchezok/synergy-sdk/client"
 
 export interface DagSummary {
   total: number
@@ -10,14 +9,8 @@ export interface DagSummary {
   blocked: number
   failed: number
   ready: string[]
+  cancelled: number
   progressRatio: number
-}
-
-export interface TodoItem {
-  id: string
-  content: string
-  status: string
-  priority?: string
 }
 
 export interface TodoSummary {
@@ -43,11 +36,8 @@ export interface ProgressIslandSnapshot {
   pending: number
   blocked: number
   failed: number
+  cancelled: number
   progressRatio: number
-}
-
-function pluralize(count: number, singular: string, plural = `${singular}s`): string {
-  return `${count} ${count === 1 ? singular : plural}`
 }
 
 function clampRatio(value: number): number {
@@ -61,6 +51,7 @@ export function computeDagSummary(nodes: DagNode[]): DagSummary {
   let pending = 0
   let blocked = 0
   let failed = 0
+  let cancelled = 0
   const pendingNodeIds: string[] = []
   const completedNodeIds: string[] = []
   const nodeById = new Map<string, DagNode>()
@@ -91,7 +82,10 @@ export function computeDagSummary(nodes: DagNode[]): DagSummary {
         failed++
         break
       case "cancelled":
+        cancelled++
         break
+      default:
+        total++
     }
   }
 
@@ -113,12 +107,13 @@ export function computeDagSummary(nodes: DagNode[]): DagSummary {
     pending,
     blocked,
     failed,
+    cancelled,
     ready,
     progressRatio,
   }
 }
 
-export function computeTodoSummary(todos: TodoItem[]): TodoSummary {
+export function computeTodoSummary(todos: readonly Todo[]): TodoSummary {
   let total = 0
   let completed = 0
   let inProgress = 0
@@ -126,7 +121,7 @@ export function computeTodoSummary(todos: TodoItem[]): TodoSummary {
   let cancelled = 0
 
   for (const todo of todos) {
-    total++
+    if (todo.status !== "cancelled") total++
     switch (todo.status) {
       case "completed":
         completed++
@@ -143,9 +138,7 @@ export function computeTodoSummary(todos: TodoItem[]): TodoSummary {
     }
   }
 
-  const denominator = total - cancelled
-  const progressRatio =
-    denominator === 0 ? (total === 0 ? 0 : clampRatio(completed / total)) : clampRatio(completed / denominator)
+  const progressRatio = total === 0 ? 0 : clampRatio(completed / total)
 
   return {
     total,
@@ -169,74 +162,19 @@ export function computeProgressIslandSnapshot(
   dag?: DagSummary,
   todo?: TodoSummary,
 ): ProgressIslandSnapshot {
-  const includeDag = mode !== "todo" && dag != null && dag.total > 0
-  const includeTodo = mode !== "dag" && todo != null && todo.total > 0
-
-  const total = (includeDag ? dag!.total : 0) + (includeTodo ? todo!.total : 0)
-  if (total === 0) {
-    return {
-      status: "hidden",
-      tone: "neutral",
-      completed: 0,
-      total: 0,
-      active: 0,
-      pending: 0,
-      blocked: 0,
-      failed: 0,
-      progressRatio: 0,
-    }
-  }
-
-  const completed = (includeDag ? dag!.completed : 0) + (includeTodo ? todo!.completed : 0)
-  const active = (includeDag ? dag!.running : 0) + (includeTodo ? todo!.inProgress : 0)
-  const pending = (includeDag ? dag!.pending : 0) + (includeTodo ? todo!.pending : 0)
-  const blocked = includeDag ? dag!.blocked : 0
-  const failed = includeDag ? dag!.failed : 0
-  const progressRatio = clampRatio(completed / total)
-
-  if (completed >= total) {
-    return {
-      status: "complete",
-      tone: "complete",
-      completed,
-      total,
-      active,
-      pending,
-      blocked,
-      failed,
-      progressRatio: 1,
-    }
-  }
-
-  if (failed > 0) {
-    return { status: "attention", tone: "failed", completed, total, active, pending, blocked, failed, progressRatio }
-  }
-  if (blocked > 0) {
-    return { status: "attention", tone: "blocked", completed, total, active, pending, blocked, failed, progressRatio }
-  }
-  if (active > 0) {
-    return { status: "active", tone: "running", completed, total, active, pending, blocked, failed, progressRatio }
-  }
-
-  return { status: "active", tone: "ready", completed, total, active, pending, blocked, failed, progressRatio }
-}
-
-/**
- * @deprecated Use formatProgressLabel from session-i18n.ts instead.
- * This wrapper preserves the original call signature for external callers
- * that still pass only (snapshot, activeLabel?). Internal session-progress-island.tsx
- * should migrate to formatProgressLabel() which accepts an i18n instance.
- */
-export function formatProgressIslandLabel(snapshot: ProgressIslandSnapshot, activeLabel?: string): string {
-  if (snapshot.status === "hidden") return ""
-  if (snapshot.status === "complete") return `Done · ${pluralize(snapshot.total, "task")}`
-  if (snapshot.tone === "failed") return `Needs attention · ${pluralize(snapshot.failed, "failed")}`
-  if (snapshot.tone === "blocked") return `Needs attention · ${pluralize(snapshot.blocked, "blocked")}`
-
-  const progress = `${snapshot.completed}/${snapshot.total}`
-  const label = activeLabel?.trim()
-  if (label) return `${label} · ${progress}`
-  if (snapshot.tone === "ready") return `Ready · ${progress}`
-  if (snapshot.active > 1) return `Working ${pluralize(snapshot.active, "task")} · ${progress}`
-  return `Working · ${progress}`
+  const source = mode === "none" ? undefined : mode === "dag" ? dag : (todo ?? dag)
+  const total = source?.total ?? 0
+  const completed = source?.completed ?? 0
+  const cancelled = source?.cancelled ?? 0
+  const active = source && "running" in source ? source.running : (source?.inProgress ?? 0)
+  const pending = source?.pending ?? 0
+  const blocked = source && "blocked" in source ? source.blocked : 0
+  const failed = source && "failed" in source ? source.failed : 0
+  const progressRatio = source?.progressRatio ?? 0
+  const values = { total, completed, cancelled, active, pending, blocked, failed, progressRatio }
+  if (total === 0 && cancelled === 0) return { ...values, status: "hidden", tone: "neutral" }
+  if (completed === total) return { ...values, status: "complete", tone: "complete" }
+  if (failed > 0) return { ...values, status: "attention", tone: "failed" }
+  if (blocked > 0) return { ...values, status: "attention", tone: "blocked" }
+  return { ...values, status: "active", tone: active > 0 ? "running" : "ready" }
 }

@@ -88,6 +88,7 @@ export function SessionProgressDag(props: SessionProgressDagProps) {
           nodes={nodes()}
           ready={props.summary.ready}
           variant="panel"
+          showStats={false}
           frozen={props.frozen}
           selectedNodeId={selectedNodeId()}
           onSelectNode={handleSelectNode}

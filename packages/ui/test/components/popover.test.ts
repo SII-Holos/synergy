@@ -36,10 +36,17 @@ beforeAll(async () => {
     function Fixture() {
       const [open, setOpen] = createSignal(false)
       const [count, setCount] = createSignal(0)
+      let anchor: HTMLButtonElement | undefined
+      const [anchorOpen, setAnchorOpen] = createSignal(false)
       const [projectOpen, setProjectOpen] = createSignal(false)
       const [menuLayer, setMenuLayer] = createSignal()
       const [sources, setSources] = createSignal(["en", "zh"])
       return <>
+        <button ref={anchor} onClick={() => setAnchorOpen(true)}>Anchored details</button>
+        <Popover title="Anchored panel" open={anchorOpen()} onOpenChange={setAnchorOpen} anchorRef={() => anchor}
+          contentProps={{ onCloseAutoFocus: (event: Event) => { event.preventDefault(); anchor?.focus() } }}>
+          <button>Anchored action</button>
+        </Popover>
         <Popover open={open()} onOpenChange={setOpen}
           trigger={<Tooltip value="Session actions" inactive={count() > 0}>
             <button aria-label="Session actions">Actions</button>
@@ -251,5 +258,16 @@ test("suppressing a focused trigger tooltip preserves Escape and trigger identit
   await page.keyboard.press("Escape")
   await page.getByRole("textbox", { name: "Search projects" }).waitFor({ state: "detached", timeout: 3000 })
   await page.waitForFunction((element) => document.activeElement === element, original)
+  expect(errors).toEqual([])
+})
+
+test("explicit anchor creates no empty trigger and forwards close focus", async () => {
+  const anchor = page.getByRole("button", { name: "Anchored details", exact: true })
+  await anchor.click()
+  await page.getByRole("button", { name: "Anchored action", exact: true }).waitFor()
+  expect(await page.locator('[data-slot="popover-trigger"]').filter({ hasText: /^$/ }).count()).toBe(0)
+  await page.keyboard.press("Escape")
+  await page.getByRole("button", { name: "Anchored action", exact: true }).waitFor({ state: "detached" })
+  expect(await anchor.evaluate((node) => node === document.activeElement)).toBe(true)
   expect(errors).toEqual([])
 })

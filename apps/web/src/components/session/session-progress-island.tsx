@@ -1,11 +1,14 @@
-import { createEffect, createMemo, createSignal, onCleanup, onMount, Show, type JSX } from "solid-js"
+import { createMemo, createSignal, createUniqueId, Show, type JSX } from "solid-js"
+import { createInteractOutside } from "@kobalte/core/primitives/create-interact-outside"
+import { Popper } from "@kobalte/core/popper"
+import { OverlayLayerProvider } from "@ericsanchezok/synergy-ui/context/overlay-layer"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { ProgressCircle } from "@ericsanchezok/synergy-ui/progress-circle"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLocale } from "@/context/locale"
 import type { ProgressIslandSnapshot, ProgressMode } from "./session-progress-summary"
-import "./session-progress-island.css"
-import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { S, describeProgress, progressExpandCollapse, formatProgressLabel } from "./session-i18n"
+import "./session-progress-island.css"
 
 interface SessionProgressIslandProps {
   mode: Exclude<ProgressMode, "none">
@@ -13,151 +16,78 @@ interface SessionProgressIslandProps {
   activeLabel?: string
   activeTab: "dag" | "todo"
   expanded: boolean
-  onExpandedChange: (expanded: boolean) => void
-  onTabChange: (tab: "dag" | "todo") => void
+  onExpandedChange(expanded: boolean): void
+  onTabChange(tab: "dag" | "todo"): void
   children: JSX.Element
   class?: string
   exiting?: boolean
 }
 
 export function SessionProgressIsland(props: SessionProgressIslandProps) {
-  let rootRef: HTMLDivElement | undefined
   const { i18n } = useLocale()
-
-  const [panelRef, setPanelRef] = createSignal<HTMLDivElement | undefined>(undefined)
-  const [bodyRef, setBodyRef] = createSignal<HTMLDivElement | undefined>(undefined)
-  const [measureRef, setMeasureRef] = createSignal<HTMLDivElement | undefined>(undefined)
-  const [collapsedWidth, setCollapsedWidth] = createSignal<number | undefined>(undefined)
-  const [panelHeight, setPanelHeight] = createSignal<number | undefined>(undefined)
-  const [expandedWidth, setExpandedWidth] = createSignal<number | undefined>(undefined)
-
+  const [root, setRoot] = createSignal<HTMLDivElement>()
+  const [panel, setPanel] = createSignal<HTMLDivElement>()
+  const panelID = createUniqueId()
+  let trigger: HTMLButtonElement | undefined
   const label = createMemo(() => formatProgressLabel(props.snapshot, props.activeLabel, i18n))
-  const percentage = createMemo(() => Math.round(props.snapshot.progressRatio * 100))
-  const ariaLabel = createMemo(
-    () => `${describeProgress(props.snapshot, i18n)}. ${progressExpandCollapse(props.expanded, i18n)} details.`,
+  const ariaLabel = () => `${describeProgress(props.snapshot, i18n)}. ${progressExpandCollapse(props.expanded, i18n)}`
+  createInteractOutside(
+    {
+      isDisabled: () => !props.expanded,
+      onPointerDownOutside: () => props.onExpandedChange(false),
+    },
+    root,
   )
-
-  const setExpanded = (expanded: boolean) => {
-    props.onExpandedChange(expanded)
-  }
-
-  onMount(() => {
-    const measureCollapsedWidth = () => {
-      const measure = measureRef()
-      if (!measure) return
-      const width = Math.ceil(measure.getBoundingClientRect().width)
-      if (width > 0) setCollapsedWidth(width)
-    }
-    const measureExpandedWidth = () => {
-      if (!rootRef) return
-      const style = getComputedStyle(rootRef)
-      const horizontalPadding = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight)
-      const width = Math.min(Math.floor(rootRef.clientWidth - horizontalPadding), 900)
-      if (width > 0) setExpandedWidth(width)
-    }
-    const measureElement = measureRef()
-    const measureFrame = requestAnimationFrame(() => {
-      measureCollapsedWidth()
-      measureExpandedWidth()
-    })
-    const measureResizeObserver = measureElement ? new ResizeObserver(measureCollapsedWidth) : undefined
-    const rootResizeObserver = rootRef ? new ResizeObserver(measureExpandedWidth) : undefined
-    if (measureElement) measureResizeObserver?.observe(measureElement)
-    if (rootRef) rootResizeObserver?.observe(rootRef)
-
-    const keyHandler = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && props.expanded) setExpanded(false)
-    }
-    const clickHandler = (event: MouseEvent) => {
-      if (!props.expanded || !rootRef) return
-      const target = event.target as HTMLElement | undefined
-      if (target?.closest('[data-slot="dag-node-preview"]')) return
-      if (!rootRef.contains(event.target as Node)) setExpanded(false)
-    }
-    document.addEventListener("keydown", keyHandler)
-    document.addEventListener("click", clickHandler)
-    onCleanup(() => {
-      cancelAnimationFrame(measureFrame)
-      measureResizeObserver?.disconnect()
-      rootResizeObserver?.disconnect()
-      document.removeEventListener("keydown", keyHandler)
-      document.removeEventListener("click", clickHandler)
-    })
-  })
-
-  createEffect(() => {
-    const shouldMeasure =
-      props.expanded && (props.mode === "todo" || (props.mode === "both" && props.activeTab === "todo"))
-    if (!shouldMeasure) {
-      setPanelHeight(undefined)
-      return
-    }
-    const body = bodyRef()
-    const panel = panelRef()
-    if (!body || !panel) return
-    const measure = () => {
-      const content = body.firstElementChild as HTMLElement | null
-      const contentHeight = content?.scrollHeight ?? body.scrollHeight
-      if (contentHeight <= 0) return
-      const topline = panel.querySelector(".session-progress-island-panel-topline")
-      const tabs = panel.querySelector(".session-progress-island-tabs")
-      const overhead = (topline?.scrollHeight ?? 0) + (tabs?.scrollHeight ?? 0)
-      const maxH = Math.min(window.innerHeight * 0.52, 560)
-      setPanelHeight(Math.min(contentHeight + overhead, maxH))
-    }
-    const raf = requestAnimationFrame(measure)
-    const observer = new MutationObserver(measure)
-    observer.observe(body, { childList: true, subtree: true, characterData: true })
-    onCleanup(() => {
-      cancelAnimationFrame(raf)
-      observer.disconnect()
-    })
-  })
-
-  const tab = (kind: "dag" | "todo") => {
-    const selected = () => props.activeTab === kind
-    return (
-      <button
-        type="button"
-        class="session-progress-island-tab"
-        classList={{ "is-selected": selected() }}
-        aria-pressed={selected()}
-        onClick={() => props.onTabChange(kind)}
-      >
-        {kind === "dag" ? i18n._(S.progressDagTab) : i18n._(S.progressTodoTab)}
-      </button>
-    )
-  }
-
-  return (
-    <div
-      ref={(el) => {
-        rootRef = el
-      }}
-      class={`session-progress-island ${props.class ?? ""}`}
-      style={expandedWidth() == null ? undefined : `--session-progress-island-expanded-width: ${expandedWidth()}px`}
-      data-expanded={props.expanded ? "true" : "false"}
-      data-collapsed-width={collapsedWidth() == null ? "pending" : "measured"}
-      data-status={props.snapshot.status}
-      data-tone={props.snapshot.tone}
-      data-exiting={props.exiting ? "true" : "false"}
+  const tab = (kind: "dag" | "todo") => (
+    <button
+      type="button"
+      class="session-progress-island-tab"
+      aria-pressed={props.activeTab === kind}
+      onClick={() => props.onTabChange(kind)}
     >
+      {i18n._(kind === "dag" ? S.progressDagTab : S.progressTodoTab)}
+    </button>
+  )
+  return (
+    <Popper anchorRef={root} contentRef={panel} placement="top" gutter={4} sameWidth fitViewport>
       <div
-        class="session-progress-island-surface statusbar-glass"
-        style={
-          collapsedWidth() == null ? undefined : `--session-progress-island-collapsed-width: ${collapsedWidth()}px`
-        }
+        ref={setRoot}
+        class={`session-progress-island ${props.class ?? ""}`}
+        data-expanded={props.expanded}
+        data-status={props.snapshot.status}
+        data-tone={props.snapshot.tone}
+        data-exiting={!!props.exiting}
+        onKeyDown={(event) => {
+          if (
+            event.target instanceof Element &&
+            event.target.closest('[data-component="popover-content"], [data-component="dialog"]')
+          )
+            return
+          if (
+            event.key !== "Escape" ||
+            event.defaultPrevented ||
+            event.isComposing ||
+            root()?.querySelector('[aria-haspopup="dialog"][aria-expanded="true"]') ||
+            !props.expanded ||
+            !root()?.contains(document.activeElement)
+          )
+            return
+          event.preventDefault()
+          props.onExpandedChange(false)
+          trigger?.focus()
+        }}
       >
         <button
+          ref={trigger}
           type="button"
           class="session-progress-island-header"
           aria-label={ariaLabel()}
-          aria-controls="session-progress-island-panel"
+          aria-controls={panelID}
           aria-expanded={props.expanded}
-          onClick={() => setExpanded(!props.expanded)}
+          onClick={() => props.onExpandedChange(!props.expanded)}
         >
           <span class="session-progress-island-indicator" aria-hidden="true">
-            <ProgressCircle percentage={percentage()} size={18} strokeWidth={2.5} />
+            <ProgressCircle percentage={Math.round(props.snapshot.progressRatio * 100)} size={18} strokeWidth={2.5} />
           </span>
           <span class="session-progress-island-title">{label()}</span>
           <Icon
@@ -167,66 +97,41 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
             classList={{ "is-expanded": props.expanded }}
           />
         </button>
-        <div
-          class="session-progress-island-panel-wrap"
-          data-expanded={props.expanded ? "true" : "false"}
-          aria-hidden={!props.expanded}
-          style={panelHeight() != null ? { height: `${panelHeight()}px` } : undefined}
-        >
+        <Popper.Positioner class="session-progress-island-positioner" style={{ "min-width": "0" }}>
           <div
-            id="session-progress-island-panel"
+            ref={setPanel}
+            id={panelID}
             class="session-progress-island-panel"
-            ref={(el) => {
-              setPanelRef(el)
-            }}
-            style={panelHeight() != null ? { height: `${panelHeight()}px` } : undefined}
+            role="region"
+            aria-label={i18n._(S.progressSessionLabel)}
+            aria-hidden={!props.expanded}
+            inert={!props.expanded}
           >
-            <div class="session-progress-island-panel-topline">
-              <span>{i18n._(S.progressCurrentWork)}</span>
-              <span class="text-text-weaker">
-                {i18n._({
-                  ...S.progressCompleteFraction,
-                  values: { completed: props.snapshot.completed, total: props.snapshot.total },
-                })}
-                <Show when={props.snapshot.status !== "complete"}>
-                  {props.snapshot.active > 0
-                    ? ` · ${i18n._({ ...S.progressActiveCount, values: { count: props.snapshot.active } })}`
-                    : ` · ${i18n._({ ...S.progressWaitingCount, values: { count: props.snapshot.pending } })}`}
+            <OverlayLayerProvider layer={root}>
+              <div class="session-progress-island-panel-topline">
+                <Show when={props.mode === "both"} fallback={<span>{i18n._(S.progressCurrentWork)}</span>}>
+                  <div class="session-progress-island-tabs" role="group" aria-label={i18n._(S.progressViewLabel)}>
+                    {tab("todo")}
+                    {tab("dag")}
+                  </div>
                 </Show>
-              </span>
-            </div>
-            <Show when={props.mode === "both"}>
-              <div class="session-progress-island-tabs" role="group" aria-label={i18n._(S.progressViewLabel)}>
-                {tab("dag")}
-                {tab("todo")}
+                <span class="session-progress-island-count">
+                  {props.snapshot.total > 0
+                    ? i18n._({
+                        ...S.progressCompleteFraction,
+                        values: { completed: props.snapshot.completed, total: props.snapshot.total },
+                      })
+                    : i18n._(S.progressEnded)}
+                  <Show when={props.snapshot.cancelled > 0}>
+                    <span> · {i18n._({ ...S.progressCancelled, values: { count: props.snapshot.cancelled } })}</span>
+                  </Show>
+                </span>
               </div>
-            </Show>
-            <div
-              class="session-progress-island-body"
-              ref={(el) => {
-                setBodyRef(el)
-              }}
-            >
-              {props.children}
-            </div>
+              <div class="session-progress-island-body">{props.children}</div>
+            </OverlayLayerProvider>
           </div>
-        </div>
+        </Popper.Positioner>
       </div>
-      {/* Mirrors the compact header's intrinsic width so the shell can morph from a numeric size.
-          Keep its content structure aligned with the header above. */}
-      <div
-        class="session-progress-island-measure"
-        aria-hidden="true"
-        ref={(el) => {
-          setMeasureRef(el)
-        }}
-      >
-        <span class="session-progress-island-indicator">
-          <ProgressCircle percentage={percentage()} size={18} strokeWidth={2.5} />
-        </span>
-        <span class="session-progress-island-title">{label()}</span>
-        <Icon name={getSemanticIcon("navigation.collapse")} size="small" />
-      </div>
-    </div>
+    </Popper>
   )
 }

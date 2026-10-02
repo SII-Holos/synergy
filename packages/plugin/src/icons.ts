@@ -219,6 +219,7 @@ export const SemanticIconToken = {
   "state.warning": "alert-triangle",
   "state.error": "ban",
   "state.complete": "circle-check",
+  "state.cancelled": "circle-minus",
 } as const
 
 export type SemanticIconTokenName = keyof typeof SemanticIconToken

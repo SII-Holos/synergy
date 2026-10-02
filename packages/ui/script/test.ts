@@ -24,6 +24,8 @@ await runBatchedTests({
     "test/components/code.dom.test.ts",
     "test/components/compact-reasoning.dom.test.ts",
     "test/components/compact-reasoning-settlement.dom.test.ts",
+    "test/components/compact-reasoning-transition.dom.test.ts",
+    "test/components/session-turn-attachments-collapse.dom.test.ts",
     "test/components/session-turn-activity.test.ts",
     "test/components/session-turn-activity-switch.dom.test.ts",
     "test/components/session-turn-timeline.test.ts",

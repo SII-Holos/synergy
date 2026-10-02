@@ -1,298 +1,205 @@
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { Dynamic } from "solid-js/web"
-import type { MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
-import type { PermissionRequest, ToolPart } from "@ericsanchezok/synergy-sdk"
+import type { MessageDescriptor } from "@lingui/core"
+import type { PermissionRequest, ToolPart } from "@ericsanchezok/synergy-sdk/client"
+import type { SessionDataView } from "@ericsanchezok/synergy-ui/context/session-data-view"
 import { Button } from "@ericsanchezok/synergy-ui/button"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { Tabs } from "@ericsanchezok/synergy-ui/tabs"
-import { useData } from "@ericsanchezok/synergy-ui/context"
+import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { ToolRegistry, getToolInfo } from "@ericsanchezok/synergy-ui/message-part"
 import { SmartTool } from "@ericsanchezok/synergy-ui/basic-tool"
-import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-
-import { useSDK } from "@/context/sdk"
-import { createRequestSubmission, requestSubmissionLocked } from "./request-submission"
-import { RequestSubmissionNotice } from "./request-submission-notice"
+import { useSessionDataView } from "@/context/session-data-view"
+import { useSessionDecision } from "@/context/session-decision"
+import { requestSubmissionLocked } from "./request-submission"
 
 const copy = {
-  agent: { id: "session.permissionDock.agent", message: "Agent" },
-  permission: { id: "session.permissionDock.permission", message: "Permission" },
+  deny: { id: "session.permissionDock.action.deny", message: "Deny" },
+  once: { id: "session.permissionDock.action.allowOnce", message: "Allow once" },
+  session: { id: "session.permissionDock.action.allowSession", message: "Allow for session" },
+  always: { id: "session.permissionDock.action.alwaysAllow", message: "Always allow" },
+  more: { id: "session.permissionDock.more", message: "More allow options" },
+  sessionScope: {
+    id: "session.permissionDock.sessionScope",
+    message: "For matching requests in this session; expires when the runtime is recreated or the server restarts",
+  },
+  persistentScope: {
+    id: "session.permissionDock.persistentScope",
+    message: "Save this operation and target rules for future matching requests, until you remove the rules",
+  },
+  details: { id: "session.permissionDock.details", message: "Details" },
+  ruleScope: { id: "session.permissionDock.ruleScope", message: "Rule scope" },
+  requiresApproval: {
+    id: "session.permissionDock.requiresApproval",
+    message: "This operation still requires approval each time.",
+  },
+  submitting: { id: "session.decision.submitting", message: "Submitting…" },
   outsideWorkspace: {
     id: "session.permissionDock.risk.outsideWorkspace",
     message: "Path is outside the workspace boundary",
   },
-  vcsMetadata: {
-    id: "session.permissionDock.risk.vcsMetadata",
-    message: "Writing to version-control metadata (.git)",
-  },
-  credentials: {
-    id: "session.permissionDock.risk.credentials",
-    message: "Accessing credential directory",
-  },
+  vcs: { id: "session.permissionDock.risk.vcsMetadata", message: "Writing to version-control metadata (.git)" },
+  credentials: { id: "session.permissionDock.risk.credentials", message: "Accessing credential directory" },
   secrets: { id: "session.permissionDock.risk.secrets", message: "Accessing secrets file (.env / credentials)" },
-  destructiveShell: {
-    id: "session.permissionDock.risk.destructiveShell",
-    message: "Destructive shell command",
-  },
+  destructive: { id: "session.permissionDock.risk.destructiveShell", message: "Destructive shell command" },
   identity: { id: "session.permissionDock.risk.identity", message: "Acting with your identity" },
   email: { id: "session.permissionDock.risk.email", message: "Sending email on your behalf" },
-  fromAgent: { id: "session.permissionDock.origin.from", message: "from" },
-  deny: { id: "session.permissionDock.action.deny", message: "Deny" },
-  allowSession: { id: "session.permissionDock.action.allowSession", message: "Allow for session" },
-  alwaysAllow: { id: "session.permissionDock.action.alwaysAllow", message: "Always allow" },
-  allowOnce: { id: "session.permissionDock.action.allowOnce", message: "Allow once" },
 }
 
-export interface PermissionDockProps {
-  sessionID: string
+export function permissionToolPart(request: PermissionRequest, view: SessionDataView): ToolPart | undefined {
+  if (!request.tool) return
+  const message = view.messagesFor(request.sessionID).findLast((item) => item.id === request.tool?.messageID)
+  if (!message) return
+  return view
+    .partsFor(message.id)
+    .find((part): part is ToolPart => part.type === "tool" && part.callID === request.tool?.callID)
 }
 
-interface PermissionItem {
-  permission: PermissionRequest
-  origin: "self" | "child"
-  sessionTitle?: string
+export function permissionInfo(request: PermissionRequest, view: SessionDataView) {
+  const part = permissionToolPart(request, view)
+  return getToolInfo(part?.tool ?? request.permission, part?.state.input ?? {}, request.metadata)
 }
 
-export function PermissionDock(props: PermissionDockProps) {
-  const data = useData()
-  const sdk = useSDK()
-  const actions = createRequestSubmission()
-  const responses = new Map<string, "once" | "session" | "always" | "reject">()
+export function PermissionDock(props: { request: PermissionRequest }) {
+  const view = useSessionDataView()
+  const decisions = useSessionDecision()
   const { _ } = useLingui()
   const toolTitle = (title: string | MessageDescriptor) => (typeof title === "string" ? title : _(title))
-
-  const childSessions = createMemo(() => data.view.sessions().filter((s) => s.parentID === props.sessionID))
-
-  const permissions = createMemo(() => {
-    const result: PermissionItem[] = []
-    const selfPerms = data.view.permissionsFor(props.sessionID)
-    for (const perm of selfPerms) {
-      result.push({ permission: perm, origin: "self" })
-    }
-    for (const child of childSessions()) {
-      const perms = data.view.permissionsFor(child.id)
-      for (const perm of perms) {
-        result.push({
-          permission: perm,
-          origin: "child",
-          sessionTitle: child.title ?? _(copy.agent),
-        })
-      }
-    }
-    return result
-  })
-
-  const [activeTab, setActiveTab] = createSignal<string | undefined>(undefined)
-
-  const activeItem = createMemo(() => {
-    const all = permissions()
-    if (all.length === 0) return undefined
-    const tab = activeTab()
-    const found = tab ? all.find((p) => p.permission.id === tab) : undefined
-    return found ?? all[0]
-  })
-
-  const toolPart = createMemo((): ToolPart | undefined => {
-    const item = activeItem()
-    if (!item?.permission.tool) return undefined
-    const { messageID, callID } = item.permission.tool
-    const messages = data.view.messagesFor(item.permission.sessionID)
-    const message = messages.findLast((m) => m.id === messageID)
-    if (!message) return undefined
-    const parts = data.view.partsFor(message.id)
-    for (const part of parts) {
-      if (part?.type === "tool" && (part as ToolPart).callID === callID) {
-        return part as ToolPart
-      }
-    }
-    return undefined
-  })
-
-  const permissionLabel = createMemo(() => {
-    const item = activeItem()
-    if (!item) return _(copy.permission)
-    const part = toolPart()
-    if (part) {
-      const info = getToolInfo(part.tool, part.state?.input, item.permission.metadata)
-      const title = toolTitle(info.title)
-      if (info.subtitle) return `${title} ${info.subtitle}`
-      return title
-    }
-    const info = getToolInfo(item.permission.permission, {}, item.permission.metadata ?? {})
-    const title = toolTitle(info.title)
-    if (info.subtitle) return `${title} ${info.subtitle}`
-    return title
-  })
-
-  const requestKey = () => JSON.stringify([activeItem()?.permission.sessionID, activeItem()?.permission.id])
-  const state = () => actions.state(requestKey())
+  const [moreOpen, setMoreOpen] = createSignal(false)
+  const [detailsOpen, setDetailsOpen] = createSignal(false)
+  const state = () => decisions.state(decisions.key("permission", props.request))
   const locked = () => requestSubmissionLocked(state())
-  const respond = (response: "once" | "session" | "always" | "reject") => {
-    const item = activeItem()
-    if (!item) return
-    const key = requestKey()
-    const { id: requestID, sessionID } = item.permission
-    const client = sdk.client
-    responses.set(key, response)
-    void actions.run(key, {
-      submit: () => client.permission.reply({ requestID, reply: response }, { throwOnError: true }),
-      isPending: async () =>
-        (await client.permission.list({ sessionID }, { throwOnError: true })).data.some(
-          (request) => request.id === requestID,
-        ),
-    })
+  const part = createMemo(() => permissionToolPart(props.request, view()))
+  const info = createMemo(() => permissionInfo(props.request, view()))
+  const grantTitle = createMemo(() => getToolInfo(props.request.permission, {}, props.request.metadata).title)
+  const command = () => {
+    const value = part()?.state.input.command ?? props.request.metadata.command
+    return typeof value === "string" ? value : undefined
   }
-
-  const riskReason = createMemo(() => {
-    const item = activeItem()
-    if (!item) return undefined
-    const meta = item.permission.metadata ?? {}
-    const reason = meta.reason ?? meta.why
-    if (typeof reason === "string" && reason.trim()) return reason
+  const reason = createMemo(() => {
+    const meta = props.request.metadata
+    const text = meta.reason ?? meta.why
+    if (typeof text === "string" && text.trim()) return text
     if (meta.workspaceBoundary || meta.outsideWorkspace) return _(copy.outsideWorkspace)
-    if (meta.protectedCategory === "vcs") return _(copy.vcsMetadata)
+    if (meta.protectedCategory === "vcs") return _(copy.vcs)
     if (meta.protectedCategory === "credentials") return _(copy.credentials)
     if (meta.protectedCategory === "secrets") return _(copy.secrets)
-    if (meta.capability === "shell_destructive") return _(copy.destructiveShell)
+    if (meta.capability === "shell_destructive") return _(copy.destructive)
     if (meta.capability === "identity_act") return _(copy.identity)
     if (meta.capability === "communication_email") return _(copy.email)
-    return undefined
   })
-
-  const navigateToChild = () => {
-    const item = activeItem()
-    if (!item || item.origin !== "child" || !data.navigateToSession) return
-    data.navigateToSession(item.permission.sessionID)
+  const respond = (reply: "once" | "session" | "always" | "reject") => {
+    setMoreOpen(false)
+    void decisions.respondPermission(props.request, reply)
   }
-
-  function tabLabel(item: PermissionItem): string {
-    const perm = item.permission
-    if (!perm.tool) return perm.permission ?? _(copy.permission)
-    const { messageID, callID } = perm.tool
-    const messages = data.view.messagesFor(perm.sessionID)
-    const message = messages.findLast((candidate) => candidate.id === messageID)
-    if (message) {
-      const parts = data.view.partsFor(message.id)
-      for (const part of parts) {
-        if (part?.type === "tool" && (part as ToolPart).callID === callID) {
-          const info = getToolInfo((part as ToolPart).tool, (part as ToolPart).state?.input, perm.metadata)
-          if (info.subtitle) return info.subtitle.split("/").pop() ?? info.subtitle
-          return toolTitle(info.title)
-        }
-      }
-    }
-    const info = getToolInfo(perm.permission, {}, perm.metadata ?? {})
-    if (info.subtitle) return info.subtitle.split("/").pop() ?? info.subtitle
-    return toolTitle(info.title)
-  }
-
-  const multi = createMemo(() => permissions().length > 1)
 
   return (
-    <Show when={permissions().length > 0}>
-      <div class="mb-2" style={{ animation: "fadeUp 400ms ease-out" }}>
-        <div class="workbench-card-surface rounded-xl border border-border-base overflow-hidden max-h-[min(60vh,480px)] flex flex-col">
-          <div class="h-[2px] bg-border-warning-base shrink-0" />
-
-          <Show when={activeItem()}>
-            {(item) => (
-              <div class="flex flex-col gap-2 px-4 py-3 shrink-0">
-                <Show when={multi()}>
-                  <Tabs value={activeItem()?.permission.id} onChange={(val) => setActiveTab(val)} variant="pill">
-                    <Tabs.List>
-                      <For each={permissions()}>
-                        {(p) => <Tabs.Trigger value={p.permission.id}>{tabLabel(p)}</Tabs.Trigger>}
-                      </For>
-                    </Tabs.List>
-                  </Tabs>
-                </Show>
-
-                <div
-                  class="flex flex-wrap items-center justify-between gap-3 min-w-0"
-                  aria-busy={state().status === "pending"}
-                >
-                  <div class="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
-                    <Icon
-                      name={getSemanticIcon("settings.permissions")}
-                      size="small"
-                      class="shrink-0 text-icon-warning-base"
-                    />
-                    <span class="text-14-medium text-text-strong truncate" title={permissionLabel()}>
-                      {permissionLabel()}
-                    </span>
-                    <Show when={item().origin === "child"}>
-                      <span class="text-12-regular text-text-subtle shrink-0">
-                        {_(copy.fromAgent)}{" "}
-                        <button class="hover:underline cursor-pointer text-text-weak" onClick={navigateToChild}>
-                          {item().sessionTitle}
-                        </button>
-                      </span>
-                    </Show>
-                  </div>
-                  <div class="flex flex-wrap items-center justify-end gap-1.5 min-w-0">
-                    <Button variant="ghost" size="small" disabled={locked()} onClick={() => respond("reject")}>
-                      {_(copy.deny)}
-                    </Button>
-                    <Button variant="ghost" size="small" disabled={locked()} onClick={() => respond("session")}>
-                      {_(copy.allowSession)}
-                    </Button>
-                    <Button variant="ghost" size="small" disabled={locked()} onClick={() => respond("always")}>
-                      {_(copy.alwaysAllow)}
-                    </Button>
-                    <Button variant="primary" size="small" disabled={locked()} onClick={() => respond("once")}>
-                      {_(copy.allowOnce)}
-                    </Button>
-                  </div>
+    <div class="decision-content permission-prompt">
+      <div class="decision-body">
+        <Show when={command()}>{(value) => <pre class="permission-command">{value()}</pre>}</Show>
+        <Show when={props.request.patterns.length > 0}>
+          <ul class="permission-targets">
+            <For each={props.request.patterns}>{(pattern) => <li>{pattern}</li>}</For>
+          </ul>
+        </Show>
+        <Show when={info().subtitle && !props.request.patterns.length}>
+          <p class="decision-secondary">{info().subtitle}</p>
+        </Show>
+        <Show when={reason()}>{(value) => <p class="permission-reason">{value()}</p>}</Show>
+        <details class="permission-details" onToggle={(event) => setDetailsOpen(event.currentTarget.open)}>
+          <summary>{_(copy.details)}</summary>
+          <Show when={detailsOpen()}>
+            <Show
+              when={part()}
+              fallback={
+                <div class="permission-raw-details">
+                  <Show when={command()}>{(value) => <pre>{value()}</pre>}</Show>
+                  <ul class="permission-targets">
+                    <For each={props.request.patterns}>{(pattern) => <li>{pattern}</li>}</For>
+                  </ul>
+                  <Show
+                    when={Object.keys(props.request.metadata).some(
+                      (key) => !["command", "reason", "why"].includes(key),
+                    )}
+                  >
+                    <pre>
+                      {JSON.stringify(
+                        Object.fromEntries(
+                          Object.entries(props.request.metadata).filter(
+                            ([key]) => !["command", "reason", "why"].includes(key),
+                          ),
+                        ),
+                        null,
+                        2,
+                      )}
+                    </pre>
+                  </Show>
                 </div>
-                <RequestSubmissionNotice
-                  state={state()}
-                  onRetry={() => {
-                    const response = responses.get(requestKey())
-                    if (response) respond(response)
-                  }}
-                />
-                <Show when={riskReason()}>
-                  {(reason) => (
-                    <div class="flex items-center gap-1.5 text-12-regular text-text-weak">
-                      <Icon name={getSemanticIcon("state.warning")} size="small" class="shrink-0 text-icon-weak-base" />
-                      <span>{reason()}</span>
-                    </div>
-                  )}
-                </Show>
-              </div>
-            )}
-          </Show>
-
-          {(() => {
-            const item = activeItem()
-            if (!item?.permission.tool) return null
-            const part = toolPart()
-            const toolName = part?.tool ?? item.permission.permission
-            const render = ToolRegistry.render(toolName) ?? SmartTool
-            const state = part?.state
-            const input = state?.input ?? {}
-            const permissionMetadata = item.permission.metadata ?? {}
-            const stateMetadata = state && "metadata" in state ? (state.metadata ?? {}) : {}
-            const metadata = { ...permissionMetadata, ...stateMetadata }
-            const output = state && "output" in state ? state.output : undefined
-            const status = state?.status ?? "running"
-            return (
-              <div class="border-t border-border-base px-4 py-3 overflow-y-auto min-h-0 [scrollbar-width:thin]">
+              }
+            >
+              {(current) => (
                 <Dynamic
-                  component={render}
-                  input={input}
-                  tool={toolName}
-                  metadata={metadata}
-                  output={output}
-                  status={status}
-                  defaultOpen={true}
+                  component={ToolRegistry.render(current().tool) ?? SmartTool}
+                  input={current().state.input}
+                  tool={current().tool}
+                  metadata={{
+                    ...props.request.metadata,
+                    ...("metadata" in current().state ? current().state.metadata : undefined),
+                  }}
+                  output={(() => {
+                    const state = current().state
+                    return "output" in state ? state.output : undefined
+                  })()}
+                  status={current().state.status}
+                  defaultOpen
                 />
-              </div>
-            )
-          })()}
-        </div>
+              )}
+            </Show>
+          </Show>
+        </details>
       </div>
-    </Show>
+      <div class="decision-footer">
+        <Button variant="ghost" disabled={locked()} onClick={() => respond("reject")}>
+          {_(copy.deny)}
+        </Button>
+        <Popover
+          variant="menu"
+          title={_(copy.more)}
+          open={moreOpen()}
+          onOpenChange={setMoreOpen}
+          placement="top-end"
+          triggerAs={(trigger) => (
+            <button {...trigger} type="button" class="decision-secondary-button" disabled={locked()}>
+              {_(copy.more)}
+            </button>
+          )}
+        >
+          <div class="decision-grant-scope" role="group" aria-label={_(copy.ruleScope)}>
+            <p class="decision-secondary">{toolTitle(grantTitle())}</p>
+            <ul class="permission-targets">
+              <For each={props.request.patterns}>{(pattern) => <li>{pattern}</li>}</For>
+            </ul>
+            <Show when={props.request.metadata.nonBypassable === true}>
+              <p class="decision-secondary">{_(copy.requiresApproval)}</p>
+            </Show>
+          </div>
+          <button type="button" class="decision-menu-row" disabled={locked()} onClick={() => respond("session")}>
+            <span>{_(copy.session)}</span>
+            <span class="decision-secondary">{_(copy.sessionScope)}</span>
+          </button>
+          <button type="button" class="decision-menu-row" disabled={locked()} onClick={() => respond("always")}>
+            <span>{_(copy.always)}</span>
+            <span class="decision-secondary">{_(copy.persistentScope)}</span>
+          </button>
+        </Popover>
+        <Button
+          variant="primary"
+          disabled={locked()}
+          aria-busy={state().status === "pending"}
+          onClick={() => respond("once")}
+        >
+          {_(state().status === "pending" ? copy.submitting : copy.once)}
+        </Button>
+      </div>
+    </div>
   )
 }

@@ -27,6 +27,17 @@ type ScopeApi = {
   permissions: Record<string, Array<{ id: string }> | undefined>
   questions: Record<string, Array<{ id: string }> | undefined>
   cortex: Array<{ id: string; parentSessionID?: string; status: string }>
+  captureQuestionSnapshot(scopeID: string): { scopeID: string; generation: number; revision: number }
+  seedGlobalQuestions(
+    requests: Array<{ id: string; sessionID: string; questions: [] }>,
+    headers: Headers | undefined,
+    token: { scopeID: string; generation: number; revision: number },
+  ): boolean
+  seedGlobalPermissions(
+    requests: Array<{ id: string; sessionID: string; permission: string; patterns: []; metadata: {} }>,
+    headers: undefined,
+    scopeID: string,
+  ): void
 }
 
 type Fixture = {
@@ -34,10 +45,14 @@ type Fixture = {
     started: Promise<void>
     dispose(): void
     api(): ScopeApi
-    emit(key: string, seq: number, type: string, properties: Record<string, unknown>): void
+    emit(key: string, seq: number, type: string, properties: Record<string, unknown>, epoch?: string): void
     complete(key: string, data: Record<string, unknown>, version?: SnapshotVersion): void
     waitForRequest(key: string): Promise<void>
     waitComplete(state: ScopeState): Promise<void>
+    connect(): void
+    setPending(key: string, questions: unknown[], permissions: unknown[]): void
+    waitForReplay(key: string): Promise<void>
+    completeReplay(key: string): void
     watchPeek(key: string, sink: (state: ScopeState | undefined) => void): () => void
     resolveEntry(sessionID: string): { tone?: string; pulse?: boolean }
   }
@@ -53,21 +68,26 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
   await Bun.write(
     stub,
     `
+    import { createSignal } from "solid-js"
     export const requests = []
     export const replays = []
+    const pending = new Map()
+    const [connected, setConnected] = createSignal(false)
+    export const connect = () => setConnected(true)
+    export const setPending = (key, questions, permissions) => pending.set(key, {questions, permissions})
     let listener
-    export const emit = (key, seq, type, properties) => listener({name:key,details:{type,epoch:"test-epoch",seq,properties}})
+    export const emit = (key, seq, type, properties, epoch = "test-epoch") => listener({name:key,details:{type,epoch,seq,properties}})
     const ok = data => Promise.resolve({data})
     const stamped = data => Promise.resolve({data, response:{headers:{get:name=>name==="x-synergy-seq"?"0":name==="x-synergy-epoch"?"test-epoch":undefined}}})
     export function createSynergyClient(options) {
       return {
         scope: { bootstrapCore: () => (options.scopeID === "home" || options.scopeID.startsWith("background.")) ? ok({scopeID:options.scopeID,provider:{all:[]},agent:[],config:{}}) : new Promise(resolve => requests.push({key:options.scopeID,resolve,done:false})) },
-        permission: {list:()=>stamped([])}, question: {list:()=>stamped([])},
-        event:{replay:()=>new Promise(resolve=>replays.push(resolve))},
+        permission: {list:()=>stamped(pending.get(options.scopeID)?.permissions??[])}, question: {list:()=>stamped(pending.get(options.scopeID)?.questions??[])},
+        event:{replay:()=>new Promise(resolve=>replays.push({key:options.scopeID,resolve,done:false}))},
         session:{list:()=>ok({total:0,data:[]}),inbox:()=>ok([])},
       }
     }
-    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>true},prepareScopeState(){},connected:()=>false,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
+    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>true},prepareScopeState(){},connected,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>ok([])}},
       scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:()=>stamped({})},
       cortex:{list:()=>ok([])},
@@ -92,14 +112,16 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
     import { I18nProvider } from "@lingui/solid"
     import { setupI18n } from "@lingui/core"
     import { GlobalSyncProvider, useGlobalSync } from ${JSON.stringify(globalSync)}
-    import { requests, emit } from ${JSON.stringify(stub)}
+    import { requests, replays, emit, connect, setPending } from ${JSON.stringify(stub)}
     import { resolveSessionVisualState } from "@/components/sidebar/session-visual-state"
     export function mount(root) {
       let api, ready
       const started = new Promise(resolve=>ready=resolve)
       function Child(){api=useGlobalSync();ready();return <div>ready</div>}
       const dispose=render(()=><I18nProvider i18n={setupI18n({locale:'en',messages:{en:{}}})}><GlobalSyncProvider><Child/></GlobalSyncProvider></I18nProvider>,root)
-      return {started,dispose,emit,api:()=>api,
+      return {started,dispose,emit,connect,setPending,api:()=>api,
+        waitForReplay(key) {return new Promise(resolve=>{const check=()=>{if(replays.some(r=>!r.done&&r.key===key))return resolve();setTimeout(check,5)};check()})},
+        completeReplay(key) {const replay=replays.find(r=>!r.done&&r.key===key);if(!replay)throw new Error("no replay for "+key);replay.done=true;replay.resolve({data:{status:"ok",epoch:"test-epoch",seq:100,events:[]}})},
       resolveEntry(sessionID) {
         return resolveSessionVisualState({
           entry: { id: sessionID },
@@ -169,6 +191,58 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
     try {
       await h.started
       const api = h.api()
+
+      api.seedGlobalQuestions(
+        [{ id: "scope-question", sessionID: "scope-request-session", questions: [] }],
+        undefined,
+        api.captureQuestionSnapshot("request-project"),
+      )
+      api.seedGlobalPermissions(
+        [
+          {
+            id: "scope-permission",
+            sessionID: "scope-request-session",
+            permission: "edit",
+            patterns: [],
+            metadata: {},
+          },
+        ],
+        undefined,
+        "request-project",
+      )
+      api.seedGlobalQuestions([], undefined, api.captureQuestionSnapshot("request-home"))
+      api.seedGlobalPermissions([], undefined, "request-home")
+      expect(api.questions["scope-request-session"]?.map((request) => request.id)).toEqual(["scope-question"])
+      expect(api.permissions["scope-request-session"]?.map((request) => request.id)).toEqual(["scope-permission"])
+      api.seedGlobalQuestions([], undefined, api.captureQuestionSnapshot("request-project"))
+      api.seedGlobalPermissions([], undefined, "request-project")
+      expect(api.questions["scope-request-session"]).toBeUndefined()
+      expect(api.permissions["scope-request-session"]).toBeUndefined()
+
+      h.emit("request-project", 1, "question.asked", {
+        id: "raced-question",
+        sessionID: "raced-session",
+        questions: [],
+      })
+      h.emit("request-project", 2, "question.replied", { requestID: "raced-question", sessionID: "raced-session" })
+      h.emit(
+        "request-other",
+        1,
+        "question.asked",
+        { id: "foreign-question", sessionID: "foreign-session", questions: [] },
+        "foreign-epoch",
+      )
+      api.seedGlobalQuestions(
+        [{ id: "raced-question", sessionID: "raced-session", questions: [] }],
+        new Headers({ "x-synergy-epoch": "test-epoch", "x-synergy-seq": "1" }),
+        api.captureQuestionSnapshot("request-project"),
+      )
+      expect(api.questions["raced-session"]).toBeUndefined()
+      for (const key of ["request-project", "request-other"]) {
+        await h.waitForRequest(key)
+        h.complete(key, { scopeID: key, provider: { all: [] }, agent: [], config: {} })
+        await h.waitComplete(api.ensureScopeState(key))
+      }
 
       // Releasing the last lease demotes a Scope into the inactive LRU rather
       // than evicting it, so eviction is forced by overfilling that LRU: the
@@ -523,6 +597,18 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       await evictScope("pulse-scope")
       expect(api.cortex.some((task) => task.id === "task-pulse" && task.status === "running")).toBe(true)
       expect(h.resolveEntry("resting-child")).toMatchObject({ tone: "active", pulse: true })
+
+      h.setPending(
+        "shared",
+        [{ id: "reconnect-question", sessionID: "waiting-session", questions: [] }],
+        [{ id: "reconnect-permission", sessionID: "waiting-session", permission: "edit", patterns: [], metadata: {} }],
+      )
+      h.connect()
+      await h.waitForReplay("shared")
+      h.completeReplay("shared")
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(api.questions["waiting-session"]?.map((request) => request.id)).toEqual(["reconnect-question"])
+      expect(api.permissions["waiting-session"]?.map((request) => request.id)).toEqual(["reconnect-permission"])
       shared.release()
     } finally {
       h.dispose()

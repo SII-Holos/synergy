@@ -11606,6 +11606,10 @@ msgid "dag.chrome.node-metadata"
 msgstr "⟦Node metadata⟧"
 
 #. ── DAG graph chrome ────────────────────────────────────────────────
+msgid "dag.chrome.nodeDetails"
+msgstr ""
+
+#. ── DAG graph chrome ────────────────────────────────────────────────
 msgid "dag.chrome.open-session"
 msgstr "⟦Open session⟧"
 
@@ -11632,6 +11636,18 @@ msgstr "⟦Task⟧"
 #. ── DAG graph chrome ────────────────────────────────────────────────
 msgid "dag.chrome.worktree"
 msgstr "⟦Worktree⟧"
+
+#. ── DAG graph chrome ────────────────────────────────────────────────
+msgid "dag.chrome.zoomIn"
+msgstr ""
+
+#. ── DAG graph chrome ────────────────────────────────────────────────
+msgid "dag.chrome.zoomOut"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "dag.node.label"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "dag.status.blocked"
@@ -15412,6 +15428,42 @@ msgstr "⟦Return to latest⟧"
 msgid "session.conversation.withdraw"
 msgstr "⟦Withdraw⟧"
 
+#. js-lingui-explicit-id
+msgid "session.decision.collapse"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.decision.expand"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.decision.from"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.decision.more"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.decision.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.decision.permission"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.decision.question"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.decision.skip"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.decision.submitting"
+msgstr ""
+
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.dock.back"
@@ -15855,37 +15907,12 @@ msgstr "⟦Applies after this tool turn⟧"
 msgid "session.new.subtitle"
 msgstr "⟦What are we building today?⟧"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.permission.allowForSession"
-msgstr "⟦Allow for session⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.permission.allowOnce"
-msgstr "⟦Allow once⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.permission.alwaysAllow"
-msgstr "⟦Always allow⟧"
-
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "session.permission.ariaLabel"
 msgstr "⟦{mode} permission mode⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.permission.deny"
-msgstr "⟦Deny⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.permission.from"
-msgstr "⟦from⟧"
 
 #. js-lingui-explicit-id
 msgid "session.permission.mode.autonomous"
@@ -15948,12 +15975,20 @@ msgid "session.permissionDock.agent"
 msgstr "⟦Agent⟧"
 
 #. js-lingui-explicit-id
-msgid "session.permissionDock.origin.from"
-msgstr "⟦from⟧"
+msgid "session.permissionDock.details"
+msgstr ""
 
 #. js-lingui-explicit-id
-msgid "session.permissionDock.permission"
-msgstr "⟦Permission⟧"
+msgid "session.permissionDock.more"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.permissionDock.persistentScope"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.permissionDock.requiresApproval"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.permissionDock.risk.credentials"
@@ -15983,20 +16018,18 @@ msgstr "⟦Accessing secrets file (.env / credentials)⟧"
 msgid "session.permissionDock.risk.vcsMetadata"
 msgstr "⟦Writing to version-control metadata (.git)⟧"
 
+#. js-lingui-explicit-id
+msgid "session.permissionDock.ruleScope"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.permissionDock.sessionScope"
+msgstr ""
+
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.progress.activeAria"
-msgstr "⟦Session progress, {completed} of {total} tasks complete⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.activeCount"
-msgstr "⟦{count} active⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.activeCountLabel"
-msgstr "⟦{count} active⟧"
+msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -16010,18 +16043,18 @@ msgstr "⟦Session progress needs attention, {count} blocked⟧"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.progress.cancelled"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.progress.collapse"
-msgstr "⟦Collapse⟧"
+msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.progress.completeAria"
-msgstr "⟦Session progress complete, {count, plural, one {# task} other {# tasks}} done⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.completed"
-msgstr "⟦{count} completed⟧"
+msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -16038,9 +16071,14 @@ msgstr "⟦Current work⟧"
 msgid "session.progress.dagTab"
 msgstr "⟦DAG⟧"
 
-#. session-progress summary labels
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.progress.done"
 msgstr "⟦Done · {count, plural, one {# task} other {# tasks}}⟧"
+
+#. session-progress summary labels
+msgid "session.progress.ended"
+msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -16064,42 +16102,12 @@ msgstr "⟦No active plan⟧"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.noActiveTasks"
-msgstr "⟦No active tasks⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.pendingCount"
-msgstr "⟦{count} pending⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.progress.ready"
 msgstr "⟦Ready · {fraction}⟧"
 
 #. session-progress-island
 msgid "session.progress.sessionLabel"
 msgstr "⟦Session progress⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.todoActive"
-msgstr "⟦active⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.todoCompleted"
-msgstr "⟦{count} completed⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.todoDone"
-msgstr "⟦done⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.todoSkipped"
-msgstr "⟦skipped⟧"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -16113,11 +16121,6 @@ msgstr "⟦Progress view⟧"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.waitingCount"
-msgstr "⟦{count} waiting⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.progress.working"
 msgstr "⟦Working⟧"
 
@@ -16126,114 +16129,37 @@ msgstr "⟦Working⟧"
 msgid "session.progress.workingLabel"
 msgstr "⟦Working {count, plural, one {# task} other {# tasks}}⟧"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.question.add"
-msgstr "⟦Add⟧"
+#. js-lingui-explicit-id
+msgid "session.question.answerPlaceholder"
+msgstr ""
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.question.aria"
-msgstr "⟦Question awaiting your input⟧"
+#. js-lingui-explicit-id
+msgid "session.question.customAnswer"
+msgstr ""
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.question.collapse"
-msgstr "⟦Collapse⟧"
+#. js-lingui-explicit-id
+msgid "session.question.directAnswer"
+msgstr ""
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.question.customPlaceholder"
-msgstr "⟦Tell Synergy what to do instead...⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.question.edit"
-msgstr "⟦Edit⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.question.moreActions"
-msgstr "⟦More question actions⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.question.multiHint"
-msgstr "⟦Choose one or more options to continue⟧"
-
-#. question-prompt
-msgid "session.question.needsInput"
-msgstr "⟦Choose how to proceed⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.question.next"
 msgstr "⟦Next⟧"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.question.notAnswered"
-msgstr "⟦Not answered⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.question.open"
-msgstr "⟦Open⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.question.otherAnswer"
-msgstr "⟦None of these?⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.question.otherDesc"
-msgstr "⟦Tell Synergy how to proceed⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.question.previous"
 msgstr "⟦Previous⟧"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.question.review"
-msgstr "⟦Review⟧"
+#. js-lingui-explicit-id
+msgid "session.question.send"
+msgstr ""
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.question.reviewTitle"
-msgstr "⟦Review your answers⟧"
+#. js-lingui-explicit-id
+msgid "session.question.step"
+msgstr ""
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.question.singleHint"
-msgstr "⟦Choose one option to continue⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.question.skip"
-msgstr "⟦Skip⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.question.skipTitle"
-msgstr "⟦Skip question⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.question.stepLabel"
-msgstr "⟦Question {index}⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.question.stepsAria"
-msgstr "⟦Question steps⟧"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.question.submit"
-msgstr "⟦Submit⟧"
+#. js-lingui-explicit-id
+msgid "session.question.supplement"
+msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -16670,16 +16596,8 @@ msgid "session.submission.failed"
 msgstr "⟦Submission failed. Your selection is preserved.⟧"
 
 #. js-lingui-explicit-id
-msgid "session.submission.pending"
-msgstr "⟦Submitting your decision…⟧"
-
-#. js-lingui-explicit-id
 msgid "session.submission.retry"
 msgstr "⟦Retry submission⟧"
-
-#. js-lingui-explicit-id
-msgid "session.submission.settled"
-msgstr "⟦This request is no longer pending.⟧"
 
 #. js-lingui-explicit-id
 msgid "session.submission.unknown"
@@ -16716,6 +16634,34 @@ msgstr "⟦Retry⟧"
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "session.tags.saveFailed"
 msgstr "⟦Could not save tags⟧"
+
+#. js-lingui-explicit-id
+msgid "session.todo.cancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.todo.completed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.todo.inProgress"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.todo.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.todo.priorityHigh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.todo.priorityLow"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.todo.unknown"
+msgstr ""
 
 #. session-transition-card.tsx — generic transition card
 msgid "session.transition.card.dismissAria"
