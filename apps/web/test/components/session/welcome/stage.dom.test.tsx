@@ -1,3 +1,4 @@
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
@@ -22,6 +23,7 @@ beforeAll(async () => {
     import { createSignal, Show } from "solid-js"
     import { render } from "solid-js/web"
     import { LocaleProvider } from "${source}/context/locale"
+    import { ThemeProvider } from "@ericsanchezok/synergy-ui/theme"
     import { WelcomeStage } from "${source}/components/session/welcome/stage"
     import { createWelcomeMemory } from "${source}/components/session/welcome/types"
     import { welcomeScenes } from "${source}/components/session/welcome/registry"
@@ -45,7 +47,7 @@ beforeAll(async () => {
           <div class="session-composer"><textarea ref={input} data-component="prompt-input" aria-label="Message" style="height:96px;width:100%" /></div>
         </div></>
     }
-    render(() => <LocaleProvider><App /></LocaleProvider>, document.getElementById("root"))
+    render(() => <LocaleProvider><ThemeProvider><App /></ThemeProvider></LocaleProvider>, document.getElementById("root"))
   `,
   )
   server = await createServer({
@@ -58,7 +60,7 @@ beforeAll(async () => {
       entries: [path.join(directory, "main.tsx")],
       include: ["solid-js", "solid-js/web", "@lingui/core", "@lingui/solid"],
     },
-    server: { host: "127.0.0.1", port: 0, fs: { allow: [path.resolve(source, "../../..")] } },
+    server: { host: "127.0.0.1", port: await fixturePort(), fs: { allow: [path.resolve(source, "../../..")] } },
   })
   await server.listen()
   await server.warmupRequest("/main.tsx")
@@ -137,4 +139,26 @@ test("narrow and short layouts keep the editor and scene controls reachable", as
     expect(box!.y + box!.height).toBeLessThanOrEqual(581)
     expect(errors).toEqual([])
   }
+})
+
+test("nature supports local painting, explicit stepping and safe scene disposal", async () => {
+  await page.setViewportSize({ width: 960, height: 920 })
+  await open("nature")
+  await page.getByRole("button", { name: "Pause scene" }).click()
+  const canvas = page.locator(".nature-canvas")
+  await canvas.focus()
+  const before = await canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
+  await page.keyboard.press("Enter")
+  await page.getByRole("button", { name: "Advance one step" }).click()
+  await page.waitForTimeout(100)
+  expect(await canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())).not.toBe(before)
+  await page.getByRole("button", { name: "Low gravity", exact: true }).click()
+  expect(await page.getByRole("button", { name: "Low gravity", exact: true }).getAttribute("aria-pressed")).toBe("true")
+  await page.getByRole("button", { name: "Mount", exact: true }).click()
+  await page.getByRole("button", { name: "Mount", exact: true }).click()
+  expect(await page.getByRole("button", { name: "Low gravity", exact: true }).getAttribute("aria-pressed")).toBe("true")
+  await page.getByRole("button", { name: "Load fourth" }).click()
+  await page.getByRole("button", { name: "Fourth scene works" }).waitFor()
+  expect(await canvas.count()).toBe(0)
+  expect(errors).toEqual([])
 })

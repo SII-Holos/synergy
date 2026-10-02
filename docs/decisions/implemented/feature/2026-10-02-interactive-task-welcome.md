@@ -18,6 +18,8 @@ The presentation pauses during input, obscuring dialogs, expanded editing, offsc
 
 This replaces the three starter cards described in [workbench optimization](2026-09-29-frontend-workbench-optimization.md); its column geometry, draft safeguards and project/file entry rules remain authoritative. Continuous motion has an explicit pause control following [WCAG 2.2.2](https://www.w3.org/WAI/WCAG22/Understanding/pause-stop-hide.html).
 
+The landscape module runs a bounded cellular simulation in a dedicated Worker and renders its latest acknowledged frame in Canvas 2D. Water movement conserves cell count, terrain blocks movement, watered seeds grow to a finite height, and low gravity changes stepping frequency. Commands and replies carry a preview generation; frame acknowledgement bounds queued rendering work. Pause stops the Worker timer; unmount terminates it. Canvas colors consume resolved theme tokens and redraw on same-mode theme changes. Worker ownership and messaging follow the [Web Workers API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Using_web_workers).
+
 ## Alternatives considered
 
 **Independent random selection on every render.** It interrupts interaction and can immediately repeat the same introduction.

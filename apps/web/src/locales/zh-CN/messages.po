@@ -23324,6 +23324,66 @@ msgid "welcome.island.water"
 msgstr "河流：放置桥梁"
 
 #. js-lingui-explicit-id
+msgid "welcome.nature.board"
+msgstr "互动地形。方向键移动画笔，按 Enter 或空格使用当前工具。"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.dig"
+msgstr "挖一条沟"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.failed"
+msgstr "模拟暂时停止了，你的任务草稿已保留。"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.gravity"
+msgstr "低重力"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.growing"
+msgstr "{count, plural, =0 {一点水，带来新的生长。} other {已有 # 株植物开始生长。}}"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.hint"
+msgstr "挖开山坡，把水引向种子；也可以亲手塑造一片新的地形。"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.name"
+msgstr "一片会生长的风景"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.prompt"
+msgstr "帮我开发一个原创的互动自然场景：用户可以改变地形、引导水流、种下植物。支持风力、重力调整和键盘操作，模拟运行时保持编辑流畅。先帮我确定主题和使用人群。我的想法是："
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.seed"
+msgstr "种下种子"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.soil"
+msgstr "堆一座山"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.step"
+msgstr "前进一步"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.title"
+msgstr "一滴水，会流向哪里？"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.tools"
+msgstr "地形工具"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.water"
+msgstr "倒一点水"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.wind"
+msgstr "风向：{direction, select, left {向左} right {向右} other {无风}}"
+
+#. js-lingui-explicit-id
 msgid "window.close.aria"
 msgstr "关闭"
 

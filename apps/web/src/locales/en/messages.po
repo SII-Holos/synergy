@@ -23324,6 +23324,66 @@ msgid "welcome.island.water"
 msgstr "River: place a bridge"
 
 #. js-lingui-explicit-id
+msgid "welcome.nature.board"
+msgstr "Landscape. Arrow keys move the brush; Enter or Space applies the selected tool."
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.dig"
+msgstr "Dig a channel"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.failed"
+msgstr "The simulation stopped. Your task draft is safe."
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.gravity"
+msgstr "Low gravity"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.growing"
+msgstr "{count, plural, =0 {A little water. A new beginning.} one {# plant is growing.} other {# plants are growing.}}"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.hint"
+msgstr "Draw a channel through the hill. Guide water to the seeds, or shape a landscape of your own."
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.name"
+msgstr "A living landscape"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.prompt"
+msgstr "Help me build an original interactive landscape where people can shape terrain, guide water and grow plants. Include wind and gravity controls, an accessible keyboard mode, and a simulation that stays responsive while editing. First help me choose a theme and audience. My idea is: "
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.seed"
+msgstr "Plant a seed"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.soil"
+msgstr "Build land"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.step"
+msgstr "Advance one step"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.title"
+msgstr "Where will a little water take you?"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.tools"
+msgstr "Landscape tools"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.water"
+msgstr "Pour water"
+
+#. js-lingui-explicit-id
+msgid "welcome.nature.wind"
+msgstr "Wind: {direction, select, left {left} right {right} other {calm}}"
+
+#. js-lingui-explicit-id
 msgid "window.close.aria"
 msgstr "Close"
 
