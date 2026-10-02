@@ -59,10 +59,10 @@ export function dropBlock(state: Stack): Stack {
 }
 
 export function advanceStack(state: Stack, seconds: number): Stack {
-  if (seconds <= 0 || state.phase === "ready") return state
+  if (seconds <= 0 || !Number.isFinite(seconds)) return state
   const dt = Math.min(seconds, 0.05)
   const cut = state.cut && state.cut.age < 0.8 ? { ...state.cut, age: state.cut.age + dt } : undefined
-  if (state.phase !== "playing") return cut === state.cut ? state : { ...state, cut }
+  if (state.phase !== "playing" && state.phase !== "ready") return cut === state.cut ? state : { ...state, cut }
   const speed = 105 + (state.blocks.length - 2) * 12
   const x = Math.max(80, Math.min(640 - state.moving.width, state.moving.x + state.moving.direction * speed * dt))
   const direction = x <= 80 ? 1 : x >= 640 - state.moving.width ? -1 : state.moving.direction

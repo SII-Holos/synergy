@@ -33,3 +33,11 @@ test("overhang is cut from the next block, a miss ends the game, and a rapid sec
   expect(moved.moving.x).not.toBe(initial.moving.x)
   expect(moved.blocks).toEqual(initial.blocks)
 })
+
+test("the waiting block already moves before the first placement", () => {
+  const initial = createStack(8)
+  const waiting = advanceStack(initial, 0.05)
+  expect(waiting.phase).toBe("ready")
+  expect(waiting.moving.x).not.toBe(initial.moving.x)
+  expect(waiting.blocks).toEqual(initial.blocks)
+})
