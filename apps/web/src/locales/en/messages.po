@@ -15466,24 +15466,8 @@ msgid "session.starter.addFiles"
 msgstr "Add files"
 
 #. js-lingui-explicit-id
-msgid "session.starter.draftChanged"
-msgstr "Your draft changed. Choose a task starter again to use the latest draft."
-
-#. js-lingui-explicit-id
 msgid "session.starter.openProject"
 msgstr "Open a project"
-
-#. js-lingui-explicit-id
-msgid "session.starter.replaceAction"
-msgstr "Use task starter"
-
-#. js-lingui-explicit-id
-msgid "session.starter.replaceDescription"
-msgstr "Your attachments and working location will stay the same. Nothing will be sent."
-
-#. js-lingui-explicit-id
-msgid "session.starter.replaceTitle"
-msgstr "Replace the draft text?"
 
 #. js-lingui-explicit-id
 msgid "session.state.auditingBlueprint"
@@ -23224,172 +23208,132 @@ msgid "ui.userMessage.source"
 msgstr "View source"
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.board"
-msgstr "Chain reaction playfield. Use arrow keys to aim and Space to ignite."
+msgid "welcome.blocks.field"
+msgstr "Falling-block playfield"
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.draft"
-msgstr "Build an interactive chain-reaction game. Let me ignite a spark among drifting stars, with cascading reactions, short rounds, clear goals and satisfying visual feedback. Include keyboard and touch controls. I would like to customize its theme and rules."
+msgid "welcome.blocks.help"
+msgstr "Left and right move, Up rotates, Down lowers and Space drops. On touch, tap to rotate, swipe sideways to move, and swipe down to drop."
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.goal"
-msgstr "Light {target} stars with one spark."
+msgid "welcome.blocks.name"
+msgstr "Falling blocks"
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.hint"
-msgstr "One click. How far will your spark travel?"
+msgid "welcome.blocks.over"
+msgstr "{score} points · Play again"
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.ignite"
-msgstr "Ignite here"
+msgid "welcome.blocks.ready"
+msgstr "Click to play · ↑ rotate · Space drop"
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.lit"
-msgstr "{count} stars lit…"
+msgid "welcome.blocks.score"
+msgstr "{score} points · {lines} lines"
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.missed"
-msgstr "{count} lit. Try where the stars gather."
+msgid "welcome.common.continue"
+msgstr "Click to continue"
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.name"
-msgstr "Chain sparks"
-
-#. js-lingui-explicit-id
-msgid "welcome.chain.won"
-msgstr "One spark. {count} stars connected."
-
-#. js-lingui-explicit-id
-msgid "welcome.common.create"
-msgstr "Make my own version"
+msgid "welcome.common.keyboardHelp"
+msgstr "Escape pauses. R restarts. Clicking outside pauses the game."
 
 #. js-lingui-explicit-id
 msgid "welcome.common.loading"
 msgstr "Preparing an interactive example…"
 
 #. js-lingui-explicit-id
-msgid "welcome.common.local"
-msgstr "Interactive example · no model usage"
-
-#. js-lingui-explicit-id
-msgid "welcome.common.nextRound"
-msgstr "Next round"
-
-#. js-lingui-explicit-id
-msgid "welcome.common.pause"
-msgstr "Pause scene"
-
-#. js-lingui-explicit-id
-msgid "welcome.common.reset"
-msgstr "Start over"
-
-#. js-lingui-explicit-id
-msgid "welcome.common.resume"
-msgstr "Play scene"
-
-#. js-lingui-explicit-id
 msgid "welcome.common.retry"
 msgstr "Retry example"
 
 #. js-lingui-explicit-id
-msgid "welcome.common.step"
-msgstr "Advance one step"
+msgid "welcome.common.statusControl"
+msgstr "Click to play or pause. Escape pauses; R restarts."
 
 #. js-lingui-explicit-id
 msgid "welcome.common.subtitle"
-msgstr "A little game, a useful tool, or the work at hand. What would you like to make?"
+msgstr "From a spark to something real. What will you create?"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.title"
 msgstr "Bring your ideas to life."
 
 #. js-lingui-explicit-id
-msgid "welcome.common.tryAgain"
-msgstr "Try again"
-
-#. js-lingui-explicit-id
 msgid "welcome.common.unavailable"
 msgstr "This example could not load. You can still start a task below."
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.aim"
-msgstr "Aim {angle, number} degrees, power {power, number}. {count} of 3 launches used."
+msgid "welcome.flight.field"
+msgstr "Aircraft playfield"
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.board"
+msgid "welcome.flight.help"
+msgstr "Move the pointer or use arrow keys to steer. Click or press Space to start automatic fire. Avoid enemies and protect the lower edge."
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.name"
+msgstr "Pixel squadron"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.over"
+msgstr "{score} points · Fly again"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.position"
+msgstr "Aircraft at {x}, {y}"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.ready"
+msgstr "Move to steer · Click to fly"
+
+#. js-lingui-explicit-id
+msgid "welcome.orbit.again"
+msgstr "Try a different angle · Click to retry"
+
+#. js-lingui-explicit-id
+msgid "welcome.orbit.aim"
+msgstr "Angle {angle}°, power {power}"
+
+#. js-lingui-explicit-id
+msgid "welcome.orbit.arrived"
+msgstr "Delivered · Click for the next flight"
+
+#. js-lingui-explicit-id
+msgid "welcome.orbit.field"
 msgstr "Gravity delivery playfield"
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.delivered"
-msgstr "Delivery complete."
-
-#. js-lingui-explicit-id
-msgid "welcome.orbit.draft"
-msgstr "Build a gravity-assisted delivery game. Let me drag to aim and release a small ship around planets toward a beacon. Include a trajectory preview, readable collisions, short levels and keyboard controls. I would like to design new planets and delivery routes."
-
-#. js-lingui-explicit-id
-msgid "welcome.orbit.flying"
-msgstr "Gravity is bending your route…"
-
-#. js-lingui-explicit-id
-msgid "welcome.orbit.goal"
-msgstr "Reach the beacon. Arrows adjust aim and power; Space launches."
-
-#. js-lingui-explicit-id
-msgid "welcome.orbit.hint"
-msgstr "Pull back. Let go. Send a little ship a long way."
-
-#. js-lingui-explicit-id
-msgid "welcome.orbit.launch"
-msgstr "Launch"
-
-#. js-lingui-explicit-id
-msgid "welcome.orbit.missed"
-msgstr "A little off course. Try a different angle."
+msgid "welcome.orbit.help"
+msgstr "Move to aim, click to launch, or pull back to set power. Arrow keys aim and adjust power; Space launches."
 
 #. js-lingui-explicit-id
 msgid "welcome.orbit.name"
 msgstr "Gravity post"
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.next"
-msgstr "Next delivery"
+msgid "welcome.orbit.ready"
+msgstr "Aim, then click to launch"
 
 #. js-lingui-explicit-id
-msgid "welcome.stack.board"
-msgstr "Block stacking playfield. Press Space or Enter to drop a block."
+msgid "welcome.stack.field"
+msgstr "Stacking playfield"
 
 #. js-lingui-explicit-id
-msgid "welcome.stack.draft"
-msgstr "Build a one-tap block-stacking game with a small illuminated tower. Include precise landing feedback, falling overhangs, perfect streaks, short rounds and a restart. Support touch and keyboard. I would like to change the architecture and add my own rules."
-
-#. js-lingui-explicit-id
-msgid "welcome.stack.drop"
-msgstr "Drop a block"
-
-#. js-lingui-explicit-id
-msgid "welcome.stack.goal"
-msgstr "Build twelve floors. Three perfect landings recover some width."
-
-#. js-lingui-explicit-id
-msgid "welcome.stack.hint"
-msgstr "Wait for the moment. Drop one more block."
-
-#. js-lingui-explicit-id
-msgid "welcome.stack.missed"
-msgstr "{count} floors tall. Ready for another try?"
+msgid "welcome.stack.help"
+msgstr "Click or press Space to stack the moving floor. Line up the edges."
 
 #. js-lingui-explicit-id
 msgid "welcome.stack.name"
 msgstr "Tiny tower"
 
 #. js-lingui-explicit-id
-msgid "welcome.stack.perfect"
-msgstr "Perfect landing · {count} in a row"
+msgid "welcome.stack.ready"
+msgstr "Click to drop"
 
 #. js-lingui-explicit-id
-msgid "welcome.stack.won"
-msgstr "Twelve floors. You built it, one tap at a time."
+msgid "welcome.stack.result"
+msgstr "{height} floors · Play again"
 
 #. js-lingui-explicit-id
 msgid "window.close.aria"

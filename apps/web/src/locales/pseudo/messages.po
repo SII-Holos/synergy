@@ -15466,23 +15466,7 @@ msgid "session.starter.addFiles"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "session.starter.draftChanged"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "session.starter.openProject"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.starter.replaceAction"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.starter.replaceDescription"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.starter.replaceTitle"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -23224,43 +23208,35 @@ msgid "ui.userMessage.source"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.board"
+msgid "welcome.blocks.field"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.draft"
+msgid "welcome.blocks.help"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.goal"
+msgid "welcome.blocks.name"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.hint"
+msgid "welcome.blocks.over"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.ignite"
+msgid "welcome.blocks.ready"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.lit"
+msgid "welcome.blocks.score"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.missed"
+msgid "welcome.common.continue"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.name"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.chain.won"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.common.create"
+msgid "welcome.common.keyboardHelp"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -23268,31 +23244,11 @@ msgid "welcome.common.loading"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.common.local"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.common.nextRound"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.common.pause"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.common.reset"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.common.resume"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "welcome.common.retry"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.common.step"
+msgid "welcome.common.statusControl"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -23304,11 +23260,35 @@ msgid "welcome.common.title"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.common.tryAgain"
+msgid "welcome.common.unavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.common.unavailable"
+msgid "welcome.flight.field"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.help"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.over"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.position"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.ready"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.orbit.again"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -23316,35 +23296,15 @@ msgid "welcome.orbit.aim"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.board"
+msgid "welcome.orbit.arrived"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.delivered"
+msgid "welcome.orbit.field"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.draft"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.orbit.flying"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.orbit.goal"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.orbit.hint"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.orbit.launch"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.orbit.missed"
+msgid "welcome.orbit.help"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -23352,31 +23312,15 @@ msgid "welcome.orbit.name"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.next"
+msgid "welcome.orbit.ready"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.stack.board"
+msgid "welcome.stack.field"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.stack.draft"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.stack.drop"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.stack.goal"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.stack.hint"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.stack.missed"
+msgid "welcome.stack.help"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -23384,11 +23328,11 @@ msgid "welcome.stack.name"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.stack.perfect"
+msgid "welcome.stack.ready"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.stack.won"
+msgid "welcome.stack.result"
 msgstr ""
 
 #. js-lingui-explicit-id

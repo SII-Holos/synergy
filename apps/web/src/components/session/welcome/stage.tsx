@@ -1,31 +1,17 @@
 import { translateDescriptor } from "@/locales/translate"
-import {
-  ErrorBoundary,
-  Show,
-  Suspense,
-  createEffect,
-  createResource,
-  createSignal,
-  onCleanup,
-  onMount,
-  type JSX,
-} from "solid-js"
-import { Dynamic } from "solid-js/web"
+import { ErrorBoundary, Show, Suspense, createEffect, createResource, createSignal, onCleanup, onMount } from "solid-js"
+import { Dynamic, Portal } from "solid-js/web"
 import { createMediaQuery } from "@solid-primitives/media"
 import { useLocale } from "@/context/locale"
 import type { WelcomeMemory, WelcomeSceneDefinition } from "./types"
-import { AmbientField } from "./surface"
+import { AmbientField } from "./ambient"
 import "./style.css"
 
 export function WelcomeStage(props: {
   definition: WelcomeSceneDefinition
   seed: number
   memory: WelcomeMemory
-  disabled: boolean
   blocked: boolean
-  onStart: (text: string) => void
-  brand?: JSX.Element
-  actions?: JSX.Element
 }) {
   const { i18n } = useLocale()
   const reducedMotion = createMediaQuery("(prefers-reduced-motion: reduce)")
@@ -39,6 +25,11 @@ export function WelcomeStage(props: {
     (definition) => definition.load(),
   )
   let root!: HTMLDivElement
+  const [pane, setPane] = createSignal<Element>()
+  const interact = () => {
+    setPaused(false)
+    setEditing(false)
+  }
   const active = () => !paused() && !editing() && visible() && intersecting() && !expanded() && !props.blocked
   createEffect(() => {
     if (reducedMotion()) setPaused(true)
@@ -48,6 +39,25 @@ export function WelcomeStage(props: {
     const input = (event: Event) => {
       if (event.target instanceof Element && event.target.closest('[data-component="prompt-input"]')) setEditing(true)
     }
+    let keyboardNavigation = false
+    const navigation = (event: KeyboardEvent) => {
+      keyboardNavigation = event.key === "Tab"
+    }
+    const focus = (event: FocusEvent) => {
+      if (keyboardNavigation && event.target instanceof Node && !root.contains(event.target)) setEditing(true)
+    }
+    const outside = (event: Event) => {
+      keyboardNavigation = false
+      if (
+        !(event.target instanceof Element) ||
+        !root.contains(event.target) ||
+        !event.target.closest(".welcome-game-canvas, .welcome-game-status")
+      )
+        setEditing(true)
+    }
+    document.addEventListener("keydown", navigation, true)
+    document.addEventListener("focusin", focus, true)
+    document.addEventListener("pointerdown", outside, true)
     document.addEventListener("visibilitychange", visibility)
     document.addEventListener("input", input, true)
     document.addEventListener("compositionstart", input, true)
@@ -67,11 +77,15 @@ export function WelcomeStage(props: {
     visualChanges.observe(root, { subtree: true, childList: true })
     observeVisual()
     const pane = root.closest(".session-workbench-pane")
+    setPane(pane ?? root)
     const measureExpanded = () => setExpanded(!!pane?.querySelector(".session-composer[data-expanded]"))
     const mutation = new MutationObserver(measureExpanded)
     if (pane) mutation.observe(pane, { subtree: true, attributes: true, attributeFilter: ["data-expanded"] })
     measureExpanded()
     onCleanup(() => {
+      document.removeEventListener("keydown", navigation, true)
+      document.removeEventListener("focusin", focus, true)
+      document.removeEventListener("pointerdown", outside, true)
       document.removeEventListener("visibilitychange", visibility)
       document.removeEventListener("input", input, true)
       document.removeEventListener("compositionstart", input, true)
@@ -87,24 +101,20 @@ export function WelcomeStage(props: {
       data-welcome-scene={props.definition.id}
       data-prevent-autofocus
       data-active={active() ? "" : undefined}
-      onPointerDown={() => setEditing(false)}
-      onFocusIn={() => setEditing(false)}
     >
-      <AmbientField seed={props.seed} active={active} reducedMotion={reducedMotion} />
-      <div class="welcome-topline">
-        {props.brand}
-        <button class="welcome-pause" type="button" aria-pressed={paused()} onClick={() => setPaused(!paused())}>
-          {paused()
-            ? i18n._({ id: "welcome.common.resume", message: "Play scene" })
-            : i18n._({ id: "welcome.common.pause", message: "Pause scene" })}
-        </button>
-      </div>
+      <Show when={pane()}>
+        {(target) => (
+          <Portal mount={target()}>
+            <AmbientField seed={props.seed} active={active} reducedMotion={reducedMotion} />
+          </Portal>
+        )}
+      </Show>
       <div class="welcome-scene-heading">
         <h1>{i18n._({ id: "welcome.common.title", message: "Bring your ideas to life." })}</h1>
         <p>
           {i18n._({
             id: "welcome.common.subtitle",
-            message: "A little game, a useful tool, or the work at hand. What would you like to make?",
+            message: "From a spark to something real. What will you create?",
           })}
         </p>
       </div>
@@ -146,17 +156,13 @@ export function WelcomeStage(props: {
                 active={active}
                 reducedMotion={reducedMotion}
                 memory={props.memory}
-                disabled={props.disabled}
-                onStart={props.onStart}
+                interact={interact}
+                pause={() => setPaused(true)}
               />
             )}
           </Show>
         </Suspense>
       </ErrorBoundary>
-      <div class="welcome-bottomline">
-        <span>{i18n._({ id: "welcome.common.local", message: "Interactive example · no model usage" })}</span>
-        {props.actions}
-      </div>
     </div>
   )
 }

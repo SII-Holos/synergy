@@ -11,7 +11,6 @@ import { WelcomeStage } from "./welcome/stage"
 export function NewSessionGreeting(props: {
   interactive: boolean
   disabled: boolean
-  onStart: (text: string) => void
   onProject: () => void
   onFiles: () => void
 }) {
@@ -56,11 +55,7 @@ export function NewSessionGreeting(props: {
           definition={welcomeScenes.find((scene) => scene.id === experience.selection.sceneId)!}
           seed={experience.selection.seed}
           memory={experience.memory}
-          disabled={props.disabled}
           blocked={!!dialog.active}
-          onStart={props.onStart}
-          brand={brand()}
-          actions={actions()}
         />
       )}
     </Show>

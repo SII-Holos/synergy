@@ -15466,24 +15466,8 @@ msgid "session.starter.addFiles"
 msgstr "添加文件"
 
 #. js-lingui-explicit-id
-msgid "session.starter.draftChanged"
-msgstr "草稿已发生变化，请重新选择任务入口，以使用最新草稿。"
-
-#. js-lingui-explicit-id
 msgid "session.starter.openProject"
 msgstr "打开项目"
-
-#. js-lingui-explicit-id
-msgid "session.starter.replaceAction"
-msgstr "使用任务引导"
-
-#. js-lingui-explicit-id
-msgid "session.starter.replaceDescription"
-msgstr "附件和工作位置会保留，不会发送任何内容。"
-
-#. js-lingui-explicit-id
-msgid "session.starter.replaceTitle"
-msgstr "替换草稿正文？"
 
 #. js-lingui-explicit-id
 msgid "session.state.auditingBlueprint"
@@ -23224,172 +23208,132 @@ msgid "ui.userMessage.source"
 msgstr "查看源码"
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.board"
-msgstr "连锁反应区域。方向键移动瞄准点，空格键点亮。"
+msgid "welcome.blocks.field"
+msgstr "俄罗斯方块游戏区域"
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.draft"
-msgstr "帮我做一个连锁反应小游戏。点击漂浮的星星之间，引发连续扩散的反应；每局简短，目标明确，反馈有节奏。支持键盘和触控。我想继续定制它的主题和规则。"
+msgid "welcome.blocks.help"
+msgstr "左右键移动，上键旋转，下键加速，空格落下。触屏点击旋转，左右滑动移动，下滑落下。"
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.goal"
-msgstr "用一颗火花，点亮 {target} 颗星。"
+msgid "welcome.blocks.name"
+msgstr "俄罗斯方块"
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.hint"
-msgstr "点一下，看看能连起来多少颗星。"
+msgid "welcome.blocks.over"
+msgstr "{score} 分 · 再来一次"
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.ignite"
-msgstr "在这里点亮"
+msgid "welcome.blocks.ready"
+msgstr "点击开始 · ↑ 旋转 · 空格落下"
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.lit"
-msgstr "已点亮 {count} 颗星…"
+msgid "welcome.blocks.score"
+msgstr "{score} 分 · 已消 {lines} 行"
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.missed"
-msgstr "点亮了 {count} 颗。试试星星聚集的地方。"
+msgid "welcome.common.continue"
+msgstr "点击继续"
 
 #. js-lingui-explicit-id
-msgid "welcome.chain.name"
-msgstr "连锁星火"
-
-#. js-lingui-explicit-id
-msgid "welcome.chain.won"
-msgstr "一颗火花，连起了 {count} 颗星。"
-
-#. js-lingui-explicit-id
-msgid "welcome.common.create"
-msgstr "做一个我的版本"
+msgid "welcome.common.keyboardHelp"
+msgstr "Esc 暂停，R 重新开始。点击游戏外部会暂停。"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.loading"
 msgstr "正在准备互动示例…"
 
 #. js-lingui-explicit-id
-msgid "welcome.common.local"
-msgstr "互动示例 · 不消耗模型额度"
-
-#. js-lingui-explicit-id
-msgid "welcome.common.nextRound"
-msgstr "下一关"
-
-#. js-lingui-explicit-id
-msgid "welcome.common.pause"
-msgstr "暂停场景"
-
-#. js-lingui-explicit-id
-msgid "welcome.common.reset"
-msgstr "重新开始"
-
-#. js-lingui-explicit-id
-msgid "welcome.common.resume"
-msgstr "播放场景"
-
-#. js-lingui-explicit-id
 msgid "welcome.common.retry"
 msgstr "重试示例"
 
 #. js-lingui-explicit-id
-msgid "welcome.common.step"
-msgstr "前进一步"
+msgid "welcome.common.statusControl"
+msgstr "点击开始或暂停，Esc 暂停，R 重新开始。"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.subtitle"
-msgstr "一个小游戏、一款工具，或手头的工作。说说你想做什么。"
+msgstr "从一个念头，到真正做出来。你想创造什么？"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.title"
 msgstr "让想法，动起来。"
 
 #. js-lingui-explicit-id
-msgid "welcome.common.tryAgain"
-msgstr "再试一次"
-
-#. js-lingui-explicit-id
 msgid "welcome.common.unavailable"
 msgstr "暂时无法加载这个示例，你仍可以在下方开始任务。"
 
 #. js-lingui-explicit-id
+msgid "welcome.flight.field"
+msgstr "飞机大战游戏区域"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.help"
+msgstr "移动鼠标或按方向键操控，点击或按空格开始自动发射。避开敌机，守住下方边界。"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.name"
+msgstr "飞机大战"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.over"
+msgstr "{score} 分 · 再飞一次"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.position"
+msgstr "飞机位置 {x}，{y}"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.ready"
+msgstr "移动操控 · 点击起飞"
+
+#. js-lingui-explicit-id
+msgid "welcome.orbit.again"
+msgstr "换个角度 · 点击重试"
+
+#. js-lingui-explicit-id
 msgid "welcome.orbit.aim"
-msgstr "角度 {angle, number} 度，力度 {power, number}。已使用 {count} 次发射，共 3 次。"
+msgstr "角度 {angle}°，力度 {power}"
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.board"
-msgstr "引力投递区域"
+msgid "welcome.orbit.arrived"
+msgstr "投递成功 · 点击飞往下一站"
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.delivered"
-msgstr "投递完成。"
+msgid "welcome.orbit.field"
+msgstr "引力投递游戏区域"
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.draft"
-msgstr "帮我做一个利用引力完成投递的小游戏。拖拽瞄准，松手让小飞船绕过星球、抵达信标。加入轨迹预览、清晰的碰撞反馈、短关卡和键盘操作。我想设计新的星球和投递路线。"
-
-#. js-lingui-explicit-id
-msgid "welcome.orbit.flying"
-msgstr "引力正在改变飞行路线…"
-
-#. js-lingui-explicit-id
-msgid "welcome.orbit.goal"
-msgstr "抵达信标。左右键调方向，上下键调力度，空格发射。"
-
-#. js-lingui-explicit-id
-msgid "welcome.orbit.hint"
-msgstr "向后拉，松开，把小飞船送到远方。"
-
-#. js-lingui-explicit-id
-msgid "welcome.orbit.launch"
-msgstr "发射"
-
-#. js-lingui-explicit-id
-msgid "welcome.orbit.missed"
-msgstr "偏了一点。换个角度再试试。"
+msgid "welcome.orbit.help"
+msgstr "移动鼠标瞄准，点击发射，也可以向后拖动调整力度。方向键调整角度和力度，空格发射。"
 
 #. js-lingui-explicit-id
 msgid "welcome.orbit.name"
 msgstr "引力投递"
 
 #. js-lingui-explicit-id
-msgid "welcome.orbit.next"
-msgstr "下一次投递"
+msgid "welcome.orbit.ready"
+msgstr "移动瞄准，点击发射"
 
 #. js-lingui-explicit-id
-msgid "welcome.stack.board"
-msgstr "积木堆叠区域。按空格或回车放下一块。"
+msgid "welcome.stack.field"
+msgstr "叠叠高游戏区域"
 
 #. js-lingui-explicit-id
-msgid "welcome.stack.draft"
-msgstr "帮我做一个点击落块的堆叠小游戏，积木逐渐搭成一座亮灯的小楼。加入精确落点反馈、边缘切落、连续完美落点奖励、短局和重新开始，支持触控与键盘。我想更换建筑外观，并加入自己的规则。"
-
-#. js-lingui-explicit-id
-msgid "welcome.stack.drop"
-msgstr "放下一块"
-
-#. js-lingui-explicit-id
-msgid "welcome.stack.goal"
-msgstr "搭到十二层。连续三次完美落点可恢复一些宽度。"
-
-#. js-lingui-explicit-id
-msgid "welcome.stack.hint"
-msgstr "看准了，放下一块。"
-
-#. js-lingui-explicit-id
-msgid "welcome.stack.missed"
-msgstr "搭到了 {count} 层。再试一次？"
+msgid "welcome.stack.help"
+msgstr "点击或按空格叠放移动的楼层，尽量对齐边缘。"
 
 #. js-lingui-explicit-id
 msgid "welcome.stack.name"
 msgstr "叠叠高"
 
 #. js-lingui-explicit-id
-msgid "welcome.stack.perfect"
-msgstr "完美落点 · 连续 {count} 次"
+msgid "welcome.stack.ready"
+msgstr "点击落下"
 
 #. js-lingui-explicit-id
-msgid "welcome.stack.won"
-msgstr "十二层，一点一点搭起来了。"
+msgid "welcome.stack.result"
+msgstr "{height} 层 · 再来一次"
 
 #. js-lingui-explicit-id
 msgid "window.close.aria"

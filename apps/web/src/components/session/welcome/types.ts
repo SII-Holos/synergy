@@ -24,8 +24,8 @@ export type WelcomeSceneProps = {
   active: Accessor<boolean>
   reducedMotion: Accessor<boolean>
   memory: WelcomeMemory
-  disabled: boolean
-  onStart: (text: string) => void
+  interact: () => void
+  pause: () => void
 }
 
 export type WelcomeSceneDefinition = {

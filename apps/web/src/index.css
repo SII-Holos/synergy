@@ -171,6 +171,7 @@ a {
 }
 
 .session-workbench-pane {
+  position: relative;
   height: 100%;
   min-height: 0;
 }
@@ -189,6 +190,20 @@ a {
   display: flex;
   align-items: safe center;
   padding-block: 24px calc(var(--prompt-height, 12rem) + 24px);
+}
+
+.session-empty-view[data-interactive] {
+  padding: 0 0 var(--prompt-height, 12rem);
+  display: block;
+}
+.session-welcome-region {
+  height: 100%;
+  min-height: 410px;
+  width: 100%;
+}
+.session-workbench-pane > [data-ui-part="conversation"] {
+  position: relative;
+  z-index: 1;
 }
 
 .session-greeting {

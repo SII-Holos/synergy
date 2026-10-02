@@ -1,164 +1,135 @@
-import "./style.css"
-import { For, Show, createSignal } from "solid-js"
+import { createEffect, createSignal } from "solid-js"
 import { useLocale } from "@/context/locale"
 import type { WelcomeSceneProps } from "../types"
+import { GameSurface } from "../surface"
+import { sprite, sprites, usePixelCanvas, type Ink } from "../pixels"
 import { useSceneClock } from "../clock"
-import { GameFooter } from "../surface"
-import { advanceStack, createStack, dropBlock, stackGoal, type Stack } from "./model"
-
-function TowerBlock(props: { x: number; width: number; y: number; perfect?: boolean; moving?: boolean }) {
-  return (
-    <g
-      transform={`translate(${props.x} ${props.y})`}
-      class="stack-block"
-      data-perfect={props.perfect ? "" : undefined}
-      data-moving={props.moving ? "" : undefined}
-    >
-      <path class="stack-block-top" d={`M0 0 18-10H${props.width + 18}L${props.width} 0Z`} />
-      <path class="stack-block-face" d={`M0 0H${props.width}V14H0Z`} />
-      <path class="stack-block-side" d={`M${props.width} 0  ${props.width + 18}-10V4L${props.width} 14Z`} />
-      <path class="stack-windows" d={`M7 7H${Math.max(8, props.width - 7)}`} stroke-dasharray="3 10" />
-    </g>
-  )
-}
+import { advanceStack, createStack, dropBlock, stackGoal } from "./model"
 
 export default function StackScene(props: WelcomeSceneProps) {
   const { i18n } = useLocale()
   const [state, setState] = createSignal(props.memory.read(() => createStack(props.seed)))
-  const update = (value: Stack) => {
-    setState(value)
-    props.memory.write(value)
+  createEffect(() => props.memory.write(state()))
+  useSceneClock(props.active, (dt) => setState((s) => advanceStack(s, dt)))
+  const reset = () => setState(createStack(props.seed))
+  const terminal = () => state().phase === "won" || state().phase === "missed"
+  const act = () => {
+    props.interact()
+    if (terminal()) reset()
+    else setState(dropBlock)
   }
-  const height = () => state().blocks.length - 1
-  const finished = () => state().phase === "won" || state().phase === "missed"
-  useSceneClock(props.active, (dt) => update(advanceStack(state(), dt)))
-  const drop = () => update(dropBlock(state()))
   const status = () => {
-    if (state().phase === "won")
-      return i18n._({ id: "welcome.stack.won", message: "Twelve floors. You built it, one tap at a time." })
-    if (state().phase === "missed")
+    if (terminal())
       return i18n._({
-        id: "welcome.stack.missed",
-        message: "{count} floors tall. Ready for another try?",
-        values: { count: height() },
+        id: "welcome.stack.result",
+        message: "{height} floors · Play again",
+        values: { height: state().blocks.length - 1 },
       })
-    if (state().last === "perfect")
-      return i18n._({
-        id: "welcome.stack.perfect",
-        message: "Perfect landing · {count} in a row",
-        values: { count: state().combo },
-      })
-    return i18n._({
-      id: "welcome.stack.goal",
-      message: "Build twelve floors. Three perfect landings recover some width.",
-    })
+    if (!props.active()) return i18n._({ id: "welcome.common.continue", message: "Click to continue" })
+    if (state().phase === "ready") return i18n._({ id: "welcome.stack.ready", message: "Click to drop" })
+    return `${state().blocks.length - 1} / ${stackGoal}${state().combo > 1 ? ` · ×${state().combo}` : ""}`
   }
+  function block(
+    ctx: CanvasRenderingContext2D,
+    ink: Ink,
+    x: number,
+    y: number,
+    width: number,
+    perfect: boolean,
+    moving = false,
+  ) {
+    x = Math.round(x / 2) * 2
+    width = Math.floor(width / 2) * 2
+    ctx.fillStyle = moving ? ink.strong : ink.accent
+    ctx.fillRect(x, y, width, 16)
+    ctx.globalAlpha = 0.65
+    ctx.fillStyle = ink.paper
+    ctx.fillRect(x + 2, y + 2, width - 4, 2)
+    ctx.globalAlpha = 1
+    ctx.fillStyle = ink.strong
+    ctx.globalAlpha = 0.15
+    ctx.fillRect(x, y + 14, width, 2)
+    ctx.globalAlpha = 1
+    for (let wx = x + 6; wx < x + width - 4; wx += 12) {
+      ctx.globalAlpha = perfect ? 0.9 : 0.45
+      ctx.fillStyle = ink.paper
+      ctx.fillRect(wx, y + 6, 4, 5)
+    }
+    ctx.globalAlpha = 1
+  }
+  const canvas = usePixelCanvas(
+    (ctx, ink) => {
+      const s = state()
+      ctx.globalAlpha = 0.12
+      ctx.fillStyle = ink.strong
+      for (let i = 0; i < 12; i++) {
+        const x = 40 + i * 55,
+          h = 8 + ((i * 17) % 30)
+        ctx.fillRect(x, 307 - h, 20 + (i % 3) * 8, h)
+      }
+      ctx.fillRect(40, 310, 640, 2)
+      ctx.globalAlpha = 1
+      s.blocks.forEach((b, index) => block(ctx, ink, b.x, 292 - index * 19, b.width, b.perfect))
+      if (!terminal()) {
+        const y = 292 - s.blocks.length * 19 - 7
+        block(ctx, ink, s.moving.x, y, s.moving.width, false, true)
+        ctx.globalAlpha = 0.08
+        ctx.fillStyle = ink.strong
+        ctx.fillRect(s.moving.x, 310, Math.max(2, s.moving.width), 3)
+        ctx.globalAlpha = 1
+      }
+      if (s.cut) {
+        ctx.globalAlpha = Math.max(0, 1 - s.cut.age / 0.8)
+        block(
+          ctx,
+          ink,
+          s.cut.x + s.cut.direction * s.cut.age * 85,
+          292 - s.cut.level * 19 + s.cut.age * s.cut.age * 240,
+          s.cut.width,
+          false,
+        )
+        ctx.globalAlpha = 1
+      }
+      if (s.phase === "won")
+        sprite(ctx, sprites.flag, s.blocks.at(-1)!.x + 12, 292 - s.blocks.length * 19 - 12, 3, ink.strong, ink.second)
+    },
+    720,
+    340,
+  )
   return (
-    <section
-      class="welcome-game welcome-stack"
-      data-phase={state().phase}
-      data-height={height()}
-      data-engaged={state().phase === "playing" ? "" : undefined}
-    >
-      <div class="welcome-game-heading">
-        <h2>{i18n._({ id: "welcome.stack.name", message: "Tiny tower" })}</h2>
-        <p>{i18n._({ id: "welcome.stack.hint", message: "Wait for the moment. Drop one more block." })}</p>
-      </div>
-      <div class="welcome-score" aria-hidden="true">
-        <span>{height()}</span>
-        <span class="welcome-score-separator">/</span>
-        {stackGoal}
-      </div>
-      <svg
-        class="welcome-game-art stack-art"
-        viewBox="0 0 720 320"
-        data-welcome-visual
-        role="group"
-        tabindex="0"
-        aria-label={i18n._({
-          id: "welcome.stack.board",
-          message: "Block stacking playfield. Press Space or Enter to drop a block.",
+    <div class="welcome-game welcome-stack" data-phase={state().phase} data-height={state().blocks.length - 1}>
+      <GameSurface
+        scene={props}
+        name={i18n._({ id: "welcome.stack.name", message: "Tiny tower" })}
+        status={status()}
+        playing={state().phase === "playing"}
+        onAction={act}
+        onReset={reset}
+        help={i18n._({
+          id: "welcome.stack.help",
+          message: "Click or press Space to stack the moving floor. Line up the edges.",
         })}
-        onClick={(event) => {
-          event.currentTarget.focus({ preventScroll: true })
-          drop()
-        }}
-        onKeyDown={(event) => {
-          if (event.key === " " || event.key === "Enter") {
-            event.preventDefault()
-            if (!event.repeat) drop()
+        onKey={(e) => {
+          if (e.key === " " || e.key === "Enter") {
+            e.preventDefault()
+            e.stopPropagation()
+            act()
           }
         }}
       >
-        <path class="stack-ground" d="M175 299H555M226 309H500" />
-        <path class="stack-guide" d="M250 52V282M470 52V282" />
-        <For each={state().blocks}>
-          {(block, index) => (
-            <g class="stack-settle">
-              <TowerBlock x={block.x} width={block.width} y={280 - index() * 17} perfect={block.perfect} />
-            </g>
-          )}
-        </For>
-        <Show when={!finished()}>
-          <TowerBlock
-            x={state().moving.x}
-            width={state().moving.width}
-            y={280 - state().blocks.length * 17 - 9}
-            moving
-          />
-        </Show>
-        <Show when={state().cut}>
-          {(cut) => (
-            <g
-              opacity={Math.max(0, 1 - cut().age / 0.8)}
-              transform={`translate(${cut().direction * cut().age * 65} ${cut().age ** 2 * 320})`}
-            >
-              <TowerBlock x={cut().x} width={cut().width} y={280 - cut().level * 17} />
-            </g>
-          )}
-        </Show>
-        <Show when={state().phase === "won"}>
-          <g class="stack-flag" transform={`translate(${state().blocks.at(-1)!.x + 30} 56)`}>
-            <path d="M0 0V-38L30-28 0-18" />
-          </g>
-        </Show>
-      </svg>
-      <GameFooter
-        status={status()}
-        disabled={props.disabled}
-        onCreate={() =>
-          props.onStart(
-            i18n._({
-              id: "welcome.stack.draft",
-              message:
-                "Build a one-tap block-stacking game with a small illuminated tower. Include precise landing feedback, falling overhangs, perfect streaks, short rounds and a restart. Support touch and keyboard. I would like to change the architecture and add my own rules.",
-            }),
-          )
-        }
-      >
-        <button
-          type="button"
-          class="welcome-play"
-          onClick={() => (finished() ? update(createStack(props.seed)) : drop())}
-        >
-          {finished()
-            ? i18n._({ id: "welcome.common.tryAgain", message: "Try again" })
-            : i18n._({ id: "welcome.stack.drop", message: "Drop a block" })}
-        </button>
-        <Show when={!props.active() && state().phase === "playing"}>
-          <button
-            type="button"
-            onClick={() => {
-              for (let i = 0; i < 6; i++) update(advanceStack(state(), 0.05))
-            }}
-          >
-            {i18n._({ id: "welcome.common.step", message: "Advance one step" })}
-          </button>
-        </Show>
-        <button type="button" onClick={() => update(createStack(props.seed))}>
-          {i18n._({ id: "welcome.common.reset", message: "Start over" })}
-        </button>
-      </GameFooter>
-    </section>
+        <canvas
+          ref={canvas.ref}
+          class="welcome-game-canvas"
+          data-welcome-visual
+          tabIndex={0}
+          role="group"
+          aria-label={i18n._({ id: "welcome.stack.field", message: "Stacking playfield" })}
+          onClick={() => {
+            canvas.element().focus({ preventScroll: true })
+            act()
+          }}
+        />
+      </GameSurface>
+    </div>
   )
 }
