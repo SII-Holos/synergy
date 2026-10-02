@@ -35,6 +35,7 @@ function aliasConfig(stubPath: string) {
     "@/utils/perf",
     "@/components/workspace/browser/browser-view-effects",
     "@/context/locale",
+    "@/context/execution",
     "@/context/session-optimistic-message",
     "./session-timeline",
     "./session-transition-card",
@@ -55,10 +56,16 @@ beforeAll(async () => {
     Bun.write(
       stubPath,
       `
-        import { createMemo, createSignal } from "solid-js"
+        import { createMemo, createSignal, Show } from "solid-js"
 
         let mountCount = 0
         ;(window as any).__sessionTurnMounts = () => mountCount
+        const [executionAvailable, setExecutionAvailable] = createSignal(true)
+        const openedExecution: string[] = []
+        Object.assign(window, {
+          __setExecutionAvailable: setExecutionAvailable,
+          __openedExecution: openedExecution,
+        })
 
         export function SessionTurn(props: any) {
           const [mounted] = createSignal(++mountCount)
@@ -66,6 +73,9 @@ beforeAll(async () => {
           return (
             <div data-slot="session-turn-stub" data-message-id={props.messageID} data-mount={mounted()} data-part-count={props.segment?.parts.length}>
               {root()?.text ?? ""}
+              <Show when={props.onExecutionDetails}>
+                <button aria-label="Task details" data-execution-details onClick={() => props.onExecutionDetails()} />
+              </Show>
             </div>
           )
         }
@@ -86,6 +96,11 @@ beforeAll(async () => {
         })
         export const SessionTimeline = () => null
         export const SessionTransitionCard = () => null
+        export const useExecution = () => ({
+          available: executionAvailable,
+          round: () => undefined,
+          open: (id: string) => openedExecution.push(id),
+        })
         export const messageAllowsCanonicalActions = () => false
       `,
     ),
@@ -205,6 +220,31 @@ afterAll(async () => {
 })
 
 describe("conversation row retention", () => {
+  test("offers turn details only when the server exposes execution inspection", async () => {
+    await page.evaluate(
+      (messages) => {
+        const fixture = window as unknown as { __setTimeline: (messages: unknown[]) => void }
+        fixture.__setTimeline(messages)
+      },
+      [JSON.parse(msg("msg_capability", "user", "Task"))],
+    )
+    const details = page.locator("[data-execution-details]")
+    await expect(details.count()).resolves.toBe(1)
+    await details.click()
+    expect(await page.evaluate(() => (window as unknown as { __openedExecution: string[] }).__openedExecution)).toEqual(
+      ["msg_capability"],
+    )
+    await page.evaluate(() =>
+      (window as unknown as { __setExecutionAvailable: (available: boolean) => void }).__setExecutionAvailable(false),
+    )
+    await expect(details.count()).resolves.toBe(0)
+    await page.evaluate(() =>
+      (window as unknown as { __setExecutionAvailable: (available: boolean) => void }).__setExecutionAvailable(true),
+    )
+    await expect(details.count()).resolves.toBe(1)
+    expect(pageErrors).toEqual([])
+  })
+
   test("keeps rows mounted across message object replacement and propagates updates", async () => {
     await page.evaluate(
       (msgs) => {
@@ -323,6 +363,27 @@ describe("conversation row retention", () => {
     const after = await page.locator('[data-display-row="target:part-0000"]').boundingBox()
     expect(after).not.toBeNull()
     expect(Math.abs(after!.y - before!.y)).toBeLessThan(3)
+    expect(pageErrors).toEqual([])
+  })
+  test("virtualized turns retain one capability-gated details action on their footer", async () => {
+    await page.evaluate(() => {
+      const fixture = window as unknown as { __setTimeline(messages: unknown[]): void; __enableContent(): void }
+      fixture.__setTimeline([
+        { id: "virtual-details", sessionID: "ses_1", role: "user", text: "Task", time: { created: 1 } },
+      ])
+      fixture.__enableContent()
+    })
+    await page.locator('[data-display-row="virtual-details:footer"]').waitFor()
+    const details = page.locator("[data-execution-details]")
+    expect(await details.count()).toBe(1)
+    await details.click()
+    expect(
+      await page.evaluate(() => (window as unknown as { __openedExecution: string[] }).__openedExecution.at(-1)),
+    ).toBe("virtual-details")
+    await page.evaluate(() =>
+      (window as unknown as { __setExecutionAvailable(value: boolean): void }).__setExecutionAvailable(false),
+    )
+    expect(await details.count()).toBe(0)
     expect(pageErrors).toEqual([])
   })
 })

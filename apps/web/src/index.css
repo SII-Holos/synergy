@@ -344,18 +344,6 @@ a {
   padding-bottom: 8px;
 }
 
-.session-prompt-dock-footer {
-  min-height: 32px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.session-status-bar .statusbar-glass {
-  background: transparent;
-  border: 0;
-}
-
 .session-composer-editor {
   max-height: min(240px, 40dvh);
   overscroll-behavior: contain;

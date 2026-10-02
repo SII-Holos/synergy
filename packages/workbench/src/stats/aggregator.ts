@@ -212,7 +212,7 @@ export namespace Aggregator {
         reasoning: entry.tokens.reasoning.known,
         cache: { read: entry.tokens.cacheRead.known, write: entry.tokens.cacheWrite.known },
       }
-      const knownCost = entry.apiEstimate.known
+      const knownCost = RolloutAccounting.knownExpense(entry)
       addTokens(totals.tokens, usage)
       totals.cost += knownCost
       const modelKey = `${call.model.providerID}/${call.model.modelID}`

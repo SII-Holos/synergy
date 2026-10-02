@@ -4,6 +4,7 @@ import { SDKProvider, useSDK } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
 import { LocalProvider } from "@/context/local"
 import { FileProvider } from "@/context/file"
+import { ExecutionProvider } from "@/context/execution"
 import { useGlobalSync } from "@/context/global-sync"
 import { createSessionDataRuntime } from "@/context/session-data-view"
 
@@ -48,9 +49,11 @@ export default function Layout(props: ParentProps) {
                   onPermissionRespond={respond}
                   onNavigateToSession={navigateToSession}
                 >
-                  <LocalProvider>
-                    <FileProvider>{props.children}</FileProvider>
-                  </LocalProvider>
+                  <ExecutionProvider>
+                    <LocalProvider>
+                      <FileProvider>{props.children}</FileProvider>
+                    </LocalProvider>
+                  </ExecutionProvider>
                 </DataProvider>
               )
             })}

@@ -27,7 +27,7 @@ msgstr "已委派"
 
 #. js-lingui-explicit-id
 msgid "activity.trace.family.execute"
-msgstr "已执行"
+msgstr "执行命令"
 
 #. js-lingui-explicit-id
 msgid "activity.trace.family.external-action"
@@ -11888,6 +11888,622 @@ msgstr "{state, select, idle {未分配} allocating {正在启动} ready {已就
 #. js-lingui-explicit-id
 msgid "environment.dialog.title"
 msgstr "选择 Environment"
+
+#. js-lingui-explicit-id
+msgid "execution.activity"
+msgstr "活动概览"
+
+#. js-lingui-explicit-id
+msgid "execution.activityOrder"
+msgstr "活动顺序"
+
+#. js-lingui-explicit-id
+msgid "execution.actor"
+msgstr "执行者"
+
+#. js-lingui-explicit-id
+msgid "execution.actualRequest"
+msgstr "实际模型请求"
+
+#. js-lingui-explicit-id
+msgid "execution.allRounds"
+msgstr "整个会话"
+
+#. js-lingui-explicit-id
+msgid "execution.allStatuses"
+msgstr "全部状态"
+
+#. js-lingui-explicit-id
+msgid "execution.allTasks"
+msgstr "全部任务"
+
+#. js-lingui-explicit-id
+msgid "execution.allTypes"
+msgstr "全部类型"
+
+#. js-lingui-explicit-id
+msgid "execution.anomalies"
+msgstr "异常与重试"
+
+#. js-lingui-explicit-id
+msgid "execution.back"
+msgstr "返回轨迹"
+
+#. js-lingui-explicit-id
+msgid "execution.callCount"
+msgstr "{count} 次模型调用"
+
+#. js-lingui-explicit-id
+msgid "execution.calls"
+msgstr "调用"
+
+#. js-lingui-explicit-id
+msgid "execution.callsTruncated"
+msgstr "显示 {shown} / {total} 次调用。完整记录可在轨迹中查看。"
+
+#. js-lingui-explicit-id
+msgid "execution.cancelled"
+msgstr "已取消"
+
+#. js-lingui-explicit-id
+msgid "execution.cancelRead"
+msgstr "取消读取"
+
+#. js-lingui-explicit-id
+msgid "execution.chartEvents"
+msgstr "{count} 个事件 · {start}–{end}"
+
+#. js-lingui-explicit-id
+msgid "execution.chartExpand"
+msgstr "展开活动图"
+
+#. js-lingui-explicit-id
+msgid "execution.children"
+msgstr "子任务"
+
+#. js-lingui-explicit-id
+msgid "execution.clear"
+msgstr "清除筛选"
+
+#. js-lingui-explicit-id
+msgid "execution.collapse"
+msgstr "收起任务详情"
+
+#. js-lingui-explicit-id
+msgid "execution.completed"
+msgstr "已完成"
+
+#. js-lingui-explicit-id
+msgid "execution.connected"
+msgstr "已连接"
+
+#. js-lingui-explicit-id
+msgid "execution.contentActions"
+msgstr "内容操作"
+
+#. js-lingui-explicit-id
+msgid "execution.contentBlock"
+msgstr "字节 {start}–{end}，共 {total} 字节"
+
+#. js-lingui-explicit-id
+msgid "execution.contentError"
+msgstr "无法读取或校验此内容，请重试。"
+
+#. js-lingui-explicit-id
+msgid "execution.context"
+msgstr "上下文占用"
+
+#. js-lingui-explicit-id
+msgid "execution.contextHelp"
+msgstr "最近一次主任务请求的上下文占用，与累计用量分别统计。推理用量已包含在输出中。"
+
+#. js-lingui-explicit-id
+msgid "execution.contextStale"
+msgstr "此请求之后，上下文已发生变化。"
+
+#. js-lingui-explicit-id
+msgid "execution.contextUnknown"
+msgstr "未记录上下文用量或可用上限。"
+
+#. js-lingui-explicit-id
+msgid "execution.copied"
+msgstr "已复制完整内容"
+
+#. js-lingui-explicit-id
+msgid "execution.copy"
+msgstr "复制 JSON"
+
+#. js-lingui-explicit-id
+msgid "execution.copyBlock"
+msgstr "复制{label}"
+
+#. js-lingui-explicit-id
+msgid "execution.copyFailed"
+msgstr "剪贴板不可用，已下载完整内容。"
+
+#. js-lingui-explicit-id
+msgid "execution.copyFull"
+msgstr "复制完整 JSON"
+
+#. js-lingui-explicit-id
+msgid "execution.copying"
+msgstr "正在读取完整内容… {percent}%"
+
+#. js-lingui-explicit-id
+msgid "execution.copyText"
+msgstr "复制完整内容"
+
+#. js-lingui-explicit-id
+msgid "execution.cost"
+msgstr "费用"
+
+#. js-lingui-explicit-id
+msgid "execution.definitions"
+msgstr "工具定义"
+
+#. js-lingui-explicit-id
+msgid "execution.diagnostics"
+msgstr "参数与诊断"
+
+#. js-lingui-explicit-id
+msgid "execution.disconnected"
+msgstr "正在重新连接…"
+
+#. js-lingui-explicit-id
+msgid "execution.download"
+msgstr "下载完整内容"
+
+#. js-lingui-explicit-id
+msgid "execution.downloadPartial"
+msgstr "下载已记录的部分内容"
+
+#. js-lingui-explicit-id
+msgid "execution.elapsed"
+msgstr "执行耗时"
+
+#. js-lingui-explicit-id
+msgid "execution.empty"
+msgstr "没有符合筛选条件的记录。"
+
+#. js-lingui-explicit-id
+msgid "execution.end"
+msgstr "结束时间"
+
+#. js-lingui-explicit-id
+msgid "execution.environment"
+msgstr "连接状态"
+
+#. js-lingui-explicit-id
+msgid "execution.error"
+msgstr "无法加载执行记录。"
+
+#. js-lingui-explicit-id
+msgid "execution.errorDetails"
+msgstr "错误详情"
+
+#. js-lingui-explicit-id
+msgid "execution.estimate"
+msgstr "估算费用"
+
+#. js-lingui-explicit-id
+msgid "execution.eventCount"
+msgstr "{count} 个事件"
+
+#. js-lingui-explicit-id
+msgid "execution.expand"
+msgstr "放大任务详情"
+
+#. js-lingui-explicit-id
+msgid "execution.export"
+msgstr "导出轨迹"
+
+#. js-lingui-explicit-id
+msgid "execution.failed"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "execution.filter"
+msgstr "筛选"
+
+#. js-lingui-explicit-id
+msgid "execution.filteredNode"
+msgstr "从活动图打开，已保留筛选条件"
+
+#. js-lingui-explicit-id
+msgid "execution.firstRequest"
+msgstr "首次请求"
+
+#. js-lingui-explicit-id
+msgid "execution.free"
+msgstr "剩余上下文"
+
+#. js-lingui-explicit-id
+msgid "execution.full"
+msgstr "查看完整轨迹"
+
+#. js-lingui-explicit-id
+msgid "execution.historicalCost"
+msgstr "历史金额"
+
+#. js-lingui-explicit-id
+msgid "execution.history"
+msgstr "归一化消息"
+
+#. js-lingui-explicit-id
+msgid "execution.humanInputs"
+msgstr "{count} 次用户输入"
+
+#. js-lingui-explicit-id
+msgid "execution.idle"
+msgstr "{duration} 内无已记录活动"
+
+#. js-lingui-explicit-id
+msgid "execution.input"
+msgstr "输入"
+
+#. js-lingui-explicit-id
+msgid "execution.inspect"
+msgstr "节点详情"
+
+#. js-lingui-explicit-id
+msgid "execution.interrupted"
+msgstr "已中断"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.compaction"
+msgstr "上下文压缩"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.context"
+msgstr "上下文与指令"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.input"
+msgstr "用户输入"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.model"
+msgstr "模型调用"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.output"
+msgstr "回复"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.process"
+msgstr "进程输出"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.reasoning"
+msgstr "思考"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.retry"
+msgstr "模型请求尝试"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.subtask"
+msgstr "子任务"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.tool"
+msgstr "工具执行"
+
+#. js-lingui-explicit-id
+msgid "execution.kind.turn"
+msgstr "轮次"
+
+#. js-lingui-explicit-id
+msgid "execution.knownEstimate"
+msgstr "已知估算"
+
+#. js-lingui-explicit-id
+msgid "execution.latest"
+msgstr "返回最新"
+
+#. js-lingui-explicit-id
+msgid "execution.legacy"
+msgstr "仅保留消息历史，未记录原始请求和执行计时。"
+
+#. js-lingui-explicit-id
+msgid "execution.loadContent"
+msgstr "加载已记录的内容"
+
+#. js-lingui-explicit-id
+msgid "execution.loading"
+msgstr "正在加载执行记录…"
+
+#. js-lingui-explicit-id
+msgid "execution.loadMore"
+msgstr "读取下一块内容"
+
+#. js-lingui-explicit-id
+msgid "execution.localCost"
+msgstr "无 API 费用"
+
+#. js-lingui-explicit-id
+msgid "execution.matches"
+msgstr "搜索结果"
+
+#. js-lingui-explicit-id
+msgid "execution.message"
+msgstr "已记录的消息"
+
+#. js-lingui-explicit-id
+msgid "execution.missingCost"
+msgstr "{count} 次请求缺少费用记录"
+
+#. js-lingui-explicit-id
+msgid "execution.missingTimes"
+msgstr "部分事件未记录时间"
+
+#. js-lingui-explicit-id
+msgid "execution.more"
+msgstr "更多详情"
+
+#. js-lingui-explicit-id
+msgid "execution.moreSections"
+msgstr "更多章节"
+
+#. js-lingui-explicit-id
+msgid "execution.multipleRounds"
+msgstr "{count} 个轮次"
+
+#. js-lingui-explicit-id
+msgid "execution.newEvents"
+msgstr "{count} 个新增事件"
+
+#. js-lingui-explicit-id
+msgid "execution.newOutput"
+msgstr "有新的输出"
+
+#. js-lingui-explicit-id
+msgid "execution.next"
+msgstr "较新记录"
+
+#. js-lingui-explicit-id
+msgid "execution.noContent"
+msgstr "未记录此内容。"
+
+#. js-lingui-explicit-id
+msgid "execution.noCost"
+msgstr "未记录费用"
+
+#. js-lingui-explicit-id
+msgid "execution.noMatches"
+msgstr "此内容中没有匹配结果"
+
+#. js-lingui-explicit-id
+msgid "execution.observation"
+msgstr "模型收到的结果"
+
+#. js-lingui-explicit-id
+msgid "execution.openSession"
+msgstr "打开子任务对话"
+
+#. js-lingui-explicit-id
+msgid "execution.output"
+msgstr "输出"
+
+#. js-lingui-explicit-id
+msgid "execution.outsideFilters"
+msgstr "当前筛选之外"
+
+#. js-lingui-explicit-id
+msgid "execution.overview"
+msgstr "概览"
+
+#. js-lingui-explicit-id
+msgid "execution.own"
+msgstr "主任务"
+
+#. js-lingui-explicit-id
+msgid "execution.partial"
+msgstr "部分记录"
+
+#. js-lingui-explicit-id
+msgid "execution.partialContent"
+msgstr "部分内容 · 记录尚不完整"
+
+#. js-lingui-explicit-id
+msgid "execution.partialHelp"
+msgstr "部分执行证据缺失，仅显示已有记录。"
+
+#. js-lingui-explicit-id
+msgid "execution.previous"
+msgstr "较早记录"
+
+#. js-lingui-explicit-id
+msgid "execution.priceEvidence"
+msgstr "保存的费率"
+
+#. js-lingui-explicit-id
+msgid "execution.processView"
+msgstr "任务过程"
+
+#. js-lingui-explicit-id
+msgid "execution.purpose"
+msgstr "调用用途"
+
+#. js-lingui-explicit-id
+msgid "execution.raw"
+msgstr "原始结果"
+
+#. js-lingui-explicit-id
+msgid "execution.rawJson"
+msgstr "原始 JSON"
+
+#. js-lingui-explicit-id
+msgid "execution.rawStructure"
+msgstr "查看保存的字段"
+
+#. js-lingui-explicit-id
+msgid "execution.realTime"
+msgstr "真实时间"
+
+#. js-lingui-explicit-id
+msgid "execution.recorded"
+msgstr "执行证据"
+
+#. js-lingui-explicit-id
+msgid "execution.recordedDefinition"
+msgstr "使用执行时随模型请求保存的工具定义。"
+
+#. js-lingui-explicit-id
+msgid "execution.recordsView"
+msgstr "全部记录"
+
+#. js-lingui-explicit-id
+msgid "execution.refreshContent"
+msgstr "读取最新版本"
+
+#. js-lingui-explicit-id
+msgid "execution.reported"
+msgstr "已报告费用"
+
+#. js-lingui-explicit-id
+msgid "execution.request"
+msgstr "语义请求"
+
+#. js-lingui-explicit-id
+msgid "execution.response"
+msgstr "模型响应"
+
+#. js-lingui-explicit-id
+msgid "execution.result"
+msgstr "结果"
+
+#. js-lingui-explicit-id
+msgid "execution.retries"
+msgstr "{count} 次重试"
+
+#. js-lingui-explicit-id
+msgid "execution.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "execution.retryAttempt"
+msgstr "重试 {number}"
+
+#. js-lingui-explicit-id
+msgid "execution.round"
+msgstr "第 {number} 轮"
+
+#. js-lingui-explicit-id
+msgid "execution.rounds"
+msgstr "轮次"
+
+#. js-lingui-explicit-id
+msgid "execution.running"
+msgstr "运行中"
+
+#. js-lingui-explicit-id
+msgid "execution.savedRequest"
+msgstr "保存的请求"
+
+#. js-lingui-explicit-id
+msgid "execution.search"
+msgstr "搜索全部执行记录"
+
+#. js-lingui-explicit-id
+msgid "execution.searchContent"
+msgstr "搜索完整内容"
+
+#. js-lingui-explicit-id
+msgid "execution.sections"
+msgstr "分节阅读"
+
+#. js-lingui-explicit-id
+msgid "execution.sectionsTruncated"
+msgstr "目录省略了部分章节。原始 JSON 和下载保留已记录的内容。"
+
+#. js-lingui-explicit-id
+msgid "execution.start"
+msgstr "开始时间"
+
+#. js-lingui-explicit-id
+msgid "execution.status"
+msgstr "状态"
+
+#. js-lingui-explicit-id
+msgid "execution.subscription"
+msgstr "订阅等价估算"
+
+#. js-lingui-explicit-id
+msgid "execution.taskInstructions"
+msgstr "{count} 条子任务指令"
+
+#. js-lingui-explicit-id
+msgid "execution.tasks"
+msgstr "子任务"
+
+#. js-lingui-explicit-id
+msgid "execution.time"
+msgstr "时间"
+
+#. js-lingui-explicit-id
+msgid "execution.timing"
+msgstr "计时"
+
+#. js-lingui-explicit-id
+msgid "execution.title"
+msgstr "任务详情"
+
+#. js-lingui-explicit-id
+msgid "execution.tokens"
+msgstr "累计用量"
+
+#. js-lingui-explicit-id
+msgid "execution.toolInput"
+msgstr "工具输入"
+
+#. js-lingui-explicit-id
+msgid "execution.toolOutput"
+msgstr "工具输出"
+
+#. js-lingui-explicit-id
+msgid "execution.totalHelp"
+msgstr "整个任务及其子任务的累计输入和输出，包含已记录的重试用量。"
+
+#. js-lingui-explicit-id
+msgid "execution.trajectory"
+msgstr "执行轨迹"
+
+#. js-lingui-explicit-id
+msgid "execution.type"
+msgstr "事件类型"
+
+#. js-lingui-explicit-id
+msgid "execution.unassigned"
+msgstr "未记录所属轮次"
+
+#. js-lingui-explicit-id
+msgid "execution.unclassified"
+msgstr "未分类模型调用"
+
+#. js-lingui-explicit-id
+msgid "execution.unknown"
+msgstr "未知"
+
+#. js-lingui-explicit-id
+msgid "execution.unknownBilling"
+msgstr "未记录计费方式"
+
+#. js-lingui-explicit-id
+msgid "execution.used"
+msgstr "已用上下文"
+
+#. js-lingui-explicit-id
+msgid "execution.versionError"
+msgstr "此内容版本已不可用，请读取最新版本。"
+
+#. js-lingui-explicit-id
+msgid "execution.view"
+msgstr "视图"
+
+#. js-lingui-explicit-id
+msgid "execution.wrap"
+msgstr "自动换行"
 
 #. js-lingui-explicit-id
 msgid "list.for-label"
@@ -24447,6 +25063,34 @@ msgstr "工具输入"
 #. js-lingui-explicit-id
 msgid "ui.errorCard.unknownError"
 msgstr "未知错误"
+
+#. js-lingui-explicit-id
+msgid "ui.execution.cancelled"
+msgstr "已取消"
+
+#. js-lingui-explicit-id
+msgid "ui.execution.completed"
+msgstr "已完成"
+
+#. js-lingui-explicit-id
+msgid "ui.execution.details"
+msgstr "详情"
+
+#. js-lingui-explicit-id
+msgid "ui.execution.failed"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "ui.execution.interrupted"
+msgstr "已中断"
+
+#. js-lingui-explicit-id
+msgid "ui.execution.running"
+msgstr "运行中"
+
+#. js-lingui-explicit-id
+msgid "ui.execution.unknown"
+msgstr "未记录状态"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.close"

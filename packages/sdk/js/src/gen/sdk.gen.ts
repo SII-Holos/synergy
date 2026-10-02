@@ -681,6 +681,20 @@ import type {
   SessionDiffErrors,
   SessionDiffResponses,
   SessionEnvironmentSelection,
+  SessionExecutionContentDownloadErrors,
+  SessionExecutionContentDownloadResponses,
+  SessionExecutionContentErrors,
+  SessionExecutionContentResponses,
+  SessionExecutionContentSearchErrors,
+  SessionExecutionContentSearchResponses,
+  SessionExecutionContentSectionsErrors,
+  SessionExecutionContentSectionsResponses,
+  SessionExecutionNodeErrors,
+  SessionExecutionNodeResponses,
+  SessionExecutionSummaryErrors,
+  SessionExecutionSummaryResponses,
+  SessionExecutionTrajectoryErrors,
+  SessionExecutionTrajectoryResponses,
   SessionExportDownloadErrors,
   SessionExportDownloadResponses,
   SessionExportEstimateErrors,
@@ -2587,6 +2601,347 @@ export class Session extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<SessionAgendaResponses, SessionAgendaErrors, ThrowOnError>({
       url: "/session/{sessionID}/agenda",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read a compact session execution summary
+   */
+  public executionSummary<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      runID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "runID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionExecutionSummaryResponses,
+      SessionExecutionSummaryErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/execution/summary",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Page through session execution records
+   */
+  public executionTrajectory<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      mode?: "process" | "records"
+      order?: "time" | "round" | "call"
+      runID?: string
+      session?: string
+      actor?: "main" | "all"
+      query?: string
+      kind?:
+        | "turn"
+        | "input"
+        | "context"
+        | "reasoning"
+        | "output"
+        | "model"
+        | "retry"
+        | "tool"
+        | "process"
+        | "compaction"
+        | "subtask"
+      status?: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown"
+      kinds?: string
+      statuses?: string
+      anomalies?: boolean
+      from?: number
+      to?: number
+      activityFrom?: number
+      activityTo?: number
+      cursor?: string
+      anchor?: string
+      position?: "before" | "after" | "around"
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "mode" },
+            { in: "query", key: "order" },
+            { in: "query", key: "runID" },
+            { in: "query", key: "session" },
+            { in: "query", key: "actor" },
+            { in: "query", key: "query" },
+            { in: "query", key: "kind" },
+            { in: "query", key: "status" },
+            { in: "query", key: "kinds" },
+            { in: "query", key: "statuses" },
+            { in: "query", key: "anomalies" },
+            { in: "query", key: "from" },
+            { in: "query", key: "to" },
+            { in: "query", key: "activityFrom" },
+            { in: "query", key: "activityTo" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "anchor" },
+            { in: "query", key: "position" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionExecutionTrajectoryResponses,
+      SessionExecutionTrajectoryErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/execution/trajectory",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Inspect one session execution record
+   */
+  public executionNode<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      nodeID: string
+      directory?: string
+      scopeID?: string
+      runID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "nodeID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "runID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionExecutionNodeResponses,
+      SessionExecutionNodeErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/execution/nodes/{nodeID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read a bounded execution content page
+   */
+  public executionContent<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      nodeID: string
+      directory?: string
+      scopeID?: string
+      field: string
+      runID?: string
+      version?: string
+      offset?: number
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "nodeID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "field" },
+            { in: "query", key: "runID" },
+            { in: "query", key: "version" },
+            { in: "query", key: "offset" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionExecutionContentResponses,
+      SessionExecutionContentErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/execution/nodes/{nodeID}/content",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read structured execution content sections
+   */
+  public executionContentSections<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      nodeID: string
+      directory?: string
+      scopeID?: string
+      field: string
+      runID?: string
+      version?: string
+      cursor?: string
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "nodeID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "field" },
+            { in: "query", key: "runID" },
+            { in: "query", key: "version" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionExecutionContentSectionsResponses,
+      SessionExecutionContentSectionsErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/execution/nodes/{nodeID}/content/sections",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Search an entire version of execution content
+   */
+  public executionContentSearch<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      nodeID: string
+      directory?: string
+      scopeID?: string
+      field: string
+      runID?: string
+      version?: string
+      cursor?: string
+      limit?: number
+      query: string
+      caseSensitive?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "nodeID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "field" },
+            { in: "query", key: "runID" },
+            { in: "query", key: "version" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "query" },
+            { in: "query", key: "caseSensitive" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionExecutionContentSearchResponses,
+      SessionExecutionContentSearchErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/execution/nodes/{nodeID}/content/search",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Download complete execution content at a fixed version
+   */
+  public executionContentDownload<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      nodeID: string
+      directory?: string
+      scopeID?: string
+      field: string
+      runID?: string
+      version?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "nodeID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "field" },
+            { in: "query", key: "runID" },
+            { in: "query", key: "version" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionExecutionContentDownloadResponses,
+      SessionExecutionContentDownloadErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/execution/nodes/{nodeID}/content/download",
       ...options,
       ...params,
     })

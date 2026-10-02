@@ -40,6 +40,7 @@ const builtinIconNames = [
   "cable",
   "calendar-clock",
   "chart-pie",
+  "file-clock",
   "calendar-days",
   "kanban",
   "check",

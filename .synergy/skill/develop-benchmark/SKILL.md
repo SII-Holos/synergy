@@ -81,6 +81,9 @@ description: Change or validate the repository benchmark evaluator, native harne
    Deduplicate kernel OOM observations by container identity and nanosecond event time, independently of CLI/API serialization metadata. Keep live event consumption active through bounded historical collection and close it in `finally`, including cancellation. Docker events cannot prove completeness: retain observed OOM counts as lower bounds and leave the exact count unknown. Test closing with a real Unix HTTP stream and explicit barriers. For kernel OOM acceptance, verify a child receives SIGKILL, the cgroup OOM counter increases and the monitor receives the real event before releasing PID 1 for automatic removal; then verify the retained event. A manual exit code, sleep or lifecycle event is insufficient OOM evidence. Validate Docker cgroup working-set measurements and CPU deltas against a real container; do not substitute missing observations with zero. Preserve unknown metrics when inspection fails, and distinguish sampled peaks from kernel maxima.
 
 2. Reuse immutable artifacts and downloads. Verify frozen artifacts before use, protect explicit inputs before collection, and publish receipts atomically. Never claim pre-existing shared images or invoke global Docker prune.
+
+   Reference enumeration can race with an independent run retiring its own reference. Ignore only a reference removed before reading; preserve surviving protections and propagate malformed or unreadable live references. Test retirement between enumeration and file open with real temporary cache objects rather than serializing independent runs.
+
    Recovery and ownership-handoff containers must inherit the frozen experiment platform even when they reuse an exact image digest. Verify running and stopped container handoff on a host with a different native architecture; Docker's default platform can otherwise select unavailable image content before cleanup runs.
 
    A top-level npm version pin can still admit newer prerelease dependencies. Bind any validated dependency publication cutoff to its exact native package version, include it in cache identity and receipts, and test warm offline reuse plus cutoff invalidation. Other explicit versions must not inherit that condition. Verify the actual native Docker matrix after changing dependency resolution; successful installation alone does not establish compatibility.
@@ -149,6 +152,8 @@ Use the [secret-detection package](../../../packages/secret-detection/README.md)
 ## CI preparation and timing
 
 For deadline-accounting unit tests, advance one controlled clock for both the event loop and lifecycle measurements. Yield to the real timer callbacks before and after a pause, and assert nested queue, active and wall durations exactly. Keep real timeout and cancellation controls separately; do not make correctness depend on synchronous evidence writes finishing within a millisecond budget.
+
+Docker network recovery fixtures use a local admission clock and a separate exact-deadline rejection case. Keep real scheduling persistence and owned cleanup assertions; thread-pool or filesystem contention must not decide whether the scripted retry occurs. See the [clock decision](../../../docs/decisions/implemented/testing/2026-10-02-benchmark-network-admission-clock.md).
 
 The deterministic Docker fixtures reserve one CPU and the default 2 GiB for the host in CI. On a four-CPU runner this admits a two-CPU preparation request alongside an existing native trial working set; default two-CPU reservation caused `cpu_budget` waits through the trial's stopping deadline. Keep actual memory, disk, CPU pressure and native hard-limit checks active. Local research retains its declared resource defaults.
 

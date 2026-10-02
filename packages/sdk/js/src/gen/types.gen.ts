@@ -307,6 +307,54 @@ export type RolloutAccountingSummary = {
     }
     unreported: number
   }
+  costCoverage?: {
+    version: 1
+    api: {
+      attempts: number
+      unreportedRequests?: number
+      unreported: {
+        known: number
+        unknown: number
+        total: number | null
+      }
+      maximum: {
+        known: number
+        unknown: number
+        total: number | null
+      }
+    }
+    subscription: {
+      attempts: number
+      unreportedRequests?: number
+      unreported: {
+        known: number
+        unknown: number
+        total: number | null
+      }
+      maximum: {
+        known: number
+        unknown: number
+        total: number | null
+      }
+    }
+    unclassified: {
+      attempts: number
+      unreportedRequests?: number
+      unreported: {
+        known: number
+        unknown: number
+        total: number | null
+      }
+      maximum: {
+        known: number
+        unknown: number
+        total: number | null
+      }
+    }
+    local: number
+    historical: number
+    historicalAmount?: number
+  }
   units: {
     [key: string]: {
       known: number
@@ -532,7 +580,7 @@ export type UsageSummary = {
         currency: "USD"
         unitTokens: 1000000
         source: {
-          kind: "catalog" | "configuration" | "mixed"
+          kind: "catalog" | "configuration" | "mixed" | "official"
           providerID: string
           modelID: string
         }
@@ -580,6 +628,27 @@ export type UsageSummary = {
           }
         }
         raw: unknown
+        policy?: {
+          id: "deepseek-2026-10-01"
+          effectiveAt: number
+          clock: "request-start"
+          phase: "peak" | "off-peak" | "unknown"
+          calendar: string | null
+          offPeak: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          peak: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+        }
       } | null
       /**
        * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
@@ -634,6 +703,10 @@ export type UsageSummary = {
       total: number | null
       known: number
       missing: Array<string>
+      range?: {
+        minimum: number
+        maximum: number
+      }
     }
     timing?: {
       source: "transport"
@@ -655,6 +728,85 @@ export type UsageSummary = {
       backpressured?: boolean
     }
     usageFinal: boolean
+    pricingEvidence?: {
+      version: 1
+      source: "attempt" | "historical"
+      pricing: {
+        version: 1
+        currency: "USD"
+        unitTokens: 1000000
+        source: {
+          kind: "catalog" | "configuration" | "mixed" | "official"
+          providerID: string
+          modelID: string
+        }
+        capturedAt: number
+        rates: {
+          input: number | null
+          output: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+          cacheWrite1h: number | null
+        }
+        over200K?: {
+          input: number | null
+          output: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+          cacheWrite1h: number | null
+        }
+        contextTiers?: Array<{
+          above: number
+          rates: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+        }>
+        units?: {
+          audio_seconds?: {
+            price: number
+            per: number
+          }
+          audio_input_tokens?: {
+            price: number
+            per: number
+          }
+          audio_output_tokens?: {
+            price: number
+            per: number
+          }
+          characters?: {
+            price: number
+            per: number
+          }
+        }
+        raw: unknown
+        policy?: {
+          id: "deepseek-2026-10-01"
+          effectiveAt: number
+          clock: "request-start"
+          phase: "peak" | "off-peak" | "unknown"
+          calendar: string | null
+          offPeak: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          peak: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+        }
+      } | null
+    }
     httpStatus?: number
     responseModel?: string
   } | null
@@ -775,7 +927,7 @@ export type UsageRecord =
           currency: "USD"
           unitTokens: 1000000
           source: {
-            kind: "catalog" | "configuration" | "mixed"
+            kind: "catalog" | "configuration" | "mixed" | "official"
             providerID: string
             modelID: string
           }
@@ -823,6 +975,27 @@ export type UsageRecord =
             }
           }
           raw: unknown
+          policy?: {
+            id: "deepseek-2026-10-01"
+            effectiveAt: number
+            clock: "request-start"
+            phase: "peak" | "off-peak" | "unknown"
+            calendar: string | null
+            offPeak: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+            peak: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+          }
         } | null
         /**
          * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
@@ -876,6 +1049,10 @@ export type UsageRecord =
         total: number | null
         known: number
         missing: Array<string>
+        range?: {
+          minimum: number
+          maximum: number
+        }
       }
       hasAttempts: boolean
     }
@@ -915,7 +1092,7 @@ export type UsageRecord =
           currency: "USD"
           unitTokens: 1000000
           source: {
-            kind: "catalog" | "configuration" | "mixed"
+            kind: "catalog" | "configuration" | "mixed" | "official"
             providerID: string
             modelID: string
           }
@@ -963,6 +1140,27 @@ export type UsageRecord =
             }
           }
           raw: unknown
+          policy?: {
+            id: "deepseek-2026-10-01"
+            effectiveAt: number
+            clock: "request-start"
+            phase: "peak" | "off-peak" | "unknown"
+            calendar: string | null
+            offPeak: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+            peak: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+          }
         } | null
         /**
          * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
@@ -1017,6 +1215,10 @@ export type UsageRecord =
         total: number | null
         known: number
         missing: Array<string>
+        range?: {
+          minimum: number
+          maximum: number
+        }
       }
       timing?: {
         source: "transport"
@@ -1038,6 +1240,85 @@ export type UsageRecord =
         backpressured?: boolean
       }
       usageFinal: boolean
+      pricingEvidence?: {
+        version: 1
+        source: "attempt" | "historical"
+        pricing: {
+          version: 1
+          currency: "USD"
+          unitTokens: 1000000
+          source: {
+            kind: "catalog" | "configuration" | "mixed" | "official"
+            providerID: string
+            modelID: string
+          }
+          capturedAt: number
+          rates: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          over200K?: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          contextTiers?: Array<{
+            above: number
+            rates: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+          }>
+          units?: {
+            audio_seconds?: {
+              price: number
+              per: number
+            }
+            audio_input_tokens?: {
+              price: number
+              per: number
+            }
+            audio_output_tokens?: {
+              price: number
+              per: number
+            }
+            characters?: {
+              price: number
+              per: number
+            }
+          }
+          raw: unknown
+          policy?: {
+            id: "deepseek-2026-10-01"
+            effectiveAt: number
+            clock: "request-start"
+            phase: "peak" | "off-peak" | "unknown"
+            calendar: string | null
+            offPeak: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+            peak: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+          }
+        } | null
+      }
       httpStatus?: number
       responseModel?: string
     }
@@ -1104,7 +1385,7 @@ export type UsageRecord =
           currency: "USD"
           unitTokens: 1000000
           source: {
-            kind: "catalog" | "configuration" | "mixed"
+            kind: "catalog" | "configuration" | "mixed" | "official"
             providerID: string
             modelID: string
           }
@@ -1152,6 +1433,27 @@ export type UsageRecord =
             }
           }
           raw: unknown
+          policy?: {
+            id: "deepseek-2026-10-01"
+            effectiveAt: number
+            clock: "request-start"
+            phase: "peak" | "off-peak" | "unknown"
+            calendar: string | null
+            offPeak: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+            peak: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+          }
         } | null
         /**
          * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
@@ -1248,6 +1550,31 @@ export type UsageRecordsPage = {
   nextCursor: string | null
 }
 
+export type ExecutionCostPresentation = {
+  state: "unrecorded" | "local" | "subscription" | "reported" | "estimated" | "mixed" | "partial" | "unknown"
+  reported: Array<{
+    currency: string
+    amount: number
+  }>
+  estimates: Array<{
+    basis: "api" | "unclassified" | "subscription" | "historical"
+    currency: "USD"
+    known: number
+    maximum: number
+    unknown: number
+  }>
+  equivalent: {
+    basis: "api" | "unclassified" | "subscription" | "historical"
+    currency: "USD"
+    known: number
+    maximum: number
+    unknown: number
+  } | null
+  missing: number
+  historical: number
+  knownUSD: number
+}
+
 export type StatsSnapshot = {
   overview: {
     totalSessions: number
@@ -1272,6 +1599,7 @@ export type StatsSnapshot = {
     }
     cost: number
     accounting?: RolloutAccountingSummary
+    costPresentation?: ExecutionCostPresentation
     cacheHitRate: number
     avgCostPerTurn: number
     avgTokensPerTurn: number
@@ -2988,7 +3316,7 @@ export type Model = {
     currency: "USD"
     unitTokens: 1000000
     source: {
-      kind: "catalog" | "configuration" | "mixed"
+      kind: "catalog" | "configuration" | "mixed" | "official"
       providerID: string
       modelID: string
     }
@@ -3036,6 +3364,27 @@ export type Model = {
       }
     }
     raw: unknown
+    policy?: {
+      id: "deepseek-2026-10-01"
+      effectiveAt: number
+      clock: "request-start"
+      phase: "peak" | "off-peak" | "unknown"
+      calendar: string | null
+      offPeak: {
+        input: number | null
+        output: number | null
+        cacheRead: number | null
+        cacheWrite: number | null
+        cacheWrite1h: number | null
+      }
+      peak: {
+        input: number | null
+        output: number | null
+        cacheRead: number | null
+        cacheWrite: number | null
+        cacheWrite1h: number | null
+      }
+    }
   } | null
   /**
    * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
@@ -7474,6 +7823,300 @@ export type SessionAgendaResponse = {
   hasMore: boolean
 }
 
+export type ExecutionTask = {
+  sessionID: string
+  nodeID: string | null
+  parentID: string | null
+  title: string
+  status: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown"
+  elapsedMs: number | null
+  elapsedActive: boolean
+  tokens: {
+    known: number
+    unknown: number
+    total: number | null
+  }
+  runs: Array<string>
+}
+
+export type ExecutionTrajectoryNode = {
+  id: string
+  sessionID: string
+  runID: string
+  rootRunID?: string | null
+  parentID: string | null
+  kind:
+    | "turn"
+    | "input"
+    | "context"
+    | "reasoning"
+    | "output"
+    | "model"
+    | "retry"
+    | "tool"
+    | "process"
+    | "compaction"
+    | "subtask"
+  title: string
+  preview: string
+  started: number
+  ended?: number
+  status: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown"
+  revision: number
+  messageID?: string
+  tool?: string
+  modelID?: string
+  modelKind?: "chat" | "embedding" | "rerank" | "transcription" | "speech"
+  agent?: string
+  callID?: string
+  source: "recorded" | "messages"
+  evidenceKind?: "run" | "segment" | "call" | "attempt" | "tool" | "process"
+  attemptIndex?: number
+  purpose?: string
+  usageRole?: string
+  attribution?: "known" | "unassigned"
+  tokens?: {
+    known: number
+    unknown: number
+    total: number | null
+  }
+  group?: {
+    id: string
+    started?: number
+    callCount?: number
+    memberCount: number
+    attemptCount: number
+    retryCount: number
+    anomalies: number
+    purpose: string | null
+  }
+  ancestors?: Array<{
+    id: string
+    title: string
+    kind:
+      | "turn"
+      | "input"
+      | "context"
+      | "reasoning"
+      | "output"
+      | "model"
+      | "retry"
+      | "tool"
+      | "process"
+      | "compaction"
+      | "subtask"
+  }>
+  activity?: {
+    index: number
+    count: number
+    endIndex: number
+    instruction: boolean
+  }
+}
+
+export type ExecutionSummary = {
+  sessionID: string
+  revision: number
+  runID?: string
+  computedAt: number
+  status: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown"
+  elapsedMs: number | null
+  elapsedActive: boolean
+  accounting: RolloutAccountingSummary
+  cost: ExecutionCostPresentation
+  own: RolloutAccountingSummary
+  descendants: RolloutAccountingSummary
+  rates: {
+    generation: {
+      value: number | null
+      tokens: number
+      milliseconds: number
+      samples: number
+      excluded: number
+      reasons?: {
+        [key: string]: number
+      }
+    }
+    endToEnd: {
+      value: number | null
+      tokens: number
+      milliseconds: number
+      samples: number
+      excluded: number
+      reasons?: {
+        [key: string]: number
+      }
+    }
+  }
+  cache: {
+    ratio: number | null
+    observedRatio: number | null
+    read: number
+    input: number
+    samples: number
+    excluded: number
+  }
+  context: {
+    attemptID: string
+    callID: string
+    modelID: string
+    inputTokens: number | null
+    limit: number | null
+    ratio: number | null
+    stale: boolean
+    observedAt: number
+  } | null
+  contextDistribution: {
+    version: 1
+    modelID: string
+    providerID: string
+    totalInput: number
+    contextLimit?: number
+    usableInputLimit?: number
+    categories: {
+      conversation: {
+        estimatedTokens: number
+        attributedTokens: number
+        items?: number
+      }
+      toolActivity: {
+        estimatedTokens: number
+        attributedTokens: number
+        items?: number
+      }
+      filesReferences: {
+        estimatedTokens: number
+        attributedTokens: number
+        items?: number
+      }
+      instructions: {
+        estimatedTokens: number
+        attributedTokens: number
+        items?: number
+      }
+    }
+    overhead: {
+      attributedTokens: number
+    }
+    estimator:
+      | {
+          kind: "model-tokenizer"
+          encoding?: string
+        }
+      | {
+          kind: "bounded-utf8"
+          sampledCharacters: number
+          truncated: boolean
+        }
+    reconciliation: {
+      mode: "residual" | "scaled-down"
+      factor: number
+    }
+    capturedAt: number
+  } | null
+  tasks: Array<ExecutionTask>
+  rounds: Array<{
+    id: string
+    title: string
+    started: number
+    status: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown"
+    elapsedMs: number | null
+  }>
+  coverage: {
+    recorded: number
+    messages: number
+    gaps: number
+    partial: boolean
+  }
+  lanes: Array<{
+    kind: "input" | "model" | "tool"
+    start: number
+    end: number
+    nodes: Array<ExecutionTrajectoryNode>
+    total: number
+  }>
+  activityTotal: number
+  activitySegments?: Array<{
+    runID: string | null
+    from: number
+    to: number
+    count: number
+    rounds: number
+  }>
+  humanInputs: number
+  taskInstructions: number
+}
+
+export type ExecutionTrajectoryPage = {
+  sessionID: string
+  revision: number
+  total: number
+  items: Array<ExecutionTrajectoryNode>
+  nextCursor: string | null
+  previousCursor: string | null
+}
+
+export type ExecutionJson = unknown
+
+export type RolloutArtifactRef = {
+  version: 1
+  id: string
+  mediaType: string
+  bytes: number
+  chunks: number
+  sha256: string | null
+  status: "partial" | "complete"
+}
+
+export type ExecutionNodeDetail = {
+  node: ExecutionTrajectoryNode
+  record: ExecutionJson | null
+  sources: Array<{
+    field: string
+    artifact: RolloutArtifactRef
+  }>
+  definitions: ExecutionJson | null
+  related: Array<ExecutionTrajectoryNode>
+}
+
+export type RolloutEvidenceContent = {
+  mediaType: string
+  text: string
+  offset: number
+  nextOffset: number | null
+  bytes: number
+  status: "partial" | "complete"
+  contentVersion: string
+  sha256: string | null
+}
+
+export type ExecutionContentSections = {
+  contentVersion: string
+  format: "json" | "text" | "partial"
+  items: Array<{
+    path: Array<string>
+    kind: "object" | "array" | "string" | "number" | "boolean" | "null"
+    offset: number
+    bytes: number
+    role?: string
+    preview: string
+  }>
+  total: number
+  nextCursor: string | null
+  truncated: boolean
+}
+
+export type ExecutionContentSearch = {
+  contentVersion: string
+  status: "partial" | "complete"
+  items: Array<{
+    offset: number
+    bytes: number
+    preview: string
+  }>
+  nextCursor: string | null
+}
+
 export type ProjectTaskDefaults = {
   defaultSessionWorkspace?: "main" | "worktree"
   defaultSessionEnvironmentProfile?: string | null
@@ -7508,16 +8151,6 @@ export type SessionNavResponse = {
   items: Array<SessionNavEntry>
   nextCursor: NavCursor | null
   total: number
-}
-
-export type RolloutArtifactRef = {
-  version: 1
-  id: string
-  mediaType: string
-  bytes: number
-  chunks: number
-  sha256: string | null
-  status: "partial" | "complete"
 }
 
 export type ExperimentOverrides = {
@@ -7928,7 +8561,7 @@ export type RolloutCallRecord = {
       currency: "USD"
       unitTokens: 1000000
       source: {
-        kind: "catalog" | "configuration" | "mixed"
+        kind: "catalog" | "configuration" | "mixed" | "official"
         providerID: string
         modelID: string
       }
@@ -7976,6 +8609,27 @@ export type RolloutCallRecord = {
         }
       }
       raw: unknown
+      policy?: {
+        id: "deepseek-2026-10-01"
+        effectiveAt: number
+        clock: "request-start"
+        phase: "peak" | "off-peak" | "unknown"
+        calendar: string | null
+        offPeak: {
+          input: number | null
+          output: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+          cacheWrite1h: number | null
+        }
+        peak: {
+          input: number | null
+          output: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+          cacheWrite1h: number | null
+        }
+      }
     } | null
     /**
      * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
@@ -8000,6 +8654,10 @@ export type RolloutCallRecord = {
     total: number | null
     known: number
     missing: Array<string>
+    range?: {
+      minimum: number
+      maximum: number
+    }
   }
   transportCaptured: boolean
   error?: string
@@ -8095,6 +8753,89 @@ export type RolloutAttemptRecord = {
     total: number | null
     known: number
     missing: Array<string>
+    range?: {
+      minimum: number
+      maximum: number
+    }
+  }
+  pricingEvidence?: {
+    version: 1
+    source: "attempt" | "historical"
+    pricing: {
+      version: 1
+      currency: "USD"
+      unitTokens: 1000000
+      source: {
+        kind: "catalog" | "configuration" | "mixed" | "official"
+        providerID: string
+        modelID: string
+      }
+      capturedAt: number
+      rates: {
+        input: number | null
+        output: number | null
+        cacheRead: number | null
+        cacheWrite: number | null
+        cacheWrite1h: number | null
+      }
+      over200K?: {
+        input: number | null
+        output: number | null
+        cacheRead: number | null
+        cacheWrite: number | null
+        cacheWrite1h: number | null
+      }
+      contextTiers?: Array<{
+        above: number
+        rates: {
+          input: number | null
+          output: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+          cacheWrite1h: number | null
+        }
+      }>
+      units?: {
+        audio_seconds?: {
+          price: number
+          per: number
+        }
+        audio_input_tokens?: {
+          price: number
+          per: number
+        }
+        audio_output_tokens?: {
+          price: number
+          per: number
+        }
+        characters?: {
+          price: number
+          per: number
+        }
+      }
+      raw: unknown
+      policy?: {
+        id: "deepseek-2026-10-01"
+        effectiveAt: number
+        clock: "request-start"
+        phase: "peak" | "off-peak" | "unknown"
+        calendar: string | null
+        offPeak: {
+          input: number | null
+          output: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+          cacheWrite1h: number | null
+        }
+        peak: {
+          input: number | null
+          output: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+          cacheWrite1h: number | null
+        }
+      }
+    } | null
   }
   responseHeaders?: {
     [key: string]: string
@@ -12402,6 +13143,92 @@ export type EventUsageUpdated = {
   }
 }
 
+export type RolloutEvidenceRecord =
+  | {
+      kind: "run"
+      value: RolloutRunRecord
+    }
+  | {
+      kind: "segment"
+      value: {
+        version: 1
+        id: string
+        owner:
+          | {
+              kind: "session"
+              scopeID: string
+              sessionID: string
+            }
+          | {
+              kind: "operation"
+              scopeID: string
+              operationID: string
+            }
+        runID: string
+        started: number
+        ended?: number
+        status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+      }
+    }
+  | {
+      kind: "call"
+      value: RolloutCallRecord
+    }
+  | {
+      kind: "attempt"
+      value: RolloutAttemptRecord
+    }
+  | {
+      kind: "tool"
+      value: RolloutToolExecutionRecord
+    }
+  | {
+      kind: "process"
+      value: {
+        version: 1
+        id: string
+        owner:
+          | {
+              kind: "session"
+              scopeID: string
+              sessionID: string
+            }
+          | {
+              kind: "operation"
+              scopeID: string
+              operationID: string
+            }
+        runID: string
+        toolExecutionID: string
+        started: number
+        ended?: number
+        status: "running" | "completed" | "interrupted" | "failed"
+        stream: RolloutArtifactRef
+        pid?: number
+        exitCode?: number | null
+        signal?: string | null
+      }
+    }
+
+export type EventRolloutUpdated = {
+  type: "rollout.updated"
+  properties: {
+    owner:
+      | {
+          kind: "session"
+          scopeID: string
+          sessionID: string
+        }
+      | {
+          kind: "operation"
+          scopeID: string
+          operationID: string
+        }
+    revision: number
+    record: RolloutEvidenceRecord
+  }
+}
+
 export type EventSessionInputProgress = {
   type: "session.input.progress"
   properties: SessionInputProgress
@@ -12803,6 +13630,21 @@ export type EventVcsBranchUpdated = {
   }
 }
 
+export type EventExecutionUpdated = {
+  type: "execution.updated"
+  properties: {
+    sessionID: string
+    revision: number
+    summary: ExecutionSummary
+    roundSummaries: Array<ExecutionSummary>
+    previousRevision?: number
+    upserts: Array<ExecutionTrajectoryNode>
+    processUpserts?: Array<ExecutionTrajectoryNode>
+    processRemoved?: Array<string>
+    removed: Array<string>
+  }
+}
+
 export type EventBlueprintLoopCreated = {
   type: "blueprint_loop.created"
   properties: {
@@ -12963,6 +13805,7 @@ export type Event =
   | EventPermissionAsked
   | EventPermissionReplied
   | EventUsageUpdated
+  | EventRolloutUpdated
   | EventSessionInputProgress
   | EventSessionUpdated
   | EventSessionDeleted
@@ -13012,6 +13855,7 @@ export type Event =
   | EventNoteArchived
   | EventNoteUnarchived
   | EventVcsBranchUpdated
+  | EventExecutionUpdated
   | EventBlueprintLoopCreated
   | EventBlueprintLoopUpdated
   | EventBlueprintLoopCompleted
@@ -13677,6 +14521,7 @@ export type GlobalStatsProgressResponses = {
         }
         cost: number
         accounting?: RolloutAccountingSummary
+        costPresentation?: ExecutionCostPresentation
         cacheHitRate: number
         avgCostPerTurn: number
         avgTokensPerTurn: number
@@ -17173,6 +18018,336 @@ export type SessionAgendaResponses = {
 }
 
 export type SessionAgendaResponse2 = SessionAgendaResponses[keyof SessionAgendaResponses]
+
+export type SessionExecutionSummaryData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    runID?: string
+  }
+  url: "/session/{sessionID}/execution/summary"
+}
+
+export type SessionExecutionSummaryErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionSummaryError = SessionExecutionSummaryErrors[keyof SessionExecutionSummaryErrors]
+
+export type SessionExecutionSummaryResponses = {
+  /**
+   * Read a compact session execution summary
+   */
+  200: ExecutionSummary
+}
+
+export type SessionExecutionSummaryResponse = SessionExecutionSummaryResponses[keyof SessionExecutionSummaryResponses]
+
+export type SessionExecutionTrajectoryData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "process" | "records"
+    order?: "time" | "round" | "call"
+    runID?: string
+    session?: string
+    actor?: "main" | "all"
+    query?: string
+    kind?:
+      | "turn"
+      | "input"
+      | "context"
+      | "reasoning"
+      | "output"
+      | "model"
+      | "retry"
+      | "tool"
+      | "process"
+      | "compaction"
+      | "subtask"
+    status?: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown"
+    kinds?: string
+    statuses?: string
+    anomalies?: boolean
+    from?: number
+    to?: number
+    activityFrom?: number
+    activityTo?: number
+    cursor?: string
+    anchor?: string
+    position?: "before" | "after" | "around"
+    limit?: number
+  }
+  url: "/session/{sessionID}/execution/trajectory"
+}
+
+export type SessionExecutionTrajectoryErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionTrajectoryError = SessionExecutionTrajectoryErrors[keyof SessionExecutionTrajectoryErrors]
+
+export type SessionExecutionTrajectoryResponses = {
+  /**
+   * Page through session execution records
+   */
+  200: ExecutionTrajectoryPage
+}
+
+export type SessionExecutionTrajectoryResponse =
+  SessionExecutionTrajectoryResponses[keyof SessionExecutionTrajectoryResponses]
+
+export type SessionExecutionNodeData = {
+  body?: never
+  path: {
+    sessionID: string
+    nodeID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    runID?: string
+  }
+  url: "/session/{sessionID}/execution/nodes/{nodeID}"
+}
+
+export type SessionExecutionNodeErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionNodeError = SessionExecutionNodeErrors[keyof SessionExecutionNodeErrors]
+
+export type SessionExecutionNodeResponses = {
+  /**
+   * Inspect one session execution record
+   */
+  200: ExecutionNodeDetail
+}
+
+export type SessionExecutionNodeResponse = SessionExecutionNodeResponses[keyof SessionExecutionNodeResponses]
+
+export type SessionExecutionContentData = {
+  body?: never
+  path: {
+    sessionID: string
+    nodeID: string
+  }
+  query: {
+    directory?: string
+    scopeID?: string
+    field: string
+    runID?: string
+    version?: string
+    offset?: number
+    limit?: number
+  }
+  url: "/session/{sessionID}/execution/nodes/{nodeID}/content"
+}
+
+export type SessionExecutionContentErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionContentError = SessionExecutionContentErrors[keyof SessionExecutionContentErrors]
+
+export type SessionExecutionContentResponses = {
+  /**
+   * Read a bounded execution content page
+   */
+  200: RolloutEvidenceContent
+}
+
+export type SessionExecutionContentResponse = SessionExecutionContentResponses[keyof SessionExecutionContentResponses]
+
+export type SessionExecutionContentSectionsData = {
+  body?: never
+  path: {
+    sessionID: string
+    nodeID: string
+  }
+  query: {
+    directory?: string
+    scopeID?: string
+    field: string
+    runID?: string
+    version?: string
+    cursor?: string
+    limit?: number
+  }
+  url: "/session/{sessionID}/execution/nodes/{nodeID}/content/sections"
+}
+
+export type SessionExecutionContentSectionsErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionContentSectionsError =
+  SessionExecutionContentSectionsErrors[keyof SessionExecutionContentSectionsErrors]
+
+export type SessionExecutionContentSectionsResponses = {
+  /**
+   * Read structured execution content sections
+   */
+  200: ExecutionContentSections
+}
+
+export type SessionExecutionContentSectionsResponse =
+  SessionExecutionContentSectionsResponses[keyof SessionExecutionContentSectionsResponses]
+
+export type SessionExecutionContentSearchData = {
+  body?: never
+  path: {
+    sessionID: string
+    nodeID: string
+  }
+  query: {
+    directory?: string
+    scopeID?: string
+    field: string
+    runID?: string
+    version?: string
+    cursor?: string
+    limit?: number
+    query: string
+    caseSensitive?: boolean
+  }
+  url: "/session/{sessionID}/execution/nodes/{nodeID}/content/search"
+}
+
+export type SessionExecutionContentSearchErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionContentSearchError =
+  SessionExecutionContentSearchErrors[keyof SessionExecutionContentSearchErrors]
+
+export type SessionExecutionContentSearchResponses = {
+  /**
+   * Search an entire version of execution content
+   */
+  200: ExecutionContentSearch
+}
+
+export type SessionExecutionContentSearchResponse =
+  SessionExecutionContentSearchResponses[keyof SessionExecutionContentSearchResponses]
+
+export type SessionExecutionContentDownloadData = {
+  body?: never
+  path: {
+    sessionID: string
+    nodeID: string
+  }
+  query: {
+    directory?: string
+    scopeID?: string
+    field: string
+    runID?: string
+    version?: string
+  }
+  url: "/session/{sessionID}/execution/nodes/{nodeID}/content/download"
+}
+
+export type SessionExecutionContentDownloadErrors = {
+  /**
+   * Invalid execution content query or version
+   */
+  400: unknown
+  /**
+   * Execution content was not found
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionContentDownloadError =
+  SessionExecutionContentDownloadErrors[keyof SessionExecutionContentDownloadErrors]
+
+export type SessionExecutionContentDownloadResponses = {
+  /**
+   * Verified execution content
+   */
+  200: Blob | File
+}
+
+export type SessionExecutionContentDownloadResponse =
+  SessionExecutionContentDownloadResponses[keyof SessionExecutionContentDownloadResponses]
 
 export type ProjectTaskDefaultsGetData = {
   body?: never

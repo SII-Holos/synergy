@@ -11,6 +11,7 @@ import { RankList } from "./rank-list"
 import { CodeSummary } from "./code-summary"
 import { ActivityHeatmap } from "./hourly-heatmap"
 import "./stats.css"
+import { CostBreakdown } from "../execution/overview"
 import {
   buildOverviewMetrics,
   buildModelRows,
@@ -183,17 +184,24 @@ function StatsContent(props: {
             longest: snapshot().overview.longestStreak,
           }}
         />
-        <Show when={snapshot().tokenCost.accounting}>
-          {(accounting) => (
-            <p class="text-small text-text-weak">
-              {i18n._(S.accountingDetail.id, {
-                api: formatCost(accounting().apiEstimate.known),
-                subscription: formatCost(accounting().subscriptionEquivalent.known),
-                unknown: accounting().subscriptionEquivalent.unknown,
-                legacy: formatCost(accounting().legacy.cost),
-              })}
-            </p>
-          )}
+        <Show
+          when={snapshot().tokenCost.costPresentation}
+          fallback={
+            <Show when={snapshot().tokenCost.accounting}>
+              {(accounting) => (
+                <p class="text-small text-text-weak">
+                  {i18n._(S.accountingDetail.id, {
+                    api: formatCost(accounting().apiEstimate.known),
+                    subscription: formatCost(accounting().subscriptionEquivalent.known),
+                    unknown: accounting().subscriptionEquivalent.unknown,
+                    legacy: formatCost(accounting().legacy.cost),
+                  })}
+                </p>
+              )}
+            </Show>
+          }
+        >
+          {(cost) => <CostBreakdown cost={cost()} />}
         </Show>
       </section>
       <section id="usage-trends" class="stats-section-anchor">

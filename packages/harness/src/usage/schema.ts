@@ -63,6 +63,7 @@ export namespace UsageSchema {
       estimate: ProviderPricing.Estimate.optional(),
       timing: RolloutTiming.Info.optional(),
       usageFinal: z.boolean(),
+      pricingEvidence: RolloutSchema.AttemptRecord.shape.pricingEvidence,
       httpStatus: z.number().int().optional(),
       responseModel: z.string().max(256).optional(),
     })

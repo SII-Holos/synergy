@@ -14,9 +14,11 @@ import { ConversationViewport } from "./conversation-viewport"
 import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
 import { PendingTimelineItem } from "./pending-timeline-item"
+import { useExecution } from "@/context/execution"
 
 export function SessionConversation(input: PluginComponentProps<PluginConversationService>) {
   const props = input.context
+  const execution = useExecution()
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
   const workspaceOpen = createMemo(() => props.workspaceOpen?.() ?? false)
@@ -58,7 +60,7 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
       }
       contentClass="session-conversation-content session-content-column flex flex-col items-start justify-start gap-5"
       contentClassList={{
-        "pb-6 md:pb-[calc(var(--prompt-height,10rem)+96px)]": true,
+        "pb-6 md:pb-[calc(var(--prompt-height,10rem)+32px)]": true,
       }}
     >
       <MessageSlotOutlet slot="message.above-conversation" sessionId={props.sessionID} />
@@ -184,6 +186,8 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
                     rollbackActive={props.rollbackActive}
                     onReviewChanges={props.onReviewChanges}
                     onForkMessage={props.onForkMessage}
+                    executionSummary={execution.available() ? execution.round(key) : undefined}
+                    onExecutionDetails={execution.available() ? () => void execution.open(key) : undefined}
                     classes={{
                       root: "min-w-0 w-full relative",
                       content: "flex flex-col justify-between !overflow-visible",

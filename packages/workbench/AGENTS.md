@@ -18,3 +18,5 @@ The managed-worktree janitor schedules per Scope and drains active sweeps during
 Expose composition through `./component`; keep registration side-effect free until the factory is selected. Declare required components, optional ordering, worker roles and lazy HTTP adapters explicitly. Runtime-scoped reload and lifecycle contributions must preserve isolated instances and failed-start cleanup.
 
 Keep published `synergy` component metadata aligned with the factory version, requirements and packaged entry. Component CLI contributions belong in `src/cli-adapter.ts` when this owner supplies commands; keep their handlers lazy and independent of the complete product.
+
+Task execution presentation belongs in `src/execution`. Use public Harness Rollout and usage queries; keep evidence storage layouts and accounting formulas in Harness. Verify `bun test test/execution`, regenerate the SDK after schema changes, and preserve Scope/round/descendant checks, lazy content and revisioned updates.

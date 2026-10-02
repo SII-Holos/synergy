@@ -2215,6 +2215,7 @@ export const migrations: Migration[] = [
     },
   },
   RolloutMigration.migration,
+  RolloutMigration.pricingMigration,
 
   {
     id: "20260907-snapshot-shared-store",

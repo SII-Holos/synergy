@@ -494,6 +494,9 @@ export namespace SessionInvoke {
                 log.error("rollout run reconcile failed after release", { sessionID, runID, error })
               }
             }
+            await RolloutLifecycle.reconcileDelegatedRuns(sessionID, runIDs).catch((error) => {
+              log.error("delegated rollout run reconcile failed after release", { sessionID, error })
+            })
           },
           (error) => {
             log.error("detached turn work failed to settle", { sessionID, error })

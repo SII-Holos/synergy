@@ -7,6 +7,7 @@ import { SessionTurn } from "@ericsanchezok/synergy-ui/session-turn"
 import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
 import { MessageSlotOutlet } from "@ericsanchezok/synergy-ui/message-slots"
+import { useExecution } from "@/context/execution"
 import { buildConversationRows, type ConversationRow } from "./conversation-rows"
 import { ToolExpansionProvider } from "@ericsanchezok/synergy-ui/tool-expansion"
 
@@ -203,6 +204,7 @@ function ConversationDisplayRow(input: { context: PluginConversationService; row
   const props = input.context
   const content = props.content!
   const row = input.row
+  const execution = useExecution()
   const [failure, setFailure] = createSignal<string>()
   const [loading, setLoading] = createSignal(false)
   const [retry, setRetry] = createSignal(0)
@@ -382,6 +384,12 @@ function ConversationDisplayRow(input: { context: PluginConversationService; row
             rollbackActive={props.rollbackActive}
             onReviewChanges={props.onReviewChanges}
             onForkMessage={props.onForkMessage}
+            executionSummary={
+              row().kind === "footer" && execution.available() ? execution.round(row().root.id) : undefined
+            }
+            onExecutionDetails={
+              row().kind === "footer" && execution.available() ? () => void execution.open(row().root.id) : undefined
+            }
             classes={{
               root: "min-w-0 w-full relative",
               content: "flex flex-col justify-between !overflow-visible",

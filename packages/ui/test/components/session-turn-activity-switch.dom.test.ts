@@ -120,6 +120,7 @@ describe("SessionTurn activity display switching", () => {
     expect(turn?.getAttribute("data-activity-display")).toBe("full")
     expect(document.querySelectorAll('[data-slot="session-turn-timeline-item"][data-kind="tool"]')).toHaveLength(2)
     expect(document.querySelector('[data-slot="session-turn-timeline-item"][data-kind="text"]')).toBe(answer)
-    expect(document.querySelectorAll('[data-slot="session-turn-timeline-item"]')).toHaveLength(4)
+    expect(document.querySelector('[data-kind="provider-prelude"]')).toBeNull()
+    expect(document.querySelectorAll('[data-slot="session-turn-timeline-item"]')).toHaveLength(3)
   })
 })

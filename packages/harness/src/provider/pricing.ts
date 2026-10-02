@@ -3,6 +3,7 @@ import z from "zod"
 import { Decimal } from "decimal.js"
 import type { RolloutUsage } from "../session/rollout/usage"
 import { ProviderBilling } from "./billing"
+import { DeepSeekPricing } from "./deepseek-pricing"
 
 export namespace ProviderPricing {
   export const BillingMode = ProviderBilling.Mode
@@ -51,7 +52,7 @@ export namespace ProviderPricing {
       currency: z.literal("USD"),
       unitTokens: z.literal(1_000_000),
       source: z.object({
-        kind: z.enum(["catalog", "configuration", "mixed"]),
+        kind: z.enum(["catalog", "configuration", "mixed", "official"]),
         providerID: z.string(),
         modelID: z.string(),
       }),
@@ -61,9 +62,22 @@ export namespace ProviderPricing {
       contextTiers: z.array(z.object({ above: z.number().int().positive(), rates: Rates })).optional(),
       units: UnitRates.optional(),
       raw: JsonValue,
+      policy: z
+        .object({
+          id: z.literal("deepseek-2026-10-01"),
+          effectiveAt: z.number(),
+          clock: z.literal("request-start"),
+          phase: z.enum(["peak", "off-peak", "unknown"]),
+          calendar: z.string().nullable(),
+          offPeak: Rates,
+          peak: Rates,
+        })
+        .strict()
+        .optional(),
     })
     .strict()
   export type Info = z.infer<typeof Info>
+  export const capture = DeepSeekPricing.capture
   export const Estimate = z
     .object({
       version: z.literal(1),
@@ -72,6 +86,10 @@ export namespace ProviderPricing {
       total: z.number().finite().nonnegative().nullable(),
       known: z.number().finite().nonnegative(),
       missing: z.array(z.string()),
+      range: z
+        .object({ minimum: z.number().finite().nonnegative(), maximum: z.number().finite().nonnegative() })
+        .strict()
+        .optional(),
     })
     .strict()
   export type Estimate = z.infer<typeof Estimate>
@@ -132,6 +150,7 @@ export namespace ProviderPricing {
     pricing: Info | null,
     usage: RolloutUsage.Info | undefined,
     mode: ProviderBilling.Mode,
+    ended?: number,
   ): Estimate {
     if (mode === "local") return { version: 1, currency: null, basis: "local", total: 0, known: 0, missing: [] }
     const basis =
@@ -224,7 +243,7 @@ export namespace ProviderPricing {
         }
       } else charge("cacheWrite", units.cacheWrite, selected?.cacheWrite, pricing?.unitTokens ?? 1_000_000)
     }
-    return {
+    const result: Estimate = {
       version: 1,
       currency: pricing?.currency ?? null,
       basis,
@@ -232,5 +251,16 @@ export namespace ProviderPricing {
       known: known.toNumber(),
       missing,
     }
+    if (
+      pricing?.policy &&
+      !missing.length &&
+      (pricing.policy.phase === "unknown" ||
+        (ended !== undefined && DeepSeekPricing.crossesBoundary(pricing.policy.effectiveAt, ended)))
+    ) {
+      const minimum = estimate({ ...pricing, rates: pricing.policy.offPeak, policy: undefined }, usage, mode).known
+      const maximum = estimate({ ...pricing, rates: pricing.policy.peak, policy: undefined }, usage, mode).known
+      return { ...result, total: null, known: minimum, range: { minimum, maximum } }
+    }
+    return result
   }
 }

@@ -8,6 +8,7 @@ export namespace Usage {
   export const Page = UsageQuery.Page
   export const summary = UsageQuery.summary
   export const records = UsageQuery.records
+  export const summarize = UsageQuery.summarize
   export const clear = UsageLedger.clear
   export const rebuild = UsageMigration.start
   export const rebuildStatus = UsageMigration.status

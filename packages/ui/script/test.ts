@@ -11,6 +11,7 @@ await runBatchedTests({
   root,
   timeoutMs: 120000,
   isolated: [
+    "test/components/execution-completion.dom.test.ts",
     "test/components/tool/computer-tool-renders.test.tsx",
     "test/components/basic-tool-lifecycle.dom.test.ts",
     "test/components/countdown-anchor.dom.test.ts",

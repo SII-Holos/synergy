@@ -98,7 +98,7 @@ Do not create compatibility paths that violate those contracts. In particular:
 
 - Load `add-tool`, `add-agent`, or `add-cli-command` for their complete implementation and verification workflows.
 - A first-party tool requires backend registration, taxonomy, and all Web presentation/classifier registrations described by `add-tool`.
-- Built-in primary agents are Atlas (`general`), Forge (`coding`), and Pico (`lightweight`); use Harness `agent/primary-identity`. Visibility masks and delegation groups define subagent catalogs. BlueprintLoop and Light Loop reviewers stay host-selected; their Cortex tasks appear in the execution session's Subagent Dock.
+- Built-in primary agents are Atlas (`general`), Forge (`coding`), and Pico (`lightweight`); use Harness `agent/primary-identity`. Visibility masks and delegation groups define subagent catalogs. BlueprintLoop and Light Loop reviewers stay host-selected; Workbench-enabled sessions show their recorded Cortex tasks in Task details; minimal servers retain installed Cortex interfaces.
 - Plugins use the public definition, generated manifest, capability-gated Host Services, process runtime, operation/event/hook, approval, and trusted UI contracts in [Plugin documentation](docs/plugins/README.md). Do not import private runtime modules into plugins.
 
 ## Testing and Quality

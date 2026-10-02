@@ -6,6 +6,36 @@
   align-items: flex-start;
   justify-content: flex-start;
 
+  [data-component="execution-completion"] {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-block: 4px;
+    color: var(--text-weak);
+    font-size: var(--type-ui-caption-size);
+    font-variant-numeric: tabular-nums;
+    &[data-state="failed"] {
+      color: var(--text-on-critical-base);
+    }
+    &[data-state="running"] {
+      color: var(--text-interactive-base);
+    }
+    button {
+      padding: 0;
+      background: transparent;
+      color: var(--text-weak);
+      cursor: pointer;
+    }
+    button:hover {
+      color: var(--text-base);
+      text-decoration: underline;
+    }
+    button:focus-visible {
+      outline: 2px solid var(--border-interactive-focus);
+      outline-offset: 4px;
+    }
+  }
+
   /* ── Rewind button ────────────────────────────── */
   [data-slot="session-turn-rewind-button"] {
     all: unset;

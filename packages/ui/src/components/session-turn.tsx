@@ -73,6 +73,7 @@ import {
   type ActivityTimelineItem,
 } from "./session-turn-activity"
 import { timelineItemStableKey, timelineVisualKind, type SessionTurnTimelineItem } from "./session-turn-timeline-item"
+import { ExecutionCompletion, type TurnExecutionSummary } from "./execution-completion"
 import { externalLoadNotify, externalLookup, resolveExternalToolRenderer } from "./tool-registry-lazy"
 export { timelineItemStableKey, timelineVisualKind } from "./session-turn-timeline-item"
 export type { SessionTurnTimelineItem, SessionTurnTimelineVisualKind } from "./session-turn-timeline-item"
@@ -998,6 +999,8 @@ export function SessionTurn(
     rollbackActive?: boolean
     onReviewChanges?: (input: { messageID: string; file?: string }) => void
     onForkMessage?: (messageID: string) => void
+    executionSummary?: TurnExecutionSummary
+    onExecutionDetails?: () => void
     activityDisplay?: ActivityDisplayMode
     compactReasoning?: boolean
     copyMessageText?: (messageID: string) => Promise<string>
@@ -1384,10 +1387,9 @@ export function SessionTurn(
           latestAssistantTimelineItems: latestAssistantTimelineItems(),
         }),
   )
-  const completedTurnStats = createMemo(() => {
-    if (working() || hasCompactionEvent() || error()) return undefined
-    return turnCompletionStats(assistantMessages(), i18n?.()?.locale)
-  })
+  const showExecutionCompletion = createMemo(
+    () => !working() && (!!props.executionSummary || !!props.onExecutionDetails),
+  )
 
   createEffect(() => {
     if (!showProviderPrelude()) {
@@ -1484,7 +1486,7 @@ export function SessionTurn(
                       when={
                         hasTimelineItems() ||
                         showProviderPrelude() ||
-                        completedTurnStats() ||
+                        showExecutionCompletion() ||
                         (!working() && !!visibleDiffPanelState())
                       }
                     >
@@ -1587,17 +1589,13 @@ export function SessionTurn(
                             />
                           </div>
                         </Show>
-                        <Show when={showFooter() && completedTurnStats()}>
-                          {(stats) => (
-                            <div data-slot="session-turn-timeline-item" data-kind="provider-prelude">
-                              <ProviderPrelude
-                                text={_(SESSION_TURN_DESC.completed)}
-                                elapsed={stats().duration}
-                                segments={stats().segments}
-                                variant="completed"
-                              />
-                            </div>
-                          )}
+                        <Show when={showFooter() && showExecutionCompletion()}>
+                          <div data-slot="session-turn-timeline-item" data-kind="execution-completion">
+                            <ExecutionCompletion
+                              summary={props.executionSummary}
+                              onDetails={props.onExecutionDetails}
+                            />
+                          </div>
                         </Show>
                         <Show
                           when={

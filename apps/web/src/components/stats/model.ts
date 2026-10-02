@@ -2,6 +2,8 @@ import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import type { StatsSnapshot } from "@ericsanchezok/synergy-sdk"
 import { accountedCost, formatCompact, formatCost } from "./format"
 import { S } from "./stats-i18n"
+import { executionCostText } from "../execution/cost"
+import { E } from "../execution/i18n"
 import type { I18n } from "@lingui/core"
 import type { MessageDescriptor } from "@lingui/core"
 
@@ -82,12 +84,13 @@ export function buildOverviewMetrics(snapshot: StatsSnapshot, i18n: I18n): Overv
     {
       id: "cost",
       label: i18n._(S.overviewLabelCost.id),
-      value:
-        accountedCost(snapshot.tokenCost.cost, snapshot.tokenCost.accounting) === undefined
+      value: snapshot.tokenCost.costPresentation
+        ? executionCostText(snapshot.tokenCost.costPresentation, i18n.locale)
+        : accountedCost(snapshot.tokenCost.cost, snapshot.tokenCost.accounting) === undefined
           ? i18n._({ id: "stats.cost.unpriced", message: "Unpriced" })
           : formatCost(snapshot.tokenCost.cost),
-      hint: snapshot.tokenCost.accounting
-        ? i18n._(S.accountingUnknown.id, { count: snapshot.tokenCost.accounting.apiEstimate.unknown })
+      hint: snapshot.tokenCost.costPresentation?.missing
+        ? i18n._(E.missingCost.id, { count: snapshot.tokenCost.costPresentation.missing })
         : i18n._(S.overviewHintCostPerDay.id, { cost: formatCost(snapshot.tokenCost.dailyCost) }),
     },
     {
