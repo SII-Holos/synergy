@@ -3256,7 +3256,7 @@
     },
     "theme": { "description": "Theme name to use for the interface", "type": "string" },
     "activityDisplay": {
-      "description": "How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced)",
+      "description": "Execution process detail: full = expanded process, balanced = current stage with completed process collapsed, minimal = compact progress. All modes use the same process view (default: balanced)",
       "type": "string",
       "enum": ["full", "balanced", "minimal"]
     },
@@ -3269,7 +3269,10 @@
       "description": "Execution profile for new Web/Desktop composer sessions. Omitted follows the global resource default; null disables execution selection. References an existing global profile without defining hosts or credentials.",
       "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
     },
-    "compactReasoning": { "description": "Show live reasoning in a compact single-line viewport", "type": "boolean" },
+    "compactReasoning": {
+      "description": "Show a compact reasoning preview in the execution process (default: false)",
+      "type": "boolean"
+    },
     "quick_switcher": {
       "description": "Quick switcher model visibility preferences",
       "ref": "QuickSwitcherConfig",

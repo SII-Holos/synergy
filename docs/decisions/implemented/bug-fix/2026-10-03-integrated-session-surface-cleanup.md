@@ -12,6 +12,8 @@ Remove the disconnected progress component family, its obsolete tests and covera
 
 Reserve the current compact inbox footprint in question footers so their action remains hit-testable. This is a collision correction, not the deferred inbox relocation. Conversation fixtures resolve shared modules relative to the repository instead of a machine-specific checkout. Selection and computer tests assert the current shared menu indicator, complete identity, health and keyboard focus.
 
+Keep the completion button's event binding stable and read its current callback only on activation. Focus retention updates virtual row props; reading a changing callback while constructing a conditional child caused Solid to replace the focused button between pointer down and click. The virtual conversation regression mounts the real completion control and verifies pointer activation, retained focus and keyboard activation.
+
 ## Alternatives considered
 
 **Restore the removed progress panel for its old tests.** This would reintroduce duplicate product entry points and maintenance ownership.

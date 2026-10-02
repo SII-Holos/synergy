@@ -58,6 +58,10 @@ beforeAll(async () => {
   const conversationPath = path.resolve(import.meta.dir, "../../../src/components/session/conversation.tsx")
   const stubPath = path.join(fixtureDirectory, "stubs.tsx")
   const processPath = path.resolve(import.meta.dir, "../../../../../packages/ui/src/components/session-turn-process.ts")
+  const completionPath = path.resolve(
+    import.meta.dir,
+    "../../../../../packages/ui/src/components/execution-completion.tsx",
+  )
 
   await Promise.all([
     Bun.write(
@@ -67,7 +71,8 @@ beforeAll(async () => {
     Bun.write(
       stubPath,
       `
-        import { createMemo, createSignal, Show } from "solid-js"
+        import { createMemo, createSignal } from "solid-js"
+        import { ExecutionCompletion } from ${JSON.stringify(`/@fs/${completionPath}`)}
 
         export { resolveActivityDisclosure } from ${JSON.stringify(`/@fs/${processPath}`)}
         let mountCount = 0
@@ -84,10 +89,8 @@ beforeAll(async () => {
           const root = createMemo(() => props.rootMessage)
           return (
             <div data-slot="session-turn-stub" data-message-id={props.messageID} data-mount={mounted()} data-part-count={props.segment?.parts.length} data-execution={props.executionState?.status}>
-              {root()?.text ?? ""}
-              <Show when={props.onExecutionDetails}>
-                <button aria-label="Task details" data-execution-details onClick={() => props.onExecutionDetails()} />
-              </Show>
+              <span data-root-text>{root()?.text ?? ""}</span>
+              <ExecutionCompletion onDetails={props.onExecutionDetails} />
             </div>
           )
         }
@@ -258,7 +261,7 @@ describe("conversation row retention", () => {
       },
       [JSON.parse(msg("msg_capability", "user", "Task"))],
     )
-    const details = page.locator("[data-execution-details]")
+    const details = page.locator('[data-component="execution-completion"] button')
     await expect(details.count()).resolves.toBe(1)
     await details.click()
     expect(await page.evaluate(() => (window as unknown as { __openedExecution: string[] }).__openedExecution)).toEqual(
@@ -297,7 +300,7 @@ describe("conversation row retention", () => {
     await expect(rows.count()).resolves.toBe(2)
     const textA = await page.evaluate(() => {
       const row = document.querySelector('[data-message-id="msg_a"]') as HTMLElement
-      return row?.textContent
+      return row?.querySelector("[data-root-text]")?.textContent
     })
     expect(textA).toBe("first")
 
@@ -320,7 +323,7 @@ describe("conversation row retention", () => {
     )
     const textUpdated = await page.evaluate(() => {
       const row = document.querySelector('[data-message-id="msg_a"]') as HTMLElement
-      return row?.textContent
+      return row?.querySelector("[data-root-text]")?.textContent
     })
 
     // Same row owner stayed mounted (no new component instance) and the
@@ -413,12 +416,17 @@ describe("conversation row retention", () => {
       fixture.__enableContent()
     })
     await page.locator('[data-display-row="virtual-details:footer"]').waitFor()
-    const details = page.locator("[data-execution-details]")
+    const details = page.locator('[data-component="execution-completion"] button')
     expect(await details.count()).toBe(1)
     await details.click()
     expect(
       await page.evaluate(() => (window as unknown as { __openedExecution: string[] }).__openedExecution.at(-1)),
     ).toBe("virtual-details")
+    expect(await details.evaluate((element) => element === document.activeElement)).toBe(true)
+    await details.press("Enter")
+    expect(
+      await page.evaluate(() => (window as unknown as { __openedExecution: string[] }).__openedExecution.slice(-2)),
+    ).toEqual(["virtual-details", "virtual-details"])
     await page.evaluate(() =>
       (window as unknown as { __setExecutionAvailable(value: boolean): void }).__setExecutionAvailable(false),
     )

@@ -52,7 +52,7 @@ export function ExecutionCompletion(props: { summary?: TurnExecutionSummary; onD
         </Show>
       </Show>
       <Show when={props.onDetails}>
-        <button type="button" onClick={props.onDetails}>
+        <button type="button" onClick={() => props.onDetails?.()}>
           {_(copy.details)}
         </button>
       </Show>
