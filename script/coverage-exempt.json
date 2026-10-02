@@ -455,10 +455,6 @@
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
         {
-          "glob": "src/components/session/session-progress-panel.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
-        },
-        {
           "glob": "src/components/session/session-progress-todo.tsx",
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
@@ -476,10 +472,6 @@
         },
         {
           "glob": "src/components/session/session-transition-progress-steps.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
-        },
-        {
-          "glob": "src/components/session/subagent-dock.tsx",
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
         {
@@ -1225,6 +1217,18 @@
         {
           "glob": "src/components/workspace/mobile-workspace-dialog.tsx",
           "reason": "Solid wrapper behavior is verified in test/components/workspace/mobile-workspace-dialog.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/execution/panel.tsx",
+          "reason": "Task navigation, retained branches, filters, dialogs and bounded virtual rows are exercised by test/components/execution/delegation.dom.test.tsx in compiled Chromium. Bun cannot attribute that browser execution to TSX; trajectory and window logic remain directly measured."
+        },
+        {
+          "glob": "src/components/execution/inspector.tsx",
+          "reason": "Node selection, saved failures and return navigation are exercised by test/components/execution/delegation.dom.test.tsx in compiled Chromium, outside Bun's source instrumentation. Its reusable evidence block is directly measured by controls.render.test.ts."
+        },
+        {
+          "glob": "src/components/execution/reader.tsx",
+          "reason": "Pinned content, complete copy, cancellation, checksum failures and 20MB Unicode search/reading are exercised by test/components/execution/reader.dom.test.tsx in compiled Chromium. Bun cannot attribute the browser bundle to TSX; reader-state and content helpers remain directly measured."
         }
       ]
     },

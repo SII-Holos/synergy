@@ -8,8 +8,7 @@
      Desktop: the wrapper is an absolute overlay (bottom-full) above the
      composer, so expanding the island never changes --prompt-height.
      Mobile: the wrapper is in normal flow, so a busy island reserves space
-     above the composer instead of covering the last messages.
-     SubagentDock sits above, island below. */
+     above the composer instead of covering the last messages. */
   display: flex;
   width: 100%;
   justify-content: center;
