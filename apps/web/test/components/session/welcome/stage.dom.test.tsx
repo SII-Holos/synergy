@@ -200,7 +200,8 @@ test("each scene supports light, dark, and doubled scale", async () => {
       await page.emulateMedia({ colorScheme, reducedMotion: "reduce" })
       await open(scene)
       await page.waitForTimeout(150)
-      if (captures) await page.screenshot({ path: path.join(captures, `${scene}-${colorScheme}.png`) })
+      if (captures)
+        await page.locator(".welcome-stage").screenshot({ path: path.join(captures, `${scene}-${colorScheme}.png`) })
       await page.evaluate(() => {
         document.documentElement.style.zoom = "2"
       })
@@ -232,6 +233,23 @@ test("nature supports local painting, explicit stepping and safe scene disposal"
   await page.getByRole("button", { name: "Fourth scene works" }).waitFor()
   expect(await canvas.count()).toBe(0)
   expect(errors).toEqual([])
+})
+
+test("leaving the landscape terminates its worker and paused frames stay still", async () => {
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  const started = page.waitForEvent("worker")
+  await open("nature")
+  const worker = await started
+  const closed = new Promise<void>((resolve) => worker.once("close", () => resolve()))
+  await page.getByRole("button", { name: "Pause scene" }).click()
+  const canvas = page.locator(".nature-canvas")
+  await page.waitForTimeout(100)
+  const paused = await canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
+  await page.waitForTimeout(150)
+  expect(await canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())).toBe(paused)
+  await page.getByRole("button", { name: "Load fourth" }).click()
+  await closed
+  expect(await canvas.count()).toBe(0)
 })
 
 test("story choices change the scene, reach an ending, and can be revisited", async () => {
