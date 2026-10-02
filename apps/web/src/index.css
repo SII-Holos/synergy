@@ -201,9 +201,8 @@ a {
   min-height: 410px;
   width: 100%;
 }
-.session-workbench-pane > [data-ui-part="conversation"] {
-  position: relative;
-  z-index: 1;
+.session-workbench-pane:has(.welcome-stage) {
+  isolation: isolate;
 }
 
 .session-greeting {
