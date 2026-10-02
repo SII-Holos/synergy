@@ -85,8 +85,8 @@ export function advanceOrbit(state: Orbit, seconds: number): Orbit {
   let phase: Orbit["phase"] = state.phase
   let ship = { ...state.ship }
   const trace = [...state.trace]
-  while (remainder >= step && phase === "flying") {
-    remainder -= step
+  while (remainder + 1e-9 >= step && phase === "flying") {
+    remainder = Math.max(0, remainder - step)
     elapsed += step
     for (const planet of state.planets) {
       const dx = planet.x - ship.x,

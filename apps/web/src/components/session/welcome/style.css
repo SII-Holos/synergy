@@ -1,4 +1,6 @@
 .welcome-stage {
+  position: relative;
+  isolation: isolate;
   width: 100%;
   min-width: 0;
   container-type: inline-size;
@@ -12,7 +14,7 @@
   gap: 12px;
 }
 .welcome-topline {
-  margin-bottom: 22px;
+  margin-bottom: 28px;
 }
 .welcome-topline .session-greeting-heading {
   margin: 0;
@@ -39,22 +41,14 @@
 }
 .welcome-scene-heading {
   text-align: center;
+  padding-inline: 12px;
+  margin-bottom: 26px;
 }
-.welcome-eyebrow {
-  display: block;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  color: var(--text-weak);
-  margin-bottom: 10px;
-}
-.welcome-scene-heading h1,
-.welcome-unavailable h1,
-.welcome-loading h1 {
-  font-size: clamp(22px, 4cqw, 32px);
+.welcome-scene-heading h1 {
+  font-size: clamp(28px, 5.3cqw, 42px);
   font-weight: 550;
-  line-height: 1.3;
-  letter-spacing: -0.035em;
+  line-height: 1.25;
+  letter-spacing: -0.04em;
   color: var(--text-strong);
   margin: 0 0 12px;
   text-wrap: balance;
@@ -63,47 +57,118 @@
   font-size: 13px;
   line-height: 1.7;
   color: var(--text-weak);
-  max-width: 540px;
+  max-width: 480px;
   margin-inline: auto;
   text-wrap: pretty;
 }
-.welcome-art {
+.welcome-ambient {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.28;
+  transition: opacity 240ms;
+  overflow: hidden;
+}
+.welcome-ambient path {
+  stroke: var(--border-strong-base);
+  stroke-width: 1;
+  fill: none;
+}
+.welcome-drift {
+  animation: welcome-drift 12s ease-in-out infinite alternate paused;
+}
+.welcome-ambient[data-moving] .welcome-drift {
+  animation-play-state: running;
+}
+.welcome-stage:has([data-engaged]) .welcome-ambient {
+  opacity: 0.6;
+}
+.welcome-game {
+  position: relative;
+}
+.welcome-game-heading {
+  text-align: center;
+  padding-inline: 50px;
+}
+.welcome-game-heading h2 {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--text-strong);
+  margin: 0 0 4px;
+}
+.welcome-game-heading p {
+  font-size: 12px;
+  color: var(--text-weak);
+  line-height: 1.6;
+  margin: 0;
+}
+.welcome-score {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  position: absolute;
+  right: 6px;
+  top: 0;
+  color: var(--text-weak);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.welcome-score > span:first-child {
+  color: var(--text-strong);
+  font-size: 22px;
+  font-weight: 500;
+}
+.welcome-score-separator {
+  opacity: 0.5;
+}
+.welcome-game-art {
   display: block;
   width: 100%;
   height: auto;
-  max-height: 370px;
+  min-height: 170px;
+  max-height: 300px;
+  margin: 12px 0 0;
   user-select: none;
+  touch-action: none;
+  cursor: crosshair;
+  border-radius: 12px;
 }
-.welcome-tools {
+.welcome-game-controls {
   display: flex;
-  flex-wrap: wrap;
   justify-content: center;
   align-items: center;
-  gap: 4px;
-  margin-top: -4px;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 44px;
+  margin-top: 8px;
 }
-.welcome-tools button,
+.welcome-game-controls button,
 .welcome-unavailable button {
-  min-height: 36px;
-  padding: 6px 12px;
-  border-radius: 8px;
-  color: var(--text-weak);
   font-size: 12px;
-  touch-action: none;
+  line-height: 18px;
+  color: var(--text-weak);
+  min-height: 38px;
+  padding: 9px 14px;
+  border-radius: 9px;
 }
-.welcome-tools button:hover,
-.welcome-tools button[aria-pressed="true"] {
-  background: var(--surface-raised-base);
+.welcome-game-controls button:hover,
+.welcome-unavailable button:hover {
+  background: var(--surface-hover-base);
   color: var(--text-strong);
 }
-.welcome-tools button[aria-pressed="true"] {
+.welcome-game-controls .welcome-play {
+  color: var(--text-strong);
+  background: var(--surface-raised-base);
   box-shadow: 0 0 0 1px var(--border-weak-base);
 }
-.welcome-tool-divider {
-  height: 16px;
-  width: 1px;
-  background: var(--border-weaker-base);
-  margin-inline: 6px;
+.welcome-game-controls button:disabled,
+.welcome-game-controls button[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: default;
 }
 .welcome-stage button:focus-visible,
 .welcome-stage [tabindex]:focus-visible {
@@ -114,27 +179,26 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-top: 24px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-weaker-base);
+  gap: 18px;
+  margin-top: 18px;
+  min-height: 48px;
 }
 .welcome-scene-footer p {
   color: var(--text-weak);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.6;
   margin: 0;
+  text-wrap: pretty;
 }
 .welcome-create {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
   color: var(--text-strong);
   padding: 10px 14px;
   font-size: 13px;
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--surface-raised-base);
   box-shadow: 0 0 0 1px var(--border-weaker-base);
 }
@@ -147,6 +211,8 @@
 }
 .welcome-bottomline {
   margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-weaker-base);
   font-size: 11px;
   color: var(--text-weak);
 }
@@ -167,6 +233,16 @@
   text-align: center;
   gap: 16px;
 }
+.welcome-loading h2,
+.welcome-unavailable h2 {
+  font-size: 18px;
+  color: var(--text-strong);
+}
+.welcome-loading p,
+.welcome-unavailable p {
+  font-size: 13px;
+  color: var(--text-weak);
+}
 @keyframes welcome-enter {
   from {
     opacity: 0;
@@ -177,10 +253,46 @@
     transform: none;
   }
 }
+@keyframes welcome-drift {
+  from {
+    transform: translateY(-12px) rotate(-7deg);
+  }
+  to {
+    transform: translateY(12px) rotate(7deg);
+  }
+}
 @container (max-width: 480px) {
+  .welcome-topline {
+    margin-bottom: 20px;
+  }
+  .welcome-scene-heading {
+    margin-bottom: 20px;
+    padding: 0;
+  }
+  .welcome-game-heading {
+    padding-inline: 28px;
+  }
+  .welcome-game-heading p {
+    max-width: 230px;
+    margin-inline: auto;
+  }
+  .welcome-score {
+    top: -6px;
+    right: 0;
+    font-size: 10px;
+    gap: 2px;
+  }
+  .welcome-score > span:first-child {
+    font-size: 18px;
+  }
+  .welcome-game-controls button {
+    min-height: 44px;
+  }
   .welcome-scene-footer {
-    align-items: stretch;
     flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+    gap: 10px;
     margin-top: 14px;
   }
   .welcome-bottomline {
@@ -188,24 +300,15 @@
     flex-direction: column;
     gap: 8px;
   }
-  .welcome-tools button {
-    padding-inline: 9px;
-  }
-  .welcome-tool-divider {
-    display: none;
-  }
-  .welcome-topline {
-    margin-bottom: 16px;
-  }
-}
-@media (pointer: coarse) {
-  .welcome-tools button,
-  .welcome-pause {
-    min-height: 44px;
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   .welcome-stage {
+    animation: none;
+  }
+  .welcome-ambient {
+    transition: none;
+  }
+  .welcome-drift {
     animation: none;
   }
 }

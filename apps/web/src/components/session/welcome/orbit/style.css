@@ -1,0 +1,65 @@
+.orbit-planet {
+  fill: color-mix(in srgb, var(--chart-series-1) 22%, var(--surface-base));
+  stroke: var(--chart-series-1);
+  stroke-width: 1.5;
+}
+.orbit-planet[data-kind="1"] {
+  fill: color-mix(in srgb, var(--chart-series-2) 18%, var(--surface-base));
+  stroke: var(--chart-series-2);
+}
+.orbit-field {
+  fill: none;
+  stroke: var(--border-weak-base);
+  stroke-dasharray: 2 6;
+  stroke-width: 1;
+}
+.orbit-crater {
+  stroke: none;
+  fill: var(--border-weak-base);
+}
+.orbit-beacon {
+  fill: none;
+  stroke: var(--chart-series-2);
+  stroke-width: 2;
+}
+.orbit-beacon[data-delivered] circle {
+  fill: var(--chart-series-2);
+  fill-opacity: 0.15;
+}
+.orbit-beacon-corners {
+  stroke: var(--text-weak);
+  stroke-width: 1.5;
+}
+.orbit-preview {
+  fill: none;
+  stroke: var(--text-weak);
+  stroke-dasharray: 1 9;
+  stroke-linecap: round;
+  stroke-width: 2.5;
+  opacity: 0.5;
+}
+.orbit-trace {
+  fill: none;
+  stroke: var(--chart-series-1);
+  stroke-width: 2;
+  opacity: 0.45;
+}
+.orbit-ship {
+  fill: var(--text-strong);
+}
+.orbit-ship[data-missed] {
+  opacity: 0.4;
+}
+.orbit-ship-window {
+  fill: var(--surface-raised-base);
+}
+.orbit-launchpad,
+.orbit-aim-ring {
+  fill: none;
+  stroke: var(--text-weak);
+  stroke-width: 1;
+}
+.orbit-aim-ring {
+  stroke-dasharray: 2 7;
+  opacity: 0.5;
+}

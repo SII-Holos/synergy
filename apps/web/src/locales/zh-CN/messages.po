@@ -23224,16 +23224,56 @@ msgid "ui.userMessage.source"
 msgstr "查看源码"
 
 #. js-lingui-explicit-id
+msgid "welcome.chain.board"
+msgstr "连锁反应区域。方向键移动瞄准点，空格键点亮。"
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.draft"
+msgstr "帮我做一个连锁反应小游戏。点击漂浮的星星之间，引发连续扩散的反应；每局简短，目标明确，反馈有节奏。支持键盘和触控。我想继续定制它的主题和规则。"
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.goal"
+msgstr "用一颗火花，点亮 {target} 颗星。"
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.hint"
+msgstr "点一下，看看能连起来多少颗星。"
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.ignite"
+msgstr "在这里点亮"
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.lit"
+msgstr "已点亮 {count} 颗星…"
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.missed"
+msgstr "点亮了 {count} 颗。试试星星聚集的地方。"
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.name"
+msgstr "连锁星火"
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.won"
+msgstr "一颗火花，连起了 {count} 颗星。"
+
+#. js-lingui-explicit-id
 msgid "welcome.common.create"
 msgstr "做一个我的版本"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.loading"
-msgstr "正在准备你的互动场景…"
+msgstr "正在准备互动示例…"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.local"
 msgstr "互动示例 · 不消耗模型额度"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.nextRound"
+msgstr "下一关"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.pause"
@@ -23252,264 +23292,104 @@ msgid "welcome.common.retry"
 msgstr "重试示例"
 
 #. js-lingui-explicit-id
+msgid "welcome.common.step"
+msgstr "前进一步"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.subtitle"
+msgstr "一个小游戏、一款工具，或手头的工作。说说你想做什么。"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.title"
+msgstr "让想法，动起来。"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.tryAgain"
+msgstr "再试一次"
+
+#. js-lingui-explicit-id
 msgid "welcome.common.unavailable"
 msgstr "暂时无法加载这个示例，你仍可以在下方开始任务。"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.arrived"
-msgstr "观测站亮起来了，是你接通了这段旅程。"
+msgid "welcome.orbit.aim"
+msgstr "角度 {angle, number} 度，力度 {power, number}。已使用 {count} 次发射，共 3 次。"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.board"
-msgstr "小岛道路工坊"
+msgid "welcome.orbit.board"
+msgstr "引力投递区域"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.bridge"
-msgstr "桥梁"
+msgid "welcome.orbit.delivered"
+msgstr "投递完成。"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.cell"
-msgstr "第 {column} 列，第 {row} 行。{piece}"
+msgid "welcome.orbit.draft"
+msgstr "帮我做一个利用引力完成投递的小游戏。拖拽瞄准，松手让小飞船绕过星球、抵达信标。加入轨迹预览、清晰的碰撞反馈、短关卡和键盘操作。我想设计新的星球和投递路线。"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.corner"
-msgstr "转弯"
+msgid "welcome.orbit.flying"
+msgstr "引力正在改变飞行路线…"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.driving"
-msgstr "道路已接通，小车正在出发。"
+msgid "welcome.orbit.goal"
+msgstr "抵达信标。左右键调方向，上下键调力度，空格发射。"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.empty"
-msgstr "空地：放置道路"
+msgid "welcome.orbit.hint"
+msgstr "向后拉，松开，把小飞船送到远方。"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.hint"
-msgstr "放下道路和桥梁，接通通往观测站的路。点击已有路块可以旋转。"
+msgid "welcome.orbit.launch"
+msgstr "发射"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.name"
-msgstr "亲手搭一个小世界"
+msgid "welcome.orbit.missed"
+msgstr "偏了一点。换个角度再试试。"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.night"
-msgstr "点亮夜色"
+msgid "welcome.orbit.name"
+msgstr "引力投递"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.prompt"
-msgstr "帮我开发一个原创的互动微型世界：等距视角的小岛、可以编辑的道路和桥梁，以及沿连通道路行驶的小车。支持日夜灯光、键盘和触控操作。先帮我确定它的场景与用途。我的想法是："
+msgid "welcome.orbit.next"
+msgstr "下一次投递"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.road"
-msgstr "道路"
+msgid "welcome.stack.board"
+msgstr "积木堆叠区域。按空格或回车放下一块。"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.step"
-msgstr "小车前进一步"
+msgid "welcome.stack.draft"
+msgstr "帮我做一个点击落块的堆叠小游戏，积木逐渐搭成一座亮灯的小楼。加入精确落点反馈、边缘切落、连续完美落点奖励、短局和重新开始，支持触控与键盘。我想更换建筑外观，并加入自己的规则。"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.title"
-msgstr "接通一条路，让世界动起来。"
+msgid "welcome.stack.drop"
+msgstr "放下一块"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.tools"
-msgstr "道路组件"
+msgid "welcome.stack.goal"
+msgstr "搭到十二层。连续三次完美落点可恢复一些宽度。"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.waiting"
-msgstr "补上三块路，开启一段小小的旅程。"
+msgid "welcome.stack.hint"
+msgstr "看准了，放下一块。"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.water"
-msgstr "河流：放置桥梁"
+msgid "welcome.stack.missed"
+msgstr "搭到了 {count} 层。再试一次？"
 
 #. js-lingui-explicit-id
-msgid "welcome.nature.board"
-msgstr "互动地形。方向键移动画笔，按 Enter 或空格使用当前工具。"
+msgid "welcome.stack.name"
+msgstr "叠叠高"
 
 #. js-lingui-explicit-id
-msgid "welcome.nature.dig"
-msgstr "挖一条沟"
+msgid "welcome.stack.perfect"
+msgstr "完美落点 · 连续 {count} 次"
 
 #. js-lingui-explicit-id
-msgid "welcome.nature.failed"
-msgstr "模拟暂时停止了，你的任务草稿已保留。"
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.gravity"
-msgstr "低重力"
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.growing"
-msgstr "{count, plural, =0 {一点水，带来新的生长。} other {已有 # 株植物开始生长。}}"
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.hint"
-msgstr "挖开山坡，把水引向种子；也可以亲手塑造一片新的地形。"
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.name"
-msgstr "一片会生长的风景"
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.prompt"
-msgstr "帮我开发一个原创的互动自然场景：用户可以改变地形、引导水流、种下植物。支持风力、重力调整和键盘操作，模拟运行时保持编辑流畅。先帮我确定主题和使用人群。我的想法是："
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.seed"
-msgstr "种下种子"
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.soil"
-msgstr "堆一座山"
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.step"
-msgstr "前进一步"
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.title"
-msgstr "一滴水，会流向哪里？"
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.tools"
-msgstr "地形工具"
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.water"
-msgstr "倒一点水"
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.wind"
-msgstr "风向：{direction, select, left {向左} right {向右} other {无风}}"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.arrivalBody"
-msgstr "潮水正在涨起。码头尽头，一间书店的门虚掩着。门边的小牌子写着：欢迎带故事进来，没写完的也可以。"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.arrivalTitle"
-msgstr "海岸上最后一盏灯"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.atlas"
-msgstr "在地图上寻找灯塔"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.back"
-msgstr "回看上一页"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.books"
-msgstr "看看书架"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.enter"
-msgstr "推门进去"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.foyerBody"
-msgstr "门铃轻轻响了。柜台上放着一封信，旁边的地图册留下了海盐的痕迹。窗外，一位来客停下脚步，似乎在找一个熟悉的人。"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.foyerTitle"
-msgstr "故事，从这里开始"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.guest"
-msgstr "邀请来客进门"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.hint"
-msgstr "走进去，看看那些物件。每一次选择，都让故事有了不同的方向。"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.journey"
-msgstr "一起翻开地图册"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.letter"
-msgstr "读一读信"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.letterBody"
-msgstr "“如果大海送你回家，我就在这里。”信上没有地址，只在角落画了一座小灯塔。窗外来客的项链上，也挂着同样的灯塔。"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.letterTitle"
-msgstr "等了很久的一封信"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.map"
-msgstr "赴一场黎明之约"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.name"
-msgstr "一段由你选择的故事"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.owner"
-msgstr "问问这条项链"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.prompt"
-msgstr "帮我创作并实现一个原创的互动插画故事：支持点击物件、分支选择和多个结局。我刚体验了海边书店，探索的方向是“{direction}”。先帮我确定自己的场景、人物和画面风格。我的想法是："
-
-#. js-lingui-explicit-id
-msgid "welcome.story.reading"
-msgstr "办一场故事之夜"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.readingBody"
-msgstr "你把椅子转向窗边。有人带来一首诗，有人带来一个还没结尾的故事。到了午夜，每个座位都坐满了。海岸上最小的书店，装下了一个世界。"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.readingTitle"
-msgstr "满屋子，都是新的开始"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.return"
-msgstr "把信交给来客"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.reunionBody"
-msgstr "第一行还没有读完，来客已经笑了。楼上传来轻轻的脚步声，桌上多了两只杯子。你走出书店，留下敞开的门。有些故事，会在开始的地方圆满。"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.reunionTitle"
-msgstr "为你留着的一盏灯"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.scene"
-msgstr "海边书店"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.shelvesBody"
-msgstr "地图册翻开了，里面有一座新地图上找不到的小岛。夹着的手写邀请写道：“带一个故事来，天亮出发。”不过，这里的椅子也足够开启另一种旅程。"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.shelvesTitle"
-msgstr "书页之间"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.title"
-msgstr "这间书店，等你推门。"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.visitorBody"
-msgstr "“我姐姐以前守着这家店。”来客说，“她总会给我留一盏灯。”目光落在信上，窗外的雨也渐渐停了。"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.visitorTitle"
-msgstr "有人，终于回家了"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.voyageBody"
-msgstr "黎明时，一条小船停在码头。你带上地图册和一本空白笔记本。书店在身后越来越小，新的岛屿出现在书页的边缘。"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.voyageTitle"
-msgstr "地平线外，还有一页"
+msgid "welcome.stack.won"
+msgstr "十二层，一点一点搭起来了。"
 
 #. js-lingui-explicit-id
 msgid "window.close.aria"

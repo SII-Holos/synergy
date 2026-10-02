@@ -23224,6 +23224,42 @@ msgid "ui.userMessage.source"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.chain.board"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.draft"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.goal"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.ignite"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.lit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.missed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.won"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.common.create"
 msgstr ""
 
@@ -23233,6 +23269,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "welcome.common.local"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.nextRound"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -23252,263 +23292,103 @@ msgid "welcome.common.retry"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.common.step"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.subtitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.tryAgain"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.common.unavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.island.arrived"
+msgid "welcome.orbit.aim"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.island.board"
+msgid "welcome.orbit.board"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.island.bridge"
+msgid "welcome.orbit.delivered"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.island.cell"
+msgid "welcome.orbit.draft"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.island.corner"
+msgid "welcome.orbit.flying"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.island.driving"
+msgid "welcome.orbit.goal"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.island.empty"
+msgid "welcome.orbit.hint"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.island.hint"
+msgid "welcome.orbit.launch"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.island.name"
+msgid "welcome.orbit.missed"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.island.night"
+msgid "welcome.orbit.name"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.island.prompt"
+msgid "welcome.orbit.next"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.island.road"
+msgid "welcome.stack.board"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.island.step"
+msgid "welcome.stack.draft"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.island.title"
+msgid "welcome.stack.drop"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.island.tools"
+msgid "welcome.stack.goal"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.island.waiting"
+msgid "welcome.stack.hint"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.island.water"
+msgid "welcome.stack.missed"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.nature.board"
+msgid "welcome.stack.name"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.nature.dig"
+msgid "welcome.stack.perfect"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "welcome.nature.failed"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.gravity"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.growing"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.hint"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.name"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.prompt"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.seed"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.soil"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.step"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.title"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.tools"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.water"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.wind"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.arrivalBody"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.arrivalTitle"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.atlas"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.back"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.books"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.enter"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.foyerBody"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.foyerTitle"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.guest"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.hint"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.journey"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.letter"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.letterBody"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.letterTitle"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.map"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.name"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.owner"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.prompt"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.reading"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.readingBody"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.readingTitle"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.return"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.reunionBody"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.reunionTitle"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.scene"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.shelvesBody"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.shelvesTitle"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.title"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.visitorBody"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.visitorTitle"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.voyageBody"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "welcome.story.voyageTitle"
+msgid "welcome.stack.won"
 msgstr ""
 
 #. js-lingui-explicit-id

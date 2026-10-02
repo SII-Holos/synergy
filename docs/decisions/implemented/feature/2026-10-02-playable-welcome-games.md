@@ -10,6 +10,10 @@ A task introduction has little time to explain an interaction. Multi-tool simula
 
 Three independent local models provide chain reactions, timed block stacking and gravity-assisted delivery. Each model has deterministic initialization and explicit success, failure and restart transitions. Their rules remain independent of rendering and message drafts. Chain reactions propagate through nearby moving particles; stacking preserves only overlapping support; delivery integrates gravity at a fixed timestep and checks destination, obstacle and playfield collisions. All moving collections and flight traces are bounded.
 
+The registered scenes render original SVG artwork with a common task headline, a short operation hint and a local result. An ambient layer uses sparse folding, square and cross motifs and increases visibility while a game is in progress. Ordinary product typography remains readable; game shapes and counters carry the playful detail. The theme's canonical colors apply directly to SVG, including same-mode theme switches. No engine, audio or external assets load with the games.
+
+Each game can be played with a pointer, touch or keyboard. The shared pause owner stops clocks without losing state; reduced motion disables the ambient loop, starts paused and exposes explicit stepping. Gravity aiming supports pointer capture, cancellation and a matching trajectory preview. Create actions fill editable task instructions through the existing draft owner and never submit them. Obsolete scene modules, tests and localized messages are removed rather than retained behind flags.
+
 The models use familiar interaction families with locally authored layouts and visual feedback. The one-click chain-reaction reference is [Boomshine by K2xL](https://www.k2xl.com/games/boomshine/); the alignment-and-height reference is [Stack by KCHLAB](https://www.kchlab.com/). No source code or game assets are incorporated from these references. The stable assignment and draft ownership rules remain in [interactive task introductions](2026-10-02-interactive-task-welcome.md).
 
 ## Alternatives considered

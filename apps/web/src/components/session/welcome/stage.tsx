@@ -14,6 +14,7 @@ import { Dynamic } from "solid-js/web"
 import { createMediaQuery } from "@solid-primitives/media"
 import { useLocale } from "@/context/locale"
 import type { WelcomeMemory, WelcomeSceneDefinition } from "./types"
+import { AmbientField } from "./surface"
 import "./style.css"
 
 export function WelcomeStage(props: {
@@ -89,6 +90,7 @@ export function WelcomeStage(props: {
       onPointerDown={() => setEditing(false)}
       onFocusIn={() => setEditing(false)}
     >
+      <AmbientField seed={props.seed} active={active} reducedMotion={reducedMotion} />
       <div class="welcome-topline">
         {props.brand}
         <button class="welcome-pause" type="button" aria-pressed={paused()} onClick={() => setPaused(!paused())}>
@@ -97,10 +99,19 @@ export function WelcomeStage(props: {
             : i18n._({ id: "welcome.common.pause", message: "Pause scene" })}
         </button>
       </div>
+      <div class="welcome-scene-heading">
+        <h1>{i18n._({ id: "welcome.common.title", message: "Bring your ideas to life." })}</h1>
+        <p>
+          {i18n._({
+            id: "welcome.common.subtitle",
+            message: "A little game, a useful tool, or the work at hand. What would you like to make?",
+          })}
+        </p>
+      </div>
       <ErrorBoundary
         fallback={(_error, reset) => (
           <div class="welcome-unavailable" role="status">
-            <h1>{translateDescriptor(props.definition.title, i18n)}</h1>
+            <h2>{translateDescriptor(props.definition.title, i18n)}</h2>
             <p>
               {i18n._({
                 id: "welcome.common.unavailable",
@@ -122,8 +133,8 @@ export function WelcomeStage(props: {
         <Suspense
           fallback={
             <div class="welcome-loading" role="status">
-              <h1>{translateDescriptor(props.definition.title, i18n)}</h1>
-              <p>{i18n._({ id: "welcome.common.loading", message: "Preparing your little world…" })}</p>
+              <h2>{translateDescriptor(props.definition.title, i18n)}</h2>
+              <p>{i18n._({ id: "welcome.common.loading", message: "Preparing an interactive example…" })}</p>
             </div>
           }
         >

@@ -22,6 +22,10 @@ test("overhang is cut from the next block, a miss ends the game, and a rapid sec
   expect(placed.blocks.at(-1)!.width).toBe(170)
   expect(placed.cut?.width).toBe(50)
   expect(placed.combo).toBe(0)
+  let recovered = placed
+  for (let i = 0; i < 3; i++)
+    recovered = dropBlock({ ...recovered, cooldown: 0, moving: { ...recovered.moving, x: recovered.blocks.at(-1)!.x } })
+  expect(recovered.blocks.at(-1)!.width).toBe(186)
   const lost = dropBlock({ ...placed, cooldown: 0, moving: { ...placed.moving, x: 40 } })
   expect(lost.phase).toBe("missed")
   expect(lost.blocks).toEqual(placed.blocks)

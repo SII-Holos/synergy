@@ -1,0 +1,59 @@
+.stack-ground {
+  fill: none;
+  stroke: var(--border-base);
+  stroke-width: 1.5;
+}
+.stack-guide {
+  fill: none;
+  stroke: var(--border-weaker-base);
+  stroke-dasharray: 2 8;
+}
+.stack-block-face {
+  fill: var(--chart-series-1);
+}
+.stack-block-top {
+  fill: color-mix(in srgb, var(--chart-series-1) 60%, var(--surface-raised-base));
+}
+.stack-block-side {
+  fill: color-mix(in srgb, var(--chart-series-1) 75%, var(--text-strong));
+}
+.stack-block[data-moving] .stack-block-face {
+  fill: var(--text-strong);
+}
+.stack-block[data-moving] .stack-block-top {
+  fill: var(--text-weak);
+}
+.stack-block[data-moving] .stack-block-side {
+  fill: var(--text-base);
+}
+.stack-windows {
+  fill: none;
+  stroke: var(--surface-raised-base);
+  stroke-width: 4;
+  opacity: 0.25;
+}
+.stack-block[data-perfect] .stack-windows {
+  opacity: 0.9;
+}
+.stack-flag {
+  fill: var(--chart-series-2);
+  stroke: var(--chart-series-2);
+  stroke-width: 2;
+}
+.stack-settle {
+  animation: stack-settle 180ms ease-out both;
+}
+@keyframes stack-settle {
+  from {
+    transform: translateY(-9px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stack-settle {
+    animation: none;
+  }
+}

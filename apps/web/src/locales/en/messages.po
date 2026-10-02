@@ -23224,16 +23224,56 @@ msgid "ui.userMessage.source"
 msgstr "View source"
 
 #. js-lingui-explicit-id
+msgid "welcome.chain.board"
+msgstr "Chain reaction playfield. Use arrow keys to aim and Space to ignite."
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.draft"
+msgstr "Build an interactive chain-reaction game. Let me ignite a spark among drifting stars, with cascading reactions, short rounds, clear goals and satisfying visual feedback. Include keyboard and touch controls. I would like to customize its theme and rules."
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.goal"
+msgstr "Light {target} stars with one spark."
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.hint"
+msgstr "One click. How far will your spark travel?"
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.ignite"
+msgstr "Ignite here"
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.lit"
+msgstr "{count} stars lit…"
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.missed"
+msgstr "{count} lit. Try where the stars gather."
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.name"
+msgstr "Chain sparks"
+
+#. js-lingui-explicit-id
+msgid "welcome.chain.won"
+msgstr "One spark. {count} stars connected."
+
+#. js-lingui-explicit-id
 msgid "welcome.common.create"
 msgstr "Make my own version"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.loading"
-msgstr "Preparing your little world…"
+msgstr "Preparing an interactive example…"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.local"
 msgstr "Interactive example · no model usage"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.nextRound"
+msgstr "Next round"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.pause"
@@ -23252,264 +23292,104 @@ msgid "welcome.common.retry"
 msgstr "Retry example"
 
 #. js-lingui-explicit-id
+msgid "welcome.common.step"
+msgstr "Advance one step"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.subtitle"
+msgstr "A little game, a useful tool, or the work at hand. What would you like to make?"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.title"
+msgstr "Bring your ideas to life."
+
+#. js-lingui-explicit-id
+msgid "welcome.common.tryAgain"
+msgstr "Try again"
+
+#. js-lingui-explicit-id
 msgid "welcome.common.unavailable"
 msgstr "This example could not load. You can still start a task below."
 
 #. js-lingui-explicit-id
-msgid "welcome.island.arrived"
-msgstr "You brought the observatory to life."
+msgid "welcome.orbit.aim"
+msgstr "Aim {angle, number} degrees, power {power, number}. {count} of 3 launches used."
 
 #. js-lingui-explicit-id
-msgid "welcome.island.board"
-msgstr "Island road workshop"
+msgid "welcome.orbit.board"
+msgstr "Gravity delivery playfield"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.bridge"
-msgstr "Bridge"
+msgid "welcome.orbit.delivered"
+msgstr "Delivery complete."
 
 #. js-lingui-explicit-id
-msgid "welcome.island.cell"
-msgstr "Column {column}, row {row}. {piece}"
+msgid "welcome.orbit.draft"
+msgstr "Build a gravity-assisted delivery game. Let me drag to aim and release a small ship around planets toward a beacon. Include a trajectory preview, readable collisions, short levels and keyboard controls. I would like to design new planets and delivery routes."
 
 #. js-lingui-explicit-id
-msgid "welcome.island.corner"
-msgstr "Corner"
+msgid "welcome.orbit.flying"
+msgstr "Gravity is bending your route…"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.driving"
-msgstr "Connected. Your car is on its way."
+msgid "welcome.orbit.goal"
+msgstr "Reach the beacon. Arrows adjust aim and power; Space launches."
 
 #. js-lingui-explicit-id
-msgid "welcome.island.empty"
-msgstr "Empty: place a road"
+msgid "welcome.orbit.hint"
+msgstr "Pull back. Let go. Send a little ship a long way."
 
 #. js-lingui-explicit-id
-msgid "welcome.island.hint"
-msgstr "Place roads and a bridge to reach the observatory. Click a piece to rotate it."
+msgid "welcome.orbit.launch"
+msgstr "Launch"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.name"
-msgstr "A little world, built by you"
+msgid "welcome.orbit.missed"
+msgstr "A little off course. Try a different angle."
 
 #. js-lingui-explicit-id
-msgid "welcome.island.night"
-msgstr "Night lights"
+msgid "welcome.orbit.name"
+msgstr "Gravity post"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.prompt"
-msgstr "Build an original interactive miniature world with an isometric island, editable roads, bridges and a car that follows connected paths. Include day and night lighting, keyboard and touch controls. First help me choose its setting and purpose. My idea is: "
+msgid "welcome.orbit.next"
+msgstr "Next delivery"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.road"
-msgstr "Road"
+msgid "welcome.stack.board"
+msgstr "Block stacking playfield. Press Space or Enter to drop a block."
 
 #. js-lingui-explicit-id
-msgid "welcome.island.step"
-msgstr "Move car"
+msgid "welcome.stack.draft"
+msgstr "Build a one-tap block-stacking game with a small illuminated tower. Include precise landing feedback, falling overhangs, perfect streaks, short rounds and a restart. Support touch and keyboard. I would like to change the architecture and add my own rules."
 
 #. js-lingui-explicit-id
-msgid "welcome.island.title"
-msgstr "Make a connection. Watch it come alive."
+msgid "welcome.stack.drop"
+msgstr "Drop a block"
 
 #. js-lingui-explicit-id
-msgid "welcome.island.tools"
-msgstr "Road pieces"
+msgid "welcome.stack.goal"
+msgstr "Build twelve floors. Three perfect landings recover some width."
 
 #. js-lingui-explicit-id
-msgid "welcome.island.waiting"
-msgstr "Three missing pieces. One little journey."
+msgid "welcome.stack.hint"
+msgstr "Wait for the moment. Drop one more block."
 
 #. js-lingui-explicit-id
-msgid "welcome.island.water"
-msgstr "River: place a bridge"
+msgid "welcome.stack.missed"
+msgstr "{count} floors tall. Ready for another try?"
 
 #. js-lingui-explicit-id
-msgid "welcome.nature.board"
-msgstr "Landscape. Arrow keys move the brush; Enter or Space applies the selected tool."
+msgid "welcome.stack.name"
+msgstr "Tiny tower"
 
 #. js-lingui-explicit-id
-msgid "welcome.nature.dig"
-msgstr "Dig a channel"
+msgid "welcome.stack.perfect"
+msgstr "Perfect landing · {count} in a row"
 
 #. js-lingui-explicit-id
-msgid "welcome.nature.failed"
-msgstr "The simulation stopped. Your task draft is safe."
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.gravity"
-msgstr "Low gravity"
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.growing"
-msgstr "{count, plural, =0 {A little water. A new beginning.} one {# plant is growing.} other {# plants are growing.}}"
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.hint"
-msgstr "Draw a channel through the hill. Guide water to the seeds, or shape a landscape of your own."
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.name"
-msgstr "A living landscape"
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.prompt"
-msgstr "Help me build an original interactive landscape where people can shape terrain, guide water and grow plants. Include wind and gravity controls, an accessible keyboard mode, and a simulation that stays responsive while editing. First help me choose a theme and audience. My idea is: "
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.seed"
-msgstr "Plant a seed"
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.soil"
-msgstr "Build land"
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.step"
-msgstr "Advance one step"
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.title"
-msgstr "Where will a little water take you?"
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.tools"
-msgstr "Landscape tools"
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.water"
-msgstr "Pour water"
-
-#. js-lingui-explicit-id
-msgid "welcome.nature.wind"
-msgstr "Wind: {direction, select, left {left} right {right} other {calm}}"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.arrivalBody"
-msgstr "The tide is coming in. At the end of the pier, a bookshop has left its door ajar. The sign says: stories welcome, even unfinished ones."
-
-#. js-lingui-explicit-id
-msgid "welcome.story.arrivalTitle"
-msgstr "The last light on the coast"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.atlas"
-msgstr "Find the lighthouse on the map"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.back"
-msgstr "Go back a page"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.books"
-msgstr "Explore the shelves"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.enter"
-msgstr "Push open the door"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.foyerBody"
-msgstr "A bell rings. Beside a sealed letter sits an atlas with salt-stained pages. Someone outside pauses at the window, looking for a familiar face."
-
-#. js-lingui-explicit-id
-msgid "welcome.story.foyerTitle"
-msgstr "A place to begin"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.guest"
-msgstr "Invite the visitor in"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.hint"
-msgstr "Step inside. Every object has a story; your choices decide where it goes."
-
-#. js-lingui-explicit-id
-msgid "welcome.story.journey"
-msgstr "Share the atlas"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.letter"
-msgstr "Read the letter"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.letterBody"
-msgstr "“If the sea brings you home, I will be here.” There is no address, only a tiny lighthouse drawn in the corner. The visitor has the same lighthouse on a pendant."
-
-#. js-lingui-explicit-id
-msgid "welcome.story.letterTitle"
-msgstr "A letter that waited"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.map"
-msgstr "Follow the invitation"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.name"
-msgstr "An interactive short story"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.owner"
-msgstr "Ask about the pendant"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.prompt"
-msgstr "Help me write and build an original interactive illustrated story with clickable objects, branching choices and multiple endings. I explored a seaside bookshop and the direction “{direction}”. First help me choose my own setting, characters and art direction. My idea is: "
-
-#. js-lingui-explicit-id
-msgid "welcome.story.reading"
-msgstr "Host a night of stories"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.readingBody"
-msgstr "You turn the chairs toward the window. One neighbor brings a poem; another brings a tale with no ending. By midnight, every seat is taken. The smallest shop on the coast has become a whole world."
-
-#. js-lingui-explicit-id
-msgid "welcome.story.readingTitle"
-msgstr "A room full of beginnings"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.return"
-msgstr "Give them the letter"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.reunionBody"
-msgstr "The visitor smiles before finishing the first line. Upstairs, a floorboard creaks. Two cups appear on the table. You step outside and leave the door open. Some stories end where they began."
-
-#. js-lingui-explicit-id
-msgid "welcome.story.reunionTitle"
-msgstr "A light, kept for you"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.scene"
-msgstr "The bookshop by the sea"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.shelvesBody"
-msgstr "The atlas opens to an island missing from every modern map. Tucked inside is a handwritten invitation: “Bring a story. We sail at dawn.” There are enough chairs here for a different kind of journey, too."
-
-#. js-lingui-explicit-id
-msgid "welcome.story.shelvesTitle"
-msgstr "Between the pages"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.title"
-msgstr "This bookshop is waiting for you."
-
-#. js-lingui-explicit-id
-msgid "welcome.story.visitorBody"
-msgstr "“My sister used to keep this shop,” the visitor says. “She always left a light for me.” Their gaze settles on the letter. Outside, the rain begins to ease."
-
-#. js-lingui-explicit-id
-msgid "welcome.story.visitorTitle"
-msgstr "Someone has come home"
-
-#. js-lingui-explicit-id
-msgid "welcome.story.voyageBody"
-msgstr "At dawn, a small boat waits by the pier. You carry the atlas and an empty notebook. As the bookshop grows smaller behind you, a new island appears at the edge of the page."
-
-#. js-lingui-explicit-id
-msgid "welcome.story.voyageTitle"
-msgstr "A page beyond the horizon"
+msgid "welcome.stack.won"
+msgstr "Twelve floors. You built it, one tap at a time."
 
 #. js-lingui-explicit-id
 msgid "window.close.aria"

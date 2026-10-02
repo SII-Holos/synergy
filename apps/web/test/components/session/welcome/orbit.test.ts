@@ -44,3 +44,12 @@ test("collisions fail a shot, retry preserves the angle and three misses reset t
   expect(prepareOrbit(state).angle).toBe(state.angle)
   expect(prepareOrbit({ ...state, shots: 3 }).shots).toBe(0)
 })
+
+test("flight is independent of frame partitioning", () => {
+  const first = launchOrbit(createOrbit(18))
+  const whole = advanceOrbit(first, 0.3)
+  let frames = first
+  for (let i = 0; i < 6; i++) frames = advanceOrbit(frames, 0.05)
+  expect(whole.ship.x).toBeCloseTo(frames.ship.x, 5)
+  expect(whole.ship.y).toBeCloseTo(frames.ship.y, 5)
+})

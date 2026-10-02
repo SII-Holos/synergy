@@ -25,8 +25,8 @@ export function createChain(seed: number, round = 0): Chain {
     phase: "ready",
     time: 0,
     stars: Array.from({ length: 36 }, (_, i) => ({
-      x: 80 + (i % 9) * 70 + random() * 18,
-      y: 45 + Math.floor(i / 9) * 58 + random() * 22,
+      x: 80 + (i % 9) * 70 + (random() - 0.5) * 48,
+      y: 52 + Math.floor(i / 9) * 60 + (random() - 0.5) * 36,
       vx: (random() - 0.5) * 22,
       vy: (random() - 0.5) * 18,
       kind: i % 3,

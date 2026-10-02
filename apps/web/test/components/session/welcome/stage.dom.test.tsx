@@ -90,45 +90,60 @@ afterAll(async () => {
   await server?.close()
   if (directory) await rm(directory, { recursive: true, force: true })
 })
-async function open(scene = "island") {
+async function open(scene = "chain") {
   errors.length = 0
   await page.goto(`${url}?scene=${scene}`)
   await page.locator(".welcome-create").waitFor()
   expect(errors).toEqual([])
 }
 
-test("island pieces are playable by keyboard, retain editor ownership, and lead to a draft", async () => {
+test("a one-click chain settles, retries locally, and fills a task draft", async () => {
   await open()
-  await page.locator('[data-cell="2,2"]').focus()
-  await page.keyboard.press("Enter")
-  await page.getByRole("button", { name: "Bridge", exact: true }).click()
-  await page.locator('[data-cell="3,2"]').focus()
+  await page.getByRole("button", { name: "Ignite here", exact: true }).focus()
   await page.keyboard.press("Space")
-  await page.getByRole("button", { name: "Road", exact: true }).click()
-  await page.locator('[data-cell="4,2"]').focus()
-  await page.keyboard.press("Enter")
-  await page.getByText("You brought the observatory to life.").waitFor()
+  await page.waitForFunction(() =>
+    ["won", "missed"].includes(document.querySelector(".welcome-chain")?.getAttribute("data-phase") ?? ""),
+  )
+  expect(await page.locator(".welcome-play").evaluate((el) => document.activeElement === el)).toBe(true)
+  expect(await page.getByRole("textbox").inputValue()).toBe("")
   await page.getByRole("button", { name: "Make my own version" }).click()
-  expect(await page.getByRole("textbox", { name: "Message" }).inputValue()).toContain("interactive miniature world")
+  expect(await page.getByRole("textbox").inputValue()).toContain("chain-reaction")
   expect(await page.getByRole("textbox").evaluate((el) => document.activeElement === el)).toBe(true)
+  expect(await page.getByRole("heading", { name: "Bring your ideas to life." }).count()).toBe(1)
 })
 
-test("dragging a road previews its destination, commits there, and can be rotated by touch", async () => {
-  await page.setViewportSize({ width: 960, height: 920 })
-  await open()
-  const road = await page.getByRole("button", { name: "Road", exact: true }).boundingBox()
-  const cell = page.locator('[data-cell="2,2"]')
-  const target = await cell.boundingBox()
-  await page.mouse.move(road!.x + road!.width / 2, road!.y + road!.height / 2)
+test("stacking responds to keyboard and touch without sending or stealing the draft", async () => {
+  await open("stack")
+  const drop = page.getByRole("button", { name: "Drop a block", exact: true })
+  await drop.focus()
+  await page.keyboard.press("Space")
+  expect(await page.locator(".welcome-stack").getAttribute("data-height")).toBe("1")
+  await page.getByRole("button", { name: "Pause scene" }).click()
+  await page.getByRole("button", { name: "Start over", exact: true }).click()
+  await drop.dispatchEvent("click", { pointerType: "touch" })
+  expect(await page.locator(".welcome-stack").getAttribute("data-height")).toBe("1")
+  expect(await page.getByRole("textbox").inputValue()).toBe("")
+})
+
+test("gravity delivery supports keyboard aiming, cancellation, delivery and restart", async () => {
+  await open("orbit")
+  const board = page.getByRole("group", { name: "Gravity delivery playfield" })
+  await board.focus()
+  await page.keyboard.press("ArrowLeft")
+  expect(await board.getAttribute("aria-description")).toContain("14.5")
+  const bounds = await board.boundingBox()
+  await page.mouse.move(bounds!.x + bounds!.width * 0.13, bounds!.y + bounds!.height * 0.75)
   await page.mouse.down()
-  await page.mouse.move(target!.x + target!.width / 2, target!.y + target!.height / 2, { steps: 5 })
-  expect(await page.locator("[data-placement-preview]").count()).toBe(1)
+  await page.mouse.move(bounds!.x + bounds!.width * 0.09, bounds!.y + bounds!.height * 0.8)
+  await page.keyboard.press("Escape")
   await page.mouse.up()
-  expect(await cell.getAttribute("aria-label")).toContain("Road")
-  expect(await page.locator("[data-placement-preview]").count()).toBe(0)
-  const before = await cell.locator("g[transform]").getAttribute("transform")
-  await cell.dispatchEvent("click", { pointerType: "touch" })
-  expect(await cell.locator("g[transform]").getAttribute("transform")).not.toBe(before)
+  expect(await page.locator(".welcome-orbit").getAttribute("data-phase")).toBe("aiming")
+  await page.getByRole("button", { name: "Start over", exact: true }).click()
+  await page.getByRole("button", { name: "Launch", exact: true }).click()
+  await page.getByText("Delivery complete.", { exact: true }).waitFor()
+  await page.getByRole("button", { name: "Next delivery", exact: true }).click()
+  expect(await page.locator(".welcome-orbit").getAttribute("data-phase")).toBe("aiming")
+  expect(errors).toEqual([])
 })
 
 test("initial editor focus does not freeze the scene; typing, overlays, and pause do", async () => {
@@ -163,7 +178,7 @@ test("a fourth module needs no host changes and a late module cannot replace it"
 })
 
 test("narrow and short layouts keep every scene and the editor reachable", async () => {
-  for (const scene of ["island", "nature", "story"]) {
+  for (const scene of ["chain", "stack", "orbit"]) {
     for (const width of [320, 375, 720]) {
       await page.setViewportSize({ width, height: 580 })
       await open(scene)
@@ -179,7 +194,7 @@ test("narrow and short layouts keep every scene and the editor reachable", async
 test("pausing freezes ambient movement without resetting its position", async () => {
   await page.setViewportSize({ width: 960, height: 920 })
   await open()
-  const tree = page.locator(".island-tree").first()
+  const tree = page.locator(".welcome-drift").first()
   await page.waitForTimeout(240)
   await page.getByRole("button", { name: "Pause scene" }).click()
   const paused = await tree.evaluate((el) =>
@@ -192,12 +207,12 @@ test("pausing freezes ambient movement without resetting its position", async ()
 })
 
 test("scrolling past the artwork pauses it while the welcome actions remain visible", async () => {
-  await page.setViewportSize({ width: 720, height: 360 })
-  await open("story")
+  await page.setViewportSize({ width: 720, height: 280 })
+  await open("chain")
   await page.locator(".welcome-bottomline").scrollIntoViewIfNeeded()
   await page.waitForTimeout(150)
   expect(await page.locator(".welcome-stage").getAttribute("data-active")).toBeNull()
-  await page.locator(".welcome-art").scrollIntoViewIfNeeded()
+  await page.locator("[data-welcome-visual]").scrollIntoViewIfNeeded()
   await page.waitForTimeout(150)
   expect(await page.locator(".welcome-stage").getAttribute("data-active")).toBe("")
 })
@@ -205,7 +220,7 @@ test("scrolling past the artwork pauses it while the welcome actions remain visi
 test("each scene supports light, dark, and doubled scale", async () => {
   const captures = process.env.WELCOME_CAPTURE_DIR
   if (captures) await mkdir(captures, { recursive: true })
-  for (const scene of ["island", "nature", "story"]) {
+  for (const scene of ["chain", "stack", "orbit"]) {
     for (const colorScheme of ["light", "dark"] as const) {
       await page.setViewportSize({ width: 1000, height: 960 })
       await page.emulateMedia({ colorScheme, reducedMotion: "reduce" })
@@ -222,63 +237,6 @@ test("each scene supports light, dark, and doubled scale", async () => {
     }
   }
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "no-preference" })
-})
-
-test("nature supports local painting, explicit stepping and safe scene disposal", async () => {
-  await page.setViewportSize({ width: 960, height: 920 })
-  await open("nature")
-  await page.getByRole("button", { name: "Pause scene" }).click()
-  const canvas = page.locator(".nature-canvas")
-  await canvas.focus()
-  const before = await canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
-  await page.keyboard.press("Enter")
-  await page.getByRole("button", { name: "Advance one step" }).click()
-  await page.waitForTimeout(100)
-  expect(await canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())).not.toBe(before)
-  await page.getByRole("button", { name: "Low gravity", exact: true }).click()
-  expect(await page.getByRole("button", { name: "Low gravity", exact: true }).getAttribute("aria-pressed")).toBe("true")
-  await page.getByRole("button", { name: "Mount", exact: true }).click()
-  await page.getByRole("button", { name: "Mount", exact: true }).click()
-  expect(await page.getByRole("button", { name: "Low gravity", exact: true }).getAttribute("aria-pressed")).toBe("true")
-  await page.getByRole("button", { name: "Load fourth" }).click()
-  await page.getByRole("button", { name: "Fourth scene works" }).waitFor()
-  expect(await canvas.count()).toBe(0)
-  expect(errors).toEqual([])
-})
-
-test("leaving the landscape terminates its worker and paused frames stay still", async () => {
-  await page.emulateMedia({ reducedMotion: "no-preference" })
-  const started = page.waitForEvent("worker")
-  await open("nature")
-  const worker = await started
-  const closed = new Promise<void>((resolve) => worker.once("close", () => resolve()))
-  await page.getByRole("button", { name: "Pause scene" }).click()
-  const canvas = page.locator(".nature-canvas")
-  await page.waitForTimeout(100)
-  const paused = await canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
-  await page.waitForTimeout(150)
-  expect(await canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())).toBe(paused)
-  await page.getByRole("button", { name: "Load fourth" }).click()
-  await closed
-  expect(await canvas.count()).toBe(0)
-})
-
-test("story choices change the scene, reach an ending, and can be revisited", async () => {
-  await page.setViewportSize({ width: 960, height: 920 })
-  await open("story")
-  await page.getByRole("button", { name: "Push open the door", exact: true }).first().focus()
-  await page.keyboard.press("Enter")
-  await page.locator(".story-choices").getByRole("button", { name: "Read the letter" }).click()
-  await page.locator(".story-choices").getByRole("button", { name: "Ask about the pendant" }).click()
-  await page.locator(".story-choices").getByRole("button", { name: "Give them the letter" }).click()
-  expect(await page.locator(".welcome-story").getAttribute("data-node")).toBe("reunion")
-  await page.getByRole("button", { name: "Go back a page" }).click()
-  expect(await page.locator(".welcome-story").getAttribute("data-node")).toBe("visitor")
-  await page.getByRole("button", { name: "Make my own version" }).click()
-  expect(await page.getByRole("textbox").inputValue()).toContain("Someone has come home")
-  await page.getByRole("button", { name: "Start over", exact: true }).click()
-  expect(await page.locator(".welcome-story").getAttribute("data-node")).toBe("arrival")
-  expect(errors).toEqual([])
 })
 
 test("explicit new, including the same route, owns assignment; project, typing and reconnect do not", async () => {
@@ -320,17 +278,20 @@ test("load failure can retry the selected scene while preserving the draft", asy
   expect(await page.getByRole("textbox").inputValue()).toBe("Keep this draft")
 })
 
-test("canvas repaint follows same-mode theme changes without resetting the landscape", async () => {
+test("theme changes recolor the game without losing local progress, and remount keeps it", async () => {
+  await page.setViewportSize({ width: 960, height: 920 })
   await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "light" })
-  await open("nature")
-  const canvas = page.locator(".nature-canvas")
-  await page.waitForTimeout(100)
-  const before = await canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
+  await open("stack")
+  await page.getByRole("button", { name: "Drop a block", exact: true }).click()
+  const face = page.locator(".stack-block-face").first()
+  const before = await face.evaluate((el) => getComputedStyle(el).fill)
   await page.getByRole("button", { name: "Theme", exact: true }).click()
-  await page.waitForTimeout(100)
-  expect(await canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())).not.toBe(before)
-  await page.getByRole("button", { name: "Theme", exact: true }).click()
-  await page.waitForTimeout(100)
-  expect(await canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())).toBe(before)
+  expect(await face.evaluate((el) => getComputedStyle(el).fill)).not.toBe(before)
+  await page.getByRole("button", { name: "Mount", exact: true }).click()
+  await page.getByRole("button", { name: "Mount", exact: true }).click()
+  expect(await page.locator(".welcome-stack").getAttribute("data-height")).toBe("1")
+  await page.getByRole("button", { name: "Load fourth" }).click()
+  expect(await page.locator(".welcome-stack").count()).toBe(0)
+  expect(errors).toEqual([])
   await page.emulateMedia({ reducedMotion: "no-preference" })
 })
