@@ -48,6 +48,8 @@ The side-workspace toggle belongs to the full built-in session rather than the r
 
 **Center the new-task Composer and move it after sending.** The travel breaks the user's input reference point. A stable bottom position makes the first send the same interaction as subsequent sends.
 
+The introduction content is refined by [interactive task introductions](2026-10-02-interactive-task-welcome.md), with explicit-new selection and stable local interaction.
+
 **Rotating greetings and examples.** They add visual changes unrelated to the user's task. Stable task starters provide useful drafting and project/file actions without timed changes. They reuse revision-checked input edits, require confirmation before replacing text, and preserve attachments and working location.
 
 **Direct DOM insertion for plain-text paste.** It bypasses native undo. The existing contenteditable editor retains a tested native editing command rather than adding a second custom history owner.

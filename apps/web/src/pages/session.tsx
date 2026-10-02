@@ -1987,6 +1987,7 @@ function SessionPageContent() {
         return (
           <>
             <NewSessionGreeting
+              interactive={!params.id}
               disabled={
                 !composer()?.input.ready() ||
                 composer()?.input.readOnly() ||

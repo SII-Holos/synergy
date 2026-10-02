@@ -1,4 +1,5 @@
 import { WorkbenchPanelsProvider } from "@/context/workbench"
+import { WelcomeProvider } from "@/components/session/welcome/context"
 import { PluginPageOutlet } from "./plugin/shell-outlet"
 import "@/index.css"
 import { ErrorBoundary, Show, Switch, Match, lazy, createEffect, createMemo, type ParentProps } from "solid-js"
@@ -216,30 +217,32 @@ function ConnectedApp() {
                 <Router
                   base={proxyPrefix()}
                   root={(props) => (
-                    <SessionTransitionProvider>
-                      <CommandProvider>
-                        <PluginRouteScope>
-                          {(scopeKey) => (
-                            <GlobalSyncProvider>
-                              <DesktopPowerSync />
-                              <LayoutProvider>
-                                <WorkbenchPanelsProvider>
-                                  <PluginHostProvider scopeKey={scopeKey}>
-                                    <PluginComposerSlotBridge />
-                                    <PluginThemeConfigBridge />
-                                    <PluginTextInteractionBridge />
-                                    <GlobalPluginThemesRegistrar />
-                                    <NotificationProvider>
-                                      <Layout>{props.children}</Layout>
-                                    </NotificationProvider>
-                                  </PluginHostProvider>
-                                </WorkbenchPanelsProvider>
-                              </LayoutProvider>
-                            </GlobalSyncProvider>
-                          )}
-                        </PluginRouteScope>
-                      </CommandProvider>
-                    </SessionTransitionProvider>
+                    <WelcomeProvider connection={server.url}>
+                      <SessionTransitionProvider>
+                        <CommandProvider>
+                          <PluginRouteScope>
+                            {(scopeKey) => (
+                              <GlobalSyncProvider>
+                                <DesktopPowerSync />
+                                <LayoutProvider>
+                                  <WorkbenchPanelsProvider>
+                                    <PluginHostProvider scopeKey={scopeKey}>
+                                      <PluginComposerSlotBridge />
+                                      <PluginThemeConfigBridge />
+                                      <PluginTextInteractionBridge />
+                                      <GlobalPluginThemesRegistrar />
+                                      <NotificationProvider>
+                                        <Layout>{props.children}</Layout>
+                                      </NotificationProvider>
+                                    </PluginHostProvider>
+                                  </WorkbenchPanelsProvider>
+                                </LayoutProvider>
+                              </GlobalSyncProvider>
+                            )}
+                          </PluginRouteScope>
+                        </CommandProvider>
+                      </SessionTransitionProvider>
+                    </WelcomeProvider>
                   )}
                 >
                   <Route path="/" component={() => <Navigate href={`/${base64Encode("home")}/session`} />} />

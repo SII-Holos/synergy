@@ -18,6 +18,7 @@ import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
 import { fileRestoreFeedback } from "./file-restore-feedback"
 import { compactSessionWithCurrentModel } from "./compact-action"
+import { useNewTaskNavigation } from "./welcome/context"
 
 export function useSessionCommands(params: {
   command: ReturnType<typeof useCommand>
@@ -62,6 +63,7 @@ export function useSessionCommands(params: {
   const workbench = useWorkbenchPanels()
   const file = useFile()
   const { i18n } = useLocale()
+  const newTask = useNewTaskNavigation(navigate)
 
   command.register(() => [
     {
@@ -72,7 +74,7 @@ export function useSessionCommands(params: {
       keybind: "mod+shift+s",
       slash: "new",
       onSelect: () => {
-        navigate(`/${routeParams.dir}/session`)
+        newTask(routeParams.dir)
       },
     },
     {

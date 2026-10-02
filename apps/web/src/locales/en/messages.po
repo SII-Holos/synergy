@@ -15466,18 +15466,6 @@ msgid "session.starter.addFiles"
 msgstr "Add files"
 
 #. js-lingui-explicit-id
-msgid "session.starter.develop.description"
-msgstr "Understand code, plan a change, build something."
-
-#. js-lingui-explicit-id
-msgid "session.starter.develop.prompt"
-msgstr "Help me develop this project. First understand the relevant code and propose an implementation plan. My goal is: "
-
-#. js-lingui-explicit-id
-msgid "session.starter.develop.title"
-msgstr "Develop a project"
-
-#. js-lingui-explicit-id
 msgid "session.starter.draftChanged"
 msgstr "Your draft changed. Choose a task starter again to use the latest draft."
 
@@ -15496,30 +15484,6 @@ msgstr "Your attachments and working location will stay the same. Nothing will b
 #. js-lingui-explicit-id
 msgid "session.starter.replaceTitle"
 msgstr "Replace the draft text?"
-
-#. js-lingui-explicit-id
-msgid "session.starter.research.description"
-msgstr "Find sources, compare evidence, draw conclusions."
-
-#. js-lingui-explicit-id
-msgid "session.starter.research.prompt"
-msgstr "Research the following question. Compare reliable sources, explain the evidence and cite references. My question is: "
-
-#. js-lingui-explicit-id
-msgid "session.starter.research.title"
-msgstr "Research a question"
-
-#. js-lingui-explicit-id
-msgid "session.starter.write.description"
-msgstr "Shape an idea, draft content, refine the wording."
-
-#. js-lingui-explicit-id
-msgid "session.starter.write.prompt"
-msgstr "Help me write a clear, well-structured draft. The topic, audience and desired format are: "
-
-#. js-lingui-explicit-id
-msgid "session.starter.write.title"
-msgstr "Write something"
 
 #. js-lingui-explicit-id
 msgid "session.state.auditingBlueprint"
@@ -23258,6 +23222,106 @@ msgstr "Markdown"
 #. js-lingui-explicit-id
 msgid "ui.userMessage.source"
 msgstr "View source"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.create"
+msgstr "Make my own version"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.loading"
+msgstr "Preparing your little world…"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.local"
+msgstr "Interactive example · no model usage"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.pause"
+msgstr "Pause scene"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.reset"
+msgstr "Start over"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.resume"
+msgstr "Play scene"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.retry"
+msgstr "Retry example"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.unavailable"
+msgstr "This example could not load. You can still start a task below."
+
+#. js-lingui-explicit-id
+msgid "welcome.island.arrived"
+msgstr "You brought the observatory to life."
+
+#. js-lingui-explicit-id
+msgid "welcome.island.board"
+msgstr "Island road workshop"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.bridge"
+msgstr "Bridge"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.cell"
+msgstr "Column {column}, row {row}. {piece}"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.corner"
+msgstr "Corner"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.driving"
+msgstr "Connected. Your car is on its way."
+
+#. js-lingui-explicit-id
+msgid "welcome.island.empty"
+msgstr "Empty: place a road"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.hint"
+msgstr "Place roads and a bridge to reach the observatory. Click a piece to rotate it."
+
+#. js-lingui-explicit-id
+msgid "welcome.island.name"
+msgstr "A little world, built by you"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.night"
+msgstr "Night lights"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.prompt"
+msgstr "Build an original interactive miniature world with an isometric island, editable roads, bridges and a car that follows connected paths. Include day and night lighting, keyboard and touch controls. First help me choose its setting and purpose. My idea is: "
+
+#. js-lingui-explicit-id
+msgid "welcome.island.road"
+msgstr "Road"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.step"
+msgstr "Move car"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.title"
+msgstr "Make a connection. Watch it come alive."
+
+#. js-lingui-explicit-id
+msgid "welcome.island.tools"
+msgstr "Road pieces"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.waiting"
+msgstr "Three missing pieces. One little journey."
+
+#. js-lingui-explicit-id
+msgid "welcome.island.water"
+msgstr "River: place a bridge"
 
 #. js-lingui-explicit-id
 msgid "window.close.aria"

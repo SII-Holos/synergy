@@ -199,6 +199,8 @@ For collection navigation changes, verify every existing category against its ow
 
 For Environment selection, test zero allocation when browsing profiles, conditional Session updates, stable creation request IDs after a lost reply, and draft restoration after startup failure. Activity recovery must address the original operation; never submit its command again.
 
+For interactive introductions, verify explicit New separately from same-route rendering, project selection and reconnect. Pin scenes and seeds only in test fixtures. Keep the local demonstration state independent from the draft, protect focused scene controls from Composer typing autofocus, and check pause and cleanup during input, modal presentation, hidden tabs and reduced motion.
+
 ## Complete workbench acceptance
 
 Verify the complete built workbench from global and project new tasks through first send and an existing conversation. Follow [the product rules](../../../apps/web/PRODUCT.md) for task starters, working location and status. Keep their real controllers and status/detail components mounted in acceptance; a layout fixture with empty or substitute status is only a focused layout check. Test replacement cancellation, revision conflicts, attachment retention and editor focus after confirmation has restored modal focus. Select a valid fixture start mode and wait for the streamed reply and idle state; a new session URL alone does not prove successful submission. Exercise project and file entry buttons through their real dialogs and chooser.

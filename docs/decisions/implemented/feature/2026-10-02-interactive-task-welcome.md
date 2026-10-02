@@ -12,6 +12,12 @@ The welcome selection module assigns a stable scene ID and seed per connection w
 
 Selection records contain no message or attachment data and do not create server sessions. New-task presentation and message draft ownership remain separate.
 
+The Web-owned registry lazy-loads one scene into a shared presentation with pause, loading and retry controls. Explicit new-task navigation updates its assignment even on the same URL; project selection does not. Existing Session routes retain their ordinary empty/loading presentation. The island module uses an independently tested road graph and SVG illustration. The car advances only through reciprocally connected road exits; water requires bridge pieces. Pointer placement, keyboard grid navigation, rotation, night lighting and reset operate on local state. The introduction action reuses revision-checked task starters.
+
+The presentation pauses during input, obscuring dialogs, expanded editing, offscreen visibility and background tabs. It distinguishes actual input from initial editor autofocus. Reduced motion starts paused and removes decorative loops while retaining explicit simulation actions. Local scene memory survives presentation remounts within the current assignment; only ID and seed survive reload. The shared container and its scene modules do not change Plugin interfaces.
+
+This replaces the three starter cards described in [workbench optimization](2026-09-29-frontend-workbench-optimization.md); its column geometry, draft safeguards and project/file entry rules remain authoritative. Continuous motion has an explicit pause control following [WCAG 2.2.2](https://www.w3.org/WAI/WCAG22/Understanding/pause-stop-hide.html).
+
 ## Alternatives considered
 
 **Independent random selection on every render.** It interrupts interaction and can immediately repeat the same introduction.

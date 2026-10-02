@@ -1,0 +1,137 @@
+import { translateDescriptor } from "@/locales/translate"
+import {
+  ErrorBoundary,
+  Show,
+  Suspense,
+  createEffect,
+  createResource,
+  createSignal,
+  onCleanup,
+  onMount,
+  type JSX,
+} from "solid-js"
+import { Dynamic } from "solid-js/web"
+import { createMediaQuery } from "@solid-primitives/media"
+import { useLocale } from "@/context/locale"
+import type { WelcomeMemory, WelcomeSceneDefinition } from "./types"
+import "./style.css"
+
+export function WelcomeStage(props: {
+  definition: WelcomeSceneDefinition
+  seed: number
+  memory: WelcomeMemory
+  disabled: boolean
+  blocked: boolean
+  onStart: (text: string) => void
+  brand?: JSX.Element
+  actions?: JSX.Element
+}) {
+  const { i18n } = useLocale()
+  const reducedMotion = createMediaQuery("(prefers-reduced-motion: reduce)")
+  const [paused, setPaused] = createSignal(reducedMotion())
+  const [editing, setEditing] = createSignal(false)
+  const [visible, setVisible] = createSignal(document.visibilityState !== "hidden")
+  const [intersecting, setIntersecting] = createSignal(true)
+  const [expanded, setExpanded] = createSignal(false)
+  const [scene, { refetch }] = createResource(
+    () => props.definition,
+    (definition) => definition.load(),
+  )
+  let root!: HTMLDivElement
+  const active = () => !paused() && !editing() && visible() && intersecting() && !expanded() && !props.blocked
+  createEffect(() => {
+    if (reducedMotion()) setPaused(true)
+  })
+  onMount(() => {
+    const visibility = () => setVisible(document.visibilityState !== "hidden")
+    const input = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest('[data-component="prompt-input"]')) setEditing(true)
+    }
+    document.addEventListener("visibilitychange", visibility)
+    document.addEventListener("input", input, true)
+    document.addEventListener("compositionstart", input, true)
+    const observer = new IntersectionObserver(([entry]) => setIntersecting(entry?.isIntersecting ?? false))
+    observer.observe(root)
+    const pane = root.closest(".session-workbench-pane")
+    const measureExpanded = () => setExpanded(!!pane?.querySelector(".session-composer[data-expanded]"))
+    const mutation = new MutationObserver(measureExpanded)
+    if (pane) mutation.observe(pane, { subtree: true, attributes: true, attributeFilter: ["data-expanded"] })
+    measureExpanded()
+    onCleanup(() => {
+      document.removeEventListener("visibilitychange", visibility)
+      document.removeEventListener("input", input, true)
+      document.removeEventListener("compositionstart", input, true)
+      observer.disconnect()
+      mutation.disconnect()
+    })
+  })
+  return (
+    <div
+      ref={root}
+      class="welcome-stage"
+      data-welcome-scene={props.definition.id}
+      data-prevent-autofocus
+      data-active={active() ? "" : undefined}
+      onPointerDown={() => setEditing(false)}
+      onFocusIn={() => setEditing(false)}
+    >
+      <div class="welcome-topline">
+        {props.brand}
+        <button class="welcome-pause" type="button" aria-pressed={paused()} onClick={() => setPaused(!paused())}>
+          {paused()
+            ? i18n._({ id: "welcome.common.resume", message: "Play scene" })
+            : i18n._({ id: "welcome.common.pause", message: "Pause scene" })}
+        </button>
+      </div>
+      <ErrorBoundary
+        fallback={(_error, reset) => (
+          <div class="welcome-unavailable" role="status">
+            <h1>{translateDescriptor(props.definition.title, i18n)}</h1>
+            <p>
+              {i18n._({
+                id: "welcome.common.unavailable",
+                message: "This example could not load. You can still start a task below.",
+              })}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                void refetch()
+                reset()
+              }}
+            >
+              {i18n._({ id: "welcome.common.retry", message: "Retry example" })}
+            </button>
+          </div>
+        )}
+      >
+        <Suspense
+          fallback={
+            <div class="welcome-loading" role="status">
+              <h1>{translateDescriptor(props.definition.title, i18n)}</h1>
+              <p>{i18n._({ id: "welcome.common.loading", message: "Preparing your little world…" })}</p>
+            </div>
+          }
+        >
+          <Show when={scene()}>
+            {(loaded) => (
+              <Dynamic
+                component={loaded().default}
+                seed={props.seed}
+                active={active}
+                reducedMotion={reducedMotion}
+                memory={props.memory}
+                disabled={props.disabled}
+                onStart={props.onStart}
+              />
+            )}
+          </Show>
+        </Suspense>
+      </ErrorBoundary>
+      <div class="welcome-bottomline">
+        <span>{i18n._({ id: "welcome.common.local", message: "Interactive example · no model usage" })}</span>
+        {props.actions}
+      </div>
+    </div>
+  )
+}

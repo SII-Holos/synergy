@@ -15466,18 +15466,6 @@ msgid "session.starter.addFiles"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "session.starter.develop.description"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.starter.develop.prompt"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.starter.develop.title"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "session.starter.draftChanged"
 msgstr ""
 
@@ -15495,30 +15483,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.starter.replaceTitle"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.starter.research.description"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.starter.research.prompt"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.starter.research.title"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.starter.write.description"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.starter.write.prompt"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.starter.write.title"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -23257,6 +23221,106 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "ui.userMessage.source"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.create"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.local"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.pause"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.reset"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.resume"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.island.arrived"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.island.board"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.island.bridge"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.island.cell"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.island.corner"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.island.driving"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.island.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.island.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.island.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.island.night"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.island.prompt"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.island.road"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.island.step"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.island.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.island.tools"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.island.waiting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.island.water"
 msgstr ""
 
 #. js-lingui-explicit-id

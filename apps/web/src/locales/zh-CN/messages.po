@@ -15466,18 +15466,6 @@ msgid "session.starter.addFiles"
 msgstr "添加文件"
 
 #. js-lingui-explicit-id
-msgid "session.starter.develop.description"
-msgstr "理解代码、设计方案，把想法变成实现。"
-
-#. js-lingui-explicit-id
-msgid "session.starter.develop.prompt"
-msgstr "帮我开发这个项目。请先理解相关代码，再提出实施方案。我的目标是："
-
-#. js-lingui-explicit-id
-msgid "session.starter.develop.title"
-msgstr "开发项目"
-
-#. js-lingui-explicit-id
 msgid "session.starter.draftChanged"
 msgstr "草稿已发生变化，请重新选择任务入口，以使用最新草稿。"
 
@@ -15496,30 +15484,6 @@ msgstr "附件和工作位置会保留，不会发送任何内容。"
 #. js-lingui-explicit-id
 msgid "session.starter.replaceTitle"
 msgstr "替换草稿正文？"
-
-#. js-lingui-explicit-id
-msgid "session.starter.research.description"
-msgstr "查找资料、比较证据，形成清晰的结论。"
-
-#. js-lingui-explicit-id
-msgid "session.starter.research.prompt"
-msgstr "请研究以下问题，比较可靠来源，解释证据并注明引用。我的问题是："
-
-#. js-lingui-explicit-id
-msgid "session.starter.research.title"
-msgstr "研究问题"
-
-#. js-lingui-explicit-id
-msgid "session.starter.write.description"
-msgstr "整理思路、起草内容，让表达更准确。"
-
-#. js-lingui-explicit-id
-msgid "session.starter.write.prompt"
-msgstr "帮我起草一份清晰、有条理的内容。主题、读者和期望的形式是："
-
-#. js-lingui-explicit-id
-msgid "session.starter.write.title"
-msgstr "撰写内容"
 
 #. js-lingui-explicit-id
 msgid "session.state.auditingBlueprint"
@@ -23258,6 +23222,106 @@ msgstr "Markdown"
 #. js-lingui-explicit-id
 msgid "ui.userMessage.source"
 msgstr "查看源码"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.create"
+msgstr "做一个我的版本"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.loading"
+msgstr "正在准备你的互动场景…"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.local"
+msgstr "互动示例 · 不消耗模型额度"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.pause"
+msgstr "暂停场景"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.reset"
+msgstr "重新开始"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.resume"
+msgstr "播放场景"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.retry"
+msgstr "重试示例"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.unavailable"
+msgstr "暂时无法加载这个示例，你仍可以在下方开始任务。"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.arrived"
+msgstr "观测站亮起来了，是你接通了这段旅程。"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.board"
+msgstr "小岛道路工坊"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.bridge"
+msgstr "桥梁"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.cell"
+msgstr "第 {column} 列，第 {row} 行。{piece}"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.corner"
+msgstr "转弯"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.driving"
+msgstr "道路已接通，小车正在出发。"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.empty"
+msgstr "空地：放置道路"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.hint"
+msgstr "放下道路和桥梁，接通通往观测站的路。点击已有路块可以旋转。"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.name"
+msgstr "亲手搭一个小世界"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.night"
+msgstr "点亮夜色"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.prompt"
+msgstr "帮我开发一个原创的互动微型世界：等距视角的小岛、可以编辑的道路和桥梁，以及沿连通道路行驶的小车。支持日夜灯光、键盘和触控操作。先帮我确定它的场景与用途。我的想法是："
+
+#. js-lingui-explicit-id
+msgid "welcome.island.road"
+msgstr "道路"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.step"
+msgstr "小车前进一步"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.title"
+msgstr "接通一条路，让世界动起来。"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.tools"
+msgstr "道路组件"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.waiting"
+msgstr "补上三块路，开启一段小小的旅程。"
+
+#. js-lingui-explicit-id
+msgid "welcome.island.water"
+msgstr "河流：放置桥梁"
 
 #. js-lingui-explicit-id
 msgid "window.close.aria"
