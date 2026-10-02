@@ -223,6 +223,11 @@ export const ConnectedModelManager: Component<{
           <ModelManagerRow model={model} />
           <div class="model-manager-actions flex items-center gap-x-3 shrink-0" onClick={(e) => e.stopPropagation()}>
             <Switch
+              aria-label={_({
+                id: "settings.models.quickSwitcher.toggle",
+                message: "Include {model} in quick switcher",
+                values: { model: model.name },
+              })}
               checked={inQuickSwitcher({ modelID: model.id, providerID: model.provider.id })}
               onChange={(checked) => {
                 setQuickSwitcher({ modelID: model.id, providerID: model.provider.id }, checked)

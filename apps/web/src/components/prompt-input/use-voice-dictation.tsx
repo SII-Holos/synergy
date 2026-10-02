@@ -12,7 +12,7 @@ import { useLocale } from "@/context/locale"
 import { SettingsDialog } from "@/components/settings"
 import { requestErrorMessage } from "@/utils/error"
 import { PI } from "./prompt-input-i18n"
-import { normalizeDictationBlob, type DecodedAudio } from "./voice-dictation-audio"
+import { normalizeDictationBlob } from "./voice-dictation-audio"
 import {
   createVoiceDictationEngine,
   isMicSilenceReason,
@@ -20,23 +20,10 @@ import {
   isSttConfigured,
   type VoiceDictationDependencies,
   type VoiceDictationPhase,
-  type VoiceDictationRecorderHandlers,
   type VoiceDictationReport,
-  type VoiceDictationStream,
 } from "./voice-dictation-core"
 
-/** Decode a recorded blob to mono Float32 via the lightweight offline context. */
-async function decodeDictationAudio(arrayBuffer: ArrayBuffer): Promise<DecodedAudio> {
-  const context = new OfflineAudioContext(1, 1, 48000)
-  const buffer = await context.decodeAudioData(arrayBuffer)
-  const channels = buffer.numberOfChannels
-  const channelData = new Float32Array(buffer.length)
-  for (let channel = 0; channel < channels; channel++) {
-    const data = buffer.getChannelData(channel)
-    for (let i = 0; i < data.length; i++) channelData[i]! += data[i]! / channels
-  }
-  return { channelData, sampleRate: buffer.sampleRate }
-}
+import { decodeDictationAudio, createDictationRecorder } from "./voice-dictation-browser"
 
 export function useVoiceDictation(options: {
   getContext: () => string
@@ -95,30 +82,6 @@ export function useVoiceDictation(options: {
     }
   }
 
-  // MediaRecorder glue lives here: the engine only sees structural interfaces,
-  // so its state machine stays testable without a browser. getUserMedia /
-  // MediaRecorder existence is re-checked inside the engine at start time.
-  const mediaRecorder = {
-    createRecorder(
-      stream: VoiceDictationStream,
-      mimeType: string | undefined,
-      handlers: VoiceDictationRecorderHandlers,
-    ) {
-      const mediaStream = stream as MediaStream
-      const recorder = new MediaRecorder(mediaStream, mimeType ? { mimeType } : undefined)
-      recorder.addEventListener("dataavailable", (event) => {
-        if (event.data.size > 0) handlers.onData(event.data)
-      })
-      recorder.addEventListener("stop", () => handlers.onStop())
-      recorder.addEventListener("error", () => handlers.onError())
-      return {
-        mimeType: recorder.mimeType,
-        start: () => recorder.start(),
-        stop: () => recorder.stop(),
-      }
-    },
-  }
-
   const deps: VoiceDictationDependencies = {
     isConfigured: () => isSttConfigured(globalSync.data.config),
     openSettings: () => dialog.show(() => <SettingsDialog initialTab="voice" />),
@@ -128,7 +91,7 @@ export function useVoiceDictation(options: {
     requestMicrophone: () => navigator.mediaDevices!.getUserMedia({ audio: true }),
     hasMediaRecorder: () => typeof MediaRecorder !== "undefined",
     isTypeSupported: (mimeType) => MediaRecorder.isTypeSupported(mimeType),
-    createRecorder: mediaRecorder.createRecorder,
+    createRecorder: createDictationRecorder,
     nowMs: () => Date.now(),
     transcribe: async (input) => {
       // Real microphone clips are often far below full scale (or digitally

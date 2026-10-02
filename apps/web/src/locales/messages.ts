@@ -1147,8 +1147,13 @@ export const dialog = {
   mcpStatusStoppingDesc: { id: "app.dialog.mcp.status.stoppingDesc", message: "Disconnecting from the server" },
   mcpStatusDisabled: { id: "app.dialog.mcp.status.disabled", message: "Disabled" },
   mcpStatusDisabledDesc: { id: "app.dialog.mcp.status.disabledDesc", message: "Not connected for this session" },
-  mcpStatusReady: { id: "app.dialog.mcp.status.ready", message: "Ready" },
-  mcpStatusReadyDesc: { id: "app.dialog.mcp.status.readyDesc", message: "Ready to connect" },
+  mcpStatusUnavailable: { id: "app.dialog.mcp.status.unavailable", message: "Status unavailable" },
+  mcpStatusUnavailableDesc: {
+    id: "app.dialog.mcp.status.unavailableDesc",
+    message: "No runtime status is available for this server.",
+  },
+  mcpStatusReady: { id: "app.dialog.mcp.status.ready", message: "Not started" },
+  mcpStatusReadyDesc: { id: "app.dialog.mcp.status.readyDesc", message: "This server has not started yet." },
   mcpConnectAria: { id: "app.dialog.mcp.connectAria", message: "Connect {name}" },
   mcpDisconnectAria: { id: "app.dialog.mcp.disconnectAria", message: "Disconnect {name}" },
   // Directory selection

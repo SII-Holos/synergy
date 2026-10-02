@@ -2,10 +2,11 @@ import { For, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
-import { SettingsPage, SettingsSection, SettingsSubsection } from "../components/SettingsPrimitives"
+import { Button } from "@ericsanchezok/synergy-ui/button"
+import { SettingsPage, SettingsSection, SettingsSubsection, SettingsAdvanced } from "../components/SettingsPrimitives"
 import { AccountToggleCard } from "../components/AccountToggleCard"
 import { BasicAccountToggleCard } from "../components/BasicAccountToggleCard"
-import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
+import { SettingRow } from "../components/SettingsSettingRow"
 import type { ChannelSettings, GithubAccountToggle, ProviderGroup } from "../types"
 
 const pageTitle = { id: "settings.channels.page.title", message: "Channels" }
@@ -107,6 +108,8 @@ const githubPollingPlaceholder = { id: "settings.channels.github.pollingPlacehol
 const enabledLabel = { id: "settings.channels.github.enabled", message: "Enabled" }
 
 export function ChannelsPanel(props: {
+  onConfigure?: () => void
+  onAccount?: () => void
   channels: ChannelSettings
   providers: ProviderGroup[]
   popoverLayer?: HTMLElement
@@ -126,6 +129,24 @@ export function ChannelsPanel(props: {
   return (
     <SettingsPage title={_(pageTitle)} description={_(pageDescription)}>
       <SettingsSection title={_(feishuSectionTitle)}>
+        <SettingsAdvanced
+          id="feishu-setup"
+          title={_({ id: "settings.channels.feishu.guide", message: "Set up Feishu" })}
+          forceOpen={!props.channels.feishuAccounts.length}
+          fields={[_(feishuSectionTitle)]}
+        >
+          <p class="ds-section-hint">
+            {_({
+              id: "settings.channels.feishu.setup",
+              message:
+                "Create a Feishu application with bot permissions and event subscriptions. Select the long connection (WebSocket) method, then add its app ID and app secret to the channels configuration on the Synergy server. Enable the account after configuring it.",
+            })}
+          </p>
+          <Button variant="ghost" onClick={props.onConfigure}>
+            {_({ id: "settings.channels.configure", message: "View channels configuration" })}
+          </Button>
+        </SettingsAdvanced>
+
         <AccountToggleCard
           title={_(feishuAccountsTitle)}
           description={_(feishuAccountsDescription)}
@@ -139,6 +160,18 @@ export function ChannelsPanel(props: {
         />
       </SettingsSection>
       <SettingsSection title={_(clarusSectionTitle)} description={_(clarusAccountsDescription)}>
+        <Show when={!props.channels.clarusAccounts.length}>
+          <p class="ds-section-hint">
+            {_({
+              id: "settings.channels.clarus.setup",
+              message:
+                "Sign in to a Holos account in Account settings. Synergy adds the corresponding Clarus account in the disabled state; enable it here when you want to receive tasks.",
+            })}
+          </p>
+          <Button variant="ghost" onClick={props.onAccount}>
+            {_({ id: "settings.channels.clarus.account", message: "Go to Account" })}
+          </Button>
+        </Show>
         <BasicAccountToggleCard
           accounts={props.channels.clarusAccounts}
           emptyLabel={_(emptyClarusLabel)}
@@ -159,6 +192,24 @@ export function ChannelsPanel(props: {
         />
       </SettingsSection>
       <SettingsSection title={_(githubSectionTitle)} description={_(githubAccountsDescription)}>
+        <SettingsAdvanced
+          id="github-setup"
+          title={_({ id: "settings.channels.github.guide", message: "Set up GitHub channel" })}
+          forceOpen={!props.channels.githubAccounts.length}
+          fields={[_(githubSectionTitle)]}
+        >
+          <p class="ds-section-hint">
+            {_({
+              id: "settings.channels.github.setup",
+              message:
+                "Install a GitHub App on the repositories you want to monitor. Set SYNERGY_GITHUB_APP_ID and SYNERGY_GITHUB_APP_PRIVATE_KEY in the server environment, then configure the installation and repositories in the channels file. The channel polls GitHub and uses separate credentials from your personal GitHub sign-in.",
+            })}
+          </p>
+          <Button variant="ghost" onClick={props.onConfigure}>
+            {_({ id: "settings.channels.configure", message: "View channels configuration" })}
+          </Button>
+        </SettingsAdvanced>
+
         <Show
           when={props.channels.githubAccounts.length > 0}
           fallback={<div class="settings-row-description">{_(emptyGithubLabel)}</div>}

@@ -31519,7 +31519,7 @@
           }
         ],
         "summary": "Transcribe audio",
-        "description": "Transcribe a short audio recording to text for composer voice dictation. Audio is processed in memory and never persisted.",
+        "description": "Transcribe a short audio recording using the saved speech recognition configuration. The canonical call recorder manages audio artifacts.",
         "responses": {
           "200": {
             "description": "Transcribed text",
@@ -31575,6 +31575,83 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.voice.transcribe({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/voice/preview": {
+      "post": {
+        "operationId": "voice.preview",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Preview speech",
+        "description": "Synthesize up to 200 characters using the saved speech configuration and standard call recording.",
+        "responses": {
+          "200": {
+            "description": "Synthesized audio",
+            "content": {
+              "audio/wav": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "audio/mpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoicePreviewInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.voice.preview({\n  ...\n})"
           }
         ]
       }
@@ -50864,6 +50941,10 @@
         "description": "Speech-to-text service configuration",
         "type": "object",
         "properties": {
+          "enabled": {
+            "description": "Enable voice input. When omitted, a configured model enables it.",
+            "type": "boolean"
+          },
           "billingMode": {
             "description": "Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.",
             "type": "string",
@@ -51035,12 +51116,26 @@
             "additionalProperties": false
           },
           "baseURL": {
-            "description": "Base URL for the speech-to-text API (OpenAI-compatible)",
-            "type": "string"
+            "description": "OpenAI-compatible endpoint. Null restores the default endpoint.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "apiKey": {
-            "description": "API key for the speech-to-text service",
-            "type": "string"
+            "description": "Speech-to-text credential. Null removes the credential.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "model": {
             "description": "Speech-to-text model name. Voice input is disabled when not set.",
@@ -51048,7 +51143,14 @@
           },
           "language": {
             "description": "BCP-47 language hint for transcription, e.g. zh, en. Auto-detected when not set.",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false
@@ -51057,6 +51159,10 @@
         "description": "Text-to-speech service configuration",
         "type": "object",
         "properties": {
+          "enabled": {
+            "description": "Enable speech output. When omitted, a configured model enables it.",
+            "type": "boolean"
+          },
           "billingMode": {
             "description": "Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.",
             "type": "string",
@@ -51228,24 +51334,52 @@
             "additionalProperties": false
           },
           "baseURL": {
-            "description": "Base URL for the text-to-speech API (OpenAI-compatible)",
-            "type": "string"
+            "description": "OpenAI-compatible endpoint. Null restores the default endpoint.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "apiKey": {
-            "description": "API key for the text-to-speech service",
-            "type": "string"
+            "description": "Text-to-speech credential. Null removes the credential.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "model": {
             "description": "Text-to-speech model name. The speak tool is disabled when not set.",
             "type": "string"
           },
           "voice": {
-            "description": "Voice name for synthesis (provider-specific, e.g. alloy)",
-            "type": "string"
+            "description": "Voice name for synthesis. Null restores the service default.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "instructions": {
             "description": "Natural-language delivery instructions applied to synthesized speech, e.g. tone and pace",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false
@@ -69172,6 +69306,18 @@
           }
         },
         "required": ["text"]
+      },
+      "VoicePreviewInput": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": ["text"],
+        "additionalProperties": false
       },
       "ModelRoleUsage": {
         "type": "object",

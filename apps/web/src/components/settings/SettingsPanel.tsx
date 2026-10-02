@@ -1,3 +1,7 @@
+import { getBuiltinSettingsSection } from "./catalog"
+import { createBossNameController } from "./panels/boss-name-controller"
+import { validateSettingsDraft } from "./settings-draft-validation"
+import { SettingsViewStateContext } from "./settings-view-state"
 import { runtimeFeatureAvailable } from "../runtime-features"
 import {
   ErrorBoundary,
@@ -13,6 +17,7 @@ import {
   type JSX,
 } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
+import { isDeepEqual } from "remeda"
 import { Dynamic } from "solid-js/web"
 import { createMediaQuery } from "@solid-primitives/media"
 import { useNavigate } from "@solidjs/router"
@@ -23,6 +28,7 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { OverlayLayerProvider } from "@ericsanchezok/synergy-ui/context/overlay-layer"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
@@ -75,7 +81,7 @@ import {
   hasExplicitSettingsChanges,
   rebaseDraftAfterSave,
   retainDraftAfterSave,
-  saveExplicitSettingsChanges,
+  saveSettingsSources,
   snapshotSettingsDraft,
   themeIdToSettingsValue,
 } from "./settings-explicit-save"
@@ -102,11 +108,13 @@ import { createPersonalizeController } from "./panels/personalize-controller"
 import { UsagePanel } from "./panels/UsagePanel"
 import { GitHubPanel } from "./panels/GitHubPanel"
 import { VoicePanel } from "./panels/VoicePanel"
+import { createVoiceController } from "./panels/voice-controller"
 import { McpPanel } from "./panels/McpPanel"
 import { LearningPanel, MemoryPanel, ExperiencePanel } from "./panels/LibraryPanels"
 import { ChannelsPanel } from "./panels/ChannelsPanel"
 import { EmailPanel } from "./panels/EmailPanel"
 import { ImportPanel } from "./panels/ImportPanel"
+import { LanguageToolsPanel } from "./panels/LanguageToolsPanel"
 import { ConfigFilesPanel, ConfigReferencePanel } from "./panels/ConfigFilesPanel"
 import { ArchivedSessionsPanel } from "./panels/ArchivedSessionsPanel"
 import { StoragePanel } from "./panels/StoragePanel"
@@ -149,8 +157,8 @@ const legacyInitialTabs: Record<string, string> = {
 const copy = {
   dialogLabel: { id: "settings.panel.dialog.label", message: "Settings" },
   closeLabel: { id: "settings.panel.close.label", message: "Close settings" },
-  backLabel: { id: "settings.panel.back.label", message: "Back" },
-  globalConfig: { id: "settings.panel.globalConfig.label", message: "Global Config" },
+  backLabel: { id: "settings.panel.back.label", message: "Back to settings categories" },
+  globalConfig: { id: "settings.panel.globalConfig.label", message: "Global settings" },
   customInstructionsNotSaved: {
     id: "settings.panel.customInstructions.notSaved",
     message: "Custom instructions not saved",
@@ -179,12 +187,12 @@ const copy = {
   formatterTitle: { id: "settings.panel.reference.formatterTitle", message: "Formatter" },
   formatterDescription: {
     id: "settings.panel.reference.formatterDescription",
-    message: "Formatter configuration file access.",
+    message: "Review formatter configuration and availability for a selected project.",
   },
   lspTitle: { id: "settings.panel.reference.lspTitle", message: "LSP" },
   lspDescription: {
     id: "settings.panel.reference.lspDescription",
-    message: "Language server configuration file access.",
+    message: "Review language server configuration and reported project status.",
   },
   pluginsGroup: { id: "settings.panel.group.plugins", message: "Plugins" },
   errorBadge: { id: "settings.panel.badge.error", message: "Error" },
@@ -312,24 +320,47 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [navigation, setNavigation] = createSignal(initialNavigation)
   const activeTab = () => navigation().activeTab
   const mobileDetailOpen = () => navigation().detailOpen
-  const setActiveTab = (id: string) =>
+  let settingsBody: HTMLDivElement | undefined
+  const scrollPositions = new Map<string, number>()
+  const settingsSubviews = new Map<string, string>()
+  const expandedSections = new Map<string, boolean>()
+  const pageKey = () => `${activeTab()}:${activeTab() === "general" ? generalView() : ""}`
+  const rememberPosition = () => {
+    if (settingsBody) scrollPositions.set(pageKey(), settingsBody.scrollTop)
+  }
+  const setActiveTab = (id: string) => {
+    rememberPosition()
     setNavigation((state) => reduceSettingsMobileNavigation(state, { type: "select", id }))
+  }
   const showMobileSectionList = () => {
+    rememberPosition()
     setNavigation((state) => reduceSettingsMobileNavigation(state, { type: "back" }))
     restoreSettingsMobileListFocus(settingsNavigation)
   }
   const [providerFocusID, setProviderFocusID] = createSignal(props.providerFocusID)
+  const [generalView, setGeneralView] = createSignal<"regular" | "appearance" | "notifications">(
+    props.initialTab === "appearance" ? "appearance" : "regular",
+  )
   const [search, setSearch] = createSignal("")
   const [searchTarget, setSearchTarget] = createSignal<{ section: string; label: string }>()
+  const [mcpRevealIndex, setMcpRevealIndex] = createSignal<number>()
   const [contentRoot, setContentRoot] = createSignal<HTMLDivElement>()
   const [initialized, setInitialized] = createSignal(false)
   const [saving, setSaving] = createSignal(false)
-  const [aggregateSaveStatus, setAggregateSaveStatus] = createSignal<"idle" | "saving" | "saved" | "error">("idle")
+  const [aggregateSaveStatus, setAggregateSaveStatus] =
+    createSignal<Exclude<import("./settings-save-status").SettingsSaveStatus, "dirty" | "loading">>("idle")
   const [saveResultFingerprint, setSaveResultFingerprint] = createSignal<string>()
+  const [successfulSaveSources, setSuccessfulSaveSources] = createSignal<
+    { name?: string; page?: string; server?: boolean }[]
+  >([])
+  const [failedSaveSources, setFailedSaveSources] = createSignal<{ name?: string; page?: string; server?: boolean }[]>(
+    [],
+  )
   const [desktopUpdateDraft, setDesktopUpdateDraft] = createSignal<DesktopUpdateMode>()
   const [pluginDraftVersion, setPluginDraftVersion] = createSignal(0)
   const pluginDrafts = createPluginSettingsDrafts(() => setPluginDraftVersion((version) => version + 1))
   const [refreshing, setRefreshing] = createSignal(false)
+  const [focusedConfigDomain, setFocusedConfigDomain] = createSignal<string>()
   const [openingDomain, setOpeningDomain] = createSignal<string | undefined>()
   const [settingsPopoverLayer, setSettingsPopoverLayer] = createSignal<HTMLElement>()
   const [developerMode, setDeveloperMode] = createSignal(initialDeveloperMode)
@@ -353,6 +384,30 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [settings, setSettings] = createStore<SettingsState>(
     defaultSettingsState(input.sendShortcut(), theme.colorScheme()),
   )
+  const bossNameController = createBossNameController({
+    listSelfMemories: async () =>
+      (await globalSDK.client.library.list({ category: "self" }, { throwOnError: true })).data ?? [],
+    createMemory: (input) => globalSDK.client.library.memory.create(input, { throwOnError: true }),
+    updateMemory: (input) => globalSDK.client.library.memory.update(input, { throwOnError: true }),
+    removeMemory: (id) => globalSDK.client.library.remove({ id }, { throwOnError: true }),
+  })
+  createEffect(() => {
+    if (activeTab() === "boss" && !bossNameController.loaded()) untrack(() => void bossNameController.load())
+  })
+  const voiceController = createVoiceController({
+    get: async () =>
+      (await globalSDK.client.config.domain.get({ domain: "voice" }, { throwOnError: true })).data?.voice,
+    update: async (voice) =>
+      (
+        await globalSDK.client.config.domain.update(
+          { domain: "voice", configDomainUpdateInput: { config: { voice } } },
+          { throwOnError: true },
+        )
+      ).data?.config.voice,
+  })
+  createEffect(() => {
+    if (activeTab() === "voice" && !voiceController.loaded()) untrack(() => void voiceController.load())
+  })
 
   const configSections = [
     "general",
@@ -638,7 +693,31 @@ export function SettingsPanel(props: SettingsPanelProps) {
     initializedForSet = undefined
   }
 
-  async function refreshAfterConfigChange(changedFields: string[], submittedDraft?: SettingsState) {
+  async function refreshAfterConfigChange(
+    changedFields: string[],
+    submittedDraft?: SettingsState,
+    savedConfig?: Record<string, unknown>,
+  ) {
+    let acknowledgedDraft = submittedDraft
+    if (submittedDraft && savedConfig) {
+      const [base, setBase] = createStore<SettingsState>(
+        defaultSettingsState(input.sendShortcut(), theme.colorScheme()),
+      )
+      ensureInit({
+        cfg: { ...config(), ...savedConfig },
+        setName: "global",
+        refreshing: () => false,
+        initialized: () => false,
+        initializedForSet: undefined,
+        sendShortcut: input.sendShortcut,
+        colorScheme: theme.colorScheme,
+        setSettings: setBase,
+        setInitialized: () => {},
+        originalMcpsRef: { current: {} },
+        builtinMcps: builtinMcps(),
+      })
+      acknowledgedDraft = snapshotSettingsDraft(base)
+    }
     setRefreshing(true)
     const changed = new Set(changedFields)
     // Refresh only the panel resources affected by the fields that actually
@@ -657,25 +736,29 @@ export function SettingsPanel(props: SettingsPanelProps) {
       "role_variant",
     ]
     const agentFields = ["agent", "default_agent", "external_agent", "category", "permission", "library"]
-    await Promise.all([
-      refetchConfig(),
-      refetchDomains(),
-      ...(modelFields.some((field) => changed.has(field)) ? [refetchModelRoleSummaries()] : []),
-      ...(agentFields.some((field) => changed.has(field)) ? [refetchAgents()] : []),
-      ...(changed.has("cortex") ? [refetchCortexConcurrencyStatus()] : []),
-      ...(changed.has("execution") ? [refetchAgentWorkerCapacityStatus()] : []),
-      ...(changed.has("channel") ? [refetchChannelStatuses()] : []),
-      ...(changed.has("mcp") ? [refetchBuiltinMcps()] : []),
-      ...(changed.has("skills") ? [refetchSkillSources()] : []),
-    ])
+    try {
+      await Promise.all([
+        refetchConfig(),
+        refetchDomains(),
+        ...(modelFields.some((field) => changed.has(field)) ? [refetchModelRoleSummaries()] : []),
+        ...(agentFields.some((field) => changed.has(field)) ? [refetchAgents()] : []),
+        ...(changed.has("cortex") ? [refetchCortexConcurrencyStatus()] : []),
+        ...(changed.has("execution") ? [refetchAgentWorkerCapacityStatus()] : []),
+        ...(changed.has("channel") ? [refetchChannelStatuses()] : []),
+        ...(changed.has("mcp") ? [refetchBuiltinMcps()] : []),
+        ...(changed.has("skills") ? [refetchSkillSources()] : []),
+      ])
+    } finally {
+      setRefreshing(false)
+    }
     const currentDraft = submittedDraft ? snapshotSettingsDraft(settings) : undefined
     setRefreshing(false)
     if (configResource.error()) throw configResource.error()
     if (domainSummariesResource.error()) throw domainSummariesResource.error()
     resetEditor()
     doEnsureInit()
-    if (submittedDraft && currentDraft) {
-      setSettings(reconcile(rebaseDraftAfterSave(snapshotSettingsDraft(settings), submittedDraft, currentDraft)))
+    if (acknowledgedDraft && currentDraft) {
+      setSettings(reconcile(rebaseDraftAfterSave(snapshotSettingsDraft(settings), acknowledgedDraft, currentDraft)))
     }
     if (submittedDraft) {
       restoreInstantTheme()
@@ -713,7 +796,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
     })
   })
 
-  const hasServerChanges = createMemo(() => Object.keys(serverPatch()).length > 0)
+  const serverValidation = createMemo(() => (initialized() ? validateSettingsDraft(settings) : []))
+  const serverFieldError = (page: string, field: string) => {
+    const issue = serverValidation().find((issue) => issue.page === page && issue.field === field)
+    return issue ? _(issue.message) : undefined
+  }
+  const hasServerChanges = createMemo(() => Object.keys(serverPatch()).length > 0 || serverValidation().length > 0)
   const hasPluginChanges = () => {
     pluginDraftVersion()
     return pluginDrafts.dirty()
@@ -725,15 +813,26 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const editingLabel = createMemo(() => _(copy.globalConfig))
   const hasAnyChanges = createMemo(
     () =>
-      hasServerChanges() || hasPluginChanges() || personalizeController.dirty() || font.dirty() || desktopUpdateDirty(),
+      hasServerChanges() ||
+      hasPluginChanges() ||
+      personalizeController.dirty() ||
+      font.dirty() ||
+      desktopUpdateDirty() ||
+      voiceController.dirty() ||
+      bossNameController.dirty(),
   )
   const draftFingerprint = createMemo(() =>
     JSON.stringify({
       server: serverPatch(),
+      invalidDraft: serverValidation().length
+        ? [settings.runtime, settings.email, settings.library, settings.mcps]
+        : undefined,
       plugin: pluginDraftVersion(),
       personalize: [personalizeController.content(), personalizeController.resetPending()],
       font: [font.selected("sans"), font.selected("mono")],
       desktopUpdate: desktopUpdateDraft(),
+      voice: voiceController.draft,
+      bossName: bossNameController.content(),
     }),
   )
 
@@ -744,6 +843,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
   function discardChanges() {
     pluginDrafts.discard()
     personalizeController.discard()
+    voiceController.discard()
+    bossNameController.discard()
     font.discard()
     setDesktopUpdateDraft(undefined)
     resetEditor()
@@ -776,19 +877,24 @@ export function SettingsPanel(props: SettingsPanelProps) {
   props.registerCloseRequest?.(save.closeWithGuard)
 
   async function openBossSession() {
-    // /boss/session/open refuses to run while boss_mode is disabled, so flush
-    // any pending runtime draft (the enable toggle / persona) first.
-    const saved = await save.saveServerChanges()
-    if (!saved) {
-      throw new Error("Could not save the Boss Mode settings before opening the session.")
+    const requireSavedChanges = () => {
+      if (hasAnyChanges() || saving())
+        throw new Error(
+          _({
+            id: "settings.runtime.boss.saveFirst",
+            message: "Save changes first.",
+          }),
+        )
     }
+    requireSavedChanges()
     // The runtime boss session lives in home scope; the open route requires
     // an explicit scope (it refuses to guess from the request context).
-    const result = await globalSDK.client.boss.session.open({ scopeID: HOME_SCOPE_KEY })
+    const result = await globalSDK.client.boss.session.open({ scopeID: HOME_SCOPE_KEY }, { throwOnError: true })
     const sessionID = result.data?.sessionID
     if (!sessionID) {
       throw new Error("The runtime did not return a boss session.")
     }
+    requireSavedChanges()
     ;(props.onClose ?? (() => dialog.close()))()
     navigate(`/${base64Encode(HOME_SCOPE_KEY)}/session/${sessionID}`)
   }
@@ -849,20 +955,52 @@ export function SettingsPanel(props: SettingsPanelProps) {
   }
 
   const explicitSaveSources = () => [
-    { dirty: save.explicitDirty, save: save.saveServerChanges },
-    { dirty: hasPluginChanges, save: savePluginChanges },
-    { dirty: personalizeController.dirty, save: savePersonalizeChanges },
-    { dirty: font.dirty, save: saveFontChanges },
-    { dirty: desktopUpdateDirty, save: saveDesktopUpdateChanges },
+    {
+      name: serverValidation()[0]
+        ? _(getBuiltinSettingsSection(serverValidation()[0]!.page)!.copy.label)
+        : _(copy.globalConfig),
+      page: serverValidation()[0]?.page ?? activeTab(),
+      dirty: () => save.explicitDirty() || serverValidation().length > 0,
+      validate: () => serverValidation().length === 0,
+      save: save.saveServerChanges,
+    },
+    {
+      name: _({ id: "settings.runtime.boss.name", message: "Assistant name" }),
+      page: "boss",
+      dirty: bossNameController.dirty,
+      save: bossNameController.save,
+    },
+    { name: _(copy.pluginsGroup), page: activeTab(), dirty: hasPluginChanges, save: savePluginChanges },
+    {
+      name: _({ id: "settings.catalog.personalize.label", message: "Personalize" }),
+      page: "personalize",
+      dirty: personalizeController.dirty,
+      validate: () => !personalizeController.overLimit(),
+      save: savePersonalizeChanges,
+    },
+    {
+      name: _({ id: "settings.general.font.title", message: "Interface font" }),
+      page: "general",
+      dirty: font.dirty,
+      save: saveFontChanges,
+    },
+    { name: _(copy.globalConfig), page: "general", dirty: desktopUpdateDirty, save: saveDesktopUpdateChanges },
+    {
+      name: _({ id: "settings.voice.page.title", message: "Voice" }),
+      page: "voice",
+      dirty: voiceController.dirty,
+      validate: () => !voiceController.validate(),
+      save: voiceController.save,
+    },
   ]
   const hasExplicitChanges = createMemo(() => hasExplicitSettingsChanges(explicitSaveSources()))
   const explicitSaveBlocked = createMemo(
     () =>
+      save.refreshPending() ||
       saving() ||
       save.status() === "saving" ||
       personalizeController.busy() ||
-      (hasServerChanges() && !domainSummariesResource.ready()) ||
-      (personalizeController.dirty() && !personalizeController.canSave()),
+      (hasServerChanges() && !domainSummariesResource.ready()),
   )
 
   async function saveExplicitChanges() {
@@ -870,11 +1008,43 @@ export function SettingsPanel(props: SettingsPanelProps) {
     setSaving(true)
     setAggregateSaveStatus("saving")
     try {
-      const saved = await saveExplicitSettingsChanges(explicitSaveSources())
+      const result = await saveSettingsSources(explicitSaveSources())
+      const details = result.results.flatMap(({ source, outcome }) =>
+        outcome.domains?.length
+          ? outcome.domains.map((domain) => {
+              const summary = domainSummaries()?.find((item) => item.id === domain.domain)
+              const section = summary && getBuiltinSettingsSection(summary.uiSection)
+              return {
+                server: true,
+                phase: domain.phase,
+                name: section ? _(section.copy.label) : (summary?.label ?? source.name),
+                page: summary?.uiSection ?? source.page,
+              }
+            })
+          : [{ name: source.name, page: source.page, phase: outcome.phase }],
+      )
+      const failures = result.invalid ? result.failed : details.filter((item) => item.phase === "write")
+      const successes = details.filter((item) => item.phase === "complete" || item.phase === "refresh")
+      setFailedSaveSources(failures)
+      setSuccessfulSaveSources(successes)
       setSaveResultFingerprint(draftFingerprint())
-      setAggregateSaveStatus(saved ? "saved" : "error")
-      if (!saved) {
-        showToast({ type: "error", title: _(copy.partialSaveFailed), description: _(copy.partialSaveReview) })
+      setAggregateSaveStatus(
+        result.invalid
+          ? "invalid"
+          : failures.length
+            ? successes.length
+              ? "partial"
+              : "error"
+            : result.refreshPending.length
+              ? "refresh"
+              : "saved",
+      )
+      if (result.invalid) {
+        const page = failures[0]?.page
+        const issue = serverValidation()[0]
+        if (issue?.page === "mcp") setMcpRevealIndex(Number(issue.field.split(".")[0]))
+        if (page) setActiveTab(page)
+        requestAnimationFrame(() => contentRoot()?.querySelector<HTMLElement>("[aria-invalid=true]")?.focus())
       }
     } finally {
       setSaving(false)
@@ -944,7 +1114,13 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   const saveFooterStatus = createMemo(() =>
     settingsSaveFooterStatus({
-      saving: saving() || personalizeController.busy(),
+      saving: saving(),
+      refreshPending: save.refreshPending(),
+      loading:
+        !initialized() ||
+        sectionLoading() ||
+        (activeTab() === "voice" && voiceController.status() === "loading") ||
+        (activeTab() === "boss" && bossNameController.status() === "loading"),
       dirty: hasExplicitChanges(),
       resultCurrent: saveResultFingerprint() === draftFingerprint(),
       aggregate: aggregateSaveStatus(),
@@ -1008,6 +1184,14 @@ export function SettingsPanel(props: SettingsPanelProps) {
     personalize: () => <PersonalizePanel controller={personalizeController} />,
     general: () => (
       <GeneralPanel
+        view={generalView()}
+        onViewChange={(view) => {
+          rememberPosition()
+          setGeneralView(view)
+        }}
+        searchField={searchTarget()?.section === "general" ? searchTarget()?.label : undefined}
+        developerMode={developerMode()}
+        onDeveloperModeChange={toggleDeveloperMode}
         general={settings.general}
         onGeneralChange={(key, value) => {
           if (key === "colorScheme") {
@@ -1023,7 +1207,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
             setSettings("general", "theme", themeValue)
             // Persist to server independently — fire-and-forget with error toast on failure.
             void globalSDK.client.config.domain
-              .update({ domain: "general", configDomainUpdateInput: { config: { theme: themeValue } } })
+              .update(
+                { domain: "general", configDomainUpdateInput: { config: { theme: themeValue } } },
+                { throwOnError: true },
+              )
               .then(() => settleThemeSelection(globalSDK.url, themeValue, true))
               .catch((error) => {
                 settleThemeSelection(globalSDK.url, themeValue, false)
@@ -1048,6 +1235,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     ),
     models: () => (
       <ModelsPanel
+        searchField={searchTarget()?.section === "models" ? searchTarget()?.label : undefined}
         models={settings.models}
         savedModels={savedModels()}
         providerModels={providerModels}
@@ -1057,10 +1245,13 @@ export function SettingsPanel(props: SettingsPanelProps) {
         onModelChange={(key, value) => setSettings("models", key, value)}
         onVariantChange={(roleId, variant) => setSettings("roleVariant", roleId, variant || "")}
         onQuickSwitcherChange={(preferences) => setSettings("models", "quick_switcher", preferences)}
-        onConnectProvider={() => setActiveTab("providers")}
+        onConnectProvider={(providerID) => {
+          setProviderFocusID(providerID)
+          setActiveTab("providers")
+        }}
       />
     ),
-    voice: VoicePanel,
+    voice: () => <VoicePanel controller={voiceController} searchField={searchTarget()?.label} />,
     providers: () => (
       <ProvidersPanel
         summaries={providerSummaries()}
@@ -1072,18 +1263,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       <GitHubPanel
         github={settings.github}
         onGithubChange={(key, value) => setSettings("github", key, value as never)}
-        onSyncIdentity={async () => {
-          // Sync must run against persisted config: flush any pending github
-          // domain draft first so the server applies what the panel shows.
-          const patch = serverPatch()
-          if (patch.github) {
-            await globalSDK.client.config.domain.update({
-              domain: "github",
-              configDomainUpdateInput: { config: { github: patch.github } as never },
-            })
-            await refreshAfterConfigChange(["github"], snapshotSettingsDraft(settings))
-          }
-        }}
+        configDirty={Boolean(serverPatch().github)}
       />
     ),
     usage: () => (
@@ -1099,6 +1279,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     ),
     memory: () => (
       <MemoryPanel
+        fieldError={(key) => serverFieldError("memory", key)}
         library={settings.library}
         embeddingConfigDirty={Boolean(serverPatch().embedding)}
         onLibraryChange={(key, value) => setSettings("library", key, value)}
@@ -1106,6 +1287,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     ),
     experience: () => (
       <ExperiencePanel
+        fieldError={(key) => serverFieldError("experience", key)}
         library={settings.library}
         onLibraryChange={(key, value) => setSettings("library", key, value)}
       />
@@ -1120,6 +1302,18 @@ export function SettingsPanel(props: SettingsPanelProps) {
     mcp: () => (
       <McpPanel
         entries={settings.mcps.entries}
+        fieldError={(index, field) =>
+          aggregateSaveStatus() === "invalid" ? serverFieldError("mcp", `${index}.${field}`) : undefined
+        }
+        revealIndex={mcpRevealIndex()}
+        onRevealed={() => setMcpRevealIndex(undefined)}
+        entryUnsaved={(entry) => {
+          const cfg = config()
+          const current = cfg?.mcp?.[entry.key.trim()]
+          if (!current || !("type" in current)) return true
+          const next = (serverPatch().mcp as Record<string, unknown> | undefined)?.[entry.key.trim()]
+          return Boolean(next && !isDeepEqual(next, current))
+        }}
         builtins={settings.mcps.builtins}
         statuses={mcpStatuses()}
         onAdd={() => setSettings("mcps", "entries", (prev) => [...prev, emptyMcp()])}
@@ -1173,6 +1367,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
     channels: () => (
       <ChannelsPanel
+        onConfigure={() => {
+          setFocusedConfigDomain("channels")
+          selectSection("config-files")
+        }}
+        onAccount={() => selectSection("account")}
         channels={settings.channels}
         providers={providerGroups()}
         popoverLayer={settingsPopoverLayer()}
@@ -1194,7 +1393,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
       />
     ),
     email: () => (
-      <EmailPanel email={settings.email} onEmailChange={(key, value) => setSettings("email", key, value as never)} />
+      <EmailPanel
+        email={settings.email}
+        fieldError={(key) => serverFieldError("email", key)}
+        onEmailChange={(key, value) => setSettings("email", key, value as never)}
+      />
     ),
     permissions: () => (
       <PermissionsPanel safety={settings.safety} onSafetyChange={(key, value) => setSettings("safety", key, value)} />
@@ -1226,6 +1429,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     timeouts: () => (
       <TimeoutsPanel
         runtime={settings.runtime}
+        fieldError={(key) => serverFieldError("timeouts", key)}
         onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
         availableAgents={(agents() ?? []).filter((a) => a.mode === "primary" && !a.hidden)}
         defaultAgent={settings.agents.defaultAgent}
@@ -1242,8 +1446,30 @@ export function SettingsPanel(props: SettingsPanelProps) {
         popoverLayer={settingsPopoverLayer()}
       />
     ),
-    formatter: () => referencePanel(_(copy.formatterTitle), _(copy.formatterDescription), ["runtime"]),
-    lsp: () => referencePanel(_(copy.lspTitle), _(copy.lspDescription), ["runtime"]),
+    formatter: () => (
+      <LanguageToolsPanel
+        kind="formatter"
+        title={_(copy.formatterTitle)}
+        description={_(copy.formatterDescription)}
+        config={globalSync.data.config}
+        domains={domainSummaries() ?? []}
+        scopes={globalSync.data.scope}
+        openingDomain={openingDomain()}
+        onOpenDomain={canOpenConfigFiles() ? openDomain : undefined}
+      />
+    ),
+    lsp: () => (
+      <LanguageToolsPanel
+        kind="lsp"
+        title={_(copy.lspTitle)}
+        description={_(copy.lspDescription)}
+        config={globalSync.data.config}
+        domains={domainSummaries() ?? []}
+        scopes={globalSync.data.scope}
+        openingDomain={openingDomain()}
+        onOpenDomain={canOpenConfigFiles() ? openDomain : undefined}
+      />
+    ),
     observability: () => (
       <ObservabilityPanel
         runtime={settings.runtime}
@@ -1254,6 +1480,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
     boss: () => (
       <BossModePanel
         runtime={settings.runtime}
+        nameController={bossNameController}
+        configDirty={hasAnyChanges()}
         onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
         onOpenBossSession={openBossSession}
       />
@@ -1268,6 +1496,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     ),
     "config-files": () => (
       <ConfigFilesPanel
+        focusedDomain={focusedConfigDomain()}
         domains={domainSummaries() ?? []}
         openingDomain={openingDomain()}
         onOpenDomain={canOpenConfigFiles() ? (domain) => void openDomain(domain) : undefined}
@@ -1345,6 +1574,16 @@ export function SettingsPanel(props: SettingsPanelProps) {
     setSearchTarget({ section, label })
   }
   createEffect(() => {
+    const key = pageKey()
+    const root = contentRoot()
+    const visible = isDesktop() || mobileDetailOpen()
+    if (!root || !visible || searchTarget() || !sectionReady()) return
+    const frame = requestAnimationFrame(() => {
+      if (settingsBody) settingsBody.scrollTop = scrollPositions.get(key) ?? 0
+    })
+    onCleanup(() => cancelAnimationFrame(frame))
+  })
+  createEffect(() => {
     const target = searchTarget()
     const root = contentRoot()
     if (!root || !target || target.section !== activeTab() || !sectionReady()) return
@@ -1372,194 +1611,274 @@ export function SettingsPanel(props: SettingsPanelProps) {
       >
         <Icon name={getSemanticIcon("action.close")} size="small" />
       </button>
-      <AppPanel.Root class="settings-panel-root">
-        <AppPanel.Nav
-          ref={(element) => (settingsNavigation = element)}
-          class={`settings-panel-navigation ${!isDesktop() && mobileDetailOpen() ? "settings-panel-mobile-hidden" : ""}`}
-        >
-          <div class="settings-panel-navigation-header px-3 pt-4 pb-2 flex flex-col gap-2">
-            <div>
-              <div class="settings-nav-title truncate">{_(copy.globalConfig)}</div>
-              <div class="flex items-center gap-1.5 flex-wrap">
-                <Show when={saveFooterStatus() === "error"}>
-                  <span class="settings-nav-badge settings-nav-badge-error">{_(copy.errorBadge)}</span>
-                </Show>
-                <Show when={saveFooterStatus() === "dirty"}>
-                  <span class="settings-nav-badge settings-nav-badge-dirty">{_(copy.unsavedBadge)}</span>
-                </Show>
-                <Show when={saveFooterStatus() === "saving"}>
-                  <span class="settings-nav-badge settings-nav-badge-saving">{_(copy.savingBadge)}</span>
-                </Show>
-                <Show when={saveFooterStatus() === "saved"}>
-                  <span class="settings-nav-badge settings-nav-badge-saved">{_(copy.savedBadge)}</span>
-                </Show>
-                <Show when={developerMode()}>
-                  <span class="settings-nav-badge settings-nav-badge-dev">{_(copy.developerBadge)}</span>
+      <OverlayLayerProvider layer={settingsPopoverLayer}>
+        <AppPanel.Root class="settings-panel-root">
+          <AppPanel.Nav
+            ref={(element) => (settingsNavigation = element)}
+            class={`settings-panel-navigation ${!isDesktop() && mobileDetailOpen() ? "settings-panel-mobile-hidden" : ""}`}
+          >
+            <div class="settings-panel-navigation-header px-3 pt-4 pb-2 flex flex-col gap-2">
+              <div>
+                <div class="settings-nav-title truncate">{_(copy.globalConfig)}</div>
+              </div>
+              <div class="ds-settings-search">
+                <Icon name={getSemanticIcon("action.search")} size="small" />
+                <input
+                  value={search()}
+                  placeholder={_(copy.searchPlaceholder)}
+                  aria-label={_(copy.searchPlaceholder)}
+                  onInput={(event) => setSearch(event.currentTarget.value)}
+                />
+                <Show when={search()}>
+                  <button
+                    type="button"
+                    aria-label={_({ id: "settings.search.clear", message: "Clear search" })}
+                    onClick={() => setSearch("")}
+                  >
+                    <Icon name={getSemanticIcon("action.close")} size="small" />
+                  </button>
                 </Show>
               </div>
             </div>
-            <div class="ds-settings-search">
-              <Icon name={getSemanticIcon("action.search")} size="small" />
-              <input
-                value={search()}
-                placeholder={_(copy.searchPlaceholder)}
-                aria-label={_(copy.searchPlaceholder)}
-                onInput={(event) => setSearch(event.currentTarget.value)}
-              />
-            </div>
-          </div>
 
-          <div class="flex-1 overflow-y-auto px-2 pb-3">
-            <For each={navGroups()}>
-              {(group) => (
-                <AppPanel.NavSection label={group.label}>
-                  <For each={group.sections}>
-                    {(section) => (
-                      <div>
-                        <AppPanel.NavItem
-                          icon={sectionIcon(section)}
-                          label={section.label}
-                          active={activeTab() === section.id}
-                          onClick={() => selectSection(section.id)}
-                        />
-                        <For each={matchingFields(section.id)}>
-                          {(label) => (
-                            <button
-                              class="settings-search-result"
-                              type="button"
-                              onClick={() => selectField(section.id, label)}
-                            >
-                              {label}
-                            </button>
-                          )}
-                        </For>
-                      </div>
-                    )}
-                  </For>
-                </AppPanel.NavSection>
-              )}
-            </For>
-            <Show when={navGroups().length === 0}>
-              <div class="settings-empty-text px-3 py-6 text-text-weaker">{_(copy.noSettings)}</div>
-            </Show>
-          </div>
-        </AppPanel.Nav>
-
-        <AppPanel.Content
-          class={`settings-panel-content ${!isDesktop() && !mobileDetailOpen() ? "settings-panel-mobile-hidden" : ""}`}
-        >
-          <div class="settings-panel-mobile-detail-header">
-            <button
-              ref={mobileBackButton}
-              type="button"
-              class="settings-panel-mobile-back flex shrink-0 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus-base"
-              aria-label={_(copy.backLabel)}
-              onClick={showMobileSectionList}
-            >
-              <Icon name={getSemanticIcon("navigation.back")} size="small" />
-            </button>
-            <div class="min-w-0 truncate text-15-medium text-text-strong">{activeSection()?.label}</div>
-          </div>
-          <Show when={diagnosticsResource.error()}>
-            <div class="settings-resource-error" role="alert">
-              <div>{_(copy.diagnosticsLoadFailed)}</div>
-              <Button
-                variant="secondary"
-                disabled={diagnosticsResource.loading()}
-                onClick={() => void diagnosticsResource.retry()}
-              >
-                {_(copy.retrySection)}
-              </Button>
-            </div>
-          </Show>
-          <Show when={(configDiagnostics()?.length ?? 0) > 0}>
-            <div class="settings-config-diagnostics-banner" role="alert">
-              <div class="settings-config-diagnostics-title">{_(copy.configDiagnosticsTitle)}</div>
-              <div class="settings-config-diagnostics-description">{_(copy.configDiagnosticsDescription)}</div>
-              <ul class="settings-config-diagnostics-list">
-                <For each={configDiagnostics()}>
-                  {(issue) => (
-                    <li>
-                      {_({
-                        ...copy.configDiagnosticsDetail,
-                        values: { path: issue.path, error: issue.error },
-                      })}
-                      <Show when={issue.quarantinedPath}>
-                        {_({
-                          ...copy.configDiagnosticsQuarantined,
-                          values: { path: issue.quarantinedPath! },
-                        })}
-                      </Show>
-                    </li>
-                  )}
-                </For>
-              </ul>
-            </div>
-          </Show>
-          <AppPanel.Body padding={false}>
-            <Show when={failedResources().length > 0}>
-              <div class="settings-resource-error" role="alert">
-                <div>
-                  {_({ ...copy.sectionLoadFailed, values: { label: activeSection()?.label ?? _(copy.dialogLabel) } })}
+            <div class="flex-1 overflow-y-auto px-2 pb-3">
+              <For each={navGroups()}>
+                {(group) => (
+                  <AppPanel.NavSection label={group.label}>
+                    <For each={group.sections}>
+                      {(section) => (
+                        <div>
+                          <AppPanel.NavItem
+                            icon={sectionIcon(section)}
+                            label={section.label}
+                            active={activeTab() === section.id}
+                            onClick={() => selectSection(section.id)}
+                          />
+                          <For each={matchingFields(section.id)}>
+                            {(label) => (
+                              <button
+                                class="settings-search-result"
+                                type="button"
+                                onClick={() => selectField(section.id, label)}
+                              >
+                                {label}
+                              </button>
+                            )}
+                          </For>
+                        </div>
+                      )}
+                    </For>
+                  </AppPanel.NavSection>
+                )}
+              </For>
+              <Show when={navGroups().length === 0}>
+                <div class="settings-empty-text px-3 py-6 text-text-weaker">
+                  {_(copy.noSettings)}
+                  <Button variant="ghost" onClick={() => setSearch("")}>
+                    {_({ id: "settings.search.clear", message: "Clear search" })}
+                  </Button>
                 </div>
-                <Button variant="secondary" disabled={sectionLoading()} onClick={retrySection}>
+              </Show>
+            </div>
+          </AppPanel.Nav>
+
+          <AppPanel.Content
+            class={`settings-panel-content ${!isDesktop() && !mobileDetailOpen() ? "settings-panel-mobile-hidden" : ""}`}
+          >
+            <div class="settings-panel-mobile-detail-header">
+              <button
+                ref={mobileBackButton}
+                type="button"
+                class="settings-panel-mobile-back flex shrink-0 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus-base"
+                aria-label={_(copy.backLabel)}
+                onClick={showMobileSectionList}
+              >
+                <Icon name={getSemanticIcon("navigation.back")} size="small" />
+              </button>
+              <div class="min-w-0 truncate text-15-medium text-text-strong">{activeSection()?.label}</div>
+            </div>
+            <Show when={diagnosticsResource.error()}>
+              <div class="settings-resource-error" role="alert">
+                <div>{_(copy.diagnosticsLoadFailed)}</div>
+                <Button
+                  variant="secondary"
+                  disabled={diagnosticsResource.loading()}
+                  onClick={() => void diagnosticsResource.retry()}
+                >
                   {_(copy.retrySection)}
                 </Button>
               </div>
             </Show>
-            <Show
-              when={sectionReady()}
-              fallback={
-                <Show when={failedResources().length === 0}>
-                  <div class="settings-panel-loading" role="status">
-                    {_(copy.loading)}
-                  </div>
-                </Show>
-              }
-            >
-              <div ref={setContentRoot}>{renderActiveContent()}</div>
+            <Show when={(configDiagnostics()?.length ?? 0) > 0}>
+              <div class="settings-config-diagnostics-banner" role="alert">
+                <div class="settings-config-diagnostics-title">{_(copy.configDiagnosticsTitle)}</div>
+                <div class="settings-config-diagnostics-description">{_(copy.configDiagnosticsDescription)}</div>
+                <ul class="settings-config-diagnostics-list">
+                  <For each={configDiagnostics()}>
+                    {(issue) => (
+                      <li>
+                        {_({
+                          ...copy.configDiagnosticsDetail,
+                          values: { path: issue.path, error: issue.error },
+                        })}
+                        <Show when={issue.quarantinedPath}>
+                          {_({
+                            ...copy.configDiagnosticsQuarantined,
+                            values: { path: issue.quarantinedPath! },
+                          })}
+                        </Show>
+                      </li>
+                    )}
+                  </For>
+                </ul>
+              </div>
             </Show>
-            <SlotOutlet slot="settings.section" />
-          </AppPanel.Body>
+            <AppPanel.Body
+              padding={false}
+              ref={(element) => {
+                settingsBody = element
+              }}
+            >
+              <Show when={failedResources().length > 0}>
+                <div class="settings-resource-error" role="alert">
+                  <div>
+                    {_({ ...copy.sectionLoadFailed, values: { label: activeSection()?.label ?? _(copy.dialogLabel) } })}
+                  </div>
+                  <Button variant="secondary" disabled={sectionLoading()} onClick={retrySection}>
+                    {_(copy.retrySection)}
+                  </Button>
+                </div>
+              </Show>
+              <Show
+                when={sectionReady()}
+                fallback={
+                  <Show when={failedResources().length === 0}>
+                    <div class="settings-panel-loading" role="status">
+                      {_(copy.loading)}
+                    </div>
+                  </Show>
+                }
+              >
+                <SettingsViewStateContext.Provider
+                  value={{
+                    view: (key) => settingsSubviews.get(`${activeTab()}:${key}`),
+                    setView: (key, view) => settingsSubviews.set(`${activeTab()}:${key}`, view),
+                    expanded: (key) => expandedSections.get(`${activeTab()}:${key}`),
+                    setExpanded: (key, open) => expandedSections.set(`${activeTab()}:${key}`, open),
+                    searchField: () => (searchTarget()?.section === activeTab() ? searchTarget()?.label : undefined),
+                  }}
+                >
+                  <Show keyed when={activeTab()}>
+                    {(id) => (
+                      <div ref={setContentRoot} class="settings-page-transition" data-settings-page={id}>
+                        {renderActiveContent()}
+                      </div>
+                    )}
+                  </Show>
+                </SettingsViewStateContext.Provider>
+              </Show>
+              <SlotOutlet slot="settings.section" />
+            </AppPanel.Body>
 
-          <AppPanel.Footer class="settings-panel-footer">
-            <div class="settings-panel-footer-status flex flex-1 items-center gap-3">
-              <SaveIndicator status={saveFooterStatus()} />
-              <button
-                type="button"
-                class="settings-dev-toggle"
-                onClick={toggleDeveloperMode}
-                aria-pressed={developerMode()}
-              >
-                <Icon name={getSemanticIcon("settings.diagnostics")} size="small" />
-                <span>{_(copy.developerMode)}</span>
-              </button>
-            </div>
-            <div class="settings-panel-footer-actions">
-              <Button
-                type="button"
-                variant="ghost"
-                size="large"
-                disabled={saving() || save.status() === "saving" || personalizeController.status() === "saving"}
-                onClick={save.closeWithGuard}
-              >
-                {_(copy.cancel)}
-              </Button>
-              <Show when={hasExplicitChanges()}>
+            <AppPanel.Footer class="settings-panel-footer">
+              <div class="settings-panel-footer-status flex flex-1 items-center gap-3">
+                <SaveIndicator status={saveFooterStatus()} />
+                <Show
+                  when={["invalid", "error", "partial"].includes(saveFooterStatus()) && failedSaveSources().length > 0}
+                >
+                  <button
+                    type="button"
+                    class="settings-save-recovery"
+                    onClick={() => {
+                      const page = failedSaveSources()[0]?.page
+                      if (page) setActiveTab(page)
+                    }}
+                  >
+                    {_({
+                      id: "settings.save.failedPages",
+                      message: "Review: {pages}",
+                      values: {
+                        pages: failedSaveSources()
+                          .map((source) => source.name)
+                          .filter(Boolean)
+                          .join(" · "),
+                      },
+                    })}
+                  </button>
+                </Show>
+                <Show when={saveFooterStatus() === "partial" && successfulSaveSources().length > 0}>
+                  <span class="settings-row-description">
+                    {_({
+                      id: "settings.save.successfulPages",
+                      message: "Saved: {pages}",
+                      values: {
+                        pages: successfulSaveSources()
+                          .map((source) => source.name)
+                          .filter(Boolean)
+                          .join(" · "),
+                      },
+                    })}
+                  </span>
+                </Show>
+                <Show when={save.refreshPending()}>
+                  <Button
+                    variant="ghost"
+                    size="small"
+                    disabled={save.status() === "saving"}
+                    onClick={async () => {
+                      const outcome = await save.retryRead()
+                      const remaining = failedSaveSources().filter((source) => !source.server)
+                      const failures =
+                        outcome.domains
+                          ?.filter((domain) => domain.phase === "write")
+                          .map((domain) => {
+                            const summary = domainSummaries()?.find((item) => item.id === domain.domain)
+                            const section = summary && getBuiltinSettingsSection(summary.uiSection)
+                            return {
+                              server: true,
+                              name: section ? _(section.copy.label) : (summary?.label ?? domain.domain),
+                              page: summary?.uiSection,
+                            }
+                          }) ?? []
+                      setFailedSaveSources([...remaining, ...failures])
+                      setAggregateSaveStatus(
+                        remaining.length || failures.length
+                          ? "partial"
+                          : outcome.phase === "complete"
+                            ? "saved"
+                            : "refresh",
+                      )
+                      setSaveResultFingerprint(draftFingerprint())
+                    }}
+                  >
+                    {_({ id: "settings.save.retryRead", message: "Retry reading" })}
+                  </Button>
+                </Show>
+              </div>
+              <div class="settings-panel-footer-actions">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="large"
+                  disabled={saving() || save.status() === "saving" || personalizeController.status() === "saving"}
+                  onClick={save.closeWithGuard}
+                >
+                  {_(copy.cancel)}
+                </Button>
                 <Button
                   type="button"
                   variant="primary"
                   size="large"
-                  disabled={explicitSaveBlocked()}
+                  disabled={!hasExplicitChanges() || explicitSaveBlocked()}
                   onClick={() => void saveExplicitChanges()}
                 >
                   {saving() ? _(copy.saving) : _(copy.saveChanges)}
                 </Button>
-              </Show>
-            </div>
-          </AppPanel.Footer>
-        </AppPanel.Content>
-      </AppPanel.Root>
+              </div>
+            </AppPanel.Footer>
+          </AppPanel.Content>
+        </AppPanel.Root>
+      </OverlayLayerProvider>
       <div class="settings-popover-layer" ref={setSettingsPopoverLayer} />
     </div>
   )
@@ -1730,7 +2049,11 @@ function SettingsSectionContent(props: {
                 </div>
               )}
             >
-              <Dynamic component={c()} context={pluginContext()} />
+              <Show when={section().pluginId} fallback={<Dynamic component={c()} context={pluginContext()} />}>
+                <SettingsPage title={section().label} description={section().description}>
+                  <Dynamic component={c()} context={pluginContext()} />
+                </SettingsPage>
+              </Show>
             </ErrorBoundary>
           )}
         </Show>

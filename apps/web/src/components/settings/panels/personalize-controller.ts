@@ -72,8 +72,13 @@ export function createPersonalizeController(api: PersonalizeApi) {
     if (!canSave()) return false
     setStatus("saving")
     setError(undefined)
+    const submitted = content()
+    const submittedReset = resetPending()
     try {
-      adopt(resetPending() ? await api.reset() : await api.update(content()))
+      const next = submittedReset ? await api.reset() : await api.update(submitted)
+      const current = content()
+      adopt(next)
+      if (current !== submitted) setContent(current)
       return true
     } catch (cause) {
       fail(cause)

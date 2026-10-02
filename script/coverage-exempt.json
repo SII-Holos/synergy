@@ -335,6 +335,10 @@
           "reason": "voice dictation requires a live editor runtime and microphone access"
         },
         {
+          "glob": "src/components/prompt-input/voice-dictation-browser.ts",
+          "reason": "Browser MediaRecorder and OfflineAudioContext bindings are exercised with real Chromium audio in test/components/settings/panels/VoicePanel.test.ts. Vite/browser execution does not contribute to Bun lcov; recorder state and audio conversion remain measured by voice-dictation.test.ts and voice-dictation-audio.test.ts."
+        },
+        {
           "glob": "src/components/prompt-input/worktree-unavailable-dialog.tsx",
           "reason": "prompt input requires a live editor runtime"
         },
@@ -605,6 +609,10 @@
         {
           "glob": "src/components/settings/panels/LibraryPanels.tsx",
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/LanguageToolsPanel.tsx",
+          "reason": "Rendered by test/components/settings/settings-details.dom.test.tsx for owner-specific formatter configuration and selected-project status. Vite/browser execution does not contribute to Bun lcov."
         },
         {
           "glob": "src/components/settings/panels/McpPanel.tsx",

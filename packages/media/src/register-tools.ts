@@ -8,12 +8,13 @@ import { LookAtTool } from "./tools/lookat"
 import { ScanDocumentTool } from "./tools/scan-document"
 import { RenderTool } from "./tools/render"
 import { CodexProvider } from "@ericsanchezok/synergy-harness/provider/codex"
+import { voiceCapabilityEnabled } from "./config-schema"
 
 export function registerMediaTools() {
   ToolRegistry.registerToolProvider("media", async () => {
     const config = await Config.current()
     const tools: Tool.Info[] = [LookAtTool, ScanDocumentTool, RenderTool]
-    if (config.voice?.tts?.model) tools.push(SpeakTool)
+    if (voiceCapabilityEnabled(config.voice?.tts)) tools.push(SpeakTool)
     const access = await CodexProvider.resolveToken({ allowMissing: true, refreshIfExpiring: false }).catch(
       () => undefined,
     )

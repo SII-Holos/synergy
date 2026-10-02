@@ -163,6 +163,7 @@ function mountCard(entry: unknown, status?: unknown) {
           status: status as never,
           onChange: () => {},
           onRemove: () => {},
+          onEdit: () => {},
         }),
       host,
     ),
@@ -178,22 +179,25 @@ const switchChecked = (host: HTMLElement) => {
   return input?.checked
 }
 
+function openKeyEditor(host: HTMLElement) {
+  host.querySelector<HTMLButtonElement>("[data-mcp-builtin]")?.click()
+}
+
 describe("rendered built-in MCP status copy", () => {
-  test("a switch-on built-in that is not connected yet reads as ready, never as unavailable", () => {
+  test("an enabled built-in without a running connection reads as not started", () => {
     const host = mountPanel([builtin()])
 
-    expect(stateLabel(host)).toBe("Ready")
+    expect(stateLabel(host)).toBe("Not started")
     expect(stateLabel(host)).not.toBe("Unavailable")
-    // The contradiction this fixes: the switch is on, so the label must not
-    // claim the server is unavailable.
     expect(switchChecked(host)).toBe(true)
+    expect(host.querySelector(".settings-mcp-builtin-key input")).toBeNull()
   })
 
-  test("the Simplified Chinese result is 就绪, not 不可用", () => {
+  test("the Simplified Chinese result distinguishes not started from unavailable", () => {
     i18n.activate("zh-CN")
     const host = mountPanel([builtin()])
 
-    expect(stateLabel(host)).toBe("就绪")
+    expect(stateLabel(host)).toBe("尚未启动")
     expect(stateLabel(host)).not.toBe("不可用")
   })
 
@@ -241,6 +245,7 @@ describe("rendered built-in MCP status copy", () => {
 describe("rendered built-in MCP key feedback", () => {
   test("a stored key persistently shows the masked-hint chip and a replacement prompt", () => {
     const host = mountPanel([builtin({ keyConfigured: true, keyHint: "••••9876" })])
+    openKeyEditor(host)
 
     expect(chipLabel(host)).toBe("Key saved ••••9876")
     // Scope to the key field: the card also renders a switch input.
@@ -251,18 +256,21 @@ describe("rendered built-in MCP key feedback", () => {
 
   test("a typed-but-unsaved key shows the pending chip", () => {
     const host = mountPanel([builtin({ keyConfigured: true, keyHint: "••••9876", apiKeyDraft: "as_sk_new" })])
+    openKeyEditor(host)
 
     expect(chipLabel(host)).toBe("Not saved yet")
   })
 
   test("a cleared key returns to the unset chip", () => {
     const host = mountPanel([builtin({ keyConfigured: false })])
+    openKeyEditor(host)
 
     expect(chipLabel(host)).toBe("No key set")
   })
 
   test("a stored key without a hint still reads as saved", () => {
     const host = mountPanel([builtin({ keyConfigured: true })])
+    openKeyEditor(host)
 
     expect(chipLabel(host)).toBe("Key saved")
   })
@@ -270,6 +278,7 @@ describe("rendered built-in MCP key feedback", () => {
   test("the Simplified Chinese chips are the translated ones", () => {
     i18n.activate("zh-CN")
     const host = mountPanel([builtin({ keyConfigured: true, keyHint: "••••9876" })])
+    openKeyEditor(host)
 
     expect(chipLabel(host)).toBe("已设置密钥 ••••9876")
   })
@@ -289,10 +298,10 @@ describe("rendered custom MCP server status", () => {
     expect(stateLabel(host)).toBe("Paused")
   })
 
-  test("an enabled custom server with no known status reads as not-yet-connected, not failed", () => {
+  test("an enabled custom server with no known status does not claim readiness", () => {
     const host = mountCard(mcpEntry())
 
-    expect(stateLabel(host)).toBe("Ready")
+    expect(stateLabel(host)).toBe("Status unavailable")
     expect(stateLabel(host)).not.toBe("Failed")
   })
 })

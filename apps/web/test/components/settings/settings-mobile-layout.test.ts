@@ -31,6 +31,41 @@ function fixture(content: string) {
 }
 
 describe("mobile Settings layout", () => {
+  test("state text remains readable independently of semantic icon colors", async () => {
+    const page = await browser.newPage()
+    try {
+      await page.setContent(
+        fixture(`<div class="settings-panel-frame" style="--text-base:rgb(232,232,232);--text-weak:rgb(183,183,183);--text-weaker:rgb(183,183,183);--icon-success-base:rgb(0,107,42);--icon-info-active:rgb(16,95,180);background:rgb(27,27,27)">
+        <span class="settings-mcp-state" data-tone="success">Connected</span>
+        <span class="settings-mcp-state" data-tone="progress">Connecting</span>
+        <span class="settings-mcp-state" data-tone="danger">Failed</span>
+      </div>`),
+      )
+      const colors = await page
+        .locator(".settings-mcp-state")
+        .evaluateAll((elements) => elements.map((el) => getComputedStyle(el).color))
+      const luminance = (rgb: number[]) =>
+        rgb
+          .map((value) => value / 255)
+          .map((value) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4))
+          .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index]!, 0)
+      for (const color of colors) {
+        const foreground = luminance(
+          color
+            .match(/[\d.]+/g)!
+            .map(Number)
+            .slice(0, 3),
+        )
+        const background = luminance([27, 27, 27])
+        expect(
+          (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05),
+        ).toBeGreaterThanOrEqual(4.5)
+      }
+    } finally {
+      await page.close()
+    }
+  })
+
   test("uses a full-width category list below the 768px breakpoint", async () => {
     const page = await browser.newPage({ viewport: { width: 767, height: 667 } })
     try {
@@ -53,7 +88,7 @@ describe("mobile Settings layout", () => {
     }
   })
 
-  test("preserves the 224px desktop navigation at 768px", async () => {
+  test("preserves the 220px desktop navigation and divider at 768px", async () => {
     const page = await browser.newPage({ viewport: { width: 768, height: 667 } })
     try {
       await page.setContent(
@@ -65,7 +100,7 @@ describe("mobile Settings layout", () => {
         `),
       )
       const navigation = await page.locator(".settings-panel-navigation").boundingBox()
-      expect(navigation?.width).toBe(224)
+      expect(navigation?.width).toBe(221)
       expect(await page.locator(".settings-panel-content").count()).toBe(1)
     } finally {
       await page.close()
@@ -87,7 +122,7 @@ describe("mobile Settings layout", () => {
               <div class="ds-content-inner">Mobile content</div>
               <footer class="settings-panel-footer">
                 <div class="settings-panel-footer-status">
-                  <button class="settings-dev-toggle">Developer mode</button>
+                  <span class="settings-save-indicator">Unsaved changes</span>
                 </div>
                 <div class="settings-panel-footer-actions">
                   <button>Cancel</button>
@@ -114,8 +149,11 @@ describe("mobile Settings layout", () => {
       expect(back?.height).toBeGreaterThanOrEqual(44)
       const rootRight = root!.x + root!.width
       expect(footer!.x + footer!.width).toBeLessThanOrEqual(rootRight)
-      expect(actions.every((box) => box.height >= 44 && box.right <= rootRight)).toBe(true)
-      expect(await contentInner.evaluate((element) => getComputedStyle(element).paddingLeft)).toBe("16px")
+      for (const box of actions) {
+        expect(box.height).toBeGreaterThanOrEqual(44)
+        expect(box.right).toBeLessThanOrEqual(rootRight)
+      }
+      expect(await contentInner.evaluate((element) => getComputedStyle(element).paddingLeft)).toBe("24px")
       expect(await body.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true)
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375)
     } finally {

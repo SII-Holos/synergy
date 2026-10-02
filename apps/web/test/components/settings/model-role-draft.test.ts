@@ -135,7 +135,7 @@ describe("model role draft display", () => {
       translateEnglish,
     )
 
-    expect(display.triggerLabel).toBe("Use fallback")
+    expect(display.triggerLabel).toBe("Automatic")
     expect(display.triggerDetail).toBe("Will resolve to GPT 5.5 Mini via Default Model")
     expect(display.resolutionDescription).toBe("Will resolve to GPT 5.5 Mini via Default Model")
   })
@@ -156,7 +156,7 @@ describe("model role draft display", () => {
       translateEnglish,
     )
 
-    expect(display.triggerLabel).toBe("Use fallback")
+    expect(display.triggerLabel).toBe("Automatic")
     expect(display.triggerDetail).toBe("Will resolve after saving")
     expect(display.resolutionDescription).toBe("Will resolve after saving")
   })
@@ -177,7 +177,7 @@ describe("model role draft display", () => {
       translateEnglish,
     )
 
-    expect(display.triggerLabel).toBe("Use fallback")
+    expect(display.triggerLabel).toBe("Automatic")
     expect(display.triggerDetail).toBe("Resolves to DeepSeek V4")
     expect(display.resolutionDescription).toBe("DeepSeek V4 via Default Model")
   })

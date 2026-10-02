@@ -1,3 +1,4 @@
+import { settingsFieldCopy } from "../settings-field-copy"
 import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
 import type { MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
@@ -9,7 +10,7 @@ import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useLocale, type IntlFormatter } from "@/context/locale"
-import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
+import { SettingRow } from "../components/SettingsSettingRow"
 import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { SettingsSection } from "../components/SettingsPrimitives"
 import type { LibrarySettingsStore, LocalEmbeddingSource } from "../types"
@@ -31,10 +32,7 @@ const loadingLabel = {
   message: "Checking embedding configuration\u2026",
 }
 
-const currentModelTitle = {
-  id: "settings.library.embedding.currentModel.title",
-  message: "Current model",
-}
+const currentModelTitle = settingsFieldCopy.embeddingModel
 
 const remoteFallbackRowTitle = {
   id: "settings.library.embedding.remoteFallback.title",
@@ -53,10 +51,7 @@ const remoteFallbackNoDownload = {
   message: "No download needed",
 }
 
-const downloadSourceTitle = {
-  id: "settings.library.embedding.downloadSource.title",
-  message: "Download source",
-}
+const downloadSourceTitle = settingsFieldCopy.embeddingSource
 const downloadSourceDesc = {
   id: "settings.library.embedding.downloadSource.desc",
   message: "Choose where Synergy downloads the bundled local model. Save source changes before downloading.",
@@ -71,10 +66,7 @@ const customOriginOption = {
   message: "Custom origin",
 }
 
-const customSourceTitle = {
-  id: "settings.library.embedding.customSource.title",
-  message: "Custom source origin",
-}
+const customSourceTitle = settingsFieldCopy.embeddingOrigin
 const customSourceDesc = {
   id: "settings.library.embedding.customSource.desc",
   message: "Use a public HTTPS origin without credentials, a path, query, or fragment.",
@@ -88,10 +80,7 @@ const customSourceInvalid = {
   message: "Origin is required for a custom source.",
 }
 
-const cacheDirTitle = {
-  id: "settings.library.embedding.cacheDir.title",
-  message: "Model cache directory",
-}
+const cacheDirTitle = settingsFieldCopy.embeddingCache
 const cacheDirDesc = {
   id: "settings.library.embedding.cacheDir.desc",
   message:
@@ -102,10 +91,7 @@ const cacheDirLabel = {
   message: "Local embedding model cache directory",
 }
 
-const localFilesTitle = {
-  id: "settings.library.embedding.localFiles.title",
-  message: "Local model files",
-}
+const localFilesTitle = settingsFieldCopy.embeddingFiles
 const localFilesSaveFirst = {
   id: "settings.library.embedding.localFiles.saveFirst",
   message: "Save the selected source before starting the download.",

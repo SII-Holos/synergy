@@ -56,13 +56,13 @@ describe("settings catalog", () => {
   test("search metadata covers keywords and row labels", () => {
     const general = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "general")!
     expect(general.keywords).toContain("toast")
-    expect(general.rowLabels).toContain("Product Updates")
+    expect(general.rowLabels).toContain("Product updates")
     const timeouts = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "timeouts")!
     expect(timeouts.keywords).toContain("agent")
     expect(timeouts.keywords).toContain("worker")
     expect(timeouts.keywords).toContain("concurrency")
-    expect(timeouts.rowLabels).toContain("Agent Worker Pool")
-    expect(timeouts.rowLabels).toContain("Max Concurrent Subagents")
+    expect(timeouts.rowLabels).toContain("Parallel model requests")
+    expect(timeouts.rowLabels).toContain("Parallel collaborator tasks")
     const compaction = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "compaction")!
     expect(compaction.rowLabels).toContain("Overflow Threshold")
     const codeChecks = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "code-checks")!
@@ -75,11 +75,11 @@ describe("settings catalog", () => {
     const personalize = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "personalize")
     expect(personalize).toMatchObject({
       label: "Personalize",
-      group: "Personal",
+      group: "Personal preferences",
       iconToken: "settings.personalize",
     })
     expect(personalize?.keywords).toContain("custom instructions")
-    expect(personalize?.rowLabels).toContain("Custom Instructions")
+    expect(personalize?.rowLabels).toContain("Global custom instructions")
   })
 
   test("all built-in icon tokens resolve", () => {

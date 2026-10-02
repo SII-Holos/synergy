@@ -40,6 +40,7 @@ export function ConfirmDialog(props: ConfirmOptions & { close?: () => void }) {
   const { _ } = useLingui()
   const dialogContext = useDialog()
   const [pending, setPending] = createSignal(false)
+  let cancelButton: HTMLButtonElement | undefined
   let settled = false
   const close = () => (props.close ?? dialogContext.close)()
 
@@ -70,6 +71,7 @@ export function ConfirmDialog(props: ConfirmOptions & { close?: () => void }) {
 
   return (
     <Dialog
+      initialFocus={() => cancelButton}
       dismissible={!pending()}
       title={resolveContent(props.title, _)}
       description={resolveContent(props.description, _)}
@@ -80,6 +82,11 @@ export function ConfirmDialog(props: ConfirmOptions & { close?: () => void }) {
           data-slot="dialog-close-button"
           data-component="icon-button"
           data-variant="ghost"
+          aria-label={_({
+            id: "confirm.close.named",
+            message: "Close {title}",
+            values: { title: resolveContent(props.title, _) },
+          })}
           disabled={pending()}
           onClick={() => {
             dismiss()
@@ -90,7 +97,14 @@ export function ConfirmDialog(props: ConfirmOptions & { close?: () => void }) {
       }
     >
       <div data-slot="dialog-actions" class="confirm-dialog-actions">
-        <Button type="button" variant="ghost" size="large" disabled={pending()} onClick={() => dismiss()}>
+        <Button
+          ref={cancelButton}
+          type="button"
+          variant="ghost"
+          size="large"
+          disabled={pending()}
+          onClick={() => dismiss()}
+        >
           {props.cancelLabel ? resolveContent(props.cancelLabel, _) : _(dialog.cancel)}
         </Button>
         <Button

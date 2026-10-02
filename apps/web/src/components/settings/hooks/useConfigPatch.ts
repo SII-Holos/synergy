@@ -1,5 +1,6 @@
 import type { Config } from "@ericsanchezok/synergy-sdk/client"
 import { isDeepEqual } from "remeda"
+import { parseToolTimeoutOverrides } from "../settings-draft-validation"
 import { UI_DEFAULTS, MODEL_ROLES, resolvePermissionForUi } from "../types"
 import { normalizeServerToast, toastPatchFromPreferences } from "../toast-preferences"
 import type { SettingsState } from "../types"
@@ -434,6 +435,22 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
 }
 
 function buildTimeoutPatch(cfg: Config, runtime: SettingsState["runtime"]) {
+  const timeout = timeoutDraftValue(runtime)
+  const current = timeoutDraftValue({
+    ...runtime,
+    invokeTimeout: String(cfg.timeout?.invoke_sec ?? UI_DEFAULTS.invokeTimeout),
+    providerTtfbTimeout: String(cfg.timeout?.provider?.ttfb_sec ?? UI_DEFAULTS.providerTtfbTimeout),
+    providerIdleTimeout: String(cfg.timeout?.provider?.idle_sec ?? UI_DEFAULTS.providerIdleTimeout),
+    providerWallTimeout: String(cfg.timeout?.provider?.wall_sec ?? UI_DEFAULTS.providerWallTimeout),
+    toolDefaultTimeout: String(cfg.timeout?.tool?.default_sec ?? UI_DEFAULTS.toolDefaultTimeout),
+    toolOverrides: Object.entries(cfg.timeout?.tool?.overrides ?? {})
+      .map(([key, value]) => `${key}=${value}`)
+      .join("\n"),
+  })
+  return { changed: !isDeepEqual(timeout, current), value: Object.keys(timeout).length ? timeout : undefined }
+}
+
+function timeoutDraftValue(runtime: SettingsState["runtime"]) {
   const timeout: Record<string, unknown> = {}
   const invoke = positiveNumber(runtime.invokeTimeout)
   if (invoke !== undefined) timeout.invoke_sec = invoke
@@ -449,16 +466,12 @@ function buildTimeoutPatch(cfg: Config, runtime: SettingsState["runtime"]) {
 
   const tool: Record<string, unknown> = {}
   const defaultTool = positiveNumber(runtime.toolDefaultTimeout)
-  const overrides = parseNumericRecord(runtime.toolOverrides)
+  const overrides = parseToolTimeoutOverrides(runtime.toolOverrides) ?? {}
   if (defaultTool !== undefined) tool.default_sec = defaultTool
   if (Object.keys(overrides).length) tool.overrides = overrides
   if (Object.keys(tool).length) timeout.tool = tool
 
-  const current = cfg.timeout ?? {}
-  return {
-    changed: JSON.stringify(timeout) !== JSON.stringify(current),
-    value: Object.keys(timeout).length ? timeout : undefined,
-  }
+  return timeout
 }
 
 function buildEmailPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
@@ -706,15 +719,6 @@ function parseKeyValueLines(value: string, separator: string): Record<string, st
     const key = trimmed.slice(0, index).trim()
     const next = trimmed.slice(index + separator.length).trim()
     if (key) result[key] = next
-  }
-  return result
-}
-
-function parseNumericRecord(value: string): Record<string, number> {
-  const result: Record<string, number> = {}
-  for (const [key, raw] of Object.entries(parseKeyValueLines(value, "="))) {
-    const next = Number(raw)
-    if (!Number.isNaN(next) && next > 0) result[key] = next
   }
   return result
 }

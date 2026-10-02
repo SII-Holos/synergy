@@ -15,6 +15,7 @@ const runtime = await testRuntime()
 runtime.run(() => Log.init({ print: false }))
 
 const originalConfigCurrent = Config.current
+const originalSpeak = Voice.speak
 
 function app() {
   return new Hono().route("/voice", VoiceRoute())
@@ -32,6 +33,7 @@ afterEach(() =>
   runtime.run(() => {
     ;(Config.current as typeof Config.current) = originalConfigCurrent
     Voice.resetClientFactoryForTest()
+    Voice.speak = originalSpeak
   }),
 )
 
@@ -76,7 +78,7 @@ describe("voice transcribe route", () => {
       expect(response.status).toBe(400)
       const body = (await response.json()) as { message: string; reason: string }
       expect(body.reason).toBe("voice_stt_not_configured")
-      expect(body.message).toContain("voice.stt.model")
+      expect(body.message).toContain("Settings → Voice")
     }))
 
   test("transcribes audio and forwards context and language", () =>
@@ -142,6 +144,69 @@ describe("voice transcribe route", () => {
       expect(body.reason).toBe("voice_no_speech")
       expect(body.message).toContain("No speech was detected")
       ;(Voice.transcribe as typeof Voice.transcribe) = originalTranscribe
+    }))
+})
+
+describe("voice preview route", () => {
+  const preview = (text: string, signal?: AbortSignal) =>
+    app().request("/voice/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+      signal,
+    })
+
+  test("publishes a binary contract and forwards the request cancellation signal", () =>
+    runtime.run(async () => {
+      const specs = await Server.openapi()
+      const operation = specs.paths?.["/voice/preview"]?.post
+      expect(operation?.operationId).toBe("voice.preview")
+      expect(operation?.responses?.["200"]).toMatchObject({
+        content: { "audio/wav": { schema: { type: "string", format: "binary" } } },
+      })
+      let signal: AbortSignal | undefined
+      Voice.speak = mock(async (input) => {
+        signal = input.abortSignal
+        return { data: new Uint8Array([3, 2, 1]), mimeType: "audio/mpeg" }
+      })
+      const controller = new AbortController()
+      const response = await preview("Hello", controller.signal)
+      expect(response.headers.get("content-type")).toBe("audio/mpeg")
+      expect(response.headers.get("cache-control")).toBe("no-store")
+      expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([3, 2, 1])
+      controller.abort()
+      expect(signal?.aborted).toBe(true)
+    }))
+
+  test("keeps disabled and provider failure reasons distinct", () =>
+    runtime.run(async () => {
+      stubConfig({ tts: { model: "tts-1", enabled: false } })
+      const disabled = await preview("Hello")
+      expect(disabled.status).toBe(400)
+      expect(await disabled.json()).toMatchObject({ reason: "voice_tts_not_configured" })
+      Voice.speak = mock(async () => {
+        throw new Error("Speech service unavailable")
+      })
+      const failed = await preview("Hello")
+      expect(failed.status).toBe(400)
+      expect(await failed.json()).toEqual({ reason: "voice_preview_failed", message: "Speech service unavailable" })
+    }))
+
+  test("requires Scope through the product server before calling the speech service", () =>
+    runtime.run(async () => {
+      let calls = 0
+      Voice.speak = mock(async () => {
+        calls++
+        return { data: new Uint8Array([1]), mimeType: "audio/wav" }
+      })
+      const response = await Server.App().request("/voice/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "Hello" }),
+      })
+      expect(response.status).toBe(400)
+      expect(await response.json()).toMatchObject({ name: "ScopeRequired" })
+      expect(calls).toBe(0)
     }))
 })
 

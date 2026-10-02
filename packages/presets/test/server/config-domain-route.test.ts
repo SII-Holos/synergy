@@ -17,6 +17,7 @@ const originalRuntimeReload = RuntimeReload.reload
 let originalGeneralConfig: Awaited<ReturnType<typeof Config.domainGet>> | undefined
 let originalModelsConfig: Awaited<ReturnType<typeof Config.domainGet>> | undefined
 let originalChannelsConfig: Awaited<ReturnType<typeof Config.domainGet>> | undefined
+let originalVoiceConfig: Awaited<ReturnType<typeof Config.domainGet>> | undefined
 
 function app() {
   return new Hono().route("/config", ConfigRoute())
@@ -61,8 +62,62 @@ afterEach(() =>
       await Config.domainUpdate("channels", originalChannelsConfig, { mode: "replace-domain" })
       originalChannelsConfig = undefined
     }
+    if (originalVoiceConfig) {
+      await Config.domainUpdate("voice", originalVoiceConfig, { mode: "replace-domain" })
+      originalVoiceConfig = undefined
+    }
   }),
 )
+
+test("voice HTTP configuration redacts credentials and preserves replacement, retention and removal intent", () =>
+  runtime.run(async () => {
+    originalVoiceConfig = await Config.domainGet("voice")
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const update = (voice: Config.Info["voice"]) =>
+          app().request("/config/domains/voice", {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ config: { voice } }),
+          })
+        let response = await update({
+          stt: { model: "fixture-stt", apiKey: "fixture-secret", language: "zh" },
+          tts: { model: "fixture-tts", apiKey: "fixture-tts-secret", voice: "fixture-voice" },
+        })
+        expect(response.status).toBe(200)
+        const first = (await response.json()) as { config: Config.Info }
+        const sentinel = first.config.voice?.stt?.apiKey
+        expect(sentinel).toBeTruthy()
+        expect(JSON.stringify(first)).not.toContain("fixture-secret")
+        expect(JSON.stringify(first)).not.toContain("fixture-tts-secret")
+
+        response = await update({ stt: { enabled: false }, tts: { apiKey: sentinel } })
+        expect(response.status).toBe(200)
+        let stored = await Config.domainGet("voice")
+        expect(stored.voice?.stt).toMatchObject({ enabled: false, model: "fixture-stt", apiKey: "fixture-secret" })
+        expect(stored.voice?.tts?.apiKey).toBe("fixture-tts-secret")
+
+        response = await update({
+          stt: { enabled: true, apiKey: "fixture-replacement", language: null },
+          tts: { apiKey: null, voice: null },
+        })
+        expect(response.status).toBe(200)
+        stored = await Config.domainGet("voice")
+        expect(stored.voice?.stt).toMatchObject({
+          enabled: true,
+          model: "fixture-stt",
+          apiKey: "fixture-replacement",
+          language: null,
+        })
+        expect(stored.voice?.tts).toMatchObject({ model: "fixture-tts", apiKey: null, voice: null })
+        const reread = await app().request("/config/domains/voice")
+        expect(reread.status).toBe(200)
+        expect(await reread.text()).not.toContain("fixture-replacement")
+      },
+    })
+  }))
 
 describe.serial("global General config route locale", () => {
   test("accepts every supported locale preference", () =>

@@ -17,7 +17,7 @@ description: Add or modify a Synergy HTTP route, request/response schema, OpenAP
 
 1. Validate path, query, form, and body input with precise Zod schemas.
 2. Add `describeRoute` metadata, stable `operationId`, response schemas, and structured error responses. Add `.meta({ ref: "TypeName" })` for reusable API-visible schemas.
-3. Keep business logic in the owning domain rather than the route handler.
+3. Keep business logic in the owning domain rather than the route handler. For binary media, document the supported MIME types, preserve structured error reasons and propagate the request abort signal. Test the generated SDK blob path as well as the mounted route; request previews must use saved owner configuration without creating task sessions.
 4. For state changes, persist first and publish the established event shape so frontend state can reconcile without per-event refetches.
 5. Preserve scoped snapshot watermark headers where middleware supplies them. Do not claim Web snapshot gating that the client does not implement.
 6. Regenerate contracts from the repository root:

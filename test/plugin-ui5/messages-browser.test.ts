@@ -146,6 +146,8 @@ test("native public conversation retains bounded history and reconciles updates 
     expect(await workspace.getByRole("button", { name: "Worktree", exact: true }).getAttribute("aria-pressed")).toBe(
       "true",
     )
+    await dialog.getByRole("tab", { name: "Notifications", exact: true }).click()
+    await dialog.getByText("In-app notification details", { exact: true }).click()
     const mute = dialog.getByLabel("Mute Info", { exact: true })
     const muted = await mute.isChecked()
     await dialog
@@ -167,6 +169,8 @@ test("native public conversation retains bounded history and reconciles updates 
         .getByRole("button", { name: "Worktree", exact: true })
         .getAttribute("aria-pressed"),
     ).toBe("true")
+    await dialog.getByRole("tab", { name: "Notifications", exact: true }).click()
+    await dialog.getByText("In-app notification details", { exact: true }).click()
     expect(await dialog.getByLabel("Mute Info", { exact: true }).isChecked()).toBe(!muted)
     expect(diagnostics.errors.map((error) => error.message)).toEqual([])
   } catch (error) {

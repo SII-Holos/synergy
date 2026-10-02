@@ -5,8 +5,9 @@ import { For, Show } from "solid-js"
 import { ConnectedModelManager } from "@/components/provider/model-manager"
 import { groupByProvider } from "../types"
 import { ModelRoleRow } from "../components/ModelRoleRow"
+import { modelRoleCopy } from "../model-role-draft"
 import type { ModelKey, ModelsStore, ProviderModel } from "../types"
-import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
+import { SettingsPage, SettingsSection, SettingsAdvanced } from "../components/SettingsPrimitives"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 const pageTitle = { id: "settings.models.page.title", message: "Models" }
@@ -15,10 +16,11 @@ const pageDescription = {
   message:
     "Choose defaults for new sessions and specialist roles. Project settings can provide a different model catalog.",
 }
-const rolesTitle = { id: "settings.models.roles.title", message: "Model roles" }
+const rolesTitle = { id: "settings.models.roles.title", message: "Default primary model" }
 const rolesDescription = {
   id: "settings.models.roles.description",
-  message: "Leave a role on fallback to inherit the next available model.",
+  message:
+    "Automatic selection follows the available model and role defaults. Fixed selections use the chosen service account.",
 }
 const rolesLoading = { id: "settings.models.roles.loading", message: "Model roles are loading" }
 const noProviderHint = {
@@ -33,6 +35,7 @@ const quickSwitcherDescription = {
 const connectProviderLabel = { id: "settings.models.connectProvider", message: "Connect provider" }
 
 export function ModelsPanel(props: {
+  searchField?: string
   models: ModelsStore
   savedModels: ModelsStore
   providerModels: () => ProviderModel[]
@@ -42,7 +45,7 @@ export function ModelsPanel(props: {
   onModelChange: (key: ModelKey, value: string) => void
   onVariantChange: (roleId: string, variant: string) => void
   onQuickSwitcherChange: (preferences: ModelsStore["quick_switcher"]) => void
-  onConnectProvider: () => void
+  onConnectProvider: (providerID?: string) => void
 }) {
   const { _ } = useLingui()
   const providerGroups = () => groupByProvider(props.providerModels())
@@ -83,7 +86,7 @@ export function ModelsPanel(props: {
           variant="ghost"
           size="small"
           icon={getSemanticIcon("action.add")}
-          onClick={props.onConnectProvider}
+          onClick={() => props.onConnectProvider()}
         >
           {_(connectProviderLabel)}
         </Button>
@@ -99,7 +102,7 @@ export function ModelsPanel(props: {
           }
         >
           <div class="settings-model-list">
-            <For each={props.modelRoleSummaries()}>
+            <For each={props.modelRoleSummaries().filter((summary) => summary.field === "model")}>
               {(summary) => (
                 <ModelRoleRow
                   summary={summary}
@@ -113,11 +116,39 @@ export function ModelsPanel(props: {
                     props.models[summary.field as ModelKey] || undefined,
                   )}
                   popoverLayer={props.popoverLayer}
+                  onConnectProvider={props.onConnectProvider}
                   onChange={props.onModelChange}
                   onVariantChange={(variant) => props.onVariantChange(summary.id, variant)}
                 />
               )}
             </For>
+            <SettingsAdvanced
+              title={_({ id: "settings.models.advanced.title", message: "Advanced model assignments" })}
+              forceOpen={props
+                .modelRoleSummaries()
+                .some((summary) => summary.field !== "model" && props.searchField === modelRoleCopy(summary, _).label)}
+            >
+              <For each={props.modelRoleSummaries().filter((summary) => summary.field !== "model")}>
+                {(summary) => (
+                  <ModelRoleRow
+                    summary={summary}
+                    value={props.models[summary.field as ModelKey]}
+                    draftModels={props.models}
+                    savedModels={props.savedModels}
+                    providers={providerGroups()}
+                    roleVariant={props.roleVariant[summary.id] ?? ""}
+                    availableVariants={getAvailableVariants(
+                      summary.resolvedModel,
+                      props.models[summary.field as ModelKey] || undefined,
+                    )}
+                    popoverLayer={props.popoverLayer}
+                    onConnectProvider={props.onConnectProvider}
+                    onChange={props.onModelChange}
+                    onVariantChange={(variant) => props.onVariantChange(summary.id, variant)}
+                  />
+                )}
+              </For>
+            </SettingsAdvanced>
           </div>
           <Show when={props.providerModels().length === 0}>
             <div class="ds-empty-state settings-model-empty">
