@@ -252,7 +252,7 @@
   align-items: flex-start;
   gap: 8px;
   padding: 12px 16px;
-  color: var(--text-critical-base);
+  color: var(--text-on-critical-base);
   max-height: 40%;
   overflow-y: auto;
   flex-shrink: 0;
@@ -1045,7 +1045,7 @@
 .execution-panel [data-state="failed"],
 .execution-panel [data-state="interrupted"],
 .execution-popover [data-state="failed"] {
-  color: var(--text-critical-base);
+  color: var(--text-on-critical-base);
 }
 [data-component="dialog"]:has(> [data-slot="dialog-container"] > .execution-expanded-dialog) {
   --dialog-width: min(1180px, calc(100vw - 40px));

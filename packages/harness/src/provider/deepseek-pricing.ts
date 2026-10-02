@@ -1,7 +1,8 @@
 import type { ProviderPricing } from "./pricing"
 
 export namespace DeepSeekPricing {
-  // Provenance: https://api-docs.deepseek.com/quick_start/pricing/ (observed 2026-10-01).
+  // Provenance: https://api-docs.deepseek.com/quick_start/pricing/ (verified 2026-10-02).
+  // UTC peaks: 01:00–04:00 and 06:00–10:00 on weekdays outside Chinese public holidays.
   // Calendar: https://www.gov.cn/zhengce/zhengceku/202511/content_7047091.htm (国办发明电〔2025〕7号).
   const holidays = [
     ["01-01", "01-03"],
@@ -65,7 +66,7 @@ export namespace DeepSeekPricing {
       },
       raw: {
         source: "https://api-docs.deepseek.com/quick_start/pricing/",
-        observedAt: "2026-10-01",
+        observedAt: "2026-10-02",
         model: model!,
         calendar: "https://www.gov.cn/zhengce/zhengceku/202511/content_7047091.htm",
       },

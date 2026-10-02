@@ -56,10 +56,16 @@ beforeAll(async () => {
     Bun.write(
       stubPath,
       `
-        import { createMemo, createSignal } from "solid-js"
+        import { createMemo, createSignal, Show } from "solid-js"
 
         let mountCount = 0
         ;(window as any).__sessionTurnMounts = () => mountCount
+        const [executionAvailable, setExecutionAvailable] = createSignal(true)
+        const openedExecution: string[] = []
+        Object.assign(window, {
+          __setExecutionAvailable: setExecutionAvailable,
+          __openedExecution: openedExecution,
+        })
 
         export function SessionTurn(props: any) {
           const [mounted] = createSignal(++mountCount)
@@ -67,6 +73,9 @@ beforeAll(async () => {
           return (
             <div data-slot="session-turn-stub" data-message-id={props.messageID} data-mount={mounted()}>
               {root()?.text ?? ""}
+              <Show when={props.onExecutionDetails}>
+                <button aria-label="Task details" data-execution-details onClick={() => props.onExecutionDetails()} />
+              </Show>
             </div>
           )
         }
@@ -87,7 +96,11 @@ beforeAll(async () => {
         })
         export const SessionTimeline = () => null
         export const SessionTransitionCard = () => null
-        export const useExecution = () => ({ round: () => undefined, open: () => {} })
+        export const useExecution = () => ({
+          available: executionAvailable,
+          round: () => undefined,
+          open: (id: string) => openedExecution.push(id),
+        })
         export const messageAllowsCanonicalActions = () => false
       `,
     ),
@@ -196,6 +209,31 @@ afterAll(async () => {
 })
 
 describe("conversation row retention", () => {
+  test("offers turn details only when the server exposes execution inspection", async () => {
+    await page.evaluate(
+      (messages) => {
+        const fixture = window as unknown as { __setTimeline: (messages: unknown[]) => void }
+        fixture.__setTimeline(messages)
+      },
+      [JSON.parse(msg("msg_capability", "user", "Task"))],
+    )
+    const details = page.locator("[data-execution-details]")
+    await expect(details.count()).resolves.toBe(1)
+    await details.click()
+    expect(await page.evaluate(() => (window as unknown as { __openedExecution: string[] }).__openedExecution)).toEqual(
+      ["msg_capability"],
+    )
+    await page.evaluate(() =>
+      (window as unknown as { __setExecutionAvailable: (available: boolean) => void }).__setExecutionAvailable(false),
+    )
+    await expect(details.count()).resolves.toBe(0)
+    await page.evaluate(() =>
+      (window as unknown as { __setExecutionAvailable: (available: boolean) => void }).__setExecutionAvailable(true),
+    )
+    await expect(details.count()).resolves.toBe(1)
+    expect(pageErrors).toEqual([])
+  })
+
   test("keeps rows mounted across message object replacement and propagates updates", async () => {
     await page.evaluate(
       (msgs) => {

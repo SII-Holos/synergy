@@ -168,8 +168,8 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
                 rollbackActive={props.rollbackActive}
                 onReviewChanges={props.onReviewChanges}
                 onForkMessage={props.onForkMessage}
-                executionSummary={execution.round(key)}
-                onExecutionDetails={() => void execution.open(key)}
+                executionSummary={execution.available() ? execution.round(key) : undefined}
+                onExecutionDetails={execution.available() ? () => void execution.open(key) : undefined}
                 classes={{
                   root: "min-w-0 w-full relative",
                   content: "flex flex-col justify-between !overflow-visible",

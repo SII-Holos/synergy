@@ -44,3 +44,24 @@ test("price boundary or unavailable holiday calendar yields a range rather than 
   const configured = { ...catalog, source: { ...catalog.source, kind: "configuration" as const } }
   expect(ProviderPricing.capture(configured, "https://api.deepseek.com", Date.now())).toBe(configured)
 })
+
+test("the verified official weekday schedule covers both peak windows and their gaps", () => {
+  for (const [time, phase] of [
+    ["00:59:59", "off-peak"],
+    ["01:00:00", "peak"],
+    ["03:59:59", "peak"],
+    ["04:00:00", "off-peak"],
+    ["05:59:59", "off-peak"],
+    ["06:00:00", "peak"],
+    ["09:59:59", "peak"],
+    ["10:00:00", "off-peak"],
+    ["16:00:00", "off-peak"],
+  ] as const)
+    expect(capture(`2026-10-08T${time}Z`)?.policy?.phase).toBe(phase)
+  expect(
+    ProviderPricing.estimate(capture("2026-10-08T03:59:59Z"), usage, "api", Date.parse("2026-10-08T04:00:00Z")).range,
+  ).toBeDefined()
+  expect(
+    ProviderPricing.estimate(capture("2026-10-08T00:59:59Z"), usage, "api", Date.parse("2026-10-08T04:00:00Z")).range,
+  ).toBeDefined()
+})
