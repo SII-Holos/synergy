@@ -43,7 +43,7 @@ beforeAll(async () => {
       const [fullscreen, setFullscreen] = createSignal(false)
       const [tabs, setTabs] = createSignal(restored ? [{ id, panelId: id }, {id:"restored-extra",panelId:"extra"}] : [{ id, panelId: id }])
       const [active, setActive] = createSignal(id)
-      return [id, { opened, setOpened, close: () => setOpened(false), size, setSize, tabs, setTabs,
+      return [id, { opened, setOpened, close: () => setOpened(false), toggle: () => setOpened(!opened()), size, setSize, tabs, setTabs,
         fullscreen, setFullscreen, activeTab: () => tabs().find(tab => tab.id === active()), active, setActive }]
     }))
     window.fixture = { retarget: () => states.side.setTabs([{id:"side",panelId:"extra"}]), open: id => states[id].setOpened(true), close: id => states[id].close(), crash: setCrash, resize: (id,size) => states[id].setSize(size), size: id => states[id].size(), populate: () => states.side.setTabs(Array.from({length:20}, (_,i) => ({ id: i ? 'tab-'+i : 'side', panelId:'side', title: 'Long document title ' + i }))) }
@@ -52,8 +52,34 @@ beforeAll(async () => {
       interact() {}, activateTab(name, id) { states[name].setActive(id) }, getPanel: id => entries.find(entry => entry.id === id),
       panelTitle: tab => tab.title ?? tab.panelId, openPanel: () => {}, closeTab: () => {}, closeOtherTabs: () => {}, moveTab: () => {}
     })
-    export const useLayout = () => ({ isDesktop: () => true, sidebar: { opened: () => location.search === "?composed", width: () => 260, occupiedWidth: () => location.search === "?composed" ? 260 : 0 } })
+    const hasSidebar = () => location.search === "?composed" || (location.search === "?toolbar" && innerWidth >= 768)
+    export const useLayout = () => ({ isDesktop: () => true, sidebar: { opened: hasSidebar, width: () => 260, occupiedWidth: () => hasSidebar() ? 260 : 0 }, nav: { recentEntries: () => [], rootNavEntries: () => [], projectNavEntries: () => [] }, scopes: { list: () => [] }, mobileSidebar: { toggle() {} }, rightSidebar: { toggle() {} } })
   `,
+  )
+  await Bun.write(
+    path.join(directory, "topbar-services.ts"),
+    `
+    export const useGlobalSDK = () => ({ client: {} })
+    export const useLocal = () => ({ agent: { current: () => ({}) }, model: {
+      current: () => ({ name: "Fixture model" }),
+      variant: { list: () => ["high"], displayed: () => undefined, set() {} },
+      selection: { saving: () => false, state: () => undefined, error: () => undefined, retry() {} }
+    } })
+    export const useCommand = () => ({ options: [], keybind: () => undefined, trigger() {} })
+    export const useSync = () => ({ session: { get: () => ({ id: "fixture", title: "Toolbar fixture", scope: { id: "home" }, tags: [] }) } })
+    export const useSessionDataView = () => () => ({ statusFor: () => ({ type: "idle" }), messagesFor: () => [] })
+    `,
+  )
+  await Bun.write(
+    path.join(directory, "topbar-dialogs.tsx"),
+    `
+    export const DialogSessionRename = () => null
+    export const DialogSessionExport = () => null
+    export const DialogSessionImport = () => null
+    export const WorktreeEnterConfirmDialog = () => null
+    export const ModelSelectorPopover = props => props.triggerAs({})
+    export const useConfirm = () => ({ show() {} })
+    `,
   )
   await Bun.write(
     path.join(directory, "main.tsx"),
@@ -67,7 +93,9 @@ beforeAll(async () => {
     import { WorkspaceNavigator } from ${JSON.stringify(`/@fs/${source}/components/workspace/workspace-navigator.tsx`)}
     import { DefaultSession } from ${JSON.stringify(`/@fs/${source}/plugin/default-session.tsx`)}
     import { DefaultShell } from ${JSON.stringify(`/@fs/${source}/plugin/default-shell.tsx`)}
+    import { SessionTopBar } from ${JSON.stringify(`/@fs/${source}/components/top-bar/session-top-bar.tsx`)}
     import { SessionWorkbenchChrome } from ${JSON.stringify(`/@fs/${source}/components/session/workbench-chrome.ts`)}
+    import { MemoryRouter, Route, createMemoryHistory } from "@solidjs/router"
     import ${JSON.stringify(`/@fs/${source}/components/top-bar/session-top-bar.css`)}
     import ${JSON.stringify(`/@fs/${source}/components/sidebar/sidebar.css`)}
     import { createSignal, useContext } from "solid-js"
@@ -99,6 +127,11 @@ beforeAll(async () => {
       if (location.search === "?navigator-new-tab") return <div class="workbench-surface"><Show when={resourceRevision()} keyed>{revision => <NavigatorProbe navigationId={"file-navigation-" + revision} remount={() => setResourceRevision(value => value+1)} />}</Show></div>
       if (location.search === "?navigator-offset") return <div style="margin-left:700px;margin-top:96px;width:400px"><NavigatorProbe width="400px" /></div>
       if (location.search === "?navigator-nested") return <button onClick={() => dialog.push(() => <Dialog title="Workspace"><NavigatorProbe /></Dialog>)}>Open host</button>
+      if (location.search === "?toolbar") {
+        const history = createMemoryHistory()
+        history.set({ value: "/aG9tZQ/session/fixture" })
+        return <MemoryRouter history={history}><Route path="/:dir/session/:id" component={() => <div style="height:100dvh"><DefaultShell context={{ shell: { render: part => part === "navigation" && innerWidth >= 768 ? <aside class="sb-root sb-integrated sb-expanded" style="width:260px" /> : part === "route" ? <DefaultSession context={{ layout: { minimumWidth: () => 350, promptHeight: () => 120, render: view => view === "workbench.side" ? <WorkbenchSurface surface="side" /> : view === "conversation" ? <><SessionTopBar /><button>Conversation action</button></> : view === "composer" ? <input aria-label="Composer draft" /> : null } }} /> : null } }} /></div>} /></MemoryRouter>
+      }
       if (location.search === "?composed") return <div style="height:100dvh;display:flex;flex-direction:column">
         <DefaultShell context={{ shell: { render: part => part === "navigation" ?
           <div data-plugin-ui="synergy" style="display:contents"><aside class="sb-root sb-integrated sb-expanded" style="width:260px"><div class="sb-navigation"><button>Navigation</button></div></aside></div> : part === "route" ?
@@ -125,6 +158,19 @@ beforeAll(async () => {
     resolve: {
       alias: [
         { find: /^@\/context\/(workbench|layout)$/, replacement: path.join(directory, "state.tsx") },
+        {
+          find: /^@\/context\/(global-sdk|local|command|sync|session-data-view)$/,
+          replacement: path.join(directory, "topbar-services.ts"),
+        },
+        { find: /^@\/components\/dialog$/, replacement: path.join(directory, "topbar-dialogs.tsx") },
+        {
+          find: /^@\/components\/dialog\/dialog-session-(export|import)$/,
+          replacement: path.join(directory, "topbar-dialogs.tsx"),
+        },
+        {
+          find: "@/components/session/worktree-transition-dialog",
+          replacement: path.join(directory, "topbar-dialogs.tsx"),
+        },
         { find: "@", replacement: source },
       ],
     },
@@ -135,6 +181,7 @@ beforeAll(async () => {
         "solid-js/web",
         "@lingui/core",
         "@lingui/solid",
+        "fuzzysort",
         "lucide-solid",
         "@kobalte/core/dialog",
         "@kobalte/core/popover",
@@ -157,6 +204,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  if (errors.length) console.error(errors)
   await context?.close()
 })
 
@@ -220,6 +268,101 @@ function captureWorkspaceFrames() {
       ),
   )
 }
+
+for (const colorScheme of ["light", "dark"] as const) {
+  test(`closed session actions keep equal spacing to the workspace entry in ${colorScheme} mode`, async () => {
+    await page.emulateMedia({ colorScheme, reducedMotion: "reduce" })
+    for (const width of [1440, 1024, 768]) {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto(baseUrl + "?toolbar")
+      await page.waitForFunction(() => Boolean((window as unknown as WorkbenchWindow).fixture))
+      expect(errors).toEqual([])
+      const row = page.locator(".stb-desktop .stb-right .stb-icon-btn")
+      await row.first().waitFor()
+      const buttons = await row.evaluateAll((elements) =>
+        elements.map((element) => element.getBoundingClientRect().toJSON()),
+      )
+      const opener = (await page.locator(".session-workbench-controls button").boundingBox())!
+      expect(opener.x - buttons.at(-1)!.right).toBe(8)
+      for (let index = 1; index < buttons.length; index++) {
+        expect(buttons[index].left - buttons[index - 1].right).toBe(8)
+      }
+      expect(buttons.every((button) => button.width === 32 && button.height === 32)).toBe(true)
+      expect(opener.width).toBe(32)
+      expect(opener.height).toBe(32)
+      expect(errors).toEqual([])
+    }
+  })
+}
+
+test("session toolbar glyphs keep their compact size when the workspace opens and closes", async () => {
+  await page.goto(baseUrl + "?toolbar")
+  await page.waitForFunction(() => Boolean((window as unknown as WorkbenchWindow).fixture))
+  expect(errors).toEqual([])
+  const opener = page.locator(".session-workbench-controls button")
+  await opener.waitFor()
+  const entry = (await opener.boundingBox())!
+  const glyph = (await opener.locator("svg").boundingBox())!
+  const headerIcons = await page
+    .locator(".stb-desktop .stb-icon-btn svg")
+    .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().toJSON()))
+  expect(headerIcons.every((icon) => icon.width === 16 && icon.height === 16)).toBe(true)
+  expect(glyph.width).toBe(16)
+  expect(glyph.height).toBe(16)
+  await opener.focus()
+  await page.keyboard.press("Enter")
+  const collapse = page.getByRole("button", { name: "Collapse workspace", exact: true })
+  await collapse.waitFor()
+  await page.waitForFunction(
+    () => document.querySelector(".workbench-surface--side")!.getBoundingClientRect().width === 360,
+  )
+  const expanded = (await collapse.boundingBox())!
+  for (const key of ["x", "y", "width", "height"] as const) {
+    expect(Math.abs(expanded[key] - entry[key])).toBeLessThanOrEqual(1)
+  }
+  const expandedGlyph = (await collapse.locator("svg").boundingBox())!
+  expect(expandedGlyph.width).toBe(glyph.width)
+  expect(expandedGlyph.height).toBe(glyph.height)
+  for (const key of ["x", "y"] as const) {
+    expect(Math.abs(expandedGlyph[key] - glyph[key])).toBeLessThanOrEqual(1)
+  }
+  await collapse.focus()
+  await page.keyboard.press("Enter")
+  await opener.waitFor()
+  expect(await opener.boundingBox()).toEqual(entry)
+  expect(await opener.locator("svg").boundingBox()).toEqual(glyph)
+  expect(await opener.evaluate((element) => element === document.activeElement)).toBe(true)
+  expect(errors).toEqual([])
+})
+
+test("mobile session toolbar keeps compact glyphs and reachable controls", async () => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto(baseUrl + "?toolbar")
+  await page.waitForFunction(() => Boolean((window as unknown as WorkbenchWindow).fixture))
+  expect(errors).toEqual([])
+  const buttons = page.locator(".stb-root .md\\:hidden .stb-icon-btn")
+  await buttons.first().waitFor()
+  const bounds = await buttons.evaluateAll((elements) =>
+    elements.map((element) => ({
+      button: element.getBoundingClientRect().toJSON(),
+      icon: element.querySelector("svg")!.getBoundingClientRect().toJSON(),
+    })),
+  )
+  expect(bounds.length).toBeGreaterThanOrEqual(3)
+  expect(
+    bounds.every(
+      ({ button, icon }) =>
+        button.width >= 32 &&
+        button.height >= 32 &&
+        button.left >= 0 &&
+        button.right <= 375 &&
+        icon.width === 16 &&
+        icon.height === 16,
+    ),
+  ).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  expect(errors).toEqual([])
+})
 
 test("the closed workspace entry and open collapse control share the same bounds", async () => {
   await page.goto(baseUrl + "?composed")

@@ -225,6 +225,8 @@ Build shared UI DOM fixtures in a separate process with the test environment. Vi
 
 For presentation transitions, sample actual element bounds on animation frames rather than checking only settled layouts. Keep the side surface's right edge and presentation controls stationary through opening, fullscreen and restore, including frames narrower than the control group. Compare the closed entry and open collapse control's bounds. Exercise normal motion, reduced motion and rapid reversals in the composed Shell with its navigation width transition.
 
+Render the actual Session toolbar when verifying Workspace entry geometry. Measure SVG bounds as well as the hit area through closed and open layouts; a retained button box can still contain a differently sized glyph. The portaled entry's reserved space must leave the same gap as adjacent toolbar actions, including when narrow Session columns move secondary actions into the menu.
+
 Grouped controls need distinct group and segment surfaces. Verify moving between segments after a pointer click, keyboard focus, pressed state and an open menu whose focus moved into its portal; both themes must preserve geometry and the shared feedback duration.
 
 Keep split-layout constraints independent of the presentation they select. An automatic overlay that hides navigation must not derive its breakpoint from the resulting enlarged Session bounds. Verify an expanded navigation rail at the breakpoint across consecutive frames, then widen the window and confirm the saved split size and draft return.

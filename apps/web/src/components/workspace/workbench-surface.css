@@ -260,7 +260,6 @@
   [data-component="icon-button"]:focus:not(:focus-visible):not(:hover):not([aria-expanded="true"]) {
   background-color: transparent;
 }
-.session-workbench-controls .stb-icon-btn,
 .workbench-surface-controls [data-component="icon-button"] {
   height: 32px;
   width: 32px;

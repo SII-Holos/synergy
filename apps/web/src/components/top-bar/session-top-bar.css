@@ -158,13 +158,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 9px;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 6px;
   color: var(--icon-base);
   transition:
-    color 150ms,
-    background-color 150ms;
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
 .stb-icon-btn:hover {
@@ -337,7 +338,7 @@
     -webkit-app-region: no-drag;
   }
   [data-default-session]:not(:has(.workbench-surface--side.workbench-surface--open)) .stb-root {
-    padding-right: 64px;
+    padding-right: 48px;
   }
   [data-default-session]:has(.workbench-surface--side.workbench-surface--open) .session-workbench-controls {
     display: none;
