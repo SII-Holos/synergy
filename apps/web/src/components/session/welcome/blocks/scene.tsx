@@ -10,7 +10,8 @@ import {
   moveBlocks,
   rotateBlocks,
   dropBlocks,
-  descendBlocks,
+  startBlocks,
+  controlBlocks,
   occupiedCells,
   landingPiece,
 } from "./model"
@@ -19,16 +20,24 @@ export default function BlocksScene(props: WelcomeSceneProps) {
   const { i18n } = useLocale()
   const blockSize = 20
   const boardLeft = 150
-  const [state, setState] = createSignal(props.memory.read(() => createBlocks(props.seed)))
-  let touch: { id: number; x: number; y: number } | undefined
+  const [state, setState] = createSignal(
+    controlBlocks(
+      props.memory.read(() => createBlocks(props.seed)),
+      { horizontal: 0, soft: false },
+    ),
+  )
+  let touch: { id: number; x: number; y: number; lastX: number; moved: boolean } | undefined
+  const keys = new Set<string>()
   createEffect(() => props.memory.write(state()))
   useSceneClock(props.active, (dt) => setState((s) => advanceBlocks(s, dt)))
-  const reset = () => setState(createBlocks(props.seed))
+  const reset = () => {
+    cancel()
+    keys.clear()
+    setState(createBlocks(props.seed))
+  }
   const start = () => {
     props.interact()
-    setState((s) =>
-      s.phase === "over" ? { ...createBlocks(props.seed), phase: "playing" } : { ...s, phase: "playing" },
-    )
+    setState((s) => startBlocks(s.phase === "over" ? createBlocks(props.seed) : s))
   }
   const status = () =>
     state().phase === "over"
@@ -69,16 +78,38 @@ export default function BlocksScene(props: WelcomeSceneProps) {
       s.board.forEach((kind, index) => {
         if (kind) cell(index % 10, Math.floor(index / 10), kind - 1)
       })
-      occupiedCells(landingPiece(s)).forEach((c) => cell(c.x, c.y, s.piece.kind, 0.12))
-      occupiedCells(s.piece).forEach((c) => cell(c.x, c.y, s.piece.kind))
+      if (s.phase !== "clearing") {
+        occupiedCells(landingPiece(s)).forEach((c) => cell(c.x, c.y, s.piece.kind, 0.12))
+        occupiedCells(s.piece).forEach((c) => cell(c.x, c.y, s.piece.kind))
+      }
+      if (s.trail && !props.reducedMotion()) {
+        const trail = s.trail
+        ctx.fillStyle = ink.colors[trail.piece.kind % ink.colors.length]!
+        ctx.globalAlpha = (0.16 * trail.time) / 0.09
+        for (const c of occupiedCells(trail.piece)) {
+          ctx.fillRect(
+            left + c.x * size + 4,
+            top + Math.max(0, c.y) * size,
+            size - 8,
+            (trail.to - trail.piece.y) * size,
+          )
+        }
+        ctx.globalAlpha = 1
+      }
       for (let i = 0; i < 3; i++)
         occupiedCells({ kind: s.queue[i]!, rotation: 0, x: 12, y: 2 + i * 5 }).forEach((c) =>
           cell(c.x, c.y, s.queue[i]!, 0.35),
         )
       if (s.flash > 0) {
-        ctx.fillStyle = ink.strong
-        ctx.globalAlpha = s.flash * 0.7
-        for (const row of s.cleared) ctx.fillRect(left - 10, top + row * size, size * 10 + 20, size)
+        ctx.fillStyle = ink.paper
+        ctx.globalAlpha = 0.7
+        for (const row of s.cleared) ctx.fillRect(left, top + row * size, size * 10, size)
+        ctx.fillStyle = ink.accent
+        ctx.globalAlpha = 0.8
+        for (const row of s.cleared) {
+          const width = props.reducedMotion() ? 10 * size : Math.round((1 - s.flash / 0.14) * 10 * size)
+          ctx.fillRect(left, top + row * size + size - 2, width, 2)
+        }
         ctx.globalAlpha = 1
       }
     },
@@ -86,6 +117,8 @@ export default function BlocksScene(props: WelcomeSceneProps) {
     440,
   )
   const cancel = () => {
+    keys.clear()
+    setState((s) => controlBlocks(s, { horizontal: 0, soft: false }))
     if (!touch) return
     const id = touch.id
     touch = undefined
@@ -101,18 +134,21 @@ export default function BlocksScene(props: WelcomeSceneProps) {
       data-phase={state().phase}
       data-locked={state().board.filter(Boolean).length}
       data-column={state().piece.x}
+      data-row={state().piece.y}
+      data-lines={state().lines}
+      data-rotation={state().piece.rotation}
     >
       <GameSurface
         scene={props}
         name={i18n._({ id: "welcome.blocks.name", message: "Falling blocks" })}
         status={status()}
-        playing={state().phase === "playing"}
+        playing={state().phase === "playing" || state().phase === "clearing"}
         onAction={start}
         onReset={reset}
         help={i18n._({
           id: "welcome.blocks.help",
           message:
-            "Left and right move, Up rotates, Down lowers and Space drops. On touch, tap to rotate, swipe sideways to move, and swipe down to drop.",
+            "Left and right move, Up rotates, Down lowers and Space drops. Hold left or right to repeat. On touch, drag sideways continuously, tap to rotate, and swipe down to drop.",
         })}
         onKey={(e) => {
           if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " ", "Enter"].includes(e.key)) return
@@ -123,10 +159,13 @@ export default function BlocksScene(props: WelcomeSceneProps) {
             start()
             return
           }
+          if (e.repeat) return
+          setState(startBlocks)
+          keys.add(e.key)
           if (e.key === "ArrowLeft" || e.key === "ArrowRight")
-            setState((s) => moveBlocks(s, e.key === "ArrowLeft" ? -1 : 1))
+            setState((s) => controlBlocks(s, { horizontal: e.key === "ArrowLeft" ? -1 : 1 }))
           if (e.key === "ArrowUp") setState(rotateBlocks)
-          if (e.key === "ArrowDown") setState(descendBlocks)
+          if (e.key === "ArrowDown") setState((s) => controlBlocks(s, { soft: true }))
           if (e.key === " ") setState(dropBlocks)
           if (e.key === "Enter") start()
         }}
@@ -138,9 +177,29 @@ export default function BlocksScene(props: WelcomeSceneProps) {
           tabIndex={0}
           role="group"
           aria-label={i18n._({ id: "welcome.blocks.field", message: "Falling-block playfield" })}
+          onKeyUp={(e) => {
+            keys.delete(e.key)
+            if (e.key === "ArrowLeft" || e.key === "ArrowRight")
+              setState((s) =>
+                controlBlocks(s, { horizontal: keys.has("ArrowRight") ? 1 : keys.has("ArrowLeft") ? -1 : 0 }),
+              )
+            if (e.key === "ArrowDown") setState((s) => controlBlocks(s, { soft: false }))
+          }}
+          onBlur={cancel}
           onPointerMove={(e) => {
-            if (!props.active() || state().phase !== "ready" || e.pointerType === "touch") return
-            const desired = Math.max(0, Math.min(9, Math.floor((canvas.point(e).x - boardLeft) / blockSize) - 1))
+            if (!props.active()) return
+            const point = canvas.point(e)
+            if (touch?.id === e.pointerId) {
+              const count = Math.trunc((point.x - touch.lastX) / blockSize)
+              if (!count) return
+              touch.moved = true
+              touch.lastX += count * blockSize
+              start()
+              for (let n = 0; n < Math.min(10, Math.abs(count)); n++) setState((s) => moveBlocks(s, Math.sign(count)))
+              return
+            }
+            if (state().phase !== "ready" || e.pointerType === "touch") return
+            const desired = Math.max(0, Math.min(9, Math.floor((point.x - boardLeft) / blockSize) - 1))
             setState((current) => {
               let next = current
               for (let i = 0; i < 10 && next.piece.x !== desired; i++) {
@@ -156,25 +215,24 @@ export default function BlocksScene(props: WelcomeSceneProps) {
             canvas.element().focus({ preventScroll: true })
             props.interact()
             const p = canvas.point(e)
-            touch = { id: e.pointerId, ...p }
+            touch = { id: e.pointerId, ...p, lastX: p.x, moved: false }
             canvas.element().setPointerCapture(e.pointerId)
           }}
           onPointerUp={(e) => {
             if (touch?.id !== e.pointerId) return
             const p = canvas.point(e),
               dx = p.x - touch.x,
-              dy = p.y - touch.y
+              dy = p.y - touch.y,
+              moved = touch.moved
             touch = undefined
             canvas.element().releasePointerCapture(e.pointerId)
-            if (state().phase !== "playing") {
+            if (state().phase === "over") {
               start()
               return
             }
+            start()
             if (dy > 28 && dy > Math.abs(dx)) setState(dropBlocks)
-            else if (Math.abs(dx) > 18)
-              for (let i = 0; i < Math.min(10, Math.round(Math.abs(dx) / blockSize)); i++)
-                setState((s) => moveBlocks(s, Math.sign(dx)))
-            else setState(rotateBlocks)
+            else if (!moved) setState(rotateBlocks)
           }}
           onPointerCancel={cancel}
           onLostPointerCapture={cancel}

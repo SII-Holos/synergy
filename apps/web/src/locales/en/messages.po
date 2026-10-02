@@ -23213,7 +23213,7 @@ msgstr "Falling-block playfield"
 
 #. js-lingui-explicit-id
 msgid "welcome.blocks.help"
-msgstr "Left and right move, Up rotates, Down lowers and Space drops. On touch, tap to rotate, swipe sideways to move, and swipe down to drop."
+msgstr "Left and right move, Up rotates, Down lowers and Space drops. Hold left or right to repeat. On touch, drag sideways continuously, tap to rotate, and swipe down to drop."
 
 #. js-lingui-explicit-id
 msgid "welcome.blocks.name"

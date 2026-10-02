@@ -27,6 +27,7 @@ beforeAll(async () => {
     import { WelcomeProvider, useWelcome, useNewTaskNavigation } from "${source}/components/session/welcome/context"
     import { WelcomeStage } from "${source}/components/session/welcome/stage"
     import { createWelcomeMemory } from "${source}/components/session/welcome/types"
+    import { createBlocks } from "${source}/components/session/welcome/blocks/model"
     import { createFlight, startFlight } from "${source}/components/session/welcome/flight/model"
     import { welcomeScenes } from "${source}/components/session/welcome/registry"
     import { handleComposerTypingAutofocus } from "${source}/components/prompt-input/typing-autofocus"
@@ -60,6 +61,16 @@ beforeAll(async () => {
       if (fixture === "flight-over") {
         const flight = startFlight(createFlight(8))
         initialMemory.write({...flight, lives:1, spawn:99, enemies:[{id:9,...flight.ship,origin:flight.ship.x,age:0,kind:0,hp:1,flash:0}]})
+      }
+      if (fixture === "blocks-clear") {
+        const blocks = createBlocks(8), board = Array(200).fill(0)
+        for(let x=0;x<8;x++) board[190+x]=1
+        initialMemory.write({...blocks,board,piece:{kind:1,rotation:0,x:8,y:0}})
+      }
+      if (fixture === "blocks-over") {
+        const blocks = createBlocks(8), board = Array(200).fill(0)
+        for(let y=2;y<20;y++) for(let x=3;x<7;x++) board[y*10+x]=1
+        initialMemory.write({...blocks,board})
       }
       const [memory, setMemory] = createSignal(initialMemory)
       const [blocked, setBlocked] = createSignal(false)
@@ -413,4 +424,42 @@ test("flight pickups show timed effects, freeze outside the game, and a loss res
   expect(await page.locator(".welcome-flight").getAttribute("data-phase")).toBe("playing")
   expect(await page.locator(".welcome-flight").getAttribute("data-lives")).toBe("3")
   expect(await page.getByRole("textbox").inputValue()).toBe("")
+})
+
+test("blocks hold repeat, continuous touch movement, row clear and restart preserve the draft", async () => {
+  await page.setViewportSize({ width: 960, height: 920 })
+  await open("blocks")
+  const board = page.locator(".welcome-game-canvas")
+  await board.focus()
+  await page.keyboard.down("ArrowLeft")
+  const first = Number(await page.locator(".welcome-blocks").getAttribute("data-column"))
+  await page.waitForTimeout(230)
+  expect(Number(await page.locator(".welcome-blocks").getAttribute("data-column"))).toBeLessThan(first)
+  await page.keyboard.up("ArrowLeft")
+  await page.keyboard.press("Escape")
+  await page.getByRole("textbox").fill("Keep this draft")
+  await page.locator(".welcome-game-status").click()
+  const box = (await board.boundingBox())!
+  const touch = await page.context().newCDPSession(page)
+  await touch.send("Emulation.setTouchEmulationEnabled", { enabled: true })
+  const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  const before = Number(await page.locator(".welcome-blocks").getAttribute("data-column"))
+  await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] })
+  await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ ...point, x: point.x + 60 }] })
+  expect(Number(await page.locator(".welcome-blocks").getAttribute("data-column"))).toBeGreaterThan(before)
+  await touch.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] })
+  expect(await page.locator(".welcome-blocks").getAttribute("data-locked")).toBe("0")
+  await touch.send("Emulation.setTouchEmulationEnabled", { enabled: false })
+  await touch.detach()
+  expect(await page.getByRole("textbox").inputValue()).toBe("Keep this draft")
+  await open("blocks&fixture=blocks-clear")
+  await board.press("Space")
+  expect(await page.locator(".welcome-blocks").getAttribute("data-phase")).toBe("clearing")
+  await page.waitForFunction(() => document.querySelector(".welcome-blocks")?.getAttribute("data-lines") === "1")
+  await open("blocks&fixture=blocks-over")
+  await board.press("Space")
+  expect(await page.locator(".welcome-blocks").getAttribute("data-phase")).toBe("over")
+  await board.click()
+  expect(await page.locator(".welcome-blocks").getAttribute("data-phase")).toBe("playing")
+  expect(await page.locator(".welcome-blocks").getAttribute("data-locked")).toBe("0")
 })

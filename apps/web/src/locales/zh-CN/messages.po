@@ -23213,7 +23213,7 @@ msgstr "俄罗斯方块游戏区域"
 
 #. js-lingui-explicit-id
 msgid "welcome.blocks.help"
-msgstr "左右键移动，上键旋转，下键加速，空格落下。触屏点击旋转，左右滑动移动，下滑落下。"
+msgstr "左右键移动，上键旋转，下键加速，空格直接落下；长按左右键可连续移动。触屏可连续横拖、轻点旋转、下划落下。"
 
 #. js-lingui-explicit-id
 msgid "welcome.blocks.name"
