@@ -53,6 +53,7 @@ export type ActivityBatchItem = {
   key: string
   message: AssistantMessage
   steps: ActivityStepProjection[]
+  entries?: ActivityBatchEntry[]
   facts: ActivitySummaryFact[]
   state: ActivityGroupState
   failures: number
@@ -61,6 +62,10 @@ export type ActivityBatchItem = {
   searchOperations?: number
   inspectionOperations?: number
 }
+
+export type ActivityBatchEntry =
+  | { kind: "tool"; step: ActivityStepProjection }
+  | { kind: "reasoning"; item: ActivityReasoningSummaryItem }
 
 export type ActivityTextSummary = {
   state: ActivitySummaryState | "pending"

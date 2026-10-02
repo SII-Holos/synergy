@@ -48,23 +48,27 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
         a?.rootIDs.join() === b?.rootIDs.join(),
     },
   )
-  const [executions, { refetch: refreshExecutions }] = createResource(executionRequest, async (request) => {
-    stateRequest?.abort()
-    const controller = new AbortController()
-    stateRequest = controller
-    const result = await sdk.client.session.turnExecution(
-      { sessionID: request.sessionID, rootIDs: request.rootIDs },
-      { signal: controller.signal, throwOnError: true },
-    )
-    if (
-      controller.signal.aborted ||
-      sdk.url !== request.server ||
-      sdk.scopeKey !== request.scope ||
-      props.sessionID !== request.sessionID
-    )
-      return undefined
-    return { request, states: result.data ?? [] }
-  })
+  const [executions, { refetch: refreshExecutions }] = createResource(
+    executionRequest,
+    async (request) => {
+      stateRequest?.abort()
+      const controller = new AbortController()
+      stateRequest = controller
+      const result = await sdk.client.session.turnExecution(
+        { sessionID: request.sessionID, rootIDs: request.rootIDs },
+        { signal: controller.signal, throwOnError: true },
+      )
+      if (
+        controller.signal.aborted ||
+        sdk.url !== request.server ||
+        sdk.scopeKey !== request.scope ||
+        props.sessionID !== request.sessionID
+      )
+        return undefined
+      return { request, states: result.data ?? [] }
+    },
+    { initialValue: undefined },
+  )
   createEffect(() => {
     if (!executionRequest()) stateRequest?.abort()
   })
@@ -85,7 +89,7 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
     }),
   )
   const executionFor = (rootID: string) => {
-    const result = executions.error ? undefined : executions()
+    const result = executions.error ? undefined : executions.latest
     return result?.request.sessionID === props.sessionID &&
       result.request.server === sdk.url &&
       result.request.scope === sdk.scopeKey

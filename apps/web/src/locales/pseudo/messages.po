@@ -15405,6 +15405,10 @@ msgid "session.reasoning.segments"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.reasoning.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.review.recording.failed"
 msgstr ""
 

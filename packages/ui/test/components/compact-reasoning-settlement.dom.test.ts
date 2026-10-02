@@ -83,8 +83,11 @@ describe("process settlement", () => {
   test("raw reasoning stays independently expandable through canonical completion", async () => {
     const row = document.querySelector('[data-component="process-reasoning"]')
     expect(process().getAttribute("aria-expanded")).toBe("true")
-    expect(reasoning().getAttribute("aria-expanded")).toBe("false")
-    expect(reasoning().textContent).toContain("View reasoning")
+    expect(reasoning().getAttribute("aria-expanded")).toBe("true")
+    expect(reasoning().getAttribute("aria-label")).toBe("Hide reasoning")
+    expect(row?.closest('[data-slot="turn-process-meta"]')).toBeNull()
+    reasoning().click()
+    await waitForUpdate()
     expect(document.querySelector('[data-slot="process-reasoning-preview"]')).not.toBeNull()
     reasoning().click()
     await waitForUpdate()
@@ -97,7 +100,7 @@ describe("process settlement", () => {
     await waitForUpdate()
     expect(document.querySelector('[data-component="process-reasoning"]')).toBe(row)
     expect(reasoning().getAttribute("aria-expanded")).toBe("true")
-    expect(reasoning().textContent).toContain("Hide reasoning")
+    expect(reasoning().getAttribute("aria-label")).toBe("Hide reasoning")
     const controls = reasoning().getAttribute("aria-controls")
     expect(
       document.getElementById(controls!)?.contains(document.querySelector('[data-slot="process-reasoning-detail"]')),

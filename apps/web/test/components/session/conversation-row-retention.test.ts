@@ -11,6 +11,15 @@ let server: ViteDevServer
 let fixtureDirectory: string
 const pageErrors: string[] = []
 
+declare global {
+  interface Window {
+    __setTimeline: (messages: unknown[]) => void
+    __holdExecutions: () => void
+    __pendingExecutions: () => number
+    __settleExecutions: () => void
+  }
+}
+
 // Deterministic message factory so the fixture and the test share ids.
 function msg(id: string, role: "user" | "assistant", text: string) {
   return JSON.stringify({ id, sessionID: "ses_1", role, text, time: { created: 1 } })
@@ -65,7 +74,7 @@ beforeAll(async () => {
           const [mounted] = createSignal(++mountCount)
           const root = createMemo(() => props.rootMessage)
           return (
-            <div data-slot="session-turn-stub" data-message-id={props.messageID} data-mount={mounted()}>
+            <div data-slot="session-turn-stub" data-message-id={props.messageID} data-mount={mounted()} data-execution={props.executionState?.status}>
               {root()?.text ?? ""}
             </div>
           )
@@ -85,9 +94,21 @@ beforeAll(async () => {
           i18n: { _: (d: { message?: string; id: string }) => d.message ?? d.id },
           fmt: {},
         })
+        let holdExecutions = false
+        const pendingExecutions = []
+        window.__holdExecutions = () => { holdExecutions = true }
+        window.__pendingExecutions = () => pendingExecutions.length
+        window.__settleExecutions = () => {
+          holdExecutions = false
+          for (const {request, resolve} of pendingExecutions.splice(0)) {
+            resolve({data: request.rootIDs.map(rootID => ({rootID, status: "running"}))})
+          }
+        }
         export const useSDK = () => ({
           url: "http://fixture", scopeKey: "scope",
-          client: { session: { turnExecution: async () => ({ data: [] }) } },
+          client: { session: { turnExecution: async (request) => holdExecutions
+            ? new Promise(resolve => pendingExecutions.push({request, resolve}))
+            : ({ data: [] }) } },
           event: { on: () => () => {} },
         })
         export const useSessionDataView = () => () => ({ statusFor: () => undefined })
@@ -98,7 +119,7 @@ beforeAll(async () => {
     Bun.write(
       path.join(fixtureDirectory, "main.tsx"),
       `
-        import { createComponent, createSignal } from "solid-js"
+        import { createComponent, createSignal, Suspense } from "solid-js"
         import { render } from "solid-js/web"
         import { setupI18n } from "@lingui/core"
         import { I18nProvider } from "@lingui/solid"
@@ -159,7 +180,7 @@ beforeAll(async () => {
         }
 
         const i18n = setupI18n({locale: "en", messages: {en: {}}})
-        render(() => <I18nProvider i18n={i18n}><App /></I18nProvider>, document.querySelector("#root")!)
+        render(() => <I18nProvider i18n={i18n}><Suspense fallback={<p data-test-loading>Loading conversation</p>}><App /></Suspense></I18nProvider>, document.querySelector("#root")!)
       `,
     ),
   ])
@@ -263,5 +284,39 @@ describe("conversation row retention", () => {
     )
     await expect(rows.count()).resolves.toBe(1)
     expect(await page.locator('[data-message-id="msg_a"]').count()).toBe(0)
+  })
+
+  test("delayed execution state never suspends the conversation or replaces an existing turn", async () => {
+    await page.reload()
+    await page.waitForFunction(() => typeof window.__setTimeline === "function")
+    await page.evaluate(() => {
+      window.__holdExecutions()
+      window.__setTimeline([
+        { id: "usr_delayed", sessionID: "ses_1", role: "user", text: "Pending task", time: { created: 1 } },
+      ])
+    })
+    await page.waitForFunction(() => window.__pendingExecutions() === 1)
+    expect(await page.locator("[data-test-loading]").count()).toBe(0)
+    const row = page.locator('[data-message-id="usr_delayed"] [data-slot="session-turn-stub"]')
+    expect(await row.isVisible()).toBe(true)
+    const mount = await row.getAttribute("data-mount")
+    await page.evaluate(() => window.__settleExecutions())
+    await page.waitForFunction(
+      () => document.querySelector('[data-slot="session-turn-stub"]')?.getAttribute("data-execution") === "running",
+    )
+    expect(await row.getAttribute("data-mount")).toBe(mount)
+    await page.evaluate(() => {
+      window.__holdExecutions()
+      window.__setTimeline([
+        { id: "usr_delayed", sessionID: "ses_1", role: "user", text: "Pending task", time: { created: 1 } },
+        { id: "usr_next", sessionID: "ses_1", role: "user", text: "Next task", time: { created: 2 } },
+      ])
+    })
+    await page.waitForFunction(() => window.__pendingExecutions() === 1)
+    expect(await page.locator("[data-test-loading]").count()).toBe(0)
+    expect(await row.getAttribute("data-mount")).toBe(mount)
+    expect(await page.locator('[data-slot="session-turn-stub"]').count()).toBe(2)
+    await page.evaluate(() => window.__settleExecutions())
+    expect(pageErrors).toEqual([])
   })
 })

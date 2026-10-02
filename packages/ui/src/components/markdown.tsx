@@ -245,28 +245,16 @@ export function Markdown(
     stream.update(local.text, local.cacheKey)
   })
 
-  // Terminal render: once the full-fidelity HTML resolves (and we are no longer
-  // streaming), finish any live parser and crossfade from the streamed DOM into
-  // the one-shot high-fidelity tree. Enhancement (copy buttons, table wrap,
-  // katex copy) runs on the terminal content only once.
   createEffect(() => {
     if (local.streaming) return
     const rendered = html()
     if (!rendered || !isCurrentMarkdownRender(rendered, local.text)) return
-    const hadStreamContent = Boolean(stream)
     endStream()
-    const prefersReducedMotion =
-      typeof window !== "undefined" &&
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
     terminalTransition.apply({
       hash: rendered.hash,
       container,
       html: rendered.html,
       enhance: (root) => enhanceMarkdown(root as HTMLDivElement, _),
-      prefersReducedMotion,
-      markdownLength: local.text.length,
-      hadStreamContent,
     })
   })
 

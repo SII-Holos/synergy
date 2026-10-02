@@ -1,13 +1,14 @@
 import { MAX_ACTIVITY_GROUP_STEPS, type ActivityDisplayMode } from "@ericsanchezok/synergy-util/activity"
 import type {
   ActivityBatchItem,
+  ActivityBatchEntry,
   ActivityGroupItem,
   ActivityStepProjection,
   ActivityTimelineItem,
 } from "./session-turn-activity"
 import { isActivityTimelineItem } from "./session-turn-activity"
 
-const batches = new WeakMap<ActivityGroupItem, { groups: ActivityGroupItem[]; batch: ActivityBatchItem }>()
+const batches = new WeakMap<ActivityGroupItem, { sources: ActivityTimelineItem[]; batch: ActivityBatchItem }>()
 
 function state(steps: readonly ActivityStepProjection[]): ActivityBatchItem["state"] {
   if (steps.some((step) => step.state === "waiting-approval")) return "waiting-approval"
@@ -19,6 +20,8 @@ function state(steps: readonly ActivityStepProjection[]): ActivityBatchItem["sta
 export function projectActivityBatches<T>(items: readonly (ActivityTimelineItem | T)[]): (ActivityTimelineItem | T)[] {
   const result: (ActivityTimelineItem | T)[] = []
   let groups: ActivityGroupItem[] = []
+  let sources: ActivityTimelineItem[] = []
+  let entries: ActivityBatchEntry[] = []
   let scope = ""
   const flush = () => {
     if (!groups.length) return
@@ -26,11 +29,13 @@ export function projectActivityBatches<T>(items: readonly (ActivityTimelineItem 
     const cached = batches.get(first)
     if (
       cached &&
-      cached.groups.length === groups.length &&
-      groups.every((group, index) => group === cached.groups[index])
+      cached.sources.length === sources.length &&
+      sources.every((source, index) => source === cached.sources[index])
     ) {
       result.push(cached.batch)
       groups = []
+      sources = []
+      entries = []
       scope = ""
       return
     }
@@ -62,6 +67,7 @@ export function projectActivityBatches<T>(items: readonly (ActivityTimelineItem 
       key: `activity-batch:${first.message.id}:${steps[0].part.id}`,
       message: first.message,
       steps,
+      entries,
       facts: [...counts].map(([family, count]) => ({ family, count })),
       state: state(steps),
       failures: steps.filter((step) => step.state === "error").length,
@@ -71,12 +77,21 @@ export function projectActivityBatches<T>(items: readonly (ActivityTimelineItem 
       inspectionOperations: inspections.length - reads.length - searches.length,
     }
     result.push(batch)
-    batches.set(first, { groups, batch })
+    batches.set(first, { sources, batch })
     groups = []
+    sources = []
+    entries = []
     scope = ""
   }
   for (const item of items) {
-    if (isActivityTimelineItem(item) && item.kind === "activity-reasoning-summary") continue
+    if (isActivityTimelineItem(item) && item.kind === "activity-reasoning-summary") {
+      if (!groups.length) result.push(item)
+      else {
+        sources.push(item)
+        entries.push({ kind: "reasoning", item })
+      }
+      continue
+    }
     if (
       !isActivityTimelineItem(item) ||
       item.kind !== "activity-group" ||
@@ -89,6 +104,8 @@ export function projectActivityBatches<T>(items: readonly (ActivityTimelineItem 
     }
     if (groups.length && scope && item.scopeKey && scope !== item.scopeKey) flush()
     groups.push(item)
+    sources.push(item)
+    entries.push(...item.steps.map((step): ActivityBatchEntry => ({ kind: "tool", step })))
     if (item.scopeKey) scope = item.scopeKey
   }
   flush()

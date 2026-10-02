@@ -15405,6 +15405,10 @@ msgid "session.reasoning.segments"
 msgstr "{count, plural, one {# reasoning segment} other {# reasoning segments}}"
 
 #. js-lingui-explicit-id
+msgid "session.reasoning.title"
+msgstr "Reasoning"
+
+#. js-lingui-explicit-id
 msgid "session.review.recording.failed"
 msgstr "File change recording failed."
 

@@ -2,7 +2,8 @@ import type { MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
 import { useResourceOpen } from "../context/resource-open"
 import { useData } from "../context/data"
-import { createEffect, createMemo, createSignal, For, lazy, on, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, lazy, on, onCleanup, Show, type JSX } from "solid-js"
+import { createDisclosureMotionRef } from "../utils/disclosure-motion"
 import {
   finishActivityCountTransition,
   reduceActivityCountTransition,
@@ -197,6 +198,7 @@ function ActivityStep(props: {
   hidden?: boolean
   current?: boolean
   quiet?: boolean
+  motion?: boolean
   onFocus?: (partID: string | undefined) => void
 }) {
   const { i18n, _ } = useLingui()
@@ -243,6 +245,11 @@ function ActivityStep(props: {
     return (metadata as Record<string, unknown>).approval as Record<string, unknown> | undefined
   })
   const audit = createMemo(() => getApprovalAudit(approval(), i18n()))
+  const motionRef = createDisclosureMotionRef({
+    visible: () => props.hidden !== true,
+    animate: () => props.motion === true,
+    appear: () => props.current === true && props.step.state === "running",
+  })
   return (
     <li
       data-slot="activity-step"
@@ -251,7 +258,7 @@ function ActivityStep(props: {
       data-state={props.step.state}
       data-current={props.current ? "" : undefined}
       data-working={props.current && props.step.state === "running" ? "" : undefined}
-      hidden={props.hidden}
+      ref={motionRef}
       onFocusIn={() => props.onFocus?.(props.step.part.id)}
       onFocusOut={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) props.onFocus?.(undefined)
@@ -388,6 +395,8 @@ export function ActivityTrace(props: {
   currentSteps?: ReadonlySet<string>
   quiet?: boolean
   onStepFocus?: (partID: string | undefined) => void
+  motion?: boolean
+  afterStep?: (partID: string) => JSX.Element
 }) {
   const emptyStepSnapshot = {
     keys: [] as string[],
@@ -410,18 +419,22 @@ export function ActivityTrace(props: {
           {(key) => {
             const step = () => stepSnapshot().map.get(key)
             return (
-              <Show when={step()}>
-                {(current) => (
-                  <ActivityStep
-                    step={current()}
-                    serverUrl={props.serverUrl}
-                    hidden={props.visibleSteps !== undefined && !props.visibleSteps.has(key)}
-                    current={props.currentSteps?.has(key)}
-                    quiet={props.quiet}
-                    onFocus={props.onStepFocus}
-                  />
-                )}
-              </Show>
+              <>
+                <Show when={step()}>
+                  {(current) => (
+                    <ActivityStep
+                      step={current()}
+                      serverUrl={props.serverUrl}
+                      hidden={props.visibleSteps !== undefined && !props.visibleSteps.has(key)}
+                      current={props.currentSteps?.has(key)}
+                      quiet={props.quiet}
+                      onFocus={props.onStepFocus}
+                      motion={props.motion}
+                    />
+                  )}
+                </Show>
+                {props.afterStep?.(key)}
+              </>
             )
           }}
         </For>

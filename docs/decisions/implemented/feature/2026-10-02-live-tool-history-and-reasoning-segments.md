@@ -8,6 +8,8 @@ A continuous batch can occupy most of the conversation while the Agent is still 
 
 ## Decision
 
+The reasoning-placement and progress-cadence choices below are superseded by [chronological reasoning and stable conversation motion](../bug-fix/2026-10-02-chronological-reasoning-and-stable-conversation-motion.md). The continuous-batch and bounded-history decisions remain active.
+
 The [conversation process presentation](2026-10-01-conversation-process-presentation.md) keeps one ordered batch across adjacent ordinary tool groups until a semantic boundary. Balanced collects completed history behind its successful-operation statistics while the current running calls remain visible. Between tool calls, the latest returned call provides context. Native buttons expose history independently from the current calls; explicit choices retain the App-owned disclosure identity. Stable part keys preserve tool nodes as a call moves into history, and selection continues to open the same invocation in Execution details.
 
 The existing per-group rendering budget bounds a history page rather than splitting the process. Pages retain original order and do not move when new tools arrive. Current calls, detached-reading calls and a focused row stay available outside the selected page. Return to following releases detached retention; user-controlled history disclosure continues to take precedence. Approval and dedicated results keep their existing boundaries and presentation.

@@ -26,6 +26,29 @@ function group(id: string, family: ActivityGroupItem["family"], scopeKey = "path
 }
 
 describe("turn process projection", () => {
+  test("reasoning remains chronological inside a continuous batch without resetting tool statistics", () => {
+    const reason = (id: string): ActivityTimelineItem => ({
+      kind: "activity-reasoning-summary",
+      key: id,
+      message,
+      partID: id,
+      state: "pending",
+    })
+    const initial = reason("initial")
+    const middle = reason("middle")
+    const projected = projectActivityBatches([initial, group("a", "execute"), middle, group("b", "execute")])
+    expect(projected).toHaveLength(2)
+    expect(projected[0]).toBe(initial)
+    expect(projected[1]).toMatchObject({
+      kind: "activity-batch",
+      facts: [{ family: "execute", count: 2 }],
+      entries: [
+        { kind: "tool", step: { part: { id: "a" } } },
+        { kind: "reasoning", item: middle },
+        { kind: "tool", step: { part: { id: "b" } } },
+      ],
+    })
+  })
   test("mixed inspections keep file identities and search operations distinct", () => {
     const read = group("read", "inspect-local")
     read.steps[0].part.activityEvidence = {

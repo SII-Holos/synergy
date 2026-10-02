@@ -30,11 +30,15 @@
   transition: color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
-[data-slot="turn-process-trigger"]:hover,
+[data-slot="turn-process-trigger"]:enabled:hover,
 [data-slot="activity-batch-trigger"]:hover,
 [data-slot="process-reasoning-trigger"]:hover,
 [data-slot="turn-change-summary-entry"]:hover {
   color: var(--text-base);
+}
+
+[data-slot="turn-process-trigger"]:disabled {
+  cursor: default;
 }
 
 [data-slot="turn-process-trigger"]:focus-visible,
@@ -55,6 +59,19 @@
 [data-slot="turn-process-trigger"][aria-expanded="true"] [data-component="icon"]:last-child,
 [data-slot="activity-batch-trigger"][aria-expanded="true"] > [data-component="icon"]:last-child {
   transform: rotate(90deg);
+}
+
+[data-slot="process-reasoning-trigger"][aria-expanded="true"] > [data-component="icon"]:last-child {
+  transform: rotate(90deg);
+}
+
+[data-slot="activity-batch-trigger"][hidden],
+[data-slot="activity-reasoning"][hidden] {
+  display: none;
+}
+
+[data-motion-changing] {
+  overflow: hidden;
 }
 
 [data-component="activity-batch"] > [data-component="collapsible"] > [data-slot="activity-batch-trigger"] {
@@ -83,34 +100,6 @@
   column-gap: 16px;
   width: 100%;
   margin-block-end: 12px;
-}
-
-[data-slot="turn-process-meta"] [data-component="process-reasoning"] {
-  display: contents;
-}
-
-[data-slot="turn-reasoning"] {
-  display: contents;
-}
-
-[data-slot="turn-reasoning"][hidden] {
-  display: none;
-}
-
-[data-slot="turn-process-meta"] [data-slot="process-reasoning-trigger"] {
-  font-size: 12px;
-  gap: 6px;
-}
-
-[data-slot="turn-process-meta"] [data-slot="process-reasoning-trigger"] [data-component="icon"] {
-  width: 14px;
-  height: 14px;
-}
-
-[data-slot="turn-process-meta"] [data-slot="process-reasoning-detail"],
-[data-slot="turn-process-meta"] [data-slot="process-reasoning-panel"],
-[data-slot="turn-process-meta"] [data-slot="process-reasoning-preview"] {
-  flex: 1 0 100%;
 }
 
 [data-slot="turn-prior-stop"] {
@@ -148,15 +137,19 @@
   max-height: 24rem;
   overflow: auto;
   margin: 0;
-  padding: 12px;
-  border-radius: var(--radius-md);
-  background: var(--surface-inset-base);
+  padding: 4px 0 8px 28px;
   color: var(--text-weak);
   font-family: var(--font-family-sans);
   font-size: 14px;
   line-height: 22px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+[data-slot="process-reasoning-trigger"] > [data-component="icon"]:first-child {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
 }
 
 [data-slot="activity-history-pages"],

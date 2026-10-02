@@ -29,13 +29,13 @@ async function mount(width = 800) {
   const trace = (start: number, count: number) =>
     `<div data-component="activity-trace"><ol data-slot="activity-step-list">${Array.from({ length: count }, (_, index) => row(start + index)).join("")}</ol></div>`
   const batch = (start: number, count: number) =>
-    `<div data-slot="session-turn-timeline-item" data-kind="activity-batch"><div data-component="activity-batch"><div data-component="collapsible" data-variant="ghost"><button data-slot="activity-batch-trigger" aria-expanded="true"><span>Read ${count} files</span><svg data-component="icon" width="16" height="16"></svg></button><div data-slot="collapsible-content" data-expanded>${trace(start, count)}</div></div></div></div>`
+    `<div data-slot="session-turn-timeline-item" data-kind="activity-batch"><div data-component="activity-batch"><button data-slot="activity-batch-trigger" aria-expanded="true"><span>Read ${count} files</span><svg data-component="icon" width="16" height="16"></svg></button>${trace(start, count)}</div></div>`
   await page.setContent(`<style>
     :root { --text-base: rgb(29 29 29); --border-focus: rgb(40 90 180); --text-weak: rgb(79 79 79); --icon-base: rgb(29 29 29); --icon-weak-base: rgb(79 79 79); --surface-base-hover: rgb(238 238 238); --font-family-sans: sans-serif; --font-weight-regular: 400; --font-weight-medium: 500; --font-weight-semibold: 600; --motion-duration-fast: 120ms; --motion-duration-base: 180ms; --motion-duration-slow: 240ms; --motion-ease-standard: ease; }
     * { box-sizing: border-box; } body { margin: 16px; font: 14px/20px sans-serif; } p { margin: 0; }
     ${css}
   </style><div data-component="session-turn"><div data-slot="session-turn-timeline">
-    <div data-slot="turn-process-meta"><button data-slot="turn-process-trigger">Worked for 20 seconds</button><div data-component="process-reasoning"><button data-slot="process-reasoning-trigger">View reasoning</button><div data-slot="process-reasoning-detail" hidden>Stored reasoning</div></div></div>
+    <div data-slot="turn-process-meta"><button data-slot="turn-process-trigger">Worked for 20 seconds</button></div><div data-slot="session-turn-timeline-item" data-kind="activity-reasoning-summary"><div data-component="process-reasoning"><button data-slot="process-reasoning-trigger">View reasoning</button><div data-slot="process-reasoning-detail" hidden>Stored reasoning</div></div></div>
     <div data-slot="session-turn-timeline-item" data-kind="text"><p>Check the project instructions, then inspect the related files.</p></div>
     ${batch(0, 3)}
     <div data-slot="session-turn-timeline-item" data-kind="activity-group">${trace(3, 1)}</div>
@@ -62,7 +62,11 @@ test("twenty tools and an object boundary use one compact reading rhythm", async
       rowHeights: rows.map((row) => row.height),
       toolGap: standalone.top - previous.bottom,
       blockGap: next.getBoundingClientRect().top - batch.getBoundingClientRect().bottom,
-      metadataTopDifference: Math.abs(heading.getBoundingClientRect().top - reasoning.getBoundingClientRect().top),
+      reasoningOutsideMetadata: !reasoning.closest('[data-slot="turn-process-meta"]'),
+      reasoningAfterHeading: reasoning.getBoundingClientRect().top >= heading.getBoundingClientRect().bottom,
+      reasoningBeforeProse:
+        reasoning.getBoundingClientRect().bottom <=
+        document.querySelector('[data-kind="text"]')!.getBoundingClientRect().top,
     }
   })
   expect(metrics.count).toBe(20)
@@ -70,7 +74,9 @@ test("twenty tools and an object boundary use one compact reading rhythm", async
   expect(Math.min(...metrics.rowHeights)).toBeGreaterThanOrEqual(24)
   expect(metrics.toolGap).toBeLessThanOrEqual(8)
   expect(metrics.blockGap).toBeLessThanOrEqual(8)
-  expect(metrics.metadataTopDifference).toBeLessThanOrEqual(2)
+  expect(metrics.reasoningOutsideMetadata).toBe(true)
+  expect(metrics.reasoningAfterHeading).toBe(true)
+  expect(metrics.reasoningBeforeProse).toBe(true)
 })
 
 test("batch disclosure arrows stay beside their label at wide and narrow widths", async () => {

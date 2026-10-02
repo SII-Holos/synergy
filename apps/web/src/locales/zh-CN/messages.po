@@ -15405,6 +15405,10 @@ msgid "session.reasoning.segments"
 msgstr "{count} 段推理"
 
 #. js-lingui-explicit-id
+msgid "session.reasoning.title"
+msgstr "推理"
+
+#. js-lingui-explicit-id
 msgid "session.review.recording.failed"
 msgstr "文件改动记录失败。"
 
