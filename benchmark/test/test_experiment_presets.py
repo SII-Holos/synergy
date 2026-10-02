@@ -35,7 +35,7 @@ def test_formal_deadline_reaches_both_launchers(tmp_path, protocol):
     from synergy_bench.config import ExperimentConfig, Variant
     from synergy_bench.dependency_proxy import current_dependency_proxy
 
-    variant = Variant(model="benchmark/fixture", runtime="full", agent="synergy-max", bun_jit=True)
+    variant = Variant(model="benchmark/fixture", runtime="full", agent="forge", bun_jit=True)
     root = tmp_path / "run-12345678"
     atomic_json(
         root / "inputs/native/config.json",
@@ -201,7 +201,7 @@ def test_synergy_jit_condition_reaches_launcher_without_becoming_a_credential_re
 def test_session_release_uses_its_native_cli_and_inherited_capture(tmp_path):
     from synergy_bench.config import ExperimentConfig, Variant
 
-    variant = Variant(model="benchmark/fixture", runtime="full", agent="synergy-max", bun_jit=True)
+    variant = Variant(model="benchmark/fixture", runtime="full", agent="forge", bun_jit=True)
     root = tmp_path / "run-12345678"
     atomic_json(
         root / "inputs/release/config.json",
@@ -233,7 +233,7 @@ def test_session_release_uses_its_native_cli_and_inherited_capture(tmp_path):
         "--model",
         "benchmark/fixture",
         "--agent",
-        "synergy-max",
+        variant.agent,
     ]
     assert native["env"]["SYNERGY_HOME"] == "/logs/agent/home"
     assert native["env"]["BUN_OPTIONS"] == "--preload=/opt/synergy/runtime/session-capture.mjs"

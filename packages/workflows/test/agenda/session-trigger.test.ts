@@ -3,6 +3,10 @@ import { AgendaSessionTrigger } from "../../src/agenda/session-trigger"
 import { AgendaStore } from "../../src/agenda/store"
 import { AgendaReactor } from "../../src/agenda/reactor"
 import { AgendaTypes } from "../../src/agenda/types"
+import { migrations } from "../../src/agenda/migration"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
@@ -93,6 +97,26 @@ function sessionTrigger(overrides: Partial<AgendaTypes.Trigger & { type: "sessio
     ...overrides,
   }
 }
+
+test("upgraded scheduled tasks match renamed Session identities", () =>
+  runtime.run(async () => {
+    const item = { ...makeItem("item-rename", [sessionTrigger({ agent: "synergy-max" })]), agent: "synergy-flash" }
+    await Storage.write(StoragePath.agendaItem(Identifier.asScopeID("scope-1"), item.id), item)
+    await migrations.find((entry) => entry.id === "20261002-agenda-primary-agent-identities")!.up(() => {})
+    const upgraded = await AgendaStore.get("scope-1", item.id)
+    expect(upgraded.agent).toBe("pico")
+    expect(upgraded.triggers[0]).toMatchObject({ agent: "forge" })
+    const calls: AgendaTypes.FiredSignal[] = []
+    AgendaSessionTrigger.start(
+      async (signal) => {
+        calls.push(signal)
+      },
+      [upgraded],
+    )
+    await publishTurnEnd({ sessionID: "ses_research", messageID: "msg_rename", agent: "forge" })
+    await waitUntil(() => calls.length === 1)
+    expect(calls[0]!.source).toBe(item.id)
+  }))
 
 // ---------------------------------------------------------------------------
 // register / unregister / active

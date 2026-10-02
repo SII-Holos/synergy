@@ -66,10 +66,10 @@ describe("BlueprintRoute start prompt", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const session = await Session.create({})
-          const note = await createBlueprint("synergy-max", "security-reviewer")
+          const note = await createBlueprint(PrimaryAgentIdentity.names.coding, "security-reviewer")
           const loop = await createLoop(note.id, session.id)
 
-          expect(loop.executionAgent).toBe("synergy-max")
+          expect(loop.executionAgent).toBe(PrimaryAgentIdentity.names.coding)
           expect(loop.auditAgent).toBe("supervisor")
         },
       })
@@ -82,7 +82,7 @@ describe("BlueprintRoute start prompt", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const session = await Session.create({})
-          const note = await createBlueprint("synergy")
+          const note = await createBlueprint(PrimaryAgentIdentity.names.general)
           const response = await app().request("/blueprint/loop", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -101,7 +101,7 @@ describe("BlueprintRoute start prompt", () => {
             executionAgent?: string
             model?: { providerID: string; modelID: string }
           }
-          expect(loop.executionAgent).toBe("synergy-max")
+          expect(loop.executionAgent).toBe(PrimaryAgentIdentity.names.coding)
           expect(loop.model).toEqual({ providerID: "openai", modelID: "gpt-test" })
 
           const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
@@ -120,7 +120,7 @@ describe("BlueprintRoute start prompt", () => {
           const mail = deliveries[0].mail
           expect(mail.type).toBe("user")
           if (mail.type !== "user") throw new Error("expected user mail")
-          expect(mail.agent).toBe("synergy-max")
+          expect(mail.agent).toBe(PrimaryAgentIdentity.names.coding)
           expect(mail.model).toEqual({ providerID: "openai", modelID: "gpt-test" })
           const text = (mail.parts[0] as MessageV2.TextPart).text
           expect(text).toContain('Execute the coding Blueprint "Prompt split"')
@@ -150,7 +150,7 @@ describe("BlueprintRoute start prompt", () => {
       await ScopeContext.provide({
         scope: await blueprintScope.scope(),
         fn: async () => {
-          const note = await createBlueprint("synergy-max")
+          const note = await createBlueprint(PrimaryAgentIdentity.names.coding)
           const response = await app().request("/blueprint/loop", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -177,7 +177,7 @@ describe("BlueprintRoute start prompt", () => {
         fn: async () => {
           const firstSession = await Session.create({})
           const secondSession = await Session.create({})
-          const note = await createBlueprint("synergy-max")
+          const note = await createBlueprint(PrimaryAgentIdentity.names.coding)
           const firstLoop = await createLoop(note.id, firstSession.id)
 
           const response = await app().request("/blueprint/loop", {
@@ -211,7 +211,7 @@ describe("BlueprintRoute start prompt", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const session = await Session.create({})
-          const note = await createBlueprint("synergy-max")
+          const note = await createBlueprint(PrimaryAgentIdentity.names.coding)
           const loop = await createLoop(note.id, session.id)
           const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
           ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
@@ -245,7 +245,7 @@ describe("BlueprintRoute start prompt", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const session = await Session.create({})
-          const note = await createBlueprint("synergy")
+          const note = await createBlueprint(PrimaryAgentIdentity.names.general)
           const loop = await createLoop(note.id, session.id)
           ;(SessionManager.deliver as any) = mock(async () => {})
 
@@ -269,7 +269,7 @@ describe("BlueprintRoute start prompt", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const session = await Session.create({})
-          const note = await createBlueprint("synergy")
+          const note = await createBlueprint(PrimaryAgentIdentity.names.general)
           const loop = await createLoop(note.id, session.id)
           const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
           ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
@@ -287,7 +287,7 @@ describe("BlueprintRoute start prompt", () => {
           const mail = deliveries[0].mail
           expect(mail.type).toBe("user")
           if (mail.type !== "user") throw new Error("expected user mail")
-          expect(mail.agent).toBe("synergy")
+          expect(mail.agent).toBe(PrimaryAgentIdentity.names.general)
           const text = (mail.parts[0] as MessageV2.TextPart).text
           expect(text).toContain('Execute the Blueprint "Prompt split"')
           expect(text).toContain("domain-appropriate specialists")
@@ -305,7 +305,7 @@ describe("BlueprintRoute start prompt", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const session = await Session.create({})
-          const note = await createBlueprint("synergy")
+          const note = await createBlueprint(PrimaryAgentIdentity.names.general)
           const loop = await createLoop(note.id, session.id)
           let releaseDeliver: (() => void) | undefined
           ;(SessionManager.deliver as any) = mock(async () => {
@@ -341,7 +341,7 @@ describe("BlueprintRoute start prompt", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const session = await Session.create({})
-          const note = await createBlueprint("synergy-max")
+          const note = await createBlueprint(PrimaryAgentIdentity.names.coding)
           const loop = await createLoop(note.id, session.id)
           const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
           ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
@@ -359,7 +359,7 @@ describe("BlueprintRoute start prompt", () => {
           const mail = deliveries[0].mail
           expect(mail.type).toBe("user")
           if (mail.type !== "user") throw new Error("expected user mail")
-          expect(mail.agent).toBe("synergy-max")
+          expect(mail.agent).toBe(PrimaryAgentIdentity.names.coding)
           const text = (mail.parts[0] as MessageV2.TextPart).text
           expect(text).toContain('Execute the coding Blueprint "Prompt split"')
           expect(text).toContain("migration or compatibility")

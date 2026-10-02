@@ -59,6 +59,7 @@
     "./storage/storage": "./src/storage/storage.ts",
     "./id/id": "./src/id/id.ts",
     "./migration": "./src/migration/index.ts",
+    "./migration/import": "./src/migration/import.ts",
     "./migration/registry": "./src/migration/registry.ts",
     "./util/time-format": "./src/util/time-format.ts",
     "./util/timeout": "./src/util/timeout.ts",
@@ -360,7 +361,9 @@
     "./enforcement/policy-worker/process-host": "./src/enforcement/policy-worker/process-host.ts",
     "./process/handle": "./src/process/handle.ts",
     "./config/reload-contributions": "./src/config/reload-contributions.ts",
-    "./agent/primary-identity": "./src/agent/primary-identity.ts"
+    "./agent/primary-identity": "./src/agent/primary-identity.ts",
+    "./agent/primary-identity-upgrade": "./src/agent/primary-identity-upgrade.ts",
+    "./config/reference-migration": "./src/config/reference-migration.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

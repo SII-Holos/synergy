@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
@@ -142,7 +143,7 @@ export function fileServices(input: unknown): Driver {
                           id: Identifier.ascending("message"),
                           sessionID: session.id,
                           role: "user",
-                          agent: "synergy",
+                          agent: PrimaryAgentIdentity.names.general,
                           model: host.model,
                           time: { created: Date.now() },
                         })
@@ -154,8 +155,8 @@ export function fileServices(input: unknown): Driver {
                             parentID: user.id,
                             rootID: user.id,
                             ...host.model,
-                            agent: "synergy",
-                            mode: "synergy",
+                            agent: PrimaryAgentIdentity.names.general,
+                            mode: PrimaryAgentIdentity.names.general,
                             path: { cwd: root, root },
                             cost: 0,
                             tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -164,7 +165,7 @@ export function fileServices(input: unknown): Driver {
                           const result = await ToolInvocation.invoke({
                             sessionID: session.id,
                             messageID: assistant.id,
-                            agent: "synergy",
+                            agent: PrimaryAgentIdentity.names.general,
                             tool,
                             args,
                             signal: AbortSignal.timeout(30000),

@@ -1341,7 +1341,9 @@ export function createPromptInputController(props: PromptInputProps) {
   })
   const agentName = createMemo(() => {
     const latestAssistant = assistantMessages().at(-1)
-    return titlecaseStatusLabel(latestAssistant?.agent ?? local.agent.current()?.name ?? "Synergy")
+    return titlecaseStatusLabel(
+      latestAssistant?.agent ?? local.agent.current()?.name ?? translateDescriptor(getAgentVisual().label, i18n),
+    )
   })
   const fallbackWorkingPhrase = createMemo(() =>
     computeWorkingPhrase(

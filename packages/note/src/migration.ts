@@ -1,3 +1,4 @@
+import { PrimaryAgentUpgrade } from "@ericsanchezok/synergy-harness/agent/primary-identity-upgrade"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -306,6 +307,30 @@ export const migrations: Migration[] = [
         }
       }
       log.info("archived field migration complete", { totalNotes, scopes: scopeIDs.length })
+    },
+  },
+  {
+    id: "20261002-note-primary-agent-identities",
+    description: "Upgrade primary identities in Blueprint note defaults",
+    scope: "global",
+    upgradeRecord(key, value) {
+      if (key[0] === "notes" && key.length === 3)
+        PrimaryAgentUpgrade.fields(value.blueprint, ["defaultAgent", "auditAgent"])
+    },
+    async up(progress) {
+      const scopes = new Set<string>()
+      let done = 0
+      for await (const { key, value } of Storage.records<Record<string, unknown>>({ kind: "notes" })) {
+        const before = JSON.stringify(value)
+        this.upgradeRecord!(key, value)
+        if (before !== JSON.stringify(value)) {
+          await Storage.write(key, value)
+          scopes.add(key[1])
+        }
+        progress(++done, 0)
+      }
+      for (const scope of scopes) await Storage.remove(StoragePath.note(Identifier.asScopeID(scope), "_index"))
+      progress(done, done)
     },
   },
 ]

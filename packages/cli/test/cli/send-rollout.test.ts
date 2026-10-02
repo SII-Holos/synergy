@@ -8,12 +8,14 @@ async function run(
   delayedCommand = false,
   inputFailure?: string,
   steered = false,
+  agent?: string,
 ) {
   await using tmp = await tmpdir()
   let polls = 0
   let cancelled = false
   let rejected = false
   let commandStarted = !delayedCommand
+  let inputAgent: string | undefined
   let experiment: unknown
   const sessionID = "ses_test"
   let runID = "msg_test"
@@ -30,6 +32,8 @@ async function run(
     port: 0,
     async fetch(request) {
       const url = new URL(request.url)
+      if (url.pathname === "/agent")
+        return Response.json(["atlas", "forge", "pico"].map((name) => ({ name, mode: "primary", hidden: false })))
       if (url.pathname === "/event")
         return new Response(
           new ReadableStream({
@@ -82,7 +86,9 @@ async function run(
       if (url.pathname.endsWith("/input")) {
         if (inputFailure)
           return Response.json({ name: inputFailure, data: { message: "input failed" } }, { status: 500 })
-        experiment = (await request.json()).experiment
+        const body = await request.json()
+        inputAgent = body.agent
+        experiment = body.experiment
         return Response.json({
           status: "queued",
           ...(steered ? { runID } : {}),
@@ -135,6 +141,7 @@ async function run(
       "src/index.ts",
       "send",
       "hello",
+      ...(agent ? ["--agent", agent] : []),
       ...(command ? ["--command", "test"] : []),
       "--session",
       sessionID,
@@ -166,7 +173,7 @@ async function run(
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line))
-  return { events, stderr, exitCode, polls, cancelled, rejected, experiment }
+  return { events, stderr, exitCode, polls, cancelled, rejected, experiment, inputAgent }
 }
 
 test("send ignores session idle and returns the persisted run result with sequenced JSON", async () => {
@@ -221,3 +228,18 @@ for (const [name, exitCode] of [
     expect(result.exitCode, result.stderr).toBe(exitCode)
     expect(result.events.at(-1)).toMatchObject({ type: "failed", exitCode })
   }, 20_000)
+
+for (const name of ["synergy", "synergy-max", "synergy-flash"])
+  test(`send rejects retired primary name ${name} before submitting input`, async () => {
+    const result = await run(undefined, false, false, undefined, false, name)
+    expect(result.exitCode).not.toBe(0)
+    expect(result.stderr).toContain(`Primary agent not found: ${name}`)
+    expect(result.polls).toBe(0)
+    expect(result.inputAgent).toBeUndefined()
+  }, 20_000)
+
+test("send accepts the renamed coding primary", async () => {
+  const result = await run(undefined, false, false, undefined, false, "forge")
+  expect(result.exitCode, result.stderr).toBe(0)
+  expect(result.inputAgent).toBe("forge")
+}, 20_000)

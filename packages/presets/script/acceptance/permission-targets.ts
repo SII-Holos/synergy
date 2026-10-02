@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { z } from "zod"
@@ -158,7 +159,7 @@ export function permissionTargets(input: unknown): Driver {
                     modelID: model.id,
                     providerID: model.providerID,
                     mode: "build",
-                    agent: "synergy",
+                    agent: PrimaryAgentIdentity.names.general,
                     path: { cwd: root, root },
                     cost: 0,
                     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -192,7 +193,7 @@ export function permissionTargets(input: unknown): Driver {
                     output = await ToolInvocation.invoke({
                       sessionID: session.id,
                       messageID: assistant.id,
-                      agent: "synergy",
+                      agent: PrimaryAgentIdentity.names.general,
                       tool: name,
                       args,
                       signal: abort.signal,
@@ -329,7 +330,7 @@ export function permissionTargets(input: unknown): Driver {
               const toolContext = {
                 sessionID: session.id,
                 messageID: "acceptance",
-                agent: "synergy",
+                agent: PrimaryAgentIdentity.names.general,
                 abort: new AbortController().signal,
                 metadata() {},
                 async ask() {

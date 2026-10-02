@@ -1,3 +1,4 @@
+import { PrimaryAgentUpgrade } from "../agent/primary-identity-upgrade"
 import { z } from "zod"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { Storage } from "../storage/storage"
@@ -196,7 +197,13 @@ export namespace UsageQuery {
           : field in record
             ? record[field as "purpose" & keyof typeof record]
             : undefined
-      if (filter[field] !== undefined && value !== filter[field]) return false
+      if (filter[field] !== undefined) {
+        if (field === "agent") {
+          const agent = typeof value === "string" ? value : "purpose" in record ? record.purpose : undefined
+          if (typeof agent !== "string" || PrimaryAgentUpgrade.name(agent) !== PrimaryAgentUpgrade.name(filter.agent!))
+            return false
+        } else if (value !== filter[field]) return false
+      }
     }
     return true
   }
@@ -522,7 +529,7 @@ export namespace UsageQuery {
         }
         model.records.push(record)
         models.set(JSON.stringify([model.providerID, model.modelID]), model)
-        const agent = record.agent ?? record.purpose
+        const agent = PrimaryAgentUpgrade.name(record.agent ?? record.purpose)
         const attributed = agents.get(agent) ?? []
         attributed.push(record)
         agents.set(agent, attributed)

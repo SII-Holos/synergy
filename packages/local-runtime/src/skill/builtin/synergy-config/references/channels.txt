@@ -89,7 +89,7 @@ Clarus accounts reuse the active Holos credential. A successful Holos login adds
       "accounts": {
         "<holos-agent-id>": {
           "enabled": true,
-          "agent": "synergy"
+          "agent": "atlas"
         }
       }
     }

@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME, SECONDARY_TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, test } from "bun:test"
 import { createStore } from "solid-js/store"
 import type { Config } from "@ericsanchezok/synergy-sdk/client"
@@ -68,7 +69,7 @@ describe("settings config patch", () => {
             accounts: {
               "agent-id": {
                 enabled: false,
-                agent: "synergy",
+                agent: TEST_AGENT_NAME,
               },
             },
           },
@@ -80,7 +81,7 @@ describe("settings config patch", () => {
 
     expect((patch.channel as Config["channel"])?.clarus?.accounts["agent-id"]).toEqual({
       enabled: true,
-      agent: "synergy",
+      agent: TEST_AGENT_NAME,
     })
   })
 
@@ -99,7 +100,7 @@ describe("settings config patch", () => {
       accounts: {
         agent: {
           enabled: true,
-          agent: "synergy-max",
+          agent: SECONDARY_TEST_AGENT_NAME,
         },
       },
     }
@@ -214,7 +215,7 @@ describe("settings config patch", () => {
 
   test("default agent draft persists as default_agent", () => {
     const state = defaultSettingsState("enter")
-    state.agents.defaultAgent = "synergy-max"
+    state.agents.defaultAgent = SECONDARY_TEST_AGENT_NAME
 
     const patch = buildPatch({
       cfg: {} as Config,
@@ -222,27 +223,27 @@ describe("settings config patch", () => {
       originalMcps: {},
     })
 
-    expect(patch.default_agent).toBe("synergy-max")
+    expect(patch.default_agent).toBe(SECONDARY_TEST_AGENT_NAME)
   })
 
   test("default agent is sent when different from server config", () => {
     const state = defaultSettingsState("enter")
-    state.agents.defaultAgent = "synergy"
+    state.agents.defaultAgent = TEST_AGENT_NAME
 
     const patch = buildPatch({
-      cfg: { default_agent: "synergy-max" } as Config,
+      cfg: { default_agent: SECONDARY_TEST_AGENT_NAME } as Config,
       state,
       originalMcps: {},
     })
 
-    expect(patch.default_agent).toBe("synergy")
+    expect(patch.default_agent).toBe(TEST_AGENT_NAME)
   })
 
   test("default agent not sent when unchanged", () => {
     const state = defaultSettingsState("enter")
 
     const patch = buildPatch({
-      cfg: { default_agent: "synergy" } as Config,
+      cfg: { default_agent: TEST_AGENT_NAME } as Config,
       state,
       originalMcps: {},
     })

@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import type { startPluginPreview } from "../../packages/plugin-kit/src/testing"
 import type { Message, Part } from "../../packages/sdk/js/src/client"
 
@@ -24,7 +25,7 @@ export async function importPreviewConversation(
         id: root,
         role: "user",
         isRoot: true,
-        agent: "synergy",
+        agent: TEST_AGENT_NAME,
         model: { providerID: "fixture", modelID: "fixture" },
         time: { created: now + index * 2 },
       },
@@ -44,8 +45,8 @@ export async function importPreviewConversation(
         id: assistant,
         parentID: root,
         role: "assistant",
-        agent: "synergy",
-        mode: "synergy",
+        agent: TEST_AGENT_NAME,
+        mode: TEST_AGENT_NAME,
         providerID: "fixture",
         modelID: "fixture",
         time: { created: now + index * 2 + 1, completed: now + index * 2 + 2 },

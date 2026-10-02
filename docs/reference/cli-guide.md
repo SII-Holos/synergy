@@ -82,7 +82,7 @@ synergy send "Summarize this project"
 synergy send --scope home "Summarize recent work"
 synergy send --scope <scope-id> "Continue work in that project"
 synergy send --attach http://localhost:4096 "Continue the work"
-synergy send --agent synergy-max --model provider/model "Fix the failing test"
+synergy send --agent forge --model provider/model "Fix the failing test"
 synergy send --file report.pdf --file src "Review these inputs"
 printf 'extra context' | synergy send "Use stdin too"
 ```

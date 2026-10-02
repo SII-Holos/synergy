@@ -80,7 +80,7 @@ describe("session input identity anchors", () => {
             parts: [{ type: "text", text: "next prompt" }],
           })
 
-          expect(created.info.agent).toBe("synergy")
+          expect(created.info.agent).toBe(PrimaryAgentIdentity.names.general)
           expect(created.info.model).toEqual(primaryModel)
         },
       })

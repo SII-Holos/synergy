@@ -317,7 +317,7 @@ export namespace Agent {
     }
 
     for (const [name, item] of Object.entries(result)) {
-      // Skip agents that explicitly deny memory_write/memory_edit (e.g. synergy-max).
+      // Skip agents that explicitly deny memory_write/memory_edit (e.g. coding primary).
       // The blanket allow-patch uses PermissionNext.merge() which appends rules, and
       // PermissionNext.evaluate() uses findLast() — so this patch would silently
       // override any explicit "deny" configured in the agent's own permission builder.

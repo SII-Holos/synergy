@@ -716,6 +716,10 @@ msgid "app.agent.role.codex"
 msgstr ""
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
+msgid "app.agent.role.coding"
+msgstr ""
+
+#. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.dependencyTracer"
 msgstr ""
 
@@ -743,6 +747,10 @@ msgstr ""
 msgid "app.agent.role.fixtureBuilder"
 msgstr ""
 
+#. ── Agent role labels (3+ segment IDs) ─────────────────────────────
+msgid "app.agent.role.general"
+msgstr ""
+
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.implementationEngineer"
 msgstr ""
@@ -753,6 +761,10 @@ msgstr ""
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.integrationEngineer"
+msgstr ""
+
+#. ── Agent Visual ─────────────────────────────────────────────────────────────
+msgid "app.agent.role.lightweight"
 msgstr ""
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
@@ -845,14 +857,6 @@ msgstr ""
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.supervisor"
-msgstr ""
-
-#. ── Agent role labels (3+ segment IDs) ─────────────────────────────
-msgid "app.agent.role.synergy"
-msgstr ""
-
-#. ── Agent Visual ─────────────────────────────────────────────────────────────
-msgid "app.agent.role.synergyMax"
 msgstr ""
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────

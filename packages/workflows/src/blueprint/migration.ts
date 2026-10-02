@@ -1,3 +1,4 @@
+import { PrimaryAgentUpgrade } from "@ericsanchezok/synergy-harness/agent/primary-identity-upgrade"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
@@ -507,6 +508,25 @@ export const migrations: Migration[] = [
         }
       }
       progress(1, 1)
+    },
+  },
+  {
+    id: "20261002-blueprint-primary-agent-identities",
+    description: "Upgrade primary identities in Blueprint executors and auditors",
+    scope: "global",
+    upgradeRecord(key, value) {
+      if (key[0] === "blueprint_loops" && key.length === 3)
+        PrimaryAgentUpgrade.fields(value, ["executionAgent", "auditAgent"])
+    },
+    async up(progress) {
+      let done = 0
+      for await (const { key, value } of Storage.records<Record<string, unknown>>({ kind: "blueprint_loops" })) {
+        const before = JSON.stringify(value)
+        this.upgradeRecord!(key, value)
+        if (before !== JSON.stringify(value)) await Storage.write(key, value)
+        progress(++done, 0)
+      }
+      progress(done, done)
     },
   },
 ]

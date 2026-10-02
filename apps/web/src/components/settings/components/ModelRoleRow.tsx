@@ -1,3 +1,4 @@
+import { getAgentVisual } from "../../agent-visual"
 import { useLingui } from "@lingui/solid"
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -9,6 +10,7 @@ import { Portal } from "solid-js/web"
 import type { ModelKey, ModelsStore, ProviderGroup } from "../types"
 import { createProviderModelIndex, fieldLabel, modelRoleCopy, resolveModelRoleDraftDisplay } from "../model-role-draft"
 import { ModelVariantPicker } from "@/components/provider/model-thinking-picker"
+import { translateDescriptor } from "@/locales/translate"
 
 const noAgentsUse = { id: "settings.modelRole.noAgentsUse", message: "No agents directly use this role." }
 const usedByLabel = { id: "settings.modelRole.usedBy", message: "Used by" }
@@ -60,7 +62,7 @@ export function ModelRoleRow(props: {
   onChange: (key: ModelKey, value: string) => void
   onVariantChange?: (variant: string) => void
 }) {
-  const { _ } = useLingui()
+  const { _, i18n } = useLingui()
   const [pickerOpen, setPickerOpen] = createSignal(false)
   const [detailsOpen, setDetailsOpen] = createSignal(false)
 
@@ -148,7 +150,7 @@ export function ModelRoleRow(props: {
                             <For each={props.summary.usedBy}>
                               {(agent) => (
                                 <span class="settings-model-chip">
-                                  {agent.name}
+                                  {translateDescriptor(getAgentVisual(agent.name).label, i18n())}
                                   <Show when={agent.hidden}>
                                     <span class="settings-model-chip-muted">{_(systemAgentLabel)}</span>
                                   </Show>

@@ -104,8 +104,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         const available = list()
         if (available.length === 0) return undefined
         return (
-          ComposerIntent.resolveAgent([store.draft[intentKey()], sessionDefault(), store.global], isSelectable) ??
-          available[0].name
+          ComposerIntent.resolveAgent(
+            [store.draft[intentKey()], sessionDefault(), store.global, sync.data.config.default_agent],
+            isSelectable,
+          ) ?? available[0].name
         )
       })
       return {

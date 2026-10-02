@@ -171,7 +171,7 @@ describe("WorkflowUserWrapper projection", () => {
 
       expect((original.parts[0] as MessageV2.TextPart).text).toBe("build the new importer")
       const text = (projected[0].parts[0] as MessageV2.TextPart).text
-      expect(text).toContain("You are synergy in the Plan workflow")
+      expect(text).toContain(`You are ${PrimaryAgentIdentity.names.general} in the Plan workflow`)
       expect(text).toContain("converge materially different routes")
       expect(text).toContain("single clarification checkpoint")
       expect(text).toContain("one question call")

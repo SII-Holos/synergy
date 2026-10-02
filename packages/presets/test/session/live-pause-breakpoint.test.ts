@@ -143,7 +143,7 @@ function installLiveTurnMocks() {
   ;(ExperienceEncoder.onComplete as any) = mock(() => {})
   ;(Snapshot.track as any) = mock(async () => undefined)
   ;(AgentTurn.stream as any) = mock(async (input: { agent?: { name?: string }; abort: AbortSignal }) => {
-    if (input.agent?.name !== "synergy") {
+    if (input.agent?.name !== PrimaryAgentIdentity.names.general) {
       return {
         fullStream: (async function* () {})(),
         usage: Promise.resolve(undefined),

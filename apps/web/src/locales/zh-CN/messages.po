@@ -716,6 +716,10 @@ msgid "app.agent.role.codex"
 msgstr "Codex"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
+msgid "app.agent.role.coding"
+msgstr "Forge"
+
+#. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.dependencyTracer"
 msgstr "依赖关系分析师"
 
@@ -743,6 +747,10 @@ msgstr "探索分析师"
 msgid "app.agent.role.fixtureBuilder"
 msgstr "测试数据工程师"
 
+#. ── Agent role labels (3+ segment IDs) ─────────────────────────────
+msgid "app.agent.role.general"
+msgstr "Atlas"
+
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.implementationEngineer"
 msgstr "功能实现工程师"
@@ -754,6 +762,10 @@ msgstr "质量检查员"
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.integrationEngineer"
 msgstr "集成工程师"
+
+#. ── Agent Visual ─────────────────────────────────────────────────────────────
+msgid "app.agent.role.lightweight"
+msgstr "Pico"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.literatureAnalyst"
@@ -846,14 +858,6 @@ msgstr "解决方案架构师"
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.supervisor"
 msgstr "任务监督员"
-
-#. ── Agent role labels (3+ segment IDs) ─────────────────────────────
-msgid "app.agent.role.synergy"
-msgstr "Synergy"
-
-#. ── Agent Visual ─────────────────────────────────────────────────────────────
-msgid "app.agent.role.synergyMax"
-msgstr "Synergy Max"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.testStrategist"
@@ -1081,7 +1085,7 @@ msgstr "Agent"
 
 #. js-lingui-explicit-id
 msgid "app.boss.spawn.agentPlaceholder"
-msgstr "Agent（例如 synergy）"
+msgstr "Agent（例如 atlas）"
 
 #. js-lingui-explicit-id
 msgid "app.boss.spawn.cancel"

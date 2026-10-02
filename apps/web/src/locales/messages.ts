@@ -1560,8 +1560,9 @@ export const agentVisual = {
   externalBadge: { id: "app.agent.visual.externalBadge", message: "External" },
   defaultLabel: { id: "app.agent.visual.defaultLabel", message: "Agent" },
   // ── Agent role labels (3+ segment IDs) ─────────────────────────────
-  roleSynergy: { id: "app.agent.role.synergy", message: "Synergy" },
-  roleSynergyMax: { id: "app.agent.role.synergyMax", message: "Synergy Max" },
+  roleGeneral: { id: "app.agent.role.general", message: "Atlas" },
+  roleCoding: { id: "app.agent.role.coding", message: "Forge" },
+  roleLightweight: { id: "app.agent.role.lightweight", message: "Pico" },
   roleDeveloper: { id: "app.agent.role.developer", message: "Developer" },
   roleExplore: { id: "app.agent.role.explore", message: "Explorer" },
   roleScout: { id: "app.agent.role.scout", message: "Scout" },

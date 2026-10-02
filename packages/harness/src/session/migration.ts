@@ -1,3 +1,4 @@
+import { primaryAgentMigration } from "./primary-agent-migration"
 import { normalizeLocalScope } from "../scope/migration"
 import { WorkspaceBinding } from "../workspace/binding"
 import { RuntimeContext } from "../lifecycle/context"
@@ -2444,6 +2445,7 @@ export const migrations: Migration[] = [
       }
     },
   },
+  primaryAgentMigration,
 ]
 
 function canonicalFieldsDiffer(before: any, after: any): boolean {

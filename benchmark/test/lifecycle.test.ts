@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { expect, test } from "bun:test"
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
 import os from "node:os"
@@ -36,7 +37,7 @@ for (const outcome of ["completed", "timeout"]) {
           runtime: "core",
           config: "unused",
           model: "fixture",
-          agent: "synergy",
+          agent: TEST_AGENT_NAME,
           timeout_seconds: 0.5,
           startup_timeout_seconds: 5,
           execution_marker: marker,
@@ -236,7 +237,7 @@ test("cancelling the wrapper during export drains the exporter before exit", asy
         cleanup_seconds: 2,
         export_timeout_seconds: 10,
         model: "fixture",
-        agent: "synergy",
+        agent: TEST_AGENT_NAME,
       }),
     )
     await Bun.write(path.join(root, "instruction.md"), "fixture")

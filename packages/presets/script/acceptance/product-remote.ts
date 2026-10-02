@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { ResourceProfiles } from "@ericsanchezok/synergy-local-runtime/environment/profiles"
@@ -22,7 +23,8 @@ export function desktopRemote(input: Settings): Driver {
   return async (context) => {
     if (!settings.artifacts?.web) throw new Error("Desktop acceptance requires a frozen Web artifact")
     const agent = context.scenario.agent
-    if (agent !== "synergy") throw new Error("Remote Desktop acceptance requires the declared synergy primary")
+    if (agent !== PrimaryAgentIdentity.names.general)
+      throw new Error("Remote Desktop acceptance requires the declared general primary")
     await using host = await acceptanceRuntime(context.directory, settings, {
       http: true,
       webAppDirectory: settings.artifacts.web,

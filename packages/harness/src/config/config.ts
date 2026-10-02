@@ -1,3 +1,5 @@
+import { ConfigReferenceMigration } from "./reference-migration"
+import { upgradeImportedConfig } from "../migration/import"
 import { PrimaryAgentIdentity } from "../agent/primary-identity"
 import { Env } from "../util/env"
 import { RuntimeContext } from "../lifecycle/context"
@@ -261,6 +263,7 @@ export namespace Config {
     }
 
     for (const dir of unique(directories)) {
+      await ConfigReferenceMigration.directory(dir)
       if (dir.endsWith(".synergy") || dir === Flag.SYNERGY_CONFIG_DIR) {
         const fragmentDir = path.join(dir, "synergy.d")
         const fragments = await loadFragments(fragmentDir, { strict: strictExecution.getStore() })
@@ -305,7 +308,9 @@ export namespace Config {
 
     // Inline config content has highest precedence
     if (Flag.SYNERGY_CONFIG_CONTENT) {
-      const inline = Info.parse(LegacyExecutionConfig.migrate(JSON.parse(Flag.SYNERGY_CONFIG_CONTENT)))
+      const inline = Info.parse(
+        upgradeImportedConfig(LegacyExecutionConfig.migrate(JSON.parse(Flag.SYNERGY_CONFIG_CONTENT))),
+      )
       if (inline.storage) throw new Error("Storage configuration must use the global 130-storage.jsonc domain file")
       merge(inline, "inline_config")
       log.debug("loaded custom config from SYNERGY_CONFIG_CONTENT")
@@ -549,6 +554,7 @@ export namespace Config {
   }
 
   async function loadGlobalConfig() {
+    await ConfigReferenceMigration.directory(Global.Path.config)
     const pending = await migrateLegacyGlobalConfig()
     return loadDomainDirectory(Global.Path.config, pending)
   }
@@ -872,6 +878,7 @@ export namespace Config {
     filepath: string,
     options: { addSchema?: boolean; stripUnknownKeys?: boolean } = {},
   ): Promise<Info> {
+    await ConfigReferenceMigration.file(filepath)
     log.info("loading", { path: filepath })
     let text = await Bun.file(filepath)
       .text()
@@ -957,7 +964,9 @@ export namespace Config {
       })
     }
 
-    const parsed = Info.safeParse(data)
+    const parsed = Info.safeParse(
+      data && typeof data === "object" && !Array.isArray(data) ? upgradeImportedConfig(data) : data,
+    )
     if (parsed.success) {
       if (options.addSchema !== false && !parsed.data.$schema) {
         parsed.data.$schema = Global.Path.configSchemaUrl

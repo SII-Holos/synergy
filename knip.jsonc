@@ -149,6 +149,7 @@
     },
     "packages/plugin": {
       "project": ["src/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
     },
     "packages/plugin-kit": {
       "entry": ["test/**/*.ts"],
@@ -278,7 +279,7 @@
       "ignoreDependencies": ["node:sqlite"],
     },
     ".": {
-      "ignoreDependencies": ["dependency-cruiser"],
+      "ignoreDependencies": ["dependency-cruiser", "@ericsanchezok/synergy-testing"],
     },
   },
 }

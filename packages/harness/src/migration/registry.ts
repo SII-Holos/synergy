@@ -10,6 +10,7 @@ export interface TrackingCompatibility {
 const runtimeState = RuntimeContext.state(() => ({
   domains: new Map<string, { source: Migration[]; migrations: Migration[]; tracking?: TrackingCompatibility }>(),
   locked: false,
+  generation: 0,
 }))
 
 function snapshot(migrations: Migration[]): Migration[] {
@@ -34,6 +35,7 @@ export namespace MigrationRegistry {
     if (existing?.source === migrations) return
     if (existing) throw new Error(`Migration domain ${domain} is already registered`)
     if (instanceState.locked) throw new MigrationRegistrationLockedError(domain)
+    instanceState.generation++
     instanceState.domains.set(domain, {
       source: migrations,
       migrations: snapshot(migrations),
@@ -51,7 +53,7 @@ export namespace MigrationRegistry {
     const instanceState = runtimeState()
 
     if (instanceState.locked) throw new MigrationRegistrationLockedError(domain)
-    instanceState.domains.delete(domain)
+    if (instanceState.domains.delete(domain)) instanceState.generation++
   }
 
   export function legacyTracking(): Array<TrackingCompatibility & { targetDomain: string }> {
@@ -60,6 +62,10 @@ export namespace MigrationRegistry {
     return [...instanceState.domains].flatMap(([targetDomain, entry]) =>
       entry.tracking ? [{ ...entry.tracking, aliases: { ...entry.tracking.aliases }, targetDomain }] : [],
     )
+  }
+
+  export function generation(): number {
+    return runtimeState().generation
   }
 
   export function list(): Map<string, Migration[]> {

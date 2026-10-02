@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -131,7 +132,7 @@ export function resourceCycles(input: unknown): Driver {
             const request = await createUserMessage({
               sessionID: peerState.session.id,
               model: peer.model,
-              agent: "synergy-flash",
+              agent: PrimaryAgentIdentity.names.lightweight,
               tools: { "*": false },
               parts: [
                 {

@@ -12,6 +12,7 @@ import { setActiveMigrationContext } from "./context"
 import { UpgradeWork } from "../storage/upgrade-work"
 import type { Migration, RunOptions, MigrationContext, MigrationSummary } from "./types"
 
+export { upgradeImportedConfig, upgradeImportedRecord } from "./import"
 export type { Migration, RunOptions, RunResult, MigrationContext, MigrationSummary, MigrationReporter } from "./types"
 
 const log = Log.create({ service: "migration" })
