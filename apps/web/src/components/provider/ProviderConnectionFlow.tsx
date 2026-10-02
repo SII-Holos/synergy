@@ -7,7 +7,7 @@ import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { iife } from "@ericsanchezok/synergy-util/iife"
-import { createMemo, For, Match, onCleanup, onMount, Show, Switch } from "solid-js"
+import { createMemo, createSignal, For, Match, onCleanup, onMount, Show, Switch } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import { providerFlow } from "@/locales/messages"
@@ -15,14 +15,22 @@ import { Link } from "./external-link"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
+import { requestErrorMessage } from "@/utils/error"
 import { providerConnectCopy, providerConnectReason, providerCTA } from "./provider-recommendation"
 import {
   resolveProviderAuthMethods,
   runProviderDeviceCallback,
   shouldAutoAdvanceConnection,
+  createProviderCredentialCommand,
 } from "./provider-connection-model"
 
 export { compareProviderIDs, providerConnectCopy } from "./provider-recommendation"
+
+const refreshConnection = { id: "settings.providers.account.retryRefresh", message: "Refresh connection" }
+const refreshFailed = {
+  id: "settings.providers.connection.refreshFailed",
+  message: "Connection saved. Could not refresh the account.",
+}
 
 export function ProviderConnectionFlow(props: {
   providerID: string
@@ -53,6 +61,8 @@ export function ProviderConnectionFlow(props: {
   const connected = createMemo(
     () => props.connectedOverride ?? globalSync.data.provider.connected.includes(props.providerID),
   )
+  const [persisted, setPersisted] = createSignal(false)
+  const [refreshing, setRefreshing] = createSignal(false)
   const [store, setStore] = createStore({
     methodIndex: undefined as undefined | number,
     authorization: undefined as undefined | ProviderAuthAuthorization,
@@ -87,9 +97,9 @@ export function ProviderConnectionFlow(props: {
           setStore("state", "complete")
           setStore("authorization", x.data!)
         })
-        .catch((e: any) => {
+        .catch((e: unknown) => {
           setStore("state", "error")
-          setStore("error", typeof e?.data?.message === "string" ? e.data.message : String(e))
+          setStore("error", requestErrorMessage(e))
         })
     }
 
@@ -116,6 +126,7 @@ export function ProviderConnectionFlow(props: {
   })
 
   async function complete() {
+    setPersisted(true)
     await globalSync.refreshProviders()
     await props.onComplete?.()
     const suffix = props.intent === "recover" ? _(providerFlow.reconnected) : _(providerFlow.connected)
@@ -128,6 +139,7 @@ export function ProviderConnectionFlow(props: {
   }
 
   function resetMethod() {
+    setPersisted(false)
     setStore(
       produce((draft) => {
         draft.methodIndex = undefined
@@ -136,6 +148,19 @@ export function ProviderConnectionFlow(props: {
         draft.error = undefined
       }),
     )
+  }
+
+  async function retryRefresh() {
+    if (refreshing()) return
+    setRefreshing(true)
+    try {
+      await complete()
+      resetMethod()
+    } catch (error) {
+      setStore("error", requestErrorMessage(error))
+    } finally {
+      setRefreshing(false)
+    }
   }
 
   function methodDescription(item: ProviderAuthMethod) {
@@ -153,25 +178,33 @@ export function ProviderConnectionFlow(props: {
 
   return (
     <div classList={{ "provider-flow": true, "provider-flow-compact": !!props.compact }}>
-      <div class="provider-flow-header">
-        <Show when={props.onBack}>
-          <button
-            type="button"
-            class="provider-flow-back"
-            onClick={props.onBack}
-            aria-label={_(providerFlow.backToProviders)}
-          >
-            <Icon name={getSemanticIcon("navigation.back")} size="small" />
-          </button>
-        </Show>
-        <ProviderIcon id={props.iconID ?? props.providerID} class="size-5 shrink-0 icon-strong-base" />
-        <div class="min-w-0">
-          <div class="provider-flow-title">{providerConnectCopy(props.providerID, profiles(), provider()?.name)}</div>
-          <div class="provider-flow-subtitle">
-            {providerConnectReason(props.providerID, profiles()) ?? provider()?.name ?? props.providerID}
+      <Show when={!props.compact}>
+        <div class="provider-flow-header">
+          <Show when={props.onBack}>
+            <button
+              type="button"
+              class="provider-flow-back"
+              onClick={props.onBack}
+              aria-label={_(providerFlow.backToProviders)}
+            >
+              <Icon name={getSemanticIcon("navigation.back")} size="small" />
+            </button>
+          </Show>
+          <ProviderIcon id={props.iconID ?? props.providerID} class="size-5 shrink-0 icon-strong-base" />
+          <div class="min-w-0">
+            <div class="provider-flow-title">
+              {_({
+                id: "settings.providers.connection.title",
+                message: "Connect {provider}",
+                values: { provider: providerName() },
+              })}
+            </div>
+            <div class="provider-flow-subtitle">
+              {providerConnectReason(props.providerID, profiles()) ?? provider()?.name ?? props.providerID}
+            </div>
           </div>
         </div>
-      </div>
+      </Show>
 
       <div class="provider-flow-body">
         <Switch>
@@ -212,10 +245,19 @@ export function ProviderConnectionFlow(props: {
           <Match when={store.state === "error"}>
             <div class="provider-flow-message provider-flow-message-error">
               <Icon name={getSemanticIcon("state.error")} class="text-icon-critical-base" />
-              <span>{_(providerFlow.authFailed.id, { error: store.error })}</span>
-              <Button type="button" variant="ghost" size="small" onClick={resetMethod}>
-                {_(providerFlow.tryAnotherMethod)}
-              </Button>
+              <span>{persisted() ? _(refreshFailed) : _(providerFlow.authFailed.id, { error: store.error })}</span>
+              <Show
+                when={persisted()}
+                fallback={
+                  <Button type="button" variant="ghost" size="small" onClick={resetMethod}>
+                    {_(providerFlow.tryAnotherMethod)}
+                  </Button>
+                }
+              >
+                <Button type="button" variant="secondary" disabled={refreshing()} onClick={() => void retryRefresh()}>
+                  {_(refreshConnection)}
+                </Button>
+              </Show>
             </div>
           </Match>
           <Match when={method()?.type === "api"}>
@@ -223,12 +265,22 @@ export function ProviderConnectionFlow(props: {
               const [formStore, setFormStore] = createStore({
                 value: "",
                 error: undefined as string | undefined,
+                busy: false,
+                persisted: false,
               })
+              const credentialCommand = createProviderCredentialCommand(async () => {
+                await globalSDK.client.auth.set(
+                  { providerID: props.providerID, auth: { type: "api", key: formStore.value.trim() } },
+                  { throwOnError: true },
+                )
+                setFormStore("persisted", true)
+              }, complete)
 
               async function handleSubmit(e: SubmitEvent) {
                 e.preventDefault()
+                if (formStore.busy) return
                 const form = e.currentTarget as HTMLFormElement
-                const apiKey = formDataValue(new FormData(form), "apiKey")
+                const apiKey = formStore.persisted ? formStore.value : formDataValue(new FormData(form), "apiKey")
 
                 if (!apiKey?.trim()) {
                   setFormStore("error", _(providerFlow.apiKeyRequired))
@@ -236,31 +288,37 @@ export function ProviderConnectionFlow(props: {
                 }
 
                 setFormStore("error", undefined)
-                await globalSDK.client.auth.set({
-                  providerID: props.providerID,
-                  auth: {
-                    type: "api",
-                    key: apiKey,
-                  },
-                })
-                await complete()
+                setFormStore("busy", true)
+                try {
+                  await credentialCommand.run()
+                } catch (error) {
+                  setFormStore("error", requestErrorMessage(error))
+                } finally {
+                  setFormStore("busy", false)
+                }
               }
 
               return (
                 <form onSubmit={handleSubmit} class="provider-api-form">
                   <div class="provider-step-header">
-                    <div class="provider-flow-eyebrow">{_(providerFlow.apiKey)}</div>
-                    <div class="provider-flow-heading">
-                      {props.intent === "recover"
-                        ? _(providerFlow.replaceKey.id, { provider: providerName() })
-                        : _(providerFlow.addKey.id, { provider: providerName() })}
-                    </div>
-                    <p>{_(providerFlow.apiKeyDescription)}</p>
+                    <p>
+                      {props.providerID === "github"
+                        ? _({
+                            id: "app.provider.github.token.description",
+                            message:
+                              "Paste a GitHub personal access token to connect repository and GitHub CLI actions.",
+                          })
+                        : _(providerFlow.apiKeyDescription)}
+                    </p>
                   </div>
-                  <Show when={providerCTA(props.providerID, profiles())}>
+                  <Show when={providerCTA(provider()?.profileID ?? props.providerID, profiles())}>
                     {(cta) => (
                       <Link href={cta().url} class="provider-auth-link">
-                        <span>{cta().label}</span>
+                        <span>
+                          {(provider()?.profileID ?? props.providerID) === "openai"
+                            ? _({ id: "app.provider.apiKey.createPlatform", message: "Create OpenAI API key" })
+                            : cta().label}
+                        </span>
                         <Icon name={getSemanticIcon("action.open")} size="small" />
                       </Link>
                     )}
@@ -268,20 +326,43 @@ export function ProviderConnectionFlow(props: {
                   <TextField
                     autofocus
                     type="password"
-                    label={_(providerFlow.apiKeyLabel.id, { provider: providerName() })}
+                    label={
+                      props.providerID === "github"
+                        ? _({ id: "app.provider.github.token.label", message: "GitHub access token" })
+                        : _(providerFlow.apiKeyLabel.id, { provider: providerName() })
+                    }
                     placeholder={_(providerFlow.apiKeyPlaceholder)}
                     name="apiKey"
                     value={formStore.value}
-                    onChange={setFormStore.bind(null, "value")}
-                    validationState={formStore.error ? "invalid" : undefined}
-                    error={formStore.error}
+                    onChange={(value) => {
+                      setFormStore("value", value)
+                      credentialCommand.reset()
+                    }}
+                    disabled={formStore.busy || formStore.persisted}
+                    validationState={formStore.error && !formStore.persisted ? "invalid" : undefined}
+                    error={formStore.persisted ? undefined : formStore.error}
                   />
+                  <Show when={formStore.persisted && formStore.error}>
+                    <p class="settings-request-error" role="alert">
+                      {_(refreshFailed)} <span>{formStore.error}</span>
+                    </p>
+                  </Show>
                   <div class="provider-form-actions">
-                    <Button type="button" variant="ghost" size="large" onClick={resetMethod}>
-                      {_(providerFlow.back)}
-                    </Button>
-                    <Button class="w-auto" type="submit" size="large" variant="primary">
-                      {_(providerFlow.saveKey)}
+                    <Show when={methods().length > 1}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="large"
+                        disabled={formStore.busy}
+                        onClick={resetMethod}
+                      >
+                        {_(providerFlow.back)}
+                      </Button>
+                    </Show>
+                    <Button class="w-auto" type="submit" size="large" variant="primary" disabled={formStore.busy}>
+                      {formStore.persisted
+                        ? _(refreshConnection)
+                        : _({ id: "settings.providers.connectAction", message: "Connect" })}
                     </Button>
                   </div>
                 </form>
@@ -295,7 +376,10 @@ export function ProviderConnectionFlow(props: {
                   const [formStore, setFormStore] = createStore({
                     value: "",
                     error: undefined as string | undefined,
+                    busy: false,
                   })
+                  const controller = new AbortController()
+                  onCleanup(() => controller.abort())
 
                   onMount(() => {
                     if (store.authorization?.url) platform.openLink(store.authorization.url)
@@ -303,6 +387,7 @@ export function ProviderConnectionFlow(props: {
 
                   async function handleSubmit(e: SubmitEvent) {
                     e.preventDefault()
+                    if (formStore.busy) return
                     const code = formDataValue(new FormData(e.currentTarget as HTMLFormElement), "code")
 
                     if (!code?.trim()) {
@@ -311,16 +396,22 @@ export function ProviderConnectionFlow(props: {
                     }
 
                     setFormStore("error", undefined)
-                    const { error } = await globalSDK.client.provider.oauth.callback({
-                      providerID: props.providerID,
-                      method: store.methodIndex,
-                      code,
-                    })
-                    if (!error) {
+                    setFormStore("busy", true)
+                    try {
+                      await globalSDK.client.provider.oauth.callback(
+                        { providerID: props.providerID, method: store.methodIndex, code },
+                        { throwOnError: true, signal: controller.signal },
+                      )
                       await complete()
-                      return
+                    } catch (error) {
+                      if (controller.signal.aborted) return
+                      if (persisted()) {
+                        setStore("state", "error")
+                        setStore("error", requestErrorMessage(error))
+                      } else setFormStore("error", requestErrorMessage(error, _(providerFlow.invalidAuthCode)))
+                    } finally {
+                      setFormStore("busy", false)
                     }
-                    setFormStore("error", _(providerFlow.invalidAuthCode))
                   }
 
                   return (
@@ -344,16 +435,23 @@ export function ProviderConnectionFlow(props: {
                         label={_(providerFlow.authCodeLabel)}
                         placeholder={_(providerFlow.authCodePlaceholder)}
                         name="code"
+                        disabled={formStore.busy}
                         value={formStore.value}
                         onChange={setFormStore.bind(null, "value")}
                         validationState={formStore.error ? "invalid" : undefined}
                         error={formStore.error}
                       />
                       <div class="provider-form-actions">
-                        <Button type="button" variant="ghost" size="large" onClick={resetMethod}>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="large"
+                          disabled={formStore.busy}
+                          onClick={resetMethod}
+                        >
                           {_(providerFlow.back)}
                         </Button>
-                        <Button class="w-auto" type="submit" size="large" variant="primary">
+                        <Button class="w-auto" type="submit" size="large" variant="primary" disabled={formStore.busy}>
                           {_(providerFlow.submit)}
                         </Button>
                       </div>

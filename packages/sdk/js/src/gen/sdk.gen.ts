@@ -798,6 +798,9 @@ import type {
   ToolListResponses,
   VcsGetErrors,
   VcsGetResponses,
+  VoicePreviewErrors,
+  VoicePreviewInput,
+  VoicePreviewResponses,
   VoiceTranscribeErrors,
   VoiceTranscribeResponses,
   WorkflowSessionCancelLightloopErrors,
@@ -13952,7 +13955,7 @@ export class Voice extends HeyApiClient {
   /**
    * Transcribe audio
    *
-   * Transcribe a short audio recording to text for composer voice dictation. Audio is processed in memory and never persisted.
+   * Transcribe a short audio recording using the saved speech recognition configuration. The canonical call recorder manages audio artifacts.
    */
   public transcribe<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -13985,6 +13988,43 @@ export class Voice extends HeyApiClient {
       ...params,
       headers: {
         "Content-Type": null,
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Preview speech
+   *
+   * Synthesize up to 200 characters using the saved speech configuration and standard call recording.
+   */
+  public preview<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      voicePreviewInput?: VoicePreviewInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "voicePreviewInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<VoicePreviewResponses, VoicePreviewErrors, ThrowOnError>({
+      url: "/voice/preview",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
         ...options?.headers,
         ...params.headers,
       },

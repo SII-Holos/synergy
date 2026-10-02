@@ -103,10 +103,11 @@ function Action(props: { icon: IconName; label?: string; title?: string; disable
   )
 }
 
-function Body(props: ParentProps<{ class?: string; padding?: boolean }>) {
+function Body(props: ParentProps<{ class?: string; padding?: boolean; ref?: (element: HTMLDivElement) => void }>) {
   const px = props.padding === false ? "" : "px-6"
   return (
     <div
+      ref={props.ref}
       class={`flex-1 min-h-0 overflow-y-auto ${px} pb-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${props.class ?? ""}`}
       style={{ animation: "fadeUp 0.35s ease-out 0.05s both" }}
     >

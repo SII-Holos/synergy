@@ -21,7 +21,7 @@ const pageDescription = {
   message: "Connect local or remote tool servers that Synergy can use during sessions.",
 }
 const addServerLabel = { id: "settings.mcp.addServer", message: "Add server" }
-const sectionTitle = { id: "settings.mcp.section.title", message: "Servers" }
+const sectionTitle = { id: "settings.mcp.section.title", message: "Custom servers" }
 const sectionDescription = {
   id: "settings.mcp.section.description",
   message: "Each server adds tools or prompts from a trusted local command or remote endpoint.",
@@ -50,6 +50,7 @@ export function McpPanel(props: {
   builtins?: BuiltinMcpDraft[]
   /** Live connection status by server name; falls back to the catalog snapshot. */
   statuses?: Record<string, McpStatus>
+  entryUnsaved?: (entry: McpEntry) => boolean
   onAdd: () => void
   onChange: (index: number, field: string, value: string | boolean) => void
   onRemove: (index: number) => void
@@ -92,6 +93,7 @@ export function McpPanel(props: {
               {(entry, index) => (
                 <McpCard
                   entry={entry}
+                  unsaved={props.entryUnsaved?.(entry) ?? !entry.key.trim()}
                   status={props.statuses?.[entry.key.trim()]}
                   onChange={(field, value) => props.onChange(index(), field, value)}
                   onRemove={() => props.onRemove(index())}
@@ -138,7 +140,11 @@ export function McpPanel(props: {
                             hideLabel
                             onChange={(value) => props.onBuiltinToggle?.(builtin.name, value)}
                           >
-                            {`${displayName()} built-in server`}
+                            {_({
+                              id: "settings.mcp.builtins.enable.named",
+                              message: "Enable {name} built-in server",
+                              values: { name: displayName() },
+                            })}
                           </Switch>
                         </Show>
                       </div>
@@ -171,7 +177,14 @@ export function McpPanel(props: {
                           type="button"
                           variant="ghost"
                           icon={getSemanticIcon(keyPendingClear() ? "action.add" : "action.remove")}
-                          aria-label={keyPendingClear() ? _(apiKeyClearUndoLabel) : _(apiKeyClearLabel)}
+                          aria-label={_({
+                            id: "settings.mcp.builtins.key.named",
+                            message: "{action}: {name}",
+                            values: {
+                              action: keyPendingClear() ? _(apiKeyClearUndoLabel) : _(apiKeyClearLabel),
+                              name: displayName(),
+                            },
+                          })}
                           onClick={() => props.onBuiltinClearKey?.(builtin.name, !builtin.clearApiKey)}
                         />
                       </Show>

@@ -4940,6 +4940,10 @@ export type McpDefaultsConfig = {
  */
 export type VoiceSttConfig = {
   /**
+   * Enable voice input. When omitted, a configured model enables it.
+   */
+  enabled?: boolean
+  /**
    * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
    */
   billingMode?: "api" | "subscription" | "local" | "unknown"
@@ -4990,13 +4994,13 @@ export type VoiceSttConfig = {
     }
   }
   /**
-   * Base URL for the speech-to-text API (OpenAI-compatible)
+   * OpenAI-compatible endpoint. Null restores the default endpoint.
    */
-  baseURL?: string
+  baseURL?: string | null
   /**
-   * API key for the speech-to-text service
+   * Speech-to-text credential. Null removes the credential.
    */
-  apiKey?: string
+  apiKey?: string | null
   /**
    * Speech-to-text model name. Voice input is disabled when not set.
    */
@@ -5004,13 +5008,17 @@ export type VoiceSttConfig = {
   /**
    * BCP-47 language hint for transcription, e.g. zh, en. Auto-detected when not set.
    */
-  language?: string
+  language?: string | null
 }
 
 /**
  * Text-to-speech service configuration
  */
 export type VoiceTtsConfig = {
+  /**
+   * Enable speech output. When omitted, a configured model enables it.
+   */
+  enabled?: boolean
   /**
    * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
    */
@@ -5062,25 +5070,25 @@ export type VoiceTtsConfig = {
     }
   }
   /**
-   * Base URL for the text-to-speech API (OpenAI-compatible)
+   * OpenAI-compatible endpoint. Null restores the default endpoint.
    */
-  baseURL?: string
+  baseURL?: string | null
   /**
-   * API key for the text-to-speech service
+   * Text-to-speech credential. Null removes the credential.
    */
-  apiKey?: string
+  apiKey?: string | null
   /**
    * Text-to-speech model name. The speak tool is disabled when not set.
    */
   model?: string
   /**
-   * Voice name for synthesis (provider-specific, e.g. alloy)
+   * Voice name for synthesis. Null restores the service default.
    */
-  voice?: string
+  voice?: string | null
   /**
    * Natural-language delivery instructions applied to synthesized speech, e.g. tone and pace
    */
-  instructions?: string
+  instructions?: string | null
 }
 
 /**
@@ -11644,6 +11652,10 @@ export type HolosRetryResponse = {
 export type MailboxMessageList = Array<unknown>
 
 export type VoiceTranscriptionResult = {
+  text: string
+}
+
+export type VoicePreviewInput = {
   text: string
 }
 
@@ -26569,6 +26581,38 @@ export type VoiceTranscribeResponses = {
 }
 
 export type VoiceTranscribeResponse = VoiceTranscribeResponses[keyof VoiceTranscribeResponses]
+
+export type VoicePreviewData = {
+  body?: VoicePreviewInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/voice/preview"
+}
+
+export type VoicePreviewErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type VoicePreviewError = VoicePreviewErrors[keyof VoicePreviewErrors]
+
+export type VoicePreviewResponses = {
+  /**
+   * Synthesized audio
+   */
+  200: Blob | File
+}
+
+export type VoicePreviewResponse = VoicePreviewResponses[keyof VoicePreviewResponses]
 
 export type AppLogData = {
   body?: {

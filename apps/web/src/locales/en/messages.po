@@ -2148,11 +2148,11 @@ msgstr "Authentication is required"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.mcp.status.ready"
-msgstr "Ready"
+msgstr "Not started"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.mcp.status.readyDesc"
-msgstr "Ready to connect"
+msgstr "This server has not started yet."
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.mcp.status.reconnecting"
@@ -2185,6 +2185,14 @@ msgstr "Stopping"
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.mcp.status.stoppingDesc"
 msgstr "Disconnecting from the server"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.mcp.status.unavailable"
+msgstr "Status unavailable"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.mcp.status.unavailableDesc"
+msgstr "No runtime status is available for this server."
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.mcp.status.updating"
@@ -7135,6 +7143,10 @@ msgstr "Add a {provider} key"
 msgid "app.provider.apiKey.back"
 msgstr "Back"
 
+#. js-lingui-explicit-id
+msgid "app.provider.apiKey.createPlatform"
+msgstr "Create OpenAI API key"
+
 #. ── Provider Connection Flow ─────────────────────────────────────────────────
 msgid "app.provider.apiKey.description"
 msgstr "Use a key from your provider account to make this provider available in Synergy."
@@ -7206,6 +7218,14 @@ msgstr "Authorization timed out. Open the authorization page and enter the confi
 #. ── Provider Connection Flow ─────────────────────────────────────────────────
 msgid "app.provider.device.waiting"
 msgstr "Waiting for authorization..."
+
+#. js-lingui-explicit-id
+msgid "app.provider.github.token.description"
+msgstr "Paste a GitHub personal access token to connect repository and GitHub CLI actions."
+
+#. js-lingui-explicit-id
+msgid "app.provider.github.token.label"
+msgstr "GitHub access token"
 
 #. ── Provider Connection Flow ─────────────────────────────────────────────────
 msgid "app.provider.method.api.defaultLabel"
@@ -10251,6 +10271,10 @@ msgstr "Cancel after {completed} of {total} records? Completed updates will be k
 #. js-lingui-explicit-id
 msgid "confirm.cancelReencode.title"
 msgstr "Cancel re-encoding?"
+
+#. js-lingui-explicit-id
+msgid "confirm.close.named"
+msgstr "Close {title}"
 
 #. js-lingui-explicit-id
 msgid "confirm.deleteArchivedNote.confirm.plural"
@@ -15988,6 +16012,30 @@ msgid "settings.account.agentPrefix"
 msgstr "Agent {id}"
 
 #. js-lingui-explicit-id
+msgid "settings.account.connection.connected"
+msgstr "Connected"
+
+#. js-lingui-explicit-id
+msgid "settings.account.connection.connecting"
+msgstr "Connecting"
+
+#. js-lingui-explicit-id
+msgid "settings.account.connection.disabled"
+msgstr "Connection disabled"
+
+#. js-lingui-explicit-id
+msgid "settings.account.connection.disconnected"
+msgstr "Disconnected"
+
+#. js-lingui-explicit-id
+msgid "settings.account.connection.failed"
+msgstr "Connection failed"
+
+#. js-lingui-explicit-id
+msgid "settings.account.connection.unknown"
+msgstr "Status unavailable"
+
+#. js-lingui-explicit-id
 msgid "settings.account.editProfile"
 msgstr "Edit profile"
 
@@ -16200,8 +16248,16 @@ msgid "settings.archivedSessions.archivedAt"
 msgstr "Archived {time}"
 
 #. js-lingui-explicit-id
+msgid "settings.archivedSessions.clearSearch"
+msgstr "Clear search"
+
+#. js-lingui-explicit-id
 msgid "settings.archivedSessions.count"
 msgstr "{total} archived sessions"
+
+#. js-lingui-explicit-id
+msgid "settings.archivedSessions.delete.named"
+msgstr "Delete session: {title}"
 
 #. js-lingui-explicit-id
 msgid "settings.archivedSessions.deletedDesc"
@@ -16268,6 +16324,10 @@ msgid "settings.archivedSessions.restore.hint"
 msgstr "Restore keeps data; permanent deletion cannot be undone."
 
 #. js-lingui-explicit-id
+msgid "settings.archivedSessions.restore.named"
+msgstr "Restore session: {title}"
+
+#. js-lingui-explicit-id
 msgid "settings.archivedSessions.restoredDesc"
 msgstr "{count} sessions restored"
 
@@ -16286,6 +16346,10 @@ msgstr "Archived sessions failed to restore"
 #. js-lingui-explicit-id
 msgid "settings.archivedSessions.restoreFailedSingle"
 msgstr "Archived session failed to restore"
+
+#. js-lingui-explicit-id
+msgid "settings.archivedSessions.retry"
+msgstr "Retry"
 
 #. js-lingui-explicit-id
 msgid "settings.archivedSessions.search.placeholder"
@@ -16380,18 +16444,6 @@ msgid "settings.catalog.boss.label"
 msgstr "Boss Mode"
 
 #. js-lingui-explicit-id
-msgid "settings.catalog.boss.row.bossMode"
-msgstr "Boss Mode"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.boss.row.identity"
-msgstr "Colleague Identity"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.boss.row.interval"
-msgstr "World Overview Briefing Interval (days)"
-
-#. js-lingui-explicit-id
 msgid "settings.catalog.boss.searchTerms"
 msgstr "boss | colleague | feishu | routing | runtime"
 
@@ -16416,18 +16468,6 @@ msgid "settings.catalog.codeChecks.label"
 msgstr "Code Checks"
 
 #. js-lingui-explicit-id
-msgid "settings.catalog.codeChecks.row.diagnosticScope"
-msgstr "Diagnostic Scope"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.codeChecks.row.diagnosticSeverity"
-msgstr "Diagnostic Severity"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.codeChecks.row.includeDiagnostics"
-msgstr "Include Diagnostics"
-
-#. js-lingui-explicit-id
 msgid "settings.catalog.codeChecks.searchTerms"
 msgstr "code | checks | lsp | diagnostics | severity | scope | write | edit"
 
@@ -16438,18 +16478,6 @@ msgstr "Session compaction and history limits."
 #. js-lingui-explicit-id
 msgid "settings.catalog.compaction.label"
 msgstr "Compaction"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.compaction.row.autoCompact"
-msgstr "Auto Compact"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.compaction.row.maxHistoryImages"
-msgstr "Max History Images"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.compaction.row.overflowThreshold"
-msgstr "Overflow Threshold"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.compaction.searchTerms"
@@ -16500,18 +16528,6 @@ msgid "settings.catalog.experience.label"
 msgstr "Experience"
 
 #. js-lingui-explicit-id
-msgid "settings.catalog.experience.row.count"
-msgstr "Experience Count"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.experience.row.explorationRate"
-msgstr "Exploration Rate"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.experience.row.similarity"
-msgstr "Experience Similarity"
-
-#. js-lingui-explicit-id
 msgid "settings.catalog.experience.searchTerms"
 msgstr "experience | retrieval | epsilon"
 
@@ -16534,30 +16550,6 @@ msgstr "Appearance, behavior, and notification preferences."
 #. js-lingui-explicit-id
 msgid "settings.catalog.general.label"
 msgstr "General"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.general.row.activityDisplay"
-msgstr "Activity display"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.general.row.colorScheme"
-msgstr "Color Scheme"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.general.row.interfaceLanguage"
-msgstr "Interface Language"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.general.row.newSessionWorkspace"
-msgstr "New task starting point"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.general.row.notifications"
-msgstr "Notifications"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.general.row.productUpdates"
-msgstr "Product Updates"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.general.row.toastDuration"
@@ -16585,31 +16577,31 @@ msgstr "github | gh | issue | pull request | release | token | git identity | wa
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.group.core"
-msgstr "Core"
+msgstr "Models and services"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.group.integrations"
-msgstr "Integrations"
+msgstr "Connections and integrations"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.group.library"
-msgstr "Library"
+msgstr "Knowledge and skills"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.group.personal"
-msgstr "Personal"
+msgstr "Personal preferences"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.group.runtime"
-msgstr "Runtime"
+msgstr "Runtime and automation"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.group.safety"
-msgstr "Safety"
+msgstr "Security and permissions"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.group.system"
-msgstr "System"
+msgstr "Data and system"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.import.description"
@@ -16630,14 +16622,6 @@ msgstr "Library learning and autonomy controls."
 #. js-lingui-explicit-id
 msgid "settings.catalog.learning.label"
 msgstr "Learning"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.learning.row.enableAutonomy"
-msgstr "Enable Autonomy"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.learning.row.enableLearning"
-msgstr "Enable Learning"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.learning.searchTerms"
@@ -16676,26 +16660,6 @@ msgid "settings.catalog.memory.label"
 msgstr "Memory"
 
 #. js-lingui-explicit-id
-msgid "settings.catalog.memory.row.currentModel"
-msgstr "Current Model"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.memory.row.downloadSource"
-msgstr "Download Source"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.memory.row.localModelFiles"
-msgstr "Local Model Files"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.memory.row.perCategory"
-msgstr "Memory per Category"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.memory.row.similarity"
-msgstr "Memory Similarity"
-
-#. js-lingui-explicit-id
 msgid "settings.catalog.memory.searchTerms"
 msgstr "memory | embedding | recall | download | model | local | remote | huggingface | hf mirror | custom source"
 
@@ -16708,22 +16672,6 @@ msgid "settings.catalog.models.label"
 msgstr "Models"
 
 #. js-lingui-explicit-id
-msgid "settings.catalog.models.row.default"
-msgstr "Default Model"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.models.row.mini"
-msgstr "Mini Model"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.models.row.thinking"
-msgstr "Thinking Model"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.models.row.vision"
-msgstr "Vision Model"
-
-#. js-lingui-explicit-id
 msgid "settings.catalog.models.searchTerms"
 msgstr "model | provider | role"
 
@@ -16733,7 +16681,7 @@ msgstr "Raw logs, traces, telemetry collection, and runtime configuration."
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.observability.label"
-msgstr "Observability"
+msgstr "Diagnostics"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.observability.searchTerms"
@@ -16748,14 +16696,6 @@ msgid "settings.catalog.permissions.label"
 msgstr "Permissions"
 
 #. js-lingui-explicit-id
-msgid "settings.catalog.permissions.row.mode"
-msgstr "Permission Mode"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.permissions.row.smartAllow"
-msgstr "Smart Allow"
-
-#. js-lingui-explicit-id
 msgid "settings.catalog.permissions.searchTerms"
 msgstr "permission | tools | allow | deny"
 
@@ -16766,10 +16706,6 @@ msgstr "Global custom instructions that shape how Synergy works across projects.
 #. js-lingui-explicit-id
 msgid "settings.catalog.personalize.label"
 msgstr "Personalize"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.personalize.row.customInstructions"
-msgstr "Custom Instructions"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.personalize.searchTerms"
@@ -16789,15 +16725,11 @@ msgstr "provider | api | enabled | disabled"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.questions.description"
-msgstr "Question timeout behavior."
+msgstr "Choose how long unanswered questions remain open."
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.questions.label"
-msgstr "Questions"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.questions.row.responseTimeout"
-msgstr "Response Timeout"
+msgstr "Waiting for response"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.questions.searchTerms"
@@ -16836,22 +16768,6 @@ msgid "settings.catalog.skills.label"
 msgstr "Skills"
 
 #. js-lingui-explicit-id
-msgid "settings.catalog.skills.row.agents"
-msgstr "Agent Skills"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.skills.row.claude"
-msgstr "Claude Code"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.skills.row.codex"
-msgstr "Codex"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.skills.row.openclaw"
-msgstr "OpenClaw"
-
-#. js-lingui-explicit-id
 msgid "settings.catalog.skills.searchTerms"
 msgstr "skill | skills | claude | codex | openclaw | agents | compatibility"
 
@@ -16873,15 +16789,7 @@ msgstr "Agent worker capacity, subagent concurrency, provider timeouts, and tool
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.label"
-msgstr "Agents"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.timeouts.row.agentWorkerPool"
-msgstr "Agent Worker Pool"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.timeouts.row.maxConcurrentSubagents"
-msgstr "Max Concurrent Subagents"
+msgstr "Agent runtime"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.searchTerms"
@@ -16908,14 +16816,6 @@ msgid "settings.catalog.voice.label"
 msgstr "Voice"
 
 #. js-lingui-explicit-id
-msgid "settings.catalog.voice.row.speechRecognition"
-msgstr "Speech Recognition"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.voice.row.speechSynthesis"
-msgstr "Speech Synthesis"
-
-#. js-lingui-explicit-id
 msgid "settings.catalog.voice.searchTerms"
 msgstr "voice | stt | tts | speech | dictation | recognition | synthesis"
 
@@ -16930,6 +16830,10 @@ msgstr "Independent copies"
 #. js-lingui-explicit-id
 msgid "settings.catalog.worktrees.searchTerms"
 msgstr "worktree | git | checkout | branch | delete | project"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.account"
+msgstr "Go to Account"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.clarus.description"
@@ -16980,8 +16884,16 @@ msgid "settings.channels.clarus.refreshing"
 msgstr "Refreshing…"
 
 #. js-lingui-explicit-id
+msgid "settings.channels.clarus.setup"
+msgstr "Sign in to a Holos account in Account settings. Synergy adds the corresponding Clarus account in the disabled state; enable it here when you want to receive tasks."
+
+#. js-lingui-explicit-id
 msgid "settings.channels.clarus.title"
 msgstr "Clarus"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.configure"
+msgstr "View channels configuration"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.feishu.accounts"
@@ -16994,6 +16906,14 @@ msgstr "Enable or disable existing Feishu channel accounts. Optionally override 
 #. js-lingui-explicit-id
 msgid "settings.channels.feishu.empty"
 msgstr "No Feishu accounts configured yet."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.feishu.guide"
+msgstr "Set up Feishu"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.feishu.setup"
+msgstr "Create a Feishu application with bot permissions and event subscriptions. Select the long connection (WebSocket) method, then add its app ID and app secret to the channels configuration on the Synergy server. Enable the account after configuring it."
 
 #. js-lingui-explicit-id
 msgid "settings.channels.feishu.title"
@@ -17028,6 +16948,10 @@ msgid "settings.channels.github.enabled"
 msgstr "Enabled"
 
 #. js-lingui-explicit-id
+msgid "settings.channels.github.guide"
+msgstr "Set up GitHub channel"
+
+#. js-lingui-explicit-id
 msgid "settings.channels.github.mention"
 msgstr "Mention handle"
 
@@ -17058,6 +16982,10 @@ msgstr "Comma-separated owner/repo pairs to watch and respond to."
 #. js-lingui-explicit-id
 msgid "settings.channels.github.repositoriesPlaceholder"
 msgstr "owner/repo, owner/repo"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.setup"
+msgstr "Install a GitHub App on the repositories you want to monitor. Set SYNERGY_GITHUB_APP_ID and SYNERGY_GITHUB_APP_PRIVATE_KEY in the server environment, then configure the installation and repositories in the channels file. The channel polls GitHub and uses separate credentials from your personal GitHub sign-in."
 
 #. js-lingui-explicit-id
 msgid "settings.channels.github.title"
@@ -17125,7 +17053,7 @@ msgstr "Waiting for transport"
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.desc"
-msgstr "Return language-server feedback after write, edit, save_file, revise_file, and resolve_conflicts."
+msgstr "Include errors and warnings found after Synergy changes a file."
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.title"
@@ -17186,6 +17114,10 @@ msgstr "Errors and warnings"
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.severity.title"
 msgstr "Diagnostic Severity"
+
+#. js-lingui-explicit-id
+msgid "settings.codeChecks.tools"
+msgstr "Supported file tools"
 
 #. js-lingui-explicit-id
 msgid "settings.configFile.openFailed.title"
@@ -17260,16 +17192,8 @@ msgid "settings.controlProfile.nonInteractive.aria"
 msgstr "Non-interactive control profile"
 
 #. js-lingui-explicit-id
-msgid "settings.controlProfile.nonInteractive.autonomous"
-msgstr "Autonomous"
-
-#. js-lingui-explicit-id
 msgid "settings.controlProfile.nonInteractive.desc"
-msgstr "Profile for sessions started by Channels and scheduled Agenda runs, which have nobody available to answer an approval prompt. Guarded is unavailable here because an unattended ask could never be answered. Changes apply to sessions created afterwards."
-
-#. js-lingui-explicit-id
-msgid "settings.controlProfile.nonInteractive.fullAccess"
-msgstr "Full Access"
+msgstr "Used for new channel and scheduled sessions. Autonomous refuses work requiring approval; Full Access allows it without approval."
 
 #. js-lingui-explicit-id
 msgid "settings.controlProfile.nonInteractive.title"
@@ -17282,6 +17206,14 @@ msgstr "Resolved access profile applied to sessions and agents."
 #. control profile
 msgid "settings.controlProfile.page.title"
 msgstr "Control Profile"
+
+#. js-lingui-explicit-id
+msgid "settings.email.configurationFacts"
+msgstr "Sending: {sending}. Reading: {reading}. Server connections have not been verified."
+
+#. js-lingui-explicit-id
+msgid "settings.email.configured"
+msgstr "Configured"
 
 #. js-lingui-explicit-id
 msgid "settings.email.imap.desc"
@@ -17305,7 +17237,7 @@ msgstr "imap.example.com"
 
 #. js-lingui-explicit-id
 msgid "settings.email.imap.host.title"
-msgstr "Host"
+msgstr "Reading host"
 
 #. js-lingui-explicit-id
 msgid "settings.email.imap.pass.desc"
@@ -17313,7 +17245,7 @@ msgstr "IMAP authentication password."
 
 #. js-lingui-explicit-id
 msgid "settings.email.imap.pass.title"
-msgstr "Password"
+msgstr "Reading password"
 
 #. js-lingui-explicit-id
 msgid "settings.email.imap.port.desc"
@@ -17325,7 +17257,7 @@ msgstr "993"
 
 #. js-lingui-explicit-id
 msgid "settings.email.imap.port.title"
-msgstr "Port"
+msgstr "Reading port"
 
 #. js-lingui-explicit-id
 msgid "settings.email.imap.title"
@@ -17341,7 +17273,11 @@ msgstr "agent@example.com"
 
 #. js-lingui-explicit-id
 msgid "settings.email.imap.user.title"
-msgstr "Username"
+msgstr "Reading username"
+
+#. js-lingui-explicit-id
+msgid "settings.email.incomplete"
+msgstr "Incomplete"
 
 #. js-lingui-explicit-id
 msgid "settings.email.mailTools.row.desc"
@@ -17349,11 +17285,15 @@ msgstr "Allow Synergy to send messages and read inbox mail when a tool asks for 
 
 #. js-lingui-explicit-id
 msgid "settings.email.mailTools.row.title"
-msgstr "Mail tools"
+msgstr "Allow mail tools"
 
 #. js-lingui-explicit-id
 msgid "settings.email.mailTools.title"
 msgstr "Mail tools"
+
+#. js-lingui-explicit-id
+msgid "settings.email.notConfigured"
+msgstr "Not configured"
 
 #. js-lingui-explicit-id
 msgid "settings.email.page.desc"
@@ -17425,7 +17365,7 @@ msgstr "smtp.example.com"
 
 #. js-lingui-explicit-id
 msgid "settings.email.smtp.host.title"
-msgstr "Host"
+msgstr "Sending host"
 
 #. js-lingui-explicit-id
 msgid "settings.email.smtp.pass.desc"
@@ -17433,7 +17373,7 @@ msgstr "SMTP authentication password."
 
 #. js-lingui-explicit-id
 msgid "settings.email.smtp.pass.title"
-msgstr "Password"
+msgstr "Sending password"
 
 #. js-lingui-explicit-id
 msgid "settings.email.smtp.port.desc"
@@ -17445,7 +17385,7 @@ msgstr "465"
 
 #. js-lingui-explicit-id
 msgid "settings.email.smtp.port.title"
-msgstr "Port"
+msgstr "Sending port"
 
 #. js-lingui-explicit-id
 msgid "settings.email.smtp.title"
@@ -17461,7 +17401,7 @@ msgstr "agent@example.com"
 
 #. js-lingui-explicit-id
 msgid "settings.email.smtp.user.title"
-msgstr "Username"
+msgstr "Sending username"
 
 #. js-lingui-explicit-id
 msgid "settings.email.state.enabled"
@@ -17498,6 +17438,10 @@ msgstr "Minimal"
 #. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.title"
 msgstr "Activity display"
+
+#. js-lingui-explicit-id
+msgid "settings.general.appearance.immediate"
+msgstr "Theme, skin, and color scheme apply immediately."
 
 #. js-lingui-explicit-id
 msgid "settings.general.appearance.title"
@@ -17542,6 +17486,14 @@ msgstr "Show live reasoning in a single line; completed turns keep an expandable
 #. js-lingui-explicit-id
 msgid "settings.general.compactReasoning.title"
 msgstr "Compact reasoning"
+
+#. js-lingui-explicit-id
+msgid "settings.general.developer.description"
+msgstr "Show advanced development pages on this device."
+
+#. js-lingui-explicit-id
+msgid "settings.general.developer.title"
+msgstr "Show developer options"
 
 #. js-lingui-explicit-id
 msgid "settings.general.devicePush.completion"
@@ -17624,6 +17576,10 @@ msgid "settings.general.font.check"
 msgstr "Check"
 
 #. js-lingui-explicit-id
+msgid "settings.general.font.check.named"
+msgstr "Check {font}"
+
+#. js-lingui-explicit-id
 msgid "settings.general.font.checking"
 msgstr "Loading..."
 
@@ -17640,6 +17596,14 @@ msgid "settings.general.font.description"
 msgstr "Check loads the fonts installed on this device. Save Changes applies your selection."
 
 #. js-lingui-explicit-id
+msgid "settings.general.font.effective"
+msgstr "Current font: {font}"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.effectiveWithStatus"
+msgstr "Current font: {font}. {status}"
+
+#. js-lingui-explicit-id
 msgid "settings.general.font.ready"
 msgstr "Unsaved selection"
 
@@ -17650,6 +17614,10 @@ msgstr "Use default"
 #. js-lingui-explicit-id
 msgid "settings.general.font.select.placeholder"
 msgstr "Select a font"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.system"
+msgstr "System default"
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.title"
@@ -17684,6 +17652,10 @@ msgid "settings.general.notifications.description"
 msgstr "Tune which toast cards appear and how long they stay visible."
 
 #. js-lingui-explicit-id
+msgid "settings.general.notifications.inApp"
+msgstr "In-app notification details"
+
+#. js-lingui-explicit-id
 msgid "settings.general.notifications.title"
 msgstr "Notifications"
 
@@ -17714,6 +17686,10 @@ msgstr "Waiting for work"
 #. js-lingui-explicit-id
 msgid "settings.general.preventSleep.title"
 msgstr "Prevent sleep while running"
+
+#. js-lingui-explicit-id
+msgid "settings.general.regular.title"
+msgstr "General"
 
 #. js-lingui-explicit-id
 msgid "settings.general.theme.description"
@@ -17845,7 +17821,7 @@ msgstr "Refresh this browser when the server has newer Web assets."
 
 #. js-lingui-explicit-id
 msgid "settings.general.workspace.description"
-msgstr "Use the main folder or create a Worktree for each new Git task. Projects can override this default."
+msgstr "Use the main folder or create an independent copy for each new Git task. Projects can override this default."
 
 #. js-lingui-explicit-id
 msgid "settings.general.workspace.main"
@@ -17857,7 +17833,7 @@ msgstr "New task starting point"
 
 #. js-lingui-explicit-id
 msgid "settings.general.workspace.worktree"
-msgstr "Worktree"
+msgstr "Independent copy"
 
 #. js-lingui-explicit-id
 msgid "settings.general.zoom.aria"
@@ -18020,8 +17996,16 @@ msgid "settings.github.page.title"
 msgstr "GitHub"
 
 #. js-lingui-explicit-id
+msgid "settings.github.ready"
+msgstr "GitHub credentials are ready for GitHub CLI-backed actions."
+
+#. js-lingui-explicit-id
 msgid "settings.github.refresh"
 msgstr "Refresh"
+
+#. js-lingui-explicit-id
+msgid "settings.github.saveFirst"
+msgstr "Save your GitHub preferences before syncing identity."
 
 #. js-lingui-explicit-id
 msgid "settings.github.unverified"
@@ -18072,6 +18056,10 @@ msgid "settings.import.detectedDomains"
 msgstr "{count} detected domain(s)"
 
 #. js-lingui-explicit-id
+msgid "settings.import.errorDetails"
+msgstr "Error details"
+
+#. js-lingui-explicit-id
 msgid "settings.import.failed"
 msgstr "Import failed"
 
@@ -18108,6 +18096,14 @@ msgid "settings.import.page.title"
 msgstr "Import"
 
 #. js-lingui-explicit-id
+msgid "settings.import.parseError"
+msgstr "Content could not be loaded or parsed. Check the source and review again."
+
+#. js-lingui-explicit-id
+msgid "settings.import.parseError.position"
+msgstr "Content cannot be parsed at line {line}, column {column}. Check the JSON syntax and review again."
+
+#. js-lingui-explicit-id
 msgid "settings.import.pasteJson"
 msgstr "Paste JSON or JSONC"
 
@@ -18130,6 +18126,14 @@ msgstr "Configuration changed after review. Check the refreshed plan before appl
 #. js-lingui-explicit-id
 msgid "settings.import.project"
 msgstr "Project"
+
+#. js-lingui-explicit-id
+msgid "settings.import.refreshPending"
+msgstr "Configuration imported. The view still needs to update."
+
+#. js-lingui-explicit-id
+msgid "settings.import.reload.none"
+msgstr "None"
 
 #. js-lingui-explicit-id
 msgid "settings.import.restartRequired"
@@ -18161,7 +18165,7 @@ msgstr "Runtime updated"
 
 #. js-lingui-explicit-id
 msgid "settings.import.scope.label"
-msgstr "Scope"
+msgstr "Apply to"
 
 #. js-lingui-explicit-id
 msgid "settings.import.selectionChanged"
@@ -18190,6 +18194,70 @@ msgstr "Updated {count, plural, one {# domain} other {# domains}}."
 #. js-lingui-explicit-id
 msgid "settings.import.urlPlaceholder"
 msgstr "https://..."
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.configuration"
+msgstr "Effective global configuration"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.custom"
+msgstr "Custom configuration"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.default"
+msgstr "Default configuration"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.disabled"
+msgstr "Disabled"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.enabled"
+msgstr "Enabled"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.failed"
+msgstr "Failed"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.loading"
+msgstr "Reading project status…"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.notStarted"
+msgstr "No active servers or available formatters were reported for this project."
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.project"
+msgstr "Project"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.running"
+msgstr "Running"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.scope"
+msgstr "Runtime status belongs to the selected project. Checking status does not start a language server."
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.selectProject"
+msgstr "Select a project"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.source"
+msgstr "Configuration file"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.status"
+msgstr "Project status"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.statusUnavailable"
+msgstr "Project status could not be loaded."
 
 #. js-lingui-explicit-id
 msgid "settings.library.embedding.button.download"
@@ -18411,7 +18479,7 @@ msgstr "~{count} LLM calls, ~{secs} seconds"
 msgid "settings.library.encoding.health.desc"
 msgstr "Scan the database for records whose intent or script may not have been properly encoded."
 
-#. encoding health section
+#. js-lingui-explicit-id
 msgid "settings.library.encoding.health.title"
 msgstr "Encoding Health"
 
@@ -18448,6 +18516,10 @@ msgid "settings.library.encoding.reencodeButton"
 msgstr "Re-encode {kind} for all {total} records"
 
 #. js-lingui-explicit-id
+msgid "settings.library.encoding.scanFailed"
+msgstr "Scan failed"
+
+#. js-lingui-explicit-id
 msgid "settings.library.encoding.scanning"
 msgstr "Scanning…"
 
@@ -18470,6 +18542,10 @@ msgstr "▸ Show samples"
 #. js-lingui-explicit-id
 msgid "settings.library.encoding.startJobFallback"
 msgstr "The job could not be started."
+
+#. js-lingui-explicit-id
+msgid "settings.library.experience.advanced"
+msgstr "Encoding and maintenance"
 
 #. js-lingui-explicit-id
 msgid "settings.library.experience.countAria"
@@ -18534,6 +18610,14 @@ msgstr "Tune how Synergy reuses past task patterns and tries alternatives."
 #. js-lingui-explicit-id
 msgid "settings.library.experience.page.title"
 msgstr "Experience"
+
+#. js-lingui-explicit-id
+msgid "settings.library.experience.preciseExploration"
+msgstr "Exploration probability"
+
+#. js-lingui-explicit-id
+msgid "settings.library.experience.preciseThreshold"
+msgstr "Experience similarity threshold"
 
 #. js-lingui-explicit-id
 msgid "settings.library.experience.retrieval.desc"
@@ -18677,7 +18761,7 @@ msgstr "Autonomous routines"
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.capture.desc"
-msgstr "Keep the library useful without turning these controls into raw configuration."
+msgstr "Allow knowledge capture and background reflection."
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.capture.title"
@@ -18689,7 +18773,7 @@ msgstr "Create and curate memories from useful conversation context."
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.learnRow.title"
-msgstr "Learn from interactions"
+msgstr "Allow learning"
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.page.desc"
@@ -18705,7 +18789,7 @@ msgstr "Automatic"
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.state.learning"
-msgstr "Learning"
+msgstr "Allowed"
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.state.manual"
@@ -18713,7 +18797,11 @@ msgstr "Manual"
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.state.paused"
-msgstr "Paused"
+msgstr "Not allowed"
+
+#. js-lingui-explicit-id
+msgid "settings.library.memory.advanced"
+msgstr "Model files and downloads"
 
 #. js-lingui-explicit-id
 msgid "settings.library.memory.broader"
@@ -18758,6 +18846,10 @@ msgstr "Tune how Synergy recalls curated memory while you work."
 #. js-lingui-explicit-id
 msgid "settings.library.memory.page.title"
 msgstr "Memory"
+
+#. js-lingui-explicit-id
+msgid "settings.library.memory.preciseThreshold"
+msgstr "Memory similarity threshold"
 
 #. js-lingui-explicit-id
 msgid "settings.library.memory.recall.desc"
@@ -18830,6 +18922,10 @@ msgstr "Minimal recall"
 #. js-lingui-explicit-id
 msgid "settings.library.memoryCount.quiet.tick"
 msgstr "1"
+
+#. js-lingui-explicit-id
+msgid "settings.library.precise"
+msgstr "Precise recall settings"
 
 #. js-lingui-explicit-id
 msgid "settings.library.reencode.cancel"
@@ -18984,6 +19080,14 @@ msgid "settings.mcp.builtins.badge"
 msgstr "Built-in"
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.builtins.enable.named"
+msgstr "Enable {name} built-in server"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.key.named"
+msgstr "{action}: {name}"
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.builtins.section.description"
 msgstr "Shipped with Synergy and usable without an API key. Turning one off disables its tools."
 
@@ -19002,6 +19106,14 @@ msgstr "Command not set"
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.connectionType"
 msgstr "Connection type"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.card.details.named"
+msgstr "{action}: {name}"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.card.enable.named"
+msgstr "Enable {name} server"
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.env"
@@ -19040,6 +19152,10 @@ msgid "settings.mcp.card.headers.placeholder"
 msgstr "Authorization: Bearer token X-Custom: value"
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.card.incomplete"
+msgstr "Incomplete configuration"
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.card.local.description"
 msgstr "Starts a command on this machine."
 
@@ -19062,6 +19178,10 @@ msgstr "Remote"
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.remote.description"
 msgstr "Connects to an HTTP or SSE endpoint."
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.card.remove.named"
+msgstr "Remove {name} server"
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.serverName"
@@ -19116,6 +19236,10 @@ msgid "settings.mcp.card.type.remote"
 msgstr "Remote endpoint"
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.card.unsaved"
+msgstr "Unsaved"
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.card.urlNotSet"
 msgstr "URL not set"
 
@@ -19141,7 +19265,11 @@ msgstr "Each server adds tools or prompts from a trusted local command or remote
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.section.title"
-msgstr "Servers"
+msgstr "Custom servers"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.automatic"
+msgstr "Automatic"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.creativeModel.description"
@@ -19161,11 +19289,15 @@ msgstr "{label} details"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.fallback"
-msgstr "Use fallback"
+msgstr "Automatic"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.fallbackChain"
 msgstr "Fallback"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.fixed"
+msgstr "Fixed model"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.group.default"
@@ -19256,6 +19388,10 @@ msgid "settings.modelRole.searchModels"
 msgstr "Search models"
 
 #. js-lingui-explicit-id
+msgid "settings.modelRole.select.named"
+msgstr "{role}: {intent}, {model}"
+
+#. js-lingui-explicit-id
 msgid "settings.modelRole.selectModel"
 msgstr "Select model"
 
@@ -19324,6 +19460,10 @@ msgid "settings.modelRole.willUseAfterSaving"
 msgstr "Will use {model} after saving"
 
 #. js-lingui-explicit-id
+msgid "settings.models.advanced.title"
+msgstr "Advanced model assignments"
+
+#. js-lingui-explicit-id
 msgid "settings.models.connectProvider"
 msgstr "Connect provider"
 
@@ -19348,8 +19488,16 @@ msgid "settings.models.quickSwitcher.title"
 msgstr "Quick switcher models"
 
 #. js-lingui-explicit-id
+msgid "settings.models.quickSwitcher.toggle"
+msgstr "Include {model} in quick switcher"
+
+#. js-lingui-explicit-id
+msgid "settings.models.repair"
+msgstr "Check service"
+
+#. js-lingui-explicit-id
 msgid "settings.models.roles.description"
-msgstr "Leave a role on fallback to inherit the next available model."
+msgstr "Automatic selection follows the available model and role defaults. Fixed selections use the chosen service account."
 
 #. js-lingui-explicit-id
 msgid "settings.models.roles.loading"
@@ -19357,7 +19505,11 @@ msgstr "Model roles are loading"
 
 #. js-lingui-explicit-id
 msgid "settings.models.roles.title"
-msgstr "Model roles"
+msgstr "Default primary model"
+
+#. js-lingui-explicit-id
+msgid "settings.models.unavailable"
+msgstr "This model is unavailable. Your selection is kept. Check the service connection or refresh its model list."
 
 #. js-lingui-explicit-id
 msgid "settings.panel.action.cancel"
@@ -19373,7 +19525,7 @@ msgstr "Saving..."
 
 #. js-lingui-explicit-id
 msgid "settings.panel.back.label"
-msgstr "Back"
+msgstr "Back to settings categories"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.badge.developer"
@@ -19469,7 +19621,7 @@ msgstr "Settings"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.globalConfig.label"
-msgstr "Global Config"
+msgstr "Global settings"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.group.plugins"
@@ -19485,7 +19637,7 @@ msgstr "The sleep setting could not be saved"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.reference.formatterDescription"
-msgstr "Formatter configuration file access."
+msgstr "Review formatter configuration and availability for a selected project."
 
 #. js-lingui-explicit-id
 msgid "settings.panel.reference.formatterTitle"
@@ -19493,7 +19645,7 @@ msgstr "Formatter"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.reference.lspDescription"
-msgstr "Language server configuration file access."
+msgstr "Review language server configuration and reported project status."
 
 #. js-lingui-explicit-id
 msgid "settings.panel.reference.lspTitle"
@@ -19536,6 +19688,14 @@ msgid "settings.panel.zoom.saveFailed"
 msgstr "Interface zoom could not be saved"
 
 #. js-lingui-explicit-id
+msgid "settings.password.hide.named"
+msgstr "Hide {field}"
+
+#. js-lingui-explicit-id
+msgid "settings.password.show.named"
+msgstr "Show {field}"
+
+#. js-lingui-explicit-id
 msgid "settings.pathRow.copied"
 msgstr "Copied"
 
@@ -19544,12 +19704,20 @@ msgid "settings.pathRow.copy"
 msgstr "Copy Path"
 
 #. js-lingui-explicit-id
+msgid "settings.pathRow.copy.named"
+msgstr "Copy path: {name}"
+
+#. js-lingui-explicit-id
 msgid "settings.pathRow.mergePolicy"
 msgstr "Merge policy: {policy}"
 
 #. js-lingui-explicit-id
 msgid "settings.pathRow.open"
 msgstr "Open File"
+
+#. js-lingui-explicit-id
+msgid "settings.pathRow.open.named"
+msgstr "Open file: {name}"
 
 #. js-lingui-explicit-id
 msgid "settings.pathRow.opening"
@@ -19624,20 +19792,12 @@ msgid "settings.personalize.confirmReset.title"
 msgstr "Reset custom instructions?"
 
 #. js-lingui-explicit-id
-msgid "settings.personalize.globalInstructions"
-msgstr "Global instructions"
-
-#. js-lingui-explicit-id
 msgid "settings.personalize.input.placeholder"
 msgstr "Describe your preferred language, response style, engineering conventions, or collaboration rules."
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.loading"
 msgstr "Loading global instructions..."
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.managedOverride"
-msgstr "Managed override"
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.noGlobalFile"
@@ -19661,11 +19821,19 @@ msgstr "These instructions join Synergy's existing instruction chain. Project AG
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.section.title"
-msgstr "Custom Instructions"
+msgstr "Global custom instructions"
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.showingSource"
 msgstr "Showing {filename}. Saving always writes AGENTS.override.md and preserves AGENTS.md."
+
+#. js-lingui-explicit-id
+msgid "settings.personalize.source.details"
+msgstr "Instruction source"
+
+#. js-lingui-explicit-id
+msgid "settings.preference.immediate"
+msgstr "Applies immediately"
 
 #. js-lingui-explicit-id
 msgid "settings.productUpdate.notice.download"
@@ -19880,10 +20048,6 @@ msgid "settings.productUpdate.web.versionMismatch"
 msgstr "Web client {appVersion} is running with server {serverVersion}."
 
 #. js-lingui-explicit-id
-msgid "settings.providers.account"
-msgstr "Account"
-
-#. js-lingui-explicit-id
 msgid "settings.providers.account.add"
 msgstr "Add account"
 
@@ -19976,6 +20140,10 @@ msgid "settings.providers.account.requestFailed"
 msgstr "Account update failed"
 
 #. js-lingui-explicit-id
+msgid "settings.providers.account.retryRefresh"
+msgstr "Refresh connection"
+
+#. js-lingui-explicit-id
 msgid "settings.providers.account.save"
 msgstr "Save changes"
 
@@ -19988,8 +20156,20 @@ msgid "settings.providers.account.saving"
 msgstr "Saving..."
 
 #. js-lingui-explicit-id
-msgid "settings.providers.accountConnected"
-msgstr "Credentials are connected. Use Usage for quota and billing details."
+msgid "settings.providers.accounts.search"
+msgstr "Search connected accounts"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.addService"
+msgstr "Add service"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.back"
+msgstr "Back to accounts"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.backToServices"
+msgstr "Back to services"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.catalog.bundled"
@@ -20012,16 +20192,28 @@ msgid "settings.providers.catalog.refreshing"
 msgstr "Refreshing model list"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.connect"
+msgid "settings.providers.connectAction"
 msgstr "Connect"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.connectDesc"
-msgstr "Choose a sign-in method. Synergy will make available models selectable after connection."
 
 #. js-lingui-explicit-id
 msgid "settings.providers.connected"
 msgstr "Connected"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.connection.refreshFailed"
+msgstr "Connection saved. Could not refresh the account."
+
+#. js-lingui-explicit-id
+msgid "settings.providers.connection.title"
+msgstr "Connect {provider}"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.empty.description"
+msgstr "Add a service to start choosing models."
+
+#. js-lingui-explicit-id
+msgid "settings.providers.empty.title"
+msgstr "No connected services"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.modelCount"
@@ -20052,10 +20244,6 @@ msgid "settings.providers.recommended"
 msgstr "Recommended"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.recoveryDesc"
-msgstr "Choose a recovery method. Existing backup credentials remain available."
-
-#. js-lingui-explicit-id
 msgid "settings.providers.search.placeholder"
 msgstr "Search providers..."
 
@@ -20064,8 +20252,48 @@ msgid "settings.providers.selectHint"
 msgstr "Select a provider to connect it."
 
 #. js-lingui-explicit-id
+msgid "settings.providers.service.anthropic"
+msgstr "Claude Pro/Max or API key"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.service.codex"
+msgstr "ChatGPT/Codex subscription"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.service.copilot"
+msgstr "GitHub Copilot subscription"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.service.google"
+msgstr "Gemini API key"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.service.grok"
+msgstr "Grok subscription"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.service.openrouter"
+msgstr "Model routing service"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.service.platform"
+msgstr "OpenAI Platform API key"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.unfinished"
+msgstr "Unfinished connection · Continue connecting"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.updateCredentials"
+msgstr "Update credentials"
+
+#. js-lingui-explicit-id
 msgid "settings.providers.updateEnvRecovery"
 msgstr "Update the server environment, restart Synergy, then refresh this page. Environment values are never overwritten by Settings."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.advanced"
+msgstr "Service and tool timeouts"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agent.title"
@@ -20077,7 +20305,7 @@ msgstr "Auto · machine-derived: {value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agentWorkers.desc"
-msgstr "Maximum model turns that can run in parallel. When reduced, active turns finish before excess workers retire."
+msgstr "Maximum model requests running at once. Reducing this limit lets active requests finish."
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agentWorkers.explicit"
@@ -20089,7 +20317,7 @@ msgstr "Auto"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agentWorkers.title"
-msgstr "Agent Worker Pool"
+msgstr "Parallel model requests"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.coauthor.desc"
@@ -20101,7 +20329,7 @@ msgstr "Co-author Reminder"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.desc"
-msgstr "Maximum Cortex subagent tasks running at once. Memory pressure can temporarily queue new tasks sooner."
+msgstr "Maximum collaborator tasks running at once. New tasks may queue sooner when memory is limited."
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.memoryLimit"
@@ -20113,7 +20341,7 @@ msgstr "Managed by environment · Memory safety limit active: {value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.title"
-msgstr "Max Concurrent Subagents"
+msgstr "Parallel collaborator tasks"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.defaultAgent.desc"
@@ -20125,7 +20353,7 @@ msgstr "Default Agent"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.idle.desc"
-msgstr "Milliseconds of provider inactivity before the connection is dropped."
+msgstr "Seconds of provider inactivity before the connection is dropped."
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.idle.title"
@@ -20133,7 +20361,7 @@ msgstr "Idle Timeout"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.invoke.desc"
-msgstr "Milliseconds before a task invoke call times out."
+msgstr "Seconds before a task invoke call times out."
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.invoke.title"
@@ -20149,11 +20377,11 @@ msgstr "Tool Overrides"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.page.desc"
-msgstr "Agent capacity, prompt behavior, provider timeouts, and tool timeout controls."
+msgstr "Choose the default agent and how much work can run at once."
 
 #. Agents
 msgid "settings.runtime.agents.page.title"
-msgstr "Agents"
+msgstr "Agent runtime"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.provider.title"
@@ -20165,7 +20393,7 @@ msgstr "Tools"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.toolTimeout.desc"
-msgstr "Milliseconds before a tool execution attempt times out."
+msgstr "Seconds before a tool execution attempt times out."
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.toolTimeout.title"
@@ -20173,7 +20401,7 @@ msgstr "Default Tool Timeout"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.ttfb.desc"
-msgstr "Milliseconds to wait for the first response byte from a provider."
+msgstr "Seconds to wait for the first response byte from a provider."
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.ttfb.title"
@@ -20181,15 +20409,27 @@ msgstr "TTFB Timeout"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.wall.desc"
-msgstr "Hard cap in milliseconds for the total provider call duration."
+msgstr "Maximum provider call duration in seconds. Leave empty to use the default; zero disables the limit."
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.wall.title"
 msgstr "Wall Timeout"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.boss.conversation"
+msgstr "Colleague conversation"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.conversation.open"
+msgstr "Conversation"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.boss.desc"
 msgstr "Turn this Synergy instance into a colleague: auto-create a runtime boss session and route all Feishu messages to it."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.enable"
+msgstr "Enable colleague mode"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.enabled.desc"
@@ -20208,12 +20448,8 @@ msgid "settings.runtime.boss.name.placeholder"
 msgstr "e.g. Xiaofei"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.name.saveFailed"
-msgstr "Could not save boss name"
-
-#. js-lingui-explicit-id
-msgid "settings.runtime.boss.name.saveFailed.desc"
-msgstr "The boss name could not be saved. Please try again."
+msgid "settings.runtime.boss.name.retry"
+msgstr "Reload name"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.openSession"
@@ -20275,6 +20511,10 @@ msgstr "Personality"
 msgid "settings.runtime.boss.personality.desc"
 msgstr "How your boss colleague behaves and communicates."
 
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.saveFirst"
+msgstr "Save your changes before opening the Boss Mode session."
+
 #. Boss Mode
 msgid "settings.runtime.boss.title"
 msgstr "Boss Mode"
@@ -20321,7 +20561,7 @@ msgstr "8"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.compaction.maxImages.desc"
-msgstr "Maximum historical images sent as base64 per request"
+msgstr "Maximum images from earlier messages included in each request"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.compaction.maxImages.title"
@@ -20401,7 +20641,7 @@ msgstr "Logs, traces, and diagnostics."
 
 #. Observability
 msgid "settings.runtime.observ.page.title"
-msgstr "Observability"
+msgstr "Diagnostics"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.observ.performanceEnabled.desc"
@@ -20453,11 +20693,11 @@ msgstr "Watcher Ignore"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.questions.page.desc"
-msgstr "Question timeout behavior."
+msgstr "Choose how long unanswered questions remain open."
 
 #. Questions
 msgid "settings.runtime.questions.page.title"
-msgstr "Questions"
+msgstr "Waiting for response"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.questions.responseAria"
@@ -20548,36 +20788,68 @@ msgid "settings.sandbox.warn"
 msgstr "Warn"
 
 #. js-lingui-explicit-id
-msgid "settings.save.explicit.changed"
-msgstr "Changed: {fields}"
-
-#. js-lingui-explicit-id
-msgid "settings.save.explicit.failed"
-msgstr "Failed to save"
-
-#. js-lingui-explicit-id
 msgid "settings.save.failed"
-msgstr "Save failed"
+msgstr "Changes not saved"
 
 #. js-lingui-explicit-id
-msgid "settings.save.request.failed"
-msgstr "The settings request failed."
+msgid "settings.save.failedPages"
+msgstr "Review: {pages}"
+
+#. js-lingui-explicit-id
+msgid "settings.save.invalid"
+msgstr "Review your settings"
+
+#. js-lingui-explicit-id
+msgid "settings.save.loading"
+msgstr "Loading preferences…"
+
+#. js-lingui-explicit-id
+msgid "settings.save.partial"
+msgstr "Some changes could not be saved"
+
+#. js-lingui-explicit-id
+msgid "settings.save.refresh"
+msgstr "Changes saved. View needs updating."
+
+#. js-lingui-explicit-id
+msgid "settings.save.retryRead"
+msgstr "Retry reading"
 
 #. js-lingui-explicit-id
 msgid "settings.save.saved"
-msgstr "Saved"
+msgstr "Changes saved"
 
 #. js-lingui-explicit-id
 msgid "settings.save.saving"
 msgstr "Saving..."
 
 #. js-lingui-explicit-id
-msgid "settings.save.success.title"
-msgstr "Saved {label}"
+msgid "settings.save.successfulPages"
+msgstr "Saved: {pages}"
 
 #. js-lingui-explicit-id
 msgid "settings.save.unsaved"
-msgstr "Unsaved"
+msgstr "Unsaved changes"
+
+#. js-lingui-explicit-id
+msgid "settings.search.alias.color"
+msgstr "light | dark | automatic appearance | change colors"
+
+#. js-lingui-explicit-id
+msgid "settings.search.alias.notifications"
+msgstr "notification | toast | popup | mute | duration | toast duration"
+
+#. js-lingui-explicit-id
+msgid "settings.search.alias.stt"
+msgstr "stt | microphone | dictation | speech recognition | audio to text"
+
+#. js-lingui-explicit-id
+msgid "settings.search.alias.tts"
+msgstr "tts | speech synthesis | read aloud | audio preview"
+
+#. js-lingui-explicit-id
+msgid "settings.search.clear"
+msgstr "Clear search"
 
 #. js-lingui-explicit-id
 msgid "settings.secrets.action.cancel"
@@ -20612,8 +20884,24 @@ msgid "settings.secrets.action.save"
 msgstr "Save policy"
 
 #. js-lingui-explicit-id
+msgid "settings.secrets.close.named"
+msgstr "Close editor: {name}"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.details"
+msgstr "How masking and secret resolution work"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.edit.named"
+msgstr "Edit secret: {name}"
+
+#. js-lingui-explicit-id
 msgid "settings.secrets.history.empty"
 msgstr "No resolves recorded."
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.history.named"
+msgstr "View history: {name}"
 
 #. js-lingui-explicit-id
 msgid "settings.secrets.history.title"
@@ -20628,8 +20916,12 @@ msgid "settings.secrets.list.title"
 msgstr "Registered secrets"
 
 #. js-lingui-explicit-id
+msgid "settings.secrets.masking"
+msgstr "Registered values are masked in model-visible content and resolved only at tool execution. Stored values are never returned to the browser."
+
+#. js-lingui-explicit-id
 msgid "settings.secrets.page.description"
-msgstr "Registered secrets are masked everywhere the model can see and resolved only when a tool executes. Values are never sent to the browser; reveal them with the CLI."
+msgstr "Register sensitive values and choose which tools may use them."
 
 #. js-lingui-explicit-id
 msgid "settings.secrets.page.title"
@@ -20646,6 +20938,10 @@ msgstr "Paste a value to mask it across every session. Re-registering a known va
 #. js-lingui-explicit-id
 msgid "settings.secrets.register.title"
 msgstr "Register a secret"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.remove.named"
+msgstr "Remove secret: {name}"
 
 #. js-lingui-explicit-id
 msgid "settings.secrets.removeConfirm.desc"
@@ -20729,7 +21025,7 @@ msgstr "Secret value"
 
 #. js-lingui-explicit-id
 msgid "settings.skills.agents.desc"
-msgstr "Load Agent Skills from .agents/skills directories (default: on)."
+msgstr "Discover Agent Skills available on this device."
 
 #. js-lingui-explicit-id
 msgid "settings.skills.agents.title"
@@ -20737,7 +21033,7 @@ msgstr "Agent Skills"
 
 #. js-lingui-explicit-id
 msgid "settings.skills.claude.desc"
-msgstr "Load Claude Code skills from .claude/skills directories (default: on)."
+msgstr "Discover Claude Code skills available on this device."
 
 #. js-lingui-explicit-id
 msgid "settings.skills.claude.title"
@@ -20745,15 +21041,23 @@ msgstr "Claude Code"
 
 #. js-lingui-explicit-id
 msgid "settings.skills.codex.desc"
-msgstr "Load Codex skills from .codex/skills directories (default: on)."
+msgstr "Discover Codex skills available on this device."
 
 #. js-lingui-explicit-id
 msgid "settings.skills.codex.title"
 msgstr "Codex"
 
 #. js-lingui-explicit-id
+msgid "settings.skills.directories"
+msgstr "Discovery directories"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.directories.description"
+msgstr "Agent Skills: .agents/skills. Claude Code: .claude/skills. Codex: .codex/skills. OpenClaw: .openclaw/skills and workspace skills directories."
+
+#. js-lingui-explicit-id
 msgid "settings.skills.openclaw.desc"
-msgstr "Load OpenClaw skills from .openclaw/skills and workspace skills directories (default: on)."
+msgstr "Discover OpenClaw skills available on this device."
 
 #. js-lingui-explicit-id
 msgid "settings.skills.openclaw.title"
@@ -21105,7 +21409,7 @@ msgstr "Needs attention"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.available"
-msgstr "Available to connect"
+msgstr "Accounts with usage data"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.connectable.description"
@@ -21129,19 +21433,19 @@ msgstr "Connected accounts"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.connectedUsage.description"
-msgstr "Quota data is provider-specific; unavailable means Synergy has no reliable endpoint for that account."
+msgstr "Usage support and query results are shown separately from account authorization."
 
 #. js-lingui-explicit-id
 msgid "settings.usage.connectedUsage.empty"
-msgstr "No connected usage providers"
+msgstr "No connected services"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.connectedUsage.emptyDesc"
-msgstr "Connect Codex, Anthropic, Copilot, or OpenRouter to see account usage here."
+msgstr "Add a service in Providers to see its usage support and account health."
 
 #. js-lingui-explicit-id
 msgid "settings.usage.connectedUsage.title"
-msgstr "Connected usage"
+msgstr "Connected services"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.cooldown"
@@ -21150,6 +21454,18 @@ msgstr "Cooldown until {date}"
 #. js-lingui-explicit-id
 msgid "settings.usage.credits"
 msgstr "Credits"
+
+#. js-lingui-explicit-id
+msgid "settings.usage.credits.available"
+msgstr "Available"
+
+#. js-lingui-explicit-id
+msgid "settings.usage.credits.none"
+msgstr "No credits"
+
+#. js-lingui-explicit-id
+msgid "settings.usage.credits.unlimited"
+msgstr "Unlimited"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.error.title"
@@ -21180,12 +21496,20 @@ msgid "settings.usage.page.title"
 msgstr "Usage"
 
 #. js-lingui-explicit-id
+msgid "settings.usage.pending"
+msgstr "Not queried yet"
+
+#. js-lingui-explicit-id
 msgid "settings.usage.plan"
 msgstr "Plan: {plan}"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.providerRenews"
 msgstr "Provider renews {date}"
+
+#. js-lingui-explicit-id
+msgid "settings.usage.queryFailed"
+msgstr "Query failed"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.refresh"
@@ -21205,166 +21529,230 @@ msgstr "Retry"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.unavailable"
-msgstr "Usage unavailable for this provider."
+msgstr "Usage has not been queried for this account."
 
 #. js-lingui-explicit-id
-msgid "settings.voice.apiKey.saved"
-msgstr "Saved"
+msgid "settings.usage.unsupported"
+msgstr "Not supported"
 
 #. js-lingui-explicit-id
-msgid "settings.voice.cancel"
-msgstr "Cancel"
+msgid "settings.usage.unsupported.description"
+msgstr "Usage queries are not supported for this service."
 
 #. js-lingui-explicit-id
-msgid "settings.voice.load.error"
-msgstr "Voice settings could not be loaded."
+msgid "settings.validation.integer"
+msgstr "Enter a whole number greater than zero."
+
+#. js-lingui-explicit-id
+msgid "settings.validation.nonNegative"
+msgstr "Enter zero or a positive number."
+
+#. js-lingui-explicit-id
+msgid "settings.validation.positive"
+msgstr "Enter a number greater than zero."
+
+#. js-lingui-explicit-id
+msgid "settings.validation.probability"
+msgstr "Enter a number from 0 to 1."
+
+#. js-lingui-explicit-id
+msgid "settings.validation.toolOverrides"
+msgstr "Use a JSON object or one tool=seconds pair per line. Each timeout must be greater than zero."
+
+#. js-lingui-explicit-id
+msgid "settings.validation.workers"
+msgstr "Enter a whole number from 1 to 64, or leave empty for automatic capacity."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.advanced"
+msgstr "Advanced options"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.configure"
+msgstr "Configure {ability}"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.default"
+msgstr "Use default"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.doneEditing"
+msgstr "Done editing {ability}"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.endpoint"
+msgstr "API endpoint"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.field.context"
+msgstr "{ability}: {field}"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.instructions"
+msgstr "Delivery instructions"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.key"
+msgstr "API key"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.key.configured"
+msgstr "Configured"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.key.hint"
+msgstr "Leave the replacement empty to keep your existing key."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.key.newHint"
+msgstr "API key for this audio service."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.key.remove"
+msgstr "Remove key"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.key.removing"
+msgstr "Will be removed on save"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.key.replace"
+msgstr "Replace key"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.key.undo"
+msgstr "Keep existing key"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.language"
+msgstr "Recognition language"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.language.hint"
+msgstr "Leave empty to detect automatically, or enter a language code such as zh or en."
 
 #. js-lingui-explicit-id
 msgid "settings.voice.load.retry"
 msgstr "Retry"
 
 #. js-lingui-explicit-id
+msgid "settings.voice.loading"
+msgstr "Loading voice settings…"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.model"
+msgstr "Model"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.model.hint"
+msgstr "Enter an audio model ID supported by this service."
+
+#. js-lingui-explicit-id
 msgid "settings.voice.page.description"
-msgstr "Configure OpenAI-compatible speech-to-text and text-to-speech endpoints."
+msgstr "Speak to Synergy and listen to answers."
 
 #. js-lingui-explicit-id
 msgid "settings.voice.page.title"
 msgstr "Voice"
 
 #. js-lingui-explicit-id
-msgid "settings.voice.save"
-msgstr "Save"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.saved.description"
-msgstr "Voice configuration was updated."
-
-#. js-lingui-explicit-id
-msgid "settings.voice.saved.title"
-msgstr "Voice settings saved"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.saveFailed.description"
-msgstr "Unable to update the voice configuration."
-
-#. js-lingui-explicit-id
-msgid "settings.voice.saveFailed.title"
-msgstr "Voice settings could not be saved"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.saving"
-msgstr "Saving..."
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.apiKey.description"
-msgstr "API key for the speech-to-text service."
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.apiKey.title"
-msgstr "API Key"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.baseURL.description"
-msgstr "Speech-to-text endpoint. Leave empty for the OpenAI default."
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.baseURL.placeholder"
-msgstr "https://api.openai.com/v1"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.baseURL.title"
-msgstr "Base URL"
-
-#. js-lingui-explicit-id
 msgid "settings.voice.stt.description"
-msgstr "Any OpenAI-compatible endpoint works, e.g. DashScope qwen3-asr-flash supports Chinese dialect recognition. Voice dictation is disabled when the model is empty."
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.language.description"
-msgstr "BCP-47 language hint for transcription, e.g. zh or en. Auto-detected when empty."
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.language.placeholder"
-msgstr "zh"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.language.title"
-msgstr "Language (optional)"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.model.description"
-msgstr "Speech-to-text model, e.g. gpt-4o-mini-transcribe."
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.model.placeholder"
-msgstr "gpt-4o-mini-transcribe"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.model.title"
-msgstr "Model"
+msgstr "Turn microphone recordings into text."
 
 #. js-lingui-explicit-id
 msgid "settings.voice.stt.title"
-msgstr "Speech recognition (STT)"
+msgstr "Voice input"
 
 #. js-lingui-explicit-id
-msgid "settings.voice.tts.apiKey.description"
-msgstr "API key for the text-to-speech service."
+msgid "settings.voice.summary"
+msgstr "{service} · {model}"
 
 #. js-lingui-explicit-id
-msgid "settings.voice.tts.apiKey.title"
-msgstr "API Key"
+msgid "settings.voice.template"
+msgstr "Service"
 
 #. js-lingui-explicit-id
-msgid "settings.voice.tts.baseURL.description"
-msgstr "Text-to-speech endpoint. Leave empty for the OpenAI default."
+msgid "settings.voice.template.compatible"
+msgstr "Custom compatible service"
 
 #. js-lingui-explicit-id
-msgid "settings.voice.tts.baseURL.placeholder"
-msgstr "https://api.openai.com/v1"
+msgid "settings.voice.test.destination"
+msgstr "Microphone testing sends audio to {endpoint} and requires microphone permission. Your service may charge for usage."
 
 #. js-lingui-explicit-id
-msgid "settings.voice.tts.baseURL.title"
-msgstr "Base URL"
+msgid "settings.voice.test.enableFirst"
+msgstr "Enable this capability, complete its model configuration, and save before testing."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.failed"
+msgstr "The voice test failed. Check your service settings and try again."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.generating"
+msgstr "Generating audio…"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.permission"
+msgstr "Microphone permission was denied. Allow microphone access in your browser and try again."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.preview"
+msgstr "Preview voice"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.previewDestination"
+msgstr "Preview sends sample text to {endpoint}. Your service may charge for usage."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.record"
+msgstr "Test microphone"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.sample"
+msgstr "Hello, this is Synergy. Your voice preview is ready."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.saveFirst"
+msgstr "Save your voice changes before testing."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.silence"
+msgstr "No speech was detected. Check your microphone and try again."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.stop"
+msgstr "Stop"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.stopped"
+msgstr "Test stopped."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.transcribing"
+msgstr "Transcribing…"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.unsupported"
+msgstr "This browser does not support microphone recording."
 
 #. js-lingui-explicit-id
 msgid "settings.voice.tts.description"
-msgstr "Any OpenAI-compatible endpoint works, e.g. DashScope cosyvoice-v3-flash. The speak tool is disabled when the model is empty."
-
-#. js-lingui-explicit-id
-msgid "settings.voice.tts.instructions.description"
-msgstr "Natural-language delivery instructions such as tone and pace."
-
-#. js-lingui-explicit-id
-msgid "settings.voice.tts.instructions.title"
-msgstr "Instructions (optional)"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.tts.model.description"
-msgstr "Text-to-speech model, e.g. gpt-4o-mini-tts."
-
-#. js-lingui-explicit-id
-msgid "settings.voice.tts.model.placeholder"
-msgstr "gpt-4o-mini-tts"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.tts.model.title"
-msgstr "Model"
+msgstr "Allow Synergy to read text using your speech service."
 
 #. js-lingui-explicit-id
 msgid "settings.voice.tts.title"
-msgstr "Speech synthesis (TTS)"
+msgstr "Read answers aloud"
 
 #. js-lingui-explicit-id
-msgid "settings.voice.tts.voice.description"
-msgstr "Voice name for synthesis, e.g. alloy. Provider-specific."
+msgid "settings.voice.validation.endpoint"
+msgstr "Enter a valid HTTP or HTTPS endpoint."
 
 #. js-lingui-explicit-id
-msgid "settings.voice.tts.voice.placeholder"
-msgstr "alloy"
+msgid "settings.voice.validation.model"
+msgstr "Enter a model before enabling this capability."
 
 #. js-lingui-explicit-id
-msgid "settings.voice.tts.voice.title"
+msgid "settings.voice.voice"
 msgstr "Voice"
 
 #. js-lingui-explicit-id
@@ -21381,15 +21769,15 @@ msgstr "dirty"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.badge.external"
-msgstr "external"
+msgstr "Externally managed"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.badge.main"
-msgstr "main"
+msgstr "Project files"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.badge.managed"
-msgstr "managed"
+msgstr "Managed copy"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.badge.stale"
@@ -21397,7 +21785,7 @@ msgstr "stale"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.count"
-msgstr "{worktreeCount, plural, one {# worktree} other {# worktrees}} across {projectCount, plural, one {# project} other {# projects}}"
+msgstr "{worktreeCount, plural, one {# independent copy} other {# independent copies}} across {projectCount, plural, one {# project} other {# projects}}"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.delete"
@@ -21413,19 +21801,19 @@ msgstr "One or more project repositories could not be read. Try refreshing after
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.empty.none"
-msgstr "No worktrees found"
+msgstr "No independent copies found"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.empty.none.desc"
-msgstr "Managed worktrees will appear here once created."
+msgstr "Managed copies will appear here once created."
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.empty.unavailable"
-msgstr "Worktrees unavailable"
+msgstr "Independent copies unavailable"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.loadError.all"
-msgstr "Worktrees failed to load"
+msgstr "Independent copies failed to load"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.loadError.desc"
@@ -21437,7 +21825,7 @@ msgstr "Try again."
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.loadError.some"
-msgstr "Some worktrees failed to load"
+msgstr "Some independent copies failed to load"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.page.description"
@@ -21457,7 +21845,7 @@ msgstr "Refreshing..."
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.remove.error"
-msgstr "Failed to remove worktree"
+msgstr "Failed to remove independent copy"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.remove.error.retry"
@@ -21473,11 +21861,11 @@ msgstr "Force removing..."
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.remove.force.success"
-msgstr "Worktree force-removed"
+msgstr "Independent copy force-removed"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.remove.success"
-msgstr "Worktree removed"
+msgstr "Independent copy removed"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.section.description"
@@ -23018,6 +23406,18 @@ msgstr "Zoom in"
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.zoomOut"
 msgstr "Zoom out"
+
+#. js-lingui-explicit-id
+msgid "ui.input.copy.named"
+msgstr "Copy {field}"
+
+#. js-lingui-explicit-id
+msgid "ui.input.copy.value"
+msgstr "field value"
+
+#. js-lingui-explicit-id
+msgid "ui.list.clearSearch"
+msgstr "Clear search"
 
 #. js-lingui-explicit-id
 msgid "ui.list.loading"

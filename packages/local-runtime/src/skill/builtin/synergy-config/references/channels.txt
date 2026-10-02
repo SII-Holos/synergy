@@ -8,7 +8,7 @@ Channels integrate Synergy with external messaging platforms.
 
 1. **Create a Feishu app** — Go to [Feishu Open Platform](https://open.feishu.cn/app) (China) or [Lark Developer](https://open.larksuite.com/app) (international). Create a new app and note the App ID and App Secret.
 2. **Enable bot capability** — In the app settings, enable "Robot" capability under "Application Capabilities".
-3. **Configure event subscription** — Set the request URL to your Synergy server's public endpoint: `https://<your-server>/api/channel/feishu/webhook`. Enable events: `im.message.receive_v1`.
+3. **Configure event subscription** — Select the long-connection (WebSocket) delivery mode and enable `im.message.receive_v1`. Synergy connects using the App ID and App Secret; this provider does not use a public webhook endpoint.
 4. **Add permissions** — Grant these scopes: `im:message`, `im:message:send_as_bot`, `im:chat:readonly`, `im:resource`. For sender name resolution: `contact:user.base:readonly`.
 5. **Publish the app** — Submit for review or use in development mode for testing.
 6. **Configure Synergy** — Add the channel config to `90-channels.jsonc` with your App ID and App Secret.
@@ -116,6 +116,12 @@ Holos is configured under `100-holos.jsonc`, not in channels:
 
 See the Holos domain file (`100-holos.jsonc`) — do not add `type: "holos"` under `channel`.
 
+### GitHub channel
+
+The GitHub channel uses a GitHub App installation to poll selected repositories. Configure `SYNERGY_GITHUB_APP_ID` and `SYNERGY_GITHUB_APP_PRIVATE_KEY` in the server environment, then the installation and repository account settings in `90-channels.jsonc`. Personal GitHub login in Settings is a separate identity and does not configure these channel credentials.
+
+Settings > Channels provides setup guidance and links to the channels domain file. Web shows the server-owned path with a copy action; supported Desktop hosts can open the file. Keep credentials in their owning channel or server environment boundary.
+
 ### Reload
 
 ```
@@ -150,4 +156,4 @@ Holos config belongs in `100-holos.jsonc`, not in channels. Do not edit model, p
 - **Sender names showing as IDs** — set `resolveSenderNames: true` and ensure the app has `contact:user.base:readonly` scope
 - **Account model ignored** — verify `model` uses `providerID/modelID`; a conversation-level `/model` command overrides the account default until a new conversation is started
 - **Effort selector missing** — the selected account model must expose variants in the active provider catalog; models without variants use provider defaults
-- **Webhook not receiving events** — verify the Feishu app's event subscription URL is correct and publicly accessible; check the server is running and the `/api/channel/feishu/webhook` endpoint responds
+- **Events not arriving** — verify long-connection delivery is selected, the message event and bot permissions are enabled, and the server can establish the Feishu/Lark WebSocket connection.

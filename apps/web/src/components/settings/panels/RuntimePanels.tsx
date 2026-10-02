@@ -1,3 +1,4 @@
+import { settingsFieldCopy } from "../settings-field-copy"
 import type { MessageDescriptor } from "@lingui/core"
 
 import { useLingui } from "@lingui/solid"
@@ -5,10 +6,16 @@ import type { Agent, AgentWorkerCapacityStatus, CortexConcurrencyStatus } from "
 import { For, Show } from "solid-js"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
-import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
+import { SettingRow } from "../components/SettingsSettingRow"
 import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { SettingsStepScale } from "../components/SettingsStepScale"
-import { SettingsFieldGrid, SettingsPage, SettingsPathRow, SettingsSection } from "../components/SettingsPrimitives"
+import {
+  SettingsAdvanced,
+  SettingsFieldGrid,
+  SettingsPage,
+  SettingsPathRow,
+  SettingsSection,
+} from "../components/SettingsPrimitives"
 import type { RuntimeStore } from "../types"
 import type { DesktopShellEnvironmentDiagnostics } from "@/context/platform"
 import { concurrencyPressureState } from "./runtime-concurrency-model"
@@ -17,10 +24,13 @@ import { agentWorkerCapacityDisplay } from "./runtime-agent-workers-model"
 const managedByEnvLabel = { id: "settings.runtime.managedByEnv", message: "Managed by environment" }
 
 /* Questions */
-const questionsPageTitle = { id: "settings.runtime.questions.page.title", message: "Questions" }
-const questionsPageDesc = { id: "settings.runtime.questions.page.desc", message: "Question timeout behavior." }
+const questionsPageTitle = { id: "settings.runtime.questions.page.title", message: "Waiting for response" }
+const questionsPageDesc = {
+  id: "settings.runtime.questions.page.desc",
+  message: "Choose how long unanswered questions remain open.",
+}
 const timeoutSectionTitle = { id: "settings.runtime.questions.timeout.title", message: "Timeout" }
-const responseRowTitle = { id: "settings.runtime.questions.responseRow.title", message: "Response Timeout" }
+const responseRowTitle = settingsFieldCopy.questionResponse
 const responseRowDesc = {
   id: "settings.runtime.questions.responseRow.desc",
   message: "Auto-expire unanswered questions",
@@ -42,7 +52,7 @@ const compactionPageDesc = {
   message: "Session compaction and history limits.",
 }
 const ctxSectionTitle = { id: "settings.runtime.compaction.ctx.title", message: "Context Management" }
-const autoCompactRowTitle = { id: "settings.runtime.compaction.autoCompact.title", message: "Auto Compact" }
+const autoCompactRowTitle = settingsFieldCopy.compactionAuto
 const autoCompactRowDesc = {
   id: "settings.runtime.compaction.autoCompact.desc",
   message: "Compact sessions when context is full",
@@ -52,16 +62,16 @@ const pruneRowDesc = {
   id: "settings.runtime.compaction.prune.desc",
   message: "Prune old tool outputs during compaction",
 }
-const overflowRowTitle = { id: "settings.runtime.compaction.overflow.title", message: "Overflow Threshold" }
+const overflowRowTitle = settingsFieldCopy.compactionOverflow
 const overflowRowDesc = {
   id: "settings.runtime.compaction.overflow.desc",
   message: "Context usage fraction that triggers auto-compaction",
 }
 const overflowAria = { id: "settings.runtime.compaction.overflowAria", message: "Compaction overflow threshold" }
-const maxImagesRowTitle = { id: "settings.runtime.compaction.maxImages.title", message: "Max History Images" }
+const maxImagesRowTitle = settingsFieldCopy.compactionImages
 const maxImagesRowDesc = {
   id: "settings.runtime.compaction.maxImages.desc",
-  message: "Maximum historical images sent as base64 per request",
+  message: "Maximum images from earlier messages included in each request",
 }
 const maxImagesAria = { id: "settings.runtime.compaction.maxImagesAria", message: "Maximum history images" }
 const codexRemoteRowTitle = {
@@ -89,72 +99,71 @@ const maxImageOpts = [
 ]
 
 /* Agents */
-const agentsPageTitle = { id: "settings.runtime.agents.page.title", message: "Agents" }
+const agentsPageTitle = { id: "settings.runtime.agents.page.title", message: "Agent runtime" }
 const agentsPageDesc = {
   id: "settings.runtime.agents.page.desc",
-  message: "Agent capacity, prompt behavior, provider timeouts, and tool timeout controls.",
+  message: "Choose the default agent and how much work can run at once.",
 }
 const agentSectionTitle = { id: "settings.runtime.agents.agent.title", message: "Agent" }
-const coauthorRowTitle = { id: "settings.runtime.agents.coauthor.title", message: "Co-author Reminder" }
+const coauthorRowTitle = settingsFieldCopy.coauthor
 const coauthorRowDesc = {
   id: "settings.runtime.agents.coauthor.desc",
   message: "Remind agents to include the Synergy co-author footer when creating git commits.",
 }
-const defaultAgentRowTitle = { id: "settings.runtime.agents.defaultAgent.title", message: "Default Agent" }
+const defaultAgentRowTitle = settingsFieldCopy.defaultAgent
 const defaultAgentRowDesc = {
   id: "settings.runtime.agents.defaultAgent.desc",
   message: "Primary agent for new conversations. Hidden and subagent definitions are excluded.",
 }
-const agentWorkersRowTitle = { id: "settings.runtime.agents.agentWorkers.title", message: "Agent Worker Pool" }
+const agentWorkersRowTitle = settingsFieldCopy.agentWorkers
 const agentWorkersRowDesc = {
   id: "settings.runtime.agents.agentWorkers.desc",
-  message:
-    "Maximum model turns that can run in parallel. When reduced, active turns finish before excess workers retire.",
+  message: "Maximum model requests running at once. Reducing this limit lets active requests finish.",
 }
 const agentWorkersPlaceholder = {
   id: "settings.runtime.agents.agentWorkers.placeholder",
   message: "Auto",
 }
-const invokeRowTitle = { id: "settings.runtime.agents.invoke.title", message: "Invoke Timeout" }
+const invokeRowTitle = settingsFieldCopy.invokeTimeout
 const invokeRowDesc = {
   id: "settings.runtime.agents.invoke.desc",
-  message: "Milliseconds before a task invoke call times out.",
+  message: "Seconds before a task invoke call times out.",
 }
-const concurrencyRowTitle = { id: "settings.runtime.agents.concurrency.title", message: "Max Concurrent Subagents" }
+const concurrencyRowTitle = settingsFieldCopy.agentConcurrency
 const concurrencyRowDesc = {
   id: "settings.runtime.agents.concurrency.desc",
-  message: "Maximum Cortex subagent tasks running at once. Memory pressure can temporarily queue new tasks sooner.",
+  message: "Maximum collaborator tasks running at once. New tasks may queue sooner when memory is limited.",
 }
 const providerSectionTitle = { id: "settings.runtime.agents.provider.title", message: "Provider" }
-const ttfbRowTitle = { id: "settings.runtime.agents.ttfb.title", message: "TTFB Timeout" }
+const ttfbRowTitle = settingsFieldCopy.providerTtfb
 const ttfbRowDesc = {
   id: "settings.runtime.agents.ttfb.desc",
-  message: "Milliseconds to wait for the first response byte from a provider.",
+  message: "Seconds to wait for the first response byte from a provider.",
 }
-const idleRowTitle = { id: "settings.runtime.agents.idle.title", message: "Idle Timeout" }
+const idleRowTitle = settingsFieldCopy.providerIdle
 const idleRowDesc = {
   id: "settings.runtime.agents.idle.desc",
-  message: "Milliseconds of provider inactivity before the connection is dropped.",
+  message: "Seconds of provider inactivity before the connection is dropped.",
 }
-const wallRowTitle = { id: "settings.runtime.agents.wall.title", message: "Wall Timeout" }
+const wallRowTitle = settingsFieldCopy.providerWall
 const wallRowDesc = {
   id: "settings.runtime.agents.wall.desc",
-  message: "Hard cap in milliseconds for the total provider call duration.",
+  message: "Maximum provider call duration in seconds. Leave empty to use the default; zero disables the limit.",
 }
 const toolsSectionTitle = { id: "settings.runtime.agents.tools.title", message: "Tools" }
-const toolTimeoutRowTitle = { id: "settings.runtime.agents.toolTimeout.title", message: "Default Tool Timeout" }
+const toolTimeoutRowTitle = settingsFieldCopy.toolTimeout
 const toolTimeoutRowDesc = {
   id: "settings.runtime.agents.toolTimeout.desc",
-  message: "Milliseconds before a tool execution attempt times out.",
+  message: "Seconds before a tool execution attempt times out.",
 }
-const overridesRowTitle = { id: "settings.runtime.agents.overrides.title", message: "Tool Overrides" }
+const overridesRowTitle = settingsFieldCopy.toolOverrides
 const overridesRowDesc = {
   id: "settings.runtime.agents.overrides.desc",
   message: "Per-tool timeout overrides as JSON or key-value pairs.",
 }
 
 /* Observability */
-const observPageTitle = { id: "settings.runtime.observ.page.title", message: "Observability" }
+const observPageTitle = { id: "settings.runtime.observ.page.title", message: "Diagnostics" }
 const observPageDesc = { id: "settings.runtime.observ.page.desc", message: "Logs, traces, and diagnostics." }
 const loggingSectionTitle = { id: "settings.runtime.observ.logging.title", message: "Logging" }
 const logLevelRowTitle = { id: "settings.runtime.observ.logLevel.title", message: "Log Level" }
@@ -285,6 +294,7 @@ export function TimeoutsPanel(props: {
   onDefaultAgentChange: (agent: string) => void
   concurrencyStatus?: CortexConcurrencyStatus
   capacityStatus?: AgentWorkerCapacityStatus
+  fieldError?: (key: keyof RuntimeStore) => string | undefined
   popoverLayer?: HTMLElement
 }) {
   const { _ } = useLingui()
@@ -312,22 +322,6 @@ export function TimeoutsPanel(props: {
     return undefined
   }
 
-  const resetInvalidConcurrency = () => {
-    const parsed = Number(props.runtime.cortexConcurrency)
-    if (Number.isInteger(parsed) && parsed > 0) return
-    props.onRuntimeChange(
-      "cortexConcurrency",
-      String(props.concurrencyStatus?.configured ?? props.concurrencyStatus?.effective ?? 8),
-    )
-  }
-  const resetInvalidAgentWorkers = () => {
-    const draft = props.runtime.agentWorkers.trim()
-    if (draft === "") return
-    const parsed = Number(draft)
-    if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 64) return
-    const configured = props.capacityStatus?.configured
-    props.onRuntimeChange("agentWorkers", configured === null || configured === undefined ? "" : String(configured))
-  }
   const agentWorkerStateLabel = () => {
     const display = agentWorkerCapacityDisplay(props.capacityStatus)
     if (!display) return undefined
@@ -382,23 +376,11 @@ export function TimeoutsPanel(props: {
               max="64"
               step="1"
               value={props.runtime.agentWorkers}
+              validationState={props.fieldError?.("agentWorkers") ? "invalid" : "valid"}
+              error={props.fieldError?.("agentWorkers")}
               placeholder={_(agentWorkersPlaceholder)}
               class="settings-row-control-text"
-              onBlur={resetInvalidAgentWorkers}
               onChange={(value) => props.onRuntimeChange("agentWorkers", value)}
-            />
-          }
-        />
-        <SettingRow
-          title={_(invokeRowTitle)}
-          description={_(invokeRowDesc)}
-          trailing={
-            <TextField
-              type="number"
-              value={props.runtime.invokeTimeout}
-              placeholder="900"
-              class="settings-row-control-text"
-              onChange={(value) => props.onRuntimeChange("invokeTimeout", value)}
             />
           }
         />
@@ -412,85 +394,129 @@ export function TimeoutsPanel(props: {
               min="1"
               step="1"
               value={displayedConcurrency()}
+              validationState={props.fieldError?.("cortexConcurrency") ? "invalid" : "valid"}
+              error={props.fieldError?.("cortexConcurrency")}
               placeholder="8"
               disabled={managedByEnvironment()}
               class="settings-row-control-text"
-              onBlur={resetInvalidConcurrency}
               onChange={(value) => props.onRuntimeChange("cortexConcurrency", value)}
             />
           }
         />
       </SettingsSection>
-      <SettingsSection title={_(providerSectionTitle)}>
-        <SettingRow
-          title={_(ttfbRowTitle)}
-          description={_(ttfbRowDesc)}
-          trailing={
-            <TextField
-              type="number"
-              value={props.runtime.providerTtfbTimeout}
-              placeholder="600"
-              class="settings-row-control-text"
-              onChange={(value) => props.onRuntimeChange("providerTtfbTimeout", value)}
-            />
-          }
-        />
-        <SettingRow
-          title={_(idleRowTitle)}
-          description={_(idleRowDesc)}
-          trailing={
-            <TextField
-              type="number"
-              value={props.runtime.providerIdleTimeout}
-              placeholder="180"
-              class="settings-row-control-text"
-              onChange={(value) => props.onRuntimeChange("providerIdleTimeout", value)}
-            />
-          }
-        />
-        <SettingRow
-          title={_(wallRowTitle)}
-          description={_(wallRowDesc)}
-          trailing={
-            <TextField
-              type="number"
-              value={props.runtime.providerWallTimeout}
-              placeholder="0"
-              class="settings-row-control-text"
-              onChange={(value) => props.onRuntimeChange("providerWallTimeout", value)}
-            />
-          }
-        />
-      </SettingsSection>
-      <SettingsSection title={_(toolsSectionTitle)}>
-        <SettingRow
-          title={_(toolTimeoutRowTitle)}
-          description={_(toolTimeoutRowDesc)}
-          trailing={
-            <TextField
-              type="number"
-              value={props.runtime.toolDefaultTimeout}
-              placeholder="300"
-              class="settings-row-control-text"
-              onChange={(value) => props.onRuntimeChange("toolDefaultTimeout", value)}
-            />
-          }
-        />
-        <SettingRow
-          title={_(overridesRowTitle)}
-          description={_(overridesRowDesc)}
-          trailing={
-            <TextField
-              type="text"
-              multiline
-              value={props.runtime.toolOverrides}
-              placeholder="bash=600\nwebfetch=120"
-              class="settings-row-control-text"
-              onChange={(value) => props.onRuntimeChange("toolOverrides", value)}
-            />
-          }
-        />
-      </SettingsSection>
+      <SettingsAdvanced
+        id="timeouts"
+        title={_({ id: "settings.runtime.agents.advanced", message: "Service and tool timeouts" })}
+        fields={[invokeRowTitle, ttfbRowTitle, idleRowTitle, wallRowTitle, toolTimeoutRowTitle, overridesRowTitle].map(
+          (field) => _(field),
+        )}
+        forceOpen={[
+          "invokeTimeout",
+          "providerTtfbTimeout",
+          "providerIdleTimeout",
+          "providerWallTimeout",
+          "toolDefaultTimeout",
+          "toolOverrides",
+        ].some((key) => props.fieldError?.(key as keyof RuntimeStore))}
+      >
+        <SettingsSection title={_(agentSectionTitle)}>
+          <SettingRow
+            title={_(invokeRowTitle)}
+            description={_(invokeRowDesc)}
+            trailing={
+              <TextField
+                type="number"
+                value={props.runtime.invokeTimeout}
+                validationState={props.fieldError?.("invokeTimeout") ? "invalid" : "valid"}
+                error={props.fieldError?.("invokeTimeout")}
+                placeholder="900"
+                class="settings-row-control-text"
+                onChange={(value) => props.onRuntimeChange("invokeTimeout", value)}
+              />
+            }
+          />
+        </SettingsSection>
+        <SettingsSection title={_(providerSectionTitle)}>
+          <SettingRow
+            title={_(ttfbRowTitle)}
+            description={_(ttfbRowDesc)}
+            trailing={
+              <TextField
+                type="number"
+                value={props.runtime.providerTtfbTimeout}
+                validationState={props.fieldError?.("providerTtfbTimeout") ? "invalid" : "valid"}
+                error={props.fieldError?.("providerTtfbTimeout")}
+                placeholder="600"
+                class="settings-row-control-text"
+                onChange={(value) => props.onRuntimeChange("providerTtfbTimeout", value)}
+              />
+            }
+          />
+          <SettingRow
+            title={_(idleRowTitle)}
+            description={_(idleRowDesc)}
+            trailing={
+              <TextField
+                type="number"
+                value={props.runtime.providerIdleTimeout}
+                validationState={props.fieldError?.("providerIdleTimeout") ? "invalid" : "valid"}
+                error={props.fieldError?.("providerIdleTimeout")}
+                placeholder="180"
+                class="settings-row-control-text"
+                onChange={(value) => props.onRuntimeChange("providerIdleTimeout", value)}
+              />
+            }
+          />
+          <SettingRow
+            title={_(wallRowTitle)}
+            description={_(wallRowDesc)}
+            trailing={
+              <TextField
+                type="number"
+                value={props.runtime.providerWallTimeout}
+                validationState={props.fieldError?.("providerWallTimeout") ? "invalid" : "valid"}
+                error={props.fieldError?.("providerWallTimeout")}
+                placeholder="0"
+                class="settings-row-control-text"
+                onChange={(value) => props.onRuntimeChange("providerWallTimeout", value)}
+              />
+            }
+          />
+        </SettingsSection>
+        <SettingsSection title={_(toolsSectionTitle)}>
+          <SettingRow
+            title={_(toolTimeoutRowTitle)}
+            description={_(toolTimeoutRowDesc)}
+            trailing={
+              <TextField
+                type="number"
+                value={props.runtime.toolDefaultTimeout}
+                validationState={props.fieldError?.("toolDefaultTimeout") ? "invalid" : "valid"}
+                error={props.fieldError?.("toolDefaultTimeout")}
+                placeholder="300"
+                class="settings-row-control-text"
+                onChange={(value) => props.onRuntimeChange("toolDefaultTimeout", value)}
+              />
+            }
+          />
+          <SettingRow
+            title={_(overridesRowTitle)}
+            description={_(overridesRowDesc)}
+            trailing={
+              <TextField
+                type="text"
+                multiline
+                value={props.runtime.toolOverrides}
+                validationState={props.fieldError?.("toolOverrides") ? "invalid" : "valid"}
+                error={props.fieldError?.("toolOverrides")}
+                placeholder="bash=600\nwebfetch=120"
+                class="settings-row-control-text"
+                onChange={(value) => props.onRuntimeChange("toolOverrides", value)}
+              />
+            }
+          />
+        </SettingsSection>
+      </SettingsAdvanced>
     </SettingsPage>
   )
 }
@@ -544,24 +570,30 @@ export function ObservabilityPanel(props: {
       </SettingsSection>
       <Show when={props.shellEnvironment}>
         {(environment) => (
-          <SettingsSection title={_(shellSectionTitle)} description={_(shellSectionDesc)}>
-            <SettingsPathRow
-              label={environment().shell ?? _(shellSourceInherited)}
-              path={environment().path}
-              status={environment().source === "login-shell" ? _(shellSourceLogin) : _(shellSourceInherited)}
-              description={environment().warning ? _(shellFallbackWarning) : _(shellPathLabel)}
-            />
-            <For each={environment().commands}>
-              {(command) => (
-                <SettingRow
-                  title={command.command}
-                  description={command.path ?? _(shellCommandMissing)}
-                  stateLabel={command.path ? _(shellCommandFound) : _(shellCommandMissing)}
-                  trailing={<span />}
-                />
-              )}
-            </For>
-          </SettingsSection>
+          <SettingsAdvanced
+            id="environment"
+            title={_(shellSectionTitle)}
+            fields={[_(shellSectionTitle), _(shellPathLabel)]}
+          >
+            <SettingsSection title={_(shellSectionTitle)} description={_(shellSectionDesc)}>
+              <SettingsPathRow
+                label={environment().shell ?? _(shellSourceInherited)}
+                path={environment().path}
+                status={environment().source === "login-shell" ? _(shellSourceLogin) : _(shellSourceInherited)}
+                description={environment().warning ? _(shellFallbackWarning) : _(shellPathLabel)}
+              />
+              <For each={environment().commands}>
+                {(command) => (
+                  <SettingRow
+                    title={command.command}
+                    description={command.path ?? _(shellCommandMissing)}
+                    stateLabel={command.path ? _(shellCommandFound) : _(shellCommandMissing)}
+                    trailing={<span />}
+                  />
+                )}
+              </For>
+            </SettingsSection>
+          </SettingsAdvanced>
         )}
       </Show>
     </SettingsPage>

@@ -1,9 +1,8 @@
 import { useLingui } from "@lingui/solid"
-import { For } from "solid-js"
 import type { ControlProfileSummary, SandboxStatus } from "@ericsanchezok/synergy-sdk/client"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
-import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
-import { SettingsStepScale } from "../components/SettingsStepScale"
+import { SettingRow } from "../components/SettingsSettingRow"
+import { SettingsChoices } from "../components/SettingsChoices"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { SafetyStore } from "../types"
 import { useFullAccessAcknowledgement } from "@/composables/use-full-access-acknowledgement"
@@ -85,19 +84,11 @@ const nonInteractiveRowTitle = {
 const nonInteractiveRowDesc = {
   id: "settings.controlProfile.nonInteractive.desc",
   message:
-    "Profile for sessions started by Channels and scheduled Agenda runs, which have nobody available to answer an approval prompt. Guarded is unavailable here because an unattended ask could never be answered. Changes apply to sessions created afterwards.",
+    "Used for new channel and scheduled sessions. Autonomous refuses work requiring approval; Full Access allows it without approval.",
 }
 const nonInteractiveAria = {
   id: "settings.controlProfile.nonInteractive.aria",
   message: "Non-interactive control profile",
-}
-const nonInteractiveAutonomousLabel = {
-  id: "settings.controlProfile.nonInteractive.autonomous",
-  message: "Autonomous",
-}
-const nonInteractiveFullAccessLabel = {
-  id: "settings.controlProfile.nonInteractive.fullAccess",
-  message: "Full Access",
 }
 
 export function PermissionsPanel(props: {
@@ -112,7 +103,7 @@ export function PermissionsPanel(props: {
           title={_(permModeRowTitle)}
           description={_(permModeRowDesc)}
           trailing={
-            <SettingsStepScale
+            <SettingsChoices
               value={props.safety.permission}
               ariaLabel={_(permModeAria)}
               options={[
@@ -162,7 +153,7 @@ export function SandboxPanel(props: {
           title={_(sandboxFallbackRowTitle)}
           description={_(sandboxFallbackRowDesc)}
           trailing={
-            <SettingsStepScale
+            <SettingsChoices
               value={props.safety.sandboxFallbackPolicy}
               ariaLabel={_(sandboxFallbackAria)}
               options={[
@@ -208,31 +199,27 @@ export function ControlProfilePanel(props: {
   return (
     <SettingsPage title={_(profilePageTitle)} description={_(profilePageDesc)}>
       <SettingsSection>
-        <div class="ds-profile-grid">
-          <For each={profiles()}>
-            {(profile) => (
-              <button
-                type="button"
-                class="ds-profile-card"
-                classList={{ "ds-profile-card-active": props.safety.controlProfile === profile.id }}
-                onClick={() => void selectProfile(profile.id)}
-              >
-                <span class="ds-profile-name">{controlProfileLabel(profile, _)}</span>
-                <span class="ds-profile-description">{controlProfileDescription(profile, _)}</span>
-              </button>
-            )}
-          </For>
-        </div>
+        <SettingsChoices
+          class="settings-profile-choices"
+          value={props.safety.controlProfile}
+          ariaLabel={_(profilePageTitle)}
+          options={profiles().map((profile) => ({
+            value: profile.id,
+            label: controlProfileLabel(profile, _),
+            description: controlProfileDescription(profile, _),
+          }))}
+          onChange={(value) => void selectProfile(value)}
+        />
         <SettingRow
           title={_(nonInteractiveRowTitle)}
           description={_(nonInteractiveRowDesc)}
           trailing={
-            <SettingsStepScale
+            <SettingsChoices
               value={props.safety.nonInteractiveControlProfile}
               ariaLabel={_(nonInteractiveAria)}
               options={[
-                { value: "autonomous", label: _(nonInteractiveAutonomousLabel) },
-                { value: "full_access", label: _(nonInteractiveFullAccessLabel) },
+                { value: "autonomous", label: controlProfileLabel({ id: "autonomous" }, _) },
+                { value: "full_access", label: controlProfileLabel({ id: "full_access" }, _) },
               ]}
               onChange={(value) => void selectNonInteractive(value)}
             />

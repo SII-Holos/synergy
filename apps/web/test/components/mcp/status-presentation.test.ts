@@ -101,15 +101,15 @@ describe("mcpStatusCopy", () => {
     ])
   })
 
-  test("falls back to ready/neutral copy for an undefined status", () => {
+  test("missing runtime data is unavailable without claiming readiness", () => {
     expect(mcpStatusCopy(undefined, identity)).toEqual({
-      label: "app.dialog.mcp.status.ready",
-      description: "app.dialog.mcp.status.readyDesc",
+      label: "app.dialog.mcp.status.unavailable",
+      description: "app.dialog.mcp.status.unavailableDesc",
       tone: "neutral",
     })
   })
 
-  test("only uninitialized and undefined fall back to the generic ready copy", () => {
+  test("absent runtime status is distinct from a server that has not started", () => {
     const ready = mcpStatusCopy(undefined, identity)
     const fallbacks = Object.entries(members)
       .filter(([, status]) => {
@@ -117,7 +117,7 @@ describe("mcpStatusCopy", () => {
         return copy.label === ready.label && copy.description === ready.description
       })
       .map(([name]) => name)
-    expect(fallbacks).toEqual(["uninitialized"])
+    expect(fallbacks).toEqual([])
   })
 })
 

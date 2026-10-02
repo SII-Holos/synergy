@@ -6,6 +6,23 @@ import { ensureInit } from "../../../../src/components/settings/hooks/useSetting
 import { defaultSettingsState } from "../../../../src/components/settings/types"
 
 describe("settings config patch", () => {
+  test("an untouched configuration without explicit timeout overrides stays clean", () => {
+    const [state, setSettings] = createStore(defaultSettingsState("enter", "system"))
+    ensureInit({
+      cfg: {},
+      setName: "global",
+      initialized: () => false,
+      initializedForSet: undefined,
+      refreshing: () => false,
+      sendShortcut: () => "enter",
+      colorScheme: () => "system",
+      setSettings,
+      setInitialized: () => {},
+      originalMcpsRef: { current: {} },
+      builtinMcps: [],
+    })
+    expect(buildPatch({ cfg: {}, state, originalMcps: {} })).not.toHaveProperty("timeout")
+  })
   test("persists a Feishu account model variant", () => {
     const state = defaultSettingsState("enter")
     state.channels.feishuAccounts = [

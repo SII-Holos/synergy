@@ -430,5 +430,109 @@
     "category": "brand",
     "reason": "The task greeting displays the product brand name.",
     "path": "apps/web/src/components/session/session-new-view.tsx"
+  },
+  {
+    "path": "apps/web/src/components/settings/panels/VoicePanel.tsx",
+    "kind": "jsx-text",
+    "literal": "OpenAI",
+    "occurrence": 1,
+    "category": "brand",
+    "reason": "Audio service brand name; the surrounding service selector is localized."
+  },
+  {
+    "path": "apps/web/src/components/settings/panels/VoicePanel.tsx",
+    "kind": "jsx-attribute",
+    "literal": "gpt-4o-mini-transcribe",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "Canonical speech-recognition model ID shown as an editable syntax example."
+  },
+  {
+    "path": "apps/web/src/components/settings/panels/VoicePanel.tsx",
+    "kind": "jsx-attribute",
+    "literal": "gpt-4o-mini-tts",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "Canonical speech-synthesis model ID shown as an editable syntax example."
+  },
+  {
+    "path": "apps/web/src/components/settings/panels/VoicePanel.tsx",
+    "kind": "jsx-attribute",
+    "literal": "https://api.openai.com/v1",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "Default compatible speech API endpoint shown as URL syntax, not natural-language copy."
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanel.tsx",
+    "kind": "invalid-message-descriptor",
+    "literal": "issue.message",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "SettingsDraftIssue.message is a statically typed MessageDescriptor from the shared validation module; the checker cannot trace that imported type."
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanel.tsx",
+    "kind": "invalid-message-descriptor",
+    "literal": "getBuiltinSettingsSection(serverValidation()[0]!.page)!.copy.label",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "Built-in section labels are static MessageDescriptors from the settings catalog; the checker cannot resolve this imported lookup."
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanel.tsx",
+    "kind": "invalid-message-descriptor",
+    "literal": "section.copy.label",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "Built-in section labels are static MessageDescriptors from the settings catalog; the checker cannot trace the imported section type."
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanel.tsx",
+    "kind": "invalid-message-descriptor",
+    "literal": "section.copy.label",
+    "occurrence": 2,
+    "category": "code",
+    "reason": "Read-retry feedback uses the same statically typed settings-catalog label as the original save result."
+  },
+  {
+    "path": "apps/web/src/components/settings/panels/AccountPanel.tsx",
+    "kind": "invalid-message-descriptor",
+    "literal": "labels[status]",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "The connection-status map contains explicit static message IDs and defaults for every typed status."
+  },
+  {
+    "path": "apps/web/src/components/settings/panels/CodeChecksPanel.tsx",
+    "kind": "jsx-text",
+    "literal": "write, edit, save_file, revise_file, resolve_conflicts",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "Canonical tool identifiers in advanced details retain their API spelling."
+  },
+  {
+    "path": "apps/web/src/components/settings/panels/LibraryPanels.tsx",
+    "kind": "invalid-message-descriptor",
+    "literal": "def.label",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "Validation renders an explicit static message descriptor from the typed memory-field definitions."
+  },
+  {
+    "path": "apps/web/src/components/settings/panels/LibraryPanels.tsx",
+    "kind": "invalid-message-descriptor",
+    "literal": "def.label",
+    "occurrence": 2,
+    "category": "code",
+    "reason": "Validation renders an explicit static message descriptor from the typed experience-field definitions."
+  },
+  {
+    "path": "apps/web/src/components/settings/panels/LibraryPanels.tsx",
+    "kind": "invalid-message-descriptor",
+    "literal": "def.label",
+    "occurrence": 3,
+    "category": "code",
+    "reason": "Validation renders an explicit static message descriptor from the typed experience-field definitions."
   }
 ]

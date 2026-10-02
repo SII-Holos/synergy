@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Show } from "solid-js"
+import { createMemo, createSignal, createUniqueId, For, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -26,6 +26,7 @@ import {
   isConfigImportRevisionConflict,
   loadImportUrl,
   parseImportText,
+  ImportParseError,
   planMatchesSelection,
   projectImportScopes,
   type ImportDomainID,
@@ -61,7 +62,7 @@ const runtimeNeedsAttentionText = {
   id: "settings.import.runtimeNeedsAttention",
   message: "Files imported; runtime needs attention",
 }
-const scopeLabel = { id: "settings.import.scope.label", message: "Scope" }
+const scopeLabel = { id: "settings.import.scope.label", message: "Apply to" }
 const globalLabel = { id: "settings.import.global", message: "Global" }
 const projectLabel = { id: "settings.import.project", message: "Project" }
 const noProjectLabel = { id: "settings.import.noProject", message: "No project available" }
@@ -118,6 +119,28 @@ export function ImportPanel(props: {
   const [projectID, setProjectID] = createSignal("")
   const [loading, setLoading] = createSignal(false)
   const [applying, setApplying] = createSignal(false)
+  const [sourceError, setSourceError] = createSignal<{ source: "file" | "url" | "paste" | "review"; error: unknown }>()
+  const [refreshError, setRefreshError] = createSignal<unknown>()
+  const errorID = createUniqueId()
+
+  function rejectSource(source: "file" | "url" | "paste" | "review", error: unknown) {
+    clearReview()
+    setSourceError({ source, error })
+  }
+
+  async function refreshImported() {
+    const applied = result()
+    if (!applied || applying()) return
+    setApplying(true)
+    try {
+      await props.onImported(applied.reload.changedFields)
+      setRefreshError(undefined)
+    } catch (error) {
+      setRefreshError(error)
+    } finally {
+      setApplying(false)
+    }
+  }
 
   const projects = createMemo(() => projectImportScopes(props.scopes))
   const project = createMemo(() => projects().find((item) => item.id === projectID()) ?? projects()[0])
@@ -144,10 +167,12 @@ export function ImportPanel(props: {
     setPlan(undefined)
     setResult(undefined)
     setSelected([])
+    setRefreshError(undefined)
   }
 
   async function createPlan(nextConfig: Record<string, unknown>, label: string, only?: ImportDomainID[]) {
     setLoading(true)
+    setSourceError(undefined)
     try {
       const response = await globalSDK.client.config.import.plan(
         buildImportPlanParameters({
@@ -165,7 +190,7 @@ export function ImportPanel(props: {
       setResult(undefined)
       return response.data
     } catch (error) {
-      showToast({ type: "error", title: _(importFailedTitle), description: requestErrorMessage(error) })
+      rejectSource("review", error)
     } finally {
       setLoading(false)
     }
@@ -176,7 +201,7 @@ export function ImportPanel(props: {
     try {
       await createPlan(parseImportText(await file.text(), file.name), file.name)
     } catch (error) {
-      showToast({ type: "error", title: _(importFailedTitle), description: requestErrorMessage(error) })
+      rejectSource("file", error)
     }
   }
 
@@ -188,7 +213,7 @@ export function ImportPanel(props: {
       const loaded = await loadImportUrl(value)
       await createPlan(loaded, value)
     } catch (error) {
-      showToast({ type: "error", title: _(importFailedTitle), description: requestErrorMessage(error) })
+      rejectSource("url", error)
     } finally {
       setLoading(false)
     }
@@ -198,7 +223,7 @@ export function ImportPanel(props: {
     try {
       await createPlan(parseImportText(pasted(), "pasted"), "pasted")
     } catch (error) {
-      showToast({ type: "error", title: _(importFailedTitle), description: requestErrorMessage(error) })
+      rejectSource("paste", error)
     }
   }
 
@@ -239,7 +264,12 @@ export function ImportPanel(props: {
         title: response.data.reload.success ? _(configImportedTitle) : _(configImportedWarnTitle),
         description: _(updatedDomainsDesc(response.data.plan.domains.length)),
       })
-      await props.onImported(response.data.reload.changedFields)
+      try {
+        await props.onImported(response.data.reload.changedFields)
+        setRefreshError(undefined)
+      } catch (error) {
+        setRefreshError(error)
+      }
     } catch (error) {
       if (isConfigImportRevisionConflict(error)) {
         const refreshed = await createPlan(input, sourceLabel(), only)
@@ -258,6 +288,7 @@ export function ImportPanel(props: {
   }
 
   async function applyImport() {
+    if (applying() || result()) return
     const input = config()
     const only = selected()
     if (!input || only.length === 0) return
@@ -341,6 +372,8 @@ export function ImportPanel(props: {
             <input
               type="file"
               accept=".json,.jsonc,application/json"
+              aria-invalid={sourceError()?.source === "file"}
+              aria-describedby={sourceError()?.source === "file" ? errorID : undefined}
               onChange={(event) => void handleFile(event.currentTarget.files?.[0])}
             />
           </label>
@@ -348,8 +381,14 @@ export function ImportPanel(props: {
             class="ds-import-url-input"
             value={url()}
             aria-label={_(configUrlAria)}
+            aria-invalid={sourceError()?.source === "url"}
+            aria-describedby={sourceError()?.source === "url" ? errorID : undefined}
             placeholder={_(urlPlaceholder)}
-            onInput={(event) => setUrl(event.currentTarget.value)}
+            onInput={(event) => {
+              setUrl(event.currentTarget.value)
+              clearReview()
+              setSourceError(undefined)
+            }}
           />
           <Button
             type="button"
@@ -366,9 +405,15 @@ export function ImportPanel(props: {
             class="ds-import-paste-input"
             value={pasted()}
             aria-label={_(pasteAria)}
+            aria-invalid={sourceError()?.source === "paste"}
+            aria-describedby={sourceError()?.source === "paste" ? errorID : undefined}
             placeholder={_(pastePlaceholder)}
             rows={7}
-            onInput={(event) => setPasted(event.currentTarget.value)}
+            onInput={(event) => {
+              setPasted(event.currentTarget.value)
+              clearReview()
+              setSourceError(undefined)
+            }}
           />
           <Button
             type="button"
@@ -380,6 +425,35 @@ export function ImportPanel(props: {
             {_(reviewPasteLabel)}
           </Button>
         </div>
+        <Show when={sourceError()}>
+          {(failure) => (
+            <div id={errorID} class="settings-command-error" role="alert">
+              <Icon name={getSemanticIcon("state.error")} size="small" />
+              <div>
+                <p>
+                  {failure().error instanceof ImportParseError
+                    ? _({
+                        id: "settings.import.parseError.position",
+                        message:
+                          "Content cannot be parsed at line {line}, column {column}. Check the JSON syntax and review again.",
+                        values: {
+                          line: (failure().error as ImportParseError).line,
+                          column: (failure().error as ImportParseError).column,
+                        },
+                      })
+                    : _({
+                        id: "settings.import.parseError",
+                        message: "Content could not be loaded or parsed. Check the source and review again.",
+                      })}
+                </p>
+                <details>
+                  <summary>{_({ id: "settings.import.errorDetails", message: "Error details" })}</summary>
+                  <pre>{requestErrorMessage(failure().error)}</pre>
+                </details>
+              </div>
+            </div>
+          )}
+        </Show>
       </SettingsSection>
 
       <Show when={plan()}>
@@ -397,7 +471,7 @@ export function ImportPanel(props: {
               type="button"
               variant="primary"
               size="normal"
-              disabled={applying() || loading() || selected().length === 0}
+              disabled={applying() || loading() || selected().length === 0 || !!result()}
               onClick={() => void applyImport()}
             >
               {applying() ? _(importingLabel) : reviewedSelection() ? _(applyLabel) : _(reviewSelectionLabel)}
@@ -480,6 +554,19 @@ export function ImportPanel(props: {
       <Show when={result()}>
         {(applied) => (
           <SettingsSection title={_(resultTitle)}>
+            <Show when={refreshError()}>
+              <div class="settings-command-error" role="status">
+                <span>
+                  {_({
+                    id: "settings.import.refreshPending",
+                    message: "Configuration imported. The view still needs to update.",
+                  })}
+                </span>
+                <Button type="button" variant="ghost" disabled={applying()} onClick={() => void refreshImported()}>
+                  {_({ id: "settings.save.retryRead", message: "Retry reading" })}
+                </Button>
+              </div>
+            </Show>
             <div class="ds-import-result" data-success={applied().reload.success}>
               <div class="settings-import-source-title">
                 {applied().reload.success ? _(runtimeUpdatedText) : _(runtimeNeedsAttentionText)}
@@ -489,7 +576,8 @@ export function ImportPanel(props: {
                   ...importChangedDetail,
                   values: {
                     count: applied().reload.changedFields.length,
-                    executed: applied().reload.executed.join(", ") || "none",
+                    executed:
+                      applied().reload.executed.join(", ") || _({ id: "settings.import.reload.none", message: "None" }),
                   },
                 })}
               </div>

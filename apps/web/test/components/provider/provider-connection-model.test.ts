@@ -3,9 +3,41 @@ import {
   resolveProviderAuthMethods,
   runProviderDeviceCallback,
   shouldAutoAdvanceConnection,
+  createProviderCredentialCommand,
 } from "../../../src/components/provider/provider-connection-model"
 
 describe("provider connection model", () => {
+  test("a failed refresh retries without re-writing credentials", async () => {
+    let writes = 0
+    let reads = 0
+    const command = createProviderCredentialCommand(
+      async () => {
+        writes++
+      },
+      async () => {
+        reads++
+        if (reads === 1) throw new Error("refresh failed")
+      },
+    )
+    await expect(command.run()).rejects.toThrow("refresh failed")
+    expect(command.persisted()).toBe(true)
+    await command.run()
+    expect({ writes, reads }).toEqual({ writes: 1, reads: 2 })
+  })
+  test("authorization failures never report a completed connection", async () => {
+    let completed = false
+    const command = createProviderCredentialCommand(
+      async () => {
+        throw new Error("invalid credentials")
+      },
+      async () => {
+        completed = true
+      },
+    )
+    await expect(command.run()).rejects.toThrow("invalid credentials")
+    expect(command.persisted()).toBe(false)
+    expect(completed).toBe(false)
+  })
   test("auto-advances a single api-key method", () => {
     expect(shouldAutoAdvanceConnection([{ type: "api", label: "API key" }])).toBe(true)
   })

@@ -39,40 +39,43 @@ const sectionDescription = {
 }
 const refreshLabel = { id: "settings.worktrees.refresh", message: "Refresh" }
 const refreshingLabel = { id: "settings.worktrees.refreshing", message: "Refreshing..." }
-const emptyTitleUnavailable = { id: "settings.worktrees.empty.unavailable", message: "Worktrees unavailable" }
-const emptyTitleNone = { id: "settings.worktrees.empty.none", message: "No worktrees found" }
+const emptyTitleUnavailable = { id: "settings.worktrees.empty.unavailable", message: "Independent copies unavailable" }
+const emptyTitleNone = { id: "settings.worktrees.empty.none", message: "No independent copies found" }
 const emptyDescFailure = {
   id: "settings.worktrees.empty.failure",
   message: "One or more project repositories could not be read. Try refreshing after checking their paths.",
 }
 const emptyDescNone = {
   id: "settings.worktrees.empty.none.desc",
-  message: "Managed worktrees will appear here once created.",
+  message: "Managed copies will appear here once created.",
 }
 const forceRemoveLabel = { id: "settings.worktrees.remove.force", message: "Force remove" }
 const forceRemovingLabel = { id: "settings.worktrees.remove.force.removing", message: "Force removing..." }
 const deletingLabel = { id: "settings.worktrees.deleting", message: "Deleting..." }
 const deleteLabel = { id: "settings.worktrees.delete", message: "Delete" }
-const loadErrorAllTitle = { id: "settings.worktrees.loadError.all", message: "Worktrees failed to load" }
-const loadErrorSomeTitle = { id: "settings.worktrees.loadError.some", message: "Some worktrees failed to load" }
+const loadErrorAllTitle = { id: "settings.worktrees.loadError.all", message: "Independent copies failed to load" }
+const loadErrorSomeTitle = {
+  id: "settings.worktrees.loadError.some",
+  message: "Some independent copies failed to load",
+}
 const loadErrorDesc = {
   id: "settings.worktrees.loadError.desc",
   message: "{count, plural, one {# project scope could not be loaded.} other {# project scopes could not be loaded.}}",
 }
 const removeSuccessForceTitle = {
   id: "settings.worktrees.remove.force.success",
-  message: "Worktree force-removed",
+  message: "Independent copy force-removed",
 }
-const removeSuccessTitle = { id: "settings.worktrees.remove.success", message: "Worktree removed" }
-const removeErrorTitle = { id: "settings.worktrees.remove.error", message: "Failed to remove worktree" }
+const removeSuccessTitle = { id: "settings.worktrees.remove.success", message: "Independent copy removed" }
+const removeErrorTitle = { id: "settings.worktrees.remove.error", message: "Failed to remove independent copy" }
 const worktreeCountSummary = {
   id: "settings.worktrees.count",
   message:
-    "{worktreeCount, plural, one {# worktree} other {# worktrees}} across {projectCount, plural, one {# project} other {# projects}}",
+    "{worktreeCount, plural, one {# independent copy} other {# independent copies}} across {projectCount, plural, one {# project} other {# projects}}",
 }
-const mainBadgeLabel = { id: "settings.worktrees.badge.main", message: "main" }
-const externalBadgeLabel = { id: "settings.worktrees.badge.external", message: "external" }
-const managedBadgeLabel = { id: "settings.worktrees.badge.managed", message: "managed" }
+const mainBadgeLabel = { id: "settings.worktrees.badge.main", message: "Project files" }
+const externalBadgeLabel = { id: "settings.worktrees.badge.external", message: "Externally managed" }
+const managedBadgeLabel = { id: "settings.worktrees.badge.managed", message: "Managed copy" }
 const dirtyBadgeLabel = { id: "settings.worktrees.badge.dirty", message: "dirty" }
 const staleBadgeLabel = { id: "settings.worktrees.badge.stale", message: "stale" }
 const boundSessionSingular = { id: "settings.worktrees.badge.boundSession.singular", message: "bound session" }

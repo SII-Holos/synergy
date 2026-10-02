@@ -1,7 +1,7 @@
 import { createSignal, For, Show, createEffect } from "solid-js"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { useLingui } from "@lingui/solid"
-import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
+import { SettingRow } from "@/components/settings/components/SettingsSettingRow"
 
 interface DeclarativeSettingsFormProps {
   schema: Record<string, unknown>
@@ -38,6 +38,7 @@ export function DeclarativeSettingsForm(props: DeclarativeSettingsFormProps) {
       input = (
         <select
           id={`plugin-setting-${key}`}
+          aria-label={fieldTitle}
           value={(local()[key] as string) ?? ""}
           onChange={(e) => handleChange(key, e.currentTarget.value)}
           class={inputClass}
@@ -55,6 +56,7 @@ export function DeclarativeSettingsForm(props: DeclarativeSettingsFormProps) {
       input = (
         <input
           id={`plugin-setting-${key}`}
+          aria-label={fieldTitle}
           type="number"
           value={(local()[key] as number | string) ?? ""}
           onChange={(e) => handleChange(key, Number(e.currentTarget.value))}
@@ -65,6 +67,7 @@ export function DeclarativeSettingsForm(props: DeclarativeSettingsFormProps) {
       input = (
         <input
           id={`plugin-setting-${key}`}
+          aria-label={fieldTitle}
           type="password"
           value={(local()[key] as string) ?? ""}
           onChange={(e) => handleChange(key, e.currentTarget.value)}
@@ -75,6 +78,7 @@ export function DeclarativeSettingsForm(props: DeclarativeSettingsFormProps) {
       input = (
         <input
           id={`plugin-setting-${key}`}
+          aria-label={fieldTitle}
           type="text"
           value={(local()[key] as string) ?? ""}
           onChange={(e) => handleChange(key, e.currentTarget.value)}

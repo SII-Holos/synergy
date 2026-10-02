@@ -19,6 +19,14 @@ export function localizeSettingsSection<T extends SettingsSection>(
     description: translate(catalogSection.copy.description),
     keywords: [translate(catalogSection.copy.searchTerms)],
     rowLabels: catalogSection.copy.rowLabels.map(translate),
+    fieldAliases: Object.fromEntries(
+      (catalogSection.copy.fieldAliases ?? []).map((target) => [
+        translate(target.label),
+        translate(target.aliases)
+          .split("|")
+          .map((alias) => alias.trim()),
+      ]),
+    ),
   }
 }
 

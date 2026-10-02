@@ -10,8 +10,8 @@ import { usePlatform } from "@/context/platform"
 import { StorageMaintenance } from "./StorageMaintenance"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { requestErrorMessage } from "@/utils/error"
-import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
-import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
+import { SettingRow } from "../components/SettingsSettingRow"
+import { SettingsAdvanced, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { GeneralStore } from "../types"
 
 const pageTitle = { id: "settings.storage.page.title", message: "Storage" }
@@ -421,7 +421,12 @@ export function StoragePanel(props: {
       title={_(pageTitle)}
       description={_(pageDescription)}
       actions={
-        <Button size="small" onClick={() => void refetch()} disabled={usage.loading}>
+        <Button
+          size="small"
+          variant="ghost"
+          onClick={() => void Promise.all([refetch(), refetchMaintenance()])}
+          disabled={usage.loading || maintenanceStatus.loading}
+        >
           {_(refreshLabel)}
         </Button>
       }
@@ -475,18 +480,6 @@ export function StoragePanel(props: {
         </Show>
       </SettingsSection>
 
-      <SettingsSection title={_(cleanupTitle)}>
-        <SettingRow
-          title={_(cleanTitle)}
-          description={_(cleanDescription)}
-          trailing={
-            <Button size="small" onClick={() => void reclaimUnowned()} disabled={cleaning()}>
-              {cleaning() ? _(cleanBusyLabel) : _(cleanActionLabel)}
-            </Button>
-          }
-        />
-      </SettingsSection>
-
       <SettingsSection>
         <SettingRow
           title={_(snapshotsTitle)}
@@ -497,37 +490,56 @@ export function StoragePanel(props: {
         />
       </SettingsSection>
 
-      <StorageMaintenance
-        status={maintenanceStatus.latest}
-        loading={maintenanceStatus.loading}
-        error={maintenanceStatus.error}
-        bridge={platform.desktopServer}
-        controlBusy={reclaimControl()}
-        onRefresh={() => void Promise.resolve(refetchMaintenance()).catch(() => {})}
-        onControl={(action) => void controlReclamation(action)}
-      />
+      <SettingsAdvanced
+        id="maintenance"
+        title={_(maintenanceTitle)}
+        fields={[_(cleanTitle), _(migrateTitle), _(compactTitle)]}
+      >
+        <SettingsSection title={_(cleanupTitle)}>
+          <SettingRow
+            title={_(cleanTitle)}
+            description={_(cleanDescription)}
+            trailing={
+              <Button size="small" onClick={() => void reclaimUnowned()} disabled={cleaning()}>
+                {cleaning() ? _(cleanBusyLabel) : _(cleanActionLabel)}
+              </Button>
+            }
+          />
+        </SettingsSection>
 
-      <SettingsSection title={_(maintenanceTitle)}>
-        <SettingRow
-          title={_(migrateTitle)}
-          description={_(migrateDescription)}
-          trailing={
-            <Button size="small" onClick={() => void migrateLegacy()} disabled={maintenance() !== false}>
-              {maintenance() === "migrate" ? _(migrateBusyLabel) : _(migrateActionLabel)}
-            </Button>
-          }
+        <StorageMaintenance
+          status={maintenanceStatus.latest}
+          loading={maintenanceStatus.loading}
+          error={maintenanceStatus.error}
+          bridge={platform.desktopServer}
+          controlBusy={reclaimControl()}
+          showRefresh={false}
+          onRefresh={() => void Promise.resolve(refetchMaintenance()).catch(() => {})}
+          onControl={(action) => void controlReclamation(action)}
         />
-        <SettingRow
-          title={_(compactTitle)}
-          description={_(compactDescription)}
-          trailing={
-            <Button size="small" onClick={() => void packStorage()} disabled={maintenance() !== false}>
-              {maintenance() === "compact" ? _(compactBusyLabel) : _(compactActionLabel)}
-            </Button>
-          }
-        />
-        <p class="ds-section-hint">{_(maintenanceDescription)}</p>
-      </SettingsSection>
+
+        <SettingsSection title={_(maintenanceTitle)}>
+          <SettingRow
+            title={_(migrateTitle)}
+            description={_(migrateDescription)}
+            trailing={
+              <Button size="small" onClick={() => void migrateLegacy()} disabled={maintenance() !== false}>
+                {maintenance() === "migrate" ? _(migrateBusyLabel) : _(migrateActionLabel)}
+              </Button>
+            }
+          />
+          <SettingRow
+            title={_(compactTitle)}
+            description={_(compactDescription)}
+            trailing={
+              <Button size="small" onClick={() => void packStorage()} disabled={maintenance() !== false}>
+                {maintenance() === "compact" ? _(compactBusyLabel) : _(compactActionLabel)}
+              </Button>
+            }
+          />
+          <p class="ds-section-hint">{_(maintenanceDescription)}</p>
+        </SettingsSection>
+      </SettingsAdvanced>
     </SettingsPage>
   )
 }

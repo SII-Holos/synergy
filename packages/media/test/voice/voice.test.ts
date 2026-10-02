@@ -6,8 +6,11 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { ConfigDomain } from "@ericsanchezok/synergy-harness/config/domain"
 import { Global } from "@ericsanchezok/synergy-harness/global"
+import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Voice, VoiceNotConfiguredError } from "../../src/voice"
 import { createOpenAI } from "@ai-sdk/openai"
+import { Hono } from "hono"
+import { VoiceRoute } from "../../src/voice/routes/voice-route"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -81,9 +84,13 @@ describe("voice runtime", () => {
           await expect(Voice.speak({ text: "hi" })).rejects.toBeInstanceOf(VoiceNotConfiguredError)
 
           const sttError = await Voice.transcribe({ data: new Uint8Array([1]) }).catch((error) => error)
-          expect(sttError.message).toContain("voice.stt.model")
+          expect(sttError.message).toBe(
+            "Voice input is unavailable. Enable it and select a speech recognition model in Settings → Voice.",
+          )
           const ttsError = await Voice.speak({ text: "hi" }).catch((error) => error)
-          expect(ttsError.message).toContain("voice.tts.model")
+          expect(ttsError.message).toBe(
+            "Read aloud is unavailable. Enable it and select a speech model in Settings → Voice.",
+          )
         },
       })
     }))
@@ -185,6 +192,102 @@ describe("voice runtime", () => {
 
           expect(await Voice.sttEnabled()).toBe(true)
           expect(await Voice.ttsEnabled()).toBe(false)
+        },
+      })
+    }))
+
+  test("explicit disable preserves the configured models and prevents provider calls", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await writeVoiceFragment({
+            stt: { model: "whisper-1", enabled: false },
+            tts: { model: "tts-1", enabled: false },
+          })
+          await Config.reload("global")
+          expect(await Voice.sttEnabled()).toBe(false)
+          expect(await Voice.ttsEnabled()).toBe(false)
+          await expect(Voice.speak({ text: "hello" })).rejects.toBeInstanceOf(VoiceNotConfiguredError)
+          expect((await Config.domainGet(ConfigDomain.Id.parse("voice"))).voice?.tts?.model).toBe("tts-1")
+          await Config.domainUpdate(ConfigDomain.Id.parse("voice"), { voice: { tts: { enabled: true } } })
+          expect(await Voice.ttsEnabled()).toBe(true)
+        },
+      })
+    }))
+
+  test("cleared voice options persist across reload and credentials remain redacted", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await writeVoiceFragment({
+            tts: {
+              model: "tts-1",
+              apiKey: "fixture-secret",
+              baseURL: "https://audio.example/v1",
+              voice: "alloy",
+              instructions: "slow",
+            },
+          })
+          await Config.reload("global")
+          const stored = await Config.domainGet(ConfigDomain.Id.parse("voice"))
+          const redacted = Config.redactForClient(stored)
+          expect(redacted.voice?.tts?.apiKey).not.toBe("fixture-secret")
+          await Config.domainUpdate(ConfigDomain.Id.parse("voice"), {
+            voice: { tts: { apiKey: redacted.voice?.tts?.apiKey, baseURL: null, voice: null, instructions: null } },
+          })
+          await Config.reload("global")
+          const reloaded = await Config.domainGet(ConfigDomain.Id.parse("voice"))
+          expect(reloaded.voice?.tts).toMatchObject({
+            apiKey: "fixture-secret",
+            baseURL: null,
+            voice: null,
+            instructions: null,
+          })
+          const log: CallLog = []
+          Voice.setClientFactoryForTest(fakeClientFactory(log, {}))
+          await Voice.speak({ text: "hello" })
+          expect(log[0]?.baseURL).toBe("https://api.openai.com/v1")
+          expect(log[0]?.args.voice).toBeUndefined()
+          await Config.domainUpdate(ConfigDomain.Id.parse("voice"), { voice: { tts: { apiKey: null } } })
+          expect(
+            Config.redactForClient(await Config.domainGet(ConfigDomain.Id.parse("voice"))).voice?.tts?.apiKey,
+          ).toBeNull()
+        },
+      })
+    }))
+
+  test("preview returns audio from saved configuration and rejects long or empty text", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await writeVoiceFragment({ tts: { model: "tts-1" } })
+          await Config.reload("global")
+          const log: CallLog = []
+          Voice.setClientFactoryForTest(fakeClientFactory(log, { audio: new Uint8Array([7, 8, 9]) }))
+          const sessionsBefore = await Session.list({ parentOnly: false })
+          const app = new Hono().route("/voice", VoiceRoute())
+          const request = (text: string) =>
+            app.request("/voice/preview", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ text }),
+            })
+          const response = await request("A short preview")
+          expect(response.status).toBe(200)
+          expect(response.headers.get("content-type")).toBe("audio/wav")
+          expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([7, 8, 9])
+          expect(log).toHaveLength(1)
+          expect((await Session.list({ parentOnly: false })).data).toEqual(sessionsBefore.data)
+          expect(log[0]?.model).toBe("tts-1")
+          expect((await request("x".repeat(201))).status).toBe(400)
+          expect((await request(" ")).status).toBe(400)
+          expect(log).toHaveLength(1)
         },
       })
     }))

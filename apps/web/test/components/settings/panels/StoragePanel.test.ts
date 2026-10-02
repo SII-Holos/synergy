@@ -101,6 +101,10 @@ test("storage maintenance previews changes before confirmation and reports appli
     await settle()
     expect(root.textContent).toContain("Research workspace")
     expect(root.textContent).toContain("1 on shared storage")
+    const maintenance = root.querySelector<HTMLElement>(".settings-advanced > summary")
+    expect(maintenance?.textContent).toContain("Maintenance")
+    maintenance!.click()
+    await settle()
     for (const [label, action] of [
       ["Reclaim", "clean"],
       ["Migrate", "migrate"],

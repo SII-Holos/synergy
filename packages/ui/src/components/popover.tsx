@@ -13,6 +13,15 @@ import {
 } from "solid-js"
 import { Icon } from "./icon"
 
+export async function restorePopoverFocus(trigger: HTMLElement | undefined, content: HTMLElement | undefined) {
+  await Promise.allSettled((content?.getAnimations?.() ?? []).map((animation) => animation.finished))
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  if (!trigger?.isConnected) return
+  const active = trigger.ownerDocument.activeElement
+  if (active === trigger.ownerDocument.body || content?.contains(active) || active === trigger)
+    trigger.focus({ preventScroll: true })
+}
+
 export interface PopoverProps extends ParentProps, Omit<ComponentProps<typeof Kobalte>, "children"> {
   trigger?: JSXElement
   triggerAs?: Component<JSX.ButtonHTMLAttributes<HTMLButtonElement>>
@@ -27,6 +36,7 @@ export interface PopoverProps extends ParentProps, Omit<ComponentProps<typeof Ko
 export function Popover(props: PopoverProps) {
   const parentLayer = useOverlayLayer()
   const [layer, setLayer] = createSignal<HTMLElement>()
+  let triggerElement: HTMLElement | undefined
   const [local, rest] = splitProps(props, [
     "trigger",
     "triggerAs",
@@ -44,18 +54,23 @@ export function Popover(props: PopoverProps) {
       <Show
         when={local.triggerAs}
         fallback={
-          <Kobalte.Trigger as="div" data-slot="popover-trigger">
+          <Kobalte.Trigger ref={triggerElement} as="div" data-slot="popover-trigger">
             {local.trigger}
           </Kobalte.Trigger>
         }
       >
-        {(trigger) => <Kobalte.Trigger as={trigger()} data-slot="popover-trigger" />}
+        {(trigger) => <Kobalte.Trigger ref={triggerElement} as={trigger()} data-slot="popover-trigger" />}
       </Show>
       <Kobalte.Portal mount={local.portalMount ?? parentLayer()}>
         <PortalStyleOwner>
           <OverlayLayerProvider layer={layer}>
             <Kobalte.Content
               ref={setLayer}
+              onCloseAutoFocus={(event) => {
+                event.preventDefault()
+                void restorePopoverFocus(triggerElement, layer())
+              }}
+              onEscapeKeyDown={(event) => event.stopPropagation()}
               data-component="popover-content"
               data-variant={local.variant ?? "default"}
               classList={{

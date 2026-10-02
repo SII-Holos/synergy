@@ -1,3 +1,5 @@
+import { restorePopoverFocus } from "@ericsanchezok/synergy-ui/popover"
+import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useLingui } from "@lingui/solid"
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -5,7 +7,6 @@ import { List } from "@ericsanchezok/synergy-ui/list"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { ModelRoleSummary } from "@ericsanchezok/synergy-sdk/client"
 import { createMemo, createSignal, For, Show } from "solid-js"
-import { Portal } from "solid-js/web"
 import type { ModelKey, ModelsStore, ProviderGroup } from "../types"
 import { createProviderModelIndex, fieldLabel, modelRoleCopy, resolveModelRoleDraftDisplay } from "../model-role-draft"
 import { ModelVariantPicker } from "@/components/provider/model-thinking-picker"
@@ -59,10 +60,15 @@ export function ModelRoleRow(props: {
   popoverLayer?: HTMLElement
   onChange: (key: ModelKey, value: string) => void
   onVariantChange?: (variant: string) => void
+  onConnectProvider?: (providerID: string) => void
 }) {
   const { _ } = useLingui()
   const [pickerOpen, setPickerOpen] = createSignal(false)
   const [detailsOpen, setDetailsOpen] = createSignal(false)
+  let pickerTrigger: HTMLButtonElement | undefined
+  let pickerSurface: HTMLDivElement | undefined
+  let detailsTrigger: HTMLButtonElement | undefined
+  let detailsSurface: HTMLDivElement | undefined
 
   const providerIndex = createMemo(() => createProviderModelIndex(props.providers))
   const roleCopy = createMemo(() => modelRoleCopy(props.summary, _))
@@ -80,13 +86,26 @@ export function ModelRoleRow(props: {
     ),
   )
 
+  const automaticDisplay = createMemo(() =>
+    resolveModelRoleDraftDisplay(
+      {
+        summary: props.summary,
+        value: "",
+        draftModels: { ...props.draftModels, [props.summary.field]: "" },
+        savedModels: props.savedModels,
+        providerIndex: providerIndex(),
+      },
+      _,
+    ),
+  )
+  const unavailable = () => Boolean(props.value && !providerIndex().has(props.value))
   const options = createMemo<ModelPickerOption[]>(() => [
     {
       kind: "fallback",
       key: "fallback",
       group: _(defaultGroupLabel),
-      label: display().triggerLabel,
-      description: display().fallbackDescription,
+      label: _({ id: "settings.modelRole.automatic", message: "Automatic" }),
+      description: automaticDisplay().resolutionDescription,
       value: "",
     },
     ...props.providers.flatMap((provider) =>
@@ -117,9 +136,10 @@ export function ModelRoleRow(props: {
     <div class="settings-model-row">
       <div class="settings-model-copy">
         <div class="settings-model-title-line">
-          <span class="settings-model-title">{roleCopy().label}</span>
+          <span class="settings-model-title settings-row-title">{roleCopy().label}</span>
           <KobaltePopover open={detailsOpen()} onOpenChange={setDetailsOpen} placement="right-start" gutter={8}>
             <KobaltePopover.Trigger
+              ref={detailsTrigger}
               type="button"
               class="settings-model-info-button"
               aria-label={_({ ...detailsAriaLabel, values: { label: roleCopy().label } })}
@@ -128,8 +148,16 @@ export function ModelRoleRow(props: {
             </KobaltePopover.Trigger>
             <Show when={props.popoverLayer}>
               {(layer) => (
-                <Portal mount={layer()}>
-                  <KobaltePopover.Content class="settings-model-detail-surface outline-none">
+                <KobaltePopover.Portal mount={layer()}>
+                  <KobaltePopover.Content
+                    ref={detailsSurface}
+                    onCloseAutoFocus={(event) => {
+                      event.preventDefault()
+                      void restorePopoverFocus(detailsTrigger, detailsSurface)
+                    }}
+                    onEscapeKeyDown={(event) => event.stopPropagation()}
+                    class="settings-model-detail-surface outline-none"
+                  >
                     <KobaltePopover.Title class="sr-only">
                       {_({ ...detailsAriaLabel, values: { label: roleCopy().label } })}
                     </KobaltePopover.Title>
@@ -173,20 +201,51 @@ export function ModelRoleRow(props: {
                       </div>
                     </div>
                   </KobaltePopover.Content>
-                </Portal>
+                </KobaltePopover.Portal>
               )}
             </Show>
           </KobaltePopover>
         </div>
         <span class="settings-model-description">{roleCopy().description}</span>
+        <Show when={unavailable()}>
+          <div class="settings-model-unavailable" role="status">
+            <span>
+              {_({
+                id: "settings.models.unavailable",
+                message:
+                  "This model is unavailable. Your selection is kept. Check the service connection or refresh its model list.",
+              })}
+            </span>
+            <Show when={props.onConnectProvider}>
+              <Button
+                size="small"
+                variant="ghost"
+                onClick={() => props.onConnectProvider?.(props.value.split("/")[0]!)}
+              >
+                {_({ id: "settings.models.repair", message: "Check service" })}
+              </Button>
+            </Show>
+          </div>
+        </Show>
       </div>
 
       <div class="settings-model-selector">
         <KobaltePopover open={pickerOpen()} onOpenChange={setPickerOpen} placement="bottom-end" gutter={8}>
           <KobaltePopover.Trigger
+            ref={pickerTrigger}
             type="button"
             class="settings-model-trigger"
-            aria-label={`${_(selectModelLabel)} ${roleCopy().label}`}
+            aria-label={_({
+              id: "settings.modelRole.select.named",
+              message: "{role}: {intent}, {model}",
+              values: {
+                role: roleCopy().label,
+                intent: props.value
+                  ? _({ id: "settings.modelRole.fixed", message: "Fixed model" })
+                  : _({ id: "settings.modelRole.automatic", message: "Automatic" }),
+                model: [display().triggerLabel, display().triggerDetail].filter(Boolean).join(" · "),
+              },
+            })}
           >
             <span class="settings-model-trigger-text">
               <span class="settings-model-trigger-title">{display().triggerLabel}</span>
@@ -196,8 +255,16 @@ export function ModelRoleRow(props: {
           </KobaltePopover.Trigger>
           <Show when={props.popoverLayer}>
             {(layer) => (
-              <Portal mount={layer()}>
-                <KobaltePopover.Content class="settings-model-picker-popover flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
+              <KobaltePopover.Portal mount={layer()}>
+                <KobaltePopover.Content
+                  ref={pickerSurface}
+                  onCloseAutoFocus={(event) => {
+                    event.preventDefault()
+                    void restorePopoverFocus(pickerTrigger, pickerSurface)
+                  }}
+                  onEscapeKeyDown={(event) => event.stopPropagation()}
+                  class="settings-model-picker-popover flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden"
+                >
                   <KobaltePopover.Title class="sr-only">
                     {_(selectModelLabel)} {roleCopy().label}
                   </KobaltePopover.Title>
@@ -221,7 +288,7 @@ export function ModelRoleRow(props: {
                     )}
                   </List>
                 </KobaltePopover.Content>
-              </Portal>
+              </KobaltePopover.Portal>
             )}
           </Show>
         </KobaltePopover>

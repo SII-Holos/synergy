@@ -179,21 +179,19 @@ const switchChecked = (host: HTMLElement) => {
 }
 
 describe("rendered built-in MCP status copy", () => {
-  test("a switch-on built-in that is not connected yet reads as ready, never as unavailable", () => {
+  test("an enabled built-in without a running connection reads as not started", () => {
     const host = mountPanel([builtin()])
 
-    expect(stateLabel(host)).toBe("Ready")
+    expect(stateLabel(host)).toBe("Not started")
     expect(stateLabel(host)).not.toBe("Unavailable")
-    // The contradiction this fixes: the switch is on, so the label must not
-    // claim the server is unavailable.
     expect(switchChecked(host)).toBe(true)
   })
 
-  test("the Simplified Chinese result is 就绪, not 不可用", () => {
+  test("the Simplified Chinese result distinguishes not started from unavailable", () => {
     i18n.activate("zh-CN")
     const host = mountPanel([builtin()])
 
-    expect(stateLabel(host)).toBe("就绪")
+    expect(stateLabel(host)).toBe("尚未启动")
     expect(stateLabel(host)).not.toBe("不可用")
   })
 
@@ -289,10 +287,10 @@ describe("rendered custom MCP server status", () => {
     expect(stateLabel(host)).toBe("Paused")
   })
 
-  test("an enabled custom server with no known status reads as not-yet-connected, not failed", () => {
+  test("an enabled custom server with no known status does not claim readiness", () => {
     const host = mountCard(mcpEntry())
 
-    expect(stateLabel(host)).toBe("Ready")
+    expect(stateLabel(host)).toBe("Status unavailable")
     expect(stateLabel(host)).not.toBe("Failed")
   })
 })

@@ -8,13 +8,23 @@ test("font searches return distinct fields in General", () => {
   expect(results.map((result) => result.section.id)).toEqual(["general"])
 })
 
-test("section aliases remain searchable without manufacturing a field hit", () => {
+test("natural language aliases locate the relevant field", () => {
   const results = settingsSearchResults(BUILTIN_SETTINGS_SECTIONS, "light")
-  expect(results.find((result) => result.section.id === "general")?.fields).toEqual([])
+  expect(results.find((result) => result.section.id === "general")?.fields).toEqual(["Color scheme"])
   expect(settingsSearchResults(BUILTIN_SETTINGS_SECTIONS, "zznonexistentzz")).toEqual([])
 })
 
 test("localized row labels match all query words", () => {
   const sections = [{ id: "general", label: "通用", rowLabels: ["界面字体", "等宽字体"] }]
   expect(settingsSearchResults(sections, "界面 字体")[0]?.fields).toEqual(["界面字体"])
+})
+
+test("knowledge searches target the visible preference labels", () => {
+  expect(settingsSearchResults(BUILTIN_SETTINGS_SECTIONS, "allow learning")[0]?.fields).toEqual(["Allow learning"])
+  expect(settingsSearchResults(BUILTIN_SETTINGS_SECTIONS, "memories per category")[0]?.fields).toEqual([
+    "Memories per category",
+  ])
+  expect(settingsSearchResults(BUILTIN_SETTINGS_SECTIONS, "experiences to recall")[0]?.fields).toEqual([
+    "Experiences to recall",
+  ])
 })

@@ -144,6 +144,7 @@ export function ArchivedSessionsPanel(props: { popoverLayer?: HTMLElement }) {
   const [items, setItems] = createSignal<ArchivedSessionItem[]>([])
   const [total, setTotal] = createSignal(0)
   const [loading, setLoading] = createSignal(false)
+  const [loadError, setLoadError] = createSignal<string>()
   const [busyID, setBusyID] = createSignal<string | undefined>()
   const [batchBusy, setBatchBusy] = createSignal<BatchAction | undefined>()
   const [selectedIDs, setSelectedIDs] = createSignal<Set<string>>(new Set())
@@ -177,12 +178,14 @@ export function ArchivedSessionsPanel(props: { popoverLayer?: HTMLElement }) {
       })
       const body = result.data
       const nextItems = body?.data ?? []
+      setLoadError(undefined)
       setItems(nextItems)
       setTotal(body?.total ?? 0)
       setOffset(body?.offset ?? nextOffset)
       const visibleIDs = new Set(nextItems.map((item) => item.id))
       setSelectedIDs((prev) => new Set([...prev].filter((id) => visibleIDs.has(id))))
     } catch (error) {
+      setLoadError(errorMessage(error, _(loadFailedDesc)))
       setItems([])
       setTotal(0)
       setSelectedIDs(new Set<string>())
@@ -320,6 +323,7 @@ export function ArchivedSessionsPanel(props: { popoverLayer?: HTMLElement }) {
               <input
                 type="search"
                 class="settings-archive-control-text min-w-0 flex-1 bg-transparent text-text-base outline-none placeholder:text-text-weaker"
+                aria-label={_(searchPlaceholder)}
                 placeholder={_(searchPlaceholder)}
                 value={search()}
                 onInput={(event) => scheduleSearch(event.currentTarget.value)}
@@ -357,144 +361,172 @@ export function ArchivedSessionsPanel(props: { popoverLayer?: HTMLElement }) {
             </div>
           </div>
 
-          <div class="flex flex-col gap-2 rounded-xl border border-border-weaker-base bg-surface-base/50 px-3 py-2 md:flex-row md:items-center md:justify-between">
-            <button
-              type="button"
-              class="settings-archive-control-label flex items-center gap-2 text-left text-text-base disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={items().length === 0 || busy()}
-              onClick={toggleSelectVisible}
-            >
-              <SelectionCheckbox selected={allVisibleSelected()} />
-              <span>
-                {selectedCount() > 0
-                  ? _({ ...selectedCountLabel, values: { count: selectedCount() } })
-                  : _(selectVisibleLabel)}
-              </span>
-            </button>
-            <div class="flex flex-wrap items-center gap-2">
-              <Button
+          <Show when={items().length > 0}>
+            <div class="flex flex-col gap-2 rounded-xl border border-border-weaker-base bg-surface-base/50 px-3 py-2 md:flex-row md:items-center md:justify-between">
+              <button
                 type="button"
-                variant="ghost"
-                size="small"
-                icon={getSemanticIcon("action.restore")}
-                disabled={selectedCount() === 0 || busy()}
-                onClick={() => confirmRestore(selectedItems())}
+                class="settings-archive-control-label flex items-center gap-2 text-left text-text-base disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={items().length === 0 || busy()}
+                onClick={toggleSelectVisible}
               >
-                {batchBusy() === "restore" ? _(restoringLabel) : _(restoreSelectedLabel)}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="small"
-                icon={getSemanticIcon("action.remove")}
-                disabled={selectedCount() === 0 || busy()}
-                onClick={() => confirmDelete(selectedItems())}
-              >
-                {batchBusy() === "delete" ? _(deletingLabel) : _(deleteSelectedLabel)}
+                <SelectionCheckbox selected={allVisibleSelected()} />
+                <span>
+                  {selectedCount() > 0
+                    ? _({ ...selectedCountLabel, values: { count: selectedCount() } })
+                    : _(selectVisibleLabel)}
+                </span>
+              </button>
+              <div class="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="small"
+                  icon={getSemanticIcon("action.restore")}
+                  disabled={selectedCount() === 0 || busy()}
+                  onClick={() => confirmRestore(selectedItems())}
+                >
+                  {batchBusy() === "restore" ? _(restoringLabel) : _(restoreSelectedLabel)}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="small"
+                  icon={getSemanticIcon("action.remove")}
+                  disabled={selectedCount() === 0 || busy()}
+                  onClick={() => confirmDelete(selectedItems())}
+                >
+                  {batchBusy() === "delete" ? _(deletingLabel) : _(deleteSelectedLabel)}
+                </Button>
+              </div>
+            </div>
+
+            <div class="settings-archive-caption flex items-center justify-between text-text-weak">
+              <span>{pageLabel()}</span>
+              <span>{_(restoreHint)}</span>
+            </div>
+          </Show>
+          <Show when={loadError()}>
+            <div class="settings-request-error" role="alert">
+              <span>{_(loadFailedTitle)}</span>
+              <Button type="button" variant="ghost" onClick={() => void load(0)}>
+                {_({ id: "settings.archivedSessions.retry", message: "Retry" })}
               </Button>
             </div>
-          </div>
-
-          <div class="settings-archive-caption flex items-center justify-between text-text-weak">
-            <span>{pageLabel()}</span>
-            <span>{_(restoreHint)}</span>
-          </div>
-
-          <SettingsEntityList
-            isEmpty={!loading() && items().length === 0}
-            emptyIcon={getSemanticIcon("session.archive")}
-            emptyTitle={search().trim() ? _(noResultsTitle) : _(noResultsFallback)}
-            emptyDescription={_(noResultsDescription)}
-          >
-            <div class="flex flex-col overflow-hidden rounded-xl border border-border-weaker-base bg-surface-base/50">
-              <For each={items()}>
-                {(item) => {
-                  const selected = () => selectedIDs().has(item.id)
-                  return (
-                    <div
-                      class="flex flex-col gap-3 border-b border-border-weaker-base px-3 py-3 last:border-b-0 md:flex-row md:items-center md:justify-between"
-                      classList={{ "workbench-selected-surface": selected() }}
-                    >
-                      <div class="min-w-0 flex items-start gap-3">
-                        <button
-                          type="button"
-                          class="mt-0.5 shrink-0"
-                          aria-label={`${selected() ? "Deselect" : "Select"} ${item.title || _(untitledSessionLabel)}`}
-                          disabled={busy()}
-                          onClick={() => toggleSelected(item)}
-                        >
-                          <SelectionCheckbox selected={selected()} />
-                        </button>
-                        <div class="min-w-0">
-                          <div class="settings-row-title truncate">{item.title || _(untitledSessionLabel)}</div>
-                          <div class="settings-archive-caption mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-text-weak">
-                            <span class="ds-inline-badge ds-inline-badge-muted">{scopeLabel(item)}</span>
-                            <span>
-                              {_({
-                                ...archivedAtLabel,
-                                values: { time: relativeTime(fmt, item.time.archived ?? item.time.updated) },
-                              })}
-                            </span>
-                            <span title={formatArchivedAt(fmt, item.time.archived, _(unknownArchiveTime))}>
-                              {formatArchivedAt(fmt, item.time.archived, _(unknownArchiveTime))}
-                            </span>
-                          </div>
-                          <Show when={item.lastExchange?.user}>
-                            <div class="settings-archive-caption mt-1 line-clamp-1 text-text-weaker">
-                              {_({ ...youLabel, values: { text: item.lastExchange!.user } })}
+          </Show>
+          <Show when={!loadError()}>
+            <SettingsEntityList
+              isEmpty={!loading() && items().length === 0}
+              emptyIcon={getSemanticIcon("session.archive")}
+              emptyTitle={search().trim() ? _(noResultsTitle) : _(noResultsFallback)}
+              emptyDescription={_(noResultsDescription)}
+            >
+              <div class="flex flex-col overflow-hidden rounded-xl border border-border-weaker-base bg-surface-base/50">
+                <For each={items()}>
+                  {(item) => {
+                    const selected = () => selectedIDs().has(item.id)
+                    return (
+                      <div
+                        class="flex flex-col gap-3 border-b border-border-weaker-base px-3 py-3 last:border-b-0 md:flex-row md:items-center md:justify-between"
+                        classList={{ "workbench-selected-surface": selected() }}
+                      >
+                        <div class="min-w-0 flex items-start gap-3">
+                          <button
+                            type="button"
+                            class="mt-0.5 shrink-0"
+                            aria-label={`${selected() ? _(deselectLabel) : _(selectLabel)} ${item.title || _(untitledSessionLabel)}`}
+                            disabled={busy()}
+                            onClick={() => toggleSelected(item)}
+                          >
+                            <SelectionCheckbox selected={selected()} />
+                          </button>
+                          <div class="min-w-0">
+                            <div class="settings-row-title truncate">{item.title || _(untitledSessionLabel)}</div>
+                            <div class="settings-archive-caption mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-text-weak">
+                              <span class="ds-inline-badge ds-inline-badge-muted">{scopeLabel(item)}</span>
+                              <span>
+                                {_({
+                                  ...archivedAtLabel,
+                                  values: { time: relativeTime(fmt, item.time.archived ?? item.time.updated) },
+                                })}
+                              </span>
+                              <span title={formatArchivedAt(fmt, item.time.archived, _(unknownArchiveTime))}>
+                                {formatArchivedAt(fmt, item.time.archived, _(unknownArchiveTime))}
+                              </span>
                             </div>
-                          </Show>
+                            <Show when={item.lastExchange?.user}>
+                              <div class="settings-archive-caption mt-1 line-clamp-1 text-text-weaker">
+                                {_({ ...youLabel, values: { text: item.lastExchange!.user } })}
+                              </div>
+                            </Show>
+                          </div>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2 md:justify-end">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="small"
+                            icon={getSemanticIcon("action.restore")}
+                            aria-label={_({
+                              id: "settings.archivedSessions.restore.named",
+                              message: "Restore session: {title}",
+                              values: { title: item.title || _(untitledSessionLabel) },
+                            })}
+                            disabled={busy()}
+                            onClick={() => confirmRestore([item])}
+                          >
+                            {busyID() === item.id ? _(singleRestoringLabel) : _(singleRestoreLabel)}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="small"
+                            icon={getSemanticIcon("action.remove")}
+                            aria-label={_({
+                              id: "settings.archivedSessions.delete.named",
+                              message: "Delete session: {title}",
+                              values: { title: item.title || _(untitledSessionLabel) },
+                            })}
+                            disabled={busy()}
+                            onClick={() => confirmDelete([item])}
+                          >
+                            {busyID() === item.id ? _(singleDeletingLabel) : _(singleDeleteLabel)}
+                          </Button>
                         </div>
                       </div>
-                      <div class="flex flex-wrap items-center gap-2 md:justify-end">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="small"
-                          icon={getSemanticIcon("action.restore")}
-                          disabled={busy()}
-                          onClick={() => confirmRestore([item])}
-                        >
-                          {busyID() === item.id ? _(singleRestoringLabel) : _(singleRestoreLabel)}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="small"
-                          icon={getSemanticIcon("action.remove")}
-                          disabled={busy()}
-                          onClick={() => confirmDelete([item])}
-                        >
-                          {busyID() === item.id ? _(singleDeletingLabel) : _(singleDeleteLabel)}
-                        </Button>
-                      </div>
-                    </div>
-                  )
-                }}
-              </For>
-            </div>
-          </SettingsEntityList>
+                    )
+                  }}
+                </For>
+              </div>
+            </SettingsEntityList>
 
-          <div class="flex items-center justify-between">
-            <Button
-              type="button"
-              variant="ghost"
-              size="small"
-              disabled={busy() || offset() === 0}
-              onClick={() => void load(Math.max(0, offset() - PAGE_LIMIT))}
-            >
-              {_(previousLabel)}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="small"
-              disabled={busy() || !hasNextPage()}
-              onClick={() => void load(offset() + PAGE_LIMIT)}
-            >
-              {_(nextLabel)}
-            </Button>
-          </div>
+            <Show when={!loading() && items().length === 0 && search().trim()}>
+              <Button type="button" variant="ghost" onClick={() => scheduleSearch("")}>
+                {_({ id: "settings.archivedSessions.clearSearch", message: "Clear search" })}
+              </Button>
+            </Show>
+            <Show when={total() > PAGE_LIMIT}>
+              <div class="flex items-center justify-between">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="small"
+                  disabled={busy() || offset() === 0}
+                  onClick={() => void load(Math.max(0, offset() - PAGE_LIMIT))}
+                >
+                  {_(previousLabel)}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="small"
+                  disabled={busy() || !hasNextPage()}
+                  onClick={() => void load(offset() + PAGE_LIMIT)}
+                >
+                  {_(nextLabel)}
+                </Button>
+              </div>
+            </Show>
+          </Show>
         </div>
       </SettingsSection>
     </SettingsPage>

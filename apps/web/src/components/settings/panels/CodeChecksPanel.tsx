@@ -1,8 +1,9 @@
+import { settingsFieldCopy } from "../settings-field-copy"
 import { useLingui } from "@lingui/solid"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
-import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
+import { SettingRow } from "../components/SettingsSettingRow"
 import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
-import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
+import { SettingsAdvanced, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { RuntimeStore } from "../types"
 import { codeChecksControlsDisabled } from "./code-checks-model"
 
@@ -12,18 +13,18 @@ const pageDesc = {
   message: "Choose which language-server diagnostics file-writing tools return after an edit.",
 }
 const sectionTitle = { id: "settings.codeChecks.section.title", message: "Post-write Diagnostics" }
-const includeRowTitle = { id: "settings.codeChecks.include.title", message: "Include Diagnostics" }
+const includeRowTitle = settingsFieldCopy.codeInclude
 const includeRowDesc = {
   id: "settings.codeChecks.include.desc",
-  message: "Return language-server feedback after write, edit, save_file, revise_file, and resolve_conflicts.",
+  message: "Include errors and warnings found after Synergy changes a file.",
 }
-const severityRowTitle = { id: "settings.codeChecks.severity.title", message: "Diagnostic Severity" }
+const severityRowTitle = settingsFieldCopy.codeSeverity
 const severityRowDesc = {
   id: "settings.codeChecks.severity.desc",
   message: "Include only errors, or include warnings as well.",
 }
 const severityAria = { id: "settings.codeChecks.severity.aria", message: "Diagnostic severity" }
-const scopeRowTitle = { id: "settings.codeChecks.scope.title", message: "Diagnostic Scope" }
+const scopeRowTitle = settingsFieldCopy.codeScope
 const scopeRowDesc = {
   id: "settings.codeChecks.scope.desc",
   message: "Compare this edit, inspect this file, or include matching diagnostics across the project.",
@@ -92,6 +93,12 @@ export function CodeChecksPanel(props: {
           }
         />
       </SettingsSection>
+      <SettingsAdvanced
+        id="supported-tools"
+        title={_({ id: "settings.codeChecks.tools", message: "Supported file tools" })}
+      >
+        <p class="settings-row-description">write, edit, save_file, revise_file, resolve_conflicts</p>
+      </SettingsAdvanced>
     </SettingsPage>
   )
 }

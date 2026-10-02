@@ -10,7 +10,7 @@ import { mcpStatusCopy, mcpStatusError } from "@/components/mcp/status-presentat
 import type { McpEntry } from "../types"
 import { SegmentPill } from "./SegmentPill"
 import { SettingsSubsection } from "./SettingsPrimitives"
-import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
+import { SettingRow } from "./SettingsSettingRow"
 
 const newServerLabel = { id: "settings.mcp.card.newServer", message: "New server" }
 const localTypeLabel = { id: "settings.mcp.card.type.local", message: "Local command" }
@@ -73,6 +73,7 @@ export function McpCard(props: {
   entry: McpEntry
   /** Live connection status for this server, when the supervisor knows it. */
   status?: McpStatus
+  unsaved?: boolean
   onChange: (field: string, value: string | boolean) => void
   onRemove: () => void
 }) {
@@ -89,8 +90,20 @@ export function McpCard(props: {
   // bare "Enabled" that hid "switched on but not connected".
   const stateCopy = createMemo(() => mcpStatusCopy(props.status, _))
   const stateError = createMemo(() => mcpStatusError(props.status))
-  const stateLabel = createMemo(() => (props.entry.enabled ? stateCopy().label : _(pausedLabel)))
-  const stateTone = createMemo(() => (props.entry.enabled ? stateCopy().tone : "neutral"))
+  const incomplete = () =>
+    !props.entry.key.trim() || !(props.entry.type === "local" ? props.entry.command.trim() : props.entry.url.trim())
+  const stateLabel = createMemo(() =>
+    incomplete()
+      ? _({ id: "settings.mcp.card.incomplete", message: "Incomplete configuration" })
+      : props.unsaved
+        ? _({ id: "settings.mcp.card.unsaved", message: "Unsaved" })
+        : props.entry.enabled
+          ? stateCopy().label
+          : _(pausedLabel),
+  )
+  const stateTone = createMemo(() =>
+    !incomplete() && !props.unsaved && props.entry.enabled ? stateCopy().tone : "neutral",
+  )
 
   return (
     <section class="settings-mcp-card">
@@ -118,13 +131,27 @@ export function McpCard(props: {
             {stateLabel()}
           </span>
           <Switch checked={props.entry.enabled} hideLabel onChange={(value) => props.onChange("enabled", value)}>
-            {`${name()} server`}
+            {_({ id: "settings.mcp.card.enable.named", message: "Enable {name} server", values: { name: name() } })}
           </Switch>
-          <IconButton type="button" icon={getSemanticIcon("action.remove")} variant="ghost" onClick={props.onRemove} />
+          <IconButton
+            type="button"
+            icon={getSemanticIcon("action.remove")}
+            variant="ghost"
+            aria-label={_({
+              id: "settings.mcp.card.remove.named",
+              message: "Remove {name} server",
+              values: { name: name() },
+            })}
+            onClick={props.onRemove}
+          />
           <button
             type="button"
             class="settings-mcp-expand"
-            aria-label={expanded() ? _(collapseLabel) : _(expandLabel)}
+            aria-label={_({
+              id: "settings.mcp.card.details.named",
+              message: "{action}: {name}",
+              values: { action: expanded() ? _(collapseLabel) : _(expandLabel), name: name() },
+            })}
             onClick={() => setExpanded((value) => !value)}
           >
             <Icon

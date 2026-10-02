@@ -13,7 +13,7 @@ import { useGlobalSync } from "@/context/global-sync"
 import { translateDescriptor } from "@/locales/translate"
 import { requestErrorMessage } from "@/utils/error"
 import { SettingsPage, SettingsSection, SettingsSubsection } from "../components/SettingsPrimitives"
-import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
+import { SettingRow } from "../components/SettingsSettingRow"
 import type { GithubIntegrationSettings } from "../types"
 import {
   providerNeedsAction,
@@ -111,7 +111,7 @@ export function GitHubPanel(props: {
   github: GithubIntegrationSettings
   onGithubChange: (key: keyof GithubIntegrationSettings, value: string | boolean) => void
   /** Persist any pending github-domain draft before an identity sync runs. */
-  onSyncIdentity?: () => Promise<void>
+  configDirty?: boolean
 }) {
   const { _, i18n } = useLingui()
   const globalSDK = useGlobalSDK()
@@ -162,7 +162,7 @@ export function GitHubPanel(props: {
   async function syncIdentity() {
     setSyncingIdentity(true)
     try {
-      await props.onSyncIdentity?.()
+      if (props.configDirty) return
       const res = await globalSDK.client.auth.githubIdentitySync({}, { throwOnError: true })
       const result = res.data
       await refetchIdentity()
@@ -244,6 +244,33 @@ export function GitHubPanel(props: {
         </SettingsSection>
       </Show>
 
+      <Show when={!connected()}>
+        <Show
+          when={status()?.source !== "env"}
+          fallback={
+            <SettingsSection title={_(envCredentialsTitle)}>
+              <p class="providers-connect-copy">
+                {needsAction() ? _(envRecoveryDescription) : _(envConnectedDescription)}
+              </p>
+            </SettingsSection>
+          }
+        >
+          <SettingsSection>
+            <ProviderConnectionFlow
+              providerID="github"
+              providerName="GitHub"
+              intent={needsAction() ? "recover" : "connect"}
+              connectedOverride={connected()}
+              skipAutoAdvance
+              completeDescription={_({
+                id: "settings.github.ready",
+                message: "GitHub credentials are ready for GitHub CLI-backed actions.",
+              })}
+              onComplete={refreshStatus}
+            />
+          </SettingsSection>
+        </Show>
+      </Show>
       <Show when={status()?.account}>
         {(account) => (
           <SettingsSection title={_(accountTitle)}>
@@ -273,101 +300,88 @@ export function GitHubPanel(props: {
         )}
       </Show>
 
-      <SettingsSection title={_(identitySectionTitle)}>
-        <SettingsSubsection>
+      <Show when={connected()}>
+        <SettingsSection title={_(identitySectionTitle)}>
+          <SettingsSubsection>
+            <SettingRow
+              title={_(identitySyncRowTitle)}
+              description={_(identitySyncRowDescription)}
+              trailing={
+                <Switch
+                  checked={props.github.identitySyncEnabled}
+                  hideLabel
+                  onChange={(value) => props.onGithubChange("identitySyncEnabled", value)}
+                >
+                  {_(identitySyncRowTitle)}
+                </Switch>
+              }
+            />
+            <Show when={props.configDirty}>
+              <p class="ds-section-hint">
+                {_({
+                  id: "settings.github.saveFirst",
+                  message: "Save your GitHub preferences before syncing identity.",
+                })}
+              </p>
+            </Show>
+            <Show when={props.github.identitySyncEnabled}>
+              <SettingRow
+                title={_(identityNameLabel)}
+                description={_(identityNameDescription)}
+                trailing={
+                  <TextField
+                    type="text"
+                    placeholder=""
+                    value={props.github.identitySyncName}
+                    onChange={(value) => props.onGithubChange("identitySyncName", value)}
+                  />
+                }
+              />
+              <SettingRow
+                title={_(identityEmailLabel)}
+                description={_(identityEmailDescription)}
+                trailing={
+                  <TextField
+                    type="text"
+                    placeholder=""
+                    value={props.github.identitySyncEmail}
+                    onChange={(value) => props.onGithubChange("identitySyncEmail", value)}
+                  />
+                }
+              />
+            </Show>
+            <SettingRow
+              title={_({ ...identitySummaryCurrent, values: { value: identityCurrent() } })}
+              description={_({ ...identitySummaryTarget, values: { value: identityTarget() } })}
+              trailing={
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="small"
+                  icon={getSemanticIcon("action.refresh")}
+                  disabled={syncingIdentity() || identity.loading || props.configDirty}
+                  onClick={syncIdentity}
+                >
+                  {syncingIdentity() ? _(identitySyncNowBusyLabel) : _(identitySyncNowLabel)}
+                </Button>
+              }
+            />
+          </SettingsSubsection>
+        </SettingsSection>
+
+        <SettingsSection title={_(watchSectionTitle)}>
           <SettingRow
-            title={_(identitySyncRowTitle)}
-            description={_(identitySyncRowDescription)}
+            title={_(watchRowTitle)}
+            description={_(watchRowDescription)}
             trailing={
               <Switch
-                checked={props.github.identitySyncEnabled}
+                checked={props.github.watchEnabled}
                 hideLabel
-                onChange={(value) => props.onGithubChange("identitySyncEnabled", value)}
+                onChange={(value) => props.onGithubChange("watchEnabled", value)}
               >
-                {_(identitySyncRowTitle)}
+                {_(watchRowTitle)}
               </Switch>
             }
-          />
-          <Show when={props.github.identitySyncEnabled}>
-            <SettingRow
-              title={_(identityNameLabel)}
-              description={_(identityNameDescription)}
-              trailing={
-                <TextField
-                  type="text"
-                  placeholder=""
-                  value={props.github.identitySyncName}
-                  onChange={(value) => props.onGithubChange("identitySyncName", value)}
-                />
-              }
-            />
-            <SettingRow
-              title={_(identityEmailLabel)}
-              description={_(identityEmailDescription)}
-              trailing={
-                <TextField
-                  type="text"
-                  placeholder=""
-                  value={props.github.identitySyncEmail}
-                  onChange={(value) => props.onGithubChange("identitySyncEmail", value)}
-                />
-              }
-            />
-          </Show>
-          <SettingRow
-            title={_({ ...identitySummaryCurrent, values: { value: identityCurrent() } })}
-            description={_({ ...identitySummaryTarget, values: { value: identityTarget() } })}
-            trailing={
-              <Button
-                type="button"
-                variant="secondary"
-                size="small"
-                icon={getSemanticIcon("action.refresh")}
-                disabled={syncingIdentity() || identity.loading}
-                onClick={syncIdentity}
-              >
-                {syncingIdentity() ? _(identitySyncNowBusyLabel) : _(identitySyncNowLabel)}
-              </Button>
-            }
-          />
-        </SettingsSubsection>
-      </SettingsSection>
-
-      <SettingsSection title={_(watchSectionTitle)}>
-        <SettingRow
-          title={_(watchRowTitle)}
-          description={_(watchRowDescription)}
-          trailing={
-            <Switch
-              checked={props.github.watchEnabled}
-              hideLabel
-              onChange={(value) => props.onGithubChange("watchEnabled", value)}
-            >
-              {_(watchRowTitle)}
-            </Switch>
-          }
-        />
-      </SettingsSection>
-
-      <Show
-        when={status()?.source !== "env"}
-        fallback={
-          <SettingsSection title={_(envCredentialsTitle)}>
-            <p class="providers-connect-copy">
-              {needsAction() ? _(envRecoveryDescription) : _(envConnectedDescription)}
-            </p>
-          </SettingsSection>
-        }
-      >
-        <SettingsSection>
-          <ProviderConnectionFlow
-            providerID="github"
-            providerName="GitHub"
-            intent={needsAction() ? "recover" : "connect"}
-            connectedOverride={connected()}
-            skipAutoAdvance
-            completeDescription="GitHub credentials are ready for GitHub CLI-backed actions."
-            onComplete={refreshStatus}
           />
         </SettingsSection>
       </Show>

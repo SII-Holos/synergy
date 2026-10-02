@@ -1672,7 +1672,7 @@ msgstr "下次回复后可查看占用明细"
 
 #. js-lingui-explicit-id
 msgid "app.context.category.conversation"
-msgstr "对话"
+msgstr "会话"
 
 #. js-lingui-explicit-id
 msgid "app.context.category.conversation.description"
@@ -1956,7 +1956,7 @@ msgstr "选择一个文件夹，将其作为 Synergy 项目打开。"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.directory.clearSearch"
-msgstr "清除搜索"
+msgstr "清空搜索"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.directory.description"
@@ -2108,7 +2108,7 @@ msgstr "可供智能体工具使用"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.mcp.status.connecting"
-msgstr "正在连接"
+msgstr "连接中"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.mcp.status.connectingDesc"
@@ -2116,7 +2116,7 @@ msgstr "正在打开 MCP 连接"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.mcp.status.disabled"
-msgstr "已禁用"
+msgstr "已关闭"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.mcp.status.disabledDesc"
@@ -2148,11 +2148,11 @@ msgstr "需要认证"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.mcp.status.ready"
-msgstr "就绪"
+msgstr "尚未启动"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.mcp.status.readyDesc"
-msgstr "已准备好连接"
+msgstr "此服务尚未启动。"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.mcp.status.reconnecting"
@@ -2185,6 +2185,14 @@ msgstr "正在停止"
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.mcp.status.stoppingDesc"
 msgstr "正在断开与服务器的连接"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.mcp.status.unavailable"
+msgstr "状态暂不可用"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.mcp.status.unavailableDesc"
+msgstr "尚未取得此服务的运行状态。"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.mcp.status.updating"
@@ -3322,7 +3330,7 @@ msgstr "你的下一条消息将开始本次运行的需求对齐。"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.notStarted"
-msgstr "尚未开始"
+msgstr "尚未启动"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.pausedHint"
@@ -3963,7 +3971,7 @@ msgstr "写作"
 
 #. js-lingui-explicit-id
 msgid "app.library.clearSearch"
-msgstr "清除搜索"
+msgstr "清空搜索"
 
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.dim.execution"
@@ -5431,7 +5439,7 @@ msgstr "返回会话模式"
 
 #. js-lingui-explicit-id
 msgid "app.note.toolbar.clearSearch"
-msgstr "清除搜索"
+msgstr "清空搜索"
 
 #. js-lingui-explicit-id
 msgid "app.note.toolbar.close"
@@ -6717,7 +6725,7 @@ msgstr "活跃"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.state.disabled"
-msgstr "已禁用"
+msgstr "已关闭"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.state.needsApproval"
@@ -6765,7 +6773,7 @@ msgstr "正在检查插件"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.clearSearch"
-msgstr "清除搜索"
+msgstr "清空搜索"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.empty.developmentHint"
@@ -6945,7 +6953,7 @@ msgstr "活跃"
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.status.disabled"
-msgstr "已禁用"
+msgstr "已关闭"
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.status.needsApproval"
@@ -7135,6 +7143,10 @@ msgstr "添加 {provider} 密钥"
 msgid "app.provider.apiKey.back"
 msgstr "后退"
 
+#. js-lingui-explicit-id
+msgid "app.provider.apiKey.createPlatform"
+msgstr "创建 OpenAI API 密钥"
+
 #. ── Provider Connection Flow ─────────────────────────────────────────────────
 msgid "app.provider.apiKey.description"
 msgstr "使用提供商账号中的密钥，让此提供商可在 Synergy 中使用。"
@@ -7206,6 +7218,14 @@ msgstr "授权超时。请打开授权页面并输入确认码，然后重试。
 #. ── Provider Connection Flow ─────────────────────────────────────────────────
 msgid "app.provider.device.waiting"
 msgstr "正在等待授权…"
+
+#. js-lingui-explicit-id
+msgid "app.provider.github.token.description"
+msgstr "粘贴 GitHub 个人访问令牌，以使用仓库和 GitHub CLI 操作。"
+
+#. js-lingui-explicit-id
+msgid "app.provider.github.token.label"
+msgstr "GitHub 访问令牌"
 
 #. ── Provider Connection Flow ─────────────────────────────────────────────────
 msgid "app.provider.method.api.defaultLabel"
@@ -7863,11 +7883,11 @@ msgstr "已降级"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.channel.account.disabled"
-msgstr "已禁用"
+msgstr "已关闭"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.channel.account.disconnected"
-msgstr "已断开"
+msgstr "未连接"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.channel.account.syncFailed"
@@ -7959,11 +7979,11 @@ msgstr "连接失败"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.holos.disabled"
-msgstr "已禁用"
+msgstr "已关闭"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.holos.disconnected"
-msgstr "已断开连接"
+msgstr "未连接"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.holos.loadingIdentity"
@@ -8926,15 +8946,15 @@ msgstr "已连接"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
 msgid "app.statusBar.holos.state.connecting"
-msgstr "正在连接"
+msgstr "连接中"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
 msgid "app.statusBar.holos.state.disabled"
-msgstr "已禁用"
+msgstr "已关闭"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
 msgid "app.statusBar.holos.state.disconnected"
-msgstr "已断开连接"
+msgstr "未连接"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
 msgid "app.statusBar.holos.state.failed"
@@ -9402,7 +9422,7 @@ msgstr "标签页操作"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.tab.close"
-msgstr "关闭 {title}"
+msgstr "关闭{title}"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.tab.closeOthers"
@@ -9910,7 +9930,7 @@ msgstr "独立账号和高级设置"
 
 #. js-lingui-explicit-id
 msgid "browser.settings.disabled"
-msgstr "已停用"
+msgstr "已关闭"
 
 #. js-lingui-explicit-id
 msgid "browser.settings.login"
@@ -10251,6 +10271,10 @@ msgstr "已完成 {completed}/{total} 条记录，是否取消？已完成的更
 #. js-lingui-explicit-id
 msgid "confirm.cancelReencode.title"
 msgstr "取消重新编码？"
+
+#. js-lingui-explicit-id
+msgid "confirm.close.named"
+msgstr "关闭{title}"
 
 #. js-lingui-explicit-id
 msgid "confirm.deleteArchivedNote.confirm.plural"
@@ -15988,6 +16012,30 @@ msgid "settings.account.agentPrefix"
 msgstr "智能体 {id}"
 
 #. js-lingui-explicit-id
+msgid "settings.account.connection.connected"
+msgstr "已连接"
+
+#. js-lingui-explicit-id
+msgid "settings.account.connection.connecting"
+msgstr "连接中"
+
+#. js-lingui-explicit-id
+msgid "settings.account.connection.disabled"
+msgstr "连接已关闭"
+
+#. js-lingui-explicit-id
+msgid "settings.account.connection.disconnected"
+msgstr "未连接"
+
+#. js-lingui-explicit-id
+msgid "settings.account.connection.failed"
+msgstr "连接失败"
+
+#. js-lingui-explicit-id
+msgid "settings.account.connection.unknown"
+msgstr "状态暂不可用"
+
+#. js-lingui-explicit-id
 msgid "settings.account.editProfile"
 msgstr "编辑资料"
 
@@ -16200,8 +16248,16 @@ msgid "settings.archivedSessions.archivedAt"
 msgstr "归档于 {time}"
 
 #. js-lingui-explicit-id
+msgid "settings.archivedSessions.clearSearch"
+msgstr "清空搜索"
+
+#. js-lingui-explicit-id
 msgid "settings.archivedSessions.count"
 msgstr "{total} 个已归档会话"
+
+#. js-lingui-explicit-id
+msgid "settings.archivedSessions.delete.named"
+msgstr "删除会话：{title}"
 
 #. js-lingui-explicit-id
 msgid "settings.archivedSessions.deletedDesc"
@@ -16268,6 +16324,10 @@ msgid "settings.archivedSessions.restore.hint"
 msgstr "恢复会保留数据；永久删除无法撤销。"
 
 #. js-lingui-explicit-id
+msgid "settings.archivedSessions.restore.named"
+msgstr "恢复会话：{title}"
+
+#. js-lingui-explicit-id
 msgid "settings.archivedSessions.restoredDesc"
 msgstr "已恢复 {count} 个会话"
 
@@ -16286,6 +16346,10 @@ msgstr "恢复已归档会话失败"
 #. js-lingui-explicit-id
 msgid "settings.archivedSessions.restoreFailedSingle"
 msgstr "恢复已归档会话失败"
+
+#. js-lingui-explicit-id
+msgid "settings.archivedSessions.retry"
+msgstr "重试"
 
 #. js-lingui-explicit-id
 msgid "settings.archivedSessions.search.placeholder"
@@ -16380,18 +16444,6 @@ msgid "settings.catalog.boss.label"
 msgstr "Boss Mode（同事模式）"
 
 #. js-lingui-explicit-id
-msgid "settings.catalog.boss.row.bossMode"
-msgstr "Boss Mode（同事模式）"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.boss.row.identity"
-msgstr "同事身份描述"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.boss.row.interval"
-msgstr "世界概况简报间隔（天）"
-
-#. js-lingui-explicit-id
 msgid "settings.catalog.boss.searchTerms"
 msgstr "boss | 同事 | 飞书 | 路由 | 运行时"
 
@@ -16416,18 +16468,6 @@ msgid "settings.catalog.codeChecks.label"
 msgstr "代码检查"
 
 #. js-lingui-explicit-id
-msgid "settings.catalog.codeChecks.row.diagnosticScope"
-msgstr "检查范围"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.codeChecks.row.diagnosticSeverity"
-msgstr "严重级别"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.codeChecks.row.includeDiagnostics"
-msgstr "包含代码检查结果"
-
-#. js-lingui-explicit-id
 msgid "settings.catalog.codeChecks.searchTerms"
 msgstr "代码 | 检查 | LSP | 诊断 | 问题级别 | 范围 | 写入 | 编辑"
 
@@ -16438,18 +16478,6 @@ msgstr "设置上下文整理和历史记录限制。"
 #. js-lingui-explicit-id
 msgid "settings.catalog.compaction.label"
 msgstr "上下文整理"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.compaction.row.autoCompact"
-msgstr "自动整理上下文"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.compaction.row.maxHistoryImages"
-msgstr "历史图片上限"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.compaction.row.overflowThreshold"
-msgstr "自动整理时机"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.compaction.searchTerms"
@@ -16477,7 +16505,7 @@ msgstr "权限模式"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.controlProfile.searchTerms"
-msgstr "权限模式 | 受控 | 无人值守 | 全权限"
+msgstr "权限模式 | 受控 | 无人值守 | 完全访问权限 | 全权限"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.email.description"
@@ -16498,18 +16526,6 @@ msgstr "设置如何参考历史经验和尝试新方法。"
 #. js-lingui-explicit-id
 msgid "settings.catalog.experience.label"
 msgstr "历史经验"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.experience.row.count"
-msgstr "参考数量"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.experience.row.explorationRate"
-msgstr "尝试新方法"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.experience.row.similarity"
-msgstr "相关性要求"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.experience.searchTerms"
@@ -16534,30 +16550,6 @@ msgstr "外观、行为和通知偏好设置。"
 #. js-lingui-explicit-id
 msgid "settings.catalog.general.label"
 msgstr "通用"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.general.row.activityDisplay"
-msgstr "活动显示"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.general.row.colorScheme"
-msgstr "配色方案"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.general.row.interfaceLanguage"
-msgstr "界面语言"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.general.row.newSessionWorkspace"
-msgstr "新任务使用的文件"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.general.row.notifications"
-msgstr "通知"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.general.row.productUpdates"
-msgstr "产品更新"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.general.row.toastDuration"
@@ -16585,31 +16577,31 @@ msgstr "github | gh | 议题 | 拉取请求 | 发布 | 令牌 | git 身份 | 监
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.group.core"
-msgstr "核心"
+msgstr "模型与服务"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.group.integrations"
-msgstr "集成"
+msgstr "连接与集成"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.group.library"
-msgstr "知识库"
+msgstr "知识与技能"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.group.personal"
-msgstr "个人"
+msgstr "个人偏好"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.group.runtime"
-msgstr "运行设置"
+msgstr "运行与自动化"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.group.safety"
-msgstr "安全"
+msgstr "安全与权限"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.group.system"
-msgstr "系统"
+msgstr "数据与系统"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.import.description"
@@ -16630,14 +16622,6 @@ msgstr "设置如何从对话中学习并在后台整理经验。"
 #. js-lingui-explicit-id
 msgid "settings.catalog.learning.label"
 msgstr "学习"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.learning.row.enableAutonomy"
-msgstr "后台反思与规划"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.learning.row.enableLearning"
-msgstr "从对话中学习"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.learning.searchTerms"
@@ -16676,26 +16660,6 @@ msgid "settings.catalog.memory.label"
 msgstr "记忆"
 
 #. js-lingui-explicit-id
-msgid "settings.catalog.memory.row.currentModel"
-msgstr "当前模型"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.memory.row.downloadSource"
-msgstr "下载来源"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.memory.row.localModelFiles"
-msgstr "本地模型文件"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.memory.row.perCategory"
-msgstr "每类使用数量"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.memory.row.similarity"
-msgstr "相关性要求"
-
-#. js-lingui-explicit-id
 msgid "settings.catalog.memory.searchTerms"
 msgstr "记忆 | 使用 | 相关性 | 嵌入 | 下载 | 模型 | 本地 | 远程 | huggingface | hf mirror | 自定义来源"
 
@@ -16708,22 +16672,6 @@ msgid "settings.catalog.models.label"
 msgstr "模型"
 
 #. js-lingui-explicit-id
-msgid "settings.catalog.models.row.default"
-msgstr "默认模型"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.models.row.mini"
-msgstr "轻量模型"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.models.row.thinking"
-msgstr "推理模型"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.models.row.vision"
-msgstr "视觉模型"
-
-#. js-lingui-explicit-id
 msgid "settings.catalog.models.searchTerms"
 msgstr "模型 | 提供商 | 角色"
 
@@ -16733,7 +16681,7 @@ msgstr "原始日志、跟踪、遥测收集和运行时配置。"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.observability.label"
-msgstr "可观测性"
+msgstr "诊断"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.observability.searchTerms"
@@ -16748,14 +16696,6 @@ msgid "settings.catalog.permissions.label"
 msgstr "权限"
 
 #. js-lingui-explicit-id
-msgid "settings.catalog.permissions.row.mode"
-msgstr "权限模式"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.permissions.row.smartAllow"
-msgstr "智能放行"
-
-#. js-lingui-explicit-id
 msgid "settings.catalog.permissions.searchTerms"
 msgstr "权限 | 工具 | 允许 | 拒绝"
 
@@ -16766,10 +16706,6 @@ msgstr "影响 Synergy 在各项目中工作方式的全局自定义指令。"
 #. js-lingui-explicit-id
 msgid "settings.catalog.personalize.label"
 msgstr "个性化"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.personalize.row.customInstructions"
-msgstr "自定义指令"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.personalize.searchTerms"
@@ -16789,15 +16725,11 @@ msgstr "提供商 | API | 已启用 | 已禁用"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.questions.description"
-msgstr "设置问题超时后的处理方式。"
+msgstr "选择等待用户回应的时长。"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.questions.label"
-msgstr "问题"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.questions.row.responseTimeout"
-msgstr "响应超时"
+msgstr "等待回应"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.questions.searchTerms"
@@ -16836,22 +16768,6 @@ msgid "settings.catalog.skills.label"
 msgstr "技能"
 
 #. js-lingui-explicit-id
-msgid "settings.catalog.skills.row.agents"
-msgstr "Agent 技能"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.skills.row.claude"
-msgstr "Claude Code"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.skills.row.codex"
-msgstr "Codex"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.skills.row.openclaw"
-msgstr "OpenClaw"
-
-#. js-lingui-explicit-id
 msgid "settings.catalog.skills.searchTerms"
 msgstr "技能 | skill | claude | codex | openclaw | agents | 兼容性"
 
@@ -16873,15 +16789,7 @@ msgstr "设置智能体 Worker 容量、子智能体并发和各类操作超时�
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.label"
-msgstr "智能体"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.timeouts.row.agentWorkerPool"
-msgstr "智能体 Worker 池"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.timeouts.row.maxConcurrentSubagents"
-msgstr "最大并发子智能体数"
+msgstr "智能体运行"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.searchTerms"
@@ -16908,14 +16816,6 @@ msgid "settings.catalog.voice.label"
 msgstr "语音"
 
 #. js-lingui-explicit-id
-msgid "settings.catalog.voice.row.speechRecognition"
-msgstr "语音识别"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.voice.row.speechSynthesis"
-msgstr "语音合成"
-
-#. js-lingui-explicit-id
 msgid "settings.catalog.voice.searchTerms"
 msgstr "语音 | 听写 | 语音转文字 | 文字转语音 | 识别 | 合成"
 
@@ -16925,11 +16825,15 @@ msgstr "查看项目Worktree、状态和关联任务，清理不再需要的副�
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.worktrees.label"
-msgstr "Worktree"
+msgstr "独立副本"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.worktrees.searchTerms"
 msgstr "工作树 | git | 工作区 | 分支 | 删除 | 项目"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.account"
+msgstr "前往账户"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.clarus.description"
@@ -16980,8 +16884,16 @@ msgid "settings.channels.clarus.refreshing"
 msgstr "正在刷新…"
 
 #. js-lingui-explicit-id
+msgid "settings.channels.clarus.setup"
+msgstr "在账户设置中登录 Holos。Synergy 会添加对应的 Clarus 账户，默认关闭；需要接收任务时，可在这里启用。"
+
+#. js-lingui-explicit-id
 msgid "settings.channels.clarus.title"
 msgstr "Clarus"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.configure"
+msgstr "查看频道配置"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.feishu.accounts"
@@ -16994,6 +16906,14 @@ msgstr "启用或禁用现有飞书频道账号。也可以为每个账号覆盖
 #. js-lingui-explicit-id
 msgid "settings.channels.feishu.empty"
 msgstr "尚未配置飞书账号。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.feishu.guide"
+msgstr "配置飞书"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.feishu.setup"
+msgstr "创建飞书应用，开通机器人权限与事件订阅，选择长连接（WebSocket）方式。将 App ID 和 App Secret 填入 Synergy 服务端的频道配置，完成后启用账户。"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.feishu.title"
@@ -17028,6 +16948,10 @@ msgid "settings.channels.github.enabled"
 msgstr "已启用"
 
 #. js-lingui-explicit-id
+msgid "settings.channels.github.guide"
+msgstr "配置 GitHub 频道"
+
+#. js-lingui-explicit-id
 msgid "settings.channels.github.mention"
 msgstr "艾特句柄"
 
@@ -17058,6 +16982,10 @@ msgstr "以逗号分隔的 owner/repo 列表，用于监听与响应。"
 #. js-lingui-explicit-id
 msgid "settings.channels.github.repositoriesPlaceholder"
 msgstr "owner/repo, owner/repo"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.setup"
+msgstr "在目标仓库安装 GitHub App。服务端环境需设置 SYNERGY_GITHUB_APP_ID 和 SYNERGY_GITHUB_APP_PRIVATE_KEY，再在频道文件中填写安装与仓库配置。频道通过轮询接收更新，凭据与个人 GitHub 登录独立。"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.github.title"
@@ -17101,11 +17029,11 @@ msgstr "正在连接…"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.status.disabled"
-msgstr "已禁用"
+msgstr "已关闭"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.status.disconnected"
-msgstr "已断开"
+msgstr "未连接"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.status.failed"
@@ -17117,7 +17045,7 @@ msgstr "正在同步…"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.status.unavailable"
-msgstr "状态不可用"
+msgstr "状态暂不可用"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.status.waitingForTransport"
@@ -17125,7 +17053,7 @@ msgstr "等待传输连接"
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.desc"
-msgstr "在 write、edit、save_file、revise_file 和 resolve_conflicts 后返回语言服务器反馈。"
+msgstr "返回 Synergy 修改文件后发现的错误和警告。"
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.title"
@@ -17188,6 +17116,10 @@ msgid "settings.codeChecks.severity.title"
 msgstr "严重级别"
 
 #. js-lingui-explicit-id
+msgid "settings.codeChecks.tools"
+msgstr "适用的文件工具"
+
+#. js-lingui-explicit-id
 msgid "settings.configFile.openFailed.title"
 msgstr "无法打开配置文件"
 
@@ -17245,7 +17177,7 @@ msgstr "允许所有本地工具操作，不再请求确认。"
 
 #. js-lingui-explicit-id
 msgid "settings.controlProfile.fullAccess.label"
-msgstr "全权限"
+msgstr "完全访问权限"
 
 #. js-lingui-explicit-id
 msgid "settings.controlProfile.guarded.description"
@@ -17260,16 +17192,8 @@ msgid "settings.controlProfile.nonInteractive.aria"
 msgstr "非交互会话的权限模式"
 
 #. js-lingui-explicit-id
-msgid "settings.controlProfile.nonInteractive.autonomous"
-msgstr "自动"
-
-#. js-lingui-explicit-id
 msgid "settings.controlProfile.nonInteractive.desc"
-msgstr "用于渠道和定时日程启动的会话，这类会话没有人可以回答权限确认。此处不提供“守护”模式，因为无人值守的确认请求将永远无法得到回应。更改仅对之后新建的会话生效。"
-
-#. js-lingui-explicit-id
-msgid "settings.controlProfile.nonInteractive.fullAccess"
-msgstr "完全访问权限"
+msgstr "用于新建的频道和定时会话。无人值守会拒绝需要批准的操作；完全访问权限无需批准即可执行。"
 
 #. js-lingui-explicit-id
 msgid "settings.controlProfile.nonInteractive.title"
@@ -17282,6 +17206,14 @@ msgstr "设置会话和智能体在执行操作时如何请求确认。"
 #. control profile
 msgid "settings.controlProfile.page.title"
 msgstr "权限模式"
+
+#. js-lingui-explicit-id
+msgid "settings.email.configurationFacts"
+msgstr "发送：{sending}。读取：{reading}。尚未验证服务器连接。"
+
+#. js-lingui-explicit-id
+msgid "settings.email.configured"
+msgstr "已配置"
 
 #. js-lingui-explicit-id
 msgid "settings.email.imap.desc"
@@ -17305,7 +17237,7 @@ msgstr "imap.example.com"
 
 #. js-lingui-explicit-id
 msgid "settings.email.imap.host.title"
-msgstr "主机"
+msgstr "读取服务器"
 
 #. js-lingui-explicit-id
 msgid "settings.email.imap.pass.desc"
@@ -17313,7 +17245,7 @@ msgstr "IMAP 认证密码。"
 
 #. js-lingui-explicit-id
 msgid "settings.email.imap.pass.title"
-msgstr "密码"
+msgstr "读取邮件密码"
 
 #. js-lingui-explicit-id
 msgid "settings.email.imap.port.desc"
@@ -17325,7 +17257,7 @@ msgstr "993"
 
 #. js-lingui-explicit-id
 msgid "settings.email.imap.port.title"
-msgstr "端口"
+msgstr "读取端口"
 
 #. js-lingui-explicit-id
 msgid "settings.email.imap.title"
@@ -17341,7 +17273,11 @@ msgstr "agent@example.com"
 
 #. js-lingui-explicit-id
 msgid "settings.email.imap.user.title"
-msgstr "用户名"
+msgstr "读取邮件用户名"
+
+#. js-lingui-explicit-id
+msgid "settings.email.incomplete"
+msgstr "未完成配置"
 
 #. js-lingui-explicit-id
 msgid "settings.email.mailTools.row.desc"
@@ -17349,11 +17285,15 @@ msgstr "当工具请求时，允许 Synergy 发送消息并读取收件箱邮件
 
 #. js-lingui-explicit-id
 msgid "settings.email.mailTools.row.title"
-msgstr "邮件工具"
+msgstr "允许使用邮件工具"
 
 #. js-lingui-explicit-id
 msgid "settings.email.mailTools.title"
 msgstr "邮件工具"
+
+#. js-lingui-explicit-id
+msgid "settings.email.notConfigured"
+msgstr "未配置"
 
 #. js-lingui-explicit-id
 msgid "settings.email.page.desc"
@@ -17425,7 +17365,7 @@ msgstr "smtp.example.com"
 
 #. js-lingui-explicit-id
 msgid "settings.email.smtp.host.title"
-msgstr "主机"
+msgstr "发送服务器"
 
 #. js-lingui-explicit-id
 msgid "settings.email.smtp.pass.desc"
@@ -17433,7 +17373,7 @@ msgstr "SMTP 认证密码。"
 
 #. js-lingui-explicit-id
 msgid "settings.email.smtp.pass.title"
-msgstr "密码"
+msgstr "发送邮件密码"
 
 #. js-lingui-explicit-id
 msgid "settings.email.smtp.port.desc"
@@ -17445,7 +17385,7 @@ msgstr "465"
 
 #. js-lingui-explicit-id
 msgid "settings.email.smtp.port.title"
-msgstr "端口"
+msgstr "发送端口"
 
 #. js-lingui-explicit-id
 msgid "settings.email.smtp.title"
@@ -17461,7 +17401,7 @@ msgstr "agent@example.com"
 
 #. js-lingui-explicit-id
 msgid "settings.email.smtp.user.title"
-msgstr "用户名"
+msgstr "发送邮件用户名"
 
 #. js-lingui-explicit-id
 msgid "settings.email.state.enabled"
@@ -17498,6 +17438,10 @@ msgstr "精简"
 #. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.title"
 msgstr "活动显示"
+
+#. js-lingui-explicit-id
+msgid "settings.general.appearance.immediate"
+msgstr "主题、皮肤和配色方案立即生效。"
 
 #. js-lingui-explicit-id
 msgid "settings.general.appearance.title"
@@ -17542,6 +17486,14 @@ msgstr "以单行视图显示实时推理；已完成的回合保留可展开的
 #. js-lingui-explicit-id
 msgid "settings.general.compactReasoning.title"
 msgstr "紧凑推理"
+
+#. js-lingui-explicit-id
+msgid "settings.general.developer.description"
+msgstr "在本机显示开发者设置页。"
+
+#. js-lingui-explicit-id
+msgid "settings.general.developer.title"
+msgstr "显示开发者选项"
 
 #. js-lingui-explicit-id
 msgid "settings.general.devicePush.completion"
@@ -17624,6 +17576,10 @@ msgid "settings.general.font.check"
 msgstr "检查"
 
 #. js-lingui-explicit-id
+msgid "settings.general.font.check.named"
+msgstr "检查{font}"
+
+#. js-lingui-explicit-id
 msgid "settings.general.font.checking"
 msgstr "加载中……"
 
@@ -17640,6 +17596,14 @@ msgid "settings.general.font.description"
 msgstr "点击“检查”加载本机已安装的字体。点击“保存更改”应用所选字体。"
 
 #. js-lingui-explicit-id
+msgid "settings.general.font.effective"
+msgstr "当前字体：{font}"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.effectiveWithStatus"
+msgstr "当前字体：{font}。{status}"
+
+#. js-lingui-explicit-id
 msgid "settings.general.font.ready"
 msgstr "有未保存的字体选择"
 
@@ -17650,6 +17614,10 @@ msgstr "使用默认字体"
 #. js-lingui-explicit-id
 msgid "settings.general.font.select.placeholder"
 msgstr "选择一种字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.system"
+msgstr "系统默认"
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.title"
@@ -17684,6 +17652,10 @@ msgid "settings.general.notifications.description"
 msgstr "调整显示哪些 toast 卡片以及它们保持可见的时长。"
 
 #. js-lingui-explicit-id
+msgid "settings.general.notifications.inApp"
+msgstr "应用内通知细节"
+
+#. js-lingui-explicit-id
 msgid "settings.general.notifications.title"
 msgstr "通知"
 
@@ -17693,7 +17665,7 @@ msgstr "外观、行为和通知偏好设置。"
 
 #. js-lingui-explicit-id
 msgid "settings.general.page.title"
-msgstr "常规"
+msgstr "通用"
 
 #. js-lingui-explicit-id
 msgid "settings.general.preventSleep.active"
@@ -17714,6 +17686,10 @@ msgstr "等待任务"
 #. js-lingui-explicit-id
 msgid "settings.general.preventSleep.title"
 msgstr "运行期间阻止休眠"
+
+#. js-lingui-explicit-id
+msgid "settings.general.regular.title"
+msgstr "常规"
 
 #. js-lingui-explicit-id
 msgid "settings.general.theme.description"
@@ -17845,7 +17821,7 @@ msgstr "服务器有更新的 Web 资源时，刷新此浏览器。"
 
 #. js-lingui-explicit-id
 msgid "settings.general.workspace.description"
-msgstr "使用项目文件，或为每个新的 Git 任务创建Worktree。项目可以覆盖此默认设置。"
+msgstr "使用项目文件，或为每个新的 Git 任务创建独立副本。项目可以覆盖此默认设置。"
 
 #. js-lingui-explicit-id
 msgid "settings.general.workspace.main"
@@ -17857,7 +17833,7 @@ msgstr "新任务使用的文件"
 
 #. js-lingui-explicit-id
 msgid "settings.general.workspace.worktree"
-msgstr "Worktree"
+msgstr "独立副本"
 
 #. js-lingui-explicit-id
 msgid "settings.general.zoom.aria"
@@ -18020,8 +17996,16 @@ msgid "settings.github.page.title"
 msgstr "GitHub"
 
 #. js-lingui-explicit-id
+msgid "settings.github.ready"
+msgstr "已配置 GitHub 凭据，可用于 GitHub CLI 操作。"
+
+#. js-lingui-explicit-id
 msgid "settings.github.refresh"
 msgstr "刷新"
+
+#. js-lingui-explicit-id
+msgid "settings.github.saveFirst"
+msgstr "保存 GitHub 偏好后再同步身份。"
 
 #. js-lingui-explicit-id
 msgid "settings.github.unverified"
@@ -18072,6 +18056,10 @@ msgid "settings.import.detectedDomains"
 msgstr "检测到 {count} 个域"
 
 #. js-lingui-explicit-id
+msgid "settings.import.errorDetails"
+msgstr "错误详情"
+
+#. js-lingui-explicit-id
 msgid "settings.import.failed"
 msgstr "导入失败"
 
@@ -18108,6 +18096,14 @@ msgid "settings.import.page.title"
 msgstr "导入"
 
 #. js-lingui-explicit-id
+msgid "settings.import.parseError"
+msgstr "内容无法读取或解析，请检查来源后重新预检。"
+
+#. js-lingui-explicit-id
+msgid "settings.import.parseError.position"
+msgstr "内容无法解析：第 {line} 行，第 {column} 列。请修正 JSON 语法后重新预检。"
+
+#. js-lingui-explicit-id
 msgid "settings.import.pasteJson"
 msgstr "粘贴 JSON 或 JSONC"
 
@@ -18130,6 +18126,14 @@ msgstr "配置在审核后发生变化。再次应用前请检查刷新后的计
 #. js-lingui-explicit-id
 msgid "settings.import.project"
 msgstr "项目"
+
+#. js-lingui-explicit-id
+msgid "settings.import.refreshPending"
+msgstr "配置已导入，视图待更新。"
+
+#. js-lingui-explicit-id
+msgid "settings.import.reload.none"
+msgstr "无"
 
 #. js-lingui-explicit-id
 msgid "settings.import.restartRequired"
@@ -18161,7 +18165,7 @@ msgstr "服务已更新"
 
 #. js-lingui-explicit-id
 msgid "settings.import.scope.label"
-msgstr "Scope"
+msgstr "应用范围"
 
 #. js-lingui-explicit-id
 msgid "settings.import.selectionChanged"
@@ -18190,6 +18194,70 @@ msgstr "已更新 {count, plural, one {# 组配置} other {# 组配置}}。"
 #. js-lingui-explicit-id
 msgid "settings.import.urlPlaceholder"
 msgstr "https://..."
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.configuration"
+msgstr "有效全局配置"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.custom"
+msgstr "自定义配置"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.default"
+msgstr "默认配置"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.disabled"
+msgstr "已关闭"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.enabled"
+msgstr "已启用"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.failed"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.loading"
+msgstr "正在读取项目状态…"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.notStarted"
+msgstr "此项目尚无已启动的语言服务或可用的格式化器。"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.project"
+msgstr "项目"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.running"
+msgstr "运行中"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.scope"
+msgstr "运行状态属于所选项目，查看状态不会启动语言服务。"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.selectProject"
+msgstr "选择项目"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.source"
+msgstr "配置文件"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.status"
+msgstr "项目状态"
+
+#. js-lingui-explicit-id
+msgid "settings.languageTools.statusUnavailable"
+msgstr "项目状态读取失败。"
 
 #. js-lingui-explicit-id
 msgid "settings.library.embedding.button.download"
@@ -18411,7 +18479,7 @@ msgstr "约 {count} 次 LLM 调用，约 {secs} 秒"
 msgid "settings.library.encoding.health.desc"
 msgstr "检查经验数据中是否存在无法正确读取的意图或脚本。"
 
-#. encoding health section
+#. js-lingui-explicit-id
 msgid "settings.library.encoding.health.title"
 msgstr "数据健康检查"
 
@@ -18448,6 +18516,10 @@ msgid "settings.library.encoding.reencodeButton"
 msgstr "为全部 {total} 条记录重新编码 {kind}"
 
 #. js-lingui-explicit-id
+msgid "settings.library.encoding.scanFailed"
+msgstr "扫描失败"
+
+#. js-lingui-explicit-id
 msgid "settings.library.encoding.scanning"
 msgstr "正在扫描…"
 
@@ -18470,6 +18542,10 @@ msgstr "▸ 显示样本"
 #. js-lingui-explicit-id
 msgid "settings.library.encoding.startJobFallback"
 msgstr "无法启动处理任务。"
+
+#. js-lingui-explicit-id
+msgid "settings.library.experience.advanced"
+msgstr "编码与维护"
 
 #. js-lingui-explicit-id
 msgid "settings.library.experience.countAria"
@@ -18534,6 +18610,14 @@ msgstr "设置 Synergy 如何参考过去的任务经验，以及何时尝试新
 #. js-lingui-explicit-id
 msgid "settings.library.experience.page.title"
 msgstr "历史经验"
+
+#. js-lingui-explicit-id
+msgid "settings.library.experience.preciseExploration"
+msgstr "探索概率"
+
+#. js-lingui-explicit-id
+msgid "settings.library.experience.preciseThreshold"
+msgstr "经验相似度阈值"
 
 #. js-lingui-explicit-id
 msgid "settings.library.experience.retrieval.desc"
@@ -18677,7 +18761,7 @@ msgstr "后台反思与规划"
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.capture.desc"
-msgstr "设置 Synergy 是否从对话中学习，以及是否在后台整理经验。"
+msgstr "允许记录知识和后台反思。"
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.capture.title"
@@ -18689,7 +18773,7 @@ msgstr "从有价值的对话中提取并整理可复用的记忆。"
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.learnRow.title"
-msgstr "从对话中学习"
+msgstr "允许学习"
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.page.desc"
@@ -18705,7 +18789,7 @@ msgstr "自动运行"
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.state.learning"
-msgstr "正在学习"
+msgstr "已允许"
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.state.manual"
@@ -18713,7 +18797,11 @@ msgstr "仅手动运行"
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.state.paused"
-msgstr "已暂停"
+msgstr "未允许"
+
+#. js-lingui-explicit-id
+msgid "settings.library.memory.advanced"
+msgstr "模型文件与下载"
 
 #. js-lingui-explicit-id
 msgid "settings.library.memory.broader"
@@ -18758,6 +18846,10 @@ msgstr "设置 Synergy 工作时如何使用已经整理好的记忆。"
 #. js-lingui-explicit-id
 msgid "settings.library.memory.page.title"
 msgstr "记忆"
+
+#. js-lingui-explicit-id
+msgid "settings.library.memory.preciseThreshold"
+msgstr "记忆相似度阈值"
 
 #. js-lingui-explicit-id
 msgid "settings.library.memory.recall.desc"
@@ -18830,6 +18922,10 @@ msgstr "每类使用 1 条记忆"
 #. js-lingui-explicit-id
 msgid "settings.library.memoryCount.quiet.tick"
 msgstr "1"
+
+#. js-lingui-explicit-id
+msgid "settings.library.precise"
+msgstr "精确召回参数"
 
 #. js-lingui-explicit-id
 msgid "settings.library.reencode.cancel"
@@ -18984,6 +19080,14 @@ msgid "settings.mcp.builtins.badge"
 msgstr "内置"
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.builtins.enable.named"
+msgstr "启用内置服务 {name}"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.key.named"
+msgstr "{action}：{name}"
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.builtins.section.description"
 msgstr "随 Synergy 内置,无需 API Key 即可使用。关闭后将禁用其工具。"
 
@@ -19002,6 +19106,14 @@ msgstr "未设置命令"
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.connectionType"
 msgstr "连接类型"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.card.details.named"
+msgstr "{action}：{name}"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.card.enable.named"
+msgstr "启用服务 {name}"
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.env"
@@ -19040,6 +19152,10 @@ msgid "settings.mcp.card.headers.placeholder"
 msgstr "Authorization: Bearer token X-Custom: value"
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.card.incomplete"
+msgstr "未完成配置"
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.card.local.description"
 msgstr "在这台机器上启动命令。"
 
@@ -19062,6 +19178,10 @@ msgstr "远程"
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.remote.description"
 msgstr "连接到 HTTP 或 SSE 端点。"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.card.remove.named"
+msgstr "移除服务 {name}"
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.serverName"
@@ -19116,6 +19236,10 @@ msgid "settings.mcp.card.type.remote"
 msgstr "远程端点"
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.card.unsaved"
+msgstr "未保存"
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.card.urlNotSet"
 msgstr "未设置 URL"
 
@@ -19141,7 +19265,11 @@ msgstr "每个服务器都会从可信的本地命令或远程端点添加工具
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.section.title"
-msgstr "服务器"
+msgstr "自定义服务"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.automatic"
+msgstr "自动选择"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.creativeModel.description"
@@ -19161,11 +19289,15 @@ msgstr "{label} 详情"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.fallback"
-msgstr "使用备用模型"
+msgstr "自动选择"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.fallbackChain"
 msgstr "备用顺序"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.fixed"
+msgstr "固定模型"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.group.default"
@@ -19256,6 +19388,10 @@ msgid "settings.modelRole.searchModels"
 msgstr "搜索模型"
 
 #. js-lingui-explicit-id
+msgid "settings.modelRole.select.named"
+msgstr "{role}：{intent}，{model}"
+
+#. js-lingui-explicit-id
 msgid "settings.modelRole.selectModel"
 msgstr "选择模型"
 
@@ -19324,6 +19460,10 @@ msgid "settings.modelRole.willUseAfterSaving"
 msgstr "保存后将使用 {model}"
 
 #. js-lingui-explicit-id
+msgid "settings.models.advanced.title"
+msgstr "高级模型分配"
+
+#. js-lingui-explicit-id
 msgid "settings.models.connectProvider"
 msgstr "连接提供商"
 
@@ -19348,8 +19488,16 @@ msgid "settings.models.quickSwitcher.title"
 msgstr "快速切换列表"
 
 #. js-lingui-explicit-id
+msgid "settings.models.quickSwitcher.toggle"
+msgstr "在快捷列表中显示 {model}"
+
+#. js-lingui-explicit-id
+msgid "settings.models.repair"
+msgstr "检查服务连接"
+
+#. js-lingui-explicit-id
 msgid "settings.models.roles.description"
-msgstr "未单独指定时，各任务角色会按备用顺序选择可用模型。"
+msgstr "为新请求选择主模型。自动选择会根据已连接服务确定可用模型。"
 
 #. js-lingui-explicit-id
 msgid "settings.models.roles.loading"
@@ -19357,7 +19505,11 @@ msgstr "正在加载模型角色"
 
 #. js-lingui-explicit-id
 msgid "settings.models.roles.title"
-msgstr "模型角色"
+msgstr "默认主模型"
+
+#. js-lingui-explicit-id
+msgid "settings.models.unavailable"
+msgstr "此模型当前不可用。你的选择已保留。"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.action.cancel"
@@ -19373,7 +19525,7 @@ msgstr "正在保存…"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.back.label"
-msgstr "返回"
+msgstr "返回设置分类"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.badge.developer"
@@ -19469,7 +19621,7 @@ msgstr "设置"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.globalConfig.label"
-msgstr "全局配置"
+msgstr "全局设置"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.group.plugins"
@@ -19485,7 +19637,7 @@ msgstr "休眠设置无法保存"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.reference.formatterDescription"
-msgstr "查看并打开格式化器配置文件。"
+msgstr "查看格式化器配置，以及所选项目可用的格式化器。"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.reference.formatterTitle"
@@ -19493,7 +19645,7 @@ msgstr "格式化器"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.reference.lspDescription"
-msgstr "查看并打开语言服务器配置文件。"
+msgstr "查看语言服务器配置，以及所选项目的运行状态。"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.reference.lspTitle"
@@ -19536,6 +19688,14 @@ msgid "settings.panel.zoom.saveFailed"
 msgstr "界面缩放无法保存"
 
 #. js-lingui-explicit-id
+msgid "settings.password.hide.named"
+msgstr "隐藏{field}"
+
+#. js-lingui-explicit-id
+msgid "settings.password.show.named"
+msgstr "显示{field}"
+
+#. js-lingui-explicit-id
 msgid "settings.pathRow.copied"
 msgstr "已复制"
 
@@ -19544,12 +19704,20 @@ msgid "settings.pathRow.copy"
 msgstr "复制路径"
 
 #. js-lingui-explicit-id
+msgid "settings.pathRow.copy.named"
+msgstr "复制路径：{name}"
+
+#. js-lingui-explicit-id
 msgid "settings.pathRow.mergePolicy"
 msgstr "合并策略：{policy}"
 
 #. js-lingui-explicit-id
 msgid "settings.pathRow.open"
 msgstr "打开文件"
+
+#. js-lingui-explicit-id
+msgid "settings.pathRow.open.named"
+msgstr "打开文件：{name}"
 
 #. js-lingui-explicit-id
 msgid "settings.pathRow.opening"
@@ -19624,20 +19792,12 @@ msgid "settings.personalize.confirmReset.title"
 msgstr "重置自定义指令？"
 
 #. js-lingui-explicit-id
-msgid "settings.personalize.globalInstructions"
-msgstr "全局指令"
-
-#. js-lingui-explicit-id
 msgid "settings.personalize.input.placeholder"
 msgstr "描述你偏好的语言、回复风格、工程约定或协作规则。"
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.loading"
 msgstr "正在加载全局指令…"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.managedOverride"
-msgstr "受管理的覆盖"
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.noGlobalFile"
@@ -19661,11 +19821,19 @@ msgstr "这些指令会加入 Synergy 现有指令链。项目 AGENTS.md 文件�
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.section.title"
-msgstr "自定义指令"
+msgstr "全局自定义指令"
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.showingSource"
 msgstr "正在显示 {filename}。保存始终会写入 AGENTS.override.md，并保留 AGENTS.md。"
+
+#. js-lingui-explicit-id
+msgid "settings.personalize.source.details"
+msgstr "指令来源"
+
+#. js-lingui-explicit-id
+msgid "settings.preference.immediate"
+msgstr "立即生效"
 
 #. js-lingui-explicit-id
 msgid "settings.productUpdate.notice.download"
@@ -19880,10 +20048,6 @@ msgid "settings.productUpdate.web.versionMismatch"
 msgstr "Web 客户端 {appVersion} 正在与服务器 {serverVersion} 配合运行。"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.account"
-msgstr "账号"
-
-#. js-lingui-explicit-id
 msgid "settings.providers.account.add"
 msgstr "添加账号"
 
@@ -19937,7 +20101,7 @@ msgstr "编辑提供商账号"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.account.enabled"
-msgstr "启用"
+msgstr "已启用"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.account.endpoint"
@@ -19976,6 +20140,10 @@ msgid "settings.providers.account.requestFailed"
 msgstr "账号更新失败"
 
 #. js-lingui-explicit-id
+msgid "settings.providers.account.retryRefresh"
+msgstr "刷新连接"
+
+#. js-lingui-explicit-id
 msgid "settings.providers.account.save"
 msgstr "保存更改"
 
@@ -19988,8 +20156,20 @@ msgid "settings.providers.account.saving"
 msgstr "正在保存..."
 
 #. js-lingui-explicit-id
-msgid "settings.providers.accountConnected"
-msgstr "凭据已连接。请在用量中查看配额和账单详情。"
+msgid "settings.providers.accounts.search"
+msgstr "搜索已连接账户"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.addService"
+msgstr "添加服务"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.back"
+msgstr "返回账户列表"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.backToServices"
+msgstr "返回服务目录"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.catalog.bundled"
@@ -20012,16 +20192,28 @@ msgid "settings.providers.catalog.refreshing"
 msgstr "正在刷新模型"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.connect"
+msgid "settings.providers.connectAction"
 msgstr "连接"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.connectDesc"
-msgstr "选择登录方式。连接后，Synergy 会让可用模型可选。"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.connected"
 msgstr "已连接"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.connection.refreshFailed"
+msgstr "连接已保存，但账户状态刷新失败。"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.connection.title"
+msgstr "连接 {provider}"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.empty.description"
+msgstr "添加服务后即可选择模型。"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.empty.title"
+msgstr "暂无已连接服务"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.modelCount"
@@ -20052,10 +20244,6 @@ msgid "settings.providers.recommended"
 msgstr "推荐"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.recoveryDesc"
-msgstr "选择恢复方式。现有备用凭据仍可使用。"
-
-#. js-lingui-explicit-id
 msgid "settings.providers.search.placeholder"
 msgstr "搜索提供商…"
 
@@ -20064,8 +20252,48 @@ msgid "settings.providers.selectHint"
 msgstr "选择要连接的提供商。"
 
 #. js-lingui-explicit-id
+msgid "settings.providers.service.anthropic"
+msgstr "Claude Pro/Max 或 API 密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.service.codex"
+msgstr "ChatGPT/Codex 订阅"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.service.copilot"
+msgstr "GitHub Copilot 订阅"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.service.google"
+msgstr "Gemini API 密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.service.grok"
+msgstr "Grok 订阅"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.service.openrouter"
+msgstr "模型路由服务"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.service.platform"
+msgstr "OpenAI Platform API 密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.unfinished"
+msgstr "连接未完成 · 继续连接"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.updateCredentials"
+msgstr "更新凭据"
+
+#. js-lingui-explicit-id
 msgid "settings.providers.updateEnvRecovery"
 msgstr "更新服务器环境，重启 Synergy，然后刷新此页面。环境值绝不会被设置覆盖。"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.advanced"
+msgstr "服务与工具超时"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agent.title"
@@ -20077,7 +20305,7 @@ msgstr "自动 · 由机器推导：{value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agentWorkers.desc"
-msgstr "可并行运行的模型 Turn 上限。调小后，活跃 Turn 会先正常结束，多余的 Worker 随后退出。"
+msgstr "设置同时运行的模型请求上限。降低上限时，正在运行的请求会先完成。"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agentWorkers.explicit"
@@ -20089,7 +20317,7 @@ msgstr "自动"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agentWorkers.title"
-msgstr "智能体 Worker 池"
+msgstr "并行模型请求"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.coauthor.desc"
@@ -20101,7 +20329,7 @@ msgstr "协作者署名"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.desc"
-msgstr "同时运行的 Cortex 子智能体任务最大数量。内存压力较高时，新任务可能会提前进入队列。"
+msgstr "设置同时运行的协作任务上限。内存不足时，新任务可能提前进入队列。"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.memoryLimit"
@@ -20113,7 +20341,7 @@ msgstr "由环境变量管理 · 内存安全限额已生效：{value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.title"
-msgstr "最大并发子智能体数"
+msgstr "并行协作任务"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.defaultAgent.desc"
@@ -20125,7 +20353,7 @@ msgstr "默认智能体"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.idle.desc"
-msgstr "提供商无活动多久后断开连接，单位为毫秒。"
+msgstr "提供商连续无响应多久后断开连接，单位为秒。"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.idle.title"
@@ -20133,7 +20361,7 @@ msgstr "空闲超时"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.invoke.desc"
-msgstr "任务调用超时前的毫秒数。"
+msgstr "任务调用超时前等待的秒数。"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.invoke.title"
@@ -20149,11 +20377,11 @@ msgstr "工具覆盖"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.page.desc"
-msgstr "设置智能体容量、指令、提供商超时和工具执行超时。"
+msgstr "选择默认智能体与并行任务容量。"
 
 #. Agents
 msgid "settings.runtime.agents.page.title"
-msgstr "智能体"
+msgstr "智能体运行"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.provider.title"
@@ -20165,7 +20393,7 @@ msgstr "工具"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.toolTimeout.desc"
-msgstr "工具执行尝试超时前的毫秒数。"
+msgstr "工具执行超时前等待的秒数。"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.toolTimeout.title"
@@ -20173,7 +20401,7 @@ msgstr "默认工具超时"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.ttfb.desc"
-msgstr "等待提供商首个响应字节的毫秒数。"
+msgstr "等待提供商首次响应的秒数。"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.ttfb.title"
@@ -20181,15 +20409,27 @@ msgstr "TTFB 超时"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.wall.desc"
-msgstr "提供商调用总时长的硬性上限，单位为毫秒。"
+msgstr "提供商调用总时长的上限，单位为秒。留空使用默认设置，填 0 表示不限时。"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.wall.title"
 msgstr "总超时"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.boss.conversation"
+msgstr "同事会话"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.conversation.open"
+msgstr "会话"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.boss.desc"
 msgstr "将本机 Synergy 变为一个同事：自动创建运行时 boss 会话并把所有飞书消息路由给它。"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.enable"
+msgstr "启用同事模式"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.enabled.desc"
@@ -20208,12 +20448,8 @@ msgid "settings.runtime.boss.name.placeholder"
 msgstr "例如：小飞"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.name.saveFailed"
-msgstr "无法保存 Boss 名字"
-
-#. js-lingui-explicit-id
-msgid "settings.runtime.boss.name.saveFailed.desc"
-msgstr "Boss 名字保存失败，请重试。"
+msgid "settings.runtime.boss.name.retry"
+msgstr "重新加载名称"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.openSession"
@@ -20275,6 +20511,10 @@ msgstr "性格"
 msgid "settings.runtime.boss.personality.desc"
 msgstr "你的 Boss 同事的行为与沟通方式。"
 
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.saveFirst"
+msgstr "保存更改后再打开 Boss Mode 会话。"
+
 #. Boss Mode
 msgid "settings.runtime.boss.title"
 msgstr "Boss Mode（同事模式）"
@@ -20321,7 +20561,7 @@ msgstr "8"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.compaction.maxImages.desc"
-msgstr "每次请求以 base64 发送的历史图片数量上限"
+msgstr "每次请求最多带入多少张历史消息中的图片"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.compaction.maxImages.title"
@@ -20401,7 +20641,7 @@ msgstr "日志、追踪和诊断。"
 
 #. Observability
 msgid "settings.runtime.observ.page.title"
-msgstr "可观测性"
+msgstr "诊断"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.observ.performanceEnabled.desc"
@@ -20453,11 +20693,11 @@ msgstr "监视器忽略项"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.questions.page.desc"
-msgstr "设置问题超时后的处理方式。"
+msgstr "选择等待用户回应的时长。"
 
 #. Questions
 msgid "settings.runtime.questions.page.title"
-msgstr "问题"
+msgstr "等待回应"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.questions.responseAria"
@@ -20548,36 +20788,68 @@ msgid "settings.sandbox.warn"
 msgstr "提醒"
 
 #. js-lingui-explicit-id
-msgid "settings.save.explicit.changed"
-msgstr "已更改：{fields}"
-
-#. js-lingui-explicit-id
-msgid "settings.save.explicit.failed"
-msgstr "保存失败"
-
-#. js-lingui-explicit-id
 msgid "settings.save.failed"
-msgstr "保存失败"
+msgstr "更改未保存"
 
 #. js-lingui-explicit-id
-msgid "settings.save.request.failed"
-msgstr "设置请求失败。"
+msgid "settings.save.failedPages"
+msgstr "请检查：{pages}"
+
+#. js-lingui-explicit-id
+msgid "settings.save.invalid"
+msgstr "请完善设置"
+
+#. js-lingui-explicit-id
+msgid "settings.save.loading"
+msgstr "正在加载…"
+
+#. js-lingui-explicit-id
+msgid "settings.save.partial"
+msgstr "部分更改未保存"
+
+#. js-lingui-explicit-id
+msgid "settings.save.refresh"
+msgstr "更改已保存，视图待更新"
+
+#. js-lingui-explicit-id
+msgid "settings.save.retryRead"
+msgstr "重试读取"
 
 #. js-lingui-explicit-id
 msgid "settings.save.saved"
-msgstr "已保存"
+msgstr "更改已保存"
 
 #. js-lingui-explicit-id
 msgid "settings.save.saving"
 msgstr "正在保存…"
 
 #. js-lingui-explicit-id
-msgid "settings.save.success.title"
-msgstr "已保存 {label}"
+msgid "settings.save.successfulPages"
+msgstr "已保存：{pages}"
 
 #. js-lingui-explicit-id
 msgid "settings.save.unsaved"
-msgstr "未保存"
+msgstr "有未保存更改"
+
+#. js-lingui-explicit-id
+msgid "settings.search.alias.color"
+msgstr "浅色 | 深色 | 自动外观 | 更改颜色 | light | dark | automatic appearance | change colors"
+
+#. js-lingui-explicit-id
+msgid "settings.search.alias.notifications"
+msgstr "通知 | 提示 | 弹窗 | 静音 | 持续时间 | duration | toast duration | notification | toast | popup | mute"
+
+#. js-lingui-explicit-id
+msgid "settings.search.alias.stt"
+msgstr "stt | 麦克风 | 听写 | 语音识别 | 音频转文字 | microphone | dictation | speech recognition | audio to text"
+
+#. js-lingui-explicit-id
+msgid "settings.search.alias.tts"
+msgstr "tts | 语音合成 | 朗读 | 试听 | speech synthesis | read aloud | audio preview"
+
+#. js-lingui-explicit-id
+msgid "settings.search.clear"
+msgstr "清空搜索"
 
 #. js-lingui-explicit-id
 msgid "settings.secrets.action.cancel"
@@ -20612,8 +20884,24 @@ msgid "settings.secrets.action.save"
 msgstr "保存策略"
 
 #. js-lingui-explicit-id
+msgid "settings.secrets.close.named"
+msgstr "关闭编辑：{name}"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.details"
+msgstr "掩码与密钥解析说明"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.edit.named"
+msgstr "编辑密钥：{name}"
+
+#. js-lingui-explicit-id
 msgid "settings.secrets.history.empty"
 msgstr "暂无解析记录。"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.history.named"
+msgstr "查看历史：{name}"
 
 #. js-lingui-explicit-id
 msgid "settings.secrets.history.title"
@@ -20628,8 +20916,12 @@ msgid "settings.secrets.list.title"
 msgstr "已注册的密钥"
 
 #. js-lingui-explicit-id
+msgid "settings.secrets.masking"
+msgstr "已注册的值会在模型可见内容中显示为掩码，仅在工具执行时解析。已存储的密钥不会返回浏览器。"
+
+#. js-lingui-explicit-id
 msgid "settings.secrets.page.description"
-msgstr "已注册的密钥在模型可见的所有位置都被打码，仅在工具执行时解析为真实值。密钥值不会发送到浏览器；查看请使用 CLI。"
+msgstr "注册敏感值，并选择可使用它们的工具。"
 
 #. js-lingui-explicit-id
 msgid "settings.secrets.page.title"
@@ -20646,6 +20938,10 @@ msgstr "粘贴一个值即可在所有会话中打码。重复注册已知值不
 #. js-lingui-explicit-id
 msgid "settings.secrets.register.title"
 msgstr "注册密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.secrets.remove.named"
+msgstr "移除密钥：{name}"
 
 #. js-lingui-explicit-id
 msgid "settings.secrets.removeConfirm.desc"
@@ -20729,7 +21025,7 @@ msgstr "密钥值"
 
 #. js-lingui-explicit-id
 msgid "settings.skills.agents.desc"
-msgstr "从 .agents/skills 目录加载 Agent 技能（默认：开）"
+msgstr "发现本机可用的 Agent Skills。"
 
 #. js-lingui-explicit-id
 msgid "settings.skills.agents.title"
@@ -20737,7 +21033,7 @@ msgstr "Agent 技能"
 
 #. js-lingui-explicit-id
 msgid "settings.skills.claude.desc"
-msgstr "从 .claude/skills 目录加载 Claude Code 技能（默认：开）"
+msgstr "发现本机可用的 Claude Code 技能。"
 
 #. js-lingui-explicit-id
 msgid "settings.skills.claude.title"
@@ -20745,15 +21041,23 @@ msgstr "Claude Code"
 
 #. js-lingui-explicit-id
 msgid "settings.skills.codex.desc"
-msgstr "从 .codex/skills 目录加载 Codex 技能（默认：开）"
+msgstr "发现本机可用的 Codex 技能。"
 
 #. js-lingui-explicit-id
 msgid "settings.skills.codex.title"
 msgstr "Codex"
 
 #. js-lingui-explicit-id
+msgid "settings.skills.directories"
+msgstr "技能发现目录"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.directories.description"
+msgstr "Agent Skills：.agents/skills；Claude Code：.claude/skills；Codex：.codex/skills；OpenClaw：.openclaw/skills 及工作区技能目录。"
+
+#. js-lingui-explicit-id
 msgid "settings.skills.openclaw.desc"
-msgstr "从 .openclaw/skills 目录及工作区技能目录加载 OpenClaw 技能（默认：开）"
+msgstr "发现本机可用的 OpenClaw 技能。"
 
 #. js-lingui-explicit-id
 msgid "settings.skills.openclaw.title"
@@ -21105,7 +21409,7 @@ msgstr "需要注意"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.available"
-msgstr "可连接"
+msgstr "有用量数据的账户"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.connectable.description"
@@ -21129,7 +21433,7 @@ msgstr "已连接账号"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.connectedUsage.description"
-msgstr "配额数据因提供商而异；不可用表示 Synergy 没有该账号的可靠端点。"
+msgstr "用量查询结果与账户授权状态分别展示。"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.connectedUsage.empty"
@@ -21137,11 +21441,11 @@ msgstr "没有已连接的用量提供商"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.connectedUsage.emptyDesc"
-msgstr "连接 Codex、Anthropic、Copilot 或 OpenRouter 后，可在这里查看账号用量。"
+msgstr "在提供商中连接服务，即可查看用量查询支持与账户状态。"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.connectedUsage.title"
-msgstr "已连接账号用量"
+msgstr "已连接服务"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.cooldown"
@@ -21150,6 +21454,18 @@ msgstr "冷却至 {date}"
 #. js-lingui-explicit-id
 msgid "settings.usage.credits"
 msgstr "额度"
+
+#. js-lingui-explicit-id
+msgid "settings.usage.credits.available"
+msgstr "可用"
+
+#. js-lingui-explicit-id
+msgid "settings.usage.credits.none"
+msgstr "无额度"
+
+#. js-lingui-explicit-id
+msgid "settings.usage.credits.unlimited"
+msgstr "不限"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.error.title"
@@ -21180,12 +21496,20 @@ msgid "settings.usage.page.title"
 msgstr "用量"
 
 #. js-lingui-explicit-id
+msgid "settings.usage.pending"
+msgstr "尚未查询"
+
+#. js-lingui-explicit-id
 msgid "settings.usage.plan"
 msgstr "套餐：{plan}"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.providerRenews"
 msgstr "提供商将于 {date} 续期"
+
+#. js-lingui-explicit-id
+msgid "settings.usage.queryFailed"
+msgstr "查询失败"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.refresh"
@@ -21205,166 +21529,230 @@ msgstr "重试"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.unavailable"
-msgstr "此提供商的用量不可用。"
+msgstr "尚未查询此账户的用量。"
 
 #. js-lingui-explicit-id
-msgid "settings.voice.apiKey.saved"
-msgstr "已保存"
+msgid "settings.usage.unsupported"
+msgstr "暂不支持"
 
 #. js-lingui-explicit-id
-msgid "settings.voice.cancel"
-msgstr "取消"
+msgid "settings.usage.unsupported.description"
+msgstr "此服务暂不支持用量查询。"
 
 #. js-lingui-explicit-id
-msgid "settings.voice.load.error"
-msgstr "无法加载语音设置。"
+msgid "settings.validation.integer"
+msgstr "请输入大于 0 的整数。"
+
+#. js-lingui-explicit-id
+msgid "settings.validation.nonNegative"
+msgstr "请输入 0 或正数。"
+
+#. js-lingui-explicit-id
+msgid "settings.validation.positive"
+msgstr "请输入大于 0 的数字。"
+
+#. js-lingui-explicit-id
+msgid "settings.validation.probability"
+msgstr "请输入 0 到 1 之间的数值。"
+
+#. js-lingui-explicit-id
+msgid "settings.validation.toolOverrides"
+msgstr "请填写 JSON 对象，或每行一个工具=秒数。超时时长必须大于 0。"
+
+#. js-lingui-explicit-id
+msgid "settings.validation.workers"
+msgstr "请输入 1 到 64 的整数，留空表示自动分配。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.advanced"
+msgstr "高级选项"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.configure"
+msgstr "配置{ability}"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.default"
+msgstr "使用默认"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.doneEditing"
+msgstr "完成{ability}配置"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.endpoint"
+msgstr "接口地址"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.field.context"
+msgstr "{ability}：{field}"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.instructions"
+msgstr "朗读指令"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.key"
+msgstr "API 密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.key.configured"
+msgstr "已配置"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.key.hint"
+msgstr "新密钥留空时保留已有密钥。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.key.newHint"
+msgstr "此语音服务的 API 密钥。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.key.remove"
+msgstr "移除密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.key.removing"
+msgstr "保存后移除"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.key.replace"
+msgstr "更换密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.key.undo"
+msgstr "保留已有密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.language"
+msgstr "识别语言"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.language.hint"
+msgstr "留空以自动识别，或填写 zh、en 等语言代码。"
 
 #. js-lingui-explicit-id
 msgid "settings.voice.load.retry"
 msgstr "重试"
 
 #. js-lingui-explicit-id
+msgid "settings.voice.loading"
+msgstr "正在加载语音设置…"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.model"
+msgstr "模型"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.model.hint"
+msgstr "填写服务支持的音频模型 ID。"
+
+#. js-lingui-explicit-id
 msgid "settings.voice.page.description"
-msgstr "配置兼容 OpenAI 的语音转文字与文字转语音端点。"
+msgstr "用语音输入，或朗读回答。"
 
 #. js-lingui-explicit-id
 msgid "settings.voice.page.title"
 msgstr "语音"
 
 #. js-lingui-explicit-id
-msgid "settings.voice.save"
-msgstr "保存"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.saved.description"
-msgstr "语音配置已更新。"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.saved.title"
-msgstr "语音设置已保存"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.saveFailed.description"
-msgstr "无法更新语音配置。"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.saveFailed.title"
-msgstr "无法保存语音设置"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.saving"
-msgstr "正在保存…"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.apiKey.description"
-msgstr "语音转文字服务的 API 密钥。"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.apiKey.title"
-msgstr "API 密钥"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.baseURL.description"
-msgstr "语音转文字端点。留空则使用 OpenAI 默认地址。"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.baseURL.placeholder"
-msgstr "https://api.openai.com/v1"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.baseURL.title"
-msgstr "服务地址"
-
-#. js-lingui-explicit-id
 msgid "settings.voice.stt.description"
-msgstr "任何兼容 OpenAI 的端点皆可，例如支持方言识别的 DashScope qwen3-asr-flash。模型留空时语音听写功能将被禁用。"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.language.description"
-msgstr "转写语言提示（BCP-47），例如 zh 或 en。留空时自动检测。"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.language.placeholder"
-msgstr "zh"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.language.title"
-msgstr "语言（可选）"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.model.description"
-msgstr "语音转文字模型，例如 gpt-4o-mini-transcribe。"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.model.placeholder"
-msgstr "gpt-4o-mini-transcribe"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.stt.model.title"
-msgstr "模型"
+msgstr "将麦克风录音转换成文字。"
 
 #. js-lingui-explicit-id
 msgid "settings.voice.stt.title"
-msgstr "语音识别（STT）"
+msgstr "语音输入"
 
 #. js-lingui-explicit-id
-msgid "settings.voice.tts.apiKey.description"
-msgstr "文字转语音服务的 API 密钥。"
+msgid "settings.voice.summary"
+msgstr "{service} · {model}"
 
 #. js-lingui-explicit-id
-msgid "settings.voice.tts.apiKey.title"
-msgstr "API 密钥"
+msgid "settings.voice.template"
+msgstr "服务"
 
 #. js-lingui-explicit-id
-msgid "settings.voice.tts.baseURL.description"
-msgstr "文字转语音端点。留空则使用 OpenAI 默认地址。"
+msgid "settings.voice.template.compatible"
+msgstr "自定义兼容服务"
 
 #. js-lingui-explicit-id
-msgid "settings.voice.tts.baseURL.placeholder"
-msgstr "https://api.openai.com/v1"
+msgid "settings.voice.test.destination"
+msgstr "录音测试会向 {endpoint} 发送音频，并需要麦克风权限。服务可能收取费用。"
 
 #. js-lingui-explicit-id
-msgid "settings.voice.tts.baseURL.title"
-msgstr "服务地址"
+msgid "settings.voice.test.enableFirst"
+msgstr "启用此能力、填写模型并保存后，即可测试。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.failed"
+msgstr "语音测试失败，请检查服务配置后重试。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.generating"
+msgstr "正在生成音频…"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.permission"
+msgstr "麦克风权限被拒绝，请允许浏览器使用麦克风后重试。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.preview"
+msgstr "朗读试听"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.previewDestination"
+msgstr "试听会向 {endpoint} 发送示例文字，服务可能收取费用。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.record"
+msgstr "录音测试"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.sample"
+msgstr "你好，这里是 Synergy。语音试听已准备就绪。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.saveFirst"
+msgstr "请先保存语音设置，再进行测试。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.silence"
+msgstr "没有检测到语音，请检查麦克风后重试。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.stop"
+msgstr "停止"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.stopped"
+msgstr "测试已停止。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.transcribing"
+msgstr "正在转写…"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.test.unsupported"
+msgstr "此浏览器不支持麦克风录音。"
 
 #. js-lingui-explicit-id
 msgid "settings.voice.tts.description"
-msgstr "任何兼容 OpenAI 的端点皆可，例如 DashScope cosyvoice-v3-flash。模型留空时朗读工具将被禁用。"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.tts.instructions.description"
-msgstr "自然语言表达指令，例如语气和语速。"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.tts.instructions.title"
-msgstr "语气指令（可选）"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.tts.model.description"
-msgstr "文字转语音模型，例如 gpt-4o-mini-tts。"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.tts.model.placeholder"
-msgstr "gpt-4o-mini-tts"
-
-#. js-lingui-explicit-id
-msgid "settings.voice.tts.model.title"
-msgstr "模型"
+msgstr "使用语音服务朗读文字。"
 
 #. js-lingui-explicit-id
 msgid "settings.voice.tts.title"
-msgstr "语音合成（TTS）"
+msgstr "朗读回答"
 
 #. js-lingui-explicit-id
-msgid "settings.voice.tts.voice.description"
-msgstr "合成音色名称，例如 alloy。取决于服务商。"
+msgid "settings.voice.validation.endpoint"
+msgstr "请输入有效的 HTTP 或 HTTPS 接口地址。"
 
 #. js-lingui-explicit-id
-msgid "settings.voice.tts.voice.placeholder"
-msgstr "alloy"
+msgid "settings.voice.validation.model"
+msgstr "启用此功能前，请先填写模型。"
 
 #. js-lingui-explicit-id
-msgid "settings.voice.tts.voice.title"
+msgid "settings.voice.voice"
 msgstr "音色"
 
 #. js-lingui-explicit-id
@@ -21381,15 +21769,15 @@ msgstr "有改动"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.badge.external"
-msgstr "外部"
+msgstr "外部管理"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.badge.main"
-msgstr "主工作区"
+msgstr "项目文件"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.badge.managed"
-msgstr "托管"
+msgstr "托管副本"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.badge.stale"
@@ -21397,7 +21785,7 @@ msgstr "已失效"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.count"
-msgstr "共 {worktreeCount, plural, one {# 个工作树} other {# 个工作树}}，来自 {projectCount, plural, one {# 个项目} other {# 个项目}}"
+msgstr "{projectCount} 个项目，共 {worktreeCount} 个独立副本"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.delete"
@@ -21413,19 +21801,19 @@ msgstr "一个或多个项目仓库无法读取。请检查路径后尝试刷新
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.empty.none"
-msgstr "未找到工作树"
+msgstr "暂无独立副本"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.empty.none.desc"
-msgstr "由 Synergy 创建和管理的工作树会显示在这里。"
+msgstr "创建托管副本后，它们会显示在这里。"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.empty.unavailable"
-msgstr "工作树不可用"
+msgstr "独立副本暂不可用"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.loadError.all"
-msgstr "工作树加载失败"
+msgstr "独立副本读取失败"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.loadError.desc"
@@ -21437,7 +21825,7 @@ msgstr "请重试。"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.loadError.some"
-msgstr "部分工作树加载失败"
+msgstr "部分独立副本读取失败"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.page.description"
@@ -21445,7 +21833,7 @@ msgstr "查看项目副本、文件与关联任务。"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.page.title"
-msgstr "Worktree"
+msgstr "独立副本"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.refresh"
@@ -21457,7 +21845,7 @@ msgstr "正在刷新…"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.remove.error"
-msgstr "无法删除工作树"
+msgstr "独立副本移除失败"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.remove.error.retry"
@@ -21473,11 +21861,11 @@ msgstr "正在强制删除…"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.remove.force.success"
-msgstr "工作树已强制删除"
+msgstr "独立副本已强制移除"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.remove.success"
-msgstr "工作树已删除"
+msgstr "独立副本已移除"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.section.description"
@@ -23018,6 +23406,18 @@ msgstr "放大"
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.zoomOut"
 msgstr "缩小"
+
+#. js-lingui-explicit-id
+msgid "ui.input.copy.named"
+msgstr "复制{field}"
+
+#. js-lingui-explicit-id
+msgid "ui.input.copy.value"
+msgstr "字段值"
+
+#. js-lingui-explicit-id
+msgid "ui.list.clearSearch"
+msgstr "清空搜索"
 
 #. js-lingui-explicit-id
 msgid "ui.list.loading"

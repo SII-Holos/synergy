@@ -99,9 +99,10 @@ function mount(safety: Partial<SafetyStore>): Harness {
 }
 
 const profileCard = (harness: Harness, label: string) => {
-  const name = [...harness.root.querySelectorAll(".ds-profile-name")].find((node) => node.textContent === label)
-  expect(name, `no control-profile card labelled ${label}`).toBeDefined()
-  return name!.closest("button")!
+  const group = harness.root.querySelector(".settings-profile-choices")!
+  const target = [...group.querySelectorAll("label")].find((node) => node.textContent?.startsWith(label))
+  expect(target, `no control-profile option labelled ${label}`).toBeDefined()
+  return target!
 }
 
 const dialogTitles = () =>
@@ -112,17 +113,13 @@ const confirmButton = (label: string) =>
     (node) => node.textContent?.trim() === label,
   )
 
-const nonInteractiveScale = (harness: Harness) =>
-  harness.root.querySelector<HTMLInputElement>(".settings-step-scale-slider")!
-
 async function selectNonInteractive(harness: Harness, value: string) {
-  const slider = nonInteractiveScale(harness)
-  const index = [...harness.root.querySelectorAll(".settings-step-scale-ticks span")].findIndex(
-    (node) => node.textContent?.trim() === value,
-  )
-  expect(index).toBeGreaterThanOrEqual(0)
-  slider.value = String(index)
-  slider.dispatchEvent(new Event("input", { bubbles: true }))
+  const group = [...harness.root.querySelectorAll('[role="radiogroup"]')].find(
+    (node) => node.getAttribute("aria-label") === "Non-interactive control profile",
+  )!
+  const target = [...group.querySelectorAll("label")].find((node) => node.textContent?.startsWith(value))
+  expect(target).toBeDefined()
+  target!.click()
   await settle()
 }
 

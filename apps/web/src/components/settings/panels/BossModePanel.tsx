@@ -1,19 +1,17 @@
+import { settingsFieldCopy } from "../settings-field-copy"
 import { useLingui } from "@lingui/solid"
-import { createSignal, For, Show, onCleanup, onMount } from "solid-js"
+import { createSignal, For, Show } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import { useGlobalSDK } from "@/context/global-sdk"
 import { requestErrorMessage } from "@/utils/error"
-import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
+import { SettingRow } from "../components/SettingsSettingRow"
 import { SegmentPill } from "../components/SegmentPill"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { RuntimeStore } from "../types"
-import { bossNameFromRows, createBossNamePersister, type BossNameGateway } from "./boss-name-model"
+import type { BossNameController } from "./boss-name-controller"
 import type { MessageDescriptor } from "@lingui/core"
-
-const NAME_SAVE_DEBOUNCE_MS = 600
 
 /* Boss Mode */
 const bossPageTitle = { id: "settings.runtime.boss.title", message: "Boss Mode" }
@@ -26,7 +24,7 @@ const bossRowDesc = {
   id: "settings.runtime.boss.enabled.desc",
   message: "Route all Feishu messages to the runtime boss session",
 }
-const personalityRowTitle = { id: "settings.runtime.boss.personality", message: "Personality" }
+const personalityRowTitle = settingsFieldCopy.bossPersonality
 const personalityRowDesc = {
   id: "settings.runtime.boss.personality.desc",
   message: "How your boss colleague behaves and communicates.",
@@ -39,17 +37,12 @@ const personaTraitsTitle = {
   id: "settings.runtime.boss.persona.customTraits",
   message: "Custom personality traits",
 }
-const nameRowTitle = { id: "settings.runtime.boss.name", message: "Name" }
+const nameRowTitle = settingsFieldCopy.bossName
 const nameRowDesc = {
   id: "settings.runtime.boss.name.desc",
   message: "The name your boss colleague will use.",
 }
 const namePlaceholder = { id: "settings.runtime.boss.name.placeholder", message: "e.g. Xiaofei" }
-const nameSaveFailed = { id: "settings.runtime.boss.name.saveFailed", message: "Could not save boss name" }
-const nameSaveFailedDesc = {
-  id: "settings.runtime.boss.name.saveFailed.desc",
-  message: "The boss name could not be saved. Please try again.",
-}
 const openSessionRowTitle = { id: "settings.runtime.boss.openSession", message: "Open boss session" }
 const openSessionRowDesc = {
   id: "settings.runtime.boss.openSession.desc",
@@ -96,53 +89,14 @@ function personaTraitLabel(trait: BossPersonaTraitDef, translate: (descriptor: M
 export function BossModePanel(props: {
   runtime: RuntimeStore
   onRuntimeChange: (key: keyof RuntimeStore, value: string) => void
-  /** Test seam: fixtures inject a stub so they do not need the GlobalSDK provider stack. */
-  bossNameGateway?: BossNameGateway
-  /** Persist the settings draft, open (or create) the runtime boss session,
-   *  then navigate to it. Provided by the Settings panel host. */
+  nameController: BossNameController
+  configDirty?: boolean
   onOpenBossSession?: () => Promise<void>
 }) {
   const { _ } = useLingui()
   const enabled = () => props.runtime.bossMode === "true"
   const preset = () => props.runtime.bossPersonaPreset
   const [opening, setOpening] = createSignal(false)
-
-  // Production callers mount under GlobalSDKProvider; the read happens during
-  // render so the context owner is available. Fixtures pass a gateway stub.
-  const sdkClient = props.bossNameGateway ? undefined : useGlobalSDK().client
-  const gateway = (): BossNameGateway => {
-    if (props.bossNameGateway) return props.bossNameGateway
-    const client = sdkClient
-    if (!client) throw new Error("BossModePanel requires GlobalSDK context or a bossNameGateway")
-    return {
-      listSelfMemories: async () => (await client.library.list({ category: "self" })).data ?? [],
-      createMemory: (input) => client.library.memory.create(input),
-      updateMemory: (input) => client.library.memory.update(input),
-      removeMemory: (id) => client.library.remove({ id }),
-    }
-  }
-
-  let saveTimer: ReturnType<typeof setTimeout> | undefined
-  let pendingName = ""
-  // True while a user edit has not yet been persisted. Only then may an
-  // unmount persist an empty draft (removing the row); a passive unmount
-  // with no edits must never touch the library.
-  let nameDirty = false
-  let namePersister: ReturnType<typeof createBossNamePersister> | undefined
-
-  const reportNameSaveFailure = (error: unknown) => {
-    try {
-      showToast({
-        type: "error",
-        title: _(nameSaveFailed),
-        description: requestErrorMessage(error, _(nameSaveFailedDesc)),
-      })
-    } catch {
-      // The toast host may be absent in embedded test harnesses; keep the
-      // failure visible in the console instead of swallowing it silently.
-      console.warn(_(nameSaveFailed), error)
-    }
-  }
 
   const reportOpenSessionFailure = (error: unknown) => {
     try {
@@ -154,48 +108,6 @@ export function BossModePanel(props: {
     } catch {
       console.warn(_(openSessionFailed), error)
     }
-  }
-
-  // Persist whatever draft is pending through one serialized persister so a
-  // blur flush and an unmount flush of the same draft cannot race into
-  // duplicate rows. An empty draft reaches the persister too — it removes
-  // the stored row instead of being skipped. The captured value (not the
-  // live store) is written so a config-save re-init that resets bossName
-  // cannot drop a draft that was still inside the debounce window.
-  const ensureNamePersister = () => {
-    if (!namePersister) namePersister = createBossNamePersister(gateway())
-    return namePersister
-  }
-  const persistPendingName = async () => {
-    // Only a user edit may reach the library. A blur or unmount without any
-    // edit must never touch the stored row — in particular it must not let an
-    // empty draft delete a previously saved name.
-    if (!nameDirty) return
-    const content = pendingName.trim()
-    try {
-      await ensureNamePersister().persist(content)
-      nameDirty = false
-      // bossName is not config, so a form re-init may have cleared the field;
-      // re-assert a persisted non-empty name so the input stays in sync.
-      if (content && !props.runtime.bossName.trim()) props.onRuntimeChange("bossName", content)
-    } catch (error) {
-      // Keep nameDirty so a later flush or unmount retries the write.
-      reportNameSaveFailure(error)
-    }
-  }
-  const flushPendingName = () => {
-    if (saveTimer) {
-      clearTimeout(saveTimer)
-      saveTimer = undefined
-    }
-    void persistPendingName()
-  }
-  const handleNameChange = (value: string) => {
-    pendingName = value
-    nameDirty = true
-    if (saveTimer) clearTimeout(saveTimer)
-    saveTimer = setTimeout(flushPendingName, NAME_SAVE_DEBOUNCE_MS)
-    props.onRuntimeChange("bossName", value)
   }
 
   const handleOpenSession = async () => {
@@ -210,59 +122,17 @@ export function BossModePanel(props: {
     }
   }
 
-  onMount(() => {
-    void (async () => {
-      try {
-        const name = bossNameFromRows(await gateway().listSelfMemories())
-        if (name && !props.runtime.bossName.trim()) {
-          props.onRuntimeChange("bossName", name)
-          ensureNamePersister().adoptStoredName(name)
-        }
-      } catch {
-        // Reading the stored name is a convenience; leave the field blank on
-        // failure so the rest of the panel still works.
-      }
-    })()
-  })
-
-  onCleanup(() => {
-    if (saveTimer) {
-      clearTimeout(saveTimer)
-      saveTimer = undefined
-    }
-    // Never drop an unpersisted user edit when the panel unmounts (tab
-    // switch, save re-init): persist whatever draft is pending — an empty
-    // draft removes the stored row. A passive unmount without edits leaves
-    // the library untouched; persist() also no-ops when nothing changed.
-    if (nameDirty) void persistPendingName()
-  })
-
   return (
     <SettingsPage title={_(bossPageTitle)} description={_(bossPageDesc)}>
       <SettingsSection>
         <SettingRow
-          title={_(bossPageTitle)}
+          title={_({ id: "settings.runtime.boss.enable", message: "Enable colleague mode" })}
           description={_(bossRowDesc)}
           trailing={
             <Switch
               checked={enabled()}
               onChange={(value) => props.onRuntimeChange("bossMode", value ? "true" : "false")}
             />
-          }
-        />
-        <SettingRow
-          title={_(openSessionRowTitle)}
-          description={_(openSessionRowDesc)}
-          trailing={
-            <Button
-              type="button"
-              variant="secondary"
-              size="small"
-              disabled={!enabled() || opening()}
-              onClick={() => void handleOpenSession()}
-            >
-              {opening() ? _(openSessionBusy) : _(openSessionRowTitle)}
-            </Button>
           }
         />
         <SettingRow
@@ -321,15 +191,49 @@ export function BossModePanel(props: {
           trailing={
             <TextField
               type="text"
-              value={props.runtime.bossName}
+              value={props.nameController.content()}
               placeholder={_(namePlaceholder)}
-              disabled={!enabled()}
+              disabled={!enabled() || !props.nameController.loaded()}
               class="settings-row-control-text"
-              onChange={handleNameChange}
-              onBlur={() => void flushPendingName()}
+              onChange={props.nameController.setContent}
             />
           }
         />
+        <Show when={props.nameController.error()}>
+          <p role="alert" class="ds-section-hint">
+            {props.nameController.error()}
+          </p>
+          <Show when={!props.nameController.loaded()}>
+            <Button variant="secondary" onClick={() => void props.nameController.load()}>
+              {_({ id: "settings.runtime.boss.name.retry", message: "Reload name" })}
+            </Button>
+          </Show>
+        </Show>
+      </SettingsSection>
+      <SettingsSection title={_({ id: "settings.runtime.boss.conversation", message: "Colleague conversation" })}>
+        <SettingRow
+          title={_({ id: "settings.runtime.boss.conversation.open", message: "Conversation" })}
+          description={_(openSessionRowDesc)}
+          trailing={
+            <Button
+              type="button"
+              variant="secondary"
+              size="small"
+              disabled={!enabled() || opening() || props.configDirty || props.nameController.dirty()}
+              onClick={() => void handleOpenSession()}
+            >
+              {opening() ? _(openSessionBusy) : _(openSessionRowTitle)}
+            </Button>
+          }
+        />
+        <Show when={props.configDirty || props.nameController.dirty()}>
+          <p class="ds-section-hint">
+            {_({
+              id: "settings.runtime.boss.saveFirst",
+              message: "Save your changes before opening the Boss Mode session.",
+            })}
+          </p>
+        </Show>
       </SettingsSection>
     </SettingsPage>
   )
