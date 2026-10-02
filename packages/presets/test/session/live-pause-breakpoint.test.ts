@@ -18,6 +18,8 @@ import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecyc
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionInteraction } from "@ericsanchezok/synergy-harness/session/interaction"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
+import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import { SessionProgress } from "@ericsanchezok/synergy-harness/session/progress"
 import { AgentTurn } from "@ericsanchezok/synergy-harness/session/agent-turn"
 import { Snapshot } from "@ericsanchezok/synergy-harness/session/snapshot"
@@ -235,12 +237,22 @@ describe("a live user stop preserves the resume breakpoint", () => {
               // alone, not by an inbox item the stop happened to leave behind.
               expect(await SessionInbox.list(session.id)).toHaveLength(0)
 
+              const rootID = await SessionInbox.latestRootID(session.id)
+              const owner = RolloutLifecycle.owner(session)
+              await RolloutLifecycle.reconcile(session.id, rootID!)
+              expect((await RolloutLedger.getRun(owner, rootID!)).status).toBe("running")
+              expect((await RolloutLedger.segments(owner, rootID!)).map((segment) => segment.status)).toEqual([
+                "interrupted",
+              ])
+
               expect(await continueSession(session.id)).toBe(true)
               expect(harness.turnCalls()).toBe(2)
 
               const resumed = await latestAssistant(session.id)
               expect(SessionProgress.isTerminalAssistant(resumed!)).toBe(true)
               expect(resumed!.finish).toBe("stop")
+              await RolloutLifecycle.reconcile(session.id, rootID!)
+              expect((await RolloutLedger.getRun(owner, rootID!)).status).toBe("completed")
             } finally {
               SessionManager.unregisterRuntime(session.id)
             }

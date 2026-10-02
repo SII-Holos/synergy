@@ -468,10 +468,17 @@ export namespace SessionInvoke {
       } catch (error) {
         errors.push(error)
       }
-      const outcome = lease.signal.aborted ? "cancelled" : failure || errors.length ? "failed" : undefined
+      const paused = lease.signal.aborted && PausedTurnAbort.is(lease.signal.reason)
+      const outcome = paused
+        ? undefined
+        : lease.signal.aborted
+          ? "cancelled"
+          : failure || errors.length
+            ? "failed"
+            : undefined
       for (const segment of segments) {
         try {
-          await RolloutLifecycle.finishSegment(segment, outcome ?? "completed")
+          await RolloutLifecycle.finishSegment(segment, paused ? "interrupted" : (outcome ?? "completed"))
         } catch (error) {
           errors.push(error)
         }
@@ -1528,7 +1535,13 @@ export namespace SessionInvoke {
                 const failed = terminal?.info.role === "assistant" && terminal.info.error
                 await RolloutLifecycle.finishSegment(
                   segment,
-                  abort.aborted ? "cancelled" : failed ? "failed" : "completed",
+                  abort.aborted
+                    ? PausedTurnAbort.is(abort.reason)
+                      ? "interrupted"
+                      : "cancelled"
+                    : failed
+                      ? "failed"
+                      : "completed",
                 )
               }
             }
