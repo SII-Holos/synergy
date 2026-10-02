@@ -21,3 +21,5 @@ Harness exposes primary identities indexed by the stable responsibilities genera
 ## Consequences
 
 Runtime registration and workflow behavior retain one source of primary names. Generic fixtures survive naming changes. Prompt builders stop consuming an unused catalog; routing completeness remains verified through the initialized task description. Unique permission, lifecycle and budget checks remain covered.
+
+The private Testing package exports source directly and validates through `typecheck`. It does not declare an artifact-producing build, so adding test-only dependencies cannot require a nonexistent distribution during shared CI preparation.

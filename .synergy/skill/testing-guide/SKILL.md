@@ -27,6 +27,8 @@ Use the isolated provider and synthetic-data workflow in `develop-synergy` for t
 
 CI `package:check` builds its own package closure and runs on the separate contracts runner. Keep rebuilding gates apart from suites consuming workspace `dist`; isolated Homes do not isolate the checkout's compiled files.
 
+Keep validation for private source-only test packages in `typecheck`. Declare `build` only when the package emits the distribution consumed by preparation.
+
 ## Local Joint Acceptance
 
 Identify the intended foreground provider request independently of streaming: title and other auxiliary calls can also stream, and journal enumeration is not request chronology. Test both request orders and reject a missing first attachment body even when a later tool response contains its content.

@@ -17,7 +17,6 @@
     "test": "bun ../testing/script/test-ci.ts",
     "test:coverage": "bun ../testing/script/coverage-run.ts",
     "typecheck": "tsgo --noEmit",
-    "build": "bun run typecheck",
     "test:ci": "bun ../testing/script/test-ci.ts"
   },
   "devDependencies": {
