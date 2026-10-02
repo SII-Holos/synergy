@@ -157,7 +157,7 @@ export default function NatureScene(props: WelcomeSceneProps) {
           })}
         </p>
       </div>
-      <div class="nature-landscape">
+      <div class="nature-landscape" data-welcome-visual>
         <svg viewBox="0 0 720 405" aria-hidden="true" class="nature-sky">
           <circle cx="566" cy="78" r="26" fill="var(--surface-interactive-selected)" />
           <path d="M0 240Q70 156 130 216T294 202Q370 152 445 218T720 198V405H0Z" fill="var(--surface-raised-base)" />

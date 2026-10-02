@@ -114,6 +114,7 @@ export default function IslandScene(props: WelcomeSceneProps) {
         ref={svg}
         viewBox="0 0 720 390"
         class="welcome-art island-art"
+        data-welcome-visual
         role="group"
         aria-label={i18n._({ id: "welcome.island.board", message: "Island road workshop" })}
       >

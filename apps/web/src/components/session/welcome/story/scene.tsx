@@ -48,6 +48,7 @@ export default function StoryScene(props: WelcomeSceneProps) {
       </div>
       <svg
         class="welcome-art story-art"
+        data-welcome-visual
         viewBox="0 0 720 380"
         role="group"
         aria-label={i18n._({ id: "welcome.story.scene", message: "The bookshop by the sea" })}

@@ -50,8 +50,21 @@ export function WelcomeStage(props: {
     document.addEventListener("visibilitychange", visibility)
     document.addEventListener("input", input, true)
     document.addEventListener("compositionstart", input, true)
-    const observer = new IntersectionObserver(([entry]) => setIntersecting(entry?.isIntersecting ?? false))
-    observer.observe(root)
+    let observed: Element | undefined
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries.find((item) => item.target === observed)
+      if (entry) setIntersecting(entry.isIntersecting)
+    })
+    const observeVisual = () => {
+      const next = root.querySelector("[data-welcome-visual]") ?? root
+      if (next === observed) return
+      if (observed) observer.unobserve(observed)
+      observed = next
+      observer.observe(next)
+    }
+    const visualChanges = new MutationObserver(observeVisual)
+    visualChanges.observe(root, { subtree: true, childList: true })
+    observeVisual()
     const pane = root.closest(".session-workbench-pane")
     const measureExpanded = () => setExpanded(!!pane?.querySelector(".session-composer[data-expanded]"))
     const mutation = new MutationObserver(measureExpanded)
@@ -62,6 +75,7 @@ export function WelcomeStage(props: {
       document.removeEventListener("input", input, true)
       document.removeEventListener("compositionstart", input, true)
       observer.disconnect()
+      visualChanges.disconnect()
       mutation.disconnect()
     })
   })

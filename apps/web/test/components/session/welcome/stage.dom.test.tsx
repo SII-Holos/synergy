@@ -191,6 +191,17 @@ test("pausing freezes ambient movement without resetting its position", async ()
   expect(await tree.evaluate((el) => el.getAnimations()[0]?.currentTime)).toBe(paused[0]!.time)
 })
 
+test("scrolling past the artwork pauses it while the welcome actions remain visible", async () => {
+  await page.setViewportSize({ width: 720, height: 360 })
+  await open("story")
+  await page.locator(".welcome-bottomline").scrollIntoViewIfNeeded()
+  await page.waitForTimeout(150)
+  expect(await page.locator(".welcome-stage").getAttribute("data-active")).toBeNull()
+  await page.locator(".welcome-art").scrollIntoViewIfNeeded()
+  await page.waitForTimeout(150)
+  expect(await page.locator(".welcome-stage").getAttribute("data-active")).toBe("")
+})
+
 test("each scene supports light, dark, and doubled scale", async () => {
   const captures = process.env.WELCOME_CAPTURE_DIR
   if (captures) await mkdir(captures, { recursive: true })
