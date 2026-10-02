@@ -82,11 +82,30 @@ export namespace ConfigReferenceMigration {
     if (next && next !== identity && data.name === undefined) data.name = next
     if (/^(?:agent|agents)\//.test(relative)) upgradeAgentDefinition(data)
     else PrimaryAgentUpgrade.fields(data, ["agent"])
-    if (JSON.stringify(data) !== before) {
-      const header = matter.stringify("", data).trimEnd()
-      await AtomicFile.writeFileAtomic(filepath, `${header}\n${parsed.content}`, { private: true, durable: true })
+    const changed = JSON.stringify(data) !== before
+    const content = changed
+      ? `${matter.stringify("", data).trimEnd()}\n${parsed.content}`
+      : await Bun.file(filepath).text()
+    if (next && next !== identity) {
+      const destination = path.join(path.dirname(filepath), `${next}.md`)
+      const staging = await fs.mkdtemp(path.join(path.dirname(filepath), ".primary-agent-upgrade-"))
+      try {
+        const prepared = path.join(staging, "definition")
+        await AtomicFile.writeFileAtomic(prepared, content, { private: true, durable: true })
+        // A hard link publishes complete bytes without ever replacing an existing definition.
+        await fs.link(prepared, destination).catch((error: NodeJS.ErrnoException) => {
+          if (error.code === "EEXIST") throw PrimaryAgentUpgrade.collision(identity!, next)
+          throw error
+        })
+        await AtomicFile.syncDirectories(path.dirname(filepath))
+        await fs.unlink(filepath)
+        await AtomicFile.syncDirectories(path.dirname(filepath))
+      } finally {
+        await fs.rm(staging, { recursive: true, force: true })
+      }
+      return
     }
-    if (next && next !== identity) await fs.rename(filepath, path.join(path.dirname(filepath), `${next}.md`))
+    if (changed) await AtomicFile.writeFileAtomic(filepath, content, { private: true, durable: true })
   }
 
   export function upgradeAgentDefinition(value: unknown) {

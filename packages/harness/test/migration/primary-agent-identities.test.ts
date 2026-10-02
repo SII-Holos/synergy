@@ -9,6 +9,7 @@ import { Global } from "../../src/global"
 import { MigrationRegistry } from "../../src/migration/registry"
 import { upgradeImportedConfig } from "../../src/migration"
 import { PermissionNext } from "../../src/permission/next"
+import { ConfigReferenceMigration } from "../../src/config/reference-migration"
 
 function migration(domain: "config" | "session") {
   const entries = domain === "config" ? configMigrations : sessionMigrations
@@ -147,5 +148,41 @@ test("Session upgrade changes only executable identities, including queued input
     ).toEqual({ type: "text", text: "synergy-max" })
     await upgrade.up(() => {})
     expect(await Storage.read<Record<string, unknown>>([...root, "info"])).toMatchObject({ agentOverride: "forge" })
+  })
+})
+
+test("configuration identity collisions preserve every definition and permission", async () => {
+  await using fixture = await migrationFixture()
+  await fixture.run(async () => {
+    MigrationRegistry.register("config", [migration("config")])
+    for (const input of [
+      { agent: { synergy: { model: "fixture/a" }, atlas: { model: "fixture/b" } } },
+      { agent: { atlas: { model: "fixture/b" }, synergy: { model: "fixture/a" } } },
+      { permission: { task: { synergy: "deny", atlas: "allow" } } },
+    ]) {
+      const file = path.join(Global.Path.config, "synergy.d", "60-agents.jsonc")
+      const text = `// preserve conflicting definitions\n${JSON.stringify(input)}`
+      await Bun.write(file, text)
+      await expect(ConfigReferenceMigration.file(file)).rejects.toThrow("both identities exist")
+      expect(await Bun.file(file).text()).toBe(text)
+      expect(() => upgradeImportedConfig(input)).toThrow("both identities exist")
+      expect(JSON.stringify(input)).toBe(text.split("\n")[1])
+    }
+  })
+})
+
+test("Markdown identity collisions leave both original files untouched", async () => {
+  await using fixture = await migrationFixture()
+  await fixture.run(async () => {
+    const directory = path.join(Global.Path.config, "agent")
+    const oldFile = path.join(directory, "synergy.md")
+    const currentFile = path.join(directory, "atlas.md")
+    const oldText = "---\nmodel: fixture/old\n---\nOriginal general instructions.\n"
+    const currentText = "---\nmodel: fixture/custom\n---\nIndependent custom instructions.\n"
+    await Bun.write(oldFile, oldText)
+    await Bun.write(currentFile, currentText)
+    await expect(ConfigReferenceMigration.directory(Global.Path.config)).rejects.toThrow("both identities exist")
+    expect(await Bun.file(oldFile).text()).toBe(oldText)
+    expect(await Bun.file(currentFile).text()).toBe(currentText)
   })
 })

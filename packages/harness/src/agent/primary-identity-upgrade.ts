@@ -1,4 +1,20 @@
+import { NamedError } from "@ericsanchezok/synergy-util/error"
+import { z } from "zod"
+
 export namespace PrimaryAgentUpgrade {
+  export const CollisionError = NamedError.create(
+    "PrimaryAgentIdentityCollision",
+    z.object({ source: z.string(), target: z.string(), message: z.string() }),
+  )
+
+  export function collision(source: string, target: string) {
+    return new CollisionError({
+      source,
+      target,
+      message: `Cannot upgrade ${source} to ${target}: both identities exist. Rename or combine the conflicting definitions before retrying.`,
+    })
+  }
+
   const renamed: Readonly<Record<string, string>> = {
     synergy: "atlas",
     "synergy-max": "forge",
@@ -26,7 +42,12 @@ export namespace PrimaryAgentUpgrade {
     if (!item) return
     const entries = Object.entries(item)
     if (!entries.some(([key]) => name(key) !== key)) return
+    for (const [key] of entries) {
+      const target = name(key)
+      if (target !== key && Object.hasOwn(item, target)) throw collision(key, target)
+    }
     for (const key of Object.keys(item)) delete item[key]
-    for (const [key, value] of entries) item[name(key)] = value
+    for (const [key, value] of entries)
+      Object.defineProperty(item, name(key), { value, writable: true, configurable: true, enumerable: true })
   }
 }
