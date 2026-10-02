@@ -451,27 +451,11 @@
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
         {
-          "glob": "src/components/session/session-progress-dag.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
-        },
-        {
-          "glob": "src/components/session/session-progress-island.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
-        },
-        {
-          "glob": "src/components/session/session-progress-todo.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
-        },
-        {
           "glob": "src/components/session/session-surface-focus.tsx",
-          "reason": "Solid focus context is exercised in test/components/session/session-progress-island-motion.test.ts, including Composer focus return after expanded receipt removal; Bun cannot instrument Vite/Chromium execution."
+          "reason": "Solid focus context is exercised in test/components/session/decision-surface.dom.test.tsx; Bun cannot instrument Vite/Chromium execution."
         },
         {
           "glob": "src/components/session/session-review-tab.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
-        },
-        {
-          "glob": "src/components/session/session-timeline.tsx",
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
         {

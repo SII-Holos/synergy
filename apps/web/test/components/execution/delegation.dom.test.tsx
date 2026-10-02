@@ -212,7 +212,7 @@ test("round and filter choices show selection and retain keyboard focus within e
     ),
   )
   expect(await all.getAttribute("aria-selected")).toBe("true")
-  expect(await all.locator(".menu-field-selection svg").count()).toBe(1)
+  expect(await all.locator('[data-slot="menu-field-indicator"] svg').count()).toBe(1)
   expect(await all.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(36)
   await all.press("ArrowDown")
   await page.keyboard.press("Enter")

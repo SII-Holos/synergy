@@ -263,6 +263,6 @@
 @container (max-width: 56rem) {
   .session-prompt-dock-content .decision-footer {
     /* Keep actions clear of the Composer inbox in its compact placement. */
-    padding-inline-end: 60px;
+    padding-inline-end: 7.5rem;
   }
 }

@@ -217,12 +217,16 @@ test("compact computer controls retain full identity, actual health and keyboard
   await page.getByRole("tooltip").filter({ hasText: computer }).waitFor()
   await trigger.press("Enter")
   const menu = page.getByRole("dialog", { name: "Computer", exact: true })
-  await menu.getByText("Connected", { exact: true }).waitFor()
+  const connected = menu.getByRole("button").filter({ hasText: computer })
+  await connected.getByText(/Connected$/).waitFor()
   await assertSingleLine()
-  expect(await menu.getByRole("button", { name: `${computer} Connected`, exact: true }).isDisabled()).toBe(false)
-  expect(await menu.getByRole("button", { name: "offline.example:4322 Unavailable", exact: true }).isDisabled()).toBe(
-    true,
-  )
+  expect(await connected.isDisabled()).toBe(false)
+  expect(
+    await menu
+      .getByRole("button")
+      .filter({ hasText: /offline.example:4322.*Unavailable/ })
+      .isDisabled(),
+  ).toBe(true)
   await page.keyboard.press("Escape")
   await menu.waitFor({ state: "detached" })
   await page.waitForFunction(() => document.activeElement?.hasAttribute("data-computer-selector"))

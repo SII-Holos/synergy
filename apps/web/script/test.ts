@@ -100,7 +100,6 @@ const playwrightIsolated = [
   "test/components/session/session-preparation.dom.test.tsx",
   "test/components/session/session-tag-menu.dom.test.tsx",
   "test/components/session/raw-messages-layout.test.ts",
-  "test/components/session/session-progress-island-motion.test.ts",
   "test/components/settings/panels/interface-zoom.dom.test.ts",
   "test/components/session/session-inbox-anchor-layout.test.ts",
   "test/components/session/conversation-row-retention.test.ts",

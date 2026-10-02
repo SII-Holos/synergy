@@ -15523,63 +15523,51 @@ msgstr "Resonance"
 msgid "scopes.active"
 msgstr "活动"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "scopes.archive"
 msgstr "归档"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "scopes.error"
 msgstr "错误"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "scopes.newActivity"
 msgstr "新活动"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "scopes.newSession"
 msgstr "新建会话"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "scopes.permissionRequest"
 msgstr "权限请求"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "scopes.rename"
 msgstr "重命名"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "scopes.retrying"
 msgstr "正在重试…"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "scopes.session"
 msgstr "会话"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "scopes.subsession"
 msgstr "子会话"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "scopes.tasksCount"
 msgstr "{count} 个任务"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "scopes.tasksRunning"
 msgstr "{running}/{count} 个任务运行中"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "scopes.working"
 msgstr "处理中…"
 
@@ -16053,123 +16041,99 @@ msgstr "秒"
 msgid "session.agenda.wake.unit.w"
 msgstr "周"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.category.agent"
 msgstr "智能体"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.category.file"
 msgstr "文件"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.category.mcp"
 msgstr "MCP"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.category.model"
 msgstr "模型"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.category.session"
 msgstr "会话"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.category.terminal"
 msgstr "终端"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.category.view"
 msgstr "视图"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.chooseModel"
 msgstr "选择模型"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.chooseModelDesc"
 msgstr "选择其他模型"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.closeSideWs"
 msgstr "关闭侧边工作区"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.closeSideWsDesc"
 msgstr "关闭侧边工作区"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.collapseFolders"
 msgstr "折叠文件夹"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.collapseFoldersDesc"
 msgstr "折叠文件浏览器中的全部文件夹"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.compact"
 msgstr "整理会话上下文"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.compactDesc"
 msgstr "总结会话以减少上下文占用"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.cycleAgent"
 msgstr "切换智能体"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.cycleAgentDesc"
 msgstr "切换到下一个智能体"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.cycleAgentRev"
 msgstr "反向切换智能体"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.cycleAgentRevDesc"
 msgstr "切换到上一个智能体"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.cycleEffort"
 msgstr "切换思考强度"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.cycleEffortDesc"
 msgstr "切换到下一个强度级别"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.effort.default"
 msgstr "默认"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.fork"
 msgstr "分叉会话"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.forkDesc"
 msgstr "从当前消息分叉会话"
 
@@ -16177,98 +16141,79 @@ msgstr "从当前消息分叉会话"
 msgid "session.cmd.newSession"
 msgstr "新建会话"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.newSessionDesc"
 msgstr "开始新的对话"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.newTerminal"
 msgstr "新建终端"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.newTerminalDesc"
 msgstr "新建终端标签页"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.nextMessage"
 msgstr "下一条消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.nextMessageDesc"
 msgstr "转到下一条用户消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.openFile"
 msgstr "打开文件"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.openFileDesc"
 msgstr "搜索并打开文件"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.prevMessage"
 msgstr "上一条消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.prevMessageDesc"
 msgstr "转到上一条用户消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.redo"
 msgstr "恢复消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.redoDesc"
 msgstr "恢复上一个已撤销的消息回合"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.refreshFile"
 msgstr "刷新当前文件"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.refreshFileDesc"
 msgstr "重新加载当前文件和已展开文件夹"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.restoreFiles"
 msgstr "恢复文件"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.restoreFilesDesc"
 msgstr "恢复被撤销回合更改的文件"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.rewindToHere"
 msgstr "回退到这里"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.rewindToHereDesc"
 msgstr "将会话回退到当前消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.toast.compactFailed"
 msgstr "整理上下文失败"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.toast.compactFailedDesc"
 msgstr "无法整理此会话的上下文。"
 
@@ -16276,83 +16221,67 @@ msgstr "无法整理此会话的上下文。"
 msgid "session.cmd.toast.effortChanged"
 msgstr "思考强度已更改"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.toast.effortChangedDesc"
 msgstr "思考强度已更改为 {effort}"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.toast.filesRestored"
 msgstr "文件已恢复"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.toast.filesRestoredDesc"
 msgstr "已恢复 {count, plural, one {# 个文件} other {# 个文件}}"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.toast.noModel"
 msgstr "未选择模型"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.toast.noModelDesc"
 msgstr "连接提供商以总结此会话"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.toggleFileTree"
 msgstr "切换文件树"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.toggleFileTreeDesc"
 msgstr "显示或隐藏文件树"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.toggleMcp"
 msgstr "切换 MCP"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.toggleMcpDesc"
 msgstr "切换 MCP"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.toggleTerminal"
 msgstr "切换终端"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.toggleTerminalDesc"
 msgstr "显示或隐藏终端"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.undo"
 msgstr "撤销"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.cmd.undoDesc"
 msgstr "撤销上一个消息回合"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.conversation.guide"
 msgstr "引导"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.conversation.guideRun"
 msgstr "引导当前运行"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.conversation.guideRunTitle"
 msgstr "引导当前运行"
 
@@ -16360,18 +16289,15 @@ msgstr "引导当前运行"
 msgid "session.conversation.latest"
 msgstr "回到最新消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.conversation.loadEarlier"
 msgstr "加载之前的消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.conversation.loadingEarlier"
 msgstr "正在加载之前的消息…"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.conversation.moveToQueue"
 msgstr "移回队列"
 
@@ -16379,38 +16305,31 @@ msgstr "移回队列"
 msgid "session.conversation.moveToQueueTitle"
 msgstr "移回队列"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.conversation.newMessagesReturnLatest"
 msgstr "有新消息，返回最新消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.conversation.paused"
 msgstr "已暂停"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.conversation.pausedTooltip"
 msgstr "回退期间已暂停投递。恢复消息或开始新任务后将恢复。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.conversation.pending"
 msgstr "等待中…"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.conversation.queue"
 msgstr "队列"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.conversation.removePending"
 msgstr "移除待处理消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.conversation.removePendingTitle"
 msgstr "移除待处理消息"
 
@@ -16418,13 +16337,11 @@ msgstr "移除待处理消息"
 msgid "session.conversation.renderEarlier"
 msgstr "渲染更早的消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.conversation.returnLatest"
 msgstr "返回最新消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.conversation.withdraw"
 msgstr "撤回"
 
@@ -16464,8 +16381,7 @@ msgstr "跳过本次提问"
 msgid "session.decision.submitting"
 msgstr "正在提交…"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.dock.back"
 msgstr "后退"
 
@@ -16473,18 +16389,15 @@ msgstr "后退"
 msgid "session.dock.backToParent"
 msgstr "返回父级"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.dock.forkedFrom"
 msgstr "分叉自"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.dock.forkSource"
 msgstr "分叉来源"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.dock.forkSourceTooltip"
 msgstr "分叉来源"
 
@@ -16492,8 +16405,7 @@ msgstr "分叉来源"
 msgid "session.dock.loadingPrompt"
 msgstr "正在加载提示…"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.dock.parentSession"
 msgstr "父会话"
 
@@ -16621,53 +16533,43 @@ msgstr "此工具结果已不可用。"
 msgid "session.execution.views"
 msgstr "工具结果视图"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.fork.confirm.action"
 msgstr "分叉会话"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.fork.confirm.cancel"
 msgstr "取消"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.fork.confirm.close"
 msgstr "关闭对话框"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.fork.confirm.copiedNote"
 msgstr "将从这条回复在 {time} 分叉。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.fork.confirm.copiedSummary"
 msgstr "{kind, select, both {将 {messages, plural, one {# 条消息} other {# 条消息}} 和 {replies, plural, one {# 条回复} other {# 条回复}} 复制到一个新会话中。} messages {将 {messages, plural, one {# 条消息} other {# 条消息}} 复制到一个新会话中。} replies {将 {replies, plural, one {# 条回复} other {# 条回复}} 复制到一个新会话中。} other {将对话复制到一个新会话中。}}"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.fork.confirm.description"
 msgstr "将此回复及其之前的对话复制到一个新会话中。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.fork.confirm.description.preview"
 msgstr "将对话复制到「{preview}」这条回复为止，并放入一个新会话中。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.fork.confirm.failed"
 msgstr "分叉失败"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.fork.confirm.forking"
 msgstr "正在分叉…"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.fork.confirm.requestFailed"
 msgstr "请求失败"
 
@@ -16683,238 +16585,191 @@ msgstr "描述你的任务，或添加文件开始。"
 msgid "session.greeting.taskTitle"
 msgstr "想开始什么任务？"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.history.copied"
 msgstr "已复制完整会话"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.history.copyDescription"
 msgstr "复制此会话的全部用户和助手正文"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.history.copyTitle"
 msgstr "复制完整会话正文"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.history.exportDescription"
 msgstr "下载此会话的全部用户和助手正文"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.history.exportTitle"
 msgstr "导出完整会话正文"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.history.searchEmpty"
 msgstr "没有找到匹配内容"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.history.searchFailed"
 msgstr "无法搜索会话历史"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.history.searchMore"
 msgstr "更多结果"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.history.searchPlaceholder"
 msgstr "搜索完整会话历史"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.history.searchPreparing"
 msgstr "正在建立历史索引，已处理 {count} 项…"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.history.searchReasoning"
 msgstr "包含推理"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.history.searchTitle"
 msgstr "搜索会话历史"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.history.searchTools"
 msgstr "包含工具内容"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.history.textFailed"
 msgstr "无法读取会话，请重试。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.afterTurn"
 msgstr "回合后"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.clear"
 msgstr "收件箱为空"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.contextTag"
 msgstr "上下文"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.contextUpdate"
 msgstr "上下文更新"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.contextWord"
 msgstr "上下文"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.debug"
 msgstr "正在检查排队消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.delete"
 msgstr "删除"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.delivery.context"
 msgstr "已作为上下文加入正在进行的模型调用。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.delivery.steer"
 msgstr "会在当前运行的下一次模型请求前加入。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.delivery.task"
 msgstr "将在此回合后发送；多个排队项共用一个回复周期。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.detailAria"
 msgstr "排队消息操作"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.empty"
 msgstr "收件箱为空"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.failed"
 msgstr "投递失败"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.failedStatus"
 msgstr "失败"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.frozen"
 msgstr "回退期间收件箱已冻结"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.guide.queue"
 msgstr "排队"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.guide.queueTip"
 msgstr "将此消息移回排队任务列表。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.guide.sendNow"
 msgstr "立即发送"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.guide.sendNowTip"
 msgstr "将此消息添加到当前运行的下一次模型调用。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.guideAllFailed"
 msgstr "无法立即发送排队消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.guideFailed"
 msgstr "无法立即发送消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.guiding"
 msgstr "正在引导当前运行"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.itemsWaiting"
 msgstr "有 {count} 项等待你处理"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.loading"
 msgstr "正在加载收件箱…"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.nextCall"
 msgstr "下一次调用"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.operationPending"
 msgstr "正在更新消息…"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.queue.contexts"
 msgstr "{count} 个上下文更新正在等待"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.queue.contextSingular"
 msgstr "上下文更新等待中"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.queue.joinModel"
 msgstr "下一次模型调用将加入 {count, plural, one {# 项内容} other {# 项内容}}"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.queue.joinSingular"
 msgstr "会加入当前运行的下一次模型调用"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.queue.nextCall"
 msgstr "{steers} 下一次调用 · {tasks} 回合后"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.queue.tasks"
 msgstr "{count, plural, one {# 项内容} other {# 项内容}}将合并为一条回复"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.queue.tasksSingular"
 msgstr "将在此回合后自动发送"
 
@@ -16922,88 +16777,71 @@ msgstr "将在此回合后自动发送"
 msgid "session.inbox.queued"
 msgstr "由你排队"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.removed"
 msgstr "已移除排队消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.removedDesc"
 msgstr "该消息已从收件箱中移除。恢复后会将其添加到队列末尾。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.removedHeading"
 msgstr "已移除的消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.removedLoadFailed"
 msgstr "无法加载已移除的消息。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.removeFailed"
 msgstr "暂时无法确认移除结果，核对完成前保留消息。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.requestFailed"
 msgstr "请求失败"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.restore"
 msgstr "恢复"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.restoreFailed"
 msgstr "暂时无法确认恢复结果，原内容与执行配置已保留。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.retry"
 msgstr "重试投递"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.retryFailed"
 msgstr "重试消息失败"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.retryRemove"
 msgstr "重试移除"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.retryRestore"
 msgstr "重试恢复"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.sendAll"
 msgstr "全部立即发送"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.sessionAria"
 msgstr "会话收件箱"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.title"
 msgstr "收件箱"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.inbox.update"
 msgstr "更新"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.lsp.noServers"
 msgstr "没有 LSP 服务器"
 
@@ -17206,109 +17044,6 @@ msgstr "工作了 {seconds} 秒"
 msgid "session.process.working"
 msgstr "工作中"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.activeAria"
-msgstr "会话进度，{total} 个任务中已完成 {completed} 个"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.attentionAria"
-msgstr "会话进度需要注意，{count} 个失败"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.blockedAria"
-msgstr "会话进度需要注意，{count} 个受阻"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.cancelled"
-msgstr "已取消 {count} 项"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.collapse"
-msgstr "折叠"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.completeAria"
-msgstr "会话进度已完成，共完成 {count, plural, one {# 个任务} other {# 个任务}}"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.completeFraction"
-msgstr "已完成 {completed}/{total}"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.currentWork"
-msgstr "当前工作"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.dagTab"
-msgstr "DAG 标签页"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.done"
-msgstr "完成 · {count, plural, one {# 个任务} other {# 个任务}}"
-
-#. session-progress summary labels
-msgid "session.progress.ended"
-msgstr "已结束"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.expand"
-msgstr "展开"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.needsAttention"
-msgstr "需要处理 · {count, plural, one {# 个任务失败} other {# 个任务失败}}"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.needsAttentionBlocked"
-msgstr "需要处理 · {count, plural, one {# 个任务受阻} other {# 个任务受阻}}"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.noActivePlan"
-msgstr "无活动计划"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.ready"
-msgstr "就绪 · {fraction}"
-
-#. session-progress-island
-msgid "session.progress.sessionLabel"
-msgstr "会话进度"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.todoTab"
-msgstr "待办"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.viewLabel"
-msgstr "进度视图"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.working"
-msgstr "工作中"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.progress.workingLabel"
-msgstr "正在处理 {count, plural, one {# 个任务} other {# 个任务}}"
-
 #. js-lingui-explicit-id
 msgid "session.question.answerPlaceholder"
 msgstr "填写你的回答…"
@@ -17473,78 +17208,63 @@ msgstr "本轮更改"
 msgid "session.review.undo"
 msgstr "撤销更改"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rewind.alsoRestore"
 msgstr "同时恢复文件更改"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rewind.alsoRestore.hint"
 msgstr "回退此点之后对 {files} 做出的磁盘编辑。如果关闭此项，之后仍可从回退对话框恢复文件。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rewind.associatedWork"
 msgstr "与隐藏工作相关。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rewind.cancel"
 msgstr "取消"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rewind.confirm"
 msgstr "回退"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rewind.confirmRestore"
 msgstr "回退并恢复文件"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rewind.description.before"
 msgstr "回到“{title}”之前。隐藏的工作在你开始新任务前仍可恢复。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rewind.description.untitled"
 msgstr "回到此消息之前。隐藏的工作在你开始新任务前仍可恢复。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rewind.failed"
 msgstr "回退失败"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rewind.optional"
 msgstr "可选"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rewind.requestFailed"
 msgstr "请求失败"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rewind.retry"
 msgstr "重试"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rewind.retryFailed"
 msgstr "重试失败"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rewind.retrying"
 msgstr "正在重试…"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rewind.rewinding"
 msgstr "正在回退…"
 
@@ -17552,8 +17272,7 @@ msgstr "正在回退…"
 msgid "session.rewind.startingHere"
 msgstr "从这里开始。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rewind.thisHides"
 msgstr "这将隐藏"
 
@@ -17561,8 +17280,7 @@ msgstr "这将隐藏"
 msgid "session.rewind.title"
 msgstr "回退到此处"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rollback.bannerText"
 msgstr "已回退 {messages, plural, one {# 条消息} other {# 条消息}}（{turns, plural, one {# 个回合} other {# 个回合}}）"
 
@@ -17570,83 +17288,67 @@ msgstr "已回退 {messages, plural, one {# 条消息} other {# 条消息}}（{t
 msgid "session.rollback.cannotRedo"
 msgstr "无法恢复消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rollback.cannotRedo.desc"
 msgstr "已开始新任务。此次回退的消息无法再恢复。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rollback.cannotRedoNew"
 msgstr "已添加新消息。此次回退的消息无法再恢复。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rollback.cannotRedoTooltip"
 msgstr "已添加新消息；无法恢复此次回退的消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rollback.complete"
 msgstr "回退完成"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rollback.dismiss"
 msgstr "关闭"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rollback.filesRestored"
 msgstr "文件已恢复"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rollback.filesRestoreFailed"
 msgstr "恢复文件失败"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rollback.partialRestore"
 msgstr "已恢复 {restored} 个文件；{failed} 个文件未能恢复。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rollback.redo"
 msgstr "恢复消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rollback.redoComplete"
 msgstr "消息恢复完成"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rollback.redoFailed"
 msgstr "消息恢复失败"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rollback.redoSuccessDesc"
 msgstr "已恢复 {count, plural, one {# 条消息} other {# 条消息}}"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rollback.requestFailed"
 msgstr "请求失败"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rollback.restoreFiles"
 msgstr "恢复文件（{count}）"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rollback.restoreSuccessDesc"
 msgstr "已恢复 {count, plural, one {# 个文件} other {# 个文件}}"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.rollback.restoreTooltip"
 msgstr "恢复已回退的消息"
 
@@ -17770,38 +17472,31 @@ msgstr "隔离工作区会话"
 msgid "session.state.worktree.unread"
 msgstr "隔离工作区会话；回复已生成"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.subagent.ariaLabel"
 msgstr "打开 {description}。长按可取消。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.subagent.ariaQueued"
 msgstr "{agent} 已排队"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.subagent.footer.cancelled"
 msgstr "已取消"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.subagent.footer.completed"
 msgstr "已完成"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.subagent.footer.error"
 msgstr "错误"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.subagent.footer.interrupted"
 msgstr "已中断"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.subagent.footer.parent"
 msgstr "父级"
 
@@ -17809,33 +17504,27 @@ msgstr "父级"
 msgid "session.subagent.footer.queued"
 msgstr "已排队"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.subagent.footer.retry"
 msgstr "重试 #{attempt}"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.subagent.footer.running"
 msgstr "运行中"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.subagent.queuedWait"
 msgstr "已排队，正在等待空位"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.subagent.retry"
 msgstr "重试 #{attempt}"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.subagent.retryAria"
 msgstr "{agent}：重试 #{attempt}，{message}"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.subagent.tapToOpen"
 msgstr "点按打开 · 长按取消"
 
@@ -17903,125 +17592,79 @@ msgstr "重试"
 msgid "session.tags.saveFailed"
 msgstr "无法保存标签"
 
-#. js-lingui-explicit-id
-msgid "session.todo.cancelled"
-msgstr "已取消"
-
-#. js-lingui-explicit-id
-msgid "session.todo.completed"
-msgstr "已完成"
-
-#. js-lingui-explicit-id
-msgid "session.todo.inProgress"
-msgstr "进行中"
-
-#. js-lingui-explicit-id
-msgid "session.todo.pending"
-msgstr "待处理"
-
-#. js-lingui-explicit-id
-msgid "session.todo.priorityHigh"
-msgstr "高优先级"
-
-#. js-lingui-explicit-id
-msgid "session.todo.priorityLow"
-msgstr "低优先级"
-
-#. js-lingui-explicit-id
-msgid "session.todo.unknown"
-msgstr "状态未知"
-
 #. session-transition-card.tsx — generic transition card
 msgid "session.transition.card.dismissAria"
 msgstr "关闭会话进度"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.card.dismissTitle"
 msgstr "关闭"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.card.retry"
 msgstr "重试"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.continue"
 msgstr "继续任务"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.desc.cancelled"
 msgstr "这条消息已取消，你可以关闭此提示。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.desc.delayed"
 msgstr "消息已保存。准备时间比平时更长，系统会继续处理。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.desc.initializing"
 msgstr "你的第一条消息已保存，正在初始化会话。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.desc.queued"
 msgstr "你的第一条消息已排队等待处理。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.desc.reconnecting"
 msgstr "消息此前已保存，正在重新连接以查询处理进度。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.desc.retrying"
 msgstr "消息已保存，正在自动重试准备流程。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.desc.stalled"
 msgstr "你的第一条消息仍已保存，但初始化未完成。请重试以恢复处理。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.desc.storage"
 msgstr "消息已保存，正在等待存储可用。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.desc.submitting"
 msgstr "正在提交你的第一条消息。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.detail.messageQueued"
 msgstr "第一条消息已排队。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.errorDetails"
 msgstr "错误详情"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.recoveryFailed"
 msgstr "暂时无法确认恢复结果，请检查连接后重试。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.retryInitialization"
 msgstr "重试初始化"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.step.failed"
 msgstr "失败"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.step.initialize"
 msgstr "初始化执行"
 
@@ -18029,33 +17672,27 @@ msgstr "初始化执行"
 msgid "session.transition.step.prepareSession"
 msgstr "准备会话"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.step.submitMessage"
 msgstr "提交消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.title.accepted"
 msgstr "会话请求已接受"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.title.stalled"
 msgstr "会话初始化需要处理"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.transition.title.starting"
 msgstr "正在启动会话"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.card.dismissAria"
 msgstr "关闭副本状态"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.card.dismissTitle"
 msgstr "关闭"
 
@@ -18063,73 +17700,59 @@ msgstr "关闭"
 msgid "session.worktree.card.mainCheckout"
 msgstr "项目文件"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.card.retry"
 msgstr "重试"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.card.sessionWorktree"
 msgstr "Worktree"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.card.worktreeSession"
 msgstr "Worktree任务"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.desc.leaving"
 msgstr "正在将此任务切回项目文件。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.desc.mainActive"
 msgstr "此任务现在使用项目文件，原Worktree仍然可用。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.desc.moving"
 msgstr "正在为此任务创建Worktree。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.desc.refreshFailed"
 msgstr "文件位置已更改，但无法刷新任务状态。{message}"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.desc.refreshing"
 msgstr "文件位置已更改，正在更新任务状态。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.desc.started"
 msgstr "Worktree已准备完成，第一条消息已排队。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.desc.starting"
 msgstr "正在准备Worktree并发送第一条消息。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.desc.worktreeActive"
 msgstr "此任务现在使用Worktree。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.detail.conversationReady"
 msgstr "会话数据已准备完成。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.detail.creatingConversation"
 msgstr "正在创建会话数据。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.detail.dispatchingPrompt"
 msgstr "正在发送你的第一条消息。"
 
@@ -18137,63 +17760,51 @@ msgstr "正在发送你的第一条消息。"
 msgid "session.worktree.detail.preparingWorktree"
 msgstr "正在准备项目文件的Worktree。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.detail.preparingWorktreeBind"
 msgstr "正在为此任务准备副本。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.detail.promptDispatched"
 msgstr "第一条消息已发送。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.detail.refreshingStatus"
 msgstr "正在加载任务的新文件位置。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.detail.updatingWorkspace"
 msgstr "正在更新此任务使用的文件。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.detail.usingCheckout"
 msgstr "正在使用选中的副本。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.detail.workspaceSetupComplete"
 msgstr "Worktree已准备完成。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.detail.workspaceUpdated"
 msgstr "任务的文件位置已更新。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.dialog.cancel"
 msgstr "取消"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.dialog.create"
 msgstr "创建工作树"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.dialog.desc"
 msgstr "创建隔离工作区并将此会话移入其中。主工作区不会受到影响。"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.dialog.nameLabel"
 msgstr "工作树名称"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.dialog.namePlaceholder"
 msgstr "自动生成"
 
@@ -18201,8 +17812,7 @@ msgstr "自动生成"
 msgid "session.worktree.dialog.title"
 msgstr "将会话移至隔离工作区？"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.setupCommandFailed"
 msgstr "Worktree的准备命令失败。"
 
@@ -18210,18 +17820,15 @@ msgstr "Worktree的准备命令失败。"
 msgid "session.worktree.step.active"
 msgstr "进行中"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.step.bindWorktree"
 msgstr "使用已有副本"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.step.complete"
 msgstr "完成"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.step.createBind"
 msgstr "创建并使用副本"
 
@@ -18229,33 +17836,27 @@ msgstr "创建并使用副本"
 msgid "session.worktree.step.createCheckout"
 msgstr "创建Worktree"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.step.pending"
 msgstr "等待中"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.step.prepareSession"
 msgstr "准备会话"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.step.refreshStatus"
 msgstr "刷新文件位置"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.step.returnCheckout"
 msgstr "切回项目文件"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.step.sendPrompt"
 msgstr "发送消息"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.title.leaveFailed"
 msgstr "无法切回项目文件"
 
@@ -18263,48 +17864,39 @@ msgstr "无法切回项目文件"
 msgid "session.worktree.title.leaving"
 msgstr "正在切回项目文件"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.title.mainActive"
 msgstr "已使用项目文件"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.title.moveFailed"
 msgstr "无法使用Worktree"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.title.moving"
 msgstr "正在准备Worktree"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.title.refreshFailed"
 msgstr "无法刷新文件位置"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.title.refreshing"
 msgstr "正在刷新文件位置"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.title.setupFailed"
 msgstr "Worktree准备失败"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.title.started"
 msgstr "Worktree任务已接受"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.title.starting"
 msgstr "正在Worktree中启动任务"
 
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
+#. js-lingui-explicit-id
 msgid "session.worktree.title.worktreeActive"
 msgstr "已使用Worktree"
 

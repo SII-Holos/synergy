@@ -279,6 +279,8 @@ beforeAll(async () => {
       path.join(fixtureDirectory, "layout-boundary-stub.ts"),
       `export const LocalProvider = (props) => props.children
        export const FileProvider = (props) => props.children
+       export const ExecutionProvider = (props) => props.children
+       export const BrowserCatalogProvider = (props) => props.children
        export const useNavigateToSession = () => () => {}`,
     ),
   ])
@@ -309,6 +311,8 @@ beforeAll(async () => {
         "@/context/sync": path.join(fixtureDirectory, "scope-sync-stub.ts"),
         "@/context/local": path.join(fixtureDirectory, "layout-boundary-stub.ts"),
         "@/context/file": path.join(fixtureDirectory, "layout-boundary-stub.ts"),
+        "@/context/execution": path.join(fixtureDirectory, "layout-boundary-stub.ts"),
+        "@/components/workspace/browser/browser-catalog": path.join(fixtureDirectory, "layout-boundary-stub.ts"),
         "@/composables/use-navigate-to-session": path.join(fixtureDirectory, "layout-boundary-stub.ts"),
         "@": path.resolve(import.meta.dir, "../../../src"),
       },

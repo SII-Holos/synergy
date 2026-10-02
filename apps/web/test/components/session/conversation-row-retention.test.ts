@@ -57,6 +57,7 @@ beforeAll(async () => {
   fixtureDirectory = await mkdtemp(path.join(import.meta.dir, ".conversation-row-fixture-"))
   const conversationPath = path.resolve(import.meta.dir, "../../../src/components/session/conversation.tsx")
   const stubPath = path.join(fixtureDirectory, "stubs.tsx")
+  const processPath = path.resolve(import.meta.dir, "../../../../../packages/ui/src/components/session-turn-process.ts")
 
   await Promise.all([
     Bun.write(
@@ -68,7 +69,7 @@ beforeAll(async () => {
       `
         import { createMemo, createSignal, Show } from "solid-js"
 
-        export { resolveActivityDisclosure } from '/@fs//Users/eric/.codex/worktrees/frontend-integration/synergy/packages/ui/src/components/session-turn-process.ts'
+        export { resolveActivityDisclosure } from ${JSON.stringify(`/@fs/${processPath}`)}
         let mountCount = 0
         ;(window as any).__sessionTurnMounts = () => mountCount
         const [executionAvailable, setExecutionAvailable] = createSignal(true)
