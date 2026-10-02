@@ -22,6 +22,8 @@ Progress summarizes the selected Todo/DAG view with cancellations excluded from 
 
 **Cleaning drafts from every empty pending bucket.** Loading, reconnect and stale snapshots produce empty projections without terminal evidence. Snapshot confirmation preserves unread drafts through those intervals.
 
+**Dropping tool-card replies when the pending index is empty.** Reconnect can temporarily empty the index while a card still holds a valid permission identity. Forwarding that identity through the same coordinator preserves the user's action and the existing duplicate and uncertain-result guards.
+
 **Progress shell morphing and remounting graph views.** Dimension observers, measurement mirrors and reconstructed graphs add layout work and discard manual state. A fixed summary and retained inert views keep layout and interaction ownership explicit.
 
 ## Consequences

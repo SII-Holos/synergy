@@ -34,8 +34,7 @@ export default function Layout(props: ParentProps) {
                 permissionID: string
                 response: "once" | "session" | "always" | "reject"
               }) => {
-                const request = globalSync.permissions[input.sessionID]?.find((item) => item.id === input.permissionID)
-                if (request) void decisions.respondPermission(request, input.response)
+                void decisions.respondPermission({ id: input.permissionID, sessionID: input.sessionID }, input.response)
               }
 
               return (

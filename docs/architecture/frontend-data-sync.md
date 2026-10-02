@@ -67,7 +67,7 @@ Global bootstrap starts the health check and the global config/path/Scope/provid
 
 ## Request Interaction State
 
-`SessionDecisionProvider` lives below SDK/Sync in the directory owner and above the replaceable Session page. `SessionDecisionHost` owns presentation, accepts an inline native outlet and supplies a host fallback when a replacement page provides none. Both card actions and `DataProvider` permission replies use the same coordinator; pending facts stay in `GlobalSync` and are read through `SessionDataView`.
+`SessionDecisionProvider` lives below SDK/Sync in the directory owner and above the replaceable Session page. `SessionDecisionHost` owns presentation, accepts an inline native outlet and supplies a host fallback when a replacement page provides none. Both card actions and `DataProvider` permission replies use the same coordinator; `DataProvider` forwards the captured session/request identity even while reconnect temporarily empties the pending index. Pending facts stay in `GlobalSync` and are read through `SessionDataView`.
 
 Request identity is the tuple of server URL, Scope ID, session ID, request ID and kind. Each submission captures its client, identity and immutable answers or permission reply. Local operation tokens reject late results after settlement, eviction or disposal. The coordinator exposes idle, pending, error, unknown and settled states: pending locks duplicates, error retry checks authoritative pending state first, and unknown offers a read-only status check without resending. Server confirmation immediately removes the request from presentation; histories remain server-owned.
 

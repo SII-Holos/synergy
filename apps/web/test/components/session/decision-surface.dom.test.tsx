@@ -40,7 +40,11 @@ beforeAll(async () => {
     Bun.write(
       sdkStubPath,
       `
+        export const SDKProvider = (props) => props.children
         export const useSDK = () => ({
+          url: "http://fixture",
+          scopeID: "scope-one",
+          event: { on: () => () => {} },
           client: {
             question: {
               reply: (input) => window.decisionSubmit(input),
@@ -61,6 +65,7 @@ beforeAll(async () => {
         import { createSessionDataView } from "@ericsanchezok/synergy-ui/context/session-data-view"
         export const useSessionDataView = () => () =>
           createSessionDataView(globalThis.__DECISION_SURFACE_DATA, globalThis.__DECISION_SURFACE_RUNTIME)
+        export const createSessionDataRuntime = () => globalThis.__DECISION_SURFACE_RUNTIME
       `,
     ),
     Bun.write(
@@ -69,13 +74,15 @@ beforeAll(async () => {
         import { createComponent, createSignal } from "solid-js"
         import "@ericsanchezok/synergy-ui/styles"
         import "/@fs/${path.resolve(import.meta.dir, "../../../src/components/session/session-inbox.css")}"
-        import { SessionDecisionProvider, createSessionDecisionState } from "@/context/session-decision"
+        import { SessionDecisionProvider, createSessionDecisionState, useSessionDecision } from "@/context/session-decision"
         import { QuestionSnapshotGate } from "@/context/question-snapshot"
         import { useSDK } from "@/context/sdk"
         import { render } from "solid-js/web"
         import { I18nProvider } from "@lingui/solid"
         import { setupI18n } from "@lingui/core"
-        import { DataProvider } from "@ericsanchezok/synergy-ui/context"
+        import { DataProvider, useData } from "@ericsanchezok/synergy-ui/context"
+        import { Router, Route } from "@solidjs/router"
+        import DirectoryLayout from "@/pages/directory-layout"
         import { MarkedProvider } from "@ericsanchezok/synergy-ui/context/marked"
         import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
         import { SessionDecisionHost, SessionDecisionOutlet } from ${JSON.stringify(`/@fs/${componentPath}`)}
@@ -158,6 +165,17 @@ beforeAll(async () => {
           permissionsFor: (id) => permissions()[id] ?? NO_REQUESTS,
           questionsFor: (id) => questions()[id] ?? NO_REQUESTS,
         }
+        globalThis.__DECISION_SURFACE_SYNC = {
+          get permissions() { return permissions() },
+          get questions() { return questions() },
+          sessionStatus: {},
+          cortex: [],
+          questionSnapshot: () => undefined,
+          captureQuestionSnapshot: () => ({ scopeID: "scope-one", generation: 0, revision: 0 }),
+          seedGlobalQuestions: () => false,
+          seedSessionPermissions: (id, requests) => setPermissions({ [id]: requests }),
+        }
+        window.clearPermissions = () => setPermissions({})
 
         const gate = new QuestionSnapshotGate()
         const [snapshot, setSnapshot] = createSignal()
@@ -190,7 +208,18 @@ beforeAll(async () => {
         window.addQuestion = () => setQuestions({ s1: [...(questions().s1 ?? []), { ...questionRequest, id: "q2" }] })
         const i18n = setupI18n({ locale: "en", messages: {} })
 
-        render(
+        function CachedPermissionCard() {
+          const data = useData()
+          const decisions = useSessionDecision()
+          const request = { ...permissionRequest }
+          return <>
+            <button onClick={() => data.respondToPermission({ sessionID: request.sessionID, permissionID: request.id, response: "once" })}>Cached Allow once</button>
+            <output aria-label="Cached permission status">{decisions.state(decisions.key("permission", request)).status}</output>
+          </>
+        }
+
+        if (mode === "legacy") render(() => <Router><Route path="/:dir/session/:id" component={() => <DirectoryLayout><CachedPermissionCard /></DirectoryLayout>} /></Router>, document.querySelector("#root"))
+        else render(
           () =>
             createComponent(I18nProvider, {
               i18n,
@@ -236,7 +265,23 @@ beforeAll(async () => {
     ),
   ])
 
-  await Bun.write(path.join(fixtureDirectory, "sync-stub.ts"), "export const useGlobalSync = () => ({})")
+  await Promise.all([
+    Bun.write(
+      path.join(fixtureDirectory, "sync-stub.ts"),
+      "export const useGlobalSync = () => globalThis.__DECISION_SURFACE_SYNC",
+    ),
+    Bun.write(
+      path.join(fixtureDirectory, "scope-sync-stub.ts"),
+      `export const SyncProvider = (props) => props.children
+       export const useSync = () => ({ data: { ...globalThis.__DECISION_SURFACE_DATA, path: { directory: "/fixture" } }, session: { get: (id) => globalThis.__DECISION_SURFACE_DATA.session.find((session) => session.id === id) } })`,
+    ),
+    Bun.write(
+      path.join(fixtureDirectory, "layout-boundary-stub.ts"),
+      `export const LocalProvider = (props) => props.children
+       export const FileProvider = (props) => props.children
+       export const useNavigateToSession = () => () => {}`,
+    ),
+  ])
   server = await createServer({
     configFile: false,
     root: fixtureDirectory,
@@ -247,6 +292,7 @@ beforeAll(async () => {
         "solid-js",
         "solid-js/web",
         "solid-js/jsx-runtime",
+        "@solidjs/router",
         "zod",
         "@lingui/core",
         "@lingui/solid",
@@ -260,6 +306,10 @@ beforeAll(async () => {
         "@/context/sdk": sdkStubPath,
         "@/context/session-data-view": viewStubPath,
         "@/context/global-sync": path.join(fixtureDirectory, "sync-stub.ts"),
+        "@/context/sync": path.join(fixtureDirectory, "scope-sync-stub.ts"),
+        "@/context/local": path.join(fixtureDirectory, "layout-boundary-stub.ts"),
+        "@/context/file": path.join(fixtureDirectory, "layout-boundary-stub.ts"),
+        "@/composables/use-navigate-to-session": path.join(fixtureDirectory, "layout-boundary-stub.ts"),
         "@": path.resolve(import.meta.dir, "../../../src"),
       },
     },
@@ -317,11 +367,34 @@ interface DecisionWindow extends Window {
   serverPending: boolean
   confirmSnapshot(): void
   reloadPermissions(): void
+  clearPermissions(): void
   endQuestion(): void
   addQuestion(): void
   checkFails: boolean
   navigatedSession?: string
 }
+
+test("DataProvider replies use the coordinator when a cached permission outlives a temporary empty index", async () => {
+  await page.goto(`${baseUrl}c2NvcGUtb25l/session/s1?mode=legacy`)
+  const allow = page.getByRole("button", { name: "Cached Allow once", exact: true })
+  await allow.waitFor()
+  await page.evaluate(() => (window as unknown as DecisionWindow).clearPermissions())
+  await allow.click()
+  await allow.click()
+  expect(await page.evaluate(() => (window as unknown as DecisionWindow).decisionCalls)).toEqual([
+    { requestID: "p1", reply: "once" },
+  ])
+  expect(await page.getByLabel("Cached permission status").textContent()).toBe("pending")
+  await page.evaluate(async () => {
+    ;(window as unknown as DecisionWindow).reloadPermissions()
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  })
+  await page.evaluate(() => (window as unknown as DecisionWindow).resolveDecision())
+  await page.getByLabel("Cached permission status").filter({ hasText: "settled" }).waitFor()
+  await allow.click()
+  expect(await page.evaluate(() => (window as unknown as DecisionWindow).decisionCalls)).toHaveLength(1)
+  expect(pageErrors).toEqual([])
+})
 
 test("one host-owned card prioritizes permissions, with a queue for questions", async () => {
   await page.goto(`${baseUrl}?mode=combined`)

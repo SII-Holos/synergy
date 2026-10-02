@@ -164,7 +164,7 @@ export function createSessionDecisionState(runtime: DecisionRuntime) {
       settled: () => clearDraft(identity),
     })
   }
-  const respondPermission = (request: PermissionRequest, reply: Reply) => {
+  const respondPermission = (request: RequestIdentity, reply: Reply) => {
     const client = runtime.client
     const identity = { id: request.id, sessionID: request.sessionID }
     return run("permission", identity, {
