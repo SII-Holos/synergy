@@ -679,6 +679,7 @@ export namespace ToolResolver {
 
   function startToolTimeout(ctx: Tool.Context, timeoutMs: number) {
     const timing = toolTiming(ctx)
+    if (timeoutMs === 0) return timing.sessionAbort
     const timeout = new AbortController()
     const timeoutError = new DOMException(`Tool execution timed out after ${timeoutMs}ms`, "TimeoutError")
     const timer = setTimeout(() => timeout.abort(timeoutError), timeoutMs)

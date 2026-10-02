@@ -593,9 +593,9 @@ export const CoreInfo = z
       .object({
         invoke_sec: z
           .number()
-          .positive()
+          .min(0)
           .optional()
-          .describe("Max wall-clock seconds for one assistant step (default: 21600 = 6h)"),
+          .describe("Max wall-clock seconds for one assistant step (0 = disabled, default: 21600 = 6h)"),
         provider: z
           .object({
             ttfb_sec: z
@@ -629,13 +629,13 @@ export const CoreInfo = z
           .object({
             default_sec: z
               .number()
-              .positive()
+              .min(0)
               .optional()
-              .describe("Default timeout per tool execution in seconds (default: 7200 = 2h)"),
+              .describe("Default timeout per tool execution in seconds (0 = disabled, default: 7200 = 2h)"),
             overrides: z
-              .record(z.string(), z.number().positive())
+              .record(z.string(), z.number().min(0))
               .optional()
-              .describe("Per-tool timeout overrides by tool name, e.g. { bash: 600, webfetch: 120 }"),
+              .describe("Per-tool timeout overrides by tool name (0 = disabled), e.g. { bash: 600, webfetch: 120 }"),
           })
           .optional(),
         permission: z

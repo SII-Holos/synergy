@@ -1324,10 +1324,13 @@ export namespace SessionInvoke {
                 rejectDeadline = reject
               })
               deadlinePromise.catch(() => {})
-              const turnTimer = setTimeout(() => {
-                turnDeadline.abort(deadlineError)
-                rejectDeadline(deadlineError)
-              }, timeoutCfg.invokeMs)
+              const turnTimer =
+                timeoutCfg.invokeMs === 0
+                  ? undefined
+                  : setTimeout(() => {
+                      turnDeadline.abort(deadlineError)
+                      rejectDeadline(deadlineError)
+                    }, timeoutCfg.invokeMs)
               const onSessionAbort = () => clearTimeout(turnTimer)
               abort.addEventListener("abort", onSessionAbort, { once: true })
               const combinedAbort = AbortSignal.any([abort, turnDeadline.signal])

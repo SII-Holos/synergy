@@ -23,6 +23,23 @@ afterEach(
 
 describe("TimeoutConfig", () => {
   test(
+    "preserves zero as an explicit disabled assistant or tool deadline",
+    runtime.bind(async () => {
+      installConfig({
+        timeout: { invoke_sec: 0, tool: { default_sec: 0, overrides: { bash: 0, webfetch: 45 } } },
+      })
+      await expect(TimeoutConfig.resolve()).resolves.toMatchObject({
+        invokeMs: 0,
+        toolDefaultMs: 0,
+        toolOverrides: { bash: 0, webfetch: 45_000 },
+      })
+      expect(Config.Info.safeParse({ timeout: { invoke_sec: -1 } }).success).toBe(false)
+      expect(Config.Info.safeParse({ timeout: { tool: { default_sec: -1 } } }).success).toBe(false)
+      expect(Config.Info.safeParse({ timeout: { tool: { overrides: { bash: -1 } } } }).success).toBe(false)
+    }),
+  )
+
+  test(
     "uses long-run friendly step, tool, and permission defaults with bounded provider watchdogs",
     runtime.bind(async () => {
       installConfig({})

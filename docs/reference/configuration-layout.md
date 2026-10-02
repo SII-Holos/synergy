@@ -82,6 +82,10 @@ Holos login creates the matching Clarus Channel account when it is absent and pr
 
 Monolithic `synergy.json` and `synergy.jsonc` files are migration inputs. Startup migrates legacy global and project files into domain files and archives the originals once every field has a registered owner. A reduced composition defers a migration containing unregistered fields, retains the original file, and reads its core values beneath canonical domain overrides until the complete owner set is available.
 
+### Assistant and Tool deadlines
+
+`timeout.invoke_sec` sets the assistant-step wall clock; its default is 21,600 seconds. `timeout.tool.default_sec` defaults to 7,200 seconds, and `timeout.tool.overrides` selects a duration by Tool name. Zero disables only the corresponding deadline. Caller cancellation, provider watchdogs, permission expiry and bounded settlement remain independent. See the [explicit deadline decision](../decisions/implemented/feature/2026-10-02-explicitly-disable-assistant-and-tool-deadlines.md).
+
 ### Provider request timeouts
 
 Global `timeout.provider` and per-provider `provider.<id>.timeout` fields use seconds. The defaults are 300 seconds until the first response body byte, 120 seconds between body chunks, and 1,800 seconds total per HTTP request. Response headers alone do not satisfy TTFB. SSE keep-alive traffic resets idle time but does not extend the wall budget. These request limits do not shorten the session or tool execution budget.
