@@ -10,6 +10,8 @@ Primary agent names also identify persisted configuration, conversation executio
 
 The responsibility catalog selects Atlas, Forge and Pico for general, coding and lightweight work. Registration, prompts, workflow rules and built-in behavior tests select these responsibilities. The API continues to expose `Agent.name` as the runtime identity. Web uses the resolved configuration and visible primary catalog for defaults, and its existing presentation map for labels and styling.
 
+Brand names alone do not explain which primary Agent suits a task. The Web presentation map owns a brief localized purpose for each primary choice, shown in the shared selection menu. The compact control retains the name, and the menu marks the current selection separately from hover and keyboard focus. This presentation change needs no API metadata or execution changes.
+
 Each data owner registers a versioned migration for its structured references. A separate frozen historical mapping makes upgrade behavior independent of future catalog edits. Owner migrations expose reusable configuration and record transforms; central import entry points order them through the same migration graph before validation or publication. Newly discovered project configurations use this entry point. Home merges invalidate Note metadata indexes through Note's public service. Raw usage records stay immutable while query grouping and agent filtering associate historical identities.
 
 Execution accepts current names only. Product identifiers, models, permissions, tools, delegation and internal agents keep their contracts. Custom-name conflict detection is outside this change.

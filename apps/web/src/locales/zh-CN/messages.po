@@ -692,6 +692,18 @@ msgid "app.agenda.trigger.watch"
 msgstr "监视：{glob}"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
+msgid "app.agent.description.coding"
+msgstr "为构建而生，专注代码与工程"
+
+#. ── Agent Visual ─────────────────────────────────────────────────────────────
+msgid "app.agent.description.general"
+msgstr "从探索到执行，推进各类任务"
+
+#. ── Agent Visual ─────────────────────────────────────────────────────────────
+msgid "app.agent.description.lightweight"
+msgstr "轻巧灵活，处理日常小任务"
+
+#. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.advisor"
 msgstr "技术顾问"
 

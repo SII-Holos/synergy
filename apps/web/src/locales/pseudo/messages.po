@@ -692,6 +692,18 @@ msgid "app.agenda.trigger.watch"
 msgstr ""
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
+msgid "app.agent.description.coding"
+msgstr ""
+
+#. ── Agent Visual ─────────────────────────────────────────────────────────────
+msgid "app.agent.description.general"
+msgstr ""
+
+#. ── Agent Visual ─────────────────────────────────────────────────────────────
+msgid "app.agent.description.lightweight"
+msgstr ""
+
+#. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.advisor"
 msgstr ""
 

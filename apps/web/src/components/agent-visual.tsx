@@ -9,6 +9,7 @@ import type { Agent } from "@ericsanchezok/synergy-sdk/client"
 export interface AgentVisual {
   emoji: string
   label: AppMessageDescriptor
+  description?: AppMessageDescriptor
   color: string
   external?: boolean
 }
@@ -30,9 +31,24 @@ const COLORS = {
 } as const
 
 const VISUALS: Record<string, AgentVisual> = {
-  atlas: { emoji: "😌", label: agentVisualMsgs.roleGeneral, color: COLORS.primary },
-  forge: { emoji: "🧑‍💼", label: agentVisualMsgs.roleCoding, color: COLORS.max },
-  pico: { emoji: "🤷", label: agentVisualMsgs.roleLightweight, color: COLORS.neutral },
+  atlas: {
+    emoji: "😌",
+    label: agentVisualMsgs.roleGeneral,
+    description: agentVisualMsgs.descriptionGeneral,
+    color: COLORS.primary,
+  },
+  forge: {
+    emoji: "🧑‍💼",
+    label: agentVisualMsgs.roleCoding,
+    description: agentVisualMsgs.descriptionCoding,
+    color: COLORS.max,
+  },
+  pico: {
+    emoji: "🤷",
+    label: agentVisualMsgs.roleLightweight,
+    description: agentVisualMsgs.descriptionLightweight,
+    color: COLORS.neutral,
+  },
 
   developer: { emoji: "😎", label: agentVisualMsgs.roleDeveloper, color: COLORS.code },
   explore: { emoji: "🥸", label: agentVisualMsgs.roleExplore, color: COLORS.analysis },

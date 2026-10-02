@@ -692,6 +692,18 @@ msgid "app.agenda.trigger.watch"
 msgstr "watch: {glob}"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
+msgid "app.agent.description.coding"
+msgstr "Built to create, focused on code and engineering"
+
+#. ── Agent Visual ─────────────────────────────────────────────────────────────
+msgid "app.agent.description.general"
+msgstr "From exploration to execution, move work forward"
+
+#. ── Agent Visual ─────────────────────────────────────────────────────────────
+msgid "app.agent.description.lightweight"
+msgstr "Light and flexible, for everyday tasks"
+
+#. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.advisor"
 msgstr "Advisor"
 

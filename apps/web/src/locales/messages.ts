@@ -1563,6 +1563,18 @@ export const agentVisual = {
   roleGeneral: { id: "app.agent.role.general", message: "Atlas" },
   roleCoding: { id: "app.agent.role.coding", message: "Forge" },
   roleLightweight: { id: "app.agent.role.lightweight", message: "Pico" },
+  descriptionGeneral: {
+    id: "app.agent.description.general",
+    message: "From exploration to execution, move work forward",
+  },
+  descriptionCoding: {
+    id: "app.agent.description.coding",
+    message: "Built to create, focused on code and engineering",
+  },
+  descriptionLightweight: {
+    id: "app.agent.description.lightweight",
+    message: "Light and flexible, for everyday tasks",
+  },
   roleDeveloper: { id: "app.agent.role.developer", message: "Developer" },
   roleExplore: { id: "app.agent.role.explore", message: "Explorer" },
   roleScout: { id: "app.agent.role.scout", message: "Scout" },
