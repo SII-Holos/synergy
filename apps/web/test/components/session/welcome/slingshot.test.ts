@@ -136,3 +136,42 @@ test("a falling stone can destroy a target without a direct bird hit", () => {
   expect(game.snapshot().bursts).toEqual([])
   game.dispose()
 })
+
+test("a missed shot does not make an untouched structure win, at any authored level", () => {
+  for (let level = 0; level < 6; level++) {
+    const game = createSlingshot(8, undefined, level)
+    const targets = game.snapshot().bodies.filter((b) => b.kind === "target").length
+    game.aim(-80, 160)
+    game.launch()
+    const state = advance(game, 10)
+    expect(state.phase).toBe("aiming")
+    expect(state.bodies.filter((b) => b.kind === "target")).toHaveLength(targets)
+    game.dispose()
+  }
+})
+
+test("collision outcomes are frame-rate independent and contact snapshots resume the challenge", () => {
+  const simulate = (fps: number) => {
+    const game = createSlingshot(8)
+    game.aim(-65, 640)
+    game.launch()
+    const result = advance(game, 10, fps)
+    game.dispose()
+    return result
+  }
+  expect(simulate(30)).toEqual(simulate(120))
+  expect(simulate(60)).toEqual(simulate(120))
+  const game = createSlingshot(8)
+  game.aim(-65, 640)
+  game.launch()
+  advance(game, 1.9)
+  const restored = createSlingshot(8, JSON.parse(JSON.stringify(game.snapshot())))
+  const original = advance(game, 8),
+    resumed = advance(restored, 8)
+  expect(resumed.phase).toBe(original.phase)
+  expect(resumed.score).toBe(original.score)
+  expect(resumed.shots).toBe(original.shots)
+  expect(resumed.bodies.length).toBeLessThanOrEqual(48)
+  game.dispose()
+  restored.dispose()
+})

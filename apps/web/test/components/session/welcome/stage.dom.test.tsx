@@ -27,6 +27,8 @@ beforeAll(async () => {
     import { WelcomeProvider, useWelcome, useNewTaskNavigation } from "${source}/components/session/welcome/context"
     import { WelcomeStage } from "${source}/components/session/welcome/stage"
     import { createWelcomeMemory } from "${source}/components/session/welcome/types"
+    import { createStack, dropBlock } from "${source}/components/session/welcome/stack/model"
+    import { createSlingshot } from "${source}/components/session/welcome/slingshot/model"
     import { createBlocks } from "${source}/components/session/welcome/blocks/model"
     import { createFlight, startFlight } from "${source}/components/session/welcome/flight/model"
     import { welcomeScenes } from "${source}/components/session/welcome/registry"
@@ -71,6 +73,16 @@ beforeAll(async () => {
         const blocks = createBlocks(8), board = Array(200).fill(0)
         for(let y=2;y<20;y++) for(let x=3;x<7;x++) board[y*10+x]=1
         initialMemory.write({...blocks,board})
+      }
+      if (fixture === "stack-miss") {
+        const stack = createStack(8)
+        initialMemory.write(dropBlock({...stack,moving:{...stack.moving,x:0}}))
+      }
+      if (fixture === "sling-last") {
+        const sling = createSlingshot(8)
+        const snapshot = sling.snapshot()
+        sling.dispose()
+        initialMemory.write({...snapshot,shots:1,angle:-80,power:160})
       }
       const [memory, setMemory] = createSignal(initialMemory)
       const [blocked, setBlocked] = createSignal(false)
@@ -223,16 +235,17 @@ test("a fifth module needs no host changes and a late module cannot replace it",
 
 test("narrow and short layouts keep all four games and the editor reachable", async () => {
   for (const scene of ["stack", "slingshot", "blocks", "flight"])
-    for (const width of [320, 375, 720]) {
-      await page.setViewportSize({ width, height: 580 })
-      await open(scene)
-      await page.locator(".welcome-game-canvas").scrollIntoViewIfNeeded()
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-      const box = (await page.getByRole("textbox").boundingBox())!
-      expect(box.y + box.height).toBeLessThanOrEqual(581)
-      expect(errors).toEqual([])
-    }
-})
+    for (const width of [320, 375, 720])
+      for (const height of [400, 580]) {
+        await page.setViewportSize({ width, height })
+        await open(scene)
+        await page.locator(".welcome-game-canvas").scrollIntoViewIfNeeded()
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+        const box = (await page.getByRole("textbox").boundingBox())!
+        expect(box.y + box.height).toBeLessThanOrEqual(height + 1)
+        expect(errors).toEqual([])
+      }
+}, 15000)
 
 test("reduced motion stops decorative frames and supports explicit keyboard play", async () => {
   await page.emulateMedia({ reducedMotion: "reduce" })
@@ -463,3 +476,95 @@ test("blocks hold repeat, continuous touch movement, row clear and restart prese
   expect(await page.locator(".welcome-blocks").getAttribute("data-phase")).toBe("playing")
   expect(await page.locator(".welcome-blocks").getAttribute("data-locked")).toBe("0")
 })
+
+test("tower misses and exhausted slingshot rounds restart the same game without touching input", async () => {
+  await page.setViewportSize({ width: 960, height: 920 })
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await open("stack&fixture=stack-miss")
+  await page.waitForFunction(() => document.querySelector(".welcome-stack")?.getAttribute("data-phase") === "missed")
+  await page.locator(".welcome-game-canvas").click()
+  expect(await page.locator(".welcome-stack").getAttribute("data-height")).toBe("0")
+  await open("slingshot&fixture=sling-last")
+  const canvas = page.locator(".welcome-game-canvas")
+  await canvas.press("Space")
+  await page.waitForFunction(
+    () => document.querySelector(".welcome-slingshot")?.getAttribute("data-phase") === "lost",
+    undefined,
+    { timeout: 12000 },
+  )
+  await canvas.click()
+  expect(await page.locator(".welcome-slingshot").getAttribute("data-shots")).toBe("3")
+  expect(await page.locator(".welcome-slingshot").getAttribute("data-level")).toBe("0")
+  await page.getByRole("textbox").fill("继续编辑正文")
+  expect(await page.locator(".welcome-stage").getAttribute("data-active")).toBeNull()
+}, 20000)
+
+test("slingshot touch taps do not fire, pull cancellation preserves ammunition, and remount preserves flight", async () => {
+  await page.setViewportSize({ width: 375, height: 700 })
+  await open("slingshot")
+  const canvas = page.locator(".welcome-game-canvas"),
+    box = (await canvas.boundingBox())!
+  const scale = Math.min(box.width / 720, box.height / 360)
+  const point = {
+    x: box.x + (box.width - 720 * scale) / 2 + 98 * scale,
+    y: box.y + box.height - 360 * scale + 224 * scale,
+  }
+  const touch = await page.context().newCDPSession(page)
+  await touch.send("Emulation.setTouchEmulationEnabled", { enabled: true })
+  await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] })
+  await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+  expect(await page.locator(".welcome-slingshot").getAttribute("data-shots")).toBe("3")
+  await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] })
+  await touch.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [{ x: point.x - 30, y: point.y + 24 }],
+  })
+  await touch.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] })
+  expect(await page.locator(".welcome-slingshot").getAttribute("data-shots")).toBe("3")
+  await touch.send("Emulation.setTouchEmulationEnabled", { enabled: false })
+  await touch.detach()
+  await canvas.press("Space")
+  await canvas.press("Escape")
+  await page.getByRole("button", { name: "Mount", exact: true }).click()
+  await page.getByRole("button", { name: "Mount", exact: true }).click()
+  expect(await page.locator(".welcome-slingshot").getAttribute("data-shots")).toBe("2")
+  expect(await page.locator(".welcome-slingshot").getAttribute("data-phase")).toBe("flying")
+  expect(errors).toEqual([])
+})
+
+test("a second touch cannot replace or cancel the gesture already controlling a game", async () => {
+  await page.setViewportSize({ width: 375, height: 700 })
+  const touch = await page.context().newCDPSession(page)
+  await touch.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 2 })
+  try {
+    for (const scene of ["slingshot", "blocks", "flight"]) {
+      await open(scene)
+      const canvas = page.locator(".welcome-game-canvas"),
+        box = (await canvas.boundingBox())!
+      const scale = Math.min(box.width / 720, box.height / 360)
+      const first = {
+        id: 1,
+        x: scene === "slingshot" ? box.x + (box.width - 720 * scale) / 2 + 98 * scale : box.x + box.width / 2,
+        y: scene === "slingshot" ? box.y + box.height - 360 * scale + 224 * scale : box.y + box.height / 2,
+      }
+      const second = { ...first, id: 2, x: first.x + 14, y: first.y - 8 }
+      await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [first] })
+      const position = await canvas.getAttribute("aria-description")
+      const column = scene === "blocks" ? Number(await page.locator(".welcome-blocks").getAttribute("data-column")) : 0
+      await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [first, second] })
+      if (scene === "flight") expect(await canvas.getAttribute("aria-description")).toBe(position)
+      await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [second] })
+      const moved = { ...first, x: first.x + (scene === "slingshot" ? -25 : 30), y: first.y + 25 }
+      await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [moved] })
+      if (scene === "blocks")
+        expect(Number(await page.locator(".welcome-blocks").getAttribute("data-column"))).toBeGreaterThan(column)
+      if (scene === "flight") expect(await canvas.getAttribute("aria-description")).not.toBe(position)
+      await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+      if (scene === "slingshot") expect(await page.locator(".welcome-slingshot").getAttribute("data-shots")).toBe("2")
+      expect(errors).toEqual([])
+    }
+  } finally {
+    await touch.send("Emulation.setTouchEmulationEnabled", { enabled: false })
+    await touch.detach()
+  }
+}, 20000)

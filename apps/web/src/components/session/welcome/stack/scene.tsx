@@ -70,7 +70,8 @@ export default function StackScene(props: WelcomeSceneProps) {
       }
       ctx.fillRect(40, stackGround + camera, 640, 2)
       ctx.globalAlpha = 1
-      for (const b of stackLayout(s, props.reducedMotion())) block(ctx, ink, b.x, b.y, b.width, b.perfect)
+      for (const b of stackLayout(s, props.reducedMotion()))
+        block(ctx, ink, b.x, b.y, b.width, b.perfect && b.level === s.height && s.cooldown > 0)
       const y = stackGround - (s.height + 2) * floorHeight + camera
       if (s.fall) {
         const t = props.reducedMotion() ? 1 : Math.min(1, s.fall.age / 0.14)

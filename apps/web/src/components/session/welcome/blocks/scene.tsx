@@ -79,7 +79,7 @@ export default function BlocksScene(props: WelcomeSceneProps) {
         if (kind) cell(index % 10, Math.floor(index / 10), kind - 1)
       })
       if (s.phase !== "clearing") {
-        occupiedCells(landingPiece(s)).forEach((c) => cell(c.x, c.y, s.piece.kind, 0.12))
+        occupiedCells(landingPiece(s)).forEach((c) => cell(c.x, c.y, s.piece.kind, 0.22))
         occupiedCells(s.piece).forEach((c) => cell(c.x, c.y, s.piece.kind))
       }
       if (s.trail && !props.reducedMotion()) {
@@ -98,7 +98,7 @@ export default function BlocksScene(props: WelcomeSceneProps) {
       }
       for (let i = 0; i < 3; i++)
         occupiedCells({ kind: s.queue[i]!, rotation: 0, x: 12, y: 2 + i * 5 }).forEach((c) =>
-          cell(c.x, c.y, s.queue[i]!, 0.35),
+          cell(c.x, c.y, s.queue[i]!, 0.55),
         )
       if (s.flash > 0) {
         ctx.fillStyle = ink.paper
@@ -211,7 +211,7 @@ export default function BlocksScene(props: WelcomeSceneProps) {
             })
           }}
           onPointerDown={(e) => {
-            if (e.button !== 0) return
+            if (e.button !== 0 || touch) return
             canvas.element().focus({ preventScroll: true })
             props.interact()
             const p = canvas.point(e)
@@ -234,8 +234,12 @@ export default function BlocksScene(props: WelcomeSceneProps) {
             if (dy > 28 && dy > Math.abs(dx)) setState(dropBlocks)
             else if (!moved) setState(rotateBlocks)
           }}
-          onPointerCancel={cancel}
-          onLostPointerCapture={cancel}
+          onPointerCancel={(e) => {
+            if (touch?.id === e.pointerId) cancel()
+          }}
+          onLostPointerCapture={(e) => {
+            if (touch?.id === e.pointerId) cancel()
+          }}
         />
       </GameSurface>
     </div>

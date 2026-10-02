@@ -136,7 +136,7 @@ export default function SlingshotScene(props: WelcomeSceneProps) {
         ctx.translate(Math.round(b.x), Math.round(b.y))
         ctx.rotate(b.angle)
         if (b.kind === "bird") sprite(ctx, bird, -12, -9, 2, ink.accent, ink.paper)
-        else if (b.kind === "target") sprite(ctx, target, -10, -9, 2, ink.second, ink.paper)
+        else if (b.kind === "target") sprite(ctx, target, -10, -9, 2, ink.colors[2]!, ink.paper)
         else {
           ctx.fillStyle = b.kind === "wood" ? ink.second : ink.soft
           ctx.fillRect(-b.width / 2, -b.height / 2, b.width, b.height)
@@ -259,7 +259,7 @@ export default function SlingshotScene(props: WelcomeSceneProps) {
             values: { angle: Math.round(state().angle), power: Math.round(state().power) },
           })}
           onPointerDown={(e) => {
-            if (e.button !== 0) return
+            if (e.button !== 0 || drag()) return
             canvas.element().focus({ preventScroll: true })
             props.interact()
             if (terminal()) {
@@ -304,8 +304,12 @@ export default function SlingshotScene(props: WelcomeSceneProps) {
             game.launch()
             sync()
           }}
-          onPointerCancel={cancel}
-          onLostPointerCapture={cancel}
+          onPointerCancel={(e) => {
+            if (drag()?.id === e.pointerId) cancel()
+          }}
+          onLostPointerCapture={(e) => {
+            if (drag()?.id === e.pointerId) cancel()
+          }}
         />
       </GameSurface>
     </div>

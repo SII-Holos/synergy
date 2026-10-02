@@ -138,7 +138,8 @@ export default function FlightScene(props: WelcomeSceneProps) {
     720,
     400,
   )
-  function cancelPointer() {
+  function cancelPointer(event?: PointerEvent) {
+    if (event && event.pointerId !== pointer) return
     if (pointer === undefined) return
     const id = pointer
     pointer = undefined
@@ -199,13 +200,14 @@ export default function FlightScene(props: WelcomeSceneProps) {
           onKeyUp={(e) => keys.delete(e.key)}
           onBlur={() => keys.clear()}
           onPointerMove={(e) => {
+            if (pointer !== undefined && pointer !== e.pointerId) return
             if (props.active()) {
               const p = canvas.point(e)
               setState((s) => aimFlight(s, p.x, p.y))
             }
           }}
           onPointerDown={(e) => {
-            if (e.button !== 0) return
+            if (e.button !== 0 || pointer !== undefined) return
             canvas.element().focus({ preventScroll: true })
             start()
             const p = canvas.point(e)
@@ -215,7 +217,8 @@ export default function FlightScene(props: WelcomeSceneProps) {
           }}
           onPointerUp={cancelPointer}
           onLostPointerCapture={cancelPointer}
-          onPointerCancel={() => {
+          onPointerCancel={(e) => {
+            if (pointer !== e.pointerId) return
             cancelPointer()
             props.pause()
           }}
