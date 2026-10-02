@@ -10,6 +10,26 @@
   flex: 1;
   min-width: 0;
 }
+.directory-navigation [data-component="icon-button"].directory-navigation-control {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+.directory-navigation
+  [data-component="icon-button"].directory-navigation-control:focus:not(:hover):not(:focus-visible) {
+  background-color: transparent;
+}
+.directory-navigation [data-component="icon-button"].directory-navigation-control:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+.directory-navigation [data-component="icon-button"].directory-navigation-control:disabled {
+  background-color: transparent;
+  opacity: 0.5;
+}
 .directory-navigation-crumbs {
   display: flex;
   gap: 4px;
@@ -43,6 +63,10 @@
   flex: 1;
   min-width: 0;
 }
+.directory-navigation-entry > [data-component="checkbox"] {
+  flex: 0 0 auto;
+  margin-inline: 8px 4px;
+}
 .directory-navigation-empty {
   padding: 24px 12px;
   color: var(--text-weak);
@@ -53,17 +77,59 @@
   gap: 8px;
   min-width: 0;
   color: var(--text-weak);
+  font-size: 13px;
+  line-height: 20px;
 }
 .directory-navigation-selection > span {
   flex: 1;
   overflow-wrap: anywhere;
   min-width: 0;
 }
-@media (max-width: 480px) {
-  .directory-navigation-path {
-    flex-wrap: wrap;
-  }
-  .directory-navigation-path [data-component="input"] {
-    flex-basis: 50%;
-  }
+.directory-navigation-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.directory-navigation-selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  max-height: min(96px, 16dvh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 2px;
+  margin: -2px;
+  list-style: none;
+}
+.directory-navigation-selected > li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  padding-inline: 10px 2px;
+  border-radius: var(--radius-md);
+  background: var(--surface-raised-base-hover);
+  color: var(--text-base);
+  font-size: 14px;
+  line-height: 20px;
+}
+.directory-navigation-selected-name {
+  min-width: 0;
+}
+.directory-navigation-selected-name > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: var(--radius-sm);
+}
+.directory-navigation-selected-name > span:focus-visible {
+  outline: 2px solid var(--border-focus);
+}
+.directory-navigation [data-component="icon-button"].directory-navigation-deselect {
+  width: 28px;
+  height: 28px;
 }

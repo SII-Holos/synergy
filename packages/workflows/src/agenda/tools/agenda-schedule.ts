@@ -1,5 +1,5 @@
+import { agendaAgentItem } from "./agent-item"
 import { GithubWatchPreflight } from "./github-watch-preflight"
-import { formatLocalDateTime } from "@ericsanchezok/synergy-harness/util/time-format"
 import z from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { Agenda, AgendaTypes } from ".."
@@ -10,8 +10,12 @@ import DESCRIPTION from "./agenda-schedule.txt"
 import { ToolTimeout } from "@ericsanchezok/synergy-harness/tool/timeout"
 
 const parameters = z.object({
-  title: z.string().describe("Task title"),
-  prompt: z
+  agendaTitle: z.string().describe("Task title"),
+  agendaDescription: z
+    .string()
+    .optional()
+    .describe("Description of the scheduled item; omit when its title is sufficient"),
+  executionInstructions: z
     .string()
     .describe(
       "Instruction for the agent to execute when triggered. Write as a complete brief — the executing agent has no access to this conversation.",
@@ -28,7 +32,7 @@ const parameters = z.object({
   controlProfile: AgendaTypes.ControlProfile.optional().describe(
     "Control profile for sessions created by this agenda item: guarded, autonomous, or full_access",
   ),
-  timeout: z.number().optional().describe("Execution timeout in milliseconds"),
+  timeoutSeconds: z.number().optional().describe("Execution timeout in seconds; omit to use the default"),
   sessionMode: z
     .enum(["ephemeral", "persistent"])
     .optional()
@@ -46,111 +50,67 @@ const parameters = z.object({
     .describe("Sessions whose content is relevant context for execution"),
 })
 
-export const AgendaScheduleTool = Tool.define("agenda_schedule", {
-  description: DESCRIPTION,
-  parameters,
-  async execute(params: z.infer<typeof parameters>, ctx) {
-    const session = await SessionManager.getSession(ctx.sessionID).catch(() => undefined)
-    const triggers = [params.trigger as AgendaTypes.Trigger]
+export const AgendaScheduleTool = Tool.define(
+  "agenda_schedule",
+  {
+    description: DESCRIPTION,
+    parameters,
+    async execute(params: z.infer<typeof parameters>, ctx) {
+      const session = await SessionManager.getSession(ctx.sessionID).catch(() => undefined)
+      const triggers = [params.trigger as AgendaTypes.Trigger]
 
-    if (params.trigger.type === "github") {
-      // A GitHub trigger without a credential never fires; reject at creation
-      // with concrete connection steps instead of persisting a silent item.
-      const rejected = await GithubWatchPreflight.check("agenda_schedule")
-      if (rejected) return rejected
-    }
-    const conflicts = await AgendaDedup.findConflicts(
-      ScopeContext.current.scope.id,
-      params.title,
-      triggers,
-      params.global,
-      session?.workspaceID ?? null,
-    )
-    if (conflicts.length > 0) {
-      return {
-        title: "agenda_schedule",
-        output: AgendaDedup.formatConflictMessage(conflicts, "agenda_schedule"),
-        metadata: { conflictCount: conflicts.length, action: "conflict_found" } as Record<string, any>,
+      if (params.trigger.type === "github") {
+        // A GitHub trigger without a credential never fires; reject at creation
+        // with concrete connection steps instead of persisting a silent item.
+        const rejected = await GithubWatchPreflight.check("agenda_schedule")
+        if (rejected) return rejected
       }
-    }
+      const conflicts = await AgendaDedup.findConflicts(
+        ScopeContext.current.scope.id,
+        params.agendaTitle,
+        triggers,
+        params.global,
+        session?.workspaceID ?? null,
+      )
+      if (conflicts.length > 0) {
+        return {
+          title: "agenda_schedule",
+          output: AgendaDedup.formatConflictMessage(conflicts, "agenda_schedule"),
+          metadata: { conflictCount: conflicts.length, action: "conflict_found" } as Record<string, any>,
+        }
+      }
 
-    const item = await Agenda.create({
-      title: params.title,
-      prompt: params.prompt,
-      triggers,
-      tags: params.tags,
-      global: params.global,
-      wake: params.wake,
-      silent: params.silent,
-      agent: params.agent,
-      model: params.model,
-      controlProfile: params.controlProfile,
-      sessionMode: params.sessionMode,
-      sessionRefs: params.sessionRefs,
-      timeout: params.timeout,
-      createdBy: "agent",
-      sessionID: ctx.sessionID,
-      endpoint: session?.endpoint,
-    })
+      const item = await Agenda.create({
+        title: params.agendaTitle,
+        description: params.agendaDescription,
+        prompt: params.executionInstructions,
+        triggers,
+        tags: params.tags,
+        global: params.global,
+        wake: params.wake,
+        silent: params.silent,
+        agent: params.agent,
+        model: params.model,
+        controlProfile: params.controlProfile,
+        sessionMode: params.sessionMode,
+        sessionRefs: params.sessionRefs,
+        timeout: params.timeoutSeconds === undefined ? undefined : params.timeoutSeconds * 1_000,
+        createdBy: "agent",
+        sessionID: ctx.sessionID,
+        endpoint: session?.endpoint,
+      })
 
-    const lines = [
-      "Scheduled task created.",
-      "",
-      `ID: ${item.id}`,
-      `Title: ${item.title}`,
-      `Schedule: ${formatTrigger(params.trigger)}`,
-    ]
-    if (item.state.nextRunAt) lines.push(`Next run: ${formatLocalDateTime(item.state.nextRunAt)}`)
-    if (item.tags?.length) lines.push(`Tags: ${item.tags.join(", ")}`)
-    if (item.global) lines.push(`Scope: global`)
-    if (item.wake === false) lines.push(`Wake: disabled`)
-    if (item.silent) lines.push(`Silent: true`)
-    if (item.agent) lines.push(`Agent: ${item.agent}`)
-    if (item.model) lines.push(`Model: ${item.model.providerID}/${item.model.modelID}`)
-    if (item.controlProfile) lines.push(`Control profile: ${item.controlProfile}`)
-    if (item.timeout) lines.push(`Timeout: ${item.timeout}ms`)
-    if (item.sessionMode) lines.push(`Session mode: ${item.sessionMode}`)
-
-    lines.push(
-      "",
-      `Recurring tasks reuse a persistent session across fires by default. Pass sessionMode="ephemeral" to start a fresh session on each fire.`,
-      `To pause: agenda_update(id="${item.id}", status="paused")`,
-      `To cancel: agenda_cancel(id="${item.id}")`,
-      `To view runs: agenda_logs(id="${item.id}")`,
-    )
-
-    return {
-      title: item.title,
-      output: lines.join("\n"),
-      metadata: {
-        id: item.id,
-        status: item.status,
-        scheduledTimeoutMs: item.timeout,
-        scheduledTimeoutLabel: ToolTimeout.scheduledTimeoutLabel(item.timeout),
-      } as Record<string, any>,
-    }
+      return {
+        title: item.title,
+        output: JSON.stringify(agendaAgentItem(item), null, 2),
+        metadata: {
+          id: item.id,
+          status: item.status,
+          scheduledTimeoutMs: item.timeout,
+          scheduledTimeoutLabel: ToolTimeout.scheduledTimeoutLabel(item.timeout),
+        } as Record<string, any>,
+      }
+    },
   },
-})
-
-function formatTrigger(t: AgendaTypes.ScheduleTrigger): string {
-  switch (t.type) {
-    case "cron":
-      return `cron "${t.expr}"${t.tz ? ` (${t.tz})` : ""}`
-    case "every":
-      return `every ${t.interval}`
-    case "at":
-      return `at ${formatLocalDateTime(t.at)}`
-    case "delay":
-      return `delay ${t.delay}`
-    case "session": {
-      const event = t.event === "turn.start" ? "turn start" : "turn end"
-      const filters = [t.agent && ` agent=${t.agent}`, t.finish && ` finish=${t.finish}`].filter(Boolean).join("")
-      return `session "${t.sessionID}" on ${event}${filters}${t.once === false ? " (recurring)" : ""}`
-    }
-    case "github": {
-      const target = t.number !== undefined ? ` #${t.number}` : ""
-      const states = t.states?.length ? ` states=${t.states.join("|")}` : ""
-      return `github ${t.resource} ${t.repository}${target}${t.interval ? ` every ${t.interval}` : ""}${states}`
-    }
-  }
-}
+  { activityKind: "object" },
+)

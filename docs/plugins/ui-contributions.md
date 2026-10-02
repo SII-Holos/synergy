@@ -57,6 +57,7 @@ Create dialogs with `context.overlays.dialog(handle => <Dialog title="Preference
 
 - `shell.render()` and `HostView` compose native navigation, route, footer, conversation, composer, side workbench and bottom workbench views. A view unsupported on that page throws explicitly.
 - `session` reads the existing bounded message/part window, status and history state and delegates history loading, return-to-latest, refresh, rewind and fork to the session owner.
+- The optional `conversation.activityView` service reads and writes explicit process/batch/reasoning expansion by stable projection key. The host retains these choices in its session layout; replacing a view does not create a second state owner. Its absence preserves independent shared-UI use.
 - `conversation` supplies the shared turn projection, bounded render window, history controls, viewport bindings and canonical message actions. Replacing its view does not create another message store or derive message semantics. Custom viewports release their bound elements with `setScrollRef(undefined, scrollElement)` and `autoScroll.contentRef(undefined, contentElement)` so cleanup of a replaced view cannot clear its successor. Omitting the optional release element retains unconditional clearing.
 - `input` supplies revisioned text and selection, IME state, attachments, agent/model/variant choices and explicit submit/stop. Its optional native editor mounting API uses the same document as headless edits. Native workflow controls can be composed through the service's named control views.
 - `composerLayout` supplies layout state, navigation links and host-owned inbox, delegation, greeting, status and priority views. It does not expose the SDK or synchronization store.
@@ -108,3 +109,7 @@ The public `@ericsanchezok/synergy-plugin-kit/testing` entry exports isolated pr
 Start with `?safe-ui=1` to skip executable third-party UI and Skins before loading them. Recovery stays active in that browser tab across routing and reloads. Settings → General → Restart normally explicitly clears it. This path does not depend on a third-party Shell rendering successfully; a synchronous plugin loop still requires reloading into recovery.
 
 Session questions and permissions remain mounted by the host. The native composer provides an inline outlet; custom session pages without that outlet retain a protected, viewport-bounded host surface automatically.
+
+## Tool invocation intent
+
+The host adds optional `workBrief` to the model-facing schema. Plugin authors declare only native business parameters. The host extracts common intent before execution and passes native arguments unchanged to plugin operations and MCP servers. A third-party `workBrief` field remains native: its schema is wrapped as `{ workBrief, toolInput }` for the model. Definitions and unwrap mappings are frozen per request. Registered result renderers retain precedence; otherwise the read-only result uses structured JSON or text. Common intent never changes permission admission or execution identity.

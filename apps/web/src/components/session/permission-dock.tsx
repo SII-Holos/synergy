@@ -271,7 +271,8 @@ export function PermissionDock(props: PermissionDockProps) {
             const toolName = part?.tool ?? item.permission.permission
             const render = ToolRegistry.render(toolName) ?? SmartTool
             const state = part?.state
-            const input = state?.input ?? {}
+            const input =
+              state?.input && typeof state.input === "object" && !Array.isArray(state.input) ? state.input : {}
             const permissionMetadata = item.permission.metadata ?? {}
             const stateMetadata = state && "metadata" in state ? (state.metadata ?? {}) : {}
             const metadata = { ...permissionMetadata, ...stateMetadata }

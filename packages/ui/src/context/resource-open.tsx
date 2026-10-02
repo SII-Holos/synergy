@@ -25,8 +25,11 @@ export interface ResourceOpenOptions {
 }
 
 export type ToolReviewTarget = { sessionID: string; messageID: string; partID: string; path?: string }
+export type ToolActivityTarget = { sessionID: string; messageID: string; partID: string; callID?: string }
 
 export interface ResourceOpenController {
+  openToolActivity?(target: ToolActivityTarget): boolean
+  isToolActivitySelected?(target: ToolActivityTarget): boolean
   openToolReview?(target: ToolReviewTarget): boolean
   open(resource: OpenableResource, options?: ResourceOpenOptions): boolean
   openAttachment(file: AttachmentFile, options?: ResourceOpenOptions & { serverUrl?: string }): boolean

@@ -50,6 +50,7 @@ const BUILTIN_PANEL_IDS = [
   "notes",
   "context",
   "session-review",
+  "execution-detail",
   "lattice",
   "boss",
   "attachment",
@@ -80,6 +81,13 @@ describe("built-in workbench panels", () => {
       expect(panelIds().includes("browser")).toBe(false)
       expect(panelIds().includes("boss")).toBe(false)
       expect(panelIds().includes("file")).toBe(true)
+      expect(listWorkbenchPanels().find((panel) => panel.id === "execution-detail")).toMatchObject({
+        surface: "side",
+        cardinality: "singleton",
+        requiresSession: true,
+        launchable: false,
+        loader: expect.any(Function),
+      })
       setSelected(["browser-runtime"])
       await Bun.sleep(1)
       expect(panelIds().includes("notes")).toBe(false)

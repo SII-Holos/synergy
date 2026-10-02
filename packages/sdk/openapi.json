@@ -8431,6 +8431,214 @@
         ]
       }
     },
+    "/session/{sessionID}/turn-execution": {
+      "post": {
+        "operationId": "session.turnExecution",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Read root task execution states",
+        "tags": ["Session"],
+        "responses": {
+          "200": {
+            "description": "Execution states for the requested roots",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TurnExecutionState"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rootIDs": {
+                    "maxItems": 64,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^msg.*"
+                    }
+                  }
+                },
+                "required": ["rootIDs"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.turnExecution({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/message/{messageID}/part/{partID}/activity": {
+      "get": {
+        "operationId": "session.toolActivity",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "messageID",
+            "schema": {
+              "type": "string",
+              "pattern": "^msg.*"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "partID",
+            "schema": {
+              "type": "string",
+              "pattern": "^prt.*"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "callID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Read one tool activity result",
+        "tags": ["Session"],
+        "responses": {
+          "200": {
+            "description": "Captured result of the selected tool invocation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolActivityResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.toolActivity({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/run/{runID}/cancel": {
       "post": {
         "operationId": "session.cancelRun",
@@ -49555,7 +49763,7 @@
             "type": "string"
           },
           "activityDisplay": {
-            "description": "How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced)",
+            "description": "Execution process detail: full = expanded process, balanced = current stage with completed process collapsed, minimal = compact progress. All modes use the same process view (default: balanced)",
             "type": "string",
             "enum": ["full", "balanced", "minimal"]
           },
@@ -49580,7 +49788,7 @@
             "$ref": "#/components/schemas/KeybindsConfig"
           },
           "compactReasoning": {
-            "description": "Show live reasoning in a compact single-line viewport",
+            "description": "Show a compact reasoning preview in the execution process (default: false)",
             "type": "boolean"
           },
           "quick_switcher": {
@@ -53245,6 +53453,35 @@
         },
         "required": ["items", "nextCursor", "total"]
       },
+      "TurnExecutionState": {
+        "type": "object",
+        "properties": {
+          "rootID": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["preparing", "running", "approval", "completed", "failed", "stopped", "interrupted"]
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "endedAt": {
+            "type": "number"
+          },
+          "segmentID": {
+            "type": "string"
+          },
+          "stoppedAt": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "required": ["rootID", "status", "startedAt", "stoppedAt"],
+        "additionalProperties": false
+      },
       "RolloutArtifactRef": {
         "type": "object",
         "properties": {
@@ -53288,6 +53525,682 @@
         },
         "required": ["version", "id", "mediaType", "bytes", "chunks", "sha256", "status"],
         "additionalProperties": false
+      },
+      "ToolActivityEvidence": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["file-read", "file-change", "command", "search", "object", "media", "structured"]
+          },
+          "resource": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "workspaceID": {
+                "type": "string"
+              },
+              "generation": {
+                "type": "number"
+              },
+              "objectID": {
+                "type": "string"
+              }
+            }
+          },
+          "range": {
+            "type": "object",
+            "properties": {
+              "startLine": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "lineCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "totalLines": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["startLine", "lineCount"]
+          },
+          "ranges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "startLine": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "lineCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": ["startLine", "lineCount"]
+            }
+          },
+          "content": {
+            "$ref": "#/components/schemas/RolloutArtifactRef"
+          },
+          "mediaType": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "processID": {
+            "type": "string"
+          },
+          "directory": {
+            "type": "string"
+          },
+          "exitCode": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "signal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "background": {
+            "type": "boolean"
+          }
+        },
+        "required": ["kind"],
+        "additionalProperties": false
+      },
+      "ToolStatePending": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "pending"
+          },
+          "input": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "raw": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": ["status", "input", "raw"]
+      },
+      "ToolStateGenerating": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "generating"
+          },
+          "input": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "raw": {
+            "type": "string"
+          },
+          "charsReceived": {
+            "type": "number"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": ["status", "input", "raw", "charsReceived"]
+      },
+      "ToolStateInput": {
+        "anyOf": [
+          {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          {
+            "type": "array",
+            "items": {}
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "ToolStateRunning": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "running"
+          },
+          "input": {
+            "$ref": "#/components/schemas/ToolStateInput"
+          },
+          "title": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "number"
+              }
+            },
+            "required": ["start"]
+          }
+        },
+        "required": ["status", "input", "time"]
+      },
+      "AttachmentSourceText": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "start": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "end": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["value", "start", "end"]
+      },
+      "FileSource": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "$ref": "#/components/schemas/AttachmentSourceText"
+          },
+          "type": {
+            "type": "string",
+            "const": "file"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": ["text", "type", "path"]
+      },
+      "Range": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "object",
+            "properties": {
+              "line": {
+                "type": "number"
+              },
+              "character": {
+                "type": "number"
+              }
+            },
+            "required": ["line", "character"]
+          },
+          "end": {
+            "type": "object",
+            "properties": {
+              "line": {
+                "type": "number"
+              },
+              "character": {
+                "type": "number"
+              }
+            },
+            "required": ["line", "character"]
+          }
+        },
+        "required": ["start", "end"]
+      },
+      "SymbolSource": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "$ref": "#/components/schemas/AttachmentSourceText"
+          },
+          "type": {
+            "type": "string",
+            "const": "symbol"
+          },
+          "path": {
+            "type": "string"
+          },
+          "range": {
+            "$ref": "#/components/schemas/Range"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["text", "type", "path", "range", "name", "kind"]
+      },
+      "ResourceSource": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "$ref": "#/components/schemas/AttachmentSourceText"
+          },
+          "type": {
+            "type": "string",
+            "const": "resource"
+          },
+          "clientName": {
+            "type": "string"
+          },
+          "uri": {
+            "type": "string"
+          }
+        },
+        "required": ["text", "type", "clientName", "uri"]
+      },
+      "AttachmentSource": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/FileSource"
+          },
+          {
+            "$ref": "#/components/schemas/SymbolSource"
+          },
+          {
+            "$ref": "#/components/schemas/ResourceSource"
+          }
+        ]
+      },
+      "AttachmentPresentation": {
+        "type": "object",
+        "properties": {
+          "hidden": {
+            "type": "boolean"
+          },
+          "renderer": {
+            "type": "string",
+            "enum": ["image", "video", "audio", "thumbnail", "file"]
+          },
+          "size": {
+            "type": "string",
+            "enum": ["original", "small", "medium", "large"]
+          },
+          "crop": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AttachmentModelPolicy": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "summary"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": ["mode"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "content"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": ["mode"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "provider-file"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": ["mode"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "none"
+              }
+            },
+            "required": ["mode"]
+          }
+        ]
+      },
+      "AttachmentPart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "attachment"
+          },
+          "artifact": {
+            "$ref": "#/components/schemas/RolloutArtifactRef"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "localPath": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/AttachmentSource"
+          },
+          "presentation": {
+            "$ref": "#/components/schemas/AttachmentPresentation"
+          },
+          "model": {
+            "$ref": "#/components/schemas/AttachmentModelPolicy"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": ["id", "sessionID", "messageID", "type", "mime", "url"]
+      },
+      "ToolStateCompleted": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "completed"
+          },
+          "input": {
+            "$ref": "#/components/schemas/ToolStateInput"
+          },
+          "output": {
+            "type": "string"
+          },
+          "outputBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "outputArtifact": {
+            "$ref": "#/components/schemas/RolloutArtifactRef"
+          },
+          "outputTruncated": {
+            "type": "boolean"
+          },
+          "title": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "number"
+              },
+              "end": {
+                "type": "number"
+              },
+              "compacted": {
+                "type": "number"
+              }
+            },
+            "required": ["start", "end"]
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttachmentPart"
+            }
+          }
+        },
+        "required": ["status", "input", "output", "title", "metadata", "time"]
+      },
+      "ToolStateError": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "error"
+          },
+          "input": {
+            "$ref": "#/components/schemas/ToolStateInput"
+          },
+          "error": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "number"
+              },
+              "end": {
+                "type": "number"
+              }
+            },
+            "required": ["start", "end"]
+          }
+        },
+        "required": ["status", "input", "error", "time"]
+      },
+      "ToolState": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ToolStatePending"
+          },
+          {
+            "$ref": "#/components/schemas/ToolStateGenerating"
+          },
+          {
+            "$ref": "#/components/schemas/ToolStateRunning"
+          },
+          {
+            "$ref": "#/components/schemas/ToolStateCompleted"
+          },
+          {
+            "$ref": "#/components/schemas/ToolStateError"
+          }
+        ]
+      },
+      "ToolPart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "tool"
+          },
+          "callID": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "workBrief": {
+            "type": "string"
+          },
+          "inputShape": {
+            "type": "string",
+            "enum": ["flat", "envelope"]
+          },
+          "activityEvidence": {
+            "$ref": "#/components/schemas/ToolActivityEvidence"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ToolState"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": ["id", "sessionID", "messageID", "type", "callID", "tool", "state"]
+      },
+      "ToolActivityResult": {
+        "type": "object",
+        "properties": {
+          "part": {
+            "$ref": "#/components/schemas/ToolPart"
+          },
+          "text": {
+            "type": "string"
+          },
+          "evidenceMissing": {
+            "type": "boolean"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "process": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["running", "completed", "interrupted", "failed"]
+              },
+              "exitCode": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "signal": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "endedAt": {
+                "type": "number"
+              }
+            },
+            "required": ["status"]
+          }
+        },
+        "required": ["part", "evidenceMissing"]
       },
       "ExperimentOverrides": {
         "default": {},
@@ -56066,202 +56979,6 @@
         },
         "required": ["outcome", "repaired", "abandoned", "paused"]
       },
-      "AttachmentSourceText": {
-        "type": "object",
-        "properties": {
-          "value": {
-            "type": "string"
-          },
-          "start": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "end": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          }
-        },
-        "required": ["value", "start", "end"]
-      },
-      "FileSource": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "$ref": "#/components/schemas/AttachmentSourceText"
-          },
-          "type": {
-            "type": "string",
-            "const": "file"
-          },
-          "path": {
-            "type": "string"
-          }
-        },
-        "required": ["text", "type", "path"]
-      },
-      "Range": {
-        "type": "object",
-        "properties": {
-          "start": {
-            "type": "object",
-            "properties": {
-              "line": {
-                "type": "number"
-              },
-              "character": {
-                "type": "number"
-              }
-            },
-            "required": ["line", "character"]
-          },
-          "end": {
-            "type": "object",
-            "properties": {
-              "line": {
-                "type": "number"
-              },
-              "character": {
-                "type": "number"
-              }
-            },
-            "required": ["line", "character"]
-          }
-        },
-        "required": ["start", "end"]
-      },
-      "SymbolSource": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "$ref": "#/components/schemas/AttachmentSourceText"
-          },
-          "type": {
-            "type": "string",
-            "const": "symbol"
-          },
-          "path": {
-            "type": "string"
-          },
-          "range": {
-            "$ref": "#/components/schemas/Range"
-          },
-          "name": {
-            "type": "string"
-          },
-          "kind": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          }
-        },
-        "required": ["text", "type", "path", "range", "name", "kind"]
-      },
-      "ResourceSource": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "$ref": "#/components/schemas/AttachmentSourceText"
-          },
-          "type": {
-            "type": "string",
-            "const": "resource"
-          },
-          "clientName": {
-            "type": "string"
-          },
-          "uri": {
-            "type": "string"
-          }
-        },
-        "required": ["text", "type", "clientName", "uri"]
-      },
-      "AttachmentSource": {
-        "anyOf": [
-          {
-            "$ref": "#/components/schemas/FileSource"
-          },
-          {
-            "$ref": "#/components/schemas/SymbolSource"
-          },
-          {
-            "$ref": "#/components/schemas/ResourceSource"
-          }
-        ]
-      },
-      "AttachmentPresentation": {
-        "type": "object",
-        "properties": {
-          "hidden": {
-            "type": "boolean"
-          },
-          "renderer": {
-            "type": "string",
-            "enum": ["image", "video", "audio", "thumbnail", "file"]
-          },
-          "size": {
-            "type": "string",
-            "enum": ["original", "small", "medium", "large"]
-          },
-          "crop": {
-            "type": "boolean"
-          }
-        }
-      },
-      "AttachmentModelPolicy": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "mode": {
-                "type": "string",
-                "const": "summary"
-              },
-              "summary": {
-                "type": "string"
-              }
-            },
-            "required": ["mode"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "mode": {
-                "type": "string",
-                "const": "content"
-              },
-              "text": {
-                "type": "string"
-              }
-            },
-            "required": ["mode"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "mode": {
-                "type": "string",
-                "const": "provider-file"
-              },
-              "summary": {
-                "type": "string"
-              }
-            },
-            "required": ["mode"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "mode": {
-                "type": "string",
-                "const": "none"
-              }
-            },
-            "required": ["mode"]
-          }
-        ]
-      },
       "OriginUser": {
         "type": "object",
         "properties": {
@@ -57718,304 +58435,6 @@
           }
         },
         "required": ["id", "sessionID", "messageID", "type", "text", "time"]
-      },
-      "AttachmentPart": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "sessionID": {
-            "type": "string"
-          },
-          "messageID": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string",
-            "const": "attachment"
-          },
-          "artifact": {
-            "$ref": "#/components/schemas/RolloutArtifactRef"
-          },
-          "mime": {
-            "type": "string"
-          },
-          "filename": {
-            "type": "string"
-          },
-          "url": {
-            "type": "string"
-          },
-          "localPath": {
-            "type": "string"
-          },
-          "source": {
-            "$ref": "#/components/schemas/AttachmentSource"
-          },
-          "presentation": {
-            "$ref": "#/components/schemas/AttachmentPresentation"
-          },
-          "model": {
-            "$ref": "#/components/schemas/AttachmentModelPolicy"
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          }
-        },
-        "required": ["id", "sessionID", "messageID", "type", "mime", "url"]
-      },
-      "ToolStatePending": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "pending"
-          },
-          "input": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          },
-          "raw": {
-            "type": "string"
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          }
-        },
-        "required": ["status", "input", "raw"]
-      },
-      "ToolStateGenerating": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "generating"
-          },
-          "input": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          },
-          "raw": {
-            "type": "string"
-          },
-          "charsReceived": {
-            "type": "number"
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          }
-        },
-        "required": ["status", "input", "raw", "charsReceived"]
-      },
-      "ToolStateRunning": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "running"
-          },
-          "input": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          },
-          "title": {
-            "type": "string"
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          },
-          "time": {
-            "type": "object",
-            "properties": {
-              "start": {
-                "type": "number"
-              }
-            },
-            "required": ["start"]
-          }
-        },
-        "required": ["status", "input", "time"]
-      },
-      "ToolStateCompleted": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "completed"
-          },
-          "input": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          },
-          "output": {
-            "type": "string"
-          },
-          "outputBytes": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          },
-          "outputArtifact": {
-            "$ref": "#/components/schemas/RolloutArtifactRef"
-          },
-          "outputTruncated": {
-            "type": "boolean"
-          },
-          "title": {
-            "type": "string"
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          },
-          "time": {
-            "type": "object",
-            "properties": {
-              "start": {
-                "type": "number"
-              },
-              "end": {
-                "type": "number"
-              },
-              "compacted": {
-                "type": "number"
-              }
-            },
-            "required": ["start", "end"]
-          },
-          "attachments": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AttachmentPart"
-            }
-          }
-        },
-        "required": ["status", "input", "output", "title", "metadata", "time"]
-      },
-      "ToolStateError": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "error"
-          },
-          "input": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          },
-          "error": {
-            "type": "string"
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          },
-          "time": {
-            "type": "object",
-            "properties": {
-              "start": {
-                "type": "number"
-              },
-              "end": {
-                "type": "number"
-              }
-            },
-            "required": ["start", "end"]
-          }
-        },
-        "required": ["status", "input", "error", "time"]
-      },
-      "ToolState": {
-        "anyOf": [
-          {
-            "$ref": "#/components/schemas/ToolStatePending"
-          },
-          {
-            "$ref": "#/components/schemas/ToolStateGenerating"
-          },
-          {
-            "$ref": "#/components/schemas/ToolStateRunning"
-          },
-          {
-            "$ref": "#/components/schemas/ToolStateCompleted"
-          },
-          {
-            "$ref": "#/components/schemas/ToolStateError"
-          }
-        ]
-      },
-      "ToolPart": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "sessionID": {
-            "type": "string"
-          },
-          "messageID": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string",
-            "const": "tool"
-          },
-          "callID": {
-            "type": "string"
-          },
-          "tool": {
-            "type": "string"
-          },
-          "state": {
-            "$ref": "#/components/schemas/ToolState"
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          }
-        },
-        "required": ["id", "sessionID", "messageID", "type", "callID", "tool", "state"]
       },
       "StepStartPart": {
         "type": "object",
@@ -67682,6 +68101,59 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.session.execution.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.execution.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "rootID": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID", "rootID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.session.tool.activity": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.tool.activity"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              },
+              "callID": {
+                "type": "string"
+              },
+              "processID": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "number"
+              }
+            },
+            "required": ["sessionID", "messageID", "callID", "processID", "revision"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.session.input.progress": {
         "type": "object",
         "properties": {
@@ -69284,6 +69756,12 @@
           },
           {
             "$ref": "#/components/schemas/Event.usage.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.execution.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.tool.activity"
           },
           {
             "$ref": "#/components/schemas/Event.session.input.progress"

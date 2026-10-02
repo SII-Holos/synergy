@@ -1178,7 +1178,7 @@ export namespace Cortex {
       `**Description:** ${task.description}`,
       `**Duration:** ${formatDuration(task)}`,
       task.status === "error" && task.error ? `**Error:** ${task.error}` : "",
-      `Retrieve the final result once with \`task_output(task_id="${task.id}", mode="full")\`.`,
+      `Retrieve the final result once with \`task_output(taskId="${task.id}", mode="full")\`.`,
     ]
       .filter(Boolean)
       .join("\n")

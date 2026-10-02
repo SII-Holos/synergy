@@ -32,6 +32,7 @@ export interface SessionReviewProps {
   classList?: Record<string, boolean | undefined>
   classes?: { root?: string; header?: string; container?: string }
   actions?: JSX.Element
+  notice?: JSX.Element
   diffs: (FileDiff & { preloaded?: PreloadMultiFileDiffResult<any> })[]
   onViewFile?: (file: string, diff: FileDiff) => void
   canViewFile?: (diff: FileDiff) => boolean
@@ -69,6 +70,7 @@ export const SessionReview = (props: SessionReviewProps) => {
         [props.class ?? ""]: !!props.class,
       }}
     >
+      {props.notice}
       <div
         data-slot="session-review-header"
         classList={{

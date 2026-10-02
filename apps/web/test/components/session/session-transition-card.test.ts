@@ -33,7 +33,7 @@ function deterministicTimers() {
 }
 
 describe("session transition card lifecycle", () => {
-  test("holds success for three seconds before fading and dismissing", () => {
+  test("releases successful preparation immediately through the exit lifecycle", () => {
     const timers = deterministicTimers()
     const events: string[] = []
     const lifecycle = createSessionTransitionLifecycle({
@@ -44,7 +44,7 @@ describe("session transition card lifecycle", () => {
     })
 
     expect(timers.tasks.map((task) => task.delay)).toEqual([SESSION_TRANSITION_SUCCESS_HOLD_MS])
-    expect(SESSION_TRANSITION_SUCCESS_HOLD_MS).toBe(3_000)
+    expect(SESSION_TRANSITION_SUCCESS_HOLD_MS).toBe(0)
     expect(events).toEqual([])
 
     timers.run(0)

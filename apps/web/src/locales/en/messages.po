@@ -6,6 +6,102 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 
 #. js-lingui-explicit-id
+msgid "activity.approval.allowOnce"
+msgstr "Allow once"
+
+#. js-lingui-explicit-id
+msgid "activity.approval.reject"
+msgstr "Decline"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.attempted"
+msgstr "{count, plural, one {Attempted # action} other {Attempted # actions}}"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.browser"
+msgstr "{count, plural, one {Performed # browser action} other {Performed # browser actions}}"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.coordinate"
+msgstr "{count, plural, one {Coordinated # action} other {Coordinated # actions}}"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.delegate"
+msgstr "{count, plural, one {Delegated # task} other {Delegated # tasks}}"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.execute"
+msgstr "{count, plural, one {Ran # command} other {Ran # commands}}"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.external"
+msgstr "{count, plural, one {Performed # external action} other {Performed # external actions}}"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.generic"
+msgstr "{count, plural, one {Performed # action} other {Performed # actions}}"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.inspect"
+msgstr "{count, plural, one {Inspected # item} other {Inspected # items}}"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.modify"
+msgstr "{count, plural, one {Made # file change} other {Made # file changes}}"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.produce"
+msgstr "{count, plural, one {Produced # item} other {Produced # items}}"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.readFiles"
+msgstr "{count, plural, one {Read # file} other {Read # files}}"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.readOperations"
+msgstr "{count, plural, one {Read files # time} other {Read files # times}}"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.research"
+msgstr "{count, plural, one {Researched # source} other {Researched # sources}}"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.searched"
+msgstr "{count, plural, one {Searched # time} other {Searched # times}}"
+
+#. js-lingui-explicit-id
+msgid "activity.phase.browser"
+msgstr "Using the browser"
+
+#. js-lingui-explicit-id
+msgid "activity.phase.command"
+msgstr "Running a command"
+
+#. js-lingui-explicit-id
+msgid "activity.phase.delegate"
+msgstr "Working with a subagent"
+
+#. js-lingui-explicit-id
+msgid "activity.phase.modify"
+msgstr "Updating files"
+
+#. js-lingui-explicit-id
+msgid "activity.phase.prepare"
+msgstr "Preparing an action"
+
+#. js-lingui-explicit-id
+msgid "activity.phase.read"
+msgstr "Reading files"
+
+#. js-lingui-explicit-id
+msgid "activity.phase.research"
+msgstr "Researching sources"
+
+#. js-lingui-explicit-id
+msgid "activity.phase.working"
+msgstr "Working"
+
+#. js-lingui-explicit-id
 msgid "activity.trace.actions"
 msgstr "{count, plural, one {# action} other {# actions}}"
 
@@ -5502,6 +5598,10 @@ msgid "app.panel.context"
 msgstr "Context"
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.executionDetail"
+msgstr "Execution details"
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.files"
 msgstr "Files"
 
@@ -7414,6 +7514,10 @@ msgstr "Raw messages"
 #. js-lingui-explicit-id
 msgid "app.review.toolUnavailable"
 msgstr "This tool result is no longer available."
+
+#. js-lingui-explicit-id
+msgid "app.review.turnUnavailable"
+msgstr "This turn is no longer available."
 
 #. ── components/scopes/active-zone.tsx ────────────────────────────────
 msgid "app.scopes.activeZone.active"
@@ -10653,6 +10757,10 @@ msgid "directory.navigation.denied"
 msgstr "This service cannot read this folder. Check its access permissions or choose another path."
 
 #. js-lingui-explicit-id
+msgid "directory.navigation.deselectFolder"
+msgstr "Deselect folder: {name}"
+
+#. js-lingui-explicit-id
 msgid "directory.navigation.empty"
 msgstr "This folder has no subfolders. You can use this folder."
 
@@ -10718,7 +10826,15 @@ msgstr "Select this folder"
 
 #. js-lingui-explicit-id
 msgid "directory.navigation.selected"
-msgstr "{count} folders selected"
+msgstr "{count, plural, one {# folder selected} other {# folders selected}}"
+
+#. js-lingui-explicit-id
+msgid "directory.navigation.selectFolder"
+msgstr "Select folder: {name}"
+
+#. js-lingui-explicit-id
+msgid "directory.navigation.selection"
+msgstr "Selected folders"
 
 #. js-lingui-explicit-id
 msgid "directory.navigation.service"
@@ -14392,6 +14508,130 @@ msgstr "Loading prompt…"
 msgid "session.dock.parentSession"
 msgstr "Parent session"
 
+#. js-lingui-explicit-id
+msgid "session.execution.background"
+msgstr "Process is still running"
+
+#. js-lingui-explicit-id
+msgid "session.execution.captured"
+msgstr "Captured during this invocation"
+
+#. js-lingui-explicit-id
+msgid "session.execution.commandOutput"
+msgstr "Command output"
+
+#. js-lingui-explicit-id
+msgid "session.execution.completed"
+msgstr "Completed"
+
+#. js-lingui-explicit-id
+msgid "session.execution.copied"
+msgstr "Copied"
+
+#. js-lingui-explicit-id
+msgid "session.execution.copyError"
+msgstr "Copy error details"
+
+#. js-lingui-explicit-id
+msgid "session.execution.copyFailed"
+msgstr "Copy failed"
+
+#. js-lingui-explicit-id
+msgid "session.execution.copyInput"
+msgstr "Copy tool input"
+
+#. js-lingui-explicit-id
+msgid "session.execution.copyOutput"
+msgstr "Copy tool output"
+
+#. js-lingui-explicit-id
+msgid "session.execution.diagnostics"
+msgstr "Parameters and diagnostics"
+
+#. js-lingui-explicit-id
+msgid "session.execution.duration"
+msgstr "{seconds} s"
+
+#. js-lingui-explicit-id
+msgid "session.execution.errorDetails"
+msgstr "Error details"
+
+#. js-lingui-explicit-id
+msgid "session.execution.evidenceMissing"
+msgstr "Captured file content is unavailable for this invocation. The recorded tool output is shown below."
+
+#. js-lingui-explicit-id
+msgid "session.execution.exit"
+msgstr "Exit code: {code}"
+
+#. js-lingui-explicit-id
+msgid "session.execution.failed"
+msgstr "Failed"
+
+#. js-lingui-explicit-id
+msgid "session.execution.fullContent"
+msgstr "Show full content"
+
+#. js-lingui-explicit-id
+msgid "session.execution.generating"
+msgstr "Preparing tool input"
+
+#. js-lingui-explicit-id
+msgid "session.execution.input"
+msgstr "Tool input"
+
+#. js-lingui-explicit-id
+msgid "session.execution.interrupted"
+msgstr "Interrupted"
+
+#. js-lingui-explicit-id
+msgid "session.execution.interruptedOutput"
+msgstr "Output captured before interruption"
+
+#. js-lingui-explicit-id
+msgid "session.execution.lineRange"
+msgstr "Lines {start}–{end}"
+
+#. js-lingui-explicit-id
+msgid "session.execution.loading"
+msgstr "Loading tool result…"
+
+#. js-lingui-explicit-id
+msgid "session.execution.noOutput"
+msgstr "No output captured."
+
+#. js-lingui-explicit-id
+msgid "session.execution.pending"
+msgstr "Pending"
+
+#. js-lingui-explicit-id
+msgid "session.execution.result"
+msgstr "Result"
+
+#. js-lingui-explicit-id
+msgid "session.execution.running"
+msgstr "Running"
+
+#. js-lingui-explicit-id
+msgid "session.execution.signal"
+msgstr "Termination signal: {signal}"
+
+#. js-lingui-explicit-id
+msgid "session.execution.toolOutput"
+msgstr "Tool output"
+
+#. js-lingui-explicit-id
+msgid "session.execution.truncated"
+msgstr "Only part of this result is shown."
+
+#. js-lingui-explicit-id
+msgid "session.execution.unavailable"
+msgstr "This tool result is no longer available."
+
+#. js-lingui-explicit-id
+msgid "session.execution.views"
+msgstr "Tool activity views"
+
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.fork.confirm.action"
@@ -14860,6 +15100,62 @@ msgstr "Accessing secrets file (.env / credentials)"
 msgid "session.permissionDock.risk.vcsMetadata"
 msgstr "Writing to version-control metadata (.git)"
 
+#. js-lingui-explicit-id
+msgid "session.process.approval"
+msgstr "Waiting for approval"
+
+#. js-lingui-explicit-id
+msgid "session.process.completed"
+msgstr "Work completed"
+
+#. js-lingui-explicit-id
+msgid "session.process.executing"
+msgstr "Running a command"
+
+#. js-lingui-explicit-id
+msgid "session.process.failed"
+msgstr "Execution failed"
+
+#. js-lingui-explicit-id
+msgid "session.process.hideReasoning"
+msgstr "Hide reasoning"
+
+#. js-lingui-explicit-id
+msgid "session.process.interrupted"
+msgstr "Interrupted"
+
+#. js-lingui-explicit-id
+msgid "session.process.paused"
+msgstr "Paused"
+
+#. js-lingui-explicit-id
+msgid "session.process.priorStop"
+msgstr "Previously stopped"
+
+#. js-lingui-explicit-id
+msgid "session.process.reading"
+msgstr "Reading files"
+
+#. js-lingui-explicit-id
+msgid "session.process.stopped"
+msgstr "Stopped"
+
+#. js-lingui-explicit-id
+msgid "session.process.thinking"
+msgstr "Thinking"
+
+#. js-lingui-explicit-id
+msgid "session.process.viewReasoning"
+msgstr "View reasoning"
+
+#. js-lingui-explicit-id
+msgid "session.process.workedDuration"
+msgstr "Worked for {seconds} s"
+
+#. js-lingui-explicit-id
+msgid "session.process.working"
+msgstr "Working"
+
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.progress.activeAria"
@@ -15111,6 +15407,30 @@ msgstr "Question steps"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.question.submit"
 msgstr "Submit"
+
+#. js-lingui-explicit-id
+msgid "session.review.recording.failed"
+msgstr "File change recording failed."
+
+#. js-lingui-explicit-id
+msgid "session.review.recording.gitFailure"
+msgstr "File change recording could not read the repository."
+
+#. js-lingui-explicit-id
+msgid "session.review.recording.incomplete"
+msgstr "File change recording is incomplete."
+
+#. js-lingui-explicit-id
+msgid "session.review.recording.limits"
+msgstr "This does not mean no files changed. Available changes are shown below; unrecorded changes cannot be reviewed or used for file restoration."
+
+#. js-lingui-explicit-id
+msgid "session.review.recording.pending"
+msgstr "Recording file changes…"
+
+#. js-lingui-explicit-id
+msgid "session.review.recording.timeout"
+msgstr "File change recording timed out."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15539,6 +15859,10 @@ msgid "session.submission.check"
 msgstr "Check and retry"
 
 #. js-lingui-explicit-id
+msgid "session.submission.checkingReceipt"
+msgstr "Checking message receipt…"
+
+#. js-lingui-explicit-id
 msgid "session.submission.details"
 msgstr "Error details"
 
@@ -15549,6 +15873,10 @@ msgstr "Submission failed. Your selection is preserved."
 #. js-lingui-explicit-id
 msgid "session.submission.pending"
 msgstr "Submitting your decision…"
+
+#. js-lingui-explicit-id
+msgid "session.submission.preparing"
+msgstr "Preparing task"
 
 #. js-lingui-explicit-id
 msgid "session.submission.retry"
@@ -17485,7 +17813,7 @@ msgstr "Balanced"
 
 #. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.description"
-msgstr "Choose how much activity detail Synergy shows in the interface"
+msgstr "Balanced opens the current stage; Full opens all process details; Minimal keeps progress compact. You can expand details in every mode."
 
 #. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.full"
@@ -17537,11 +17865,11 @@ msgstr "Follow this device"
 
 #. js-lingui-explicit-id
 msgid "settings.general.compactReasoning.description"
-msgstr "Show live reasoning in a single line; completed turns keep an expandable reasoning row"
+msgstr "Preview the original reasoning in one line. Reasoning remains expandable when this is off."
 
 #. js-lingui-explicit-id
 msgid "settings.general.compactReasoning.title"
-msgstr "Compact reasoning"
+msgstr "Reasoning preview"
 
 #. js-lingui-explicit-id
 msgid "settings.general.devicePush.completion"
@@ -22014,6 +22342,26 @@ msgstr "Visible background tasks"
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.warnings"
 msgstr "Warnings"
+
+#. js-lingui-explicit-id
+msgid "tool.result.next"
+msgstr "Next results"
+
+#. js-lingui-explicit-id
+msgid "tool.result.pageRange"
+msgstr "{start}–{end} of {count}"
+
+#. js-lingui-explicit-id
+msgid "tool.result.pages"
+msgstr "Result pages"
+
+#. js-lingui-explicit-id
+msgid "tool.result.previous"
+msgstr "Previous results"
+
+#. js-lingui-explicit-id
+msgid "tool.result.showFullValue"
+msgstr "Show full value"
 
 #. ── Task subagent detail ────────────────────────────────────────────
 msgid "tool.task.no-steps"

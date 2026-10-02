@@ -53,84 +53,101 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
   )
 
   return (
-    <section
-      data-component="turn-change-summary-panel"
-      data-diff-state={state()}
-      classList={{ "turn-change-summary-entering": state() === "ready" && props.animateReady === true }}
-      aria-label={label()}
-      aria-busy={state() === "pending" ? "true" : undefined}
-      aria-live={state() === "error" ? "polite" : undefined}
+    <Show
+      when={state() === "ready"}
+      fallback={
+        <button
+          type="button"
+          data-slot="turn-change-summary-entry"
+          data-diff-state={state()}
+          aria-label={`${_(TURN_CHANGE_DESC.reviewChanges)}: ${statusText()}`}
+          title={statusText()}
+          onClick={props.onReviewRequested}
+        >
+          <Icon name={getSemanticIcon(state() === "pending" ? "command.review" : "state.warning")} size="small" />
+          <span>{_(TURN_CHANGE_DESC.reviewChanges)}</span>
+        </button>
+      }
     >
-      <Show
-        when={state() === "ready" || (props.incomplete && files().length > 0)}
-        fallback={
+      <section
+        data-component="turn-change-summary-panel"
+        data-diff-state={state()}
+        classList={{ "turn-change-summary-entering": state() === "ready" && props.animateReady === true }}
+        aria-label={label()}
+        aria-busy={state() === "pending" ? "true" : undefined}
+        aria-live={state() === "error" ? "polite" : undefined}
+      >
+        <Show
+          when={state() === "ready" || (props.incomplete && files().length > 0)}
+          fallback={
+            <div data-slot="turn-change-summary-header">
+              <div data-slot="turn-change-summary-title-group">
+                <span data-slot="turn-change-summary-icon" aria-hidden="true">
+                  <Icon name={getSemanticIcon("command.review")} size="small" />
+                </span>
+                <div data-slot="turn-change-summary-title-copy">
+                  <div data-slot="turn-change-summary-title">{statusText()}</div>
+                </div>
+              </div>
+            </div>
+          }
+        >
           <div data-slot="turn-change-summary-header">
             <div data-slot="turn-change-summary-title-group">
               <span data-slot="turn-change-summary-icon" aria-hidden="true">
                 <Icon name={getSemanticIcon("command.review")} size="small" />
               </span>
               <div data-slot="turn-change-summary-title-copy">
-                <div data-slot="turn-change-summary-title">{statusText()}</div>
+                <div data-slot="turn-change-summary-title">{title()}</div>
+                <Show when={props.incomplete}>
+                  <div role="status">{statusText()}</div>
+                </Show>
+                <DiffChanges changes={props.diffs} />
               </div>
             </div>
+            <button type="button" data-slot="turn-change-summary-review" onClick={props.onReviewRequested}>
+              {_(TURN_CHANGE_DESC.reviewChanges)}
+            </button>
           </div>
-        }
-      >
-        <div data-slot="turn-change-summary-header">
-          <div data-slot="turn-change-summary-title-group">
-            <span data-slot="turn-change-summary-icon" aria-hidden="true">
-              <Icon name={getSemanticIcon("command.review")} size="small" />
-            </span>
-            <div data-slot="turn-change-summary-title-copy">
-              <div data-slot="turn-change-summary-title">{title()}</div>
-              <Show when={props.incomplete}>
-                <div role="status">{statusText()}</div>
-              </Show>
-              <DiffChanges changes={props.diffs} />
-            </div>
-          </div>
-          <button type="button" data-slot="turn-change-summary-review" onClick={props.onReviewRequested}>
-            {_(TURN_CHANGE_DESC.reviewChanges)}
-          </button>
-        </div>
-        <div data-slot="turn-change-summary-list">
-          <For each={visibleDiffs()}>
-            {(diff) => (
-              <button
-                type="button"
-                data-slot="turn-change-summary-row"
-                onClick={() => props.onFileSelected(reviewFileKey(diff))}
-              >
-                <span data-slot="turn-change-summary-file-info">
-                  <FileIcon node={{ path: diff.file, type: "file" }} data-slot="turn-change-summary-file-icon" />
-                  <span data-slot="turn-change-summary-file-path">
-                    <Show when={diff.file.includes("/")}>
-                      <span data-slot="turn-change-summary-directory">{getDirectory(diff.file)}&lrm;</span>
-                    </Show>
-                    <span data-slot="turn-change-summary-filename">{getFilename(diff.file)}</span>
+          <div data-slot="turn-change-summary-list">
+            <For each={visibleDiffs()}>
+              {(diff) => (
+                <button
+                  type="button"
+                  data-slot="turn-change-summary-row"
+                  onClick={() => props.onFileSelected(reviewFileKey(diff))}
+                >
+                  <span data-slot="turn-change-summary-file-info">
+                    <FileIcon node={{ path: diff.file, type: "file" }} data-slot="turn-change-summary-file-icon" />
+                    <span data-slot="turn-change-summary-file-path">
+                      <Show when={diff.file.includes("/")}>
+                        <span data-slot="turn-change-summary-directory">{getDirectory(diff.file)}&lrm;</span>
+                      </Show>
+                      <span data-slot="turn-change-summary-filename">{getFilename(diff.file)}</span>
+                    </span>
                   </span>
-                </span>
-                <span data-slot="turn-change-summary-row-actions">
-                  <Show when={diff.binary}>
-                    <span data-slot="turn-change-summary-binary">{_(TURN_CHANGE_DESC.binary)}</span>
-                  </Show>
-                  <DiffChanges changes={diff} />
-                </span>
-              </button>
-            )}
-          </For>
-        </div>
-        <Show when={hiddenCount() > 0 || store.expanded}>
-          <button
-            type="button"
-            data-slot="turn-change-summary-toggle"
-            aria-expanded={store.expanded}
-            onClick={() => setStore("expanded", (value) => !value)}
-          >
-            {toggleLabel()}
-          </button>
+                  <span data-slot="turn-change-summary-row-actions">
+                    <Show when={diff.binary}>
+                      <span data-slot="turn-change-summary-binary">{_(TURN_CHANGE_DESC.binary)}</span>
+                    </Show>
+                    <DiffChanges changes={diff} />
+                  </span>
+                </button>
+              )}
+            </For>
+          </div>
+          <Show when={hiddenCount() > 0 || store.expanded}>
+            <button
+              type="button"
+              data-slot="turn-change-summary-toggle"
+              aria-expanded={store.expanded}
+              onClick={() => setStore("expanded", (value) => !value)}
+            >
+              {toggleLabel()}
+            </button>
+          </Show>
         </Show>
-      </Show>
-    </section>
+      </section>
+    </Show>
   )
 }

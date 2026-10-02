@@ -1,13 +1,27 @@
-import { createEffect, createMemo, on, onCleanup } from "solid-js"
+import { createEffect, createMemo, on, onCleanup, Show } from "solid-js"
 import { SessionReview, reviewFileKey } from "@ericsanchezok/synergy-ui/session-review"
-import type { FileDiff } from "@ericsanchezok/synergy-sdk/client"
+import type { FileDiff, UserMessage } from "@ericsanchezok/synergy-sdk/client"
+import { useLingui } from "@lingui/solid"
+import type { MessageDescriptor } from "@lingui/core"
 import type { useLayout } from "@/context/layout"
 import { computeReviewOpenForSelectedFile } from "./review-open-model"
+import { translateDescriptor } from "@/locales/translate"
 
 type DiffStyle = "unified" | "split"
+type DiffState = NonNullable<UserMessage["summary"]>["diffState"]
+const recordingErrors: Record<Extract<DiffState, { status: "error" }>["code"], MessageDescriptor> = {
+  incomplete: { id: "session.review.recording.incomplete", message: "File change recording is incomplete." },
+  timeout: { id: "session.review.recording.timeout", message: "File change recording timed out." },
+  git_failure: {
+    id: "session.review.recording.gitFailure",
+    message: "File change recording could not read the repository.",
+  },
+  unknown: { id: "session.review.recording.failed", message: "File change recording failed." },
+}
 
 export interface SessionReviewTabProps {
   diffs: () => FileDiff[]
+  diffState?: () => DiffState
   workspace?: () => { id: string; generation: number; path: string } | null
   view: () => ReturnType<ReturnType<typeof useLayout>["view"]>
   diffStyle: DiffStyle
@@ -22,6 +36,13 @@ export interface SessionReviewTabProps {
 }
 
 export function SessionReviewTab(props: SessionReviewTabProps) {
+  const { _, i18n } = useLingui()
+  const recordingNotice = () => {
+    const state = props.diffState?.()
+    if (state?.status === "pending")
+      return _({ id: "session.review.recording.pending", message: "Recording file changes…" })
+    if (state?.status === "error") return translateDescriptor(recordingErrors[state.code], i18n())
+  }
   const canViewFile = (diff: FileDiff) => {
     const current = props.workspace?.()
     return Boolean(
@@ -125,6 +146,22 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
 
   return (
     <SessionReview
+      notice={
+        <Show when={recordingNotice()}>
+          <div data-slot="review-recording-notice" role="status" class="px-6 py-3 text-13-regular text-text-weak">
+            <p>{recordingNotice()}</p>
+            <Show when={props.diffState?.()?.status === "error"}>
+              <p>
+                {_({
+                  id: "session.review.recording.limits",
+                  message:
+                    "This does not mean no files changed. Available changes are shown below; unrecorded changes cannot be reviewed or used for file restoration.",
+                })}
+              </p>
+            </Show>
+          </div>
+        </Show>
+      }
       scrollRef={(el) => {
         scroll = el
         restoreScroll()

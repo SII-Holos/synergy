@@ -76,6 +76,7 @@ import { SessionSchemaRegistry } from "./schema-registry"
 import { SessionMutation } from "./mutation"
 import { SessionWorkspaceRuntime } from "./workspace-runtime"
 import { SessionSearchIndex } from "./search-index"
+import { SecretMask } from "../secrets/mask"
 
 export namespace Session {
   export const ModelSelectionInput = ModelSelection.Input
@@ -1848,6 +1849,9 @@ export namespace Session {
 
   export async function preparePart(input: MessageV2.Part, ownerScopeID?: string): Promise<MessageV2.Part> {
     let part = input
+    if (part.type === "tool" && part.workBrief) {
+      part = { ...part, workBrief: await SecretMask.apply(part.workBrief) }
+    }
     const scopeID = asScopeID(ownerScopeID ?? (await SessionManager.resolveScopeID(part.sessionID)))
     try {
       const owner = { kind: "session" as const, scopeID, sessionID: part.sessionID }

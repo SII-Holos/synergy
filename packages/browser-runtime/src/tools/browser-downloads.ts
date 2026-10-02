@@ -10,28 +10,39 @@ import { BrowserToolHelper, formatBrowserJSON } from "./browser-shared"
 const parameters = z
   .object({
     action: z.enum(["list", "accept", "wait", "cancel", "export"]),
-    id: z.string().min(1).max(20_000).optional().describe("Required except for list."),
-    timeoutSeconds: z.number().int().min(1).max(60).optional().describe("Valid only for wait; defaults to 30."),
-    path: z.string().min(1).max(20_000).optional().describe("Required only for export."),
+    downloadId: z.string().min(1).max(20_000).optional().describe("Download ID from list; required except for list."),
+    timeoutSeconds: z
+      .number()
+      .int()
+      .min(1)
+      .max(60)
+      .optional()
+      .describe("Wait budget in seconds (1–60); valid only for wait; defaults to 30."),
+    filePath: z
+      .string()
+      .min(1)
+      .max(20_000)
+      .optional()
+      .describe("Destination file path in the Workspace; required only for export."),
     page: z.number().int().min(0).optional().describe("Valid only for list; defaults to 0."),
     pageSize: z.number().int().min(1).max(500).optional().describe("Valid only for list; defaults to 100."),
   })
   .strict()
   .superRefine((value, ctx) => {
-    if (value.action !== "list" && !value.id) {
-      ctx.addIssue({ code: "custom", path: ["id"], message: `id is required for ${value.action}.` })
+    if (value.action !== "list" && !value.downloadId) {
+      ctx.addIssue({ code: "custom", path: ["downloadId"], message: `downloadId is required for ${value.action}.` })
     }
-    if (value.action === "list" && value.id !== undefined) {
-      ctx.addIssue({ code: "custom", path: ["id"], message: "id is not valid for list." })
+    if (value.action === "list" && value.downloadId !== undefined) {
+      ctx.addIssue({ code: "custom", path: ["downloadId"], message: "downloadId is not valid for list." })
     }
     if (value.action !== "wait" && value.timeoutSeconds !== undefined) {
       ctx.addIssue({ code: "custom", path: ["timeoutSeconds"], message: "timeoutSeconds is valid only for wait." })
     }
-    if (value.action === "export" && !value.path) {
-      ctx.addIssue({ code: "custom", path: ["path"], message: "path is required for export." })
+    if (value.action === "export" && !value.filePath) {
+      ctx.addIssue({ code: "custom", path: ["filePath"], message: "filePath is required for export." })
     }
-    if (value.action !== "export" && value.path !== undefined) {
-      ctx.addIssue({ code: "custom", path: ["path"], message: "path is valid only for export." })
+    if (value.action !== "export" && value.filePath !== undefined) {
+      ctx.addIssue({ code: "custom", path: ["filePath"], message: "filePath is valid only for export." })
     }
     if (value.action !== "list" && (value.page !== undefined || value.pageSize !== undefined)) {
       ctx.addIssue({ code: "custom", path: ["page"], message: "page and pageSize are valid only for list." })
@@ -67,7 +78,7 @@ export const BrowserDownloadsTool = Tool.define<typeof parameters, BrowserDownlo
       }
     }
     if (params.action === "accept") {
-      const record = BrowserDownloads.get(owner, params.id!)
+      const record = BrowserDownloads.get(owner, params.downloadId!)
       if (!record || record.state !== "awaiting_approval")
         throw new Error("Download is not waiting for approval. List downloads to check its state.")
       await BrowserCommandService.execute(owner, {
@@ -84,7 +95,12 @@ export const BrowserDownloadsTool = Tool.define<typeof parameters, BrowserDownlo
       }
     }
     if (params.action === "wait") {
-      const record = await BrowserDownloads.wait(owner, params.id!, (params.timeoutSeconds ?? 30) * 1_000, ctx.abort)
+      const record = await BrowserDownloads.wait(
+        owner,
+        params.downloadId!,
+        (params.timeoutSeconds ?? 30) * 1_000,
+        ctx.abort,
+      )
       const visible = publicRecord(record)
       const formatted = formatBrowserJSON(visible)
       return {
@@ -94,17 +110,17 @@ export const BrowserDownloadsTool = Tool.define<typeof parameters, BrowserDownlo
       }
     }
     if (params.action === "cancel") {
-      const pending = BrowserDownloads.get(owner, params.id!)
-      if (!pending) throw new Error(`Download ${params.id} was not found for this browser owner.`)
+      const pending = BrowserDownloads.get(owner, params.downloadId!)
+      if (!pending) throw new Error(`Download ${params.downloadId} was not found for this browser owner.`)
       if (pending.state === "pending" || pending.state === "awaiting_approval") {
         await BrowserCommandService.execute(owner, {
           pageId: pending.pageID,
           commandId: `${ctx.callID ?? ctx.messageID}:download-cancel`,
-          command: { type: "download.cancel", id: params.id! },
+          command: { type: "download.cancel", id: params.downloadId! },
           signal: ctx.abort,
         })
       }
-      const record = await BrowserDownloads.cancel(owner, params.id!)
+      const record = await BrowserDownloads.cancel(owner, params.downloadId!)
       await (await BrowserCommandService.session(owner)).save()
       const visible = publicRecord(record)
       const formatted = formatBrowserJSON(visible)
@@ -115,20 +131,24 @@ export const BrowserDownloadsTool = Tool.define<typeof parameters, BrowserDownlo
       }
     }
 
-    const record = BrowserDownloads.get(owner, params.id!)
+    const record = BrowserDownloads.get(owner, params.downloadId!)
     const browser = await BrowserCommandService.session(owner)
     const page = browser.pages.find((page) => page.id === record?.pageID)
     if (!record || !page) throw new Error("Open the download's page before exporting it.")
     await BrowserToolHelper.authorize(ctx, page.profileId, record.url, "downloads")
-    const target = await BrowserExport.fileTarget(ScopeContext.current.directory, params.path!)
-    const exported = await BrowserDownloads.exportTo(owner, params.id!, target, ctx.abort)
-    return { title: `Download ${params.id} exported`, output: exported, metadata: { id: params.id, path: exported } }
+    const target = await BrowserExport.fileTarget(ScopeContext.current.directory, params.filePath!)
+    const exported = await BrowserDownloads.exportTo(owner, params.downloadId!, target, ctx.abort)
+    return {
+      title: `Download ${params.downloadId} exported`,
+      output: exported,
+      metadata: { id: params.downloadId, path: exported },
+    }
   },
 })
 
-type PublicDownloadRecord = Omit<BrowserDownloads.DownloadRecord, "path">
+type PublicDownloadRecord = Omit<BrowserDownloads.DownloadRecord, "path" | "id"> & { downloadId: string }
 
 function publicRecord(record: BrowserDownloads.DownloadRecord): PublicDownloadRecord {
-  const { path: _managedPath, ...visible } = record
-  return visible
+  const { path: _managedPath, id, ...visible } = record
+  return { ...visible, downloadId: id }
 }

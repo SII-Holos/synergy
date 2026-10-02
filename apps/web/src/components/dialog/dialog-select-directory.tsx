@@ -9,6 +9,7 @@ import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { Checkbox } from "@ericsanchezok/synergy-ui/checkbox"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
+import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
@@ -47,6 +48,8 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   const [error, setError] = createSignal("")
   const [searched, setSearched] = createSignal(false)
   let pathInput: HTMLInputElement | undefined
+  let currentFolderButton: HTMLButtonElement | undefined
+  let selectionList: HTMLUListElement | undefined
   let request: AbortController | undefined
   onCleanup(() => request?.abort())
   createEffect(() => {
@@ -142,6 +145,24 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
         : [target],
     )
   }
+  function focusSelection(index: number) {
+    queueMicrotask(() => {
+      const buttons = selectionList?.querySelectorAll<HTMLButtonElement>("button")
+      const next = buttons?.[Math.min(index, buttons.length - 1)]
+      if (next?.isConnected) next.focus()
+      else if (currentFolderButton?.isConnected) currentFolderButton.focus()
+      else pathInput?.focus()
+    })
+  }
+  function deselect(target: string) {
+    const index = selected().indexOf(target)
+    setSelected((previous) => previous.filter((item) => item !== target))
+    focusSelection(index)
+  }
+  function clearSelection() {
+    setSelected([])
+    focusSelection(0)
+  }
   function choose() {
     if (loading() || error()) return
     const paths = selected().length ? selected() : [listing()!.path]
@@ -162,16 +183,49 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
       title={props.title ?? _(copy.title)}
       description={_({ ...copy.service, values: { service: serverDisplayName(props.serverUrl ?? sdk.url) } })}
       footer={
-        <div data-slot="dialog-actions">
-          <Button variant="ghost" onClick={() => dialog.close()}>
-            {_(copy.cancel)}
-          </Button>
-          <Button
-            disabled={loading() || !!error() || !listing() || (props.multiple && !selected().length)}
-            onClick={choose}
-          >
-            {_(props.multiple ? copy.useMany : copy.use)}
-          </Button>
+        <div class="directory-navigation-footer">
+          <Show when={props.multiple}>
+            <div class="directory-navigation-selection">
+              <span role="status">{_({ ...copy.selected, values: { count: selected().length } })}</span>
+              <Show when={selected().length}>
+                <Button variant="ghost" size="small" onClick={clearSelection}>
+                  {_(copy.clear)}
+                </Button>
+              </Show>
+            </div>
+            <Show when={selected().length}>
+              <ul ref={selectionList} class="directory-navigation-selected" aria-label={_(copy.selection)}>
+                <For each={selected()}>
+                  {(folder) => (
+                    <li>
+                      <Tooltip value={folder} class="directory-navigation-selected-name">
+                        <span tabindex="0">{getFilename(folder) || folder}</span>
+                      </Tooltip>
+                      <IconButton
+                        type="button"
+                        variant="ghost"
+                        class="directory-navigation-control directory-navigation-deselect"
+                        icon={getSemanticIcon("action.close")}
+                        aria-label={_({ ...copy.deselectFolder, values: { name: folder } })}
+                        onClick={() => deselect(folder)}
+                      />
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </Show>
+          </Show>
+          <div data-slot="dialog-actions">
+            <Button variant="ghost" onClick={() => dialog.close()}>
+              {_(copy.cancel)}
+            </Button>
+            <Button
+              disabled={loading() || !!error() || !listing() || (props.multiple && !selected().length)}
+              onClick={choose}
+            >
+              {_(props.multiple ? copy.useMany : copy.use)}
+            </Button>
+          </div>
         </div>
       }
       size="wide"
@@ -187,12 +241,18 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
         >
           <IconButton
             type="button"
+            variant="ghost"
+            iconSize="normal"
+            class="directory-navigation-control"
             icon={getSemanticIcon("navigation.home")}
             aria-label={_(copy.home)}
             onClick={() => enter(home())}
           />
           <IconButton
             type="button"
+            variant="ghost"
+            iconSize="normal"
+            class="directory-navigation-control"
             icon={getSemanticIcon("navigation.back")}
             aria-label={_(copy.up)}
             disabled={!listing()?.parent || loading()}
@@ -206,7 +266,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
             onChange={setDraft}
             spellcheck={false}
           />
-          <Button type="submit" disabled={!draft().trim()}>
+          <Button type="submit" variant="ghost" disabled={!draft().trim()}>
             {_(copy.go)}
           </Button>
         </form>
@@ -233,7 +293,14 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
             value={query()}
             onChange={setQuery}
           />
-          <Button type="submit" icon={getSemanticIcon("action.search")} aria-label={_(copy.search)} />
+          <IconButton
+            type="submit"
+            variant="ghost"
+            iconSize="normal"
+            class="directory-navigation-control"
+            icon={getSemanticIcon("action.search")}
+            aria-label={_(copy.search)}
+          />
         </form>
         <Checkbox
           checked={hidden()}
@@ -266,13 +333,22 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
             <For each={listing()?.entries}>
               {(entry) => (
                 <div class="directory-navigation-entry">
+                  <Show when={props.multiple}>
+                    <Checkbox
+                      hideLabel
+                      checked={selected().includes(entry.path)}
+                      disabled={loading()}
+                      onChange={() => select(entry.path)}
+                    >
+                      {_({ ...copy.selectFolder, values: { name: entry.name } })}
+                    </Checkbox>
+                  </Show>
                   <button
                     type="button"
                     class="project-flow-row"
-                    aria-pressed={selected().includes(entry.path)}
+                    title={_(copy.enter)}
                     disabled={loading()}
-                    onClick={() => select(entry.path)}
-                    onDblClick={() => enter(entry.path)}
+                    onClick={() => enter(entry.path)}
                     onKeyDown={(event) => {
                       if (event.key === "ArrowRight") {
                         event.preventDefault()
@@ -287,18 +363,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
                         <small>{entry.path}</small>
                       </Show>
                     </span>
-                    <span class="project-flow-check">
-                      <Show when={selected().includes(entry.path)}>
-                        <Icon name={getSemanticIcon("state.success")} size="small" />
-                      </Show>
-                    </span>
                   </button>
-                  <IconButton
-                    icon={getSemanticIcon("navigation.forward")}
-                    aria-label={`${_(copy.enter)}: ${entry.name}`}
-                    disabled={loading()}
-                    onClick={() => enter(entry.path)}
-                  />
                 </div>
               )}
             </For>
@@ -316,20 +381,18 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
           </div>
         </Show>
         <Show when={props.multiple && listing() && !loading() && !error()}>
-          <Button variant="secondary" aria-pressed={selected().includes(path())} onClick={() => select(path())}>
+          <Button
+            ref={currentFolderButton}
+            variant="secondary"
+            aria-pressed={selected().includes(path())}
+            onClick={() => select(path())}
+          >
             {_(copy.selectCurrent)}
           </Button>
         </Show>
-        <div class="directory-navigation-selection">
-          <span title={selected().join("\n")}>
-            {props.multiple ? _({ ...copy.selected, values: { count: selected().length } }) : (selected()[0] ?? path())}
-          </span>
-          <Show when={selected().length}>
-            <Button variant="ghost" onClick={() => setSelected([])}>
-              {_(copy.clear)}
-            </Button>
-          </Show>
-        </div>
+        <Show when={!props.multiple}>
+          <p class="directory-navigation-selection">{path()}</p>
+        </Show>
       </div>
     </Dialog>
   )

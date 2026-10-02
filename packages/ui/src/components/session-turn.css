@@ -143,6 +143,7 @@
     width: 100%;
     max-width: 100%;
     min-width: 0;
+    margin-block: 0;
   }
 
   [data-slot="session-turn-message-container"] > [data-component="user-message"][data-variant="turn-bubble"],
@@ -205,18 +206,15 @@
     margin-inline: 0;
   }
 
-  [data-slot="session-turn-timeline-item"] + [data-slot="session-turn-timeline-item"] {
-    margin-top: 10px;
+  [data-slot="session-turn-timeline-item"]:not([hidden]) ~ [data-slot="session-turn-timeline-item"]:not([hidden]) {
+    margin-block-start: 16px;
   }
 
-  [data-slot="session-turn-timeline-item"][data-kind="activity-group"][data-activity-continues]
-    + [data-slot="session-turn-timeline-item"][data-kind="activity-group"][data-activity-follows] {
-    margin-top: 2px;
-  }
-
-  [data-slot="session-turn-timeline-item"]:is([data-kind="text"], [data-kind="reasoning"])
-    + [data-slot="session-turn-timeline-item"]:is([data-kind="text"], [data-kind="reasoning"]) {
-    margin-top: 8px;
+  [data-slot="session-turn-timeline-item"]:not([hidden])
+    ~ [data-slot="session-turn-timeline-item"]:is([data-kind="activity-batch"], [data-kind="activity-group"]):not(
+      [hidden]
+    ) {
+    margin-block-start: 8px;
   }
 
   [data-slot="session-turn-timeline-item"][data-kind="provider-prelude"] {
@@ -260,32 +258,6 @@
     font-size: var(--font-size-x-small);
     font-variant-numeric: tabular-nums;
     line-height: 1;
-  }
-
-  [data-slot="session-turn-timeline-item"]:is([data-kind="tool"], [data-kind="tool-attachments"])
-    + [data-slot="session-turn-timeline-item"]:is([data-kind="tool"], [data-kind="tool-attachments"]) {
-    margin-top: 6px;
-  }
-
-  [data-slot="session-turn-timeline-item"]:is(
-      [data-kind="attachment"],
-      [data-kind="media-pending"],
-      [data-kind="tool"],
-      [data-kind="tool-attachments"]
-    )
-    + [data-slot="session-turn-timeline-item"]:is(
-      [data-kind="attachment"],
-      [data-kind="media-pending"],
-      [data-kind="text"]
-    ),
-  [data-slot="session-turn-timeline-item"]:is([data-kind="reasoning"], [data-kind="text"])
-    + [data-slot="session-turn-timeline-item"]:is(
-      [data-kind="attachment"],
-      [data-kind="media-pending"],
-      [data-kind="tool"],
-      [data-kind="tool-attachments"]
-    ) {
-    margin-top: 12px;
   }
 
   [data-slot="session-turn-timeline-item"] + [data-component="turn-change-summary-panel"] {
@@ -406,4 +378,51 @@
     opacity: 1;
     pointer-events: auto;
   }
+}
+
+[data-component="session-turn"] [data-slot="session-turn-timeline-item"][data-kind="text"] {
+  font-size: 16px;
+  line-height: 1.6;
+}
+[data-component="session-turn"] [data-slot="turn-process-trigger"] {
+  font-size: 14px;
+  line-height: 20px;
+}
+[data-component="session-turn"] [data-slot="session-turn-timeline-item"][data-kind="text"] [data-component="markdown"] {
+  font-size: 16px;
+  line-height: 1.6;
+
+  p:not(:last-child) {
+    margin-bottom: 12px;
+  }
+
+  :is(h1, h2, h3, h4, h5, h6) {
+    padding-inline-start: 0;
+    border-inline-start: 0;
+    color: var(--text-base);
+    font-weight: var(--font-weight-semibold);
+    line-height: 1.4;
+    margin-block: 24px 8px;
+  }
+
+  :is(strong, b) {
+    font-weight: var(--font-weight-semibold);
+  }
+
+  > :first-child,
+  [data-slot="markdown-terminal-from"] > :first-child,
+  [data-slot="markdown-terminal-to"] > :first-child {
+    margin-block-start: 0;
+  }
+
+  > :last-child,
+  [data-slot="markdown-terminal-from"] > :last-child,
+  [data-slot="markdown-terminal-to"] > :last-child {
+    margin-block-end: 0;
+  }
+}
+[data-component="session-turn"] [data-slot="session-turn-timeline"]::before,
+[data-component="session-turn"] [data-slot="session-turn-timeline-item"]::before,
+[data-component="session-turn"] [data-slot="session-turn-timeline-item"]::after {
+  content: none;
 }

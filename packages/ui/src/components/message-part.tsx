@@ -365,7 +365,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
   switch (tool) {
     case "read":
       return {
-        icon: "glasses",
+        icon: "file-text",
         title: TOOL_TITLE_DESC["read"],
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
@@ -423,7 +423,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "terminal",
         title: TOOL_TITLE_DESC["bash"],
-        subtitle: input.description,
+        subtitle: input.command,
       }
     case "edit":
       return {
@@ -592,7 +592,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "code",
         title: TOOL_TITLE_DESC["render"],
-        subtitle: input.title,
+        subtitle: input.artifactTitle,
       }
     case "note_list":
       if (isBlueprintToolKind(input, metadata)) {
@@ -612,20 +612,20 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         return {
           icon: BLUEPRINT_ICON,
           title: TOOL_TITLE_DESC["read_blueprint"],
-          subtitle: Array.isArray(input.ids)
-            ? input.ids.length === 1
-              ? input.ids[0]
-              : `${input.ids.length} blueprints`
+          subtitle: Array.isArray(input.noteIds)
+            ? input.noteIds.length === 1
+              ? input.noteIds[0]
+              : `${input.noteIds.length} blueprints`
             : undefined,
         }
       }
       return {
         icon: "notebook-pen",
         title: TOOL_TITLE_DESC["note_read"],
-        subtitle: Array.isArray(input.ids)
-          ? input.ids.length === 1
-            ? input.ids[0]
-            : `${input.ids.length} notes`
+        subtitle: Array.isArray(input.noteIds)
+          ? input.noteIds.length === 1
+            ? input.noteIds[0]
+            : `${input.noteIds.length} notes`
           : undefined,
       }
     case "note_search":
@@ -646,36 +646,36 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         return {
           icon: BLUEPRINT_ICON,
           title: TOOL_TITLE_DESC["write_blueprint"],
-          subtitle: input.title || input.mode,
+          subtitle: input.noteTitle || input.mode,
         }
       }
       return {
         icon: "notebook-pen",
         title: TOOL_TITLE_DESC["note_write"],
-        subtitle: input.title || input.mode,
+        subtitle: input.noteTitle || input.mode,
       }
     case "note_edit":
       if (isBlueprintToolKind(input, metadata)) {
         return {
           icon: BLUEPRINT_ICON,
           title: TOOL_TITLE_DESC["edit_blueprint"],
-          subtitle: input.title || input.id,
+          subtitle: input.noteTitle || input.noteId,
         }
       }
       return {
         icon: "notebook-pen",
         title: TOOL_TITLE_DESC["note_edit"],
-        subtitle: input.title || input.id,
+        subtitle: input.noteTitle || input.noteId,
       }
     case "note_archive": {
       const unarchive = input.unarchive as boolean | undefined
       return {
         icon: "archive",
         title: unarchive ? TOOL_TITLE_DESC["note_unarchive"] : TOOL_TITLE_DESC["note_archive"],
-        subtitle: Array.isArray(input.ids)
-          ? input.ids.length === 1
-            ? input.ids[0]
-            : `${input.ids.length} notes`
+        subtitle: Array.isArray(input.noteIds)
+          ? input.noteIds.length === 1
+            ? input.noteIds[0]
+            : `${input.noteIds.length} notes`
           : undefined,
       }
     }
@@ -683,7 +683,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "trash-2",
         title: TOOL_TITLE_DESC["note_delete"],
-        subtitle: input.id,
+        subtitle: input.noteId,
       }
     case "blueprint_loop_stop":
       return {
@@ -713,13 +713,13 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "list-todo",
         title: TOOL_TITLE_DESC["task_output"],
-        subtitle: input.task_id,
+        subtitle: input.taskId,
       }
     case "task_cancel":
       return {
         icon: "circle-x",
         title: TOOL_TITLE_DESC["task_cancel"],
-        subtitle: input.task_id,
+        subtitle: input.taskId,
       }
     case "loop_stop":
       return {
@@ -966,13 +966,13 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "calendar-days",
         title: TOOL_TITLE_DESC["agenda_schedule"],
-        subtitle: input.title,
+        subtitle: input.agendaTitle,
       }
     case "agenda_watch":
       return {
         icon: "eye",
         title: TOOL_TITLE_DESC["agenda_watch"],
-        subtitle: input.title,
+        subtitle: input.agendaTitle,
       }
     case "agenda_list":
       return {
@@ -984,25 +984,25 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "pencil",
         title: TOOL_TITLE_DESC["agenda_update"],
-        subtitle: input.id,
+        subtitle: input.agendaItemId,
       }
     case "agenda_cancel":
       return {
         icon: "trash-2",
         title: TOOL_TITLE_DESC["agenda_cancel"],
-        subtitle: input.id,
+        subtitle: input.agendaItemId,
       }
     case "agenda_trigger":
       return {
         icon: "zap",
         title: TOOL_TITLE_DESC["agenda_trigger"],
-        subtitle: input.id,
+        subtitle: input.agendaItemId,
       }
     case "agenda_logs":
       return {
         icon: "clock",
         title: TOOL_TITLE_DESC["agenda_logs"],
-        subtitle: input.id,
+        subtitle: input.agendaItemId,
       }
     case "memory_search":
       return {
@@ -1019,13 +1019,13 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "brain",
         title: TOOL_TITLE_DESC["memory_write"],
-        subtitle: input.title,
+        subtitle: input.memoryTitle,
       }
     case "memory_edit":
       return {
         icon: "brain",
         title: TOOL_TITLE_DESC["memory_edit"],
-        subtitle: input.title,
+        subtitle: input.memoryTitle,
       }
     case "email_send":
       return {

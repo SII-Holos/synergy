@@ -1,15 +1,15 @@
 import { z } from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
-import { BrowserToolHelper, formatBrowserJSON } from "./browser-shared"
+import { BrowserToolHelper, formatBrowserJSON, browserAgentRecord } from "./browser-shared"
 
 export const BrowserNetworkTool = Tool.define("browser_network", {
   description:
-    "Read or clear Chromium network requests, responses, failures, redirects, timing, and resource types. For debugging, clear immediately before reproducing, list failed/status-filtered records, then get a specific id. Sensitive headers and payload data are redacted by default.",
+    "Read or clear Chromium network requests, responses, failures, redirects, timing, and resource types. For debugging, clear immediately before reproducing, list failed/status-filtered records, then get a specific requestId. Sensitive headers and payload data are redacted by default.",
   parameters: z
     .object({
       pageId: z.string().min(1).max(200).describe("Page ID from browser_navigation."),
       action: z.enum(["list", "get", "clear"]).default("list"),
-      id: z.string().max(20_000).optional().describe("Required only for get."),
+      requestId: z.string().max(20_000).optional().describe("requestId from list; required only for get."),
       resourceTypes: z.array(z.string().max(1_000)).max(100).optional(),
       status: z.number().int().optional(),
       page: z.number().int().min(0).optional(),
@@ -20,10 +20,10 @@ export const BrowserNetworkTool = Tool.define("browser_network", {
     })
     .strict()
     .superRefine((value, ctx) => {
-      if (value.action === "get" && !value.id)
-        ctx.addIssue({ code: "custom", path: ["id"], message: "id is required for get." })
-      if (value.action !== "get" && value.id !== undefined)
-        ctx.addIssue({ code: "custom", path: ["id"], message: "id is valid only for get." })
+      if (value.action === "get" && !value.requestId)
+        ctx.addIssue({ code: "custom", path: ["requestId"], message: "requestId is required for get." })
+      if (value.action !== "get" && value.requestId !== undefined)
+        ctx.addIssue({ code: "custom", path: ["requestId"], message: "requestId is valid only for get." })
       if (value.action !== "get" && value.includeBody)
         ctx.addIssue({ code: "custom", path: ["includeBody"], message: "includeBody is valid only for get." })
       if (value.action !== "list") {
@@ -41,7 +41,7 @@ export const BrowserNetworkTool = Tool.define("browser_network", {
           message: "includeSensitive is valid only for list or get.",
         })
     }),
-  async execute({ pageId, ...params }, ctx) {
+  async execute({ pageId, requestId, ...params }, ctx) {
     const browserPage = await BrowserToolHelper.resolvePage(ctx, pageId)
     return BrowserToolHelper.withActivity(
       ctx,
@@ -50,9 +50,9 @@ export const BrowserNetworkTool = Tool.define("browser_network", {
       "browser_network",
       `${params.action} network`,
       async () => {
-        const result = await BrowserToolHelper.execute(ctx, pageId, { type: "network", ...params })
+        const result = await BrowserToolHelper.execute(ctx, pageId, { type: "network", ...params, id: requestId })
         if (result.type !== "data") throw new Error("Browser network returned an unexpected result.")
-        const formatted = formatBrowserJSON(result.data)
+        const formatted = formatBrowserJSON(browserAgentRecord(result.data, "requestId", "requests"))
         return {
           title: `Browser network: ${params.action}`,
           output: formatted.output,

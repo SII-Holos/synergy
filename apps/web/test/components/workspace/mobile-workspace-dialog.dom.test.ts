@@ -111,3 +111,28 @@ test("leaving the mobile presentation does not close the owning workspace", asyn
   expect(await page.evaluate(() => (window as unknown as MobileWindow).closeCount)).toBe(0)
   expect(errors).toEqual([])
 })
+
+test("reduced motion removes expanded workspace and overlay animations", async () => {
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  try {
+    await page.goto(baseUrl)
+    await page.getByRole("button", { name: "Open mobile workspace" }).click()
+    await page.getByRole("dialog").waitFor()
+    const animation = await page.getByRole("dialog").evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { name: style.animationName, transform: style.transform }
+    })
+    expect(animation).toEqual({ name: "none", transform: "none" })
+    expect(
+      await page
+        .locator('[data-component="dialog-overlay"]')
+        .evaluate((element) => getComputedStyle(element).animationName),
+    ).toBe("none")
+    await page.keyboard.press("Escape")
+    await page.getByRole("dialog").waitFor({ state: "detached" })
+    await page.waitForFunction(() => document.activeElement?.textContent === "Open mobile workspace")
+    expect(await page.evaluate(() => document.activeElement?.textContent)).toBe("Open mobile workspace")
+  } finally {
+    await page.emulateMedia({ reducedMotion: "no-preference" })
+  }
+}, 20000)

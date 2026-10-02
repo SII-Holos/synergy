@@ -329,7 +329,7 @@ function Launcher(props: {
   )
 }
 
-export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
+export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; presentation?: "modal" }) {
   useExtensionOutlet(`workbench.${props.surface}`)
   const lingui = useLingui()
   const dialog = useDialog()
@@ -465,11 +465,14 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
   }
   const maxBottomHeight = () => Math.max(0, available.height * 0.6)
   const displaySize = () => Math.min(size(), isSide() ? maxSideWidth() : maxBottomHeight())
+  const hidden = () => !state().opened() || (props.presentation !== "modal" && displaySize() === 0)
 
   const rootStyle = () =>
-    isSide()
-      ? { width: state().opened() ? `${displaySize()}px` : "0px" }
-      : { height: state().opened() ? `${displaySize()}px` : "0px" }
+    props.presentation === "modal"
+      ? { width: "100%", height: "100%" }
+      : isSide()
+        ? { width: state().opened() ? `${displaySize()}px` : "0px" }
+        : { height: state().opened() ? `${displaySize()}px` : "0px" }
 
   const focusTab = (index: number) => {
     const tabs = state().tabs()
@@ -491,8 +494,8 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
   return (
     <div
       ref={root}
-      inert={!state().opened() || displaySize() === 0}
-      aria-hidden={!state().opened() || displaySize() === 0}
+      inert={hidden()}
+      aria-hidden={hidden()}
       data-ui-part="resource-panel"
       class="workbench-surface"
       classList={{
@@ -503,23 +506,25 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
       }}
       style={rootStyle()}
     >
-      <ResizeHandle
-        direction={isSide() ? "horizontal" : "vertical"}
-        edge="start"
-        aria-label={
-          isSide()
-            ? lingui._({ id: W.resizeSide.id, message: W.resizeSide.message })
-            : lingui._({ id: W.resizeBottom.id, message: W.resizeBottom.message })
-        }
-        size={displaySize()}
-        min={Math.min(isSide() ? WORKSPACE_MIN_WIDTH : 120, isSide() ? maxSideWidth() : maxBottomHeight())}
-        max={isSide() ? maxSideWidth() : maxBottomHeight()}
-        collapseThreshold={isSide() ? 200 : 50}
-        onResize={state().setSize}
-        onResizeStart={() => setLocal("resizing", true)}
-        onResizeEnd={() => setLocal("resizing", false)}
-        onCollapse={state().close}
-      />
+      <Show when={props.presentation !== "modal"}>
+        <ResizeHandle
+          direction={isSide() ? "horizontal" : "vertical"}
+          edge="start"
+          aria-label={
+            isSide()
+              ? lingui._({ id: W.resizeSide.id, message: W.resizeSide.message })
+              : lingui._({ id: W.resizeBottom.id, message: W.resizeBottom.message })
+          }
+          size={displaySize()}
+          min={Math.min(isSide() ? WORKSPACE_MIN_WIDTH : 120, isSide() ? maxSideWidth() : maxBottomHeight())}
+          max={isSide() ? maxSideWidth() : maxBottomHeight()}
+          collapseThreshold={isSide() ? 200 : 50}
+          onResize={state().setSize}
+          onResizeStart={() => setLocal("resizing", true)}
+          onResizeEnd={() => setLocal("resizing", false)}
+          onCollapse={state().close}
+        />
+      </Show>
       <aside
         class="workbench-surface-panel"
         role="complementary"

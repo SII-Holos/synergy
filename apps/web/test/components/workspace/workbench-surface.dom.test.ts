@@ -58,6 +58,8 @@ beforeAll(async () => {
     import { I18nProvider } from "@lingui/solid"
     import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
     import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
+    import { createSignal, Show } from "solid-js"
+    import { MobileWorkspaceDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/mobile-workspace-dialog.tsx`)}
     import { WorkbenchSurface } from ${JSON.stringify(`/@fs/${source}/components/workspace/workbench-surface.tsx`)}
     import { messages as en } from ${JSON.stringify(`/@fs/${source}/locales/en/messages.po`)}
     import "./state"
@@ -66,6 +68,15 @@ beforeAll(async () => {
     const i18n = setupI18n({ locale: "en", messages: { en } })
     function Fixture() {
       const dialog = useDialog()
+      const [mobileOpen, setMobileOpen] = createSignal(false)
+      if (new URLSearchParams(location.search).has("modal")) return <>
+        <button onClick={() => { window.fixture.open("side"); setMobileOpen(true) }}>Open modal workspace</button>
+        <Show when={mobileOpen()}>
+          <MobileWorkspaceDialog onClose={() => { window.fixture.close("side"); setMobileOpen(false) }}>
+            <WorkbenchSurface surface="side" presentation="modal" />
+          </MobileWorkspaceDialog>
+        </Show>
+      </>
       return <>
         <button onClick={() => window.fixture.open("side")}>Open side</button>
         <button onClick={() => window.fixture.open("bottom")}>Open bottom</button>
@@ -227,3 +238,34 @@ test("resizing available space constrains both panels without overwriting prefer
   expect(await side.evaluate((node) => parseFloat((node as HTMLElement).style.width))).toBe(640)
   expect(await bottom.evaluate((node) => parseFloat((node as HTMLElement).style.height))).toBe(500)
 })
+
+test("modal workspace stays accessible and focusable below the dock width limit", async () => {
+  errors.length = 0
+  try {
+    await page.setViewportSize({ width: 375, height: 812 })
+    await page.goto(`${baseUrl}?modal`)
+    await page.getByRole("button", { name: "Open modal workspace", exact: true }).click()
+    const modal = page.getByRole("dialog", { name: "Workspace", exact: true })
+    await modal.getByRole("button", { name: "side action", exact: true }).waitFor({ timeout: 3000 })
+    await modal.getByRole("textbox", { name: "side draft" }).fill("modal draft")
+    await page.setViewportSize({ width: 320, height: 568 })
+    const surface = modal.locator(".workbench-surface")
+    expect(await surface.getAttribute("aria-hidden")).toBe("false")
+    expect(await surface.getAttribute("inert")).toBeNull()
+    expect(await surface.getByRole("separator").count()).toBe(0)
+    expect(await modal.getByRole("textbox", { name: "side draft" }).inputValue()).toBe("modal draft")
+    await modal.getByRole("button", { name: "side action", exact: true }).focus()
+    expect(await page.evaluate(() => document.activeElement?.textContent)).toBe("side action")
+    for (let i = 0; i < 6; i++) {
+      await page.keyboard.press(i < 3 ? "Tab" : "Shift+Tab")
+      expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true)
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.keyboard.press("Escape")
+    await modal.waitFor({ state: "detached" })
+    await page.waitForFunction(() => document.activeElement?.textContent === "Open modal workspace")
+    expect(errors).toEqual([])
+  } finally {
+    await page.setViewportSize({ width: 1200, height: 1000 })
+  }
+}, 20000)

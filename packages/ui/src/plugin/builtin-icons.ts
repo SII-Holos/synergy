@@ -11,6 +11,7 @@ const builtinIconNames = [
   "align-right",
   "archive",
   "archive-restore",
+  "arrow-down",
   "arrow-down-from-line",
   "arrow-down-to-line",
   "arrow-left",

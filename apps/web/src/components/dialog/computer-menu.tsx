@@ -71,7 +71,7 @@ export function ComputerMenu(props: { value?: string; onChange?: (url: string) =
           aria-label={_(copy.computer)}
         >
           <Icon name={getSemanticIcon("computer.main")} size="small" />
-          <span>{label(props.value ?? server.url)}</span>
+          <span>{_(copy.computer)}</span>
         </button>
       )}
     >
@@ -91,6 +91,7 @@ export function ComputerMenu(props: { value?: string; onChange?: (url: string) =
             <span class="project-flow-row-copy">
               <strong>{label(url)}</strong>
               <small>
+                {serverDisplayName(url)} ·{" "}
                 {_(health()?.[url] === false ? copy.unavailable : health()?.[url] ? copy.connected : copy.loading)}
               </small>
             </span>

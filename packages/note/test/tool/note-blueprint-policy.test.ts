@@ -38,7 +38,7 @@ function anchoredReplace(
 ) {
   const block = NoteDocument.listBlocks(note.content)[0]
   return {
-    id: note.id,
+    noteId: note.id,
     baseVersion: note.version,
     baseDocHash: NoteDocument.hash(note.content),
     freshen: "safe" as const,
@@ -67,8 +67,8 @@ describe("note Blueprint write policy", () => {
           const blocked = await write.execute(
             {
               mode: "create",
-              title: "Accidental Blueprint",
-              content: "deliverable",
+              noteTitle: "Accidental Blueprint",
+              noteContent: "deliverable",
               kind: "blueprint",
               scope: "current",
             },
@@ -82,9 +82,9 @@ describe("note Blueprint write policy", () => {
           const implicitByDescription = await write.execute(
             {
               mode: "create",
-              title: "Implicit Blueprint",
-              content: "deliverable",
-              description: "Executable plan",
+              noteTitle: "Implicit Blueprint",
+              noteContent: "deliverable",
+              blueprintDescription: "Executable plan",
               scope: "current",
             },
             ctx(session.id),
@@ -94,8 +94,8 @@ describe("note Blueprint write policy", () => {
           const created = await write.execute(
             {
               mode: "create",
-              title: "Ordinary Deliverable",
-              content: "deliverable",
+              noteTitle: "Ordinary Deliverable",
+              noteContent: "deliverable",
               kind: "note",
               scope: "current",
             },
@@ -108,8 +108,8 @@ describe("note Blueprint write policy", () => {
           const updated = await write.execute(
             {
               mode: "replace",
-              id: noteID,
-              content: "updated deliverable",
+              noteId: noteID,
+              noteContent: "updated deliverable",
               scope: "current",
             },
             ctx(session.id),
@@ -124,8 +124,8 @@ describe("note Blueprint write policy", () => {
           const convertBlocked = await write.execute(
             {
               mode: "replace",
-              id: noteID,
-              content: "converted deliverable",
+              noteId: noteID,
+              noteContent: "converted deliverable",
               kind: "blueprint",
               scope: "current",
             },
@@ -136,9 +136,9 @@ describe("note Blueprint write policy", () => {
           const implicitConvertBlocked = await write.execute(
             {
               mode: "replace",
-              id: noteID,
-              content: "converted deliverable",
-              description: "Executable plan",
+              noteId: noteID,
+              noteContent: "converted deliverable",
+              blueprintDescription: "Executable plan",
               scope: "current",
             },
             ctx(session.id),
@@ -172,8 +172,8 @@ describe("note Blueprint write policy", () => {
           const writeBlocked = await write.execute(
             {
               mode: "replace",
-              id: blueprint.id,
-              content: "Updated",
+              noteId: blueprint.id,
+              noteContent: "Updated",
               scope: "current",
             },
             ctx(session.id),
@@ -184,8 +184,8 @@ describe("note Blueprint write policy", () => {
           const appendBlocked = await write.execute(
             {
               mode: "append",
-              id: blueprint.id,
-              content: "Appended",
+              noteId: blueprint.id,
+              noteContent: "Appended",
               scope: "current",
             },
             ctx(session.id),
@@ -214,8 +214,8 @@ describe("note Blueprint write policy", () => {
           const created = await write.execute(
             {
               mode: "create",
-              title: "Plan Blueprint",
-              content: "Initial",
+              noteTitle: "Plan Blueprint",
+              noteContent: "Initial",
               kind: "blueprint",
               scope: "current",
             },
@@ -230,8 +230,8 @@ describe("note Blueprint write policy", () => {
           const replaced = await write.execute(
             {
               mode: "replace",
-              id,
-              content: "Replaced",
+              noteId: id,
+              noteContent: "Replaced",
               scope: "current",
             },
             ctx(session.id),
@@ -253,8 +253,8 @@ describe("note Blueprint write policy", () => {
           const appended = await write.execute(
             {
               mode: "append",
-              id,
-              content: "Appended",
+              noteId: id,
+              noteContent: "Appended",
               scope: "current",
             },
             ctx(session.id),
@@ -277,8 +277,8 @@ describe("note Blueprint write policy", () => {
           const created = await write.execute(
             {
               mode: "create",
-              title: "Lattice Blueprint",
-              content: "Initial",
+              noteTitle: "Lattice Blueprint",
+              noteContent: "Initial",
               kind: "blueprint",
               scope: "current",
             },

@@ -21,6 +21,7 @@ import {
 import { S } from "@/components/session/session-i18n"
 import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
 import { SessionTransitionCard } from "@/components/session/session-transition-card"
+import { SessionSubmissionPreview } from "@/components/session/session-submission-preview"
 import { HostView } from "@/plugin/host-view"
 import type { PluginSessionService, PluginSessionLayoutService } from "@ericsanchezok/synergy-plugin"
 import { DefaultSession } from "@/plugin/default-session"
@@ -52,6 +53,7 @@ import { hasSpecialUserMessageRenderer } from "@ericsanchezok/synergy-ui/special
 
 import { sessionSideWorkspaceMounts, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
 import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
+import { captureConversationReadingAnchor } from "@/components/session/conversation-reading-anchor"
 
 import { useSync } from "@/context/sync"
 import { useSessionDataView } from "@/context/session-data-view"
@@ -139,7 +141,7 @@ import { TerminalProvider } from "@/context/terminal"
 import { PromptProvider } from "@/context/prompt"
 import { ResourceOpenProvider } from "@/context/resource-open"
 import { BuiltinWorkbenchPanelsProvider } from "@/components/workspace/builtin-workbench-panels"
-import { useSessionTransition } from "@/context/session-transition"
+import { draftTransitionKey, useSessionTransition } from "@/context/session-transition"
 import {
   isActionCommandMessage,
   messagesFrom,
@@ -291,8 +293,7 @@ function SessionPageContent() {
   })
   const visibleSessionTransitionEntry = createMemo(() => {
     const sessionID = params.id
-    if (!sessionID) return undefined
-    return sessionTransition.get(sessionID)
+    return sessionTransition.get(sessionID ?? draftTransitionKey(sdk.url, sdk.scopeKey))
   })
   const visibleSessionTransition = createMemo(() => visibleSessionTransitionEntry()?.progress ?? null)
   const visibleSessionTransitionActions = createMemo(() => visibleSessionTransitionEntry()?.actions)
@@ -1222,6 +1223,20 @@ function SessionPageContent() {
 
   const autoScroll = createAutoScroll({
     working: isWorking,
+    captureReadingAnchor() {
+      const container = scroller
+      if (!container) return
+      const owner = sessionKey()
+      const server = sdk.url
+      const scope = sdk.scopeKey
+      const current = () =>
+        owner === sessionKey() && sdk.url === server && sdk.scopeKey === scope && scroller === container
+      if (container.scrollHeight - container.clientHeight - container.scrollTop < 10)
+        return () => {
+          if (current()) container.scrollTop = container.scrollHeight
+        }
+      return captureConversationReadingAnchor(container, current)
+    },
     onMeasure: (distance) => {
       // Until the session's initial scroll lands, growth-driven measures only
       // see the partially laid-out document and would flash the jump button;
@@ -1804,6 +1819,19 @@ function SessionPageContent() {
     get activityDisplay() {
       return activityDisplay
     },
+    activityView: {
+      getExpanded: (key) => view().activity.getExpanded(key),
+      setExpanded(key, expanded) {
+        const owner = sessionKey()
+        const detached = scrolledUp() || autoScroll.userScrolled()
+        if (detached) autoScroll.preserveReadingAnchor()
+        view().activity.setExpanded(key, expanded)
+        requestAnimationFrame(() => {
+          if (owner !== sessionKey()) return
+          if (!detached) autoScroll.forceScrollToBottom()
+        })
+      },
+    },
     get pendingTimeline() {
       return pendingTimeline
     },
@@ -1853,7 +1881,7 @@ function SessionPageContent() {
       return () => void returnToLatestMessages()
     },
     get scrolledUp() {
-      return scrolledUp
+      return () => scrolledUp() || autoScroll.userScrolled()
     },
     get onScrolledUpChange() {
       return setScrolledUp
@@ -2042,6 +2070,16 @@ function SessionPageContent() {
         />
         <div class="flex-1 min-h-0 min-w-0 overflow-hidden">
           <Switch>
+            <Match
+              when={
+                visibleSessionTransitionEntry()?.draft &&
+                visibleSessionTransition()?.phase === "loading" &&
+                messages().length === 0 &&
+                pendingTimeline().length === 0
+              }
+            >
+              <SessionSubmissionPreview entry={visibleSessionTransitionEntry()!} />
+            </Match>
             <Match when={!isNewSession()}>
               <Switch>
                 <Match when={conversationLoadView().type === "conversation"}>
@@ -2127,7 +2165,7 @@ function SessionPageContent() {
         {/* Mobile side workspace overlay */}
         <Show when={sideWorkspaceMounts().mobile}>
           <MobileWorkspaceDialog onClose={() => sideSurface().close()}>
-            <WorkbenchSurface surface="side" />
+            <WorkbenchSurface surface="side" presentation="modal" />
           </MobileWorkspaceDialog>
         </Show>
       </>

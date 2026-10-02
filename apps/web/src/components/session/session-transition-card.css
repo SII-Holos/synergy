@@ -3,16 +3,15 @@
   --session-transition-row-border: color-mix(in srgb, var(--border-base) 36%, transparent);
   --session-transition-control-bg: var(--surface-inset-base);
 
-  width: min(100%, 44rem);
-  padding: 16px 18px;
-  border: 1px solid var(--session-transition-border);
-  border-radius: 14px;
-  background: var(--workbench-card-bg, var(--surface-raised-base));
-  box-shadow: 0 1px 0 color-mix(in oklch, var(--border-base) 28%, transparent);
+  width: 100%;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-weak);
   font-family: var(--font-family-sans);
   font-feature-settings: var(--font-family-sans--font-feature-settings);
   letter-spacing: var(--letter-spacing-normal);
-  animation: session-transition-card-enter 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: session-transition-card-enter var(--motion-duration-slow) var(--motion-ease-standard) both;
 }
 
 .session-transition-card-exit {
@@ -23,49 +22,49 @@
 @keyframes session-transition-card-enter {
   from {
     opacity: 0;
-    transform: translateY(-8px) scale(0.98);
+    transform: translateY(-2px);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
   }
 }
 
 @keyframes session-transition-card-exit {
   to {
     opacity: 0;
-    transform: translateY(-8px) scale(0.98);
+    transform: translateY(-2px);
   }
 }
 
 .session-transition-card-header {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: start;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
 }
 
 .session-transition-card-icon {
   display: inline-flex;
-  width: 28px;
-  height: 28px;
+  width: 20px;
+  height: 20px;
   align-items: center;
   justify-content: center;
   border-radius: 8px;
   color: var(--icon-base);
-  background: var(--session-transition-control-bg);
-  border: 1px solid var(--session-transition-border);
+  background: transparent;
+  border: 0;
 }
 
 .session-transition-card-icon[data-state="success"] {
   color: var(--text-on-success-base);
-  background: var(--surface-success-weak);
+  background: transparent;
   border-color: color-mix(in oklch, var(--icon-success-base) 26%, transparent);
 }
 
 .session-transition-card-icon[data-state="error"] {
   color: var(--text-on-critical-base);
-  background: var(--surface-critical-weak);
+  background: transparent;
   border-color: color-mix(in oklch, var(--icon-critical-base) 26%, transparent);
 }
 
@@ -274,4 +273,23 @@
 .session-transition-step-icon[data-state="error"],
 .session-transition-step-row[data-state="error"] .session-transition-step-status {
   color: var(--text-error);
+}
+.session-submission-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding-block: 24px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.session-submission-prompt {
+  align-self: flex-end;
+  max-width: min(80%, 36rem);
+  padding: 10px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--workbench-control-bg, var(--surface-inset-base));
+  color: var(--text-base);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

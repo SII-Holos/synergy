@@ -640,6 +640,18 @@ describe("session turn working state", () => {
     ).toBe(false)
   })
 
+  test("missing and paused runtime states never manufacture live work", () => {
+    const messages = [assistant("assistant-running")]
+    expect(resolveTurnWorking({ isLastUserMessage: true, messages })).toBe(false)
+    expect(
+      resolveTurnWorking({
+        isLastUserMessage: true,
+        messages,
+        sessionStatus: { type: "paused", reason: "aborted", since: 10 },
+      }),
+    ).toBe(false)
+  })
+
   test("never marks an older turn as working", () => {
     expect(
       resolveTurnWorking({

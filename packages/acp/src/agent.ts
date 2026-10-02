@@ -26,6 +26,8 @@ import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { Agent as AgentModule } from "@ericsanchezok/synergy-harness/agent/agent"
 import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { ToolIntent } from "@ericsanchezok/synergy-harness/session/tool-intent"
+import { SessionToolInput } from "@ericsanchezok/synergy-harness/session/tool-input"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { Todo } from "@ericsanchezok/synergy-harness/session/todo"
 import { Dag } from "@ericsanchezok/synergy-harness/session/dag"
@@ -172,7 +174,7 @@ export namespace ACP {
                             kind: toToolKind(part.tool),
                             title: part.tool,
                             locations: toLocations(part.tool, part.state.input),
-                            rawInput: part.state.input,
+                            rawInput: ToolIntent.encode(part.state.input, part.workBrief, part.inputShape),
                           },
                         })
                         .catch((err) => {
@@ -192,7 +194,7 @@ export namespace ACP {
                       ]
 
                       if (kind === "edit") {
-                        const input = part.state.input
+                        const input = SessionToolInput.isRecord(part.state.input) ? part.state.input : {}
                         const filePath = typeof input["filePath"] === "string" ? input["filePath"] : ""
                         const oldText = typeof input["oldString"] === "string" ? input["oldString"] : ""
                         const newText =
@@ -277,7 +279,7 @@ export namespace ACP {
                             kind,
                             content,
                             title: part.state.title,
-                            rawInput: part.state.input,
+                            rawInput: ToolIntent.encode(part.state.input, part.workBrief, part.inputShape),
                             rawOutput: {
                               output: part.state.output,
                               metadata: part.state.metadata,
@@ -298,7 +300,7 @@ export namespace ACP {
                             status: "failed",
                             kind: toToolKind(part.tool),
                             title: part.tool,
-                            rawInput: part.state.input,
+                            rawInput: ToolIntent.encode(part.state.input, part.workBrief, part.inputShape),
                             content: [
                               {
                                 type: "content",
@@ -533,7 +535,7 @@ export namespace ACP {
                     kind: toToolKind(part.tool),
                     title: part.tool,
                     locations: toLocations(part.tool, part.state.input),
-                    rawInput: part.state.input,
+                    rawInput: ToolIntent.encode(part.state.input, part.workBrief, part.inputShape),
                   },
                 })
                 .catch((err) => {
@@ -553,7 +555,7 @@ export namespace ACP {
               ]
 
               if (kind === "edit") {
-                const input = part.state.input
+                const input = SessionToolInput.isRecord(part.state.input) ? part.state.input : {}
                 const filePath = typeof input["filePath"] === "string" ? input["filePath"] : ""
                 const oldText = typeof input["oldString"] === "string" ? input["oldString"] : ""
                 const newText =
@@ -638,7 +640,7 @@ export namespace ACP {
                     kind,
                     content,
                     title: part.state.title,
-                    rawInput: part.state.input,
+                    rawInput: ToolIntent.encode(part.state.input, part.workBrief, part.inputShape),
                     rawOutput: {
                       output: part.state.output,
                       metadata: part.state.metadata,
@@ -659,7 +661,7 @@ export namespace ACP {
                     status: "failed",
                     kind: toToolKind(part.tool),
                     title: part.tool,
-                    rawInput: part.state.input,
+                    rawInput: ToolIntent.encode(part.state.input, part.workBrief, part.inputShape),
                     content: [
                       {
                         type: "content",
@@ -1048,20 +1050,21 @@ export namespace ACP {
     }
   }
 
-  function toLocations(toolName: string, input: Record<string, any>): { path: string }[] {
+  function toLocations(toolName: string, input: unknown): { path: string }[] {
+    if (!SessionToolInput.isRecord(input)) return []
     const tool = toolName.toLocaleLowerCase()
     switch (tool) {
       case "read":
       case "edit":
       case "write":
-        return input["filePath"] ? [{ path: input["filePath"] }] : []
+        return typeof input.filePath === "string" ? [{ path: input.filePath }] : []
       case "glob":
       case "grep":
-        return input["path"] ? [{ path: input["path"] }] : []
+        return typeof input.path === "string" ? [{ path: input.path }] : []
       case "bash":
         return []
       case "list":
-        return input["path"] ? [{ path: input["path"] }] : []
+        return typeof input.path === "string" ? [{ path: input.path }] : []
       default:
         return []
     }

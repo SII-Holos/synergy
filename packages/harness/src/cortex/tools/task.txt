@@ -15,9 +15,9 @@ The parent composes the handoff (goal, settled decisions, evidence, scope, deliv
 
 ## Execution and results
 
-- `background: true` returns a `task_id` immediately. Use it when independent parent or sibling work can proceed.
-- `background: false` or omitted waits up to 300 seconds. It returns the full result if finished, otherwise auto-backgrounds and returns a `task_id`.
-- Completion sends a lightweight notification that wakes you automatically; it does NOT contain the final result. Retrieve it once with `task_output(task_id="...", mode="full")`.
+- `background: true` returns a `taskId` immediately. Use it when independent parent or sibling work can proceed.
+- `background: false` or omitted waits up to 300 seconds. It returns the full result if finished, otherwise auto-backgrounds and returns a `taskId`.
+- Completion sends a lightweight notification that wakes you automatically; it does NOT contain the final result. Retrieve it once with `task_output(taskId="...", mode="full")`.
 - Reading full/default output acknowledges the completion and clears its notification. Diagnostic modes do not acknowledge completion.
 - `task_output` diagnostic modes are `summary` (status, health, elapsed time), `progress` (tool activity, health, duration), and `tail` (recent conversation). Use them for one-shot diagnosis when evidence, a stale health signal or a cancellation decision warrants it. Do not poll or loop to refresh progress. Use `task_list()` for an overview when needed.
 - `task_output(..., block: true)` is only valid with `mode="full"` or the default mode; it waits up to 300 seconds. Diagnostic modes with blocking are rejected.
@@ -34,7 +34,7 @@ When executing a DAG node, pass `dag_node_id`; the node automatically completes 
 Reviewing an existing trust boundary is independent of unrelated implementation when ownership and inputs allow it. Review of new implementation waits until the implementation produces a reviewable artifact.
 
 ```
-task(background: true, subagent_type: "code-cartographer", description: "Map relevant data flow", prompt: "<bounded investigation and expected evidence>")
+task(background: true, subagent_type: "code-cartographer", taskTitle: "Map relevant data flow", taskInstructions: "<bounded investigation and expected evidence>")
 ```
 
 Continue a separate ready branch while that investigation runs. Dispatch work that depends on its findings only after retrieving and assessing the result.

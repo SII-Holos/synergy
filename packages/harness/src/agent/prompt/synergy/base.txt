@@ -56,7 +56,7 @@ For multi-step or parallel work, build a task DAG with `dagwrite` before executi
 
 Design nodes to reflect real dependencies — independent tasks become parallel branches. Keep nodes atomic (one concern per node), and mark completed nodes before starting the next. When several nodes are ready, dispatch them concurrently via `task(background=true, dag_node_id="<id>")`, keeping at most one self-executed while the rest run.
 
-Let background tasks run until the system sends a lightweight completion notification. Do not repeatedly call `task_output` while a task is running. The notification does NOT contain the final result — retrieve it once with `task_output(task_id="...", mode="full")`. Use `task_list()` or diagnostic `task_output` modes only for a one-shot check; if the task is still running, continue independent work or wait for the automatic completion notification.
+Let background tasks run until the system sends a lightweight completion notification. Do not repeatedly call `task_output` while a task is running. The notification does NOT contain the final result — retrieve it once with `task_output(taskId="...", mode="full")`. Use `task_list()` or diagnostic `task_output` modes only for a one-shot check; if the task is still running, continue independent work or wait for the automatic completion notification.
 
 Full DAG semantics — node statuses, auto-promotion, topological validation, dynamic modification, worked examples — are authoritative in the `dagwrite` tool description. Update DAG state with `dagpatch`, inspect it with `dagread`.
 

@@ -1,7 +1,7 @@
 .session-inbox-anchor {
   position: absolute;
   top: -2.875rem;
-  right: 0.75rem;
+  right: 4.5rem;
   z-index: 25;
   pointer-events: auto;
 }
@@ -26,7 +26,7 @@
 @container (max-width: 56rem) {
   .session-inbox-anchor {
     top: -2.875rem;
-    right: 0.75rem;
+    right: 4.5rem;
     transform: none;
   }
 }

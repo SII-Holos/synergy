@@ -1,5 +1,6 @@
 export const directoryCopy = {
   selectCurrent: { id: "directory.navigation.selectCurrent", message: "Select this folder" },
+  selectFolder: { id: "directory.navigation.selectFolder", message: "Select folder: {name}" },
   title: { id: "directory.navigation.title", message: "Choose a folder" },
   service: { id: "directory.navigation.service", message: "Browsing folders on {service}" },
   path: { id: "directory.navigation.path", message: "Folder path" },
@@ -25,7 +26,12 @@ export const directoryCopy = {
   },
   retry: { id: "directory.navigation.retry", message: "Retry" },
   more: { id: "directory.navigation.more", message: "Load more folders" },
-  selected: { id: "directory.navigation.selected", message: "{count} folders selected" },
+  selected: {
+    id: "directory.navigation.selected",
+    message: "{count, plural, one {# folder selected} other {# folders selected}}",
+  },
+  selection: { id: "directory.navigation.selection", message: "Selected folders" },
+  deselectFolder: { id: "directory.navigation.deselectFolder", message: "Deselect folder: {name}" },
   clear: { id: "directory.navigation.clear", message: "Clear selection" },
   use: { id: "directory.navigation.use", message: "Use this folder" },
   useMany: { id: "directory.navigation.useMany", message: "Use selected folders" },

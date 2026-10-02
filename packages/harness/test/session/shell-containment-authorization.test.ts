@@ -231,7 +231,7 @@ describe("bash authorization follows containment", () => {
           try {
             const pending = waitForPermission("ses_p3_guarded_uncontained")
             const run = bash
-              .execute({ command: "ls -la", description: "ls" }, { toolCallId: "call_p3_uncontained" })
+              .execute({ command: "ls -la" }, { ...{ toolCallId: "call_p3_uncontained" }, workBrief: "ls" })
               .catch((error: unknown) => error)
             const request = await pending
             expect(request).toBeDefined()
@@ -261,7 +261,10 @@ describe("bash authorization follows containment", () => {
             executed: containedRuns,
           })
           try {
-            await contained.bash.execute({ command: "ls -la", description: "ls" }, { toolCallId: "call_p3_auto_ok" })
+            await contained.bash.execute(
+              { command: "ls -la" },
+              { ...{ toolCallId: "call_p3_auto_ok" }, workBrief: "ls" },
+            )
             const outcome = await contained.executions.get("call_p3_auto_ok")
             expect(outcome?.status).toBe("completed")
             expect(containedRuns).toEqual(["ls -la"])
@@ -278,7 +281,7 @@ describe("bash authorization follows containment", () => {
           })
           try {
             await uncontained.bash
-              .execute({ command: "ls -la", description: "ls" }, { toolCallId: "call_p3_auto_denied" })
+              .execute({ command: "ls -la" }, { ...{ toolCallId: "call_p3_auto_denied" }, workBrief: "ls" })
               .catch((error: unknown) => error)
             const outcome = await uncontained.executions.get("call_p3_auto_denied")
             expect(outcome?.status).toBe("error")

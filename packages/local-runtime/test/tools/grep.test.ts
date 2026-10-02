@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, test } from "bun:test"
 import path from "path"
 import fs from "fs/promises"
 import { GrepTool } from "../../src/tools/grep"
+import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -27,6 +28,34 @@ beforeAll(() =>
 )
 
 describe("tool.grep", () => {
+  test("captures structured hits with the original excerpt and location", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "example.ts"), "first\nconst needle = 42\n")
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          let text = ""
+          const recordActivity: NonNullable<Tool.Context["recordActivity"]> = async (capture) => {
+            text = capture.text
+            return { kind: capture.kind, mediaType: capture.mediaType, truncated: capture.truncated }
+          }
+          const result = await (
+            await GrepTool.init()
+          ).execute({ pattern: "needle", path: tmp.path }, { ...ctx, recordActivity })
+          await Bun.write(path.join(tmp.path, "example.ts"), "new content")
+          expect(result.activityEvidence?.kind).toBe("search")
+          expect(JSON.parse(text)).toMatchObject({
+            hits: [{ path: expect.stringContaining("example.ts"), line: 2, text: "const needle = 42" }],
+          })
+        },
+      })
+    }))
+
   test("basic search", () =>
     runtime.run(async () => {
       if (!rgAvailable) {

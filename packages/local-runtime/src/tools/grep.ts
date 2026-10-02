@@ -73,6 +73,13 @@ export const GrepTool = Tool.define(
       if (finalMatches.length === 0) {
         return {
           title: params.pattern,
+          activityEvidence: await ctx.recordActivity?.({
+            kind: "search",
+            directory: FileView.directory(),
+            mediaType: "application/vnd.synergy.search+json",
+            text: JSON.stringify({ hits: [] }),
+            truncated,
+          }),
           metadata: { matches: 0, truncated, truncatedReason },
           output: truncated
             ? "Search stopped at the output safety limit before a complete match was available. Narrow the path or pattern."
@@ -115,6 +122,21 @@ export const GrepTool = Tool.define(
 
       return {
         title: params.pattern,
+        activityEvidence: await ctx.recordActivity?.({
+          kind: "search",
+          directory: FileView.directory(),
+          mediaType: "application/vnd.synergy.search+json",
+          text: JSON.stringify({
+            hits: finalMatches.slice(0, displayedMatches).map((match) => ({
+              kind: "content",
+              path: match.path,
+              line: match.lineNum,
+              text: match.lineText.slice(0, MAX_LINE_LENGTH),
+              truncated: match.lineText.length > MAX_LINE_LENGTH,
+            })),
+          }),
+          truncated,
+        }),
         metadata: {
           matches: displayedMatches,
           truncated,
@@ -124,5 +146,5 @@ export const GrepTool = Tool.define(
       }
     },
   },
-  { requiresWorkspace: true },
+  { requiresWorkspace: true, activityKind: "search" },
 )

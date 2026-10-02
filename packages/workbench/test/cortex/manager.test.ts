@@ -1861,7 +1861,7 @@ describe.serial("Cortex", () => {
               const taskOutput = await TaskOutputTool.init()
               const ctx = taskOutputContext(parentSession.id)
               for (const mode of ["summary", "progress", "tail"] as const) {
-                const result = await persistTaskOutput(taskOutput, { task_id: task.id, mode }, ctx)
+                const result = await persistTaskOutput(taskOutput, { taskId: task.id, mode }, ctx)
 
                 expect(result.metadata.status).toBe("completed")
                 expect(await SessionInbox.list(parentSession.id)).toHaveLength(1)
@@ -1904,7 +1904,7 @@ describe.serial("Cortex", () => {
                 expect((await waitUntilCompleted(task.id))?.status).toBe("completed")
                 expect(await waitForNotification(parentSession.id, task.id)).toBeDefined()
 
-                const result = await persistTaskOutput(taskOutput, { task_id: task.id, mode }, ctx)
+                const result = await persistTaskOutput(taskOutput, { taskId: task.id, mode }, ctx)
 
                 expect(result.metadata.status).toBe("completed")
                 expect(result.output).toContain("--- Result ---")
@@ -1951,7 +1951,7 @@ describe.serial("Cortex", () => {
               const taskOutput = await TaskOutputTool.init()
               const result = await persistTaskOutput(
                 taskOutput,
-                { task_id: task.id, mode: "full" },
+                { taskId: task.id, mode: "full" },
                 taskOutputContext(parentSession.id),
               )
 
@@ -1994,7 +1994,7 @@ describe.serial("Cortex", () => {
               const taskOutput = await TaskOutputTool.init()
               const result = await persistTaskOutput(
                 taskOutput,
-                { task_id: task.id, mode: "progress" },
+                { taskId: task.id, mode: "progress" },
                 taskOutputContext(parentSession.id),
               )
 
@@ -2050,7 +2050,7 @@ describe.serial("Cortex", () => {
               const taskOutput = await TaskOutputTool.init()
               await persistTaskOutput(
                 taskOutput,
-                { task_id: first.id, mode: "full" },
+                { taskId: first.id, mode: "full" },
                 taskOutputContext(parentSession.id),
               )
 
@@ -2140,8 +2140,8 @@ describe.serial("Cortex", () => {
               const taskOutput = await TaskOutputTool.init()
               const ctx = taskOutputContext(parentSession.id)
               const results = await Promise.all([
-                persistTaskOutput(taskOutput, { task_id: first.id, mode: "full" }, ctx),
-                persistTaskOutput(taskOutput, { task_id: second.id, mode: "full" }, ctx),
+                persistTaskOutput(taskOutput, { taskId: first.id, mode: "full" }, ctx),
+                persistTaskOutput(taskOutput, { taskId: second.id, mode: "full" }, ctx),
               ])
               const combinedOutput = results.map((result) => result.output).join("\n")
               expect(combinedOutput).toContain(`batch result ${first.sessionID}`)

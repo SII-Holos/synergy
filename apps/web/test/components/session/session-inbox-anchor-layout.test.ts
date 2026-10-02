@@ -13,7 +13,7 @@ afterAll(async () => {
   await browser?.close()
 })
 
-async function mountComposerFixture(width: number, dockBand: number): Promise<Page> {
+async function mountComposerFixture(width: number, dockBand: number, latest?: { columnWidth: number }): Promise<Page> {
   const page = await browser!.newPage({ viewport: { width, height: 600 } })
   await page.setContent(`
     <style>
@@ -21,11 +21,13 @@ async function mountComposerFixture(width: number, dockBand: number): Promise<Pa
       ${inboxCss}
       body { margin: 0; font-family: sans-serif; }
     </style>
+    <div style="width: ${latest?.columnWidth ?? width}px; ${latest ? "container-type: inline-size;" : ""}">
     <div
       data-dock
       style="position: relative; display: flex; flex-direction: column; padding-top: ${dockBand}px; width: 100%;"
     >
       <div data-wrap style="position: relative; width: 100%;">
+        ${latest ? `<button data-latest style="position:absolute;top:-64px;right:${width < 768 ? 16 : 24}px;width:40px;height:40px;">Latest</button>` : ""}
         <div
           data-composer
           style="position: relative; z-index: 1; height: 90px; border-radius: 16px; background: #1b1b1d;"
@@ -40,6 +42,7 @@ async function mountComposerFixture(width: number, dockBand: number): Promise<Pa
           </button>
         </div>
       </div>
+    </div>
     </div>
   `)
   return page
@@ -77,7 +80,7 @@ describe("mobile session inbox trigger placement", () => {
       expect(layout.composerTop - layout.anchorTop).toBeLessThanOrEqual(52)
       expect(layout.anchorBottom).toBeLessThanOrEqual(layout.composerTop - 4)
 
-      // Still fully inside the viewport horizontally (right: 0.75rem).
+      // Still fully inside the viewport horizontally.
       expect(layout.anchorLeft).toBeGreaterThanOrEqual(8)
       expect(layout.anchorRight).toBeLessThanOrEqual(layout.viewportWidth - 8)
     } finally {
@@ -104,4 +107,32 @@ describe("desktop session inbox trigger placement", () => {
       await page.close()
     }
   })
+})
+
+test.each([
+  [320, 320],
+  [375, 375],
+  [1440, 590],
+])("a %i px viewport keeps the inbox clear of return-to-latest in a %i px column", async (width, columnWidth) => {
+  const page = await mountComposerFixture(width, 80, { columnWidth })
+  try {
+    const layout = await page.evaluate(() => {
+      const inbox = document.querySelector(".session-inbox-trigger")!.getBoundingClientRect()
+      const latest = document.querySelector("[data-latest]")!.getBoundingClientRect()
+      return {
+        overlap:
+          inbox.left < latest.right &&
+          inbox.right > latest.left &&
+          inbox.top < latest.bottom &&
+          inbox.bottom > latest.top,
+        gap: latest.left - inbox.right,
+        inboxLeft: inbox.left,
+      }
+    })
+    expect(layout.overlap).toBe(false)
+    expect(layout.gap).toBeGreaterThanOrEqual(8)
+    expect(layout.inboxLeft).toBeGreaterThanOrEqual(8)
+  } finally {
+    await page.close()
+  }
 })

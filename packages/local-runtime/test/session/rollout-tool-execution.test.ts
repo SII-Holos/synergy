@@ -74,17 +74,20 @@ test("bash records stdout and stderr before its bounded display buffer", () =>
           LocalBashBackend.execute(
             {
               command: `${quote(process.execPath)} -e ${quote(script)}`,
-              description: "Output capture fixture",
+
               yieldSeconds: 0,
             },
             {
-              sessionID: "fixture",
-              messageID: "fixture",
-              agent: "test",
-              abort: new AbortController().signal,
-              metadata() {},
-              async ask() {},
-              openProcessEvidence: RolloutTool.openProcess,
+              ...{
+                sessionID: "fixture",
+                messageID: "fixture",
+                agent: "test",
+                abort: new AbortController().signal,
+                metadata() {},
+                async ask() {},
+                openProcessEvidence: RolloutTool.openProcess,
+              },
+              workBrief: "Output capture fixture",
             },
           ),
         )

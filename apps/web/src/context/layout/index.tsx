@@ -67,6 +67,7 @@ export function getAvatarColors(key?: string) {
 type SessionView = {
   scroll: Record<string, SessionScroll>
   reviewOpen?: string[]
+  activityOpen?: Record<string, boolean>
 }
 
 type WorkbenchSurfaceLayoutState = WorkbenchSurfaceState
@@ -1412,6 +1413,15 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         scroll.seed(sessionKey)
         const s = createMemo(() => store.sessionView[sessionKey] ?? { scroll: {} })
         return {
+          activity: {
+            getExpanded(key: string) {
+              return s().activityOpen?.[key]
+            },
+            setExpanded(key: string, expanded: boolean) {
+              if (!store.sessionView[sessionKey]) setStore("sessionView", sessionKey, { scroll: {} })
+              setStore("sessionView", sessionKey, "activityOpen", (previous) => ({ ...previous, [key]: expanded }))
+            },
+          },
           scroll(tab: string) {
             return scroll.scroll(sessionKey, tab)
           },

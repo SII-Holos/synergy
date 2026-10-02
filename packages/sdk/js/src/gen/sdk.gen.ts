@@ -743,6 +743,10 @@ import type {
   SessionThinkingSelection,
   SessionTodoErrors,
   SessionTodoResponses,
+  SessionToolActivityErrors,
+  SessionToolActivityResponses,
+  SessionTurnExecutionErrors,
+  SessionTurnExecutionResponses,
   SessionUnrollbackErrors,
   SessionUnrollbackResponses,
   SessionUpdateErrors,
@@ -2606,6 +2610,83 @@ export class Session extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<SessionIndexResponses, SessionIndexErrors, ThrowOnError>({
       url: "/session/index",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read root task execution states
+   */
+  public turnExecution<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      rootIDs?: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "rootIDs" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionTurnExecutionResponses,
+      SessionTurnExecutionErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/turn-execution",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Read one tool activity result
+   */
+  public toolActivity<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID: string
+      partID: string
+      directory?: string
+      scopeID?: string
+      callID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+            { in: "path", key: "partID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "callID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionToolActivityResponses, SessionToolActivityErrors, ThrowOnError>({
+      url: "/session/{sessionID}/message/{messageID}/part/{partID}/activity",
       ...options,
       ...params,
     })

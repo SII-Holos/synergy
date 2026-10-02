@@ -56,163 +56,167 @@ function mergeRanges(ranges: MatchRange[], totalLines: number): MatchRange[] {
   return merged
 }
 
-export const NoteSearchTool = Tool.define("note_search", {
-  description: DESCRIPTION,
-  parameters,
-  async execute(params: z.infer<typeof parameters>) {
-    const currentScopeID = ScopeContext.current.scope.id
-    const search = await SessionPluginHooks.trigger(
-      "note.search.before",
-      {
-        scopeID: currentScopeID,
-      },
-      {
-        pattern: params.pattern,
-        scope: params.scope,
-        since: params.since,
-        before: params.before,
-        tags: params.tags,
-        pinned: params.pinned,
-        kind: params.kind,
-        archived: params.archived,
-      },
-    )
+export const NoteSearchTool = Tool.define(
+  "note_search",
+  {
+    description: DESCRIPTION,
+    parameters,
+    async execute(params: z.infer<typeof parameters>) {
+      const currentScopeID = ScopeContext.current.scope.id
+      const search = await SessionPluginHooks.trigger(
+        "note.search.before",
+        {
+          scopeID: currentScopeID,
+        },
+        {
+          pattern: params.pattern,
+          scope: params.scope,
+          since: params.since,
+          before: params.before,
+          tags: params.tags,
+          pinned: params.pinned,
+          kind: params.kind,
+          archived: params.archived,
+        },
+      )
 
-    let regex: RegExp
-    try {
-      regex = new RegExp(search.pattern, "gi")
-    } catch (err) {
-      return {
-        title: search.pattern,
-        output: `Invalid regex pattern: ${err instanceof Error ? err.message : String(err)}`,
-        metadata: { matchCount: 0, noteCount: 0, pattern: search.pattern } as Record<string, any>,
-      }
-    }
-
-    let allNotes =
-      search.scope === "all"
-        ? await NoteStore.listMetaWithGlobal(currentScopeID)
-        : search.scope === "global"
-          ? await NoteStore.listMeta("global")
-          : await NoteStore.listMeta(currentScopeID)
-
-    allNotes = NoteStore.filterArchive(allNotes, search.archived ?? params.archived)
-
-    const sinceMs = search.since ? new Date(search.since).getTime() : undefined
-    const beforeMs = search.before ? new Date(search.before).getTime() : undefined
-
-    const filtered = allNotes.filter((note) => {
-      if (sinceMs && note.time.updated < sinceMs) return false
-      if (beforeMs && note.time.updated >= beforeMs) return false
-      if (search.tags && search.tags.length > 0) {
-        if (!search.tags.every((tag) => note.tags.includes(tag))) return false
-      }
-      if (search.pinned !== undefined && note.pinned !== search.pinned) return false
-      if (search.kind && search.kind !== "all" && (note.kind ?? "note") !== search.kind) return false
-      return true
-    })
-
-    // Phase 1: pre-filter using searchText from index (pre-computed, in-memory)
-    const candidates = filtered.filter((note) => {
-      regex.lastIndex = 0
-      if (regex.test(note.title)) return true
-      regex.lastIndex = 0
-      // searchText is always populated after migration; no fallback needed
-      const text = (note as { searchText?: string }).searchText ?? ""
-      return regex.test(text)
-    })
-
-    // Phase 2: load full content for matched notes, generate context lines
-    const sections: string[] = []
-    let totalMatches = 0
-    let matchedNotes = 0
-    const matched: any[] = []
-
-    for (const meta of candidates) {
-      if (matchedNotes >= MAX_NOTES || totalMatches >= MAX_MATCHES) break
-
-      const full = await NoteStore.getAny(currentScopeID, meta.id)
-      const markdown = NoteMarkdown.toMarkdown(full.content)
-      const lines = markdown.split("\n")
-
-      regex.lastIndex = 0
-      const titleMatch = regex.test(meta.title)
-
-      const matchingLineIndices: number[] = []
-      for (let i = 0; i < lines.length; i++) {
-        regex.lastIndex = 0
-        if (regex.test(lines[i])) {
-          matchingLineIndices.push(i)
+      let regex: RegExp
+      try {
+        regex = new RegExp(search.pattern, "gi")
+      } catch (err) {
+        return {
+          title: search.pattern,
+          output: `Invalid regex pattern: ${err instanceof Error ? err.message : String(err)}`,
+          metadata: { matchCount: 0, noteCount: 0, pattern: search.pattern } as Record<string, any>,
         }
       }
 
-      if (!titleMatch && matchingLineIndices.length === 0) continue
+      let allNotes =
+        search.scope === "all"
+          ? await NoteStore.listMetaWithGlobal(currentScopeID)
+          : search.scope === "global"
+            ? await NoteStore.listMeta("global")
+            : await NoteStore.listMeta(currentScopeID)
 
-      matched.push(full)
-      matchedNotes++
-      const contentMatchCount = Math.min(matchingLineIndices.length, MAX_MATCHES - totalMatches)
-      totalMatches += contentMatchCount
+      allNotes = NoteStore.filterArchive(allNotes, search.archived ?? params.archived)
 
-      const header: string[] = [`[${meta.id}] "${meta.title}"`]
-      if ((meta.kind ?? "note") === "blueprint") header.push("[blueprint]")
-      if (meta.pinned) header.push("[pinned]")
-      if (meta.global) header.push("[global]")
+      const sinceMs = search.since ? new Date(search.since).getTime() : undefined
+      const beforeMs = search.before ? new Date(search.before).getTime() : undefined
 
-      const sectionLines: string[] = [header.join(" ")]
+      const filtered = allNotes.filter((note) => {
+        if (sinceMs && note.time.updated < sinceMs) return false
+        if (beforeMs && note.time.updated >= beforeMs) return false
+        if (search.tags && search.tags.length > 0) {
+          if (!search.tags.every((tag) => note.tags.includes(tag))) return false
+        }
+        if (search.pinned !== undefined && note.pinned !== search.pinned) return false
+        if (search.kind && search.kind !== "all" && (note.kind ?? "note") !== search.kind) return false
+        return true
+      })
 
-      if (matchingLineIndices.length === 0) {
-        sectionLines.push("  (title match)")
-      } else {
-        const cappedIndices = matchingLineIndices.slice(0, contentMatchCount)
-        const ranges: MatchRange[] = cappedIndices.map((idx) => ({
-          start: Math.max(0, idx - CONTEXT_LINES),
-          end: Math.min(lines.length - 1, idx + CONTEXT_LINES),
-        }))
-        const merged = mergeRanges(ranges, lines.length)
+      // Phase 1: pre-filter using searchText from index (pre-computed, in-memory)
+      const candidates = filtered.filter((note) => {
+        regex.lastIndex = 0
+        if (regex.test(note.title)) return true
+        regex.lastIndex = 0
+        // searchText is always populated after migration; no fallback needed
+        const text = (note as { searchText?: string }).searchText ?? ""
+        return regex.test(text)
+      })
 
-        for (const range of merged) {
-          for (let i = range.start; i <= range.end; i++) {
-            const lineNum = (i + 1).toString()
-            sectionLines.push(`  ${lineNum}: ${lines[i]}`)
+      // Phase 2: load full content for matched notes, generate context lines
+      const sections: string[] = []
+      let totalMatches = 0
+      let matchedNotes = 0
+      const matched: any[] = []
+
+      for (const meta of candidates) {
+        if (matchedNotes >= MAX_NOTES || totalMatches >= MAX_MATCHES) break
+
+        const full = await NoteStore.getAny(currentScopeID, meta.id)
+        const markdown = NoteMarkdown.toMarkdown(full.content)
+        const lines = markdown.split("\n")
+
+        regex.lastIndex = 0
+        const titleMatch = regex.test(meta.title)
+
+        const matchingLineIndices: number[] = []
+        for (let i = 0; i < lines.length; i++) {
+          regex.lastIndex = 0
+          if (regex.test(lines[i])) {
+            matchingLineIndices.push(i)
           }
         }
+
+        if (!titleMatch && matchingLineIndices.length === 0) continue
+
+        matched.push(full)
+        matchedNotes++
+        const contentMatchCount = Math.min(matchingLineIndices.length, MAX_MATCHES - totalMatches)
+        totalMatches += contentMatchCount
+
+        const header: string[] = [`[${meta.id}] "${meta.title}"`]
+        if ((meta.kind ?? "note") === "blueprint") header.push("[blueprint]")
+        if (meta.pinned) header.push("[pinned]")
+        if (meta.global) header.push("[global]")
+
+        const sectionLines: string[] = [header.join(" ")]
+
+        if (matchingLineIndices.length === 0) {
+          sectionLines.push("  (title match)")
+        } else {
+          const cappedIndices = matchingLineIndices.slice(0, contentMatchCount)
+          const ranges: MatchRange[] = cappedIndices.map((idx) => ({
+            start: Math.max(0, idx - CONTEXT_LINES),
+            end: Math.min(lines.length - 1, idx + CONTEXT_LINES),
+          }))
+          const merged = mergeRanges(ranges, lines.length)
+
+          for (const range of merged) {
+            for (let i = range.start; i <= range.end; i++) {
+              const lineNum = (i + 1).toString()
+              sectionLines.push(`  ${lineNum}: ${lines[i]}`)
+            }
+          }
+        }
+
+        sections.push(sectionLines.join("\n"))
       }
 
-      sections.push(sectionLines.join("\n"))
-    }
+      // Fire plugin hook after section assembly (plugins may mutate matched notes)
+      await SessionPluginHooks.trigger(
+        "note.search.after",
+        {
+          scopeID: currentScopeID,
+          pattern: search.pattern,
+        },
+        {
+          notes: matched,
+        },
+      )
 
-    // Fire plugin hook after section assembly (plugins may mutate matched notes)
-    await SessionPluginHooks.trigger(
-      "note.search.after",
-      {
-        scopeID: currentScopeID,
-        pattern: search.pattern,
-      },
-      {
-        notes: matched,
-      },
-    )
+      if (sections.length === 0) {
+        return {
+          title: search.pattern,
+          output: "No notes match the pattern.",
+          metadata: { matchCount: 0, noteCount: 0, pattern: search.pattern } as Record<string, any>,
+        }
+      }
 
-    if (sections.length === 0) {
+      const summary = `Found ${totalMatches} match${totalMatches === 1 ? "" : "es"} across ${matchedNotes} note${matchedNotes === 1 ? "" : "s"}:`
+      const output = summary + "\n\n" + sections.join("\n\n")
+
       return {
         title: search.pattern,
-        output: "No notes match the pattern.",
-        metadata: { matchCount: 0, noteCount: 0, pattern: search.pattern } as Record<string, any>,
+        output,
+        metadata: {
+          matchCount: totalMatches,
+          noteCount: matchedNotes,
+          pattern: search.pattern,
+          kind: search.kind,
+        } as Record<string, any>,
       }
-    }
-
-    const summary = `Found ${totalMatches} match${totalMatches === 1 ? "" : "es"} across ${matchedNotes} note${matchedNotes === 1 ? "" : "s"}:`
-    const output = summary + "\n\n" + sections.join("\n\n")
-
-    return {
-      title: search.pattern,
-      output,
-      metadata: {
-        matchCount: totalMatches,
-        noteCount: matchedNotes,
-        pattern: search.pattern,
-        kind: search.kind,
-      } as Record<string, any>,
-    }
+    },
   },
-})
+  { activityKind: "object" },
+)

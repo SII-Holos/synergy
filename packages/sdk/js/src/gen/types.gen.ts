@@ -5977,7 +5977,7 @@ export type Config = {
    */
   theme?: string
   /**
-   * How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced)
+   * Execution process detail: full = expanded process, balanced = current stage with completed process collapsed, minimal = compact progress. All modes use the same process view (default: balanced)
    */
   activityDisplay?: "full" | "balanced" | "minimal"
   /**
@@ -5990,7 +5990,7 @@ export type Config = {
   defaultSessionEnvironmentProfile?: string | null
   keybinds?: KeybindsConfig
   /**
-   * Show live reasoning in a compact single-line viewport
+   * Show a compact reasoning preview in the execution process (default: false)
    */
   compactReasoning?: boolean
   quick_switcher?: QuickSwitcherConfig
@@ -7318,6 +7318,15 @@ export type SessionNavResponse = {
   total: number
 }
 
+export type TurnExecutionState = {
+  rootID: string
+  status: "preparing" | "running" | "approval" | "completed" | "failed" | "stopped" | "interrupted"
+  startedAt: number
+  endedAt?: number
+  segmentID?: string
+  stoppedAt: Array<number>
+}
+
 export type RolloutArtifactRef = {
   version: 1
   id: string
@@ -7326,6 +7335,224 @@ export type RolloutArtifactRef = {
   chunks: number
   sha256: string | null
   status: "partial" | "complete"
+}
+
+export type ToolActivityEvidence = {
+  kind: "file-read" | "file-change" | "command" | "search" | "object" | "media" | "structured"
+  resource?: {
+    path?: string
+    workspaceID?: string
+    generation?: number
+    objectID?: string
+  }
+  range?: {
+    startLine: number
+    lineCount: number
+    totalLines?: number
+  }
+  ranges?: Array<{
+    startLine: number
+    lineCount: number
+  }>
+  content?: RolloutArtifactRef
+  mediaType?: string
+  truncated?: boolean
+  processID?: string
+  directory?: string
+  exitCode?: number | null
+  signal?: string | null
+  background?: boolean
+}
+
+export type ToolStatePending = {
+  status: "pending"
+  input: {
+    [key: string]: unknown
+  }
+  raw: string
+  metadata?: {
+    [key: string]: unknown
+  }
+}
+
+export type ToolStateGenerating = {
+  status: "generating"
+  input: {
+    [key: string]: unknown
+  }
+  raw: string
+  charsReceived: number
+  metadata?: {
+    [key: string]: unknown
+  }
+}
+
+export type ToolStateInput =
+  | {
+      [key: string]: unknown
+    }
+  | Array<unknown>
+  | string
+  | number
+  | boolean
+  | null
+
+export type ToolStateRunning = {
+  status: "running"
+  input: ToolStateInput
+  title?: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  time: {
+    start: number
+  }
+}
+
+export type AttachmentSourceText = {
+  value: string
+  start: number
+  end: number
+}
+
+export type FileSource = {
+  text: AttachmentSourceText
+  type: "file"
+  path: string
+}
+
+export type Range = {
+  start: {
+    line: number
+    character: number
+  }
+  end: {
+    line: number
+    character: number
+  }
+}
+
+export type SymbolSource = {
+  text: AttachmentSourceText
+  type: "symbol"
+  path: string
+  range: Range
+  name: string
+  kind: number
+}
+
+export type ResourceSource = {
+  text: AttachmentSourceText
+  type: "resource"
+  clientName: string
+  uri: string
+}
+
+export type AttachmentSource = FileSource | SymbolSource | ResourceSource
+
+export type AttachmentPresentation = {
+  hidden?: boolean
+  renderer?: "image" | "video" | "audio" | "thumbnail" | "file"
+  size?: "original" | "small" | "medium" | "large"
+  crop?: boolean
+}
+
+export type AttachmentModelPolicy =
+  | {
+      mode: "summary"
+      summary?: string
+    }
+  | {
+      mode: "content"
+      text?: string
+    }
+  | {
+      mode: "provider-file"
+      summary?: string
+    }
+  | {
+      mode: "none"
+    }
+
+export type AttachmentPart = {
+  id: string
+  sessionID: string
+  messageID: string
+  type: "attachment"
+  artifact?: RolloutArtifactRef
+  mime: string
+  filename?: string
+  url: string
+  localPath?: string
+  source?: AttachmentSource
+  presentation?: AttachmentPresentation
+  model?: AttachmentModelPolicy
+  metadata?: {
+    [key: string]: unknown
+  }
+}
+
+export type ToolStateCompleted = {
+  status: "completed"
+  input: ToolStateInput
+  output: string
+  outputBytes?: number
+  outputArtifact?: RolloutArtifactRef
+  outputTruncated?: boolean
+  title: string
+  metadata: {
+    [key: string]: unknown
+  }
+  time: {
+    start: number
+    end: number
+    compacted?: number
+  }
+  attachments?: Array<AttachmentPart>
+}
+
+export type ToolStateError = {
+  status: "error"
+  input: ToolStateInput
+  error: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  time: {
+    start: number
+    end: number
+  }
+}
+
+export type ToolState = ToolStatePending | ToolStateGenerating | ToolStateRunning | ToolStateCompleted | ToolStateError
+
+export type ToolPart = {
+  id: string
+  sessionID: string
+  messageID: string
+  type: "tool"
+  callID: string
+  tool: string
+  workBrief?: string
+  inputShape?: "flat" | "envelope"
+  activityEvidence?: ToolActivityEvidence
+  state: ToolState
+  metadata?: {
+    [key: string]: unknown
+  }
+}
+
+export type ToolActivityResult = {
+  part: ToolPart
+  text?: string
+  evidenceMissing: boolean
+  truncated?: boolean
+  process?: {
+    status: "running" | "completed" | "interrupted" | "failed"
+    exitCode?: number | null
+    signal?: string | null
+    endedAt?: number
+  }
 }
 
 export type ExperimentOverrides = {
@@ -8194,71 +8421,6 @@ export type SessionAbortResult = {
   paused: boolean
 }
 
-export type AttachmentSourceText = {
-  value: string
-  start: number
-  end: number
-}
-
-export type FileSource = {
-  text: AttachmentSourceText
-  type: "file"
-  path: string
-}
-
-export type Range = {
-  start: {
-    line: number
-    character: number
-  }
-  end: {
-    line: number
-    character: number
-  }
-}
-
-export type SymbolSource = {
-  text: AttachmentSourceText
-  type: "symbol"
-  path: string
-  range: Range
-  name: string
-  kind: number
-}
-
-export type ResourceSource = {
-  text: AttachmentSourceText
-  type: "resource"
-  clientName: string
-  uri: string
-}
-
-export type AttachmentSource = FileSource | SymbolSource | ResourceSource
-
-export type AttachmentPresentation = {
-  hidden?: boolean
-  renderer?: "image" | "video" | "audio" | "thumbnail" | "file"
-  size?: "original" | "small" | "medium" | "large"
-  crop?: boolean
-}
-
-export type AttachmentModelPolicy =
-  | {
-      mode: "summary"
-      summary?: string
-    }
-  | {
-      mode: "content"
-      text?: string
-    }
-  | {
-      mode: "provider-file"
-      summary?: string
-    }
-  | {
-      mode: "none"
-    }
-
 export type OriginUser = {
   type: "user" | "cortex" | "agenda" | "blueprint" | "channel" | "compaction" | "agent" | "plugin" | "system"
   sessionID?: string
@@ -8727,112 +8889,6 @@ export type ReasoningPart = {
   time: {
     start: number
     end?: number
-  }
-}
-
-export type AttachmentPart = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "attachment"
-  artifact?: RolloutArtifactRef
-  mime: string
-  filename?: string
-  url: string
-  localPath?: string
-  source?: AttachmentSource
-  presentation?: AttachmentPresentation
-  model?: AttachmentModelPolicy
-  metadata?: {
-    [key: string]: unknown
-  }
-}
-
-export type ToolStatePending = {
-  status: "pending"
-  input: {
-    [key: string]: unknown
-  }
-  raw: string
-  metadata?: {
-    [key: string]: unknown
-  }
-}
-
-export type ToolStateGenerating = {
-  status: "generating"
-  input: {
-    [key: string]: unknown
-  }
-  raw: string
-  charsReceived: number
-  metadata?: {
-    [key: string]: unknown
-  }
-}
-
-export type ToolStateRunning = {
-  status: "running"
-  input: {
-    [key: string]: unknown
-  }
-  title?: string
-  metadata?: {
-    [key: string]: unknown
-  }
-  time: {
-    start: number
-  }
-}
-
-export type ToolStateCompleted = {
-  status: "completed"
-  input: {
-    [key: string]: unknown
-  }
-  output: string
-  outputBytes?: number
-  outputArtifact?: RolloutArtifactRef
-  outputTruncated?: boolean
-  title: string
-  metadata: {
-    [key: string]: unknown
-  }
-  time: {
-    start: number
-    end: number
-    compacted?: number
-  }
-  attachments?: Array<AttachmentPart>
-}
-
-export type ToolStateError = {
-  status: "error"
-  input: {
-    [key: string]: unknown
-  }
-  error: string
-  metadata?: {
-    [key: string]: unknown
-  }
-  time: {
-    start: number
-    end: number
-  }
-}
-
-export type ToolState = ToolStatePending | ToolStateGenerating | ToolStateRunning | ToolStateCompleted | ToolStateError
-
-export type ToolPart = {
-  id: string
-  sessionID: string
-  messageID: string
-  type: "tool"
-  callID: string
-  tool: string
-  state: ToolState
-  metadata?: {
-    [key: string]: unknown
   }
 }
 
@@ -11937,6 +11993,25 @@ export type EventUsageUpdated = {
   }
 }
 
+export type EventSessionExecutionUpdated = {
+  type: "session.execution.updated"
+  properties: {
+    sessionID: string
+    rootID: string
+  }
+}
+
+export type EventSessionToolActivity = {
+  type: "session.tool.activity"
+  properties: {
+    sessionID: string
+    messageID: string
+    callID: string
+    processID: string
+    revision: number
+  }
+}
+
 export type EventSessionInputProgress = {
   type: "session.input.progress"
   properties: SessionInputProgress
@@ -12497,6 +12572,8 @@ export type Event =
   | EventPermissionAsked
   | EventPermissionReplied
   | EventUsageUpdated
+  | EventSessionExecutionUpdated
+  | EventSessionToolActivity
   | EventSessionInputProgress
   | EventSessionUpdated
   | EventSessionDeleted
@@ -16733,6 +16810,87 @@ export type SessionIndexResponses = {
 }
 
 export type SessionIndexResponse = SessionIndexResponses[keyof SessionIndexResponses]
+
+export type SessionTurnExecutionData = {
+  body?: {
+    rootIDs: Array<string>
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/turn-execution"
+}
+
+export type SessionTurnExecutionErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionTurnExecutionError = SessionTurnExecutionErrors[keyof SessionTurnExecutionErrors]
+
+export type SessionTurnExecutionResponses = {
+  /**
+   * Execution states for the requested roots
+   */
+  200: Array<TurnExecutionState>
+}
+
+export type SessionTurnExecutionResponse = SessionTurnExecutionResponses[keyof SessionTurnExecutionResponses]
+
+export type SessionToolActivityData = {
+  body?: never
+  path: {
+    sessionID: string
+    messageID: string
+    partID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    callID?: string
+  }
+  url: "/session/{sessionID}/message/{messageID}/part/{partID}/activity"
+}
+
+export type SessionToolActivityErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionToolActivityError = SessionToolActivityErrors[keyof SessionToolActivityErrors]
+
+export type SessionToolActivityResponses = {
+  /**
+   * Captured result of the selected tool invocation
+   */
+  200: ToolActivityResult
+}
+
+export type SessionToolActivityResponse = SessionToolActivityResponses[keyof SessionToolActivityResponses]
 
 export type SessionCancelRunData = {
   body?: never

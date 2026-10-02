@@ -317,21 +317,6 @@ describe("CSS Token Integrity", () => {
     expect(copyButton).toContain("background: transparent")
   })
 
-  test("session turn timeline spacing uses semantic rhythm tiers", async () => {
-    const css = await readFileSafe("src/components/session-turn.css")
-    const timelineStart = css.indexOf('[data-slot="session-turn-timeline-item"] +')
-    const timelineEnd = css.indexOf('[data-slot="session-turn-timeline-item"] [data-component="attachment-gallery"]')
-    expect(timelineStart).toBeGreaterThan(-1)
-    expect(timelineEnd).toBeGreaterThan(timelineStart)
-
-    const rhythm = css.slice(timelineStart, timelineEnd)
-    expect(rhythm).toContain("margin-top: 6px;")
-    expect(rhythm).toContain("margin-top: 8px;")
-    expect(rhythm).toContain("margin-top: 10px;")
-    expect(rhythm).toContain("margin-top: 12px;")
-    expect(rhythm).not.toMatch(/margin-top:\s*[345]px/)
-  })
-
   test("icon-button.css has no commented-out old code blocks", async () => {
     const css = await readFileSafe("src/components/icon-button.css")
     const commentBlockCount = (css.match(/\/\*\s*\n/g) || []).length

@@ -58,17 +58,20 @@ test.skipIf(process.platform !== "win32")(
           const result = await LocalBashBackend.execute(
             {
               command: `for %i in (one two) do @echo %i>>"${filename}"`,
-              description: "cmd quoting probe",
+
               yieldSeconds: 10,
             },
             {
-              sessionID: "cmd-owner",
-              messageID: "message",
-              agent: "synergy",
-              abort: new AbortController().signal,
-              metadata() {},
-              async ask() {},
-              extra: { shellBypassSandbox: true },
+              ...{
+                sessionID: "cmd-owner",
+                messageID: "message",
+                agent: "synergy",
+                abort: new AbortController().signal,
+                metadata() {},
+                async ask() {},
+                extra: { shellBypassSandbox: true },
+              },
+              workBrief: "cmd quoting probe",
             },
           )
           expect(result.metadata.exit).toBe(0)

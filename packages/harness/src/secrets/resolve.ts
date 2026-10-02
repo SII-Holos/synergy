@@ -49,26 +49,31 @@ export namespace SecretResolve {
    * visible marker and lets the operation proceed; a removed entry leaves
    * the token literal, matching what the model saw.
    */
-  export async function transformArgs<T extends Record<string, unknown>>(args: T, input: Input): Promise<Outcome<T>> {
+  export async function transformArgs<T>(args: T, input: Input): Promise<Outcome<T>> {
     const outcome: Outcome<T> = { args, resolved: 0, denied: 0 }
-    if (input.tool === "bash" && typeof args.command === "string" && args.command.includes("⟦sec:")) {
-      const bash = await resolveBashCommand(args.command, input)
-      if (bash.command !== args.command) outcome.args = { ...args, command: bash.command }
+    const object =
+      args && typeof args === "object" && !Array.isArray(args) ? (args as Record<string, unknown>) : undefined
+    if (input.tool === "bash" && typeof object?.command === "string" && object.command.includes("⟦sec:")) {
+      const bash = await resolveBashCommand(object.command, input)
+      if (bash.command !== object.command) outcome.args = { ...object, command: bash.command } as T
       if (bash.secretEnv) outcome.secretEnv = bash.secretEnv
       outcome.resolved = bash.resolved
       outcome.denied = bash.denied
       return outcome
     }
-    if (!JSON.stringify(args).includes("⟦sec:")) return outcome
+    if (!JSON.stringify(args)?.includes("⟦sec:")) return outcome
     const clone = structuredClone(args)
     const counts = await substituteDeep(clone, input)
-    outcome.args = clone
+    outcome.args = counts.value as T
     outcome.resolved = counts.resolved
     outcome.denied = counts.denied
     return outcome
   }
 
-  async function substituteDeep(node: unknown, input: Input): Promise<{ resolved: number; denied: number }> {
+  async function substituteDeep(
+    node: unknown,
+    input: Input,
+  ): Promise<{ value: unknown; resolved: number; denied: number }> {
     let resolved = 0
     let denied = 0
     const visit = async (value: unknown): Promise<unknown> => {
@@ -91,8 +96,8 @@ export namespace SecretResolve {
       }
       return value
     }
-    await visit(node)
-    return { resolved, denied }
+    const value = await visit(node)
+    return { value, resolved, denied }
   }
 
   interface Counts {

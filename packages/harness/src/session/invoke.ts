@@ -1,3 +1,4 @@
+import { ToolIntent } from "./tool-intent"
 import { RuntimeContext } from "../lifecycle/context"
 import { SessionModelSelection } from "./model-selection"
 import { SessionExecutionContributions } from "./execution-contributions"
@@ -962,7 +963,7 @@ export namespace SessionInvoke {
               // This ordering maximizes prompt caching by keeping static content first.
               let systemParts: string[] = []
               let systemCacheBreakpoint: number | undefined
-              let lateSystemParts: string[] = []
+              let lateSystemParts: string[] = [ToolIntent.guidance]
 
               // Layer 1: Static — AGENTS.md instructions (stable within session)
               systemParts.push(...customParts)
@@ -1366,6 +1367,7 @@ export namespace SessionInvoke {
                 activeToolIDs: resolvedTools.activeToolIDs,
                 codexReplay,
                 autoExpandable: resolvedTools.autoExpandable,
+                intentBindings: resolvedTools.intentBindings,
                 resolverInput: {
                   agent,
                   model,

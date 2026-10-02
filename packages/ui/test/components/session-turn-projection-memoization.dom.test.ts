@@ -107,14 +107,14 @@ describe("SessionTurn streaming projection memoization", () => {
     expect(doneTextRow()).toBe(textRow)
   })
 
-  test("settling re-projects the settled message once and reveals the copy action", async () => {
+  test("settling changes disclosure without re-projecting historical tools", async () => {
     expect(await waitUntil(() => harness.getToolLookups() > 0)).toBe(true)
     expect(document.querySelector('[data-slot="session-turn-timeline-item"][data-kind="copy-markdown"]')).toBeNull()
 
     const lookupsBeforeSettle = harness.getToolLookups()
     harness.setSessionStatus({ type: "idle" })
 
-    expect(await waitUntil(() => harness.getToolLookups() === lookupsBeforeSettle + 1)).toBe(true)
+    expect(await waitUntil(() => harness.getToolLookups() === lookupsBeforeSettle)).toBe(true)
     expect(document.querySelector('[data-slot="session-turn-timeline-item"][data-kind="copy-markdown"]')).not.toBeNull()
   })
 })

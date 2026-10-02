@@ -1,4 +1,5 @@
 import { usePluginHost } from "@/plugin/host"
+import { useParams } from "@solidjs/router"
 import { toolReviewSource } from "./tool-review-target"
 import { onCleanup, onMount, type ParentProps } from "solid-js"
 import {
@@ -6,6 +7,7 @@ import {
   type OpenableResource,
   type ResourceOpenOptions,
   type ToolReviewTarget,
+  type ToolActivityTarget,
 } from "@ericsanchezok/synergy-ui/context/resource-open"
 import { ImagePreview, type ImagePreviewImage } from "@ericsanchezok/synergy-ui/image-preview"
 import {
@@ -21,6 +23,7 @@ import { useFile } from "@/context/file"
 import { useSDK } from "@/context/sdk"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { attachmentWorkbenchPanelInit } from "@/components/attachment-workbench/model"
+import { executionDetailState } from "@/components/session/execution-detail-model"
 
 function stripQueryAndHash(input: string) {
   const hashIndex = input.indexOf("#")
@@ -84,6 +87,28 @@ export function ResourceOpenProvider(props: ParentProps) {
   const sdk = useSDK()
   const workbench = useWorkbenchPanels()
   const plugins = usePluginHost()
+  const params = useParams()
+
+  const openToolActivity = (target: ToolActivityTarget) => {
+    if (params.id !== target.sessionID) return false
+    void workbench.openPanel("execution-detail", {
+      reuseExisting: true,
+      init: { state: { server: sdk.url, scope: sdk.scopeKey, ...target } },
+    })
+    return true
+  }
+  const isToolActivitySelected = (target: ToolActivityTarget) => {
+    const side = workbench.surface("side")
+    if (!side.opened()) return false
+    const tab = side.tabs().find((tab) => tab.id === side.active() && tab.panelId === "execution-detail")
+    const state = executionDetailState(tab?.state, { server: sdk.url, scope: sdk.scopeKey, sessionID: params.id ?? "" })
+    return (
+      state?.sessionID === target.sessionID &&
+      state.messageID === target.messageID &&
+      state.partID === target.partID &&
+      (!target.callID || state.callID === target.callID)
+    )
+  }
 
   const openToolReview = (target: ToolReviewTarget) => {
     void workbench.openPanel("session-review", {
@@ -176,7 +201,15 @@ export function ResourceOpenProvider(props: ParentProps) {
 
   return (
     <BaseResourceOpenProvider
-      value={{ open, openAttachment, resolveWorkspacePath, openWorkspaceSource, openToolReview }}
+      value={{
+        open,
+        openAttachment,
+        resolveWorkspacePath,
+        openWorkspaceSource,
+        openToolReview,
+        openToolActivity,
+        isToolActivitySelected,
+      }}
     >
       {props.children}
     </BaseResourceOpenProvider>

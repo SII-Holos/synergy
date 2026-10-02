@@ -35,8 +35,9 @@ function aliasConfig(stubPath: string) {
     "@/utils/perf",
     "@/components/workspace/browser/browser-view-effects",
     "@/context/locale",
+    "@/context/sdk",
+    "@/context/session-data-view",
     "@/context/session-optimistic-message",
-    "./session-timeline",
     "./session-transition-card",
   ]
   return stubbed.map((find) => ({ find, replacement: stubPath }))
@@ -84,7 +85,12 @@ beforeAll(async () => {
           i18n: { _: (d: { message?: string; id: string }) => d.message ?? d.id },
           fmt: {},
         })
-        export const SessionTimeline = () => null
+        export const useSDK = () => ({
+          url: "http://fixture", scopeKey: "scope",
+          client: { session: { turnExecution: async () => ({ data: [] }) } },
+          event: { on: () => () => {} },
+        })
+        export const useSessionDataView = () => () => ({ statusFor: () => undefined })
         export const SessionTransitionCard = () => null
         export const messageAllowsCanonicalActions = () => false
       `,
@@ -144,7 +150,7 @@ beforeAll(async () => {
             get onClearHash() { return () => {} },
             get onScheduleScrollSpy() { return () => {} },
             get setScrollRef() { return () => {} },
-            get isDesktop() { return () => false },
+            get isDesktop() { return () => true },
             get scrollToMessage() { return () => {} },
             get anchor() { return (id: string) => "anchor-" + id },
             get terminalHeight() { return () => 100 },
@@ -194,6 +200,15 @@ afterAll(async () => {
 })
 
 describe("conversation row retention", () => {
+  test("keeps the reading column free of a persistent timeline", async () => {
+    await page.evaluate(() => {
+      ;(window as unknown as { __setTimeline: (m: unknown[]) => void }).__setTimeline([
+        { id: "usr_navigation", sessionID: "ses_1", role: "user", time: { created: 1 } },
+      ])
+    })
+    expect(await page.getByRole("navigation", { name: "Conversation timeline" }).count()).toBe(0)
+  })
+
   test("keeps rows mounted across message object replacement and propagates updates", async () => {
     await page.evaluate(
       (msgs) => {

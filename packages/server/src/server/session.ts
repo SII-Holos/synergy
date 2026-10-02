@@ -1,3 +1,5 @@
+import { SessionActivity } from "@ericsanchezok/synergy-harness/session/activity"
+import { TurnExecutionState } from "@ericsanchezok/synergy-harness/session/turn-execution-state"
 import {
   abandonSession,
   continueSession,
@@ -80,6 +82,49 @@ const SessionAbandonResult = z
 
 export const SessionRoute = () =>
   new Hono()
+    .post(
+      "/:sessionID/turn-execution",
+      describeRoute({
+        summary: "Read root task execution states",
+        operationId: "session.turnExecution",
+        tags: ["Session"],
+        responses: {
+          200: {
+            description: "Execution states for the requested roots",
+            content: { "application/json": { schema: resolver(z.array(TurnExecutionState.Schema)) } },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ sessionID: Identifier.schema("session") })),
+      validator("json", z.object({ rootIDs: z.array(Identifier.schema("message")).max(64) })),
+      async (c) => c.json(await SessionActivity.turns(c.req.valid("param").sessionID, c.req.valid("json").rootIDs)),
+    )
+    .get(
+      "/:sessionID/message/:messageID/part/:partID/activity",
+      describeRoute({
+        summary: "Read one tool activity result",
+        operationId: "session.toolActivity",
+        tags: ["Session"],
+        responses: {
+          200: {
+            description: "Captured result of the selected tool invocation",
+            content: { "application/json": { schema: resolver(SessionActivity.Result) } },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: Identifier.schema("session"),
+          messageID: Identifier.schema("message"),
+          partID: Identifier.schema("part"),
+        }),
+      ),
+      validator("query", z.object({ callID: z.string().optional() })),
+      async (c) => c.json(await SessionActivity.tool({ ...c.req.valid("param"), ...c.req.valid("query") })),
+    )
     .post(
       "/:sessionID/run/:runID/cancel",
       describeRoute({

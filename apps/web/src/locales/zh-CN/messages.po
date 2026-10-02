@@ -6,6 +6,102 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 
 #. js-lingui-explicit-id
+msgid "activity.approval.allowOnce"
+msgstr "允许这一次"
+
+#. js-lingui-explicit-id
+msgid "activity.approval.reject"
+msgstr "拒绝"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.attempted"
+msgstr "尝试了 {count} 次操作"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.browser"
+msgstr "执行了 {count} 次浏览器操作"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.coordinate"
+msgstr "完成了 {count} 次协调操作"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.delegate"
+msgstr "委派了 {count} 个任务"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.execute"
+msgstr "运行了 {count} 个命令"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.external"
+msgstr "执行了 {count} 次外部操作"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.generic"
+msgstr "完成了 {count} 次操作"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.inspect"
+msgstr "检查了 {count} 项内容"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.modify"
+msgstr "完成了 {count} 次文件修改"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.produce"
+msgstr "生成了 {count} 项成果"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.readFiles"
+msgstr "读取了 {count} 个文件"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.readOperations"
+msgstr "读取文件 {count} 次"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.research"
+msgstr "查阅了 {count} 个来源"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.searched"
+msgstr "搜索了 {count} 次"
+
+#. js-lingui-explicit-id
+msgid "activity.phase.browser"
+msgstr "正在使用浏览器"
+
+#. js-lingui-explicit-id
+msgid "activity.phase.command"
+msgstr "正在运行命令"
+
+#. js-lingui-explicit-id
+msgid "activity.phase.delegate"
+msgstr "正在与子智能体协作"
+
+#. js-lingui-explicit-id
+msgid "activity.phase.modify"
+msgstr "正在修改文件"
+
+#. js-lingui-explicit-id
+msgid "activity.phase.prepare"
+msgstr "正在准备操作"
+
+#. js-lingui-explicit-id
+msgid "activity.phase.read"
+msgstr "正在读取文件"
+
+#. js-lingui-explicit-id
+msgid "activity.phase.research"
+msgstr "正在查阅来源"
+
+#. js-lingui-explicit-id
+msgid "activity.phase.working"
+msgstr "正在执行"
+
+#. js-lingui-explicit-id
 msgid "activity.trace.actions"
 msgstr "{count, plural, one {# 个操作} other {# 个操作}}"
 
@@ -5502,6 +5598,10 @@ msgid "app.panel.context"
 msgstr "上下文"
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.executionDetail"
+msgstr "执行详情"
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.files"
 msgstr "文件"
 
@@ -7414,6 +7514,10 @@ msgstr "原始消息"
 #. js-lingui-explicit-id
 msgid "app.review.toolUnavailable"
 msgstr "此工具结果已不可用。"
+
+#. js-lingui-explicit-id
+msgid "app.review.turnUnavailable"
+msgstr "此轮对话已不可用。"
 
 #. ── components/scopes/active-zone.tsx ────────────────────────────────
 msgid "app.scopes.activeZone.active"
@@ -10653,6 +10757,10 @@ msgid "directory.navigation.denied"
 msgstr "当前服务无权读取此文件夹。请检查访问权限或选择其他路径。"
 
 #. js-lingui-explicit-id
+msgid "directory.navigation.deselectFolder"
+msgstr "取消选择文件夹：{name}"
+
+#. js-lingui-explicit-id
 msgid "directory.navigation.empty"
 msgstr "这里没有子文件夹，可以使用当前文件夹。"
 
@@ -10719,6 +10827,14 @@ msgstr "选中当前文件夹"
 #. js-lingui-explicit-id
 msgid "directory.navigation.selected"
 msgstr "已选择 {count} 个文件夹"
+
+#. js-lingui-explicit-id
+msgid "directory.navigation.selectFolder"
+msgstr "选择文件夹：{name}"
+
+#. js-lingui-explicit-id
+msgid "directory.navigation.selection"
+msgstr "已选文件夹"
 
 #. js-lingui-explicit-id
 msgid "directory.navigation.service"
@@ -14392,6 +14508,130 @@ msgstr "正在加载提示…"
 msgid "session.dock.parentSession"
 msgstr "父会话"
 
+#. js-lingui-explicit-id
+msgid "session.execution.background"
+msgstr "进程仍在运行"
+
+#. js-lingui-explicit-id
+msgid "session.execution.captured"
+msgstr "调用时的内容"
+
+#. js-lingui-explicit-id
+msgid "session.execution.commandOutput"
+msgstr "命令输出"
+
+#. js-lingui-explicit-id
+msgid "session.execution.completed"
+msgstr "已完成"
+
+#. js-lingui-explicit-id
+msgid "session.execution.copied"
+msgstr "已复制"
+
+#. js-lingui-explicit-id
+msgid "session.execution.copyError"
+msgstr "复制错误详情"
+
+#. js-lingui-explicit-id
+msgid "session.execution.copyFailed"
+msgstr "复制失败"
+
+#. js-lingui-explicit-id
+msgid "session.execution.copyInput"
+msgstr "复制工具输入"
+
+#. js-lingui-explicit-id
+msgid "session.execution.copyOutput"
+msgstr "复制工具输出"
+
+#. js-lingui-explicit-id
+msgid "session.execution.diagnostics"
+msgstr "参数与诊断"
+
+#. js-lingui-explicit-id
+msgid "session.execution.duration"
+msgstr "{seconds} 秒"
+
+#. js-lingui-explicit-id
+msgid "session.execution.errorDetails"
+msgstr "错误详情"
+
+#. js-lingui-explicit-id
+msgid "session.execution.evidenceMissing"
+msgstr "这次调用没有保存文件内容，下面显示已记录的工具输出。"
+
+#. js-lingui-explicit-id
+msgid "session.execution.exit"
+msgstr "退出码：{code}"
+
+#. js-lingui-explicit-id
+msgid "session.execution.failed"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "session.execution.fullContent"
+msgstr "显示完整内容"
+
+#. js-lingui-explicit-id
+msgid "session.execution.generating"
+msgstr "正在准备工具输入"
+
+#. js-lingui-explicit-id
+msgid "session.execution.input"
+msgstr "工具输入"
+
+#. js-lingui-explicit-id
+msgid "session.execution.interrupted"
+msgstr "已中断"
+
+#. js-lingui-explicit-id
+msgid "session.execution.interruptedOutput"
+msgstr "中断前的输出"
+
+#. js-lingui-explicit-id
+msgid "session.execution.lineRange"
+msgstr "第 {start}–{end} 行"
+
+#. js-lingui-explicit-id
+msgid "session.execution.loading"
+msgstr "正在加载工具结果…"
+
+#. js-lingui-explicit-id
+msgid "session.execution.noOutput"
+msgstr "没有捕获到输出。"
+
+#. js-lingui-explicit-id
+msgid "session.execution.pending"
+msgstr "等待中"
+
+#. js-lingui-explicit-id
+msgid "session.execution.result"
+msgstr "结果"
+
+#. js-lingui-explicit-id
+msgid "session.execution.running"
+msgstr "运行中"
+
+#. js-lingui-explicit-id
+msgid "session.execution.signal"
+msgstr "终止信号：{signal}"
+
+#. js-lingui-explicit-id
+msgid "session.execution.toolOutput"
+msgstr "工具输出"
+
+#. js-lingui-explicit-id
+msgid "session.execution.truncated"
+msgstr "仅显示已捕获内容的一部分。"
+
+#. js-lingui-explicit-id
+msgid "session.execution.unavailable"
+msgstr "此工具结果已不可用。"
+
+#. js-lingui-explicit-id
+msgid "session.execution.views"
+msgstr "工具结果视图"
+
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.fork.confirm.action"
@@ -14860,6 +15100,62 @@ msgstr "正在访问密钥文件（.env / credentials）"
 msgid "session.permissionDock.risk.vcsMetadata"
 msgstr "正在写入版本控制元数据（.git）"
 
+#. js-lingui-explicit-id
+msgid "session.process.approval"
+msgstr "等待批准"
+
+#. js-lingui-explicit-id
+msgid "session.process.completed"
+msgstr "已完成"
+
+#. js-lingui-explicit-id
+msgid "session.process.executing"
+msgstr "正在执行"
+
+#. js-lingui-explicit-id
+msgid "session.process.failed"
+msgstr "执行失败"
+
+#. js-lingui-explicit-id
+msgid "session.process.hideReasoning"
+msgstr "收起推理"
+
+#. js-lingui-explicit-id
+msgid "session.process.interrupted"
+msgstr "已中断"
+
+#. js-lingui-explicit-id
+msgid "session.process.paused"
+msgstr "已暂停"
+
+#. js-lingui-explicit-id
+msgid "session.process.priorStop"
+msgstr "曾停止"
+
+#. js-lingui-explicit-id
+msgid "session.process.reading"
+msgstr "正在读取文件"
+
+#. js-lingui-explicit-id
+msgid "session.process.stopped"
+msgstr "已停止"
+
+#. js-lingui-explicit-id
+msgid "session.process.thinking"
+msgstr "正在思考"
+
+#. js-lingui-explicit-id
+msgid "session.process.viewReasoning"
+msgstr "查看推理"
+
+#. js-lingui-explicit-id
+msgid "session.process.workedDuration"
+msgstr "工作了 {seconds} 秒"
+
+#. js-lingui-explicit-id
+msgid "session.process.working"
+msgstr "工作中"
+
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.progress.activeAria"
@@ -15111,6 +15407,30 @@ msgstr "问题步骤"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.question.submit"
 msgstr "提交"
+
+#. js-lingui-explicit-id
+msgid "session.review.recording.failed"
+msgstr "文件改动记录失败。"
+
+#. js-lingui-explicit-id
+msgid "session.review.recording.gitFailure"
+msgstr "无法读取仓库的文件改动记录。"
+
+#. js-lingui-explicit-id
+msgid "session.review.recording.incomplete"
+msgstr "文件改动记录尚不完整。"
+
+#. js-lingui-explicit-id
+msgid "session.review.recording.limits"
+msgstr "这不表示没有文件改动。下方展示已记录的改动；未记录的改动无法审阅，也无法用于文件恢复。"
+
+#. js-lingui-explicit-id
+msgid "session.review.recording.pending"
+msgstr "正在记录文件改动…"
+
+#. js-lingui-explicit-id
+msgid "session.review.recording.timeout"
+msgstr "文件改动记录超时。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15539,6 +15859,10 @@ msgid "session.submission.check"
 msgstr "核对并重试"
 
 #. js-lingui-explicit-id
+msgid "session.submission.checkingReceipt"
+msgstr "正在确认消息回执…"
+
+#. js-lingui-explicit-id
 msgid "session.submission.details"
 msgstr "错误详情"
 
@@ -15549,6 +15873,10 @@ msgstr "提交失败，已保留你的选择。"
 #. js-lingui-explicit-id
 msgid "session.submission.pending"
 msgstr "正在提交决定…"
+
+#. js-lingui-explicit-id
+msgid "session.submission.preparing"
+msgstr "正在准备任务"
 
 #. js-lingui-explicit-id
 msgid "session.submission.retry"
@@ -17485,7 +17813,7 @@ msgstr "平衡"
 
 #. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.description"
-msgstr "选择 Synergy 在界面中显示的活动详情程度"
+msgstr "Balanced 展开当前阶段，Full 展开全部过程，Minimal 显示简洁进度。所有模式都可以手动展开详情。"
 
 #. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.full"
@@ -17537,11 +17865,11 @@ msgstr "跟随此设备"
 
 #. js-lingui-explicit-id
 msgid "settings.general.compactReasoning.description"
-msgstr "以单行视图显示实时推理；已完成的回合保留可展开的推理行"
+msgstr "以单行预览原始推理。关闭预览后仍可展开推理内容。"
 
 #. js-lingui-explicit-id
 msgid "settings.general.compactReasoning.title"
-msgstr "紧凑推理"
+msgstr "推理预览"
 
 #. js-lingui-explicit-id
 msgid "settings.general.devicePush.completion"
@@ -22014,6 +22342,26 @@ msgstr "可见后台任务"
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.warnings"
 msgstr "警告"
+
+#. js-lingui-explicit-id
+msgid "tool.result.next"
+msgstr "下一页"
+
+#. js-lingui-explicit-id
+msgid "tool.result.pageRange"
+msgstr "第 {start}–{end} 项，共 {count} 项"
+
+#. js-lingui-explicit-id
+msgid "tool.result.pages"
+msgstr "结果分页"
+
+#. js-lingui-explicit-id
+msgid "tool.result.previous"
+msgstr "上一页"
+
+#. js-lingui-explicit-id
+msgid "tool.result.showFullValue"
+msgstr "显示完整内容"
 
 #. ── Task subagent detail ────────────────────────────────────────────
 msgid "tool.task.no-steps"

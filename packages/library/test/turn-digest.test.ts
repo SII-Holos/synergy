@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { Session } from "@ericsanchezok/synergy-harness/session"
 import { TurnDigest } from "../src/turn-digest"
 import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import type { Turn } from "@ericsanchezok/synergy-harness/session/turn"
@@ -115,6 +116,29 @@ describe("TurnDigest.summarizeTurn", () => {
 
     expect(result.user).toBe("What is 1+1?")
     expect(result.assistant).toBe("The answer is 2.")
+  })
+
+  test("retains purpose and native array input in a tool digest", () => {
+    const u = userMsg("u1", [textPart("Inspect labels")])
+    const tool = completedTool("mcp_labels", "labels")
+    tool.inputShape = "envelope"
+    tool.workBrief = "Inspect the task labels"
+    tool.state.input = ["one", "two"]
+    const a = assistantMsg("u1", [tool])
+    const session = Session.Info.parse({
+      id: "ses_1",
+      title: "Inspect labels",
+      version: "1",
+      slug: "labels",
+      scope: { type: "home", id: "home", local: null },
+      workspace: null,
+      directory: "/",
+      time: { created: 1, updated: 2 },
+    })
+    const result = TurnDigest.extractSingle(session, [u, a], "u1")
+    expect(result?.digest.segments.find((segment) => segment.type === "tool")).toMatchObject({
+      input: { workBrief: "Inspect the task labels", toolInput: ["one", "two"] },
+    })
   })
 
   test("includes completed tool labels", () => {

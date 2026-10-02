@@ -16,7 +16,7 @@ import { usePlatform } from "@/context/platform"
 import { usePrompt } from "@/context/prompt"
 import { projectFlowCopy } from "../dialog/project-flow-copy"
 import { resolveTaskEnvironment } from "../session/task-location"
-import { useSessionTransition } from "@/context/session-transition"
+import { draftTransitionKey, useSessionTransition } from "@/context/session-transition"
 import type {
   FileAttachmentPart,
   NoteAttachmentPart,
@@ -74,6 +74,7 @@ import { PI } from "./prompt-input-i18n"
 import { reconcileMessage, removeMessageFromWindow, type MessageWindowState } from "@/context/session-message-window"
 import { nextMessageWindowTotal, nextMessageWindowTotalAfterRemoval } from "@/context/session-message-total"
 import { promptSubmitFailure } from "./submit-failure"
+import { recoverSessionInputReceipt } from "./input-receipt"
 import { runComposerPreflight } from "./composer-preflight"
 import { createOptimisticUserMessage } from "./optimistic-user-message"
 import { handoffOptimisticMessage, isOptimisticMessagePending } from "@/context/session-optimistic-message"
@@ -138,6 +139,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     const prompt = binding.draft
     const initialSessionId = params.id
     let releaseSubmit: (() => void) | undefined
+    let preparation: ReturnType<typeof sessionTransition.prepareDraft> | undefined
     try {
       const isNewSession = !params.id
 
@@ -287,6 +289,9 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         return
       }
 
+      if (isNewSession && submitIntent === "message" && mode === "normal" && !blueprintSlot)
+        preparation = sessionTransition.prepareDraft(draftTransitionKey(sdk.url, sdk.scopeKey))
+
       const runsBeforeSubmit = shouldRunComposerBeforeSubmit({
         intent: submitIntent,
         mode,
@@ -366,6 +371,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         modelID: currentModel.id,
         providerID: currentModel.provider.id,
       }
+      preparation?.setText(text)
       input.addToHistory(currentPrompt, mode)
       input.setStore("historyIndex", -1)
       input.setStore("savedPrompt", null)
@@ -495,6 +501,12 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         if (session) {
           createdSessionForSubmit = true
           local.handoffNewSessionIntent(session.id)
+          const initialProgress = worktreeWorkspaceSelection
+            ? createNewSessionWorkspaceProgress({ selection: worktreeWorkspaceSelection, stage: "workspace" })
+            : createNewSessionTransitionProgress()
+          preparation?.handoff(session.id, initialProgress)
+          publishNewSessionTransition(session.id, initialProgress)
+          if (binding.isCurrent()) navigate(`/${base64Encode(sessionScopeKey)}/session/${session.id}`)
           try {
             const saved = await client.session.setModelSelection(
               {
@@ -519,8 +531,6 @@ export function usePromptSubmit(input: PromptSubmitInput) {
               ? createNewSessionWorkspaceProgress({ selection: worktreeWorkspaceSelection, stage: "workspace" })
               : createNewSessionTransitionProgress(),
           )
-          if (binding.isCurrent()) navigate(`/${base64Encode(sessionScopeKey)}/session/${session.id}`)
-
           if (worktreeWorkspaceSelection) updateNewSessionWorktreeProgress(session.id, "message")
         }
       }
@@ -695,11 +705,16 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         })
       }
 
-      const handoffNewSessionMessage = (input: { messageID: string; itemID?: string; acceptedAt: number }) => {
-        if (!createdSessionForSubmit) return
+      const handoffNewSessionMessage = (
+        input: { messageID: string; itemID?: string; acceptedAt: number },
+        confirmed = true,
+      ) => {
+        if (!createdSessionForSubmit && confirmed) return
         const accepted = worktreeWorkspaceSelection
           ? createNewSessionWorkspaceAcceptedProgress({ selection: worktreeWorkspaceSelection })
           : createNewSessionTransitionAcceptedProgress()
+        if (!confirmed)
+          accepted.title = { id: "session.submission.checkingReceipt", message: "Checking message receipt…" }
         const success = worktreeWorkspaceSelection
           ? createNewSessionWorkspaceSuccessProgress({ selection: worktreeWorkspaceSelection })
           : createNewSessionTransitionSuccessProgress()
@@ -1184,6 +1199,15 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           }
         })
         .catch(async (err) => {
+          if (messageID) {
+            const receipt = await recoverSessionInputReceipt(client, { sessionID: activeSession.id, messageID })
+            if (receipt.kind !== "missing") {
+              const progress = receipt.kind === "accepted" ? receipt.progress : undefined
+              if (progress && armedLightLoop) input.clearPendingLightLoop()
+              handoffNewSessionMessage({ messageID, itemID: progress?.itemID, acceptedAt: Date.now() }, !!progress)
+              return
+            }
+          }
           const failure = promptSubmitFailure(err)
           await rollbackLightLoopForSubmit()
           if (optimisticAdded) removeOptimisticMessage()
@@ -1202,6 +1226,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           })
         })
     } finally {
+      preparation?.clear()
       releaseSubmit?.()
       binding.release()
     }

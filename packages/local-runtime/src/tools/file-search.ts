@@ -1,5 +1,6 @@
 import z from "zod"
 import { OutputBudget } from "./anchored-file"
+import { FileView } from "../file/view"
 import DESCRIPTION from "./file-search.txt"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { WorkspaceFileSearch } from "../workspace-file/search"
@@ -67,6 +68,13 @@ export const FileSearchTool = Tool.define(
 
         return {
           title: params.query || "Files",
+          activityEvidence: await ctx.recordActivity?.({
+            kind: "search",
+            directory: FileView.directory(),
+            mediaType: "application/vnd.synergy.search+json",
+            text: JSON.stringify({ hits: items.map((item) => ({ kind: "path", path: item.path })) }),
+            truncated: result.truncated || items.length < candidates.length,
+          }),
           output:
             result.truncated || items.length < candidates.length
               ? `${listing}\nResults limited; narrow the include filter to inspect remaining paths.`
@@ -126,6 +134,29 @@ export const FileSearchTool = Tool.define(
         ),
         symbolItems.map((item) => `[symbol] Symbol "${item.name}" in ${item.path}:${item.range.start.line + 1}`),
       ]
+      const hitGroups = [
+        pathItems.map((item) => ({ kind: "path" as const, path: item.path })),
+        contentItems.map((item) => ({
+          kind: "content" as const,
+          path: item.path,
+          line: item.lineNumber,
+          text: item.line.slice(0, 2000),
+          truncated: item.line.length > 2000,
+        })),
+        symbolItems.map((item) => ({
+          kind: "symbol" as const,
+          path: item.path,
+          line: item.range.start.line + 1,
+          text: item.name,
+        })),
+      ]
+      const hits: Array<{
+        kind: "path" | "content" | "symbol"
+        path: string
+        line?: number
+        text?: string
+        truncated?: boolean
+      }> = []
       const merged: string[] = []
       const displayedCounts = { path: 0, content: 0, symbol: 0 }
       const kinds = ["path", "content", "symbol"] as const
@@ -147,6 +178,7 @@ export const FileSearchTool = Tool.define(
           }
           unique.add(row)
           merged.push(row)
+          hits.push(hitGroups[channel][index])
           displayedCounts[kinds[channel]]++
         }
       }
@@ -172,6 +204,13 @@ Tips:
 
       return {
         title: params.query || "Search",
+        activityEvidence: await ctx.recordActivity?.({
+          kind: "search",
+          directory: FileView.directory(),
+          mediaType: "application/vnd.synergy.search+json",
+          text: JSON.stringify({ hits }),
+          truncated: budgetLimited || resultLimited,
+        }),
         output: guidance ? `${output}\n${guidance}` : output,
         metadata: {
           query: params.query,
@@ -187,5 +226,5 @@ Tips:
       }
     },
   },
-  { requiresWorkspace: true },
+  { requiresWorkspace: true, activityKind: "search" },
 )

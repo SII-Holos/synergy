@@ -113,6 +113,18 @@ export const ReadTool = Tool.define(
 
         return {
           title,
+          activityEvidence: await ctx.recordActivity?.({
+            kind: "file-read",
+            resource: {
+              path: filepath,
+              workspaceID: ctx.resources?.workspace?.id,
+              generation: ctx.resources?.workspace?.binding.generation,
+            },
+            range: { startLine: offset, lineCount: raw.length, totalLines },
+            text: raw.join("\n"),
+            truncated,
+            mediaType: "text/plain",
+          }),
           output,
           metadata: {
             preview,
@@ -174,6 +186,18 @@ export const ReadTool = Tool.define(
 
       return {
         title,
+        activityEvidence: await ctx.recordActivity?.({
+          kind: "file-read",
+          resource: {
+            path: filepath,
+            workspaceID: ctx.resources?.workspace?.id,
+            generation: ctx.resources?.workspace?.binding.generation,
+          },
+          range: { startLine: offset, lineCount: raw.length, totalLines },
+          text: raw.join("\n"),
+          truncated,
+          mediaType: /\.md$/i.test(filepath) ? "text/markdown" : "text/plain",
+        }),
         output,
         metadata: {
           preview,

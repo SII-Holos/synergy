@@ -31,10 +31,10 @@ beforeAll(async () => {
     const [workspace,setWorkspace]=createSignal({id:"wsp_a",generation:1,path:"/a"})
     const [open,setOpen]=createSignal([])
     const [diffs,setDiffs]=createSignal([{id:"wsp_a",generation:1,root:"/a"},{id:"wsp_b",generation:1,root:"/b"}].map(workspace=>({file:"same.txt",workspace,additions:1,deletions:0,preview:"+"+workspace.root})))
-    const h=window.fixture={calls:[],incomplete:()=>setIncomplete(true),locale:(locale)=>i18n.activate(locale),operations:()=>setDiffs(["first","last"].map(operationID=>({file:"same.txt",workspace:{id:"wsp_a",generation:1,root:"/a"},operationID,additions:1,deletions:1,preview:"+"+operationID}))),legacy:()=>setDiffs(["/legacy-a","/legacy-b"].map(legacyRoot=>({file:"same.txt",legacyRoot,additions:1,deletions:0,preview:"+"+legacyRoot}))),switch:()=>setWorkspace({id:"wsp_b",generation:1,path:"/b"}),rebind:()=>setWorkspace({id:"wsp_b",generation:2,path:"/b"})}
+    const h=window.fixture={calls:[],incomplete:()=>setIncomplete(true),empty:()=>setDiffs([]),locale:(locale)=>i18n.activate(locale),operations:()=>setDiffs(["first","last"].map(operationID=>({file:"same.txt",workspace:{id:"wsp_a",generation:1,root:"/a"},operationID,additions:1,deletions:1,preview:"+"+operationID}))),legacy:()=>setDiffs(["/legacy-a","/legacy-b"].map(legacyRoot=>({file:"same.txt",legacyRoot,additions:1,deletions:0,preview:"+"+legacyRoot}))),switch:()=>setWorkspace({id:"wsp_b",generation:1,path:"/b"}),rebind:()=>setWorkspace({id:"wsp_b",generation:2,path:"/b"})}
     const view=()=>({review:{open,setOpen},scroll:()=>undefined,setScroll(){}})
     const i18n=setupI18n({locale:"en",messages:{en:{},"zh-CN":{"turn-change.recording-incomplete":"文件改动记录尚不完整"}}})
-    render(()=><I18nProvider i18n={i18n}><SessionReviewTab workspace={workspace} diffs={diffs} view={view} diffStyle="unified" onViewFile={file=>h.calls.push(file)}/><TurnChangeSummaryPanel diffs={diffs()} state={incomplete()?"error":"ready"} incomplete={incomplete()} onReviewRequested={()=>{}} onFileSelected={file=>h.calls.push(file)}/></I18nProvider>,document.getElementById("root"))
+    render(()=><I18nProvider i18n={i18n}><SessionReviewTab workspace={workspace} diffs={diffs} diffState={()=>incomplete()?{status:"error",code:"incomplete"}:undefined} view={view} diffStyle="unified" onViewFile={file=>h.calls.push(file)}/><TurnChangeSummaryPanel diffs={diffs()} state={incomplete()?"error":"ready"} incomplete={incomplete()} onReviewRequested={()=>{}} onFileSelected={file=>h.calls.push(file)}/></I18nProvider>,document.getElementById("root"))
   `,
   )
   const reservation = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
@@ -128,13 +128,20 @@ test("separate writes to the same bound file remain independently expandable", a
   expect(await rows.nth(1).textContent()).toContain("+last")
 })
 
-test("incomplete recording remains visible with the available file changes in both languages", async () => {
+test("incomplete recording stays a quiet entry while Review explains the limits", async () => {
   await page.goto(base)
-  const panel = page.locator('[data-component="turn-change-summary-panel"]')
-  await panel.waitFor()
+  await page.locator('[data-component="turn-change-summary-panel"]').waitFor()
   await page.evaluate(() => (window as unknown as { fixture: { incomplete(): void } }).fixture.incomplete())
-  expect(await panel.textContent()).toContain("File change recording is incomplete")
-  expect(await panel.locator('[data-slot="turn-change-summary-row"]').count()).toBe(2)
+  const entry = page.locator('[data-slot="turn-change-summary-entry"]')
+  expect(await entry.getAttribute("title")).toContain("File change recording is incomplete")
+  expect(await page.locator('[data-component="turn-change-summary-panel"]').count()).toBe(0)
+  const notice = page.locator('[data-slot="review-recording-notice"]')
+  expect(await notice.textContent()).toContain("This does not mean no files changed")
+  expect(await page.locator('[data-slot="session-review-view-button"]').count()).toBe(2)
+  await page.evaluate(() => (window as unknown as { fixture: { empty(): void } }).fixture.empty())
+  expect(await notice.textContent()).toContain("restoration")
+  expect(await notice.textContent()).not.toContain("No changes")
   await page.evaluate(() => (window as unknown as { fixture: { locale(value: string): void } }).fixture.locale("zh-CN"))
-  expect(await panel.textContent()).toContain("文件改动记录尚不完整")
+  expect(await entry.getAttribute("title")).toContain("文件改动记录尚不完整")
+  expect(errors).toEqual([])
 })

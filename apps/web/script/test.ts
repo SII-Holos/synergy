@@ -15,6 +15,7 @@ const playwrightIsolated = [
   "test/components/session/workbench-layout.dom.test.tsx",
 
   "test/components/workspace/builtin-workbench-panels.test.ts",
+  "test/components/workspace/execution-detail.dom.test.ts",
   "test/components/workspace/browser/browser-draft.test.ts",
   "test/components/workspace/browser/browser-ws-reconnect.test.ts",
   "test/components/sidebar/sidebar-collections.dom.test.tsx",
@@ -32,8 +33,10 @@ const playwrightIsolated = [
   "test/plugin/global-themes-registrar-lifecycle.test.tsx",
   "test/components/session/rollback-files.dom.test.ts",
   "test/components/session/session-review-workspace.dom.test.ts",
+  "test/components/session/conversation-reading-anchor.dom.test.ts",
   "test/components/dialog/workspace-dialog.dom.test.ts",
   "test/components/dialog/environment-dialog.dom.test.ts",
+  "test/components/dialog/directory-navigation.dom.test.ts",
   "test/components/dialog/file-entry-dialog.dom.test.ts",
   "test/context/file/workspace.dom.test.ts",
   "test/components/kanban/full-access-ack.test.ts",
