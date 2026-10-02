@@ -3,7 +3,7 @@ import { z } from "zod"
 import type { SettingsState } from "./types"
 
 export type SettingsDraftIssue = {
-  page: "timeouts" | "email" | "memory" | "experience"
+  page: "timeouts" | "email" | "memory" | "experience" | "mcp"
   field: string
   message: MessageDescriptor
 }
@@ -95,6 +95,65 @@ export function validateSettingsDraft(state: SettingsState): SettingsDraftIssue[
   )
   for (const field of ["experienceSimThreshold", "experienceEpsilon"] as const) {
     check("experience", field, state.library[field], (number) => number >= 0 && number <= 1, probability)
+  }
+  const names = state.mcps.entries.map((entry) => entry.key.trim())
+  for (const [index, entry] of state.mcps.entries.entries()) {
+    const field = (name: string) => `${index}.${name}`
+    if (!entry.key.trim()) {
+      issues.push({
+        page: "mcp",
+        field: field("key"),
+        message: { id: "settings.mcp.validation.name", message: "Enter a server name." },
+      })
+    } else if (
+      names.filter((name) => name === entry.key.trim()).length > 1 ||
+      state.mcps.builtins.some((builtin) => builtin.name === entry.key.trim())
+    ) {
+      issues.push({
+        page: "mcp",
+        field: field("key"),
+        message: {
+          id: "settings.mcp.validation.duplicate",
+          message: "Choose a name that is not used by another server.",
+        },
+      })
+    }
+    if (entry.type === "local" && !entry.command.trim()) {
+      issues.push({
+        page: "mcp",
+        field: field("command"),
+        message: { id: "settings.mcp.validation.command", message: "Enter the command that starts this server." },
+      })
+    }
+    if (
+      entry.type === "remote" &&
+      (!URL.canParse(entry.url.trim()) || !["http:", "https:"].includes(new URL(entry.url.trim()).protocol))
+    ) {
+      issues.push({
+        page: "mcp",
+        field: field("url"),
+        message: { id: "settings.mcp.validation.url", message: "Enter a complete HTTP or HTTPS server URL." },
+      })
+    }
+    check("mcp", field("timeout"), entry.timeout, (number) => Number.isInteger(number) && number > 0, integer)
+    const pairField = entry.type === "remote" ? "headers" : "environment"
+    const separator = entry.type === "remote" ? ":" : "="
+    const keys = new Set<string>()
+    for (const line of entry[pairField].split(/\r?\n/)) {
+      if (!line.trim() || line.trim() === separator) continue
+      const position = line.indexOf(separator)
+      const key = line.slice(0, position).trim()
+      const normalizedKey = pairField === "headers" ? key.toLowerCase() : key
+      if (position <= 0 || !key || keys.has(normalizedKey)) {
+        issues.push({
+          page: "mcp",
+          field: field(pairField),
+          message: { id: "settings.mcp.validation.pairs", message: "Give each entry a different, non-empty name." },
+        })
+        break
+      }
+      keys.add(normalizedKey)
+    }
   }
   return issues
 }

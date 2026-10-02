@@ -105,11 +105,10 @@ const copy = {
   workspaceTitle: { id: "settings.general.workspace.title", message: "New task starting point" },
   workspaceDescription: {
     id: "settings.general.workspace.description",
-    message:
-      "Use the main folder or create an independent copy for each new Git task. Projects can override this default.",
+    message: "Use the main folder or create a worktree for each new Git task. Projects can override this default.",
   },
   workspaceMain: { id: "settings.general.workspace.main", message: "Main folder" },
-  workspaceWorktree: { id: "settings.general.workspace.worktree", message: "Independent copy" },
+  workspaceWorktree: { id: "settings.general.workspace.worktree", message: "Worktree" },
   compactReasoningTitle: { id: "settings.general.compactReasoning.title", message: "Compact reasoning" },
   compactReasoningDescription: {
     id: "settings.general.compactReasoning.description",

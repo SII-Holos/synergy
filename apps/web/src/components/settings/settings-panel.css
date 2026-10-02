@@ -2346,6 +2346,128 @@
   gap: 10px;
 }
 
+.settings-mcp-view {
+  min-width: 0;
+}
+
+.settings-mcp-view > .ds-content-inner {
+  animation: settings-page-enter 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.settings-page-transition:has(> .settings-mcp-view) {
+  animation: none;
+}
+
+.settings-mcp-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 320px;
+  margin-bottom: 16px;
+}
+
+.settings-mcp-search [data-component="input"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-mcp-form {
+  container: mcp-form / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.settings-mcp-form-heading {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 20px;
+}
+
+.settings-mcp-type-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.settings-mcp-field-label,
+.settings-mcp-field-heading h2 {
+  color: var(--text-base);
+  font-size: var(--settings-type-row-title-size);
+  line-height: var(--settings-type-row-title-line-height);
+  font-weight: var(--font-weight-medium);
+  margin: 0;
+}
+
+.settings-mcp-field-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.settings-mcp-field-heading > span {
+  color: var(--text-weak);
+  font-size: var(--settings-type-caption-size);
+  line-height: var(--settings-type-caption-line-height);
+}
+
+.settings-mcp-pairs {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-mcp-pairs > [data-component="button"] {
+  align-self: flex-start;
+}
+
+.settings-mcp-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto;
+  align-items: start;
+  gap: 8px;
+}
+
+.settings-mcp-pair > [data-component="icon-button"] {
+  margin-top: 2px;
+}
+
+.settings-mcp-field-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  color: var(--text-base);
+  font-size: var(--settings-type-caption-size);
+  line-height: var(--settings-type-caption-line-height);
+}
+
+@container mcp-form (max-width: 600px) {
+  .settings-mcp-form-heading {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container mcp-form (max-width: 420px) {
+  .settings-mcp-pair {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 8px;
+  }
+
+  .settings-mcp-pair > [data-component="input"]:nth-child(2) {
+    grid-row: 2;
+    grid-column: 1;
+  }
+
+  .settings-mcp-pair > [data-component="icon-button"] {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+    align-self: center;
+  }
+}
+
 .settings-mcp-card {
   border-radius: 12px;
   border: 1px solid var(--settings-border);
@@ -2358,7 +2480,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 14px 16px;
 }
 
 .settings-mcp-summary {
@@ -2374,8 +2496,7 @@
   cursor: pointer;
 }
 
-.settings-mcp-summary:focus-visible,
-.settings-mcp-expand:focus-visible {
+.settings-mcp-summary:focus-visible {
   outline: none;
   box-shadow: var(--settings-focus-ring);
 }
@@ -2385,6 +2506,7 @@
   min-width: 0;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
 }
 
 .settings-mcp-title-row {
@@ -2405,46 +2527,11 @@
   line-height: var(--settings-type-caption-line-height);
 }
 
-.settings-mcp-expand {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: 0;
-  border-radius: 7px;
-  color: var(--icon-weak);
-  background: transparent;
-  cursor: pointer;
-}
-
-.settings-mcp-expand:hover {
-  color: var(--icon-base);
-  background: var(--settings-control-bg-hover);
-}
-
-.settings-mcp-expand svg {
-  transition: transform 160ms ease;
-}
-
-.settings-mcp-expand-icon-open {
-  transform: rotate(180deg);
-}
-
-.settings-mcp-card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 13px;
-  padding: 14px;
-  border-top: 1px solid color-mix(in oklch, var(--border-base) 28%, transparent);
-  background: color-mix(in oklch, var(--settings-card-secondary-bg) 54%, transparent);
-}
-
 .settings-mcp-builtin-key {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 10px 12px 12px;
+  padding: 16px;
   border-top: 1px solid color-mix(in oklch, var(--border-base) 20%, transparent);
 }
 

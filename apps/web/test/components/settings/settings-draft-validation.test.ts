@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { defaultSettingsState } from "../../../src/components/settings/types"
+import { defaultSettingsState, emptyMcp } from "../../../src/components/settings/types"
 import {
   parseToolTimeoutOverrides,
   validateSettingsDraft,
@@ -8,6 +8,51 @@ import { buildPatch } from "../../../src/components/settings/hooks/useConfigPatc
 import { saveSettingsSources } from "../../../src/components/settings/settings-explicit-save"
 
 describe("Settings draft validation", () => {
+  test("keeps incomplete and duplicate MCP drafts out of writes without dropping their input", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.entries = [
+      { ...emptyMcp(), command: "fixture-server" },
+      { ...emptyMcp(), key: "remote", type: "remote", url: "file:///fixture", timeout: "1.5" },
+      { ...emptyMcp(), key: "remote", command: "fixture-server" },
+    ]
+    expect(validateSettingsDraft(state).map(({ page, field }) => [page, field])).toEqual([
+      ["mcp", "0.key"],
+      ["mcp", "1.key"],
+      ["mcp", "1.url"],
+      ["mcp", "1.timeout"],
+      ["mcp", "2.key"],
+    ])
+    expect(state.mcps.entries[0]?.command).toBe("fixture-server")
+  })
+
+  test("validates only active MCP transport fields and accepts a complete paused server", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.entries = [{ ...emptyMcp(), key: "local", command: "fixture-server", enabled: false, url: "invalid" }]
+    expect(validateSettingsDraft(state)).toEqual([])
+    state.mcps.entries[0]!.command = ""
+    expect(validateSettingsDraft(state)).toContainEqual(expect.objectContaining({ page: "mcp", field: "0.command" }))
+  })
+
+  test("checks MCP pair names without conflating case-sensitive environment variables", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.entries = [
+      { ...emptyMcp(), key: "local", command: "fixture-server", environment: "TOKEN=one\ntoken=two" },
+    ]
+    expect(validateSettingsDraft(state)).toEqual([])
+    state.mcps.entries[0]!.environment = "=value"
+    expect(validateSettingsDraft(state)).toContainEqual(
+      expect.objectContaining({ page: "mcp", field: "0.environment" }),
+    )
+    state.mcps.entries[0] = {
+      ...emptyMcp(),
+      key: "remote",
+      type: "remote",
+      url: "https://mcp.example.com/mcp",
+      headers: "Authorization: one\nauthorization: two",
+    }
+    expect(validateSettingsDraft(state)).toContainEqual(expect.objectContaining({ page: "mcp", field: "0.headers" }))
+  })
+
   test("accepts defaults, optional empty values and disabled idle timeout", () => {
     const state = defaultSettingsState("enter")
     state.runtime.providerIdleTimeout = "false"

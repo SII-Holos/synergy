@@ -64,13 +64,16 @@ beforeAll(async () => {
     import { ImportPanel } from "/@fs/${source}/components/settings/panels/ImportPanel.tsx"
     import { LanguageToolsPanel } from "/@fs/${source}/components/settings/panels/LanguageToolsPanel.tsx"
     import { ControlProfilePanel } from "/@fs/${source}/components/settings/panels/SafetyPanels.tsx"
+    import { McpPanel } from "/@fs/${source}/components/settings/panels/McpPanel.tsx"
     import { SettingsPathRow, SettingsPage } from "/@fs/${source}/components/settings/components/SettingsPrimitives.tsx"
     import { SettingRow } from "/@fs/${source}/components/settings/components/SettingsSettingRow.tsx"
     import { SettingsChoices } from "/@fs/${source}/components/settings/components/SettingsChoices.tsx"
     import { ModelRoleRow } from "/@fs/${source}/components/settings/components/ModelRoleRow.tsx"
     import { DeclarativeSettingsForm } from "/@fs/${source}/plugin/components/declarative-settings-form.tsx"
     import { SettingsStepScale } from "/@fs/${source}/components/settings/components/SettingsStepScale.tsx"
-    import { defaultSettingsState } from "/@fs/${source}/components/settings/types.ts"
+    import { defaultSettingsState, emptyMcp } from "/@fs/${source}/components/settings/types.ts"
+    import { buildPatch } from "/@fs/${source}/components/settings/hooks/useConfigPatch.ts"
+    import { SettingsViewStateContext } from "/@fs/${source}/components/settings/settings-view-state.ts"
     import "/@fs/${source}/components/settings/settings-panel.css"
     import "@ericsanchezok/synergy-ui/styles"
     import { messages as en } from "/@fs/${source}/locales/en/messages.po"
@@ -88,7 +91,10 @@ beforeAll(async () => {
       const [plugin, setPlugin] = createSignal({ mode: "first" })
       const [models, setModels] = createStore({ ...defaultSettingsState().models, model: "fixture/first" })
       const [safety, setSafety] = createStore(defaultSettingsState().safety)
-      return <OverlayLayerProvider layer={layer}><div class="settings-panel-frame"><nav><button onClick={() => setView("import")}>Import page</button><button onClick={() => setView("formatter")}>Formatter page</button><button onClick={() => setView("controls")}>Controls page</button><button onClick={() => setView("paths")}>Config files page</button><button onClick={() => setView("profiles")}>Permissions page</button><button onClick={() => setView("models")}>Models page</button><button onClick={() => setView("plugin")}>Plugin page</button></nav><main class="settings-panel-content">
+      const [mcp, setMcp] = createStore({ entries: [{ ...emptyMcp(), key: "Fixture server", type: "remote", url: "https://mcp.example.com/mcp" }], builtins: [{ name: "builtin-fixture", url: "https://mcp.example.com/builtin", status: { status: "uninitialized" }, toggle: true, keyConfigured: false, apiKeyDraft: "", clearApiKey: false }] })
+      const views = new Map()
+      const expanded = new Map()
+      return <OverlayLayerProvider layer={layer}><div class="settings-panel-frame"><nav><button onClick={() => setView("import")}>Import page</button><button onClick={() => setView("formatter")}>Formatter page</button><button onClick={() => setView("controls")}>Controls page</button><button onClick={() => setView("paths")}>Config files page</button><button onClick={() => setView("profiles")}>Permissions page</button><button onClick={() => setView("models")}>Models page</button><button onClick={() => setView("plugin")}>Plugin page</button><button onClick={() => setView("mcp")}>MCP page</button></nav><main class="settings-panel-content">
         <Show when={view() === "email"}><EmailPanel email={email} onEmailChange={(key, value) => setEmail(key, value)} /></Show>
         <Show when={view() === "import"}><ImportPanel domains={domains} scopes={scopes} onImported={refresh} /></Show>
         <Show when={view() === "formatter"}><LanguageToolsPanel kind="formatter" title="Formatter" description="Formatter configuration" config={{ formatter: { custom: { command: ["fixture"], extensions: [".tsx"] } }, lsp: { unrelated: { command: ["do-not-show"] } }, timeout: { invoke: 123 } }} scopes={scopes} domains={[]} /></Show>
@@ -96,6 +102,7 @@ beforeAll(async () => {
         <Show when={view() === "profiles"}><ControlProfilePanel safety={safety} controlProfiles={[]} onSafetyChange={(key, value) => setSafety(key, value)} /></Show>
         <Show when={view() === "models"}><SettingsPage title="Models"><ModelRoleRow summary={{ id: "primary", field: "model", label: "Primary model", summary: "", fallbackChain: ["model"], usedBy: [], resolvedModel: { providerID: "fixture", modelID: "first", via: "model" } }} value={models.model} draftModels={models} savedModels={models} providers={[{ providerId: "fixture", providerName: "Fixture", models: [{ id: "first", name: "First model", variantKeys: ["low", "high"] }, { id: "second", name: "Second model", variantKeys: [] }] }]} availableVariants={["low", "high"]} popoverLayer={layer()} onChange={(key, value) => setModels(key, value)} onVariantChange={() => {}} /></SettingsPage></Show>
         <Show when={view() === "plugin"}><SettingsPage title="Plugin settings"><DeclarativeSettingsForm schema={{ properties: { mode: { type: "string", title: "Plugin mode", description: "Choose a plugin mode", enum: ["first", "second"] } } }} values={plugin()} onChange={setPlugin} /><output data-testid="plugin-values">{JSON.stringify(plugin())}</output></SettingsPage></Show>
+        <Show when={view() === "mcp"}><SettingsViewStateContext.Provider value={{ view: key => views.get(key), setView: (key, value) => views.set(key, value), expanded: key => expanded.get(key), setExpanded: (key, value) => expanded.set(key, value), searchField: () => undefined }}><McpPanel entries={mcp.entries} builtins={mcp.builtins} onAdd={() => setMcp("entries", entries => [...entries, emptyMcp()])} onChange={(index, key, value) => setMcp("entries", index, key, value)} onRemove={index => setMcp("entries", entries => entries.filter((_, i) => i !== index))} /></SettingsViewStateContext.Provider><output hidden data-testid="mcp-patch">{JSON.stringify(buildPatch({ cfg: {}, state: { ...defaultSettingsState("enter"), mcps: mcp }, originalMcps: {} }).mcp)}</output></Show>
         <Show when={view() === "controls"}><div class="ds-page-inner">
           <SettingRow title="Sending port" description="Use a valid port" stateLabel="Unsaved" trailing={<TextField type="number" validationState="invalid" error="Enter a whole number" value="0" copyable />} />
           <SettingRow title="Policy" description="Requests wait for approval" trailing={<SettingsChoices ariaLabel="Policy" value={choice()} options={[{ value: "ask", label: "Ask" }, { value: "allow", label: "Allow" }, { value: "deny", label: "Deny" }]} onChange={setChoice} />} />
@@ -159,6 +166,86 @@ afterAll(async () => {
   await browser?.close()
   await server?.close()
   if (fixture) await rm(fixture, { recursive: true, force: true })
+})
+
+test("MCP separates its server list from focused editing and restores the entry after Escape", async () => {
+  await page.getByRole("button", { name: "MCP page" }).click()
+  expect(await page.getByLabel("Server name", { exact: true }).count()).toBe(0)
+  const entry = page.getByRole("button", { name: "Configure Fixture server" })
+  await entry.click()
+  await page.getByLabel("Server name", { exact: true }).fill("Renamed server")
+  expect(await page.getByLabel("Timeout (ms)", { exact: true }).count()).toBe(0)
+  await page.getByLabel("Server URL", { exact: true }).press("Escape")
+  await page.getByRole("button", { name: "Configure Renamed server" }).waitFor()
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Configure Renamed server")
+  expect(
+    await page
+      .getByRole("button", { name: "Configure Renamed server" })
+      .evaluate((el) => el === document.activeElement),
+  ).toBe(true)
+  await page.getByRole("button", { name: "Configure Renamed server" }).click()
+  await page.getByRole("button", { name: "Controls page" }).click()
+  await page.getByRole("button", { name: "MCP page" }).click()
+  expect(await page.getByLabel("Server name", { exact: true }).inputValue()).toBe("Renamed server")
+  await page.getByRole("button", { name: "Back to servers", exact: true }).click()
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Configure Renamed server")
+  expect(errors).toEqual([])
+})
+
+test("MCP key/value fields preserve compound values, transport drafts and row focus", async () => {
+  await page.getByRole("button", { name: "MCP page" }).click()
+  await page.getByRole("button", { name: "Add server", exact: true }).click()
+  await page.getByLabel("Server name", { exact: true }).fill("Custom server")
+  await page.getByRole("button", { name: "Connection type: Local command" }).click()
+  await page.getByRole("option", { name: "Remote endpoint", exact: true }).click()
+  await page.getByLabel("Server URL", { exact: true }).fill("https://mcp.example.com/custom")
+  await page.getByRole("button", { name: "Add request header", exact: true }).click()
+  await page.getByLabel("Request header 1 name", { exact: true }).fill("Authorization")
+  const value = page.getByLabel("Request header 1 value", { exact: true })
+  await value.fill("Bearer fixture:with=spaces")
+  expect(await value.evaluate((el) => el === document.activeElement)).toBe(true)
+  await page.getByRole("button", { name: "Connection type: Remote endpoint" }).click()
+  await page.getByRole("option", { name: "Local command", exact: true }).click()
+  await page.getByLabel("Start command", { exact: true }).fill("npx fixture-server")
+  await page.getByRole("button", { name: "Add environment variable", exact: true }).click()
+  await page.getByLabel("Environment variable 1 name", { exact: true }).fill("FIXTURE")
+  await page.getByLabel("Environment variable 1 value", { exact: true }).fill("a=b c:d")
+  await page.getByRole("button", { name: "Back to servers", exact: true }).click()
+  await page.getByRole("button", { name: "Configure Custom server" }).click()
+  expect(await page.getByLabel("Environment variable 1 value", { exact: true }).inputValue()).toBe("a=b c:d")
+  await page.getByRole("button", { name: "Connection type: Local command" }).click()
+  await page.getByRole("option", { name: "Remote endpoint", exact: true }).click()
+  expect(await page.getByLabel("Request header 1 value", { exact: true }).inputValue()).toBe(
+    "Bearer fixture:with=spaces",
+  )
+  expect(JSON.parse((await page.getByTestId("mcp-patch").textContent()) || "{}")["Custom server"]).toMatchObject({
+    type: "remote",
+    headers: { Authorization: "Bearer fixture:with=spaces" },
+  })
+  await page.getByRole("button", { name: "Remove request header: Authorization" }).click()
+  expect(await page.getByLabel("Request header 1 name", { exact: true }).count()).toBe(0)
+  expect(errors).toEqual([])
+})
+
+test("MCP search recovers from no results and its configuration fits narrow content", async () => {
+  await page.getByRole("button", { name: "MCP page" }).click()
+  await page.getByRole("searchbox", { name: "Search MCP servers" }).fill("builtin-fixture")
+  expect(await page.getByRole("button", { name: "Configure Builtin-fixture", exact: true }).count()).toBe(1)
+  expect(await page.getByRole("button", { name: "Configure Fixture server", exact: true }).count()).toBe(0)
+  await page.getByRole("searchbox", { name: "Search MCP servers" }).fill("missing")
+  await page.getByText("No matching servers", { exact: true }).waitFor()
+  expect(await page.getByRole("button", { name: "Configure Builtin-fixture", exact: true }).count()).toBe(0)
+  await page.getByRole("button", { name: "Clear server search" }).first().click()
+  await page.getByRole("button", { name: "Configure Fixture server" }).click()
+  for (const width of [1280, 800, 375, 320]) {
+    await page.setViewportSize({ width, height: 800 })
+    const name = page.getByLabel("Server name", { exact: true })
+    const type = page.getByRole("button", { name: "Connection type: Remote endpoint" })
+    const boxes = await Promise.all([name.boundingBox(), type.boundingBox()])
+    expect(boxes.every((box) => box && box.width >= 100 && box.x >= 0 && box.x + box.width <= width)).toBe(true)
+    if (width <= 375) expect(boxes[1]!.y).toBeGreaterThan(boxes[0]!.y + boxes[0]!.height)
+  }
+  expect(errors).toEqual([])
 })
 
 test("email tasks retain their drafts and report incomplete configurations without claiming health", async () => {
@@ -390,6 +477,9 @@ test("touch menus retain reachable option rows within narrow settings widths", a
     const trigger = page.getByRole("button", { name: "Font: System default", exact: true })
     await trigger.click()
     const option = page.getByRole("option", { name: "Serif", exact: true })
+    await page.locator(".settings-popover-layer").evaluate(async (layer) => {
+      await Promise.allSettled(layer.getAnimations({ subtree: true }).map((animation) => animation.finished))
+    })
     expect((await option.boundingBox())!.height).toBeGreaterThanOrEqual(44)
     const bounds = (await page.locator(".menu-field-surface").boundingBox())!
     expect(bounds.x).toBeGreaterThanOrEqual(0)

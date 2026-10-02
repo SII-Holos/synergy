@@ -19096,68 +19096,24 @@ msgid "settings.mcp.builtins.section.title"
 msgstr "⟦Built-in servers⟧"
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.card.collapse"
-msgstr "⟦Collapse server details⟧"
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.card.commandNotSet"
 msgstr "⟦Command not set⟧"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.card.configure.named"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.connectionType"
 msgstr "⟦Connection type⟧"
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.card.details.named"
-msgstr "⟦{action}: {name}⟧"
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.card.enable.named"
 msgstr "⟦Enable {name} server⟧"
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.card.env"
-msgstr "⟦Environment⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.env.description"
-msgstr "⟦Optional variables passed only to this server process.⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.env.placeholder"
-msgstr "⟦KEY=value ANOTHER=value⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.expand"
-msgstr "⟦Expand server details⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.expandByDefault"
-msgstr "⟦Expand by default⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.expandByDefault.description"
-msgstr "⟦Keep this server's tools always visible to the model instead of folding them into an expandable MCP group.⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.headers"
-msgstr "⟦Headers⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.headers.description"
-msgstr "⟦Optional request headers, one per line.⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.headers.placeholder"
-msgstr "⟦Authorization: Bearer token X-Custom: value⟧"
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.card.incomplete"
 msgstr "⟦Incomplete configuration⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.local.description"
-msgstr "⟦Starts a command on this machine.⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.newServer"
@@ -19168,18 +19124,6 @@ msgid "settings.mcp.card.paused"
 msgstr "⟦Paused⟧"
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.card.pill.local"
-msgstr "⟦Local⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.pill.remote"
-msgstr "⟦Remote⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.remote.description"
-msgstr "⟦Connects to an HTTP or SSE endpoint.⟧"
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.card.remove.named"
 msgstr "⟦Remove {name} server⟧"
 
@@ -19188,44 +19132,12 @@ msgid "settings.mcp.card.serverName"
 msgstr "⟦Server name⟧"
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.card.serverName.description"
-msgstr "⟦Used in menus, logs, and saved configuration.⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.serverName.placeholder"
-msgstr "⟦filesystem⟧"
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.card.serverUrl"
 msgstr "⟦Server URL⟧"
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.card.serverUrl.description"
-msgstr "⟦HTTP or SSE endpoint for the remote server.⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.serverUrl.placeholder"
-msgstr "⟦https://mcp.example.com/sse⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.startCmd.placeholder"
-msgstr "⟦npx -y @modelcontextprotocol/server-filesystem C:\\Projects⟧"
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.card.startCommand"
 msgstr "⟦Start command⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.startCommand.description"
-msgstr "⟦Command and arguments Synergy runs when this server is needed.⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.startupTimeout"
-msgstr "⟦Startup timeout⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.startupTimeout.description"
-msgstr "⟦Milliseconds to wait before treating the server as unavailable.⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.type.local"
@@ -19244,6 +19156,106 @@ msgid "settings.mcp.card.urlNotSet"
 msgstr "⟦URL not set⟧"
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.editor.advanced"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.back"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.command.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.environment"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.environment.add"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.environment.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.environment.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.environment.remove"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.environment.value"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.header.add"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.header.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.header.remove"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.header.value"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.headers"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.headers.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.name.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.optional"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.pair.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.pair.value"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.saveHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.timeout"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.timeout.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.visibility"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.visibility.description"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.empty.copy"
 msgstr "⟦Add a server when a workflow needs external tools.⟧"
 
@@ -19260,12 +19272,40 @@ msgid "settings.mcp.page.title"
 msgstr "⟦MCP⟧"
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.section.description"
-msgstr "⟦Each server adds tools or prompts from a trusted local command or remote endpoint.⟧"
+msgid "settings.mcp.search"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.search.clear"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.search.empty"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.section.title"
 msgstr "⟦Custom servers⟧"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.validation.command"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.validation.duplicate"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.validation.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.validation.pairs"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.validation.url"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.automatic"

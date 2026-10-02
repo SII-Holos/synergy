@@ -343,6 +343,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   )
   const [search, setSearch] = createSignal("")
   const [searchTarget, setSearchTarget] = createSignal<{ section: string; label: string }>()
+  const [mcpRevealIndex, setMcpRevealIndex] = createSignal<number>()
   const [contentRoot, setContentRoot] = createSignal<HTMLDivElement>()
   const [initialized, setInitialized] = createSignal(false)
   const [saving, setSaving] = createSignal(false)
@@ -822,7 +823,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const draftFingerprint = createMemo(() =>
     JSON.stringify({
       server: serverPatch(),
-      invalidDraft: serverValidation().length ? [settings.runtime, settings.email] : undefined,
+      invalidDraft: serverValidation().length
+        ? [settings.runtime, settings.email, settings.library, settings.mcps]
+        : undefined,
       plugin: pluginDraftVersion(),
       personalize: [personalizeController.content(), personalizeController.resetPending()],
       font: [font.selected("sans"), font.selected("mono")],
@@ -1037,6 +1040,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
       )
       if (result.invalid) {
         const page = failures[0]?.page
+        const issue = serverValidation()[0]
+        if (issue?.page === "mcp") setMcpRevealIndex(Number(issue.field.split(".")[0]))
         if (page) setActiveTab(page)
         requestAnimationFrame(() => contentRoot()?.querySelector<HTMLElement>("[aria-invalid=true]")?.focus())
       }
@@ -1296,6 +1301,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
     mcp: () => (
       <McpPanel
         entries={settings.mcps.entries}
+        fieldError={(index, field) =>
+          aggregateSaveStatus() === "invalid" ? serverFieldError("mcp", `${index}.${field}`) : undefined
+        }
+        revealIndex={mcpRevealIndex()}
+        onRevealed={() => setMcpRevealIndex(undefined)}
         entryUnsaved={(entry) => {
           const cfg = config()
           const current = cfg?.mcp?.[entry.key.trim()]

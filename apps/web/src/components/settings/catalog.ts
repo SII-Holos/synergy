@@ -547,11 +547,11 @@ const BUILTIN_SETTINGS_COPY = {
     },
   },
   worktrees: {
-    label: { id: "settings.catalog.worktrees.label", message: "Independent copies" },
+    label: { id: "settings.catalog.worktrees.label", message: "Worktrees" },
     description: {
       id: "settings.catalog.worktrees.description",
       message:
-        "Review independent project copies, their status and associated tasks, and clean up copies you no longer need.",
+        "Review project worktrees, their status and associated tasks, and clean up worktrees you no longer need.",
     },
     searchTerms: {
       id: "settings.catalog.worktrees.searchTerms",

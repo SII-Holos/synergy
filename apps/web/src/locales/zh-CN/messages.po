@@ -16821,11 +16821,11 @@ msgstr "语音 | 听写 | 语音转文字 | 文字转语音 | 识别 | 合成"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.worktrees.description"
-msgstr "查看项目Worktree、状态和关联任务，清理不再需要的副本。"
+msgstr "查看项目工作树、状态和关联任务，清理不再需要的工作树。"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.worktrees.label"
-msgstr "独立副本"
+msgstr "工作树"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.worktrees.searchTerms"
@@ -17821,7 +17821,7 @@ msgstr "服务器有更新的 Web 资源时，刷新此浏览器。"
 
 #. js-lingui-explicit-id
 msgid "settings.general.workspace.description"
-msgstr "使用项目文件，或为每个新的 Git 任务创建独立副本。项目可以覆盖此默认设置。"
+msgstr "使用项目文件，或为每个新的 Git 任务创建工作树。项目可以覆盖此默认设置。"
 
 #. js-lingui-explicit-id
 msgid "settings.general.workspace.main"
@@ -17833,7 +17833,7 @@ msgstr "新任务使用的文件"
 
 #. js-lingui-explicit-id
 msgid "settings.general.workspace.worktree"
-msgstr "独立副本"
+msgstr "工作树"
 
 #. js-lingui-explicit-id
 msgid "settings.general.zoom.aria"
@@ -19096,68 +19096,24 @@ msgid "settings.mcp.builtins.section.title"
 msgstr "内置服务器"
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.card.collapse"
-msgstr "收起服务器详情"
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.card.commandNotSet"
 msgstr "未设置命令"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.card.configure.named"
+msgstr "配置 {name}"
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.connectionType"
 msgstr "连接类型"
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.card.details.named"
-msgstr "{action}：{name}"
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.card.enable.named"
 msgstr "启用服务 {name}"
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.card.env"
-msgstr "环境变量"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.env.description"
-msgstr "仅传递给此服务器进程的可选变量。"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.env.placeholder"
-msgstr "KEY=value ANOTHER=value"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.expand"
-msgstr "展开服务器详情"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.expandByDefault"
-msgstr "默认展开"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.expandByDefault.description"
-msgstr "让该服务器的工具始终对模型可见，而不是折叠进可展开的 MCP 组。"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.headers"
-msgstr "请求头"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.headers.description"
-msgstr "可选请求标头，每行一个。"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.headers.placeholder"
-msgstr "Authorization: Bearer token X-Custom: value"
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.card.incomplete"
 msgstr "未完成配置"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.local.description"
-msgstr "在这台机器上启动命令。"
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.newServer"
@@ -19168,18 +19124,6 @@ msgid "settings.mcp.card.paused"
 msgstr "已暂停"
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.card.pill.local"
-msgstr "本地"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.pill.remote"
-msgstr "远程"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.remote.description"
-msgstr "连接到 HTTP 或 SSE 端点。"
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.card.remove.named"
 msgstr "移除服务 {name}"
 
@@ -19188,44 +19132,12 @@ msgid "settings.mcp.card.serverName"
 msgstr "服务器名称"
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.card.serverName.description"
-msgstr "用于菜单、日志和已保存配置。"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.serverName.placeholder"
-msgstr "filesystem"
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.card.serverUrl"
 msgstr "服务器 URL"
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.card.serverUrl.description"
-msgstr "远程服务器的 HTTP 或 SSE 端点。"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.serverUrl.placeholder"
-msgstr "https://mcp.example.com/sse"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.startCmd.placeholder"
-msgstr "npx -y @modelcontextprotocol/server-filesystem C:\\Projects"
-
-#. js-lingui-explicit-id
 msgid "settings.mcp.card.startCommand"
 msgstr "启动命令"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.startCommand.description"
-msgstr "需要此服务器时 Synergy 运行的命令和参数。"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.startupTimeout"
-msgstr "启动超时"
-
-#. js-lingui-explicit-id
-msgid "settings.mcp.card.startupTimeout.description"
-msgstr "等待多少毫秒后将服务器视为不可用。"
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.type.local"
@@ -19244,6 +19156,106 @@ msgid "settings.mcp.card.urlNotSet"
 msgstr "未设置 URL"
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.editor.advanced"
+msgstr "高级选项"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.back"
+msgstr "返回服务器列表"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.command.description"
+msgstr "在运行 Synergy 的机器上执行。请使用可信来源的命令。"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.environment"
+msgstr "环境变量"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.environment.add"
+msgstr "添加环境变量"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.environment.description"
+msgstr "仅传递给此服务器进程。"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.environment.name"
+msgstr "环境变量 {index} 名称"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.environment.remove"
+msgstr "移除环境变量：{name}"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.environment.value"
+msgstr "环境变量 {index} 值"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.header.add"
+msgstr "添加请求头"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.header.name"
+msgstr "请求头 {index} 名称"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.header.remove"
+msgstr "移除请求头：{name}"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.header.value"
+msgstr "请求头 {index} 值"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.headers"
+msgstr "请求头"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.headers.description"
+msgstr "填写服务器要求的认证信息或其他请求头。"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.name.placeholder"
+msgstr "我的服务器"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.optional"
+msgstr "可选"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.pair.name"
+msgstr "名称"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.pair.value"
+msgstr "值"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.saveHint"
+msgstr "使用底部“保存更改”保存配置。"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.timeout"
+msgstr "超时（毫秒）"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.timeout.description"
+msgstr "留空使用默认超时。"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.title"
+msgstr "MCP 配置"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.visibility"
+msgstr "始终向模型展示工具"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.editor.visibility.description"
+msgstr "关闭时，工具按组收起，在需要时发现。"
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.empty.copy"
 msgstr "当工作流需要外部工具时添加服务器。"
 
@@ -19260,12 +19272,40 @@ msgid "settings.mcp.page.title"
 msgstr "MCP"
 
 #. js-lingui-explicit-id
-msgid "settings.mcp.section.description"
-msgstr "每个服务器都会从可信的本地命令或远程端点添加工具或提示。"
+msgid "settings.mcp.search"
+msgstr "搜索 MCP 服务器"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.search.clear"
+msgstr "清空服务器搜索"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.search.empty"
+msgstr "没有匹配的服务器"
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.section.title"
 msgstr "自定义服务"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.validation.command"
+msgstr "请输入启动此服务器的命令。"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.validation.duplicate"
+msgstr "请使用其他服务器尚未使用的名称。"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.validation.name"
+msgstr "请输入服务器名称。"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.validation.pairs"
+msgstr "每项都需要非空且不重复的名称。"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.validation.url"
+msgstr "请输入完整的 HTTP 或 HTTPS 服务器地址。"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.automatic"
@@ -21777,7 +21817,7 @@ msgstr "项目文件"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.badge.managed"
-msgstr "托管副本"
+msgstr "托管工作树"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.badge.stale"
@@ -21785,7 +21825,7 @@ msgstr "已失效"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.count"
-msgstr "{projectCount} 个项目，共 {worktreeCount} 个独立副本"
+msgstr "{projectCount} 个项目，共 {worktreeCount} 个工作树"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.delete"
@@ -21801,19 +21841,19 @@ msgstr "一个或多个项目仓库无法读取。请检查路径后尝试刷新
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.empty.none"
-msgstr "暂无独立副本"
+msgstr "暂无工作树"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.empty.none.desc"
-msgstr "创建托管副本后，它们会显示在这里。"
+msgstr "创建托管工作树后，它们会显示在这里。"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.empty.unavailable"
-msgstr "独立副本暂不可用"
+msgstr "工作树暂不可用"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.loadError.all"
-msgstr "独立副本读取失败"
+msgstr "工作树读取失败"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.loadError.desc"
@@ -21825,15 +21865,15 @@ msgstr "请重试。"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.loadError.some"
-msgstr "部分独立副本读取失败"
+msgstr "部分工作树读取失败"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.page.description"
-msgstr "查看项目副本、文件与关联任务。"
+msgstr "查看工作树、文件与关联任务。"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.page.title"
-msgstr "独立副本"
+msgstr "工作树"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.refresh"
@@ -21845,7 +21885,7 @@ msgstr "正在刷新…"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.remove.error"
-msgstr "独立副本移除失败"
+msgstr "工作树移除失败"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.remove.error.retry"
@@ -21861,19 +21901,19 @@ msgstr "正在强制删除…"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.remove.force.success"
-msgstr "独立副本已强制移除"
+msgstr "工作树已强制移除"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.remove.success"
-msgstr "独立副本已移除"
+msgstr "工作树已移除"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.section.description"
-msgstr "按来源项目展示副本。项目文件与外部管理的副本仅供查看。"
+msgstr "按项目展示工作树。主工作树与外部管理的工作树仅供查看。"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.section.title"
-msgstr "项目副本"
+msgstr "项目工作树"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.source"

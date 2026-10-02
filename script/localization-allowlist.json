@@ -1,5 +1,21 @@
 [
   {
+    "path": "apps/web/src/components/settings/components/McpEditor.tsx",
+    "kind": "jsx-attribute",
+    "literal": "npx -y my-mcp-server",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "Example command syntax and package identifier remain unchanged across locales."
+  },
+  {
+    "path": "apps/web/src/components/settings/components/McpEditor.tsx",
+    "kind": "jsx-attribute",
+    "literal": "https://mcp.example.com/mcp",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "Example MCP endpoint URL remains unchanged across locales."
+  },
+  {
     "path": "packages/ui/src/components/logo.tsx",
     "kind": "jsx-text",
     "literal": "HOLOS",
