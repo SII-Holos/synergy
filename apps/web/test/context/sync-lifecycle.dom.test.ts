@@ -15,19 +15,20 @@ test("SyncProvider aborts message loading and releases its Scope on unmount", as
     `
  import {createStore} from 'solid-js/store';
  const state=createStore({status:'ready',message:{},messageWindow:{},latestContextMessage:{},session:[],path:{directory:''}});
+ let notifyStarted;export const started=new Promise(resolve=>notifyStarted=resolve);
  export const stats={released:0,signal:null,reject:null};
  export const useGlobalSync=()=>({retainContentCache:(_key,create)=>({cache:create(),release(){}}),retainScopeState:()=>({state,release:()=>stats.released++}),scopeReconnectVersion:()=>0,capturePartSnapshotRequest:()=>({}),captureResourceRequest:()=>({}),beginContextProjection:()=>0});
  export const refreshPlanBlueprintOfferFromLoadedParts=()=>{};export const updatePlanBlueprintOfferState=()=>{};
- export const useSDK=()=>({scopeKey:'probe',client:{session:{timelinePage:(_input,options)=>{stats.signal=options.signal;return new Promise((resolve,reject)=>stats.reject=reject)}}}});
+ export const useSDK=()=>({scopeKey:'probe',client:{session:{timelinePage:(_input,options)=>{stats.signal=options.signal;return new Promise((resolve,reject)=>{stats.reject=reject;notifyStarted()})}}}});
  `,
   )
   await Bun.write(
     entry,
     `
- import {render} from 'solid-js/web';import {SyncProvider,useSync} from ${JSON.stringify(sync)};import {stats} from ${JSON.stringify(stub)};
+ import {render} from 'solid-js/web';import {SyncProvider,useSync} from ${JSON.stringify(sync)};import {stats,started} from ${JSON.stringify(stub)};
  let api;function Child(){api=useSync();return <div>probe</div>}
  const dispose=render(()=><SyncProvider><Child/></SyncProvider>,document.getElementById('root'));
- globalThis.syncMemoryProbe={stats,dispose,start:()=>api.session.history.returnLatest('probe-session').catch(()=>{})};
+ globalThis.syncMemoryProbe={stats,started,dispose,start:()=>api.session.history.returnLatest('probe-session').catch(()=>{})};
  `,
   )
   const root = document.createElement("div")
@@ -65,12 +66,14 @@ test("SyncProvider aborts message loading and releases its Scope on unmount", as
       globalThis as unknown as {
         syncMemoryProbe: {
           stats: { released: number; signal: AbortSignal; reject: (e: Error) => void }
+          started: Promise<void>
           dispose: () => void
           start: () => Promise<void>
         }
       }
     ).syncMemoryProbe
     const pending = h.start()
+    await h.started
     h.dispose()
     const result = { released: h.stats.released, aborted: h.stats.signal.aborted }
     h.stats.reject(new Error("fixture complete"))
