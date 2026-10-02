@@ -413,7 +413,7 @@
       "additionalProperties": { "anyOf": [{ "type": "string" }, { "type": "null" }] }
     },
     "default_agent": {
-      "description": "Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid.",
+      "description": "Default agent to use when none is specified. Must be a visible primary agent. Falls back to the general-purpose primary, then another visible primary if unavailable.",
       "type": "string"
     },
     "username": {
@@ -424,9 +424,9 @@
       "description": "Agent configuration",
       "type": "object",
       "properties": {
-        "synergy": { "ref": "AgentConfig" },
-        "synergy-max": { "ref": "AgentConfig" },
-        "synergy-flash": { "ref": "AgentConfig" },
+        "atlas": { "ref": "AgentConfig" },
+        "forge": { "ref": "AgentConfig" },
+        "pico": { "ref": "AgentConfig" },
         "developer": { "ref": "AgentConfig" },
         "general": { "ref": "AgentConfig" },
         "explore": { "ref": "AgentConfig" },

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, mock, test } from "bun:test"
 import { streamText } from "ai"
 import z from "zod"
@@ -39,7 +40,7 @@ for (const scenario of [
               modelID: "test-model",
               providerID: "test-provider",
               mode: "build",
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
               cost: 0,
               tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -107,7 +108,7 @@ test("rejects oversized tool input before the handler executes", () =>
             modelID: "test-model",
             providerID: "test-provider",
             mode: "build",
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
             cost: 0,
             tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -213,7 +214,7 @@ test("configured tool timeout settles a non-cooperative built-in execution exact
             modelID: "test-model",
             providerID: "test-provider",
             mode: "build",
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
             cost: 0,
             tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -371,7 +372,7 @@ for (const scenario of [
               modelID: "test-model",
               providerID: "test-provider",
               mode: "build",
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
               cost: 0,
               tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

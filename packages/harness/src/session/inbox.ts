@@ -374,6 +374,7 @@ export namespace SessionInbox {
     }
 
     const agent = await Agent.get(agentName ?? (await Agent.defaultAgent()))
+    if (!agent) throw new Error(`Agent not found: ${agentName}`)
     const inheritedModel = await lastModel(sessionID).catch(() => undefined)
     const model =
       payload.model ??
@@ -634,6 +635,7 @@ export namespace SessionInbox {
   }
 
   export async function enqueueUser(input: InvokeInput, options?: { mode: "task" | "steer" }): Promise<Item> {
+    if (input.agent !== undefined && !(await Agent.get(input.agent))) throw new Error(`Agent not found: ${input.agent}`)
     const messageID = input.messageID ?? Identifier.ascending("message")
     const itemID = stableDeliveryItemID(input.sessionID, `user:${messageID}`)
     const { messageID: _queuedMessageID, ...queuedInput } = input

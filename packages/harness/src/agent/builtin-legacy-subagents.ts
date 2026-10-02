@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "./primary-identity"
 import type { Agent } from "./agent"
 import type { BuiltinAgentContext } from "./builtin-context"
 import { createSubagent } from "./builtin-context"
@@ -18,7 +19,7 @@ export function createBuiltinLegacySubagents(ctx: BuiltinAgentContext): Record<s
       prompt: buildDeveloperPrompt(),
       model: "thinking",
       permission: "codeWrite",
-      visibleTo: ["synergy", "synergy-flash"],
+      visibleTo: [PrimaryAgentIdentity.names.general, PrimaryAgentIdentity.names.lightweight],
     }),
     createSubagent(ctx, {
       name: "explore",
@@ -27,7 +28,7 @@ export function createBuiltinLegacySubagents(ctx: BuiltinAgentContext): Record<s
       prompt: PROMPT_EXPLORE,
       model: "mid",
       permission: "readOnly",
-      visibleTo: ["synergy", "synergy-flash"],
+      visibleTo: [PrimaryAgentIdentity.names.general, PrimaryAgentIdentity.names.lightweight],
     }),
     createSubagent(ctx, {
       name: "scout",
@@ -36,7 +37,7 @@ export function createBuiltinLegacySubagents(ctx: BuiltinAgentContext): Record<s
       prompt: PROMPT_SCOUT,
       model: "mid",
       permission: "externalResearch",
-      visibleTo: ["synergy", "synergy-flash"],
+      visibleTo: [PrimaryAgentIdentity.names.general, PrimaryAgentIdentity.names.lightweight],
     }),
     createSubagent(ctx, {
       name: "advisor",
@@ -45,7 +46,7 @@ export function createBuiltinLegacySubagents(ctx: BuiltinAgentContext): Record<s
       prompt: PROMPT_ADVISOR,
       model: "thinking",
       permission: "review",
-      visibleTo: ["synergy", "synergy-flash"],
+      visibleTo: [PrimaryAgentIdentity.names.general, PrimaryAgentIdentity.names.lightweight],
     }),
     createSubagent(ctx, {
       name: "inspector",
@@ -54,7 +55,7 @@ export function createBuiltinLegacySubagents(ctx: BuiltinAgentContext): Record<s
       prompt: PROMPT_INSPECTOR,
       model: "mid",
       permission: "review",
-      visibleTo: ["synergy", "synergy-flash"],
+      visibleTo: [PrimaryAgentIdentity.names.general, PrimaryAgentIdentity.names.lightweight],
     }),
     createSubagent(ctx, {
       name: "scribe",
@@ -63,7 +64,7 @@ export function createBuiltinLegacySubagents(ctx: BuiltinAgentContext): Record<s
       prompt: buildScribePrompt(),
       model: "creative",
       permission: "docsWrite",
-      visibleTo: ["synergy", "synergy-flash"],
+      visibleTo: [PrimaryAgentIdentity.names.general, PrimaryAgentIdentity.names.lightweight],
     }),
     createSubagent(ctx, {
       name: "scholar",
@@ -72,7 +73,7 @@ export function createBuiltinLegacySubagents(ctx: BuiltinAgentContext): Record<s
       prompt: buildScholarPrompt(),
       model: "thinking",
       permission: "research",
-      visibleTo: ["synergy", "synergy-flash"],
+      visibleTo: [PrimaryAgentIdentity.names.general, PrimaryAgentIdentity.names.lightweight],
     }),
   ]
 

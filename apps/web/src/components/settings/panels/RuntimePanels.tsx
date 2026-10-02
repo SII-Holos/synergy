@@ -1,3 +1,5 @@
+import { getAgentVisual } from "../../agent-visual"
+import { defaultPrimaryAgent } from "../../agent-selection"
 import type { MessageDescriptor } from "@lingui/core"
 
 import { useLingui } from "@lingui/solid"
@@ -13,6 +15,7 @@ import type { RuntimeStore } from "../types"
 import type { DesktopShellEnvironmentDiagnostics } from "@/context/platform"
 import { concurrencyPressureState } from "./runtime-concurrency-model"
 import { agentWorkerCapacityDisplay } from "./runtime-agent-workers-model"
+import { translateDescriptor } from "@/locales/translate"
 
 const managedByEnvLabel = { id: "settings.runtime.managedByEnv", message: "Managed by environment" }
 
@@ -287,7 +290,7 @@ export function TimeoutsPanel(props: {
   capacityStatus?: AgentWorkerCapacityStatus
   popoverLayer?: HTMLElement
 }) {
-  const { _ } = useLingui()
+  const { _, i18n } = useLingui()
   const environmentConcurrency = () => props.concurrencyStatus?.environment
   const managedByEnvironment = () => environmentConcurrency() !== null && environmentConcurrency() !== undefined
   const displayedConcurrency = () =>
@@ -363,10 +366,13 @@ export function TimeoutsPanel(props: {
           description={_(defaultAgentRowDesc)}
           trailing={
             <MenuField
-              value={props.defaultAgent}
+              value={defaultPrimaryAgent(props.defaultAgent, props.availableAgents) ?? ""}
               ariaLabel={_(defaultAgentRowTitle)}
               popoverLayer={props.popoverLayer}
-              options={props.availableAgents.map((agent) => ({ value: agent.name, label: agent.name }))}
+              options={props.availableAgents.map((agent) => ({
+                value: agent.name,
+                label: translateDescriptor(getAgentVisual(agent).label, i18n()),
+              }))}
               onChange={(value) => props.onDefaultAgentChange(value)}
             />
           }

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -30,7 +31,7 @@ function ctx(sessionID: string): Tool.Context {
     sessionID,
     messageID: Identifier.ascending("message"),
     callID: "call-boss-test",
-    agent: "synergy-max",
+    agent: PrimaryAgentIdentity.names.coding,
     abort: AbortSignal.any([]),
     metadata: () => {},
     ask: async () => {},

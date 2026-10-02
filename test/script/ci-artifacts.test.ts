@@ -117,6 +117,7 @@ test("build identity follows newly added transitive workspace inputs", async () 
 test("shared preparation compiles the committed SDK without regenerating its inputs", () => {
   const recipes = buildCommands()
   expect(recipes.find((command) => command.cwd.endsWith("packages/sdk/js"))!.args).toContain("--compile-only")
+  expect(recipes.some((command) => command.cwd.endsWith(path.join("packages", "testing")))).toBe(false)
   expect(recipes.at(-1)!.cwd).toEndWith("packages/plugin")
 })
 

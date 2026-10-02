@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { AgendaStore } from "@ericsanchezok/synergy-workflows/agenda/store"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -39,7 +40,7 @@ function ctx(sessionID: string): Tool.Context {
   return {
     sessionID,
     messageID: Identifier.ascending("message"),
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     abort: new AbortController().signal,
     metadata() {},
     async ask() {},

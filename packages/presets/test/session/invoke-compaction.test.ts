@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterAll, beforeAll, describe, expect, test, mock, spyOn } from "bun:test"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
@@ -120,7 +121,7 @@ function testUser(input: {
     id: input.id,
     role: "user",
     sessionID: input.sessionID,
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test-provider", modelID: "test-model" },
     time: { created: input.created },
     ...(input.summaryTitle ? { summary: { title: input.summaryTitle, diffs: [] } } : {}),
@@ -275,7 +276,7 @@ async function runCompactionProcessCase(input: {
           id: Identifier.ascending("message"),
           role: "user",
           sessionID: session.id,
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           model: { providerID: input.providerID ?? "test-provider", modelID: "test-model" },
           time: { created: Date.now() },
           ...(input.variant ? { variant: input.variant } : {}),
@@ -460,7 +461,7 @@ async function expectPreflightCompaction(input: { shouldCompact: boolean; contex
           id: Identifier.ascending("message"),
           role: "user",
           sessionID,
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           model: {
             providerID: "test-provider",
             modelID: "test-model",
@@ -623,7 +624,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
               id: Identifier.ascending("message"),
               role: "user",
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               time: { created: Date.now() },
             })
@@ -746,7 +747,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
               id: Identifier.ascending("message"),
               role: "user",
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               time: { created: Date.now() },
             })
@@ -866,7 +867,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
               id: Identifier.ascending("message"),
               role: "user",
               sessionID,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: {
                 providerID: "test-provider",
                 modelID: "test-model",
@@ -993,7 +994,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
               id: Identifier.ascending("message"),
               role: "user",
               sessionID,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: {
                 providerID: "test-provider",
                 modelID: "test-model",
@@ -1025,8 +1026,8 @@ describe.serial("SessionInvoke preflight compaction", () => {
               sessionID,
               modelID: "test-model",
               providerID: "test-provider",
-              mode: "synergy",
-              agent: "synergy",
+              mode: PrimaryAgentIdentity.names.general,
+              agent: PrimaryAgentIdentity.names.general,
               path: {
                 cwd: tmp.path,
                 root: tmp.path,
@@ -1077,7 +1078,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
               id: Identifier.ascending("message"),
               role: "user",
               sessionID,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: {
                 providerID: "test-provider",
                 modelID: "test-model",

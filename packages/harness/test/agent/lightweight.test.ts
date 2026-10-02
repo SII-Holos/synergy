@@ -1,44 +1,26 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { expect, test } from "bun:test"
 import { tmpdir } from "../support/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Agent } from "../../src/agent/agent"
 import { AgentDelegation } from "../../src/agent/delegation"
 import { PermissionNext } from "../../src/permission/next"
-import { ToolExposure } from "../../src/tool/exposure"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
-
-const FLASH_DEFERRED = ["task", "task_list", "task_output", "task_cancel", "dagwrite", "dagread", "dagpatch"]
 
 function evalPerm(agent: Agent.Info | undefined, permission: string): PermissionNext.Action | undefined {
   if (!agent) return undefined
   return PermissionNext.evaluate(permission, "*", agent.permission).action
 }
 
-test("synergy-flash registers as a visible primary agent", () =>
+test("lightweight primary keeps the classic execution surface with file_search as the only search tool", () =>
   runtime.run(async () => {
     await using tmp = await tmpdir()
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const agents = await Agent.list()
-        const flash = agents.find((agent) => agent.name === "synergy-flash")
-        expect(flash).toBeDefined()
-        expect(flash?.mode).toBe("primary")
-        expect(flash?.hidden).toBeUndefined()
-        expect(flash?.native).toBe(true)
-      },
-    })
-  }))
-
-test("synergy-flash keeps the classic execution surface with file_search as the only search tool", () =>
-  runtime.run(async () => {
-    await using tmp = await tmpdir()
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const flash = await Agent.get("synergy-flash")
+        const flash = await Agent.get(PrimaryAgentIdentity.names.lightweight)
         expect(flash).toBeDefined()
         expect(evalPerm(flash, "bash")).toBe("allow")
         expect(evalPerm(flash, "read")).toBe("allow")
@@ -59,25 +41,7 @@ test("synergy-flash keeps the classic execution surface with file_search as the 
     })
   }))
 
-test("synergy-flash defers orchestration tools via deferredTools", () =>
-  runtime.run(async () => {
-    await using tmp = await tmpdir()
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const flash = await Agent.get("synergy-flash")
-        expect(flash?.deferredTools).toBeDefined()
-        for (const id of FLASH_DEFERRED) {
-          expect(flash?.deferredTools).toContain(id)
-          const exposure = ToolExposure.deferredExposure(id, ToolExposure.RESIDENT, flash?.deferredTools)
-          expect(exposure.mode).toBe("group")
-        }
-        expect(ToolExposure.deferredExposure("bash", ToolExposure.RESIDENT, flash?.deferredTools).mode).toBe("resident")
-      },
-    })
-  }))
-
-test("legacy subagents are delegatable by synergy-flash", () =>
+test("legacy subagents are delegatable by the lightweight primary", () =>
   runtime.run(async () => {
     await using tmp = await tmpdir()
     await ScopeContext.provide({
@@ -86,9 +50,14 @@ test("legacy subagents are delegatable by synergy-flash", () =>
         for (const name of ["developer", "explore", "scout", "advisor", "inspector", "scribe", "scholar"]) {
           const agent = await Agent.get(name)
           expect(agent).toBeDefined()
-          expect(AgentDelegation.canDelegateTo(agent!, "synergy-flash")).toBe(true)
+          expect(AgentDelegation.canDelegateTo(agent!, PrimaryAgentIdentity.names.lightweight)).toBe(true)
         }
-        expect(AgentDelegation.canDelegateTo(await Agent.get("synergy-max"), "synergy-flash")).toBe(false)
+        expect(
+          AgentDelegation.canDelegateTo(
+            await Agent.get(PrimaryAgentIdentity.names.coding),
+            PrimaryAgentIdentity.names.lightweight,
+          ),
+        ).toBe(false)
       },
     })
   }))

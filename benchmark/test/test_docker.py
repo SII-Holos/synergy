@@ -280,7 +280,7 @@ def primary_attempts(root: Path):
             manifest = json.loads(archive.read("manifest.json"))
         assert manifest["format"] == "synergy-rollout" and manifest["version"] == 1
         for snapshot in manifest["snapshots"]:
-            calls = {call["id"] for call in snapshot["calls"] if call["purpose"] == "synergy"}
+            calls = {call["id"] for call in snapshot["calls"] if call.get("usageRole") == "conversation"}
             yield from (attempt for attempt in snapshot["attempts"] if attempt["callID"] in calls)
 
 

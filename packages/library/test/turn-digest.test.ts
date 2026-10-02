@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { TurnDigest } from "../src/turn-digest"
 import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
@@ -16,7 +17,7 @@ function userMsg(id: string, parts: MessageV2.Part[]): MessageV2.WithParts {
       sessionID: "ses_1",
       role: "user" as const,
       time: { created: 1 },
-      agent: "synergy",
+      agent: PrimaryAgentIdentity.names.general,
       model: { providerID: "p", modelID: "m" },
     },
     parts,
@@ -34,7 +35,7 @@ function assistantMsg(parentID: string, parts: MessageV2.Part[]): MessageV2.With
       modelID: "m",
       providerID: "p",
       mode: "",
-      agent: "synergy",
+      agent: PrimaryAgentIdentity.names.general,
       path: { cwd: "/", root: "/" },
       cost: 0,
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

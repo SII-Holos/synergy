@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -134,7 +135,7 @@ describe("BossRuntime", () => {
     runtime.run(async () => {
       await withHomeScope(async () => {
         stubConfig(FEISHU_ONE)
-        // Simulate a session created by older code (agentOverride: "synergy").
+        // Simulate a session created by older code (agentOverride: PrimaryAgentIdentity.names.general).
         const legacy = await Session.create({
           scope: Scope.home(),
           endpoint: SessionEndpoint.fromChannel({
@@ -148,7 +149,7 @@ describe("BossRuntime", () => {
           }),
           interaction: { mode: "interactive", source: "boss" },
           title: BossRuntime.BOSS_SESSION_TITLE,
-          agentOverride: "synergy",
+          agentOverride: PrimaryAgentIdentity.names.general,
           workflow: { kind: "boss", role: "boss" },
         })
 

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { ResponseCard } from "@ericsanchezok/synergy-connections/channel/types"
 import { ResponseCardTool } from "@ericsanchezok/synergy-connections/channel/tools/response-card"
@@ -8,7 +9,7 @@ function context(): Tool.Context {
     sessionID: "ses_response_card",
     messageID: "msg_response_card",
     callID: "call_response_card",
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     abort: new AbortController().signal,
     metadata() {},
     async ask() {

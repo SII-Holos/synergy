@@ -592,6 +592,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       setInitialized,
       originalMcpsRef,
       builtinMcps: builtinMcps(),
+      availableAgents: agents(),
     })
     if (result !== undefined) initializedForSet = result
   }

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -142,7 +143,7 @@ function installLiveTurnMocks() {
   ;(ExperienceEncoder.onComplete as any) = mock(() => {})
   ;(Snapshot.track as any) = mock(async () => undefined)
   ;(AgentTurn.stream as any) = mock(async (input: { agent?: { name?: string }; abort: AbortSignal }) => {
-    if (input.agent?.name !== "synergy") {
+    if (input.agent?.name !== PrimaryAgentIdentity.names.general) {
       return {
         fullStream: (async function* () {})(),
         usage: Promise.resolve(undefined),
@@ -183,7 +184,7 @@ async function createSessionWithRoot(options?: { interaction?: SessionInteractio
     role: "user",
     sessionID: session.id,
     isRoot: true,
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test-provider", modelID: "test-model" },
     time: { created: Date.now() },
   })

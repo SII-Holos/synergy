@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -5,6 +6,7 @@ import { migrations as channelMigrations } from "@ericsanchezok/synergy-connecti
 import { DataTransfer } from "../../src/cli/data/transfer"
 import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstrap"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -15,7 +17,59 @@ import { testRuntime } from "../support/runtime"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { AgendaStore } from "@ericsanchezok/synergy-workflows/agenda/store"
 import { createLocalHost } from "@ericsanchezok/synergy-local-runtime/host"
+import { NoteStore } from "@ericsanchezok/synergy-note"
 const runtime = await testRuntime()
+
+test("old Home imports upgrade Blueprint identities and rebuild Note metadata after completed startup", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    const sourceRoot = path.join(tmp.path, "source")
+    const targetRoot = path.join(tmp.path, "target")
+    const source = await StorageBootstrap.prepare({ root: sourceRoot })
+    const target = await StorageBootstrap.prepare({ root: targetRoot })
+    const note = {
+      id: "note_fixture",
+      title: "synergy-max",
+      kind: "blueprint",
+      content: { type: "doc", content: [] },
+      blueprint: { defaultAgent: "synergy-max", auditAgent: "synergy-flash" },
+      pinned: false,
+      global: false,
+      archived: false,
+      tags: [],
+      version: 3,
+      time: { created: 1, updated: 2 },
+    }
+    try {
+      await source.store.write(["notes", "home", note.id], note)
+      await source.store.write(["notes", "home", "_index"], [{ ...note, content: undefined }])
+      await target.store.write(["notes", "home", "_index"], [])
+      await target.store.write(StoragePath.metaMigrationLogDomain("note"), {
+        "20261002-note-primary-agent-identities": 1,
+      })
+      await source.activate()
+      await target.activate()
+    } finally {
+      await source.store.close()
+      await target.store.close()
+    }
+    await using locks = await SnapshotArchive.lockHomes([sourceRoot, targetRoot])
+    await DataTransfer.merge(sourceRoot, targetRoot)
+    const imported = await StorageBootstrap.prepare({ root: targetRoot })
+    try {
+      expect(await imported.store.read<Record<string, unknown>>(["notes", "home", note.id])).toMatchObject({
+        blueprint: { defaultAgent: "forge", auditAgent: "pico" },
+        title: "synergy-max",
+        version: 3,
+      })
+      await Storage.provide({ store: imported.store, artifactDirectory: path.join(targetRoot, "data") }, async () => {
+        expect(await NoteStore.listMeta("home")).toHaveLength(1)
+        expect((await NoteStore.listMeta("home"))[0]!.blueprint).toEqual({ defaultAgent: "forge", auditAgent: "pico" })
+      })
+    } finally {
+      await imported.store.close()
+    }
+  }))
 
 test("Home imports normalize historical directory selections without local adoption", () =>
   runtime.run(async () => {
@@ -164,7 +218,7 @@ test.each([
                 sessionID,
                 role: "user",
                 time: { created: Date.now() },
-                agent: "synergy",
+                agent: PrimaryAgentIdentity.names.general,
                 model: { providerID: "test", modelID: "test" },
                 summary: { diffs: [diff] },
               })

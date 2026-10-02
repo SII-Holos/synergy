@@ -47,7 +47,7 @@ export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
   const [spawnOpen, setSpawnOpen] = createSignal(false)
   const [assignOpen, setAssignOpen] = createSignal(false)
   const [spawnRole, setSpawnRole] = createSignal("code")
-  const [spawnAgent, setSpawnAgent] = createSignal("synergy")
+  const [spawnAgent, setSpawnAgent] = createSignal("")
   const [assignTarget, setAssignTarget] = createSignal<string>()
   const [assignTaskText, setAssignTaskText] = createSignal("")
   let generation = 0
@@ -148,7 +148,7 @@ export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
       () =>
         props.sdk.client.boss.session.worker.create({
           id: props.sessionID,
-          bossWorkerCreateInput: { role, agent: spawnAgent() },
+          bossWorkerCreateInput: { role, agent: spawnAgent().trim() || undefined },
         }),
       _({ id: "app.boss.spawn.success", message: "Worker spawned" }),
       _({ id: "app.boss.spawn.failed", message: "Failed to spawn worker" }),
@@ -281,7 +281,7 @@ export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
               {_({ id: "app.boss.spawn.agentLabel", message: "Agent" })}
               <input
                 class="h-8 rounded-lg border border-border-base bg-surface-base px-2 text-12-regular text-text-strong outline-none focus:border-border-interactive-base"
-                placeholder={_({ id: "app.boss.spawn.agentPlaceholder", message: "Agent (e.g. synergy)" })}
+                placeholder={_({ id: "app.boss.spawn.agentPlaceholder", message: "Agent (e.g. atlas)" })}
                 value={spawnAgent()}
                 onInput={(event) => setSpawnAgent(event.currentTarget.value)}
               />

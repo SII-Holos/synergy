@@ -27,6 +27,8 @@ Use the isolated provider and synthetic-data workflow in `develop-synergy` for t
 
 CI `package:check` builds its own package closure and runs on the separate contracts runner. Keep rebuilding gates apart from suites consuming workspace `dist`; isolated Homes do not isolate the checkout's compiled files.
 
+Keep validation for private source-only test packages in `typecheck`. Declare `build` only when the package emits the distribution consumed by preparation.
+
 ## Local Joint Acceptance
 
 Identify the intended foreground provider request independently of streaming: title and other auxiliary calls can also stream, and journal enumeration is not request chronology. Test both request orders and reject a missing first attachment body even when a later tool response contains its content.
@@ -68,6 +70,8 @@ For transport shutdown changes, exercise a server-initiated WebSocket close thro
 3. Put shared behavior at its lowest useful level. Keep adapter-specific integration at each adapter; add model, protocol, platform or outcome combinations only when they protect a distinct failure. Reuse immutable preparation while retaining separate mutable Homes, processes and DOMs.
 4. When replacing expensive acceptance, demonstrate that the retained test rejects a relevant fault such as a missing file edit, lost recording or failed continuation. Preserve public lifecycle, installation, migration, cancellation and recovery checks and coverage floors. Repetition and long sessions need an identified size, duration or accumulation failure; duplicate historical stress belongs in an explicit diagnostic.
 5. Measure preparation, execution, cleanup, upload and queues for changes to expensive fixtures, matrices or CI. Compare equivalent cold and warm runs, report the incremental cost and its useful coverage, and update task weights from observed time. Diagnose flakes at their observed stage; blanket retries, longer sleeps and hidden skips cannot justify growth. Use [CI cost policy](../../../docs/operations/ci.md#维护验证成本) when reviewing a longer critical path.
+
+Use stable primary responsibilities for built-in behavior tests. Keep concrete primary names in the single identity contract and historical upgrade fixtures. Renames do not need per-name acceptance or rejection tests when ordinary agent lookup handles them. Unrelated message, protocol and UI fixtures use shared synthetic agent names; tests resolving an agent explicitly register that fixture. Consolidate duplicate coverage without removing distinct permission, lifecycle, migration or rendered-prompt budget checks.
 
 ## Define the Invariant First
 

@@ -105,7 +105,7 @@ with closing(sqlite3.connect((root / "agent.sqlite").as_uri() + "?mode=ro", uri=
 calls = {
     (tuple(key[:6]), key[7])
     for key, value in rows
-    if len(key) == 8 and key[4] == "runs" and key[6] == "calls" and value["purpose"] == "synergy"
+    if len(key) == 8 and key[4] == "runs" and key[6] == "calls" and value.get("usageRole") == "conversation"
 }
 print(
     any(

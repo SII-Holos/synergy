@@ -117,7 +117,7 @@ Create `.synergy/command/<name>.md` (project) or `~/.synergy/config/command/<nam
 ```markdown
 ---
 description: "Run code review on staged changes"
-agent: "synergy"
+agent: "atlas"
 model: "anthropic/claude-sonnet-4-5"
 ---
 

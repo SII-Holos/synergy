@@ -1341,7 +1341,9 @@ export function createPromptInputController(props: PromptInputProps) {
   })
   const agentName = createMemo(() => {
     const latestAssistant = assistantMessages().at(-1)
-    return titlecaseStatusLabel(latestAssistant?.agent ?? local.agent.current()?.name ?? "Synergy")
+    return titlecaseStatusLabel(
+      latestAssistant?.agent ?? local.agent.current()?.name ?? translateDescriptor(getAgentVisual().label, i18n),
+    )
   })
   const fallbackWorkingPhrase = createMemo(() =>
     computeWorkingPhrase(
@@ -2196,14 +2198,15 @@ export function createPromptInputController(props: PromptInputProps) {
                         </Tooltip>
                       )}
                       title={i18n._(PI.selectAgent)}
-                      contentClass="w-52 max-h-80"
+                      contentClass="w-72 max-h-80"
                       placement="top-start"
                     >
                       {(close) => (
                         <List
-                          class="p-1"
+                          class="p-1 [&_[data-slot=list-item]]:relative [&_[data-slot=list-item]:focus-visible]:bg-surface-raised-base-hover [&_[data-slot=list-item-selected-icon]]:absolute [&_[data-slot=list-item-selected-icon]]:right-3"
                           items={local.agent.list().filter((a) => !a.hidden)}
                           key={(x) => x.name}
+                          current={local.agent.current()}
                           filterKeys={["name"]}
                           onSelect={(x) => {
                             if (!x) return
@@ -2223,7 +2226,7 @@ export function createPromptInputController(props: PromptInputProps) {
                               >
                                 <div
                                   classList={{
-                                    "flex items-center justify-between gap-3": true,
+                                    "min-w-0 flex-1 pr-6 text-left": true,
                                     "opacity-45": sessionHasMessages() && !!agent.external,
                                   }}
                                 >
@@ -2231,6 +2234,13 @@ export function createPromptInputController(props: PromptInputProps) {
                                     <div class="text-13-medium text-text-base truncate">
                                       {translateDescriptor(visual.label, i18n)}
                                     </div>
+                                    <Show when={visual.description}>
+                                      {(description) => (
+                                        <div class="mt-0.5 text-12-regular text-text-weak leading-snug whitespace-normal">
+                                          {translateDescriptor(description(), i18n)}
+                                        </div>
+                                      )}
+                                    </Show>
                                   </div>
                                 </div>
                               </Tooltip>

@@ -1,6 +1,6 @@
 # harness Package
 
-Own Harness composition/lifecycle and public exports.
+Own composition, lifecycle and exports. Public `agent/primary-identity` maps responsibilities to primary names.
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - Keep optional product schemas out of the harness. `SessionSchemaRegistry` composes owner session fields, creation/import behavior and indexes; workflow state and execution/recovery policy belong to their domain packages. `ConfigExtensions` composes owner contracts; unregistered fields remain on disk and stay out of client output. Full product composition explicitly completes schema registration.
@@ -8,7 +8,7 @@ Own Harness composition/lifecycle and public exports.
 - Supply Host, composition and owned or borrowed storage to `RuntimeHandle`. Registration is sealed for that instance before storage startup; imports cannot register capabilities. Use `run` for owned work and `bind` for native callbacks. Migration listings are detached snapshots. Test independent instances in one process and entrypoint behavior in isolated child processes.
 - Tests live under test/ and use explicit Runtime fixtures with isolated homes. Pure functions need no Runtime; migration mechanism tests use the explicit unsealed migration fixture.
 
-Run bun run typecheck and the affected tests, then the root package and dependency checks.
+Run `bun run typecheck`, affected tests, and root package/dependency checks.
 
 - Keep concrete model SDK factories out of harness; hosts register `ProviderSdkSource`. An absent source must fail explicitly without installing SDKs.
 - Keep native PTYs, filesystem watchers and OS sandbox implementations in local-runtime. Harness owns permission policy and `SandboxHost`; missing host registration must fail closed for sandboxed execution.

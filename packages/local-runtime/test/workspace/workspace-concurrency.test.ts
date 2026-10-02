@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import path from "node:path"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -57,7 +58,7 @@ test("an exited full-access Bash does not block another worktree while its turn 
                   sessionID: a!.id,
                   messageID: "audit-a",
                   callID: "audit-a",
-                  agent: "synergy",
+                  agent: PrimaryAgentIdentity.names.general,
                   abort: AbortSignal.timeout(10000),
                   metadata() {},
                   async ask() {},
@@ -88,7 +89,7 @@ test("an exited full-access Bash does not block another worktree while its turn 
                       sessionID: b!.id,
                       messageID: "audit-b",
                       callID: "audit-b",
-                      agent: "synergy",
+                      agent: PrimaryAgentIdentity.names.general,
                       abort: scanAbort.signal,
                       metadata() {},
                       async ask() {
@@ -157,7 +158,7 @@ for (const shared of [false, true])
             sessionID: id,
             messageID: "test",
             callID: crypto.randomUUID(),
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             abort: AbortSignal.timeout(10_000),
             metadata() {},
             async ask() {},

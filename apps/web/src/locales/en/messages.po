@@ -692,6 +692,18 @@ msgid "app.agenda.trigger.watch"
 msgstr "watch: {glob}"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
+msgid "app.agent.description.coding"
+msgstr "Built to create, focused on code and engineering"
+
+#. ── Agent Visual ─────────────────────────────────────────────────────────────
+msgid "app.agent.description.general"
+msgstr "From exploration to execution, move work forward"
+
+#. ── Agent Visual ─────────────────────────────────────────────────────────────
+msgid "app.agent.description.lightweight"
+msgstr "Light and flexible, for everyday tasks"
+
+#. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.advisor"
 msgstr "Advisor"
 
@@ -714,6 +726,10 @@ msgstr "Code Cartographer"
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.codex"
 msgstr "Codex"
+
+#. ── Agent Visual ─────────────────────────────────────────────────────────────
+msgid "app.agent.role.coding"
+msgstr "Forge"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.dependencyTracer"
@@ -743,6 +759,10 @@ msgstr "Explorer"
 msgid "app.agent.role.fixtureBuilder"
 msgstr "Fixture Builder"
 
+#. ── Agent role labels (3+ segment IDs) ─────────────────────────────
+msgid "app.agent.role.general"
+msgstr "Atlas"
+
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.implementationEngineer"
 msgstr "Implementation Engineer"
@@ -754,6 +774,10 @@ msgstr "Inspector"
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.integrationEngineer"
 msgstr "Integration Engineer"
+
+#. ── Agent Visual ─────────────────────────────────────────────────────────────
+msgid "app.agent.role.lightweight"
+msgstr "Pico"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.literatureAnalyst"
@@ -846,14 +870,6 @@ msgstr "Solution Architect"
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.supervisor"
 msgstr "Supervisor"
-
-#. ── Agent role labels (3+ segment IDs) ─────────────────────────────
-msgid "app.agent.role.synergy"
-msgstr "Synergy"
-
-#. ── Agent Visual ─────────────────────────────────────────────────────────────
-msgid "app.agent.role.synergyMax"
-msgstr "Synergy Max"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.testStrategist"
@@ -1081,7 +1097,7 @@ msgstr "Agent"
 
 #. js-lingui-explicit-id
 msgid "app.boss.spawn.agentPlaceholder"
-msgstr "Agent (e.g. synergy)"
+msgstr "Agent (e.g. atlas)"
 
 #. js-lingui-explicit-id
 msgid "app.boss.spawn.cancel"

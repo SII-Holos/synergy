@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import path from "node:path"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -25,7 +26,7 @@ test.skipIf(process.platform !== "win32")(
           try {
             const result = await shell({
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test", modelID: "test" },
               command: [process.execPath, script, ...values].map((value) => `"${value}"`).join(" "),
             })
@@ -64,7 +65,7 @@ test.skipIf(process.platform !== "win32")(
             {
               sessionID: "cmd-owner",
               messageID: "message",
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               abort: new AbortController().signal,
               metadata() {},
               async ask() {},

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, describe, expect, test } from "bun:test"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -38,7 +39,7 @@ describe("GitHub watch lifecycle", () => {
               {
                 sessionID: "test-session",
                 messageID: "test-message",
-                agent: "synergy",
+                agent: PrimaryAgentIdentity.names.general,
                 abort: new AbortController().signal,
                 metadata() {},
                 async ask() {},

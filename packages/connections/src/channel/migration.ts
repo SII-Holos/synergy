@@ -1,3 +1,5 @@
+import { PrimaryAgentUpgrade } from "@ericsanchezok/synergy-harness/agent/primary-identity-upgrade"
+import { ConfigReferenceMigration } from "@ericsanchezok/synergy-harness/config/reference-migration"
 import { z } from "zod"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
@@ -38,6 +40,20 @@ export const migrations: Migration[] = [
         }
       }
     },
+  },
+  {
+    id: "20261002-channel-primary-agent-identities",
+    description: "Upgrade configured primary agents for Channels and managed Projects",
+    scope: "global",
+    upgradeConfig(config) {
+      for (const channel of Object.values(PrimaryAgentUpgrade.record(config.channel) ?? {})) {
+        const value = PrimaryAgentUpgrade.record(channel)
+        PrimaryAgentUpgrade.fields(value, ["agent"])
+        for (const account of Object.values(PrimaryAgentUpgrade.record(value?.accounts) ?? {}))
+          PrimaryAgentUpgrade.fields(account, ["agent"])
+      }
+    },
+    up: ConfigReferenceMigration.up,
   },
 ]
 

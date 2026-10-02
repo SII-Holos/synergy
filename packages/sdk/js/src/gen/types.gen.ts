@@ -5733,7 +5733,7 @@ export type Config = {
     [key: string]: string | null
   }
   /**
-   * Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid.
+   * Default agent to use when none is specified. Must be a visible primary agent. Falls back to the general-purpose primary, then another visible primary if unavailable.
    */
   default_agent?: string
   /**
@@ -5744,9 +5744,9 @@ export type Config = {
    * Agent configuration
    */
   agent?: {
-    synergy?: AgentConfig
-    "synergy-max"?: AgentConfig
-    "synergy-flash"?: AgentConfig
+    atlas?: AgentConfig
+    forge?: AgentConfig
+    pico?: AgentConfig
     developer?: AgentConfig
     general?: AgentConfig
     explore?: AgentConfig
@@ -11884,6 +11884,20 @@ export type EventMessagePartRemoved = {
   }
 }
 
+export type EventPermissionAsked = {
+  type: "permission.asked"
+  properties: PermissionRequest
+}
+
+export type EventPermissionReplied = {
+  type: "permission.replied"
+  properties: {
+    sessionID: string
+    requestID: string
+    reply: "once" | "session" | "always" | "reject"
+  }
+}
+
 export type EventProviderAuthUpdated = {
   type: "provider.auth.updated"
   properties: {
@@ -11896,20 +11910,6 @@ export type EventConfigUpdated = {
   properties: {
     scope: "global" | "project"
     changedFields: Array<string>
-  }
-}
-
-export type EventPermissionAsked = {
-  type: "permission.asked"
-  properties: PermissionRequest
-}
-
-export type EventPermissionReplied = {
-  type: "permission.replied"
-  properties: {
-    sessionID: string
-    requestID: string
-    reply: "once" | "session" | "always" | "reject"
   }
 }
 
@@ -12492,10 +12492,10 @@ export type Event =
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
-  | EventProviderAuthUpdated
-  | EventConfigUpdated
   | EventPermissionAsked
   | EventPermissionReplied
+  | EventProviderAuthUpdated
+  | EventConfigUpdated
   | EventUsageUpdated
   | EventSessionInputProgress
   | EventSessionUpdated

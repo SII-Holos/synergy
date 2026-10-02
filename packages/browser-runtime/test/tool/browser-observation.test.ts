@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, expect, test } from "bun:test"
 import { BrowserToolHelper } from "../../src/tools/browser-shared"
 import { BrowserAnnotateTool } from "../../src/tools/browser-annotate"
@@ -32,7 +33,7 @@ const original = {
 const context = {
   sessionID: "ses_observation",
   messageID: "msg_observation",
-  agent: "synergy",
+  agent: PrimaryAgentIdentity.names.general,
   abort: new AbortController().signal,
   metadata() {},
   async ask() {},

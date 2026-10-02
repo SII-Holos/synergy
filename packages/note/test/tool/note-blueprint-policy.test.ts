@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { NoteDocument, NoteMarkdown, NoteStore } from "@ericsanchezok/synergy-note"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -14,7 +15,7 @@ function ctx(sessionID: string): Tool.Context {
   return {
     sessionID,
     messageID: "message_test",
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     abort: new AbortController().signal,
     metadata() {},
     async ask() {},

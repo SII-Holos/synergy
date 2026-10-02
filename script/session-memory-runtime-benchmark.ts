@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 
 import { mkdir, mkdtemp, readdir, stat, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
@@ -544,7 +545,7 @@ function benchmarkConfig(mockUrl: string, mcpPath: string) {
     mini_model: model,
     mid_model: model,
     thinking_model: model,
-    default_agent: "synergy",
+    default_agent: PrimaryAgentIdentity.names.general,
     cortex: { maxConcurrentTasks: 8 },
     execution: {
       ...workerPoolSettings,
@@ -1124,7 +1125,7 @@ async function promptAsync(
   sessionID: string,
   tools: Record<string, boolean>,
   text: string,
-  agent = "synergy",
+  agent: string = PrimaryAgentIdentity.names.general,
 ) {
   const response = await scopedRequest(baseUrl, directory, `/session/${encodeURIComponent(sessionID)}/prompt_async`, {
     method: "POST",

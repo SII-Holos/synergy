@@ -150,7 +150,7 @@ class HarnessProfile(StrictModel):
     source: Source = Field(default_factory=Source)
     package_version: str | None = Field(default=None, pattern=r"^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$")
     runtime: str = "core"
-    agent: str = "synergy"
+    agent: str = "atlas"
     config: str | None = None
     experiment: str | None = None
     bun_jit: StrictBool | None = None
@@ -160,7 +160,7 @@ class HarnessProfile(StrictModel):
         if self.bun_jit is not None and self.kind not in {"synergy", "opencode"}:
             raise ValueError("bun_jit is supported only for synergy and opencode")
         if self.kind != "synergy":
-            if self.config or self.experiment or self.runtime != "core" or self.agent != "synergy":
+            if self.config or self.experiment or self.runtime != "core" or self.agent != "atlas":
                 raise ValueError("Native harness config, experiment, runtime or agent override is unsupported")
             if self.source.revision or (not self.source.artifact and self.source.path != "."):
                 raise ValueError("Native harness source requires a pinned package version or prepared artifact")
@@ -189,7 +189,7 @@ class Variant(StrictModel):
     source: Source = Field(default_factory=Source)
     model: str = Field(min_length=3, pattern=r"^[^/\s]+/\S+$")
     runtime: str = "core"
-    agent: str = "synergy"
+    agent: str = "atlas"
     variant: str | None = None
     config: str | None = None
     experiment: str | None = None

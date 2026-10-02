@@ -1,17 +1,11 @@
-import PROMPT_BASE from "./base.txt"
 import {
   buildInteractiveMemorySection,
   INTERACTIVE_MEMORY_ALWAYS_CANDIDATES_COMMON,
   INTERACTIVE_MEMORY_BOUNDARY_COMMON,
   INTERACTIVE_MEMORY_METHOD_COMMON,
   INTERACTIVE_MEMORY_PRIORITY_COMMON,
-} from "../interactive-memory"
-import { buildAgentTable } from "../agent-table"
-import type { AgentInfo } from "../types"
-
-export type { AgentInfo }
-
-export function buildSynergyMemorySection(): string {
+} from "./interactive-memory"
+export function buildPrimaryMemorySection(): string {
   return buildInteractiveMemorySection({
     intro:
       "During user-facing work, memory is part of execution rather than a background concern. Use it to preserve not just preferences and knowledge, but also durable trust boundaries.",
@@ -54,15 +48,7 @@ export function buildSynergyMemorySection(): string {
       ...INTERACTIVE_MEMORY_METHOD_COMMON,
       "If you apologize for a boundary mistake and say it will not happen again, persist the rule if tools allow rather than leaving it as a verbal promise",
       "Use `interaction` or `relationship` for consent, representation, tone, language, or trust rules; use `workflow`, `coding`, `writing`, or `knowledge` only when the lesson truly belongs there",
-      "For a generalist agent like synergy, err toward `always` when the memory defines how most sessions should begin, be conducted, or be safety-checked",
+      "For a generalist agent, err toward `always` when the memory defines how most sessions should begin, be conducted, or be safety-checked",
     ],
   })
-}
-
-/**
- * Build the complete synergy prompt
- */
-export function buildSynergyPrompt(agents: AgentInfo[]): string {
-  const agentTable = buildAgentTable(agents)
-  return PROMPT_BASE.replace("{AGENT_TABLE}", agentTable).replace("{MEMORY_INTERACTION}", buildSynergyMemorySection())
 }

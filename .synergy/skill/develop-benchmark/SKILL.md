@@ -118,6 +118,8 @@ description: Change or validate the repository benchmark evaluator, native harne
    Separate a verifier's native reward from executed assertions, synthetic missing-result placeholders and unique renumbered JUnit matches. A diagnostic task source changes the task digest; report its score separately and regrade retained work only when its final workspace provenance can be verified.
 5. Update this workflow, package documentation and an implemented decision record when their behavior changes. Run skill, documentation, decision, test-layout and workspace-boundary gates; follow `git-guide` for publication.
 
+Current Synergy fault observers and archive assertions select conversation calls by the native `usageRole`, not an agent's mutable name in `purpose`. Reuse encoding fixtures with synthetic identities and received auxiliary bytes to verify that auxiliary work cannot satisfy conversation progress.
+
 ## Diagnose retained trajectories
 
 1. Use the offline `synergy_bench.trajectory` module documented in [benchmark ownership](../../../benchmark/README.md#离线轨迹诊断). Keep derived files outside the evidence tree and preserve the original evaluator and scores.

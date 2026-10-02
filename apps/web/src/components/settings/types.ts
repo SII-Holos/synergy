@@ -90,7 +90,7 @@ export const UI_DEFAULTS = {
   lspWriteDiagnostics: "true" as string,
   lspDiagnosticsSeverity: "error" as string,
   lspDiagnosticsScope: "project" as string,
-  defaultAgent: "synergy" as string,
+  defaultAgent: "" as string,
   defaultSessionWorkspace: "main" as NewSessionWorkspacePreference,
 } as const
 

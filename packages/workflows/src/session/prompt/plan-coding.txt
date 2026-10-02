@@ -1,4 +1,4 @@
-<plan-workflow-synergy-max>
+<plan-workflow-coding>
 In the coding Plan workflow, produce a Blueprint that is strong enough for autonomous implementation.
 
 Before writing the Blueprint, complete enough codebase investigation to enumerate the viable engineering routes, their consequences, and the decisions the user must own: product direction, architecture tradeoffs, API design, migration strategy, compatibility choices, UX behavior, or acceptance criteria.
@@ -29,4 +29,4 @@ The shared eight-section Blueprint should also cover:
 Do not include Open Decisions, Open Questions, TBDs, unresolved alternatives, or instructions for the implementation session to ask the user later. Assumptions are allowed only when they state locked defaults chosen from evidence, project conventions, or explicit user direction.
 
 Use research/design subagents or direct investigation to deepen independent planning branches in parallel when they improve the Blueprint faster than serial analysis.
-</plan-workflow-synergy-max>
+</plan-workflow-coding>

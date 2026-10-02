@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import { testRuntime } from "../support/runtime"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -46,7 +47,7 @@ for (const live of [false, true])
             sessionID: session.id,
             role: "user",
             time: { created: Date.now() },
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test" },
           })
           const assistant = await Session.updateMessage({
@@ -57,8 +58,8 @@ for (const live of [false, true])
             role: "assistant",
             providerID: "test",
             modelID: "test",
-            mode: "synergy",
-            agent: "synergy",
+            mode: PrimaryAgentIdentity.names.general,
+            agent: PrimaryAgentIdentity.names.general,
             time: { created: Date.now() },
             path: { cwd: null, root: null },
             cost: 0,
@@ -171,7 +172,7 @@ test("execution history survives a failed save and includes only explicitly refe
           sessionID: session.id,
           role: "user",
           time: { created: Date.now() },
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           model: { providerID: "test", modelID: "test" },
         })
         const assistant = await Session.updateMessage({
@@ -182,8 +183,8 @@ test("execution history survives a failed save and includes only explicitly refe
           role: "assistant",
           providerID: "test",
           modelID: "test",
-          mode: "synergy",
-          agent: "synergy",
+          mode: PrimaryAgentIdentity.names.general,
+          agent: PrimaryAgentIdentity.names.general,
           time: { created: Date.now() },
           path: { cwd: null, root: null },
           cost: 0,

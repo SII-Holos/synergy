@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -12,7 +13,12 @@ import type { Info } from "./types"
 
 const log = Log.create({ service: "blueprint.service" })
 
-const CODING_BLUEPRINT_AGENTS = new Set(["synergy-max", "developer", "implementation-engineer", "refactoring-engineer"])
+const CODING_BLUEPRINT_AGENTS = new Set([
+  PrimaryAgentIdentity.names.coding,
+  "developer",
+  "implementation-engineer",
+  "refactoring-engineer",
+])
 const OUTCOME_VERIFICATION_PROMPT = `Evidence must match the semantic strength of the claim. Structural inspection may prove that an artifact or implementation element exists, but it does not by itself prove behavior, integration, usability, experiential or perceptual quality, operational correctness, or end-to-end success. A weaker proxy cannot prove a stronger outcome.
 Before claiming completion, exercise representative use of the completed deliverable and verify the seams between interacting parts. Inspect holistic outcomes as a whole rather than treating isolated properties, tokens, components, or executor narration as sufficient evidence.
 If appropriate evidence is unavailable, do not claim the requirement is complete. Continue when verification is feasible; otherwise report it explicitly as an unverified blocking limitation in the stop request.`

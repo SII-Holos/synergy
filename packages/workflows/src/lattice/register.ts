@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { BlueprintLoopStore, isActiveLoopStatus } from "../blueprint/loop-store"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -137,10 +138,10 @@ export function registerLatticeDomain(): void {
     },
     projectUserMessage(query: string, agentName: string) {
       const header =
-        agentName === "synergy"
-          ? "You are synergy in the Lattice workflow."
-          : agentName === "synergy-max"
-            ? "You are synergy-max in the Lattice workflow."
+        agentName === PrimaryAgentIdentity.names.general
+          ? `You are ${PrimaryAgentIdentity.names.general} in the Lattice workflow.`
+          : agentName === PrimaryAgentIdentity.names.coding
+            ? `You are ${PrimaryAgentIdentity.names.coding} in the Lattice workflow.`
             : "You are in the Lattice workflow."
       return [
         "<lattice-user-request>",

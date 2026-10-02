@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { afterEach, describe, expect, mock, test, spyOn } from "bun:test"
 import path from "path"
 import { AgentCall } from "../../src/agent/call"
@@ -75,7 +76,7 @@ async function createTurn(input: {
     sessionID: input.sessionID,
     role: "user",
     time: { created: Date.now() },
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test", modelID: "test" },
   })) as MessageV2.User
   if (input.text) {
@@ -97,8 +98,8 @@ async function createTurn(input: {
     modelID: "kimi-k2-thinking",
     providerID: "moonshotai-cn",
     time: { created: Date.now() },
-    mode: "synergy",
-    agent: "synergy",
+    mode: PrimaryAgentIdentity.names.general,
+    agent: PrimaryAgentIdentity.names.general,
     path: { cwd: input.directory, root: input.directory },
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -170,8 +171,8 @@ async function createContinuation(input: {
     modelID: "kimi-k2-thinking",
     providerID: "moonshotai-cn",
     time: { created: Date.now() },
-    mode: "synergy",
-    agent: "synergy",
+    mode: PrimaryAgentIdentity.names.general,
+    agent: PrimaryAgentIdentity.names.general,
     path: { cwd: input.directory, root: input.directory },
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -255,7 +256,7 @@ describe("SessionSummary", () => {
             sessionID: session.id,
             role: "user",
             time: { created: Date.now() },
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test" },
           })) as MessageV2.User
           const assistant = (await Session.updateMessage({
@@ -267,8 +268,8 @@ describe("SessionSummary", () => {
             modelID: "kimi-k2-thinking",
             providerID: "moonshotai-cn",
             time: { created: Date.now() },
-            mode: "synergy",
-            agent: "synergy",
+            mode: PrimaryAgentIdentity.names.general,
+            agent: PrimaryAgentIdentity.names.general,
             path: { cwd: tmp.path, root: tmp.path },
             cost: 0,
             tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -378,7 +379,7 @@ describe("SessionSummary", () => {
             sessionID: session.id,
             role: "user",
             time: { created: Date.now() },
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test" },
           })) as MessageV2.User
           const assistant = (await Session.updateMessage({
@@ -390,8 +391,8 @@ describe("SessionSummary", () => {
             modelID: "kimi-k2-thinking",
             providerID: "moonshotai-cn",
             time: { created: Date.now() },
-            mode: "synergy",
-            agent: "synergy",
+            mode: PrimaryAgentIdentity.names.general,
+            agent: PrimaryAgentIdentity.names.general,
             path: { cwd: tmp.path, root: tmp.path },
             cost: 0,
             tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -484,7 +485,7 @@ describe("SessionSummary", () => {
               sessionID: session.id,
               role: "user",
               time: { created: Date.now() },
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test", modelID: "test" },
               summary: { title: `Turn ${index}`, diffs: [] },
             })) as MessageV2.User
@@ -504,8 +505,8 @@ describe("SessionSummary", () => {
               modelID: "test",
               providerID: "test",
               time: { created: Date.now(), completed: Date.now() },
-              mode: "synergy",
-              agent: "synergy",
+              mode: PrimaryAgentIdentity.names.general,
+              agent: PrimaryAgentIdentity.names.general,
               path: { cwd: tmp.path, root: tmp.path },
               cost: 0,
               tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -669,7 +670,7 @@ describe("SessionSummary", () => {
             sessionID: session.id,
             role: "user",
             time: { created: Date.now() },
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test" },
           })) as MessageV2.User
           const assistant = (await Session.updateMessage({
@@ -681,8 +682,8 @@ describe("SessionSummary", () => {
             modelID: "kimi-k2-thinking",
             providerID: "moonshotai-cn",
             time: { created: Date.now() },
-            mode: "synergy",
-            agent: "synergy",
+            mode: PrimaryAgentIdentity.names.general,
+            agent: PrimaryAgentIdentity.names.general,
             path: { cwd: tmp.path, root: tmp.path },
             cost: 0,
             tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -780,7 +781,7 @@ describe("SessionSummary", () => {
               sessionID: session.id,
               role: "user",
               time: { created: Date.now() },
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test", modelID: "test" },
             })) as MessageV2.User
             const assistant = (await Session.updateMessage({
@@ -792,8 +793,8 @@ describe("SessionSummary", () => {
               modelID: "kimi-k2-thinking",
               providerID: "moonshotai-cn",
               time: { created: Date.now() },
-              mode: "synergy",
-              agent: "synergy",
+              mode: PrimaryAgentIdentity.names.general,
+              agent: PrimaryAgentIdentity.names.general,
               path: { cwd: tmp.path, root: tmp.path },
               cost: 0,
               tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -1307,7 +1308,7 @@ describe("SessionSummary", () => {
         sessionID: "ses_expired",
         role: "user",
         time: { created: Date.now() - 300_000 },
-        agent: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
         model: { providerID: "test", modelID: "test" },
         summary: {
           diffs: [],
@@ -1325,7 +1326,7 @@ describe("SessionSummary", () => {
         sessionID: "ses_pending",
         role: "user",
         time: { created: Date.now() },
-        agent: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
         model: { providerID: "test", modelID: "test" },
         summary: {
           diffs: [],

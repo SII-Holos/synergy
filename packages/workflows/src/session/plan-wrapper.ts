@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 export function genericPlan(query: string): string {
   return [
     "<plan-user-request>",
@@ -14,10 +15,10 @@ export function genericPlan(query: string): string {
   ].join("\n")
 }
 
-export function synergyPlan(query: string): string {
+export function generalPlan(query: string): string {
   return [
     "<plan-user-request>",
-    "You are synergy in the Plan workflow.",
+    `You are ${PrimaryAgentIdentity.names.general} in the Plan workflow.`,
     "Your job is to create a new Blueprint or refine an existing Blueprint that captures the user's goal, reasoning, constraints, chosen approach, deliverables, and done criteria.",
     "Do not carry out the requested task. Investigation, commands, and scratch files for verification are expected; committing, pushing, deploying, and external identity actions belong to the execution session.",
     "For complex or underspecified work, use investigation, research, DAGs, and appropriate specialist subagents to gather context, best practices, and known pitfalls before finalizing the Blueprint.",
@@ -31,10 +32,10 @@ export function synergyPlan(query: string): string {
   ].join("\n")
 }
 
-export function synergyMaxPlan(query: string): string {
+export function codingPlan(query: string): string {
   return [
     "<plan-user-request>",
-    "You are synergy-max in the coding Plan workflow.",
+    `You are ${PrimaryAgentIdentity.names.coding} in the coding Plan workflow.`,
     "Do not carry out the requested change. Deliver a Blueprint strong enough for a later autonomous implementation session; implementation belongs to the execution session.",
     "Your output should be a Blueprint strong enough for a later autonomous implementation session.",
     "Analyze the relevant codebase entry points, ownership boundaries, requirements, non-goals, verification approach, migrations/config/SDK/docs impact, risks, edge cases, rollback, and verification commands.",

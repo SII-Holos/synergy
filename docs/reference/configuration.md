@@ -128,7 +128,7 @@ File: `60-agents.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `default_agent` | string (optional) | Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid. |
+| `default_agent` | string (optional) | Default agent to use when none is specified. Must be a visible primary agent. Falls back to the general-purpose primary, then another visible primary if unavailable. |
 | `agent` | object (optional) | Agent configuration |
 | `instructions` | array (optional) | Additional instruction files or patterns to include |
 | `project_doc_fallback_filenames` | array (optional) | Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory |

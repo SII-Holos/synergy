@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../agent/primary-identity"
 import { StorageConfiguration } from "../storage/config"
 import { Log } from "../util/log"
 import z from "zod"
@@ -953,15 +954,15 @@ export const CoreInfo = z
       .string()
       .optional()
       .describe(
-        "Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid.",
+        "Default agent to use when none is specified. Must be a visible primary agent. Falls back to the general-purpose primary, then another visible primary if unavailable.",
       ),
     username: z.string().optional().describe("Custom username to display in conversations instead of system username"),
     agent: z
       .object({
         // primary
-        synergy: Agent.optional(),
-        "synergy-max": Agent.optional(),
-        "synergy-flash": Agent.optional(),
+        [PrimaryAgentIdentity.names.general]: Agent.optional(),
+        [PrimaryAgentIdentity.names.coding]: Agent.optional(),
+        [PrimaryAgentIdentity.names.lightweight]: Agent.optional(),
         // classic subagents
         developer: Agent.optional(),
         // subagent

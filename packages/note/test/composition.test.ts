@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -16,7 +17,7 @@ const runtime = await testRuntime()
 const context: Tool.Context = {
   sessionID: "ses_note_composition",
   messageID: "msg_note_composition",
-  agent: "synergy",
+  agent: PrimaryAgentIdentity.names.general,
   abort: new AbortController().signal,
   metadata() {},
   async ask() {

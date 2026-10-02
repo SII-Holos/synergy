@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import assert from "node:assert/strict"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -136,7 +137,7 @@ try {
           sessionID: session.id,
           role: "user",
           time: { created: Date.now() },
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           model: { providerID: "test", modelID: "test" },
         })
         const { BashTool } = await import("@ericsanchezok/synergy-local-runtime/tools/bash")
@@ -146,7 +147,7 @@ try {
           {
             sessionID: session.id,
             messageID,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             abort: new AbortController().signal,
             metadata() {},
             async ask() {},

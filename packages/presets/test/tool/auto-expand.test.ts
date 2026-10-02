@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterAll, describe, expect, mock, test } from "bun:test"
 import z from "zod"
 // ToolMcpSource must be mounted: the resolver reads MCP entries through the
@@ -517,7 +518,7 @@ async function runAutoExpandTurn(input: {
         modelID: "test-model",
         providerID: "test-provider",
         mode: "build",
-        agent: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
         path: { cwd: "/tmp", root: "/tmp" },
         cost: 0,
         tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

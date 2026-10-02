@@ -6,7 +6,7 @@ Create, modify, disable, delete, and inspect Synergy agents — and choose the d
 
 ## When this skill applies
 
-The user wants to create a custom agent, change an existing agent's behavior (model, prompt, permissions, visibility, autonomy), disable or remove an agent, see which agents exist, or set which agent new sessions use by default. Requests like "make me an agent that reviews PRs", "stop the scholar agent from showing up", or "make synergy-max my default" all land here.
+The user wants to create a custom agent, change an existing agent's behavior (model, prompt, permissions, visibility, autonomy), disable or remove an agent, see which agents exist, or set which agent new sessions use by default. Requests like "make me an agent that reviews PRs", "stop the scholar agent from showing up", or "make Forge my default" all land here.
 
 This skill does not modify built-in agent source code — that is repository development (load `add-agent`). It manages user/project-level agent configuration.
 

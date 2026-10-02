@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
 import { projectChannelTaskParts } from "../../src/channel/outbound-parts"
@@ -14,8 +15,8 @@ function message(input: { id: string; rootID: string; parts: MessageV2.Part[]; f
       role: "assistant",
       parentID: input.rootID,
       rootID: input.rootID,
-      mode: "synergy",
-      agent: "synergy",
+      mode: PrimaryAgentIdentity.names.general,
+      agent: PrimaryAgentIdentity.names.general,
       path: { cwd: "/tmp", root: "/tmp" },
       cost: 0,
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -466,7 +467,7 @@ test("skips attachments already recorded as delivered on the root message", () =
         role: "user",
         isRoot: true,
         rootID,
-        agent: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
         model: { providerID: "test-provider", modelID: "test-model" },
         time: { created: Date.now() },
         metadata: { channelOutboundAttachmentUrls: [`asset://${pngID}`] },

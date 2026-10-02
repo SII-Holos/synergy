@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { expect, test } from "bun:test"
 import { createBuiltinMaxSubagents } from "../../src/agent/builtin-max-subagents"
 import { AgentDelegation } from "../../src/agent/delegation"
@@ -36,8 +37,8 @@ test("hidden recursive reviewer agents stay off primary tables but can delegate 
     })
     const agentInfos = Object.values(agents).map(asAgentInfo)
 
-    const synergyMaxDelegatable = getDelegatableAgents(agentInfos, "synergy-max")
-    const synergyDelegatable = getDelegatableAgents(agentInfos, "synergy")
+    const synergyMaxDelegatable = getDelegatableAgents(agentInfos, PrimaryAgentIdentity.names.coding)
+    const synergyDelegatable = getDelegatableAgents(agentInfos, PrimaryAgentIdentity.names.general)
     const namesForMax = synergyMaxDelegatable.map((a) => a.name)
     const namesForSynergy = synergyDelegatable.map((a) => a.name)
     expect(namesForMax).not.toContain("supervisor")
@@ -53,13 +54,6 @@ test("hidden recursive reviewer agents stay off primary tables but can delegate 
     expect(reviewerNames).not.toContain("supervisor")
     expect(reviewerNames).not.toContain("lightloop-reviewer")
     expect(AgentDelegation.canDelegateTo(agents["implementation-engineer"], undefined)).toBe(false)
-
-    for (const caller of ["synergy", "synergy-max"]) {
-      for (const agent of [supervisor, reviewer]) {
-        const isVisible = !agent.visibleTo || agent.visibleTo.length === 0 || agent.visibleTo.includes(caller)
-        expect(isVisible, `${agent.name} must not be visible to ${caller}`).toBe(false)
-      }
-    }
   }))
 
 afterRuntimeTests(() => runtime.close())

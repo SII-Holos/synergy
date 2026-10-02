@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import z from "zod"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
@@ -194,10 +195,13 @@ export namespace BossService {
     const rootID = bossRootID(caller)
     if (!rootID) throw new BossError("not_boss", `Session ${callerID} is not part of a Boss Mode tree`)
 
-    const agent = input.agent?.trim() || "synergy"
+    const agent = input.agent?.trim() || PrimaryAgentIdentity.names.general
     const agentInfo = await Agent.get(agent).catch(() => undefined)
     if (!agentInfo) throw new BossError("unknown_agent", `Unknown agent "${agent}"`)
-    if (agentInfo.hidden || !AgentDelegation.isVisibleToCaller(agentInfo, caller.agentOverride ?? "synergy")) {
+    if (
+      agentInfo.hidden ||
+      !AgentDelegation.isVisibleToCaller(agentInfo, caller.agentOverride ?? PrimaryAgentIdentity.names.general)
+    ) {
       throw new BossError("agent_not_delegatable", `Agent "${agent}" is not delegatable from this session`)
     }
 

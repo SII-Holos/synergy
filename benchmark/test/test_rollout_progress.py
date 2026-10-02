@@ -17,8 +17,12 @@ import pytest
 # fixture that agrees with the probe by construction. Each row has its own
 # frame, because a frame decodes to the value it was captured from.
 FRAME_CALLS = (
-    "1a016c28b52ffd206c05020084037b22707572706f7365223a2273796e65726779222c22706164223a2270726f766964657220"
-    "726573706f6e73652070616464696e6720227d0100963e2714"
+    "1a018f0128b52ffd208f9d0200b2851217a0a73986ed35d22420b21f19edb3e5b01a0b6d26eb2f60899202d93985c4890ed327"
+    "f7b1e38e353d852d456746e57da013d4d4840bb8a84c2d3dbc0a7604f8c930d8a0a6cec3272c22010059fa9c51"
+)
+FRAME_AUXILIARY_CALLS = (
+    "1a018c0128b52ffd208c8502002205111690b56d6849e1dab595ae04da0c3988ab9c9831fb3fc7831383d0ac941ca354be257"
+    "b86805c7db995e2c1d4f5f23b499c29ee0b0f6c19b83adcf691b078f971eab65e10020048cff360b10905"
 )
 FRAME_ATTEMPTS = {
     0: "1a016f28b52ffd206fed010034037b22726573706f6e7365223a7b226279746573223a302c22706164223a2270726f766964657220"
@@ -57,12 +61,18 @@ def test_live_rollout_probe_reads_every_record_encoding(tmp_path: Path, encoding
     with sqlite3.connect(tmp_path / "agent.sqlite") as db:
         db.execute("CREATE TABLE storage_records (namespace TEXT, key_text TEXT, body BLOB, kind TEXT)")
         rows = [
-            (root + ["calls", "call"], {"purpose": "synergy"}, FRAME_CALLS),
+            (root + ["calls", "call"], {"purpose": "fixture-primary", "usageRole": "conversation"}, FRAME_CALLS),
             (
                 root + ["attempts", "call", "attempt"],
                 {"response": {"bytes": response_bytes}},
                 FRAME_ATTEMPTS[response_bytes],
             ),
+            (
+                root + ["calls", "auxiliary"],
+                {"purpose": "fixture-primary", "usageRole": "auxiliary"},
+                FRAME_AUXILIARY_CALLS,
+            ),
+            (root + ["attempts", "auxiliary", "attempt"], {"response": {"bytes": 64}}, FRAME_ATTEMPTS[64]),
         ]
         for key, value, frame in rows:
             if encoding == "frame":

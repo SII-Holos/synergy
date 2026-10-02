@@ -623,7 +623,7 @@ async def run_native_matrix(
             "synergy-unattended" if unattended else "synergy-jit" if bun_jit else "synergy-jitless": {
                 **harnesses["synergy"],
                 "runtime": "full",
-                "agent": "synergy-max",
+                "agent": "forge",
                 "bun_jit": bun_jit,
             }
         }

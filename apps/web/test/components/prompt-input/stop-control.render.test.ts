@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { afterEach, describe, expect, mock, test } from "bun:test"
 import { plugin } from "bun"
 import { transformAsync } from "@babel/core"
@@ -149,7 +150,7 @@ mock.module("../../../src/components/dialog/dialog-select-model", () => ({ Model
 
 mock.module("../../../src/context/local", () => ({
   useLocal: () => ({
-    agent: { list: () => [], current: () => ({ name: "synergy" }), set: () => {}, ready: () => true },
+    agent: { list: () => [], current: () => ({ name: TEST_AGENT_NAME }), set: () => {}, ready: () => true },
     model: {
       all: () => [],
       current: () => undefined,

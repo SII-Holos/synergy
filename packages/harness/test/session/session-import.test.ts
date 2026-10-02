@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../support/fixture"
 import { Identifier } from "../../src/id/id"
@@ -29,7 +30,7 @@ async function writeExchange(sessionID: string, text: string, metadata?: Record<
     sessionID,
     role: "user",
     time: { created: Date.now() },
-    agent: "synergy",
+    agent: TEST_AGENT_NAME,
     model: { providerID: "test", modelID: "test" },
     metadata,
   } satisfies MessageV2.User)
@@ -51,7 +52,7 @@ async function writeExchange(sessionID: string, text: string, metadata?: Record<
     modelID: "test",
     providerID: "test",
     mode: "build",
-    agent: "synergy",
+    agent: TEST_AGENT_NAME,
     path: {
       cwd: ScopeContext.current.directory,
       root: ScopeContext.current.directory,
@@ -74,6 +75,43 @@ async function writeExchange(sessionID: string, text: string, metadata?: Record<
 }
 
 describe("SessionImport", () => {
+  test("old reports upgrade overrides, delegation and message identities without rewriting text", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        async fn() {
+          const source = await Session.create({})
+          await writeExchange(source.id, "synergy-max is historical text")
+          const report = await SessionExport.generate({ sessionID: source.id, mode: "full" })
+          const data = report.sessions[0]!
+          data.info.agentOverride = "synergy-max"
+          data.info.cortex = {
+            taskID: "fixture-task",
+            parentSessionID: source.id,
+            parentMessageID: data.messages[0]!.info.id,
+            description: "synergy-flash",
+            agent: "synergy-flash",
+            startedAt: 1,
+            status: "completed",
+          }
+          for (const message of data.messages) {
+            message.info.agent = message.info.role === "user" ? "synergy" : "synergy-max"
+            if (message.info.role === "assistant") message.info.mode = "synergy-max"
+          }
+          const imported = await SessionImport.fromReport(report)
+          const session = await Session.get(imported.rootSessionID)
+          expect(session.agentOverride).toBe("forge")
+          expect(session.cortex).toMatchObject({ agent: "pico", description: "synergy-flash" })
+          const messages = await Session.messages({ sessionID: session.id })
+          expect(messages.map((message) => message.info.agent)).toEqual(["atlas", "forge"])
+          expect(messages[1]!.info).toMatchObject({ mode: "forge", modelID: "test", providerID: "test" })
+          expect(messages[0]!.parts).toMatchObject([{ type: "text", text: "synergy-max is historical text" }])
+          expect(data.info.cortex.agent).toBe("synergy-flash")
+        },
+      })
+    }))
+
   test("forks and imports detach pending file operations while preserving their source evidence", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir()
@@ -502,7 +540,7 @@ test("transcript parsing upgrades old Home metadata while preserving message con
           id: messageID,
           sessionID: session.id,
           role: "user",
-          agent: "synergy",
+          agent: TEST_AGENT_NAME,
           time: { created: 1 },
           model: { providerID: "test", modelID: "test" },
         })

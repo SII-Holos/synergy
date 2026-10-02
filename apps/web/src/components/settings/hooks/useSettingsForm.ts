@@ -1,3 +1,5 @@
+import { defaultPrimaryAgent } from "../../agent-selection"
+import type { Agent } from "@ericsanchezok/synergy-sdk/client"
 import type { Config } from "@ericsanchezok/synergy-sdk/client"
 import type { SetStoreFunction } from "solid-js/store"
 import type { SendShortcut } from "@/context/input"
@@ -25,6 +27,7 @@ export type EnsureInitParams = {
   originalMcpsRef: { current: Record<string, Record<string, unknown>> }
   /** Built-in MCP servers reported by the server; undefined keeps the defaults. */
   builtinMcps?: BuiltinMcpInfo[]
+  availableAgents?: Agent[]
 }
 
 export function ensureInit(params: EnsureInitParams): string | undefined {
@@ -61,7 +64,9 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   })
 
   params.setSettings("agents", {
-    defaultAgent: cfg.default_agent ?? UI_DEFAULTS.defaultAgent,
+    defaultAgent: params.availableAgents
+      ? (defaultPrimaryAgent(cfg.default_agent, params.availableAgents) ?? "")
+      : (cfg.default_agent ?? UI_DEFAULTS.defaultAgent),
   })
   const roleVariantDraft: Record<string, string> = {}
   for (const [role, variant] of Object.entries(cfg.role_variant ?? {})) {

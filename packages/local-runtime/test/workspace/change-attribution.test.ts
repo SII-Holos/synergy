@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterAll, expect, test, spyOn } from "bun:test"
 import path from "node:path"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -26,7 +27,7 @@ async function actor() {
     sessionID: session.id,
     role: "user",
     time: { created: Date.now() },
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test", modelID: "test" },
   })
   const assistant = await Session.updateMessage({
@@ -37,8 +38,8 @@ async function actor() {
     role: "assistant",
     providerID: "test",
     modelID: "test",
-    mode: "synergy",
-    agent: "synergy",
+    mode: PrimaryAgentIdentity.names.general,
+    agent: PrimaryAgentIdentity.names.general,
     time: { created: Date.now() },
     path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
     cost: 0,

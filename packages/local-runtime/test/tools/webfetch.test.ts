@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterAll, expect, test } from "bun:test"
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { WebFetchTool } from "../../src/tools/webfetch"
@@ -64,7 +65,7 @@ function context(signal = new AbortController().signal) {
   const ctx: Tool.Context = {
     sessionID: crypto.randomUUID(),
     messageID: "message",
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     abort: signal,
     metadata() {},
     async ask(input) {

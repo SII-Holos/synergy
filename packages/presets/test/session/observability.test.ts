@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
@@ -139,7 +140,7 @@ async function runStreamScenario(
         modelID: "test-model",
         providerID: "test-provider",
         mode: "build",
-        agent: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
         path: { cwd: "/tmp", root: "/tmp" },
         cost: 0,
         tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

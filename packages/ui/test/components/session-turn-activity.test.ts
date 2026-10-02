@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, mock, test } from "bun:test"
 import type {
   AssistantMessage,
@@ -99,7 +100,7 @@ function assistant(id = "assistant-a"): AssistantMessage {
     parentID: "root-user",
     rootID: "root-user",
     mode: "test",
-    agent: "synergy",
+    agent: TEST_AGENT_NAME,
     path: { cwd: "/workspace", root: "/workspace" },
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

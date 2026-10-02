@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test"
 import { Agent } from "../../src/agent/agent"
 import { Category } from "../../src/cortex/category"
@@ -62,7 +63,7 @@ async function runTaskTool(input: { parentSessionID: string; messageID: string; 
     {
       sessionID: input.parentSessionID,
       messageID: input.messageID,
-      agent: "synergy",
+      agent: PrimaryAgentIdentity.names.general,
       abort: new AbortController().signal,
       metadata() {},
       async ask() {},
@@ -85,7 +86,11 @@ describe("task tool delegated model resolution", () => {
             using agentModel = spyOn(Agent, "getAvailableModel").mockResolvedValue(SUBAGENT)
             using availability = spyOn(Provider, "isModelAvailable").mockResolvedValue(available)
             const parent = await Session.create({})
-            const messageID = await writeAssistantMessage({ sessionID: parent.id, agent: "synergy", model: PARENT })
+            const messageID = await writeAssistantMessage({
+              sessionID: parent.id,
+              agent: PrimaryAgentIdentity.names.general,
+              model: PARENT,
+            })
             expect(await runTaskTool({ parentSessionID: parent.id, messageID })).toEqual(available ? PARENT : SUBAGENT)
           },
         })
@@ -109,7 +114,11 @@ describe("task tool delegated model resolution", () => {
             using availability = spyOn(Provider, "isModelAvailable").mockResolvedValue(true)
             using category = spyOn(Category, "resolve").mockResolvedValue({ model })
             const parent = await Session.create({})
-            const messageID = await writeAssistantMessage({ sessionID: parent.id, agent: "synergy", model: PARENT })
+            const messageID = await writeAssistantMessage({
+              sessionID: parent.id,
+              agent: PrimaryAgentIdentity.names.general,
+              model: PARENT,
+            })
             const result = runTaskTool({ parentSessionID: parent.id, messageID, category: "probe" })
             if (model === "category-provider/category-model") {
               expect(await result).toEqual({ providerID: "category-provider", modelID: "category-model" })

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { AgentConfigTool } from "../../src/tools/agent-config"
@@ -26,7 +27,7 @@ const ctx = {
   sessionID: "ses_agent_config_tool",
   messageID: "msg_agent_config_tool",
   callID: "call_agent_config_tool",
-  agent: "synergy-max",
+  agent: PrimaryAgentIdentity.names.coding,
   abort: AbortSignal.any([]),
   metadata: () => {},
   ask: async () => {},
@@ -157,7 +158,7 @@ describe("tool.agent_config", () => {
           const result = await tool.execute({ input: { action: "list" } }, ctx)
 
           expect(result.metadata.count).toBeGreaterThan(0)
-          expect(result.output).toContain("synergy")
+          expect(result.output).toContain(PrimaryAgentIdentity.names.general)
         },
       })
     }))

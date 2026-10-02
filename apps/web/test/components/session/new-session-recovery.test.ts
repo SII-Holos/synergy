@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, test } from "bun:test"
 import type { NewSessionRecovery } from "../../../src/components/session/new-session-recovery"
 import {
@@ -20,7 +21,7 @@ function recovery(): NewSessionRecovery {
     lightLoop: false,
     boss: false,
     blueprintSlot: null,
-    agent: "synergy",
+    agent: TEST_AGENT_NAME,
     model: { providerID: "provider", modelID: "model" },
     autoSubmit: false,
   }

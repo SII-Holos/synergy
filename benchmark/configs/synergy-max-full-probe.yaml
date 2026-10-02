@@ -16,7 +16,7 @@ harnesses:
     source:
       path: ../..
     runtime: full
-    agent: synergy-max
+    agent: forge
 models:
   glm53flash-max:
     model: glm-5.3-flash
