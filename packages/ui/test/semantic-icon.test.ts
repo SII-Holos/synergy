@@ -131,7 +131,7 @@ describe("semantic icons", () => {
       .map(([icon, tokens]) => `${icon}: ${tokens.sort().join(", ")}`)
 
     expect(duplicates).toEqual([
-      "maximize-2: action.expand, composer.expand",
+      "maximize-2: action.expand, composer.expand, workspace.fullscreen",
       "minimize-2: action.collapse, composer.collapse, window.restore",
     ])
   })

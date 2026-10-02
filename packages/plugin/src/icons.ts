@@ -126,7 +126,7 @@ export const SemanticIconToken = {
   "settings.controlProfile": "scale",
   "settings.questions": "message-circle-question",
   "settings.compaction": "list-collapse",
-  "settings.timeouts": "bot",
+  "settings.timeouts": "clock",
   "settings.formatter": "file-pen",
   "settings.observability": "stethoscope",
   "settings.diagnostics": "bug",
