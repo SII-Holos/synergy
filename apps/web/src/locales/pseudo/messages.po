@@ -9466,15 +9466,6 @@ msgstr ""
 msgid "app.stats.load.unavailable"
 msgstr ""
 
-#. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.stats.milestone.subtitle"
-msgstr ""
-
-#. ── milestones.tsx ──────────────────────────────────────────────────
-msgid "app.stats.milestone.title"
-msgstr ""
-
 #. ── model.ts — ranking row secondary / primary descriptors ──────────
 msgid "app.stats.model.avgMs"
 msgstr ""

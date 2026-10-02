@@ -9466,15 +9466,6 @@ msgstr "Loading usage stats…"
 msgid "app.stats.load.unavailable"
 msgstr "Usage stats are unavailable right now"
 
-#. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.stats.milestone.subtitle"
-msgstr "We’ll turn your long-term stats into unlockable milestones next."
-
-#. ── milestones.tsx ──────────────────────────────────────────────────
-msgid "app.stats.milestone.title"
-msgstr "Achievements (coming next)"
-
 #. ── model.ts — ranking row secondary / primary descriptors ──────────
 msgid "app.stats.model.avgMs"
 msgstr "{avg}ms avg"

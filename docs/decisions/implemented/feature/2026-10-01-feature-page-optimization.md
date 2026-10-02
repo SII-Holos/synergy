@@ -48,4 +48,6 @@ Browsing and management share a consistent header and detail model while retaini
 
 Dialogs retain lists and query context but require focus recovery when a retry or action removes its own control. Responsive board layout preserves user preferences but may display fewer columns than the saved preference permits. Snapshot and unavailable-state tests remain necessary because grouping metrics must not manufacture health conclusions or sampled data.
 
+The existing plugin approval summaries expose host-generated copy as strings. Frontend localization recognizes a known semantic key together with its exact host fallback wording; unmatched descriptions remain verbatim. This preserves the existing API and author copy but couples translation to host wording. Permission and feature presentation regressions cover the recognized summaries and authored text. Structured descriptor IDs would require a separate approval-contract change; changing host fallback wording must also update this presentation boundary and its tests.
+
 A single diagnostic sample uses a visible point and its actual timestamp as the only time-axis label. The surrounding one-minute display domain gives that point space without representing additional samples or a historical trend; the default linear-scale expansion around an epoch timestamp is unsuitable for this case.

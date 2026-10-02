@@ -9466,15 +9466,6 @@ msgstr "正在加载使用统计…"
 msgid "app.stats.load.unavailable"
 msgstr "使用统计目前不可用"
 
-#. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.stats.milestone.subtitle"
-msgstr "接下来我们会把你的长期统计转化为可解锁的里程碑。"
-
-#. ── milestones.tsx ──────────────────────────────────────────────────
-msgid "app.stats.milestone.title"
-msgstr "成就（即将推出）"
-
 #. ── model.ts — ranking row secondary / primary descriptors ──────────
 msgid "app.stats.model.avgMs"
 msgstr "平均 {avg}ms"
