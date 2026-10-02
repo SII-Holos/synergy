@@ -1,8 +1,14 @@
+import { calendarKeyDate } from "./calendar-navigation"
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show, type JSX } from "solid-js"
+import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
+import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
+import { requestErrorMessage } from "@/utils/error"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import type { AgendaItem, AgendaTrigger, AgendaCreateInput, AgendaPatchInput } from "@ericsanchezok/synergy-sdk/client"
@@ -206,12 +212,53 @@ function pad2(n: number): string {
 // AgendaForm
 // ---------------------------------------------------------------------------
 
+export function AgendaFormDialog(props: { directory: string; item?: AgendaItem; onClose: () => void }) {
+  const { i18n } = useLocale()
+  let requestClose = props.onClose
+  return (
+    <Dialog
+      size="wide"
+      class="app-panel-detail-dialog agenda-form-dialog"
+      title={i18n._(props.item ? A.editAgenda : A.newAgenda)}
+      dismissible={false}
+      onEscapeKeyDown={(event) => {
+        event.preventDefault()
+        requestClose()
+      }}
+      action={
+        <button
+          type="button"
+          data-slot="dialog-close-button"
+          data-component="icon-button"
+          data-variant="ghost"
+          aria-label={i18n._({ id: "ui.dialog.close", message: "Close dialog" })}
+          onClick={() => requestClose()}
+        >
+          <Icon name={getSemanticIcon("action.close")} size="small" />
+        </button>
+      }
+    >
+      <AgendaForm
+        directory={props.directory}
+        item={props.item}
+        presentation="dialog"
+        onBack={props.onClose}
+        registerDismiss={(dismiss) => {
+          requestClose = dismiss ?? props.onClose
+        }}
+      />
+    </Dialog>
+  )
+}
+
 export function AgendaForm(props: {
   directory: string
   item?: AgendaItem
   onBack: () => void
   presentation?: "panel" | "dialog"
+  registerDismiss?: (dismiss: (() => void) | undefined) => void
 }) {
+  const confirm = useConfirm()
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
   const { i18n } = useLocale()
@@ -261,6 +308,44 @@ export function AgendaForm(props: {
     return store.scopeID
   })
 
+  const snapshot = () =>
+    JSON.stringify([
+      title(),
+      prompt(),
+      description(),
+      tagsText(),
+      selectedScopeID(),
+      hasSchedule(),
+      date(),
+      hour(),
+      minute(),
+      repeatMode(),
+      intervalCount(),
+      intervalUnit(),
+      customCron(),
+      cronTz(),
+    ])
+  const initialSnapshot = snapshot()
+  async function requestDismiss() {
+    if (saving()) return
+    if (snapshot() !== initialSnapshot) {
+      const discard = await confirm.ask({
+        title: { id: "app.agenda.form.discardTitle", message: "Discard changes?" },
+        description: {
+          id: "app.agenda.form.discardDescription",
+          message: "Your changes to this agenda have not been saved.",
+        },
+        confirmLabel: { id: "app.agenda.form.discardChanges", message: "Discard changes" },
+        cancelLabel: { id: "app.agenda.form.keepEditing", message: "Keep editing" },
+        tone: "neutral",
+      })
+      if (!discard) return
+    }
+    props.onBack()
+  }
+  props.registerDismiss?.(() => void requestDismiss())
+  onCleanup(() => props.registerDismiss?.(undefined))
+
   async function save() {
     if (!canSubmit()) return
     const t = title().trim()
@@ -298,7 +383,10 @@ export function AgendaForm(props: {
           triggers: [...preserved, ...triggers],
           prompt: promptValue || undefined,
         }
-        await sdk.client.agenda.update({ id: props.item!.id, scopeID: props.directory, agendaPatchInput: patch })
+        await sdk.client.agenda.update(
+          { id: props.item!.id, scopeID: props.directory, agendaPatchInput: patch },
+          { throwOnError: true },
+        )
       } else {
         const input: AgendaCreateInput = {
           title: t,
@@ -308,11 +396,14 @@ export function AgendaForm(props: {
           prompt: promptValue,
           createdBy: "user",
         }
-        await sdk.client.agenda.create({ scopeID: props.directory, agendaCreateInput: input })
+        await sdk.client.agenda.create(
+          { scopeID: selectedScopeID() || currentScopeID() || props.directory, agendaCreateInput: input },
+          { throwOnError: true },
+        )
       }
       props.onBack()
-    } catch (err: any) {
-      setError(err?.message ?? _(A.formSaveFailed))
+    } catch (err: unknown) {
+      setError(requestErrorMessage(err, _(A.formSaveFailed)))
     }
     setSaving(false)
   }
@@ -322,20 +413,24 @@ export function AgendaForm(props: {
       <Show when={!isDialog()}>
         <AppPanel.Header>
           <AppPanel.HeaderRow>
-            <AppPanel.Action icon={getSemanticIcon("navigation.back")} title={_(A.formBack)} onClick={props.onBack} />
+            <AppPanel.Action
+              icon={getSemanticIcon("navigation.back")}
+              title={_(A.formBack)}
+              onClick={() => void requestDismiss()}
+            />
             <AppPanel.Title>{isEdit() ? _(A.editAgenda) : _(A.newAgenda)}</AppPanel.Title>
             <div class="flex items-center gap-1.5">
               <button
                 type="button"
-                class="px-2.5 py-1 rounded-full text-11-medium text-text-weak hover:bg-surface-raised-base-hover transition-colors"
-                onClick={props.onBack}
+                class="px-2.5 py-1 rounded-full app-panel-caption font-medium text-text-weak hover:bg-surface-raised-base-hover transition-colors"
+                onClick={() => void requestDismiss()}
               >
                 {_(A.formCancel)}
               </button>
               <button
                 type="button"
                 classList={{
-                  "px-3 py-1 rounded-full text-11-medium transition-colors": true,
+                  "px-3 py-1 rounded-full app-panel-caption font-medium transition-colors": true,
                   "bg-text-strong text-background-base hover:bg-text-base": canSubmit(),
                   "bg-surface-raised-base text-text-weaker ring-1 ring-inset ring-border-base/35 cursor-not-allowed":
                     !canSubmit(),
@@ -365,10 +460,24 @@ export function AgendaForm(props: {
               <input
                 type="text"
                 autofocus
-                class="w-full bg-transparent text-15-medium text-text-strong outline-none py-1 placeholder:text-text-weaker/50"
+                class="w-full bg-transparent app-panel-section-title text-text-strong outline-none py-1 placeholder:text-text-weak"
+                aria-label={_(A.formTitle)}
                 placeholder={_(A.formTitlePlaceholder)}
                 value={title()}
                 onInput={(e) => setTitle(e.currentTarget.value)}
+              />
+            </div>
+          </Field>
+
+          <Field label={_(A.formPromptLabel)}>
+            <div class="agenda-control-surface px-3.5 py-3">
+              <textarea
+                class="w-full bg-transparent app-panel-copy text-text-base outline-none resize-none min-h-24 placeholder:text-text-weak"
+                aria-label={_(A.formPromptLabel)}
+                placeholder={_(A.formPromptDetailedPlaceholder)}
+                value={prompt()}
+                onInput={(e) => setPrompt(e.currentTarget.value)}
+                rows={4}
               />
             </div>
           </Field>
@@ -380,7 +489,7 @@ export function AgendaForm(props: {
                 fallback={
                   <button
                     type="button"
-                    class="text-12-medium text-text-strong hover:text-text-base transition-colors"
+                    class="agenda-form-time-action app-panel-control text-text-strong hover:text-text-base transition-colors"
                     onClick={() => {
                       setHasSchedule(true)
                       setDate(startOfDay(Date.now()))
@@ -399,7 +508,8 @@ export function AgendaForm(props: {
                   <TimePicker hour={hour()} minute={minute()} onHourChange={setHour} onMinuteChange={setMinute} />
                   <button
                     type="button"
-                    class="ml-auto size-6 flex items-center justify-center rounded-full text-icon-weak-base hover:text-text-diff-delete-base hover:bg-text-diff-delete-base/8 transition-colors"
+                    class="agenda-form-time-action agenda-form-time-remove ml-auto flex items-center justify-center rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-inset-base-hover transition-colors"
+                    aria-label={_(A.formRemoveTime)}
                     onClick={() => {
                       setHasSchedule(false)
                       setRepeatMode("off")
@@ -413,7 +523,7 @@ export function AgendaForm(props: {
           </Field>
 
           <Show when={isEdit() && unrepresentedTriggers(props.item?.triggers ?? []).length > 0}>
-            <p class="text-11-regular text-text-weaker -mt-1">{_(A.formUnsupportedTriggers)}</p>
+            <p class="app-panel-caption text-text-weaker -mt-1">{_(A.formUnsupportedTriggers)}</p>
           </Show>
           {/* Repeat */}
           <Show when={hasSchedule()}>
@@ -434,14 +544,14 @@ export function AgendaForm(props: {
               <div class="flex flex-col gap-1.5">
                 <input
                   type="text"
-                  class="agenda-control-surface w-full text-12-regular text-text-base outline-none px-3 py-2"
+                  class="agenda-control-surface w-full app-panel-caption text-text-base outline-none px-3 py-2"
                   placeholder={_(A.formCronDetailedPlaceholder)}
                   value={customCron()}
                   onInput={(e) => setCustomCron(e.currentTarget.value)}
                 />
                 <input
                   type="text"
-                  class="agenda-control-surface w-full text-11-regular text-text-weaker outline-none px-3 py-2"
+                  class="agenda-control-surface w-full app-panel-caption text-text-weaker outline-none px-3 py-2"
                   placeholder={_(A.formTzDetailedPlaceholder)}
                   value={cronTz()}
                   onInput={(e) => setCronTz(e.currentTarget.value)}
@@ -452,18 +562,6 @@ export function AgendaForm(props: {
 
           <Divider />
 
-          <Field label={_(A.formPromptLabel)}>
-            <div class="agenda-control-surface px-3.5 py-3">
-              <textarea
-                class="w-full bg-transparent text-12-regular text-text-base outline-none resize-none min-h-24 placeholder:text-text-weaker/50"
-                placeholder={_(A.formPromptDetailedPlaceholder)}
-                value={prompt()}
-                onInput={(e) => setPrompt(e.currentTarget.value)}
-                rows={4}
-              />
-            </div>
-          </Field>
-
           <Show
             when={showDesc()}
             fallback={<ExpandRow label={_(A.formAddDescription)} onClick={() => setShowDesc(true)} />}
@@ -471,7 +569,8 @@ export function AgendaForm(props: {
             <Field label={_(A.formDescription)}>
               <div class="agenda-control-surface px-3 py-2.5">
                 <textarea
-                  class="w-full bg-transparent text-12-regular text-text-base outline-none resize-none min-h-20 placeholder:text-text-weaker/50"
+                  class="w-full bg-transparent app-panel-caption text-text-base outline-none resize-none min-h-20 placeholder:text-text-weak"
+                  aria-label={_(A.formDescription)}
                   placeholder={_(A.formDescriptionPlaceholder)}
                   value={description()}
                   onInput={(e) => setDescription(e.currentTarget.value)}
@@ -486,7 +585,8 @@ export function AgendaForm(props: {
               <div class="agenda-control-surface px-3 py-2.5">
                 <input
                   type="text"
-                  class="w-full bg-transparent text-12-regular text-text-base outline-none placeholder:text-text-weaker/50"
+                  class="w-full bg-transparent app-panel-caption text-text-base outline-none placeholder:text-text-weak"
+                  aria-label={_(A.formTags)}
                   placeholder={_(A.formTagsPlaceholder)}
                   value={tagsText()}
                   onInput={(e) => setTagsText(e.currentTarget.value)}
@@ -500,11 +600,12 @@ export function AgendaForm(props: {
           <button
             type="button"
             class="agenda-control-surface flex items-center gap-3 px-3.5 py-3 w-full text-left"
+            aria-expanded={showAdvanced()}
             onClick={() => setShowAdvanced((v) => !v)}
           >
             <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span class="text-12-medium text-text-strong">{_(A.formAdvancedTitle)}</span>
-              <span class="text-11-regular text-text-weaker truncate">{_(A.formAdvancedSubtitle)}</span>
+              <span class="app-panel-caption font-medium text-text-strong">{_(A.formAdvancedTitle)}</span>
+              <span class="app-panel-caption text-text-weaker truncate">{_(A.formAdvancedSubtitle)}</span>
             </span>
             <div class="shrink-0 text-icon-weak-base">
               <Icon name={showAdvanced() ? "chevron-up" : "chevron-down"} size="small" />
@@ -515,7 +616,7 @@ export function AgendaForm(props: {
             <div class="pb-3 flex flex-col gap-3">
               <Show when={!isEdit() && scopes().length > 1}>
                 <div class="flex flex-col gap-1">
-                  <span class="text-11-medium text-text-weaker">{_(A.formScopeLabel)}</span>
+                  <span class="app-panel-caption font-medium text-text-weaker">{_(A.formScopeLabel)}</span>
                   <ScopePicker
                     scopes={scopes()}
                     currentScopeID={currentScopeID()}
@@ -531,7 +632,7 @@ export function AgendaForm(props: {
       </AppPanel.Body>
 
       <Show when={error()}>
-        <div class="shrink-0 mx-5 mb-3 text-12-regular text-text-diff-delete-base bg-text-diff-delete-base/10 border border-text-diff-delete-base/18 rounded-[1rem] px-3 py-2.5 shadow-[inset_0_1px_0_var(--border-weak-base)]">
+        <div class="shrink-0 mx-5 mb-3 app-panel-caption text-text-diff-delete-base bg-text-diff-delete-base/10 border border-text-diff-delete-base/18 rounded-[1rem] px-3 py-2.5 shadow-[inset_0_1px_0_var(--border-weak-base)]">
           {error()}
         </div>
       </Show>
@@ -540,15 +641,15 @@ export function AgendaForm(props: {
         <AppPanel.Footer class="!px-6 !py-4 justify-end">
           <button
             type="button"
-            class="h-9 rounded-lg px-4 text-12-medium text-text-base ring-1 ring-inset ring-border-base/50 transition-colors hover:bg-surface-raised-base-hover"
-            onClick={props.onBack}
+            class="h-9 rounded-lg px-4 app-panel-caption font-medium text-text-base ring-1 ring-inset ring-border-base/50 transition-colors hover:bg-surface-raised-base-hover"
+            onClick={() => void requestDismiss()}
           >
             {_(A.formCancel)}
           </button>
           <button
             type="button"
             classList={{
-              "h-9 rounded-lg px-4 text-12-medium transition-colors ring-1 ring-inset": true,
+              "h-9 rounded-lg px-4 app-panel-caption font-medium transition-colors ring-1 ring-inset": true,
               "bg-text-strong text-background-base hover:bg-text-base ring-border-weaker-selected": canSubmit(),
               "bg-surface-raised-base text-text-weaker ring-border-base/35 cursor-not-allowed": !canSubmit(),
             }}
@@ -572,26 +673,20 @@ export function AgendaForm(props: {
 function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
   const [open, setOpen] = createSignal(false)
   const [displayMonth, setDisplayMonth] = createSignal(props.value)
+  const [focusedDate, setFocusedDate] = createSignal(startOfDay(props.value))
   const { i18n, fmt } = useLocale()
   const monthNames = createMemo(() => getMonthNamesShort(fmt))
   const dayLabels = createMemo(() => getDayLabelsMini(fmt))
-  let containerRef: HTMLDivElement | undefined
 
   createEffect(
     on(
       () => props.value,
-      (v) => setDisplayMonth(v),
+      (v) => {
+        setDisplayMonth(v)
+        setFocusedDate(startOfDay(v))
+      },
     ),
   )
-
-  createEffect(() => {
-    if (!open()) return
-    function onClick(e: MouseEvent) {
-      if (containerRef && !containerRef.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener("mousedown", onClick)
-    onCleanup(() => document.removeEventListener("mousedown", onClick))
-  })
 
   const today = createMemo(() => startOfDay(Date.now()))
   const selected = createMemo(() => startOfDay(props.value))
@@ -618,72 +713,108 @@ function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
     if (ts === selected()) return "bg-text-strong text-background-base"
     if (ts === today()) return "bg-surface-raised-base text-text-strong ring-1 ring-inset ring-border-base/55"
     const inMonth = new Date(ts).getMonth() === currentMonth()
-    return inMonth ? "text-text-base hover:bg-surface-raised-base-hover" : "text-text-weaker/40"
+    return inMonth ? "text-text-base hover:bg-surface-raised-base-hover" : "text-text-weak"
   }
 
   return (
-    <div ref={containerRef} class="relative">
-      <button
-        type="button"
-        class="agenda-picker-trigger agenda-schedule-trigger text-13-medium"
-        data-open={open() ? "true" : undefined}
-        onClick={() => setOpen((v) => !v)}
-      >
-        {formatDate(props.value, fmt)}
-      </button>
-
-      <Show when={open()}>
-        <div class="agenda-picker-popover agenda-date-popover select-none">
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-14-medium text-text-strong">
-              {monthNames()[new Date(displayMonth()).getMonth()]} {new Date(displayMonth()).getFullYear()}
-            </span>
-            <div class="flex items-center gap-1">
-              <NavBtn onClick={() => setDisplayMonth((m) => addMonths(m, -1))}>{"‹"}</NavBtn>
-              <NavBtn onClick={() => setDisplayMonth((m) => addMonths(m, 1))}>{"›"}</NavBtn>
-            </div>
+    <Popover
+      open={open()}
+      onOpenChange={setOpen}
+      title={i18n._(A.formSchedule)}
+      variant="menu"
+      class="agenda-picker-overlay"
+      triggerAs={(triggerProps) => (
+        <button
+          {...triggerProps}
+          type="button"
+          class="agenda-picker-trigger agenda-schedule-trigger app-panel-control"
+          data-open={open() ? "true" : undefined}
+        >
+          {formatDate(props.value, fmt)}
+        </button>
+      )}
+    >
+      <div class="agenda-date-popover select-none">
+        <div class="flex items-center justify-between mb-3">
+          <span class="app-panel-row-title text-text-strong">
+            {monthNames()[new Date(displayMonth()).getMonth()]} {new Date(displayMonth()).getFullYear()}
+          </span>
+          <div class="flex items-center gap-1">
+            <NavBtn
+              label={i18n._({ id: "app.agenda.calendar.previousMonth", message: "Previous month" })}
+              onClick={() => {
+                setDisplayMonth((m) => addMonths(m, -1))
+                setFocusedDate(startOfDay(displayMonth()))
+              }}
+            >
+              {"‹"}
+            </NavBtn>
+            <NavBtn
+              label={i18n._({ id: "app.agenda.calendar.nextMonth", message: "Next month" })}
+              onClick={() => {
+                setDisplayMonth((m) => addMonths(m, 1))
+                setFocusedDate(startOfDay(displayMonth()))
+              }}
+            >
+              {"›"}
+            </NavBtn>
           </div>
-
-          <div class="grid grid-cols-7 mb-1">
-            <For each={dayLabels()}>
-              {(label) => (
-                <div class="agenda-date-cell flex items-center justify-center text-11-medium text-text-weaker">
-                  {label}
-                </div>
-              )}
-            </For>
-          </div>
-          <div class="grid grid-cols-7">
-            <For each={gridDays()}>
-              {(ts) => (
-                <button
-                  type="button"
-                  class={`agenda-date-cell flex items-center justify-center text-12-medium leading-none transition-colors ${cellClass(ts)}`}
-                  onClick={() => {
-                    props.onChange(ts)
-                    setOpen(false)
-                  }}
-                >
-                  {new Date(ts).getDate()}
-                </button>
-              )}
-            </For>
-          </div>
-
-          <button
-            type="button"
-            class="mt-3 h-8 rounded-lg px-2.5 text-12-medium text-text-strong transition-colors hover:bg-surface-raised-base-hover"
-            onClick={() => {
-              props.onChange(today())
-              setDisplayMonth(today())
-              setOpen(false)
-            }}
-          >
-            {i18n._(A.calendarToday)}
-          </button>
         </div>
-      </Show>
-    </div>
+
+        <div class="grid grid-cols-7 mb-1">
+          <For each={dayLabels()}>
+            {(label) => (
+              <div class="agenda-date-cell flex items-center justify-center app-panel-caption font-medium text-text-weaker">
+                {label}
+              </div>
+            )}
+          </For>
+        </div>
+        <div class="grid grid-cols-7">
+          <For each={gridDays()}>
+            {(ts) => (
+              <button
+                type="button"
+                aria-label={fmt.date(ts, { dateStyle: "full" })}
+                aria-pressed={ts === selected()}
+                aria-current={ts === today() ? "date" : undefined}
+                tabindex={ts === focusedDate() ? 0 : -1}
+                data-picker-date={ts}
+                onKeyDown={(event) => {
+                  const next = calendarKeyDate(ts, event.key, event.shiftKey)
+                  if (next === undefined) return
+                  event.preventDefault()
+                  setFocusedDate(next)
+                  setDisplayMonth(next)
+                  requestAnimationFrame(() =>
+                    document.querySelector<HTMLButtonElement>(`[data-picker-date="${next}"]`)?.focus(),
+                  )
+                }}
+                class={`agenda-date-cell flex items-center justify-center app-panel-caption font-medium leading-none transition-colors ${cellClass(ts)}`}
+                onClick={() => {
+                  props.onChange(ts)
+                  setOpen(false)
+                }}
+              >
+                {new Date(ts).getDate()}
+              </button>
+            )}
+          </For>
+        </div>
+
+        <button
+          type="button"
+          class="mt-3 h-8 rounded-lg px-2.5 app-panel-caption font-medium text-text-strong transition-colors hover:bg-surface-raised-base-hover"
+          onClick={() => {
+            props.onChange(today())
+            setDisplayMonth(today())
+            setOpen(false)
+          }}
+        >
+          {i18n._(A.calendarToday)}
+        </button>
+      </div>
+    </Popover>
   )
 }
 // ---------------------------------------------------------------------------
@@ -700,18 +831,9 @@ function TimePicker(props: {
   onMinuteChange: (m: number) => void
 }) {
   const [open, setOpen] = createSignal(false)
-  let containerRef: HTMLDivElement | undefined
+  const { i18n } = useLocale()
   let hourListRef: HTMLDivElement | undefined
   let minuteListRef: HTMLDivElement | undefined
-
-  createEffect(() => {
-    if (!open()) return
-    function onClick(e: MouseEvent) {
-      if (containerRef && !containerRef.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener("mousedown", onClick)
-    onCleanup(() => document.removeEventListener("mousedown", onClick))
-  })
 
   createEffect(() => {
     if (!open()) return
@@ -728,55 +850,60 @@ function TimePicker(props: {
   }
 
   return (
-    <div ref={containerRef} class="relative">
-      <button
-        type="button"
-        class="agenda-picker-trigger agenda-schedule-trigger text-13-medium tabular-nums"
-        data-open={open() ? "true" : undefined}
-        onClick={() => setOpen((v) => !v)}
-      >
-        {pad2(props.hour)}:{pad2(props.minute)}
-      </button>
-
-      <Show when={open()}>
-        <div class="agenda-picker-popover agenda-time-popover">
-          <div ref={hourListRef} class="agenda-time-column border-r border-border-weaker-base/35">
-            <For each={HOURS}>
-              {(h) => (
-                <button
-                  type="button"
-                  classList={{
-                    "agenda-time-option text-14-regular text-center transition-colors tabular-nums": true,
-                    "bg-text-strong text-background-base": h === props.hour,
-                    "text-text-base hover:bg-surface-raised-base-hover": h !== props.hour,
-                  }}
-                  onClick={() => props.onHourChange(h)}
-                >
-                  {pad2(h)}
-                </button>
-              )}
-            </For>
-          </div>
-          <div ref={minuteListRef} class="agenda-time-column">
-            <For each={MINUTES}>
-              {(m) => (
-                <button
-                  type="button"
-                  classList={{
-                    "agenda-time-option text-14-regular text-center transition-colors tabular-nums": true,
-                    "bg-text-strong text-background-base": m === props.minute,
-                    "text-text-base hover:bg-surface-raised-base-hover": m !== props.minute,
-                  }}
-                  onClick={() => props.onMinuteChange(m)}
-                >
-                  {pad2(m)}
-                </button>
-              )}
-            </For>
-          </div>
+    <Popover
+      open={open()}
+      onOpenChange={setOpen}
+      title={i18n._(A.formSchedule)}
+      variant="menu"
+      class="agenda-picker-overlay"
+      triggerAs={(triggerProps) => (
+        <button
+          {...triggerProps}
+          type="button"
+          class="agenda-picker-trigger agenda-schedule-trigger app-panel-control tabular-nums"
+          data-open={open() ? "true" : undefined}
+        >
+          {pad2(props.hour)}:{pad2(props.minute)}
+        </button>
+      )}
+    >
+      <div class="agenda-time-popover">
+        <div ref={hourListRef} class="agenda-time-column border-r border-border-weaker-base/35">
+          <For each={HOURS}>
+            {(h) => (
+              <button
+                type="button"
+                classList={{
+                  "agenda-time-option app-panel-copy text-center transition-colors tabular-nums": true,
+                  "bg-text-strong text-background-base": h === props.hour,
+                  "text-text-base hover:bg-surface-raised-base-hover": h !== props.hour,
+                }}
+                onClick={() => props.onHourChange(h)}
+              >
+                {pad2(h)}
+              </button>
+            )}
+          </For>
         </div>
-      </Show>
-    </div>
+        <div ref={minuteListRef} class="agenda-time-column">
+          <For each={MINUTES}>
+            {(m) => (
+              <button
+                type="button"
+                classList={{
+                  "agenda-time-option app-panel-copy text-center transition-colors tabular-nums": true,
+                  "bg-text-strong text-background-base": m === props.minute,
+                  "text-text-base hover:bg-surface-raised-base-hover": m !== props.minute,
+                }}
+                onClick={() => props.onMinuteChange(m)}
+              >
+                {pad2(m)}
+              </button>
+            )}
+          </For>
+        </div>
+      </div>
+    </Popover>
   )
 }
 
@@ -823,12 +950,12 @@ function RepeatControl(props: {
   return (
     <div class="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
       <Show when={props.mode === "interval"}>
-        <span class="text-12-regular text-text-base">{_(A.formRepeatEvery)}</span>
+        <span class="app-panel-caption text-text-base">{_(A.formRepeatEvery)}</span>
         <input
           type="text"
           inputmode="numeric"
           pattern="[0-9]*"
-          class="agenda-picker-trigger h-8 w-14 px-2 text-12-medium text-text-strong text-center outline-none tabular-nums"
+          class="agenda-picker-trigger h-8 w-14 px-2 app-panel-caption font-medium text-text-strong text-center outline-none tabular-nums"
           value={props.count}
           onInput={(e) => {
             const raw = e.currentTarget.value.replace(/[^0-9]/g, "")
@@ -848,7 +975,7 @@ function RepeatControl(props: {
         <div ref={unitRef} class="relative">
           <button
             type="button"
-            class="agenda-picker-trigger gap-1 px-3 py-1 text-12-regular"
+            class="agenda-picker-trigger gap-1 px-3 py-1 app-panel-caption"
             data-open={unitOpen() ? "true" : undefined}
             onClick={() => setUnitOpen((v) => !v)}
           >
@@ -862,7 +989,7 @@ function RepeatControl(props: {
                   <button
                     type="button"
                     classList={{
-                      "w-full px-3 py-1.5 text-12-regular text-left flex items-center justify-between transition-colors": true,
+                      "w-full px-3 py-1.5 app-panel-caption text-left flex items-center justify-between transition-colors": true,
                       "text-text-strong bg-surface-raised-base": u.value === props.unit,
                       "text-text-base hover:bg-surface-raised-base-hover": u.value !== props.unit,
                     }}
@@ -884,11 +1011,11 @@ function RepeatControl(props: {
       </Show>
 
       <Show when={props.mode === "off"}>
-        <span class="text-12-regular text-text-weaker">{_(A.formRepeatOff)}</span>
+        <span class="app-panel-caption text-text-weaker">{_(A.formRepeatOff)}</span>
       </Show>
 
       <Show when={props.mode === "custom"}>
-        <span class="text-12-regular text-text-weaker">{_(A.formRepeatCustom)}</span>
+        <span class="app-panel-caption text-text-weaker">{_(A.formRepeatCustom)}</span>
       </Show>
 
       <div class="ml-auto flex items-center gap-0.5">
@@ -911,7 +1038,7 @@ function ModeChip(props: { active: boolean; onClick: () => void; children: strin
     <button
       type="button"
       classList={{
-        "px-2 py-0.5 rounded-full text-10-medium transition-colors": true,
+        "px-2 py-0.5 rounded-full app-panel-caption font-medium transition-colors": true,
         "bg-text-strong text-background-base ring-1 ring-inset ring-border-weaker-selected": props.active,
         "text-text-weaker hover:text-text-weak": !props.active,
       }}
@@ -943,62 +1070,19 @@ function ScopePicker(props: {
   onChange: (id: string) => void
   i18n: import("@lingui/core").I18n
 }) {
-  const [open, setOpen] = createSignal(false)
-  const _ = (d: { id: string; message: string }, values?: Record<string, unknown>) =>
-    props.i18n._(values ? { ...d, values } : d)
-  let containerRef: HTMLDivElement | undefined
-
-  createEffect(() => {
-    if (!open()) return
-    function onClick(e: MouseEvent) {
-      if (containerRef && !containerRef.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener("mousedown", onClick)
-    onCleanup(() => document.removeEventListener("mousedown", onClick))
-  })
-
-  const activeLabel = createMemo(() => {
-    const s = props.scopes.find((s) => s.id === props.value)
-    return s ? scopePickerLabel(s, props.currentScopeID, _) : _(A.formScopeSelect)
-  })
-
+  const _ = (descriptor: { id: string; message: string }, values?: Record<string, unknown>) =>
+    props.i18n._(values ? { ...descriptor, values } : descriptor)
   return (
-    <div ref={containerRef} class="relative">
-      <button
-        type="button"
-        class="agenda-control-surface w-full flex items-center justify-between px-3 py-2 text-12-regular text-text-base"
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span class="truncate">{activeLabel()}</span>
-        <Icon name="chevron-down" size="small" class="shrink-0 text-icon-weak-base" />
-      </button>
-
-      <Show when={open()}>
-        <div class="agenda-picker-popover agenda-menu-popover left-0 right-0 max-h-48 overflow-y-auto [scrollbar-width:thin]">
-          <For each={props.scopes}>
-            {(scope) => (
-              <button
-                type="button"
-                classList={{
-                  "w-full px-3 py-2 text-12-regular text-left flex items-center justify-between transition-colors": true,
-                  "text-text-strong bg-surface-raised-base": scope.id === props.value,
-                  "text-text-base hover:bg-surface-raised-base-hover": scope.id !== props.value,
-                }}
-                onClick={() => {
-                  props.onChange(scope.id)
-                  setOpen(false)
-                }}
-              >
-                <span class="truncate">{scopePickerLabel(scope, props.currentScopeID, _)}</span>
-                <Show when={scope.id === props.value}>
-                  <Icon name="check" size="small" class="shrink-0 text-text-strong" />
-                </Show>
-              </button>
-            )}
-          </For>
-        </div>
-      </Show>
-    </div>
+    <MenuField
+      value={props.value}
+      ariaLabel={_(A.formScopeLabel)}
+      triggerClass="agenda-control-surface w-full"
+      options={props.scopes.map((scope) => ({
+        value: scope.id,
+        label: scopePickerLabel(scope, props.currentScopeID, _),
+      }))}
+      onChange={props.onChange}
+    />
   )
 }
 
@@ -1009,7 +1093,7 @@ function ScopePicker(props: {
 function Field(props: { label: string; children: JSX.Element }) {
   return (
     <div class="flex flex-col gap-2">
-      <span class="px-0.5 text-12-medium text-text-strong">{props.label}</span>
+      <span class="px-0.5 app-panel-caption font-medium text-text-strong">{props.label}</span>
       {props.children}
     </div>
   )
@@ -1026,16 +1110,17 @@ function ExpandRow(props: { label: string; onClick: () => void }) {
       class="flex items-center py-2.5 px-0.5 w-full text-left rounded-[0.95rem] hover:bg-surface-raised-base-hover transition-colors"
       onClick={props.onClick}
     >
-      <span class="text-12-regular text-text-strong">{props.label}</span>
+      <span class="app-panel-caption text-text-strong">{props.label}</span>
     </button>
   )
 }
 
-function NavBtn(props: { onClick: () => void; children: string }) {
+function NavBtn(props: { onClick: () => void; children: string; label: string }) {
   return (
     <button
       type="button"
-      class="w-8 h-8 flex items-center justify-center rounded-full text-16-regular text-text-weaker hover:text-text-weak hover:bg-surface-raised-base-hover transition-colors"
+      aria-label={props.label}
+      class="w-8 h-8 flex items-center justify-center rounded-full app-panel-section-title text-text-weaker hover:text-text-weak hover:bg-surface-raised-base-hover transition-colors"
       onClick={props.onClick}
     >
       {props.children}

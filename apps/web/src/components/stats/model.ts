@@ -1,6 +1,6 @@
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import type { StatsSnapshot } from "@ericsanchezok/synergy-sdk"
-import { formatCompact, formatCost } from "./use-stats"
+import { accountedCost, formatCompact, formatCost } from "./format"
 import { S } from "./stats-i18n"
 import type { I18n } from "@lingui/core"
 import type { MessageDescriptor } from "@lingui/core"
@@ -24,7 +24,7 @@ export type RankingRow = {
   label: string
   primary: string
   secondary?: string
-  values: Record<string, number>
+  values: Record<string, number | undefined>
 }
 
 export type CalendarCell = {
@@ -82,7 +82,10 @@ export function buildOverviewMetrics(snapshot: StatsSnapshot, i18n: I18n): Overv
     {
       id: "cost",
       label: i18n._(S.overviewLabelCost.id),
-      value: formatCost(snapshot.tokenCost.cost),
+      value:
+        accountedCost(snapshot.tokenCost.cost, snapshot.tokenCost.accounting) === undefined
+          ? i18n._({ id: "stats.cost.unpriced", message: "Unpriced" })
+          : formatCost(snapshot.tokenCost.cost),
       hint: snapshot.tokenCost.accounting
         ? i18n._(S.accountingUnknown.id, { count: snapshot.tokenCost.accounting.apiEstimate.unknown })
         : i18n._(S.overviewHintCostPerDay.id, { cost: formatCost(snapshot.tokenCost.dailyCost) }),
@@ -121,7 +124,7 @@ export function buildModelRows(snapshot: StatsSnapshot, i18n: I18n): RankingRow[
       values: {
         messages: item.accounting ? item.accounting.calls + item.accounting.legacy.messages : item.messages,
         tokens,
-        cost: item.cost,
+        cost: accountedCost(item.cost, item.accounting),
       },
     }
   })
@@ -136,7 +139,7 @@ export function buildAgentRows(snapshot: StatsSnapshot, i18n: I18n): RankingRow[
     values: {
       messages: item.messages,
       sessions: item.sessions,
-      cost: item.cost,
+      cost: accountedCost(item.cost, item.accounting),
     },
   }))
 }

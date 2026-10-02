@@ -11,7 +11,10 @@ export function WorkspaceMobileHeader(props: WorkspaceMobileHeaderProps) {
   const lingui = useLingui()
 
   return (
-    <div class="md:hidden flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60">
+    <div
+      data-component="workspace-mobile-header"
+      class="md:hidden flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60"
+    >
       <span class="text-14-medium text-text-strong">
         {lingui._({ id: W.mobileHeader.id, message: W.mobileHeader.message })}
       </span>

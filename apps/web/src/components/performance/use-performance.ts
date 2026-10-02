@@ -18,7 +18,7 @@ function getErrorMessage(error: unknown) {
 
 function readPerformanceMemory(): number | undefined {
   const memory = (performance as Performance & { memory?: { usedJSHeapSize?: number } }).memory
-  if (!memory?.usedJSHeapSize) return undefined
+  if (memory?.usedJSHeapSize === undefined) return undefined
   return memory.usedJSHeapSize
 }
 
@@ -56,6 +56,8 @@ export function usePerformance(input?: ReturnType<typeof useGlobalSDK>) {
 
   let requestVersion = 0
   let detailVersion = 0
+  let traceRequest = 0
+  let analysisVersion = 0
   const [snapshot, { refetch }] = createResource<PerformanceSnapshot, number>(
     windowMs,
     async (rangeMs, { value }): Promise<PerformanceSnapshot> => {
@@ -74,8 +76,6 @@ export function usePerformance(input?: ReturnType<typeof useGlobalSDK>) {
       try {
         const result = await sdk.client.performance.summary({ windowMs: rangeMs }, { throwOnError: true })
         if (version === requestVersion) {
-          setTimeline(null)
-          setEventTraces([])
           const details = ++detailVersion
           void loadTraces(rangeMs, details)
           void loadTimeline(rangeMs, details)
@@ -108,6 +108,8 @@ export function usePerformance(input?: ReturnType<typeof useGlobalSDK>) {
   onCleanup(() => {
     requestVersion++
     detailVersion++
+    traceRequest++
+    analysisVersion++
     window.clearTimeout(analysisPollTimer)
   })
 
@@ -134,6 +136,7 @@ export function usePerformance(input?: ReturnType<typeof useGlobalSDK>) {
     refresh: refreshAll,
     loadTrace,
     loadTimeline,
+    loadTraces,
     startAnalysis,
     cancelAnalysis,
   }
@@ -178,14 +181,17 @@ export function usePerformance(input?: ReturnType<typeof useGlobalSDK>) {
   }
 
   async function loadTrace(traceId: string) {
+    const request = ++traceRequest
     const result = await sdk.client.performance.traces.detail({ traceId }, { throwOnError: true })
-    setTraceDetail(result.data ?? null)
+    if (request === traceRequest && (!result.data || result.data.traceId === traceId))
+      setTraceDetail(result.data ?? null)
     return result.data ?? null
   }
 
   async function startAnalysis() {
     const current = analysis()
     if (analysisStarting() || (current && isPerformanceAnalysisActive(current.status))) return current
+    const version = ++analysisVersion
     window.clearTimeout(analysisPollTimer)
     setAnalysisError(null)
     setAnalysis(null)
@@ -197,28 +203,32 @@ export function usePerformance(input?: ReturnType<typeof useGlobalSDK>) {
         { performanceAnalysisRequest: { windowMs: windowMs() } },
         { throwOnError: true },
       )
+      if (version !== analysisVersion) return null
       const next = result.data ?? null
       setAnalysis(next)
       if (next && isPerformanceAnalysisActive(next.status)) scheduleAnalysisPoll(next.sessionID)
       return next
     } catch (err) {
-      setAnalysisError(getErrorMessage(err))
+      if (version === analysisVersion) setAnalysisError(getErrorMessage(err))
       return null
     } finally {
-      setAnalysisStarting(false)
+      if (version === analysisVersion) setAnalysisStarting(false)
     }
   }
 
-  async function loadAnalysis(sessionID: string) {
+  async function loadAnalysis(sessionID: string, version: number) {
+    if (version !== analysisVersion || analysis()?.sessionID !== sessionID) return null
     try {
       const result = await sdk.client.performance.analysis.get({ sessionID }, { throwOnError: true })
       const next = result.data ?? null
+      if (version !== analysisVersion || (next && next.sessionID !== sessionID)) return null
       setAnalysisError(null)
       analysisPollFailures = 0
       setAnalysis(next)
       if (next && isPerformanceAnalysisActive(next.status)) scheduleAnalysisPoll(sessionID)
       return next
     } catch (err) {
+      if (version !== analysisVersion) return null
       setAnalysisError(getErrorMessage(err))
       analysisPollFailures++
       const current = analysis()
@@ -231,12 +241,14 @@ export function usePerformance(input?: ReturnType<typeof useGlobalSDK>) {
 
   function scheduleAnalysisPoll(sessionID: string, delayMs = 1_000) {
     window.clearTimeout(analysisPollTimer)
-    analysisPollTimer = window.setTimeout(() => void loadAnalysis(sessionID), delayMs)
+    const version = analysisVersion
+    analysisPollTimer = window.setTimeout(() => void loadAnalysis(sessionID, version), delayMs)
   }
 
   async function cancelAnalysis() {
     const current = analysis()
     if (!current || !isPerformanceAnalysisActive(current.status)) return current
+    const version = ++analysisVersion
     window.clearTimeout(analysisPollTimer)
     setAnalysisError(null)
     try {
@@ -245,10 +257,12 @@ export function usePerformance(input?: ReturnType<typeof useGlobalSDK>) {
         { throwOnError: true },
       )
       const next = result.data ?? null
+      if (version !== analysisVersion || (next && next.sessionID !== current.sessionID)) return null
       setAnalysis(next)
       if (next && isPerformanceAnalysisActive(next.status)) scheduleAnalysisPoll(next.sessionID)
       return next
     } catch (err) {
+      if (version !== analysisVersion) return null
       setAnalysisError(getErrorMessage(err))
       if (isPerformanceAnalysisActive(current.status)) scheduleAnalysisPoll(current.sessionID)
       return null

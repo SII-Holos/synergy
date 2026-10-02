@@ -154,10 +154,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"]; c
       mode: "index",
       intersect: false,
     },
-    animation: {
-      duration: 720,
-      easing: "easeOutQuart",
-    },
+    animation: false as const,
     plugins: {
       legend: {
         display: false,
@@ -252,13 +249,13 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"]; c
   }))
 
   return (
-    <div class="rounded-2xl bg-surface-raised-base px-4 py-4">
+    <div class="rounded-xl bg-surface-raised-base px-4 py-4">
       <div class="flex items-start justify-between gap-3">
         <div>
-          <h3 class="text-14-semibold text-text-base">{i18n._(S.dailyTitle.id)}</h3>
-          <p class="mt-1 text-11-regular text-text-weak">{i18n._(S.dailySubtitle.id)}</p>
+          <h3 class="app-panel-row-title text-text-base">{i18n._(S.dailyTitle.id)}</h3>
+          <p class="mt-1 app-panel-caption text-text-weak">{i18n._(S.dailySubtitle.id)}</p>
           <Show when={filtered().length > 0}>
-            <p class="mt-1 text-11-regular text-text-weak">
+            <p class="mt-1 app-panel-caption text-text-weak">
               {filtered()[0]?.day} → {filtered().at(-1)?.day}
             </p>
           </Show>
@@ -269,7 +266,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"]; c
             return (
               <button
                 type="button"
-                class={`rounded-full px-2.5 py-1 text-11-medium transition-all duration-200 ${
+                class={`rounded-full px-2.5 py-1 app-panel-caption font-medium transition-all duration-180 ${
                   active()
                     ? "bg-surface-interactive-solid text-text-on-interactive-base shadow-sm"
                     : "bg-surface-inset-base/70 text-text-weak hover:bg-surface-inset-base hover:text-text-base"
@@ -285,29 +282,27 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"]; c
       </div>
 
       <div class="mt-3 flex flex-wrap gap-2">
-        <div class="inline-flex items-center gap-2 rounded-full bg-surface-inset-base/70 px-3 py-1.5 text-11-medium text-text-base">
+        <div class="inline-flex items-center gap-2 rounded-full bg-surface-inset-base/70 px-3 py-1.5 app-panel-caption font-medium text-text-base">
           <span class="h-2.5 w-2.5 rounded-full" style={{ background: theme().series[0] }} />
           <span>{i18n._(S.dailyCostLegend.id)}</span>
         </div>
-        <div class="inline-flex items-center gap-2 rounded-full bg-surface-inset-base/70 px-3 py-1.5 text-11-medium text-text-base">
+        <div class="inline-flex items-center gap-2 rounded-full bg-surface-inset-base/70 px-3 py-1.5 app-panel-caption font-medium text-text-base">
           <span class="h-2.5 w-2.5 rounded-full" style={{ background: theme().series[1] }} />
           <span>{i18n._(S.dailyTokensLegend.id)}</span>
         </div>
       </div>
 
-      <div class="mt-3 rounded-2xl bg-surface-inset-base/45 p-3">
+      <div class="mt-3 rounded-xl bg-surface-inset-base/45 p-3">
         <div class="mb-3 flex flex-wrap gap-2">
           <Show when={peaks().cost}>
             {(peak) => (
-              <div class="inline-flex min-w-[10rem] items-center gap-3 rounded-2xl border border-border-base/50 bg-surface-raised-stronger-non-alpha/70 px-3 py-2 text-text-base backdrop-blur-sm">
+              <div class="inline-flex min-w-[10rem] items-center gap-3 rounded-xl border border-border-base/50 bg-surface-raised-stronger-non-alpha/70 px-3 py-2 text-text-base backdrop-blur-sm">
                 <div class="h-8 w-1 rounded-full" style={{ background: theme().series[0] }} />
                 <div class="min-w-0">
-                  <div class="text-[10px] font-medium uppercase tracking-[0.14em] text-text-weak">
-                    {i18n._(S.dailyPeakCost.id)}
-                  </div>
+                  <div class="app-panel-caption font-medium text-text-weak">{i18n._(S.dailyPeakCost.id)}</div>
                   <div class="mt-0.5 flex items-baseline gap-2 tabular-nums">
-                    <span class="text-13-semibold text-text-base">{formatCost(peak().cost)}</span>
-                    <span class="text-11-regular text-text-weak">{peak().label}</span>
+                    <span class="app-panel-control text-text-base">{formatCost(peak().cost)}</span>
+                    <span class="app-panel-caption text-text-weak">{peak().label}</span>
                   </div>
                 </div>
               </div>
@@ -315,15 +310,13 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"]; c
           </Show>
           <Show when={peaks().tokens}>
             {(peak) => (
-              <div class="inline-flex min-w-[10rem] items-center gap-3 rounded-2xl border border-border-base/50 bg-surface-raised-stronger-non-alpha/70 px-3 py-2 text-text-base backdrop-blur-sm">
+              <div class="inline-flex min-w-[10rem] items-center gap-3 rounded-xl border border-border-base/50 bg-surface-raised-stronger-non-alpha/70 px-3 py-2 text-text-base backdrop-blur-sm">
                 <div class="h-8 w-1 rounded-full" style={{ background: theme().series[1] }} />
                 <div class="min-w-0">
-                  <div class="text-[10px] font-medium uppercase tracking-[0.14em] text-text-weak">
-                    {i18n._(S.dailyPeakVolume.id)}
-                  </div>
+                  <div class="app-panel-caption font-medium text-text-weak">{i18n._(S.dailyPeakVolume.id)}</div>
                   <div class="mt-0.5 flex items-baseline gap-2 tabular-nums">
-                    <span class="text-13-semibold text-text-base">{formatTokenValue(peak().tokens)}</span>
-                    <span class="text-11-regular text-text-weak">{peak().label}</span>
+                    <span class="app-panel-control text-text-base">{formatTokenValue(peak().tokens)}</span>
+                    <span class="app-panel-caption text-text-weak">{peak().label}</span>
                   </div>
                 </div>
               </div>
@@ -334,7 +327,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"]; c
         <Show
           when={points().length > 0}
           fallback={
-            <div class="flex h-56 items-center justify-center rounded-xl border border-border-base/45 bg-surface-raised-stronger-non-alpha/65 text-12-medium text-text-weak">
+            <div class="flex h-56 items-center justify-center rounded-xl border border-border-base/45 bg-surface-raised-stronger-non-alpha/65 app-panel-caption font-medium text-text-weak">
               {i18n._(S.dailyEmpty.id)}
             </div>
           }

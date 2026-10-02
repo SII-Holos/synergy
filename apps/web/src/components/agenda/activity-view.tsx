@@ -1,9 +1,16 @@
+import { translateDescriptor } from "@/locales/translate"
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { relativeTime, absoluteDate } from "@/utils/time"
 import type { AgendaActivityEntry } from "@ericsanchezok/synergy-sdk/client"
-import { agendaRunDotTone, agendaStatusTone, formatAgendaDuration } from "./shared"
+import {
+  agendaRunDotTone,
+  agendaStatusTone,
+  formatAgendaDuration,
+  agendaStatusLabel,
+  agendaRunStatusLabel,
+} from "./shared"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLocale } from "@/context/locale"
 import { A } from "./agenda-i18n"
@@ -48,6 +55,7 @@ export function ActivityView(props: {
   query: string
   error?: string | null
   onQueryChange: (value: string) => void
+  onRetry?: () => void
   onLoadMore: () => void
   onNavigate: (sessionID: string, scopeID: string) => void
   onItemClick: (itemId: string) => void
@@ -55,24 +63,36 @@ export function ActivityView(props: {
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }, values?: Record<string, unknown>) =>
     i18n._(values ? { ...d, values } : d)
+  let searchInput: HTMLInputElement | undefined
   const grouped = createMemo(() => groupAgendaActivity(props.items))
 
   return (
-    <div class="agenda-activity-surface flex min-h-0 flex-1 flex-col px-3 pb-3">
-      <div class="workbench-control-surface mb-2.5 flex items-center gap-2 rounded-[1rem] bg-surface-inset-base p-2.5 ring-1 ring-inset ring-border-base/30">
+    <div class="agenda-activity-surface flex min-h-0 flex-1 flex-col pb-3">
+      <div class="mb-3 flex items-center gap-2">
         <div class="relative min-w-0 flex-1">
           <input
+            ref={searchInput}
+            aria-label={_(A.activitySearchPlaceholder)}
             value={props.query}
             onInput={(e) => props.onQueryChange(e.currentTarget.value)}
             placeholder={_(A.activitySearchPlaceholder)}
-            class="workbench-input-surface h-9 w-full rounded-[0.9rem] border border-border-base/30 bg-surface-raised-base pl-3 pr-3 text-12-regular text-text-strong outline-none placeholder:text-text-weaker"
+            class="workbench-input-surface h-9 w-full rounded-xl border border-border-base/30 bg-surface-raised-base px-3 app-panel-copy text-text-strong outline-none placeholder:text-text-weaker"
           />
         </div>
-        <div class="shrink-0 rounded-full bg-surface-raised-stronger-non-alpha px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/45">
-          {_(A.activityRuns, { count: props.total })}
-        </div>
+        <div class="shrink-0 app-panel-caption text-text-weaker">{_(A.activityRuns, { count: props.total })}</div>
       </div>
 
+      <Show when={props.error && props.items.length}>
+        <div
+          role="alert"
+          class="flex flex-wrap items-center justify-between gap-2 pb-3 app-panel-caption text-text-weak"
+        >
+          <span>{props.error}</span>
+          <button type="button" class="agenda-secondary-action" onClick={props.onRetry}>
+            {_({ id: "app.agenda.activity.retry", message: "Retry" })}
+          </button>
+        </div>
+      </Show>
       <div class="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <Show
           when={!props.loading || props.items.length > 0}
@@ -87,7 +107,29 @@ export function ActivityView(props: {
             fallback={
               <div class="flex flex-col items-center justify-center py-16 gap-2 rounded-[1.05rem] bg-surface-inset-base ring-1 ring-inset ring-border-base/35">
                 <Icon name={getSemanticIcon("agenda.main")} size="large" class="text-icon-weak-base" />
-                <span class="text-12-regular text-text-weaker">{props.error ?? _(A.activityNoHistory)}</span>
+                <span class="app-panel-caption text-text-weaker">
+                  {props.error ??
+                    (props.query
+                      ? _({ id: "app.agenda.activity.noMatch", message: "No matching executions" })
+                      : _(A.activityNoHistory))}
+                </span>
+                <Show when={props.error && props.onRetry}>
+                  <button type="button" class="agenda-secondary-action" onClick={props.onRetry}>
+                    {_({ id: "app.agenda.activity.retry", message: "Retry" })}
+                  </button>
+                </Show>
+                <Show when={props.query}>
+                  <button
+                    type="button"
+                    class="agenda-secondary-action"
+                    onClick={() => {
+                      props.onQueryChange("")
+                      searchInput?.focus()
+                    }}
+                  >
+                    {_({ id: "app.agenda.activity.clear", message: "Clear filters" })}
+                  </button>
+                </Show>
               </div>
             }
           >
@@ -104,7 +146,7 @@ export function ActivityView(props: {
             <div class="flex justify-center pt-3">
               <button
                 type="button"
-                class="workbench-control-surface inline-flex h-9 items-center justify-center rounded-full bg-surface-raised-base px-4 text-11-medium text-text-strong ring-1 ring-inset ring-border-base/30 transition-colors hover:bg-surface-raised-base-hover"
+                class="workbench-control-surface inline-flex h-9 items-center justify-center rounded-xl bg-surface-raised-base px-4 app-panel-caption font-medium text-text-strong ring-1 ring-inset ring-border-base/30 transition-colors hover:bg-surface-raised-base-hover"
                 onClick={props.onLoadMore}
               >
                 {_(A.activityLoadMore)}
@@ -122,56 +164,50 @@ function ActivityGroupCard(props: {
   onNavigate: (sessionID: string, scopeID: string) => void
   onItemClick: (itemId: string) => void
 }) {
+  const { i18n } = useLocale()
   const [expanded, setExpanded] = createSignal(true)
 
   return (
-    <div class="workbench-control-surface overflow-hidden rounded-[1.1rem] bg-surface-inset-base ring-1 ring-inset ring-border-base/30">
-      <div
-        role="button"
-        tabindex={0}
-        aria-expanded={expanded()}
-        class="flex w-full items-center gap-2 px-3.5 py-3 text-left transition-colors hover:bg-surface-raised-base-hover"
-        onClick={() => setExpanded((v) => !v)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault()
-            setExpanded((v) => !v)
-          }
-        }}
-      >
-        <Icon
-          name={getSemanticIcon("navigation.expand")}
-          size="small"
-          class={`shrink-0 text-icon-weak-base transition-transform duration-150 ${expanded() ? "rotate-90" : ""}`}
-        />
-        <div class="min-w-0 flex-1">
-          <div class="flex items-center gap-2 min-w-0">
-            <span class="truncate text-11-medium text-text-strong">{props.group.title}</span>
-            <span
-              class={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-medium ${agendaStatusTone(props.group.status)}`}
-            >
-              {props.group.status}
-            </span>
-          </div>
-          <Show when={(props.group.tags?.length ?? 0) > 0}>
-            <div class="mt-1 flex flex-wrap gap-1">
-              <For each={props.group.tags?.slice(0, 3) ?? []}>
-                {(tag) => (
-                  <span class="rounded-full bg-surface-raised-base px-2 py-0.5 text-[9px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
-                    {tag}
-                  </span>
-                )}
-              </For>
-            </div>
-          </Show>
-        </div>
+    <div class="workbench-control-surface overflow-hidden rounded-xl bg-surface-inset-base ring-1 ring-inset ring-border-base/30">
+      <div class="flex items-center gap-2 pr-3">
         <button
           type="button"
-          class="shrink-0 rounded-full bg-surface-raised-stronger-non-alpha px-2 py-0.5 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/45"
-          onClick={(e) => {
-            e.stopPropagation()
-            props.onItemClick(props.group.agendaID)
-          }}
+          aria-expanded={expanded()}
+          class="flex min-w-0 flex-1 items-center gap-2 px-3.5 py-3 text-left transition-colors hover:bg-surface-raised-base-hover"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          <Icon
+            name={getSemanticIcon("navigation.expand")}
+            size="small"
+            class={`shrink-0 text-icon-weak-base transition-transform duration-120 ${expanded() ? "rotate-90" : ""}`}
+          />
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="truncate app-panel-row-title text-text-strong">{props.group.title}</span>
+              <span
+                class={`shrink-0 rounded-full px-2 py-0.5 app-panel-caption font-medium ${agendaStatusTone(props.group.status)}`}
+              >
+                {translateDescriptor(agendaStatusLabel(props.group.status), i18n)}
+              </span>
+            </div>
+            <Show when={(props.group.tags?.length ?? 0) > 0}>
+              <div class="mt-1 flex flex-wrap gap-1">
+                <For each={props.group.tags?.slice(0, 3) ?? []}>
+                  {(tag) => (
+                    <span class="rounded-full bg-surface-raised-base px-2 py-0.5 app-panel-caption font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
+                      {tag}
+                    </span>
+                  )}
+                </For>
+              </div>
+            </Show>
+          </div>
+        </button>
+        <button
+          type="button"
+          aria-label={i18n._({ ...A.detailRuns, values: { count: props.group.entries.length } })}
+          class="min-h-8 shrink-0 rounded-full bg-surface-raised-stronger-non-alpha px-2 app-panel-caption font-medium text-text-weaker ring-1 ring-inset ring-border-base/45"
+          onClick={() => props.onItemClick(props.group.agendaID)}
         >
           {props.group.entries.length}
         </button>
@@ -210,8 +246,10 @@ function ActivityRunRow(props: {
   }
 
   return (
-    <div
-      class="workbench-card-surface flex items-start gap-2.5 rounded-[0.95rem] bg-surface-raised-base px-3.5 py-2.5 transition-colors hover:bg-surface-raised-base-hover"
+    <button
+      type="button"
+      disabled={!session()}
+      class="workbench-card-surface flex w-full items-start gap-2.5 rounded-xl bg-surface-raised-base px-3.5 py-2.5 text-left transition-colors hover:bg-surface-raised-base-hover"
       onClick={() => {
         const s = session()
         if (s) props.onNavigate(s.id, s.scopeID)
@@ -220,14 +258,14 @@ function ActivityRunRow(props: {
       <span class={`mt-1 shrink-0 h-1.5 w-1.5 rounded-full ${agendaRunDotTone(props.entry.run.status)}`} />
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2">
-          <span class="truncate text-11-regular text-text-strong">{title()}</span>
+          <span class="min-w-0 truncate app-panel-copy text-text-strong">{title()}</span>
           <span
-            class={`shrink-0 text-[10px] font-medium ${props.entry.run.status === "error" ? "text-text-diff-delete-base" : props.entry.run.status === "ok" ? "text-icon-success-base" : "text-text-weaker"}`}
+            class={`shrink-0 app-panel-caption font-medium ${props.entry.run.status === "error" ? "text-text-diff-delete-base" : props.entry.run.status === "ok" ? "text-text-on-success-base" : "text-text-weaker"}`}
           >
-            {props.entry.run.status}
+            {translateDescriptor(agendaRunStatusLabel(props.entry.run.status), i18n)}
           </span>
         </div>
-        <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-text-weaker">
+        <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 app-panel-caption text-text-weaker">
           <span>{absoluteDate(fmt, props.entry.run.time.started)}</span>
           <span>·</span>
           <span>{relativeTime(fmt, props.entry.run.time.started)}</span>
@@ -245,11 +283,11 @@ function ActivityRunRow(props: {
           </Show>
         </div>
         <Show when={props.entry.run.error}>
-          <div class="mt-1 line-clamp-2 text-[10px] leading-relaxed text-text-diff-delete-base">
+          <div class="mt-1 line-clamp-2 app-panel-caption leading-relaxed text-text-diff-delete-base">
             {props.entry.run.error}
           </div>
         </Show>
       </div>
-    </div>
+    </button>
   )
 }

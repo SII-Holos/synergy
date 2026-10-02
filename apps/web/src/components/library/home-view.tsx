@@ -1,6 +1,9 @@
+import { experiencePreview } from "./experience-preview"
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import type { ExperienceInfo, MemoryInfo, SkillSummary } from "@ericsanchezok/synergy-sdk/client"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import type { useGlobalSDK } from "@/context/global-sdk"
 import { useLocale } from "@/context/locale"
 import { relativeTime } from "@/utils/time"
@@ -17,10 +20,12 @@ export function LibraryHome(props: {
   sdk: ReturnType<typeof useGlobalSDK>
   search: string
   scopeID?: string
+  scopeLabel?: (id: string) => string | undefined
   onBrowse: (view: View, search?: string) => void
   registerSync: (handle: LibraryHomeSync | undefined) => void
 }) {
   const { _ } = useLingui()
+  const dialog = useDialog()
   const { fmt } = useLocale()
   const memories = createLibraryCollection<MemoryInfo>(
     () => props.search,
@@ -63,7 +68,10 @@ export function LibraryHome(props: {
     if (!result.data) throw new Error("Missing experience detail")
     return result.data
   })
-  const [expanded, setExpanded] = createSignal<string>()
+  let detailDialog: string | undefined
+  onCleanup(() => {
+    if (detailDialog) dialog.close(detailDialog)
+  })
   const [sections, setSections] = createSignal(new Set<string>())
   const labels = createMemo(() => ({
     memory: _({ id: "app.library.nav.memories", message: "Memories" }),
@@ -86,7 +94,9 @@ export function LibraryHome(props: {
   onCleanup(() => props.registerSync(undefined))
   createEffect(() => {
     props.search
-    setExpanded(undefined)
+    props.scopeID
+    if (detailDialog) dialog.close(detailDialog)
+    detailDialog = undefined
   })
   const recent = createMemo<RecentItem[]>(() =>
     [
@@ -101,24 +111,69 @@ export function LibraryHome(props: {
     return skills.items().filter((item) => `${item.name} ${item.description}`.toLocaleLowerCase().includes(query))
   })
   function toggle(entry: RecentItem) {
-    const key = `${entry.kind}:${entry.item.id}`
-    setExpanded((previous) => (previous === key ? undefined : key))
-    if (entry.kind === "experience" && expanded() === key) void details.load(entry.item.id)
+    if (entry.kind === "experience") void details.load(entry.item.id)
+    setSections(new Set([`${entry.item.id}-script`]))
+    detailDialog = dialog.show(
+      () => (
+        <Dialog size="wide" class="app-panel-detail-dialog library-detail-dialog" title={labels()[entry.kind]}>
+          {entry.kind === "memory" ? (
+            <MemoryCard
+              detailPresentation
+              item={entry.item}
+              expanded
+              similarity={undefined}
+              searching={false}
+              selecting={false}
+              selected={false}
+              onToggle={() => dialog.close(detailDialog)}
+            />
+          ) : (
+            <ExperienceCard
+              sdk={props.sdk}
+              sourceScopeName={props.scopeLabel?.(entry.item.scopeID)}
+              detailPresentation
+              item={entry.item}
+              expanded
+              similarity={undefined}
+              searching={false}
+              selecting={false}
+              selected={false}
+              detail={details.read(entry.item.id)?.data}
+              detailError={!!details.read(entry.item.id)?.error}
+              onRetry={() => void details.load(entry.item.id)}
+              expandedSections={sections()}
+              onToggle={() => dialog.close(detailDialog)}
+              onToggleSection={(key) =>
+                setSections((previous) => {
+                  const next = new Set(previous)
+                  if (next.has(key)) next.delete(key)
+                  else next.add(key)
+                  return next
+                })
+              }
+            />
+          )}
+        </Dialog>
+      ),
+      () => {
+        detailDialog = undefined
+      },
+    )
   }
   function rows(entries: RecentItem[]) {
     return (
       <div class="library-home-results">
         <For each={entries}>
           {(entry) => {
-            const open = () => expanded() === `${entry.kind}:${entry.item.id}`
+            const preview = () => (entry.kind === "experience" ? experiencePreview(entry.item.intent) : undefined)
             return (
               <div class="library-home-item">
-                <button type="button" class="library-home-result" aria-expanded={open()} onClick={() => toggle(entry)}>
+                <button type="button" class="library-home-result" aria-haspopup="dialog" onClick={() => toggle(entry)}>
                   <span class="library-home-result-main">
-                    <span class="text-13-semibold text-text-strong">
+                    <span class="app-panel-row-title text-text-strong">
                       {entry.kind === "memory"
                         ? entry.item.title
-                        : entry.item.intent ||
+                        : preview()?.title ||
                           (entry.item.rewardStatus === "encoding_failed"
                             ? _({
                                 id: "app.library.experience.encodingFailedTitle",
@@ -126,58 +181,25 @@ export function LibraryHome(props: {
                               })
                             : _({ id: "app.library.experience.missingIntent", message: "Intent not recorded" }))}
                     </span>
-                    <span class="text-12-regular text-text-weak">
-                      {entry.kind === "memory"
-                        ? entry.item.content
-                        : entry.item.rewardStatus === "encoding_failed"
-                          ? _({ id: "app.library.experience.status.failed", message: "Encoding failed" })
-                          : entry.item.rewardStatus === "pending"
-                            ? _({ id: "app.library.experience.status.pending", message: "Pending evaluation" })
-                            : _({ id: "app.library.experience.status.evaluated", message: "Evaluated" })}
-                    </span>
+                    <Show when={entry.kind === "memory" ? entry.item.content : preview()?.summary}>
+                      {(summary) => <span class="app-panel-copy text-text-weak">{summary()}</span>}
+                    </Show>
                   </span>
-                  <span class="library-home-result-meta">
+                  <span class="library-home-result-meta app-panel-caption">
                     <span>{labels()[entry.kind]}</span>
+                    <Show when={entry.kind === "experience"}>
+                      <span>
+                        {entry.kind === "experience" &&
+                          (entry.item.rewardStatus === "encoding_failed"
+                            ? _({ id: "app.library.experience.status.failed", message: "Encoding failed" })
+                            : entry.item.rewardStatus === "pending"
+                              ? _({ id: "app.library.experience.status.pending", message: "Pending evaluation" })
+                              : _({ id: "app.library.experience.status.evaluated", message: "Evaluated" }))}
+                      </span>
+                    </Show>
                     <span>{relativeTime(fmt, entry.item.updatedAt)}</span>
                   </span>
                 </button>
-                <Show when={open()}>
-                  <div class="library-home-detail">
-                    {entry.kind === "memory" ? (
-                      <MemoryCard
-                        item={entry.item}
-                        expanded
-                        similarity={undefined}
-                        searching={false}
-                        selecting={false}
-                        selected={false}
-                        onToggle={() => toggle(entry)}
-                      />
-                    ) : (
-                      <ExperienceCard
-                        item={entry.item}
-                        expanded
-                        similarity={undefined}
-                        searching={false}
-                        selecting={false}
-                        selected={false}
-                        detail={details.read(entry.item.id)?.data}
-                        detailError={!!details.read(entry.item.id)?.error}
-                        onRetry={() => void details.load(entry.item.id)}
-                        expandedSections={sections()}
-                        onToggle={() => toggle(entry)}
-                        onToggleSection={(key) =>
-                          setSections((previous) => {
-                            const next = new Set(previous)
-                            if (next.has(key)) next.delete(key)
-                            else next.add(key)
-                            return next
-                          })
-                        }
-                      />
-                    )}
-                  </div>
-                </Show>
               </div>
             )
           }}
@@ -206,7 +228,7 @@ export function LibraryHome(props: {
         )}
       </For>
       <Show when={sources().some((source) => source.loading())}>
-        <p role="status" class="text-12-regular text-text-weak">
+        <p role="status" class="app-panel-caption text-text-weak">
           {_({ id: "app.library.home.loading", message: "Loading library…" })}
         </p>
       </Show>
@@ -248,8 +270,8 @@ export function LibraryHome(props: {
                       onClick={() => props.onBrowse("skill", skill.name)}
                     >
                       <span class="library-home-result-main">
-                        <span class="text-13-semibold text-text-strong">{skill.name}</span>
-                        <span class="text-12-regular text-text-weak">{skill.description}</span>
+                        <span class="app-panel-row-title text-text-strong">{skill.name}</span>
+                        <span class="app-panel-caption text-text-weak">{skill.description}</span>
                       </span>
                     </button>
                   )}

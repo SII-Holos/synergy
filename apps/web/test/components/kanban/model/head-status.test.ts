@@ -1,7 +1,26 @@
 import { describe, expect, test } from "bun:test"
-import { paneHeadStatusFromVisual, type PaneHeadStatus } from "../../../../src/components/kanban/model/head-status"
+import {
+  paneDisplayState,
+  paneHeadStatusFromVisual,
+  type PaneHeadStatus,
+} from "../../../../src/components/kanban/model/head-status"
 
 describe("paneHeadStatusFromVisual", () => {
+  test("resting pane state describes activity rather than repeating its Scope", () => {
+    const state = {
+      icon: "house" as const,
+      label: { id: "session.state.home", message: "Home session" },
+      tone: "default" as const,
+    }
+    expect(paneDisplayState(state).label.id).toBe("app.kanban.status.idle")
+    expect(paneDisplayState({ ...state, completionUnread: true }).label.id).toBe("app.kanban.responseReady")
+    const waiting = {
+      ...state,
+      tone: "waiting" as const,
+      label: { id: "session.state.waiting", message: "Waiting for you" },
+    }
+    expect(paneDisplayState(waiting)).toBe(waiting)
+  })
   test("active and blueprint-running tones read as working", () => {
     expect(paneHeadStatusFromVisual({ tone: "active", pulse: true })).toBe("working")
     expect(paneHeadStatusFromVisual({ tone: "blueprint-running", pulse: true })).toBe("working")

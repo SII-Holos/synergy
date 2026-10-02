@@ -72,6 +72,20 @@ export function installedPluginStatusView(
   if (plugin.health === "disabled") {
     return { label: pluginMarketplace.statusDisabled, isDisabled: true, canReviewPermissions: false }
   }
+  const runtimeState = plugin.runtime?.state
+  if (runtimeState && runtimeState !== "ready") {
+    const labels: Record<Exclude<typeof runtimeState, "ready">, MessageDescriptor> = {
+      starting: { id: "app.plugin.marketplace.statusStarting", message: "Starting" },
+      draining: { id: "app.plugin.marketplace.statusStopping", message: "Stopping" },
+      stopped: { id: "app.plugin.marketplace.statusStopped", message: "Stopped" },
+      crashed: { id: "app.plugin.marketplace.statusFailed", message: "Failed" },
+    }
+    return {
+      label: labels[runtimeState],
+      isDisabled: runtimeState === "crashed" || runtimeState === "stopped",
+      canReviewPermissions: false,
+    }
+  }
   return { label: pluginMarketplace.statusActive, isDisabled: false, canReviewPermissions: false }
 }
 

@@ -36,6 +36,8 @@ const playwrightIsolated = [
   "test/components/dialog/environment-dialog.dom.test.ts",
   "test/components/dialog/file-entry-dialog.dom.test.ts",
   "test/context/file/workspace.dom.test.ts",
+  "test/components/kanban/layout.dom.test.tsx",
+  "test/plugin/marketplace/marketplace.dom.test.tsx",
   "test/components/kanban/full-access-ack.test.ts",
   "test/components/prompt-input/full-access-ack.test.ts",
   "test/components/settings/panels/full-access-ack.test.ts",

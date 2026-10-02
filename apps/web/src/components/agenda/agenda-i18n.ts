@@ -2,17 +2,17 @@
  *  Translate at use time via `useLocale().i18n._(descriptor)`. */
 
 export const A = {
-  // panel.tsx — header, tabs, detail popover, action buttons
+  // panel.tsx — header, tabs, detail dialog, action buttons
   panelTitle: { id: "app.agenda.panel.title", message: "Agenda" },
   newAgenda: { id: "app.agenda.panel.newAgenda", message: "New Agenda" },
   editAgenda: { id: "app.agenda.panel.editAgenda", message: "Edit Agenda" },
-  scheduleTab: { id: "app.agenda.panel.tab.schedule", message: "Schedule" },
+  scheduleTab: { id: "app.agenda.panel.tab.schedule", message: "Plans" },
   activityTab: { id: "app.agenda.panel.tab.activity", message: "History" },
   todoLabel: { id: "app.agenda.panel.todoLabel", message: "Todo" },
   noTodoItems: { id: "app.agenda.panel.noTodoItems", message: "No todo items" },
 
   // trigger summaries
-  triggerManual: { id: "app.agenda.trigger.manual", message: "Manual" },
+  triggerManual: { id: "app.agenda.trigger.manual", message: "Manual execution" },
   triggerCron: { id: "app.agenda.trigger.cron", message: "cron: {expr}" },
   triggerEvery: { id: "app.agenda.trigger.every", message: "every {interval}" },
   triggerAt: { id: "app.agenda.trigger.at", message: "at {time}" },
@@ -22,7 +22,7 @@ export const A = {
   triggerWatch: { id: "app.agenda.trigger.watch", message: "watch: {glob}" },
   triggerUnknown: { id: "app.agenda.trigger.unknown", message: "unknown" },
 
-  // detail popover
+  // detail dialog
   detailEdit: { id: "app.agenda.detail.edit", message: "Edit" },
   detailDelete: { id: "app.agenda.detail.delete", message: "Delete" },
   detailClose: { id: "app.agenda.detail.close", message: "Close" },
@@ -60,7 +60,7 @@ export const A = {
   // activity-state.ts
   activityUnavailable: {
     id: "app.agenda.activity.unavailable",
-    message: "Activity endpoint is unavailable on the running server instance",
+    message: "Execution history is unavailable right now.",
   },
   activityUnavailableShort: {
     id: "app.agenda.activity.unavailableShort",
@@ -77,6 +77,7 @@ export const A = {
   formTitleRequired: { id: "app.agenda.form.titleRequired", message: "Title is required" },
   formSchedule: { id: "app.agenda.form.schedule", message: "Schedule" },
   formAddTime: { id: "app.agenda.form.addTime", message: "Add time" },
+  formRemoveTime: { id: "app.agenda.form.removeTime", message: "Remove scheduled time" },
   formUnsupportedTriggers: {
     id: "app.agenda.form.unsupportedTriggers",
     message: "This item has triggers the form can't edit (e.g. session, webhook, watch). They are preserved on save.",
@@ -147,3 +148,13 @@ export const A = {
   durationHourMin: { id: "app.agenda.duration.hourMin", message: "{h}h {m}m" },
   durationHours: { id: "app.agenda.duration.hours", message: "{count}h" },
 }
+
+export const agendaWeekdays = [
+  { id: "app.agenda.weekday.sunday", message: "Sunday" },
+  { id: "app.agenda.weekday.monday", message: "Monday" },
+  { id: "app.agenda.weekday.tuesday", message: "Tuesday" },
+  { id: "app.agenda.weekday.wednesday", message: "Wednesday" },
+  { id: "app.agenda.weekday.thursday", message: "Thursday" },
+  { id: "app.agenda.weekday.friday", message: "Friday" },
+  { id: "app.agenda.weekday.saturday", message: "Saturday" },
+]

@@ -28,11 +28,11 @@ export function PerformanceSnapshotBoundary(props: {
               <Icon name={getSemanticIcon("state.warning")} class="text-icon-warning-base shrink-0" />
             </Show>
             <div class="min-w-0 flex-1">
-              <p class="text-14-medium text-text-strong">
+              <p class="app-panel-row-title text-text-strong">
                 {props.error ? _(P.stale) : _(P.refreshing.id, { time: props.formatTime(props.generatedAt!) })}
               </p>
               <Show when={props.error}>
-                <p class="mt-1 text-14-regular text-text-weak">
+                <p class="mt-1 app-panel-copy text-text-weak">
                   {_(P.staleDescription.id, { time: props.formatTime(props.generatedAt!) })}
                 </p>
                 <SnapshotErrorDetails error={props.error!} />
@@ -50,11 +50,11 @@ export function PerformanceSnapshotBoundary(props: {
                 <Icon name={getSemanticIcon("state.warning")} size="large" class="text-icon-critical-base" />
               </div>
             </Show>
-            <h2 class="text-20-medium text-text-strong">
+            <h2 class="app-panel-section-title text-text-strong">
               {props.loading ? _(P.loading) : props.error ? _(P.unavailable) : _(P.empty)}
             </h2>
             <Show when={!props.loading}>
-              <p class="text-14-regular text-text-weak">{_(P.unavailableDescription)}</p>
+              <p class="app-panel-copy text-text-weak">{_(P.unavailableDescription)}</p>
               <Button
                 type="button"
                 variant="primary"
@@ -68,7 +68,7 @@ export function PerformanceSnapshotBoundary(props: {
                 <SnapshotErrorDetails error={props.error!} />
               </Show>
               <Show when={props.attemptedAt}>
-                <p class="text-12-regular text-text-weaker">
+                <p class="app-panel-caption text-text-weaker">
                   {_(P.attemptedAt.id, { time: props.formatTime(props.attemptedAt!) })}
                 </p>
               </Show>
@@ -86,8 +86,8 @@ export function SnapshotErrorDetails(props: { error: string }) {
   const { _ } = useLingui()
   return (
     <details class="performance-snapshot-error-details">
-      <summary class="cursor-pointer text-14-medium text-text-interactive-base">{_(P.errorDetails)}</summary>
-      <pre class="mt-2 whitespace-pre-wrap break-words text-12-regular text-text-weak">{props.error}</pre>
+      <summary class="cursor-pointer app-panel-row-title text-text-interactive-base">{_(P.errorDetails)}</summary>
+      <pre class="mt-2 whitespace-pre-wrap break-words app-panel-caption text-text-weak">{props.error}</pre>
     </details>
   )
 }
