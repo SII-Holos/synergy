@@ -24,6 +24,8 @@ The conversation consumes one stable projection in every display mode. Ordinary 
 
 **Use the current Session status for every turn** overwrites stopped historical roots when another task finishes. Root execution segments preserve independent outcomes and prior stops across continuation.
 
+Agent prompt examples and scripted model providers use the published facade and precise entity names. Direct executor tests pass native business fields without facade metadata. Processor test doubles implement model-input retrieval, and dynamic MCP fixtures declare their native input schemas, so test admission follows the same split as production.
+
 ## Consequences
 
 Agents receive consistent invocation and entity semantics without UI instructions. The UI can present clear intent while distinguishing actual success, errors, background execution and missing evidence. The cost is additive message metadata, bounded read queries and owner-registered migrations. Older histories retain available protocol output where operation snapshots do not exist; migrations cannot manufacture that evidence. Ordinary business APIs, entity storage and third-party server contracts retain their boundaries.

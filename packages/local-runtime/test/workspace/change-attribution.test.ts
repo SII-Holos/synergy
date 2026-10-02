@@ -117,14 +117,15 @@ test("a tool error after a write does not discard workspace changes", () =>
       async fn() {
         const a = await actor()
         await SessionFileChanges.begin(a.input)
-        await expect(
+        const [outcome] = await Promise.allSettled([
           a.task(() =>
             a.tool("error", async () => {
               await FileMutation.write({ path: path.join(tmp.path, "written.txt"), content: "saved" })
               throw new Error("after write")
             }),
           ),
-        ).rejects.toThrow("after write")
+        ])
+        expect(outcome).toMatchObject({ status: "rejected", reason: { message: "after write" } })
         await SessionFileChanges.finish(a.input)
         expect(await Session.diff(a.session.id)).toMatchObject([{ file: "written.txt", additions: 1 }])
         expect((await Session.get(a.session.id)).summary?.diffState).toEqual({ status: "ready" })

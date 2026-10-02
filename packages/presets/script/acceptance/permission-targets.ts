@@ -311,7 +311,6 @@ export function permissionTargets(input: unknown): Driver {
               })
               const mounted = await invoke(session, "bash", {
                 command: "printf changed > /readonly/record",
-                description: "Verify the selected read-only mount",
               })
               const unchanged = await bytes("/readonly/record")
               if (
@@ -371,7 +370,6 @@ export function permissionTargets(input: unknown): Driver {
               const sentinel = path.join(host.home, "controller-must-not-execute")
               const failed = await invoke(session, "bash", {
                 command: `printf wrong > '${sentinel}'`,
-                description: "Unavailable remote target must fail",
               })
               controllerEffects += (await Bun.file(sentinel).exists()) ? 1 : 0
               if (!failed.error || controllerEffects)

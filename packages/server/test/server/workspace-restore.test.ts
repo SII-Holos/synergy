@@ -54,11 +54,18 @@ async function captured() {
     workspace: Snapshot.workspace(),
     files: [file],
   })
+  const preview = await Server.App().request(`/session/${session.id}/files/preview?scopeID=${session.scope.id}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ partID }),
+  })
+  expect(preview.status).toBe(200)
+  const { id: previewID } = await preview.json()
   const request = (scopeID = session.scope.id) =>
     Server.App().request(`/session/${session.id}/files/restore?scopeID=${scopeID}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ partID }),
+      body: JSON.stringify({ previewID }),
     })
   return { session, file, request }
 }
@@ -87,7 +94,7 @@ test("restore API reports actual native results and refuses another Scope", () =
     })
   }))
 
-test("restore API returns a conflict while the session is occupied or its binding changed", () =>
+test("restore API rejects occupied sessions and reports changed bindings without writing", () =>
   runtime.run(async () => {
     await using directory = await tmpdir()
     await using other = await tmpdir()
@@ -109,8 +116,11 @@ test("restore API returns a conflict while the session is occupied or its bindin
             path: other.path,
           })
           const response = await request()
-          expect(response.status).toBe(409)
-          expect(await response.json()).toMatchObject({ name: "WorkspaceBindingChanged" })
+          expect(response.status).toBe(200)
+          expect(await response.json()).toMatchObject({
+            restoredFiles: [],
+            failedFiles: [{ file, code: "restore_failed" }],
+          })
           expect(await Bun.file(file).text()).toBe("edited")
         } finally {
           await Session.remove(session.id)

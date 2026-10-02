@@ -59,8 +59,8 @@ describe("note_write", () => {
 
           const legacyInput = {
             mode: "create",
-            title: "Model-authored Blueprint",
-            content: "Execute the current Step.",
+            noteTitle: "Model-authored Blueprint",
+            noteContent: "Execute the current Step.",
             kind: "blueprint",
             defaultAgent: "implementation-engineer",
             scope: "current",

@@ -181,7 +181,6 @@ export function fileServices(input: unknown): Driver {
                         if ((await physical(file)) !== edited) throw new Error("Edit tool wrote a different view")
                         const bash = await invoke("bash", {
                           command: `cat '${file.replaceAll("'", "'\\''")}'`,
-                          description: "Read the selected file through its execution target",
                         })
                         if (!bash.result.output.includes(edited.trim()))
                           throw new Error("Bash missed selected file bytes")

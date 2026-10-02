@@ -95,7 +95,7 @@ class Handler(BaseHTTPRequestHandler):
                         "function": {
                             "name": "bash",
                             "arguments": json.dumps(
-                                {"command": "printf verified > /app/marker", "description": "Write verification marker"}
+                                {"command": "printf verified > /app/marker", "workBrief": "Write verification marker"}
                             ),
                         },
                     }

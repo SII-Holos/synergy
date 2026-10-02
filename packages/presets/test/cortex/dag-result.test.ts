@@ -133,6 +133,7 @@ function installDagLoopMocks(options?: {
   ;(SessionProcessor.create as any) = mock((input: Parameters<typeof SessionProcessor.create>[0]) => ({
     message: input.assistantMessage,
     partFromToolCall: () => undefined,
+    modelInputFromToolCall: () => undefined,
     trackExecution: () => {},
     process: mock(async () => {
       input.assistantMessage.finish = "stop"

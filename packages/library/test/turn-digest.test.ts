@@ -1,6 +1,6 @@
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
-import { Session } from "@ericsanchezok/synergy-harness/session"
+import type { Session } from "@ericsanchezok/synergy-harness/session"
 import { TurnDigest } from "../src/turn-digest"
 import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import type { Turn } from "@ericsanchezok/synergy-harness/session/turn"
@@ -126,16 +126,16 @@ describe("TurnDigest.summarizeTurn", () => {
     tool.workBrief = "Inspect the task labels"
     tool.state.input = ["one", "two"]
     const a = assistantMsg("u1", [tool])
-    const session = Session.Info.parse({
+    const session: Session.Info = {
       id: "ses_1",
       title: "Inspect labels",
       version: "1",
-      slug: "labels",
       scope: { type: "home", id: "home", local: null },
       workspace: null,
-      directory: "/",
+      tags: [],
+      completionNotice: { unread: false, unreadCount: 0, silent: false },
       time: { created: 1, updated: 2 },
-    })
+    }
     const result = TurnDigest.extractSingle(session, [u, a], "u1")
     expect(result?.digest.segments.find((segment) => segment.type === "tool")).toMatchObject({
       input: { workBrief: "Inspect the task labels", toolInput: ["one", "two"] },

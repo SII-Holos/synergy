@@ -143,7 +143,7 @@ try {
         const { BashTool } = await import("@ericsanchezok/synergy-local-runtime/tools/bash")
         const bash = await BashTool.init()
         const result = await bash.execute(
-          { command: "printf composition-executed", description: "Verify installed local execution" },
+          { command: "printf composition-executed" },
           {
             sessionID: session.id,
             messageID,

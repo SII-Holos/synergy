@@ -242,6 +242,7 @@ async function runCompactionProcessCase(input: {
       return {
         message: processorInput.assistantMessage,
         partFromToolCall: () => undefined,
+        modelInputFromToolCall: () => undefined,
         trackExecution: () => {},
         process: mock(async (processInput: SessionProcessor.ProcessInput) => {
           processUserVariant = processInput.user.variant
@@ -433,6 +434,7 @@ async function expectPreflightCompaction(input: { shouldCompact: boolean; contex
     ;(SessionProcessor.create as any) = mock((createInput: Parameters<typeof SessionProcessor.create>[0]) => ({
       message: createInput.assistantMessage,
       partFromToolCall: () => undefined,
+      modelInputFromToolCall: () => undefined,
       trackExecution: () => {},
       process: processCalled,
     }))
@@ -591,6 +593,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
         ;(SessionProcessor.create as any) = mock((createInput: Parameters<typeof SessionProcessor.create>[0]) => ({
           message: createInput.assistantMessage,
           partFromToolCall: () => undefined,
+          modelInputFromToolCall: () => undefined,
           trackExecution: () => {},
           process: mock(async () => {
             if (createInput.assistantMessage.mode !== "compaction") {
@@ -733,6 +736,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
         ;(SessionProcessor.create as any) = mock((input: Parameters<typeof SessionProcessor.create>[0]) => ({
           message: input.assistantMessage,
           partFromToolCall: () => undefined,
+          modelInputFromToolCall: () => undefined,
           trackExecution: () => {},
           process: processCalled,
         }))
@@ -838,6 +842,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
         ;(SessionProcessor.create as any) = mock((input: Parameters<typeof SessionProcessor.create>[0]) => ({
           message: input.assistantMessage,
           partFromToolCall: () => undefined,
+          modelInputFromToolCall: () => undefined,
           trackExecution: () => {},
           process: mock(async (processInput: SessionProcessor.ProcessInput) => {
             processMaxOutputTokens.push(processInput.maxOutputTokens)
@@ -971,6 +976,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
         ;(SessionProcessor.create as any) = mock((input: Parameters<typeof SessionProcessor.create>[0]) => ({
           message: input.assistantMessage,
           partFromToolCall: () => undefined,
+          modelInputFromToolCall: () => undefined,
           trackExecution: () => {},
           process: mock(async () => {
             processCount++

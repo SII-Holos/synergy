@@ -93,6 +93,7 @@ function minimalProcessor(executions: Map<string, Promise<any>>) {
   return {
     message: { id: "msg_p3_containment", rootID: "msg_p3_root", parentID: "msg_p3_root" },
     partFromToolCall: () => undefined,
+    modelInputFromToolCall: () => undefined,
     updateToolCallState: async () => {},
     executeOnce: <T>(id: string, execute: () => Promise<T>) => {
       const existing = callbacks.get(id)

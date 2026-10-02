@@ -129,36 +129,36 @@ The #1 cause of delegation failure is insufficient context. Subagents start fres
 - [How to verify completion]
 ```
 
-**Bad**: `task(prompt="Fix the auth bug")`
-**Good**: `task(prompt="Fix the token refresh race condition in src/auth/session.ts. The bug is on line 47 where...")`
+**Bad**: `task(taskInstructions="Fix the auth bug")`
+**Good**: `task(taskTitle="Fix auth refresh", taskInstructions="Fix the token refresh race condition in src/auth/session.ts. The bug is on line 47 where...")`
 
 ## Dispatch Patterns
 
 **Parallel implementation** — independent subtasks to separate developer agents:
 ```
-task(subagent_type="developer", background=true, dag_node_id="impl-api",
-     prompt="Add the /users/export endpoint...")
-task(subagent_type="developer", background=true, dag_node_id="impl-worker",
-     prompt="Add the export job handler...")
+task(subagent_type="developer", background=true, taskTitle="Add export endpoint", dag_node_id="impl-api",
+     taskInstructions="Add the /users/export endpoint...")
+task(subagent_type="developer", background=true, taskTitle="Add export worker", dag_node_id="impl-worker",
+     taskInstructions="Add the export job handler...")
 ```
 
 **Multi-axis audit** — one inspector per dimension, not one for everything:
 ```
-task(subagent_type="inspector", background=true, prompt="Audit these files for READABILITY only: [files]. Focus on: self-explanatory names, coherent single-purpose logic, scattered concerns. Ignore other axes.")
-task(subagent_type="inspector", background=true, prompt="Audit these files for UNNECESSARY INDIRECTION only: [files]. Focus on: wrapper layers, passthrough functions, adapter chains. Ignore other axes.")
-task(subagent_type="inspector", background=true, prompt="Audit these files for STRUCTURAL DENSITY and HYGIENE only: [files]. Focus on: file bloat, mixed responsibilities, dead code, unused imports. Ignore other axes.")
+task(subagent_type="inspector", background=true, taskTitle="Review readability", taskInstructions="Audit READABILITY only: [files]. Check clear names, cohesive logic and scattered concerns.")
+task(subagent_type="inspector", background=true, taskTitle="Review indirection", taskInstructions="Audit INDIRECTION only: [files]. Check redundant wrappers, passthroughs and adapter chains.")
+task(subagent_type="inspector", background=true, taskTitle="Review structural hygiene", taskInstructions="Audit STRUCTURE and HYGIENE only: [files]. Check file bloat, mixed responsibilities, dead code and unused imports.")
 ```
 
 **Parallel exploration** — each explore agent targets a different concern:
 ```
-task(subagent_type="explore", background=true, prompt="Find how auth middleware is structured: which files define guards, how they chain, where token validation lives...")
-task(subagent_type="explore", background=true, prompt="Find how database connections are managed: connection pool config, migration runner, transaction helpers...")
+task(subagent_type="explore", background=true, taskTitle="Trace auth middleware", taskInstructions="Trace auth guards, middleware order and token validation.")
+task(subagent_type="explore", background=true, taskTitle="Trace database connections", taskInstructions="Trace connection pools, migrations and transaction helpers.")
 ```
 
 **Multi-perspective review** — two advisor agents with opposing framings:
 ```
-task(subagent_type="advisor", background=true, prompt="Defend this approach: [proposal]. What arguments support it? What conditions make it the right choice?")
-task(subagent_type="advisor", background=true, prompt="Challenge this approach: [proposal]. What could go wrong? What assumptions might not hold? What alternatives should be considered?")
+task(subagent_type="advisor", background=true, taskTitle="Evaluate supporting evidence", taskInstructions="Defend this approach: [proposal]. What arguments support it? What conditions make it the right choice?")
+task(subagent_type="advisor", background=true, taskTitle="Evaluate design risks", taskInstructions="Challenge this approach: [proposal]. What could go wrong? What assumptions might not hold? What alternatives should be considered?")
 ```
 
 # Executing Work

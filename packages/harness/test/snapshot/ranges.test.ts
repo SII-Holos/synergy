@@ -14,6 +14,8 @@ function message(input: {
     info: {
       id: input.from,
       role: "assistant",
+      rootID: "root",
+      time: { created: 1 },
       path: { cwd: input.directory, root: input.directory },
     } as MessageV2.Assistant,
     parts: [

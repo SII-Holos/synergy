@@ -181,6 +181,7 @@ function installBasicLoopMocks(options?: {
   ;(SessionProcessor.create as any) = mock((input: Parameters<typeof SessionProcessor.create>[0]) => ({
     message: input.assistantMessage,
     partFromToolCall: () => undefined,
+    modelInputFromToolCall: () => undefined,
     trackExecution: () => {},
     process: mock(async (processInput: any) => {
       callIndex++
@@ -352,7 +353,7 @@ describe("SessionInvoke Skill command rendering", () => {
             )
             expect(users).toHaveLength(1)
             expect(users[0].info.isRoot).toBe(true)
-            expect(users[0].parts).toMatchObject([
+            expect(users[0].parts.filter((part) => part.type !== "patch")).toMatchObject([
               { type: "text", text: "Follow the Skill instructions." },
               { type: "text", text: "Inspect the attached diagram" },
               { type: "attachment", filename: "diagram.png" },
@@ -734,6 +735,7 @@ describe("SessionInvoke system prompt assembly", () => {
         ;(SessionProcessor.create as any) = mock((input: Parameters<typeof SessionProcessor.create>[0]) => ({
           message: input.assistantMessage,
           partFromToolCall: () => undefined,
+          modelInputFromToolCall: () => undefined,
           trackExecution: () => {},
           process: mock(async () => "stop" as const),
         }))
@@ -1056,6 +1058,7 @@ describe("SessionInvoke pre-stream error handling", () => {
       ;(SessionProcessor.create as any) = mock((input: Parameters<typeof SessionProcessor.create>[0]) => ({
         message: input.assistantMessage,
         partFromToolCall: () => undefined,
+        modelInputFromToolCall: () => undefined,
         trackExecution: () => {},
         process: processCalled,
       }))

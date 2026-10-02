@@ -36,18 +36,18 @@ test("shared child writers preserve external edits across cancellation and rebin
             ? ["keep", "cancel"].map((name, index) => ({
                 name: "task",
                 arguments: JSON.stringify({
-                  description: `sibling-${name} write ${name}.txt`,
+                  taskTitle: `sibling-${name} write ${name}.txt`,
                   subagent_type: "implementation-engineer",
                   background: false,
                   output: { mode: "final_response" },
-                  prompt: `Run exactly once: <command>${[...prompt.matchAll(/<command>(.*?)<\/command>/gs)][index]![1]}</command> Return the observed identifier.`,
+                  taskInstructions: `Run exactly once: <command>${[...prompt.matchAll(/<command>(.*?)<\/command>/gs)][index]![1]}</command> Return the observed identifier.`,
                 }),
               }))
             : command
               ? [
                   {
                     name: "bash",
-                    arguments: JSON.stringify({ command, description: "Write isolated acceptance output" }),
+                    arguments: JSON.stringify({ command, workBrief: "Write isolated acceptance output" }),
                   },
                 ]
               : []

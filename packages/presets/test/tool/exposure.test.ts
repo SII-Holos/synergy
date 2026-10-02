@@ -123,6 +123,7 @@ function runtimeProcessor() {
   return {
     message: { id: "message_test", parentID: "msg_root", rootID: "msg_root" },
     partFromToolCall: () => undefined,
+    modelInputFromToolCall: () => undefined,
     updateToolCallState: async () => {},
     executeOnce<T>(callID: string, execute: () => Promise<T>) {
       const existing = callbacks.get(callID)
@@ -470,6 +471,7 @@ describe("tool exposure", () => {
           const processor = {
             message: { id: "message_test", parentID: "msg_root", rootID: "msg_root" },
             partFromToolCall: () => undefined,
+            modelInputFromToolCall: () => undefined,
             updateToolCallState: async () => {},
             executeOnce: <T>(callID: string, execute: () => Promise<T>) => {
               const existing = callbacks.get(callID)
@@ -1274,6 +1276,7 @@ describe("tool exposure", () => {
           const processor = {
             message: { id: "message_test", parentID: "msg_root", rootID: "msg_root" },
             partFromToolCall: () => undefined,
+            modelInputFromToolCall: () => undefined,
             executeOnce: <T>(id: string, execute: () => Promise<T>) => {
               const existing = callbacks.get(id)
               if (existing) return existing as Promise<T>

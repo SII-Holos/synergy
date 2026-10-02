@@ -1540,7 +1540,7 @@ describe.serial("Cortex", () => {
               expect(notification?.source.type).toBe("cortex")
               expect(notification?.message?.metadata?.source).toBe("cortex")
               const notificationText = notification?.message?.parts.find((part) => part.type === "text")?.text ?? ""
-              expect(notificationText).toContain(`task_output(task_id="${task.id}", mode="full")`)
+              expect(notificationText).toContain(`task_output(taskId="${task.id}", mode="full")`)
               expect(notificationText).not.toContain(`mode="progress"`)
               expect(notificationText).not.toContain(`mode="tail"`)
               expect(notificationText).not.toContain("completed")

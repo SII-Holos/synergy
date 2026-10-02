@@ -48,6 +48,7 @@ function runtimeProcessor() {
   return {
     message: { id: "message_test", rootID: "msg_root", parentID: "msg_root" },
     partFromToolCall: () => undefined,
+    modelInputFromToolCall: () => undefined,
     updateToolCallState: async () => {},
     executeOnce<T>(callID: string, execute: () => Promise<T>) {
       const existing = callbacks.get(callID)
@@ -296,6 +297,7 @@ describe("ToolResolver auto-expand eligibility", () => {
           serverName,
           toolName: `tool_${index}`,
           tool: { description: "MCP auto tool" },
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
         }))
       try {
         await ScopeContext.provide({

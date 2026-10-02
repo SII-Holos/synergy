@@ -150,7 +150,7 @@ async function runStreamScenario(
       model: { id: "test-model", modelID: "test-model", providerID: "test-provider" } as any,
       abort: new AbortController().signal,
     })
-    const process = () => processor.process({} as any)
+    const process = () => processor.process({ toolDefinitions: [] } as any)
     if (context) await ObservabilityContext.withContextAsync(context, process)
     else await process()
   } finally {

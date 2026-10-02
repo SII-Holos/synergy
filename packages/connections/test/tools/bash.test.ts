@@ -152,11 +152,10 @@ describe("tool.bash", () => {
   test("accepts positive timing controls and rejects invalid timing values", () =>
     inProject(async () => {
       const bash = await BashTool.init()
-      expect(bash.parameters.safeParse({ command: "echo ok", description: "Echo ok" }).success).toBe(true)
+      expect(bash.parameters.safeParse({ command: "echo ok" }).success).toBe(true)
       expect(
         bash.parameters.safeParse({
           command: "echo ok",
-          description: "Echo ok",
           background: true,
           yieldSeconds: 1,
         }).success,
@@ -164,13 +163,10 @@ describe("tool.bash", () => {
       expect(
         bash.parameters.safeParse({
           command: "echo ok",
-          description: "Echo ok",
           yieldSeconds: 0,
         }).success,
       ).toBe(false)
-      expect(bash.parameters.safeParse({ command: "echo ok", description: "Echo ok", yieldSeconds: -1 }).success).toBe(
-        false,
-      )
+      expect(bash.parameters.safeParse({ command: "echo ok", yieldSeconds: -1 }).success).toBe(false)
     }))
 
   test("rejects removed envID instead of falling back to local execution", () =>
@@ -179,7 +175,6 @@ describe("tool.bash", () => {
       expect(
         bash.parameters.safeParse({
           command: "echo unsafe",
-          description: "Reject legacy remote target",
           envID: "legacy",
         }).success,
       ).toBe(false)
