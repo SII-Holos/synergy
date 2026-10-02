@@ -70,36 +70,20 @@ msgid "activity.batch.searched"
 msgstr "搜索了 {count} 次"
 
 #. js-lingui-explicit-id
-msgid "activity.phase.browser"
-msgstr "正在使用浏览器"
+msgid "activity.history.earlier"
+msgstr "先前的操作"
 
 #. js-lingui-explicit-id
-msgid "activity.phase.command"
-msgstr "正在运行命令"
+msgid "activity.history.later"
+msgstr "后续的操作"
 
 #. js-lingui-explicit-id
-msgid "activity.phase.delegate"
-msgstr "正在与子智能体协作"
-
-#. js-lingui-explicit-id
-msgid "activity.phase.modify"
-msgstr "正在修改文件"
+msgid "activity.history.range"
+msgstr "第 {first}–{last} 项，共 {total} 项"
 
 #. js-lingui-explicit-id
 msgid "activity.phase.prepare"
 msgstr "正在准备操作"
-
-#. js-lingui-explicit-id
-msgid "activity.phase.read"
-msgstr "正在读取文件"
-
-#. js-lingui-explicit-id
-msgid "activity.phase.research"
-msgstr "正在查阅来源"
-
-#. js-lingui-explicit-id
-msgid "activity.phase.working"
-msgstr "正在执行"
 
 #. js-lingui-explicit-id
 msgid "activity.trace.actions"
@@ -15409,6 +15393,18 @@ msgid "session.question.submit"
 msgstr "提交"
 
 #. js-lingui-explicit-id
+msgid "session.reasoning.latest"
+msgstr "最新推理"
+
+#. js-lingui-explicit-id
+msgid "session.reasoning.segment"
+msgstr "第 {number} 段推理"
+
+#. js-lingui-explicit-id
+msgid "session.reasoning.segments"
+msgstr "{count} 段推理"
+
+#. js-lingui-explicit-id
 msgid "session.review.recording.failed"
 msgstr "文件改动记录失败。"
 
@@ -17813,7 +17809,7 @@ msgstr "平衡"
 
 #. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.description"
-msgstr "Balanced 展开当前阶段，Full 展开全部过程，Minimal 显示简洁进度。所有模式都可以手动展开详情。"
+msgstr "平衡模式保留当前调用并收纳已完成工具，完整模式展开工具历史，精简模式显示简洁进度。所有模式都可以手动展开过程。"
 
 #. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.full"

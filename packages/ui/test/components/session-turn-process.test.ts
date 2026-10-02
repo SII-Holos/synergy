@@ -109,6 +109,20 @@ describe("turn process projection", () => {
     expect(batch.fileReadOperations).toBe(20)
     expect(projectActivityBatches(groups)[0]).toBe(batch)
   })
+  test("rendering budgets do not create artificial phases in a continuous tool sequence", () => {
+    const groups = Array.from({ length: 60 }, (_, i) => ({
+      ...group(`command-${i}`, "execute"),
+      message: { ...message, id: `message-${i}` },
+    }))
+    const projected = projectActivityBatches(groups)
+    expect(projected).toHaveLength(1)
+    const batch = projected[0]
+    if (batch.kind !== "activity-batch") throw new Error("expected batch")
+    expect(batch.steps.map((step) => step.part.id)).toEqual(groups.map((group) => group.steps[0].part.id))
+    expect(batch.facts).toEqual([{ family: "execute", count: 60 }])
+    const initial = projectActivityBatches(groups.slice(0, 20))[0]
+    expect(initial.kind === "activity-batch" && initial.key).toBe(batch.key)
+  })
   test("display modes share disclosure with explicit choice and reading protection", () => {
     expect(resolveActivityDisclosure({ mode: "balanced", working: true, heldOpen: false })).toBe(true)
     expect(resolveActivityDisclosure({ mode: "balanced", working: false, heldOpen: false })).toBe(false)

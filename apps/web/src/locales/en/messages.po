@@ -70,36 +70,20 @@ msgid "activity.batch.searched"
 msgstr "{count, plural, one {Searched # time} other {Searched # times}}"
 
 #. js-lingui-explicit-id
-msgid "activity.phase.browser"
-msgstr "Using the browser"
+msgid "activity.history.earlier"
+msgstr "Earlier actions"
 
 #. js-lingui-explicit-id
-msgid "activity.phase.command"
-msgstr "Running a command"
+msgid "activity.history.later"
+msgstr "Later actions"
 
 #. js-lingui-explicit-id
-msgid "activity.phase.delegate"
-msgstr "Working with a subagent"
-
-#. js-lingui-explicit-id
-msgid "activity.phase.modify"
-msgstr "Updating files"
+msgid "activity.history.range"
+msgstr "{first}–{last} of {total}"
 
 #. js-lingui-explicit-id
 msgid "activity.phase.prepare"
 msgstr "Preparing an action"
-
-#. js-lingui-explicit-id
-msgid "activity.phase.read"
-msgstr "Reading files"
-
-#. js-lingui-explicit-id
-msgid "activity.phase.research"
-msgstr "Researching sources"
-
-#. js-lingui-explicit-id
-msgid "activity.phase.working"
-msgstr "Working"
 
 #. js-lingui-explicit-id
 msgid "activity.trace.actions"
@@ -15409,6 +15393,18 @@ msgid "session.question.submit"
 msgstr "Submit"
 
 #. js-lingui-explicit-id
+msgid "session.reasoning.latest"
+msgstr "Latest reasoning"
+
+#. js-lingui-explicit-id
+msgid "session.reasoning.segment"
+msgstr "Reasoning {number}"
+
+#. js-lingui-explicit-id
+msgid "session.reasoning.segments"
+msgstr "{count, plural, one {# reasoning segment} other {# reasoning segments}}"
+
+#. js-lingui-explicit-id
 msgid "session.review.recording.failed"
 msgstr "File change recording failed."
 
@@ -17813,7 +17809,7 @@ msgstr "Balanced"
 
 #. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.description"
-msgstr "Balanced opens the current stage; Full opens all process details; Minimal keeps progress compact. You can expand details in every mode."
+msgstr "Balanced shows current calls and collects completed tools; Full expands tool history; Minimal keeps progress compact. You can expand the process in every mode."
 
 #. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.full"

@@ -70,35 +70,19 @@ msgid "activity.batch.searched"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "activity.phase.browser"
+msgid "activity.history.earlier"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "activity.phase.command"
+msgid "activity.history.later"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "activity.phase.delegate"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "activity.phase.modify"
+msgid "activity.history.range"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "activity.phase.prepare"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "activity.phase.read"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "activity.phase.research"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "activity.phase.working"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -15406,6 +15390,18 @@ msgstr ""
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.question.submit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.reasoning.latest"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.reasoning.segment"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.reasoning.segments"
 msgstr ""
 
 #. js-lingui-explicit-id

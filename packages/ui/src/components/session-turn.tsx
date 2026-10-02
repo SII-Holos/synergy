@@ -1396,9 +1396,13 @@ export function SessionTurn(
       heldOpen: heldProcessOpen(),
       explicit: props.activityView?.getExpanded(processKey()) ?? explicitProcessOpen(),
     })
-  const activeBatch = createMemo(() =>
-    working() ? timelineItems().findLast((item) => item.kind === "activity-batch")?.key : undefined,
-  )
+  const activeBatch = createMemo(() => {
+    if (!working()) return undefined
+    const running = timelineItems().findLast((item) => item.kind === "activity-batch" && item.state === "running")
+    if (running?.kind === "activity-batch") return running.key
+    const last = timelineItems().findLast((item) => !reasoningItem(item) && !isActivityBoundaryDisplayItem(item))
+    return last?.kind === "activity-batch" ? last.key : undefined
+  })
   const isProcessItem = (item: SessionTurnDisplayItem) => {
     if (item.kind === "activity-batch" || item.kind === "activity-reasoning-summary") return true
     const timeline = isAssistantTimelineDisplayItem(item) ? displayItemTimelineItem(item) : undefined
@@ -1561,7 +1565,15 @@ export function SessionTurn(
                                 else setExplicitProcessOpen(next)
                               }}
                             >
-                              <Show when={working()}>
+                              <Show
+                                when={
+                                  working() &&
+                                  !reasoningRunning() &&
+                                  !timelineItems().some(
+                                    (item) => item.kind === "activity-batch" && item.state === "running",
+                                  )
+                                }
+                              >
                                 <span data-slot="activity-live-indicator" aria-hidden="true" />
                               </Show>
                               <span>{processLabel()}</span>

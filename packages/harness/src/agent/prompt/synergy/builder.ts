@@ -8,6 +8,7 @@ import {
 } from "../interactive-memory"
 import { buildAgentTable } from "../agent-table"
 import type { AgentInfo } from "../types"
+import { PROGRESS_UPDATES } from "../progress"
 
 export type { AgentInfo }
 
@@ -64,5 +65,7 @@ export function buildSynergyMemorySection(): string {
  */
 export function buildSynergyPrompt(agents: AgentInfo[]): string {
   const agentTable = buildAgentTable(agents)
-  return PROMPT_BASE.replace("{AGENT_TABLE}", agentTable).replace("{MEMORY_INTERACTION}", buildSynergyMemorySection())
+  return PROMPT_BASE.replace("{AGENT_TABLE}", agentTable)
+    .replace("{MEMORY_INTERACTION}", buildSynergyMemorySection())
+    .replace("{PROGRESS_UPDATES}", PROGRESS_UPDATES)
 }

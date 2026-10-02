@@ -191,7 +191,14 @@ function ActivityState(props: { state: ActivityGroupState; label: string }) {
   )
 }
 
-function ActivityStep(props: { step: ActivityStepProjection; serverUrl: string }) {
+function ActivityStep(props: {
+  step: ActivityStepProjection
+  serverUrl: string
+  hidden?: boolean
+  current?: boolean
+  quiet?: boolean
+  onFocus?: (partID: string | undefined) => void
+}) {
   const { i18n, _ } = useLingui()
   const [open, setOpen] = createSignal(false)
   const resources = useResourceOpen()
@@ -237,7 +244,19 @@ function ActivityStep(props: { step: ActivityStepProjection; serverUrl: string }
   })
   const audit = createMemo(() => getApprovalAudit(approval(), i18n()))
   return (
-    <li data-slot="activity-step" data-family={props.step.family} data-state={props.step.state}>
+    <li
+      data-slot="activity-step"
+      data-part-id={props.step.part.id}
+      data-family={props.step.family}
+      data-state={props.step.state}
+      data-current={props.current ? "" : undefined}
+      data-working={props.current && props.step.state === "running" ? "" : undefined}
+      hidden={props.hidden}
+      onFocusIn={() => props.onFocus?.(props.step.part.id)}
+      onFocusOut={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) props.onFocus?.(undefined)
+      }}
+    >
       <Show when={props.step.state === "error" && audit().icon}>
         <Tooltip
           placement="right"
@@ -265,7 +284,7 @@ function ActivityStep(props: { step: ActivityStepProjection; serverUrl: string }
       <button
         data-slot="activity-step-trigger"
         type="button"
-        aria-label={props.step.state === "error" ? `${label()} · ${stateLabel()}` : undefined}
+        aria-label={props.step.state === "error" || props.quiet ? `${label()} · ${stateLabel()}` : undefined}
         aria-pressed={
           resources?.isToolActivitySelected?.({
             sessionID: props.step.part.sessionID,
@@ -294,7 +313,7 @@ function ActivityStep(props: { step: ActivityStepProjection; serverUrl: string }
             {label()}
           </span>
         </span>
-        <Show when={props.step.state === "running" || props.step.state === "waiting-approval"}>
+        <Show when={(!props.quiet && props.step.state === "running") || props.step.state === "waiting-approval"}>
           <ActivityState state={props.step.state} label={stateLabel()} />
         </Show>
       </button>
@@ -361,7 +380,15 @@ export function ActivityReasoningSummary(props: { item: ActivityReasoningSummary
   )
 }
 
-export function ActivityTrace(props: { group: ActivityGroupItem; serverUrl: string }) {
+export function ActivityTrace(props: {
+  group: ActivityGroupItem
+  serverUrl: string
+  id?: string
+  visibleSteps?: ReadonlySet<string>
+  currentSteps?: ReadonlySet<string>
+  quiet?: boolean
+  onStepFocus?: (partID: string | undefined) => void
+}) {
   const emptyStepSnapshot = {
     keys: [] as string[],
     map: new Map<string, ActivityStepProjection>(),
@@ -378,12 +405,23 @@ export function ActivityTrace(props: { group: ActivityGroupItem; serverUrl: stri
 
   return (
     <div data-component="activity-trace">
-      <ol data-slot="activity-step-list">
+      <ol id={props.id} data-slot="activity-step-list">
         <For each={stepSnapshot().keys}>
           {(key) => {
             const step = () => stepSnapshot().map.get(key)
             return (
-              <Show when={step()}>{(current) => <ActivityStep step={current()} serverUrl={props.serverUrl} />}</Show>
+              <Show when={step()}>
+                {(current) => (
+                  <ActivityStep
+                    step={current()}
+                    serverUrl={props.serverUrl}
+                    hidden={props.visibleSteps !== undefined && !props.visibleSteps.has(key)}
+                    current={props.currentSteps?.has(key)}
+                    quiet={props.quiet}
+                    onFocus={props.onStepFocus}
+                  />
+                )}
+              </Show>
             )
           }}
         </For>

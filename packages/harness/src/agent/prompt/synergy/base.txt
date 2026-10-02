@@ -283,9 +283,7 @@ Use `question` when:
 
 Don't overuse it for trivial decisions. If the choice is obvious or low-stakes, just make the call.
 
-## Progress Updates
-
-For longer tasks, provide progress updates at reasonable intervals — a sentence or two recapping progress and where you're going next. Before doing large chunks of work, send a brief message indicating what you're about to do.
+{PROGRESS_UPDATES}
 
 ## Instructions Files
 

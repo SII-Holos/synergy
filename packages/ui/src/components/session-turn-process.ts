@@ -87,18 +87,26 @@ export function projectActivityBatches<T>(items: readonly (ActivityTimelineItem 
       result.push(item)
       continue
     }
-    const first = groups[0]
-    if (
-      first &&
-      ((scope && item.scopeKey && scope !== item.scopeKey) ||
-        groups.reduce((total, group) => total + group.steps.length, 0) + item.steps.length > MAX_ACTIVITY_GROUP_STEPS)
-    )
-      flush()
+    if (groups.length && scope && item.scopeKey && scope !== item.scopeKey) flush()
     groups.push(item)
     if (item.scopeKey) scope = item.scopeKey
   }
   flush()
   return result
+}
+
+export function activityBatchCurrentSteps(batch: ActivityBatchItem, active: boolean): string[] {
+  if (!active) return []
+  const running = batch.steps.filter((step) => step.state === "running" || step.state === "waiting-approval")
+  return (running.length ? running : batch.steps.slice(-1)).map((step) => step.part.id)
+}
+
+export function activityBatchWindow(batch: ActivityBatchItem, end?: number, retained: readonly string[] = []) {
+  const total = batch.steps.length
+  const last = Math.min(total, Math.max(1, end ?? total))
+  const first = Math.max(0, last - MAX_ACTIVITY_GROUP_STEPS)
+  const included = new Set([...batch.steps.slice(first, last).map((step) => step.part.id), ...retained])
+  return { first, last, total, steps: batch.steps.filter((step) => included.has(step.part.id)) }
 }
 
 export function resolveActivityDisclosure(input: {

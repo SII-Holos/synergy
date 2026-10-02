@@ -104,6 +104,22 @@
     min-width: 0;
   }
 
+  [data-slot="activity-step"][hidden] {
+    display: none;
+  }
+
+  [data-slot="activity-step"][data-current] [data-slot="activity-step-title"] {
+    color: var(--text-base);
+  }
+
+  [data-slot="activity-step"][data-current] [data-slot="activity-step-icon"] {
+    color: var(--icon-base);
+  }
+
+  [data-slot="activity-step"][data-working] [data-slot="activity-step-title"] {
+    animation: activity-current-emphasis 1.8s var(--motion-ease-standard) infinite;
+  }
+
   .activity-step-audit-trigger {
     position: absolute;
     left: -28px;
@@ -182,6 +198,16 @@
   [data-component="attachment-gallery"],
   [data-slot="activity-specialized-detail"] {
     margin: 6px 0 0 26px;
+  }
+}
+
+@keyframes activity-current-emphasis {
+  0%,
+  100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
   }
 }
 
@@ -414,6 +440,7 @@
   [data-component="activity-trace"] [data-slot="activity-step-trigger"],
   [data-component="activity-trace"] [data-slot="activity-step-title"] {
     transition: none;
+    animation: none !important;
   }
 
   [data-component="animated-activity-count"] [data-slot="activity-count-old"],

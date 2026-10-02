@@ -204,3 +204,31 @@ test("an answer starting with a heading uses only the timeline's leading gap", a
   expect(metrics.headingMargin).toBe(0)
   expect(metrics.gap).toBe(16)
 })
+
+test("collected history occupies no row space and only current activity carries waiting motion", async () => {
+  await mount(375)
+  const rows = page.locator('[data-slot="activity-step"]')
+  await rows.evaluateAll((elements) => {
+    elements.forEach((element, index) => {
+      element.toggleAttribute("hidden", index !== elements.length - 1)
+      if (index === elements.length - 1) {
+        element.setAttribute("data-current", "")
+        element.setAttribute("data-working", "")
+      }
+    })
+  })
+  const metrics = await rows.evaluateAll((elements) =>
+    elements.map((element) => ({
+      height: element.getBoundingClientRect().height,
+      motion: getComputedStyle(element.querySelector('[data-slot="activity-step-title"]')!).animationName,
+    })),
+  )
+  expect(metrics.slice(0, -1).every((metric) => metric.height === 0 && metric.motion === "none")).toBe(true)
+  expect(metrics.at(-1)!.height).toBeGreaterThanOrEqual(28)
+  expect(metrics.at(-1)!.motion).not.toBe("none")
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  const current = rows.last().locator('[data-slot="activity-step-title"]')
+  expect(await current.evaluate((element) => getComputedStyle(element).animationName)).toBe("none")
+  expect(await current.evaluate((element) => getComputedStyle(element).transitionDuration)).toBe("0s")
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+})

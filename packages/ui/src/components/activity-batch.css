@@ -108,6 +108,7 @@
 }
 
 [data-slot="turn-process-meta"] [data-slot="process-reasoning-detail"],
+[data-slot="turn-process-meta"] [data-slot="process-reasoning-panel"],
 [data-slot="turn-process-meta"] [data-slot="process-reasoning-preview"] {
   flex: 1 0 100%;
 }
@@ -146,15 +147,70 @@
 [data-slot="process-reasoning-detail"] {
   max-height: 24rem;
   overflow: auto;
-  margin: 6px 0;
+  margin: 0;
   padding: 12px;
   border-radius: var(--radius-md);
   background: var(--surface-inset-base);
   color: var(--text-weak);
-  font-family: var(--font-family-mono);
+  font-family: var(--font-family-sans);
   font-size: 14px;
+  line-height: 22px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+[data-slot="activity-history-pages"],
+[data-slot="reasoning-toolbar"] {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-width: 0;
+  padding: 4px 0;
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+[data-slot="activity-history-pages"] button,
+[data-slot="reasoning-toolbar"] button {
+  padding: 4px 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+[data-slot="activity-history-pages"] button:hover,
+[data-slot="reasoning-toolbar"] button:hover {
+  color: var(--text-base);
+}
+
+[data-slot="activity-history-pages"] button:disabled {
+  color: var(--text-subtle);
+  cursor: default;
+}
+
+[data-slot="activity-history-pages"] button:focus-visible,
+[data-slot="reasoning-toolbar"] button:focus-visible,
+[data-slot="process-reasoning-detail"]:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+[data-slot="reasoning-segment"] + [data-slot="reasoning-segment"] {
+  margin-block-start: 16px;
+}
+
+[data-slot="reasoning-segment-heading"] {
+  margin-block-end: 4px;
+  color: var(--text-base);
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+  line-height: 20px;
 }
 
 @keyframes activity-live-pulse {
@@ -177,7 +233,8 @@
   }
 }
 
-[data-slot="process-reasoning-detail"][hidden] {
+[data-slot="process-reasoning-detail"][hidden],
+[data-slot="process-reasoning-panel"][hidden] {
   display: none;
 }
 [data-slot="process-reasoning-detail"] > div + div {
