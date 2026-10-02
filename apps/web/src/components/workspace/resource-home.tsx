@@ -32,7 +32,7 @@ export function ResourceHome(props: WorkbenchPanelContentProps) {
                 <button
                   type="button"
                   class="resource-home-card"
-                onClick={() => void workbench.openPanel(panel.id, { replaceTab: props.tab.id })}
+                  onClick={() => void workbench.openPanel(panel.id, { replaceTab: props.tab.id })}
                 >
                   <Icon name={panel.icon as IconName} size="small" />
                   <span>{panel.label}</span>

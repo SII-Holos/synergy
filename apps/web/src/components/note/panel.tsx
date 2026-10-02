@@ -1949,6 +1949,7 @@ function NoteEditor(props: {
             }
             aria-expanded={props.navigationOpen?.() ?? false}
             aria-controls={props.navigationId}
+            data-workspace-navigation-toggle
           >
             <Icon name={getSemanticIcon("notes.main")} size="small" />
           </button>

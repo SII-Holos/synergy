@@ -37,10 +37,11 @@ beforeAll(async () => {
       </div> }
     }))
     const states = Object.fromEntries(["side", "bottom"].map(id => {
-      const [opened, setOpened] = createSignal(false)
+      const restored = id === "side" && location.search === "?restored"
+      const [opened, setOpened] = createSignal(restored)
       const [size, setSize] = createSignal(id === "side" ? 360 : 200)
       const [fullscreen, setFullscreen] = createSignal(false)
-      const [tabs, setTabs] = createSignal([{ id, panelId: id }])
+      const [tabs, setTabs] = createSignal(restored ? [{ id, panelId: id }, {id:"restored-extra",panelId:"extra"}] : [{ id, panelId: id }])
       const [active, setActive] = createSignal(id)
       return [id, { opened, setOpened, close: () => setOpened(false), size, setSize, tabs, setTabs,
         fullscreen, setFullscreen, activeTab: () => tabs().find(tab => tab.id === active()), active, setActive }]
@@ -51,7 +52,7 @@ beforeAll(async () => {
       interact() {}, activateTab(name, id) { states[name].setActive(id) }, getPanel: id => entries.find(entry => entry.id === id),
       panelTitle: tab => tab.title ?? tab.panelId, openPanel: () => {}, closeTab: () => {}, closeOtherTabs: () => {}, moveTab: () => {}
     })
-    export const useLayout = () => ({ isDesktop: () => true, sidebar: { opened: () => false, width: () => 250, occupiedWidth: () => 0 } })
+    export const useLayout = () => ({ isDesktop: () => true, sidebar: { opened: () => location.search === "?composed", width: () => 260, occupiedWidth: () => location.search === "?composed" ? 260 : 0 } })
   `,
   )
   await Bun.write(
@@ -74,27 +75,31 @@ beforeAll(async () => {
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
     const i18n = setupI18n({ locale: "en", messages: { en } })
-    function NavigatorProbe() {
+    function NavigatorProbe(props = {}) {
       const [open, setOpen] = createSignal(true)
       const [revision, setRevision] = createSignal(1)
       let navigation
-      return <div data-ui-part="resource-panel" style="width:100vw;height:400px;display:flex">
-        <WorkspaceNavigator label="Documents" header={location.search !== "?navigator-own-header"} open={open()} width={320} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} onResize={() => {}} onReady={value => navigation = value}>
-          <button onClick={() => {setRevision(value => value+1); navigation.closeDrawer()}}>Select document</button>
+      return <div data-ui-part="resource-panel" style={{width:props.width ?? "100vw",height:"400px",display:"flex"}}>
+        <WorkspaceNavigator id={props.navigationId ?? (props.remount ? "file-navigation" : undefined)} label="Documents" header={location.search !== "?navigator-own-header"} open={open()} width={320} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} onResize={() => {}} onReady={value => navigation = value}>
+          <button onClick={() => {setRevision(value => value+1); props.remount?.(); navigation.closeDrawer()}}>Select document</button>
           {location.search === "?navigator-own-header" && <button onClick={() => navigation.closeDrawer()}>Close documents</button>}
         </WorkspaceNavigator>
-        <Show when={revision()} keyed>{() => <button aria-controls={navigation.id} aria-expanded={navigation.opened()} onClick={() => navigation.toggle()}>Toggle navigation</button>}</Show>
+        <Show when={revision()} keyed>{() => <button data-workspace-navigation-toggle aria-controls={navigation.id} aria-expanded={navigation.opened()} onClick={() => navigation.toggle()}>Toggle navigation</button>}</Show>
       </div>
     }
     function Fixture() {
       const dialog = useDialog()
+      const [resourceRevision, setResourceRevision] = createSignal(1)
+      if (location.search === "?navigator-remount") return <Show when={resourceRevision()} keyed>{() => <NavigatorProbe remount={() => setResourceRevision(value => value+1)} />}</Show>
+      if (location.search === "?navigator-new-tab") return <div class="workbench-surface"><Show when={resourceRevision()} keyed>{revision => <NavigatorProbe navigationId={"file-navigation-" + revision} remount={() => setResourceRevision(value => value+1)} />}</Show></div>
+      if (location.search === "?navigator-offset") return <div style="margin-left:700px;margin-top:96px;width:400px"><NavigatorProbe width="400px" /></div>
       if (location.search === "?navigator-nested") return <button onClick={() => dialog.push(() => <Dialog title="Workspace"><NavigatorProbe /></Dialog>)}>Open host</button>
       if (location.search === "?composed") return <div style="height:100dvh;display:flex;flex-direction:column">
         <DefaultShell context={{ shell: { render: part => part === "navigation" ?
           <div data-plugin-ui="synergy" style="display:contents"><aside class="sb-integrated sb-expanded" style="width:260px"><div class="sb-navigation"><button>Navigation</button></div></aside></div> : part === "route" ?
           <DefaultSession context={{ layout: { minimumWidth: () => 350, promptHeight: () => 120, render: view => view === "workbench.side" ? <WorkbenchSurface surface="side" /> : view === "conversation" ? <button onClick={() => window.fixture.open("side")}>Open side</button> : view === "composer" ? <div style="position:absolute;bottom:0;left:0;right:0;z-index:50"><input aria-label="Composer draft" /></div> : null } }} /> : null }}} />
       </div>
-      if (location.search) return <NavigatorProbe />
+      if (location.search && location.search !== "?restored") return <NavigatorProbe />
       return <>
         <button onClick={() => window.fixture.open("side")}>Open side</button>
         <button onClick={() => window.fixture.open("bottom")}>Open bottom</button>
@@ -187,6 +192,81 @@ test("converting a tab to another resource type mounts the corresponding panel",
   expect(await page.getByRole("button", { name: "side action", exact: true }).count()).toBe(0)
 })
 
+test("initializing restored tabs in a narrow window retains their identity without page errors", async () => {
+  await page.setViewportSize({ width: 375, height: 900 })
+  await page.goto(baseUrl + "?restored")
+  expect(errors).toEqual([])
+  await page.getByRole("button", { name: "side action", exact: true }).waitFor({ timeout: 5000 })
+  expect(errors).toEqual([])
+  expect(await page.getByRole("tab").count()).toBe(2)
+  expect(await page.getByRole("tab", { name: "side", exact: true }).getAttribute("aria-selected")).toBe("true")
+  expect((await page.locator(".workbench-surface--side").boundingBox())!.width).toBe(375)
+  await page.setViewportSize({ width: 1200, height: 900 })
+  await page.waitForFunction(
+    () => document.querySelector(".workbench-surface--side")!.getBoundingClientRect().width === 360,
+  )
+  expect(await page.getByRole("tab").count()).toBe(2)
+  expect(errors).toEqual([])
+})
+
+test("selecting a file returns focus when its document controller remounts", async () => {
+  await page.setViewportSize({ width: 375, height: 900 })
+  await page.goto(baseUrl + "?navigator-remount")
+  await page.getByRole("button", { name: "Toggle navigation", exact: true }).click()
+  await page.getByRole("button", { name: "Select document", exact: true }).click()
+  await page.getByRole("dialog", { name: "Documents", exact: true }).waitFor({ state: "hidden" })
+  const trigger = page.getByRole("button", { name: "Toggle navigation", exact: true })
+  expect(await trigger.isVisible()).toBe(true)
+  await page.waitForFunction(
+    () => document.activeElement?.getAttribute("aria-controls") === "file-navigation",
+    undefined,
+    { timeout: 2000 },
+  )
+  expect(await trigger.getAttribute("aria-expanded")).toBe("false")
+  expect(errors).toEqual([])
+})
+
+test("opening another resource tab returns drawer focus to that tab's navigation", async () => {
+  await page.setViewportSize({ width: 375, height: 900 })
+  await page.goto(baseUrl + "?navigator-new-tab")
+  const previous = await page
+    .getByRole("button", { name: "Toggle navigation", exact: true })
+    .getAttribute("aria-controls")
+  await page.getByRole("button", { name: "Toggle navigation", exact: true }).click()
+  await page.getByRole("button", { name: "Select document", exact: true }).click()
+  await page.getByRole("dialog", { name: "Documents", exact: true }).waitFor({ state: "hidden" })
+  await page.waitForFunction(
+    () => document.activeElement?.getAttribute("aria-controls") === "file-navigation-2",
+    undefined,
+    { timeout: 2000 },
+  )
+  expect(
+    await page.getByRole("button", { name: "Toggle navigation", exact: true }).getAttribute("aria-controls"),
+  ).not.toBe(previous)
+  expect(errors).toEqual([])
+})
+
+test("a navigation drawer stays within its resource content in split layout", async () => {
+  await page.goto(baseUrl + "?navigator-offset")
+  await page.getByRole("button", { name: "Toggle navigation", exact: true }).click()
+  const drawer = page.getByRole("dialog", { name: "Documents", exact: true })
+  await drawer.waitFor()
+  await page.waitForFunction(() =>
+    document
+      .querySelector(".workspace-navigator-drawer")
+      ?.getAnimations()
+      .every((animation) => animation.playState === "finished"),
+  )
+  const bounds = await drawer.boundingBox()
+  expect(bounds!.x).toBe(700)
+  expect(bounds!.y).toBe(96)
+  expect(bounds!.height).toBe(400)
+  await page.keyboard.press("Escape")
+  await drawer.waitFor({ state: "hidden" })
+  await page.waitForFunction(() => document.activeElement?.textContent === "Toggle navigation")
+  expect(errors).toEqual([])
+})
+
 test("fullscreen owns display and hit testing without discarding the composer", async () => {
   await page.goto(baseUrl + "?composed")
   await page.getByRole("textbox", { name: "Composer draft" }).fill("Keep this unsent draft")
@@ -199,6 +279,44 @@ test("fullscreen owns display and hit testing without discarding the composer", 
   await tab.click({ timeout: 2000 })
   await page.getByRole("button", { name: "Restore view", exact: true }).click()
   expect(await page.getByRole("textbox", { name: "Composer draft" }).inputValue()).toBe("Keep this unsent draft")
+  expect(errors).toEqual([])
+})
+
+test("automatic expansion stays stable when hiding navigation changes the Session bounds", async () => {
+  await page.goto(baseUrl + "?composed")
+  await page.getByRole("textbox", { name: "Composer draft" }).fill("Retain this unsent draft")
+  await page.getByRole("button", { name: "Open side", exact: true }).click()
+  await page.setViewportSize({ width: 768, height: 900 })
+  await page.waitForFunction(() =>
+    document.querySelector(".workbench-surface--side")?.classList.contains("workbench-surface--overlay"),
+  )
+  await page.waitForFunction(
+    () => Math.round(document.querySelector(".workbench-surface--side")!.getBoundingClientRect().width) === 768,
+  )
+  const frames = await page.evaluate(
+    () =>
+      new Promise<Array<{ width: number; overlay: boolean }>>((resolve) => {
+        const frames: Array<{ width: number; overlay: boolean }> = []
+        function measure() {
+          const pane = document.querySelector(".workbench-surface--side")!
+          frames.push({
+            width: Math.round(pane.getBoundingClientRect().width),
+            overlay: pane.classList.contains("workbench-surface--overlay"),
+          })
+          if (frames.length < 20) requestAnimationFrame(measure)
+          else resolve(frames)
+        }
+        requestAnimationFrame(measure)
+      }),
+  )
+  expect(frames.every((frame) => frame.overlay && frame.width === 768)).toBe(true)
+  expect(await page.getByRole("textbox", { name: "Composer draft" }).isVisible()).toBe(false)
+  await page.setViewportSize({ width: 1200, height: 900 })
+  await page.waitForFunction(
+    () => Math.round(document.querySelector(".workbench-surface--side")!.getBoundingClientRect().width) === 360,
+  )
+  expect(await page.getByRole("button", { name: "Navigation", exact: true }).isVisible()).toBe(true)
+  expect(await page.getByRole("textbox", { name: "Composer draft" }).inputValue()).toBe("Retain this unsent draft")
   expect(errors).toEqual([])
 })
 
@@ -253,6 +371,7 @@ test("resource menus support direction keys and return focus after Escape", asyn
   const trigger = page.getByRole("button", { name: "Open a resource", exact: true })
   await trigger.click()
   await page.getByRole("menu").waitFor()
+  await page.waitForFunction(() => document.activeElement?.closest('[role="menu"]'))
   await page.keyboard.press("End")
   expect(await page.evaluate(() => document.activeElement?.textContent?.trim())).toBe("extra")
   await page.keyboard.press("Home")

@@ -29,7 +29,12 @@ import {
   isWorkbenchPanelLaunchable,
   workbenchPanelMountKey,
 } from "@/context/workbench/panel-model"
-import { WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH, workspacePresentation } from "@/context/layout/workspace"
+import {
+  WORKSPACE_MIN_WIDTH,
+  WORKSPACE_SESSION_MIN_WIDTH,
+  sidebarOccupancy,
+  workspacePresentation,
+} from "@/context/layout/workspace"
 import { useLayout } from "@/context/layout"
 import type {
   WorkbenchPanelContentProps,
@@ -354,6 +359,14 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
   const dialog = useDialog()
   const workbench = useWorkbenchPanels()
   const layout = useLayout()
+  const [local, setLocal] = createStore({
+    addOpen: false,
+    actionsOpen: false,
+    menuTabId: undefined as string | undefined,
+    resizing: false,
+    initialized: false,
+    overflow: false,
+  })
   const state = createMemo(() => workbench.surface(props.surface))
   const panels = createMemo(() => workbench.panels(props.surface).filter(isWorkbenchPanelLaunchable))
   const activeTab = createMemo(() => state().activeTab())
@@ -387,14 +400,6 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
     if (!tab) return
     void workbench.closeOtherTabs(tab.id)
   }
-  const [local, setLocal] = createStore({
-    addOpen: false,
-    actionsOpen: false,
-    menuTabId: undefined as string | undefined,
-    resizing: false,
-    initialized: false,
-    overflow: false,
-  })
   let tabRun: HTMLDivElement | undefined
   let root: HTMLDivElement | undefined
   let returnFocus: HTMLElement | undefined
@@ -516,19 +521,25 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
     width: window.innerWidth,
     height: window.innerHeight,
     container: false,
+    integratedSidebar: false,
   })
   onMount(() => {
     const container = root?.closest<HTMLElement>('[data-ui-part="session"]')
+    const shell = container?.closest<HTMLElement>("[data-default-shell]")
+    const integratedSidebar = Boolean(shell?.querySelector(".sb-integrated"))
+    const widthContainer = integratedSidebar ? shell : container
     const measure = () => {
       const rect = container?.getBoundingClientRect()
       setAvailable({
-        width: rect?.width ?? window.innerWidth,
+        width: widthContainer?.getBoundingClientRect().width ?? window.innerWidth,
         height: rect?.height ?? window.innerHeight,
         container: Boolean(rect),
+        integratedSidebar,
       })
     }
-    const observer = container ? new ResizeObserver(measure) : undefined
-    if (container) observer?.observe(container)
+    const observer = widthContainer ? new ResizeObserver(measure) : undefined
+    if (widthContainer) observer?.observe(widthContainer)
+    if (container && container !== widthContainer) observer?.observe(container)
     window.addEventListener("resize", measure)
     measure()
     requestAnimationFrame(() => setLocal("initialized", true))
@@ -537,19 +548,18 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
       window.removeEventListener("resize", measure)
     })
   })
-  const maxSideWidth = () => {
-    const width = available.width - (available.container ? 0 : layout.sidebar.occupiedWidth())
-    return Math.max(0, width - WORKSPACE_SESSION_MIN_WIDTH)
-  }
+  const splitAvailableWidth = () =>
+    available.width -
+    (available.integratedSidebar
+      ? sidebarOccupancy(layout.isDesktop(), layout.sidebar.opened(), layout.sidebar.width())
+      : available.container
+        ? 0
+        : layout.sidebar.occupiedWidth())
+  const maxSideWidth = () => Math.max(0, splitAvailableWidth() - WORKSPACE_SESSION_MIN_WIDTH)
   const maxBottomHeight = () => Math.max(0, available.height * 0.6)
-  const presentation = createMemo(() =>
-    workspacePresentation(
-      available.width - (available.container ? 0 : layout.sidebar.occupiedWidth()),
-      size(),
-      state().fullscreen(),
-    ),
-  )
-  const displaySize = () => (isSide() ? presentation().width : Math.min(size(), maxBottomHeight()))
+  const presentation = createMemo(() => workspacePresentation(splitAvailableWidth(), size(), state().fullscreen()))
+  const displaySize = () =>
+    isSide() ? (presentation().overlay ? available.width : presentation().width) : Math.min(size(), maxBottomHeight())
   createEffect(() => {
     if (!isSide() || !root) return
     const container = root.closest<HTMLElement>("[data-default-session]")

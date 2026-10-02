@@ -26,6 +26,7 @@ export type WorkspaceNavigatorController = {
 
 export function WorkspaceNavigator(
   props: ParentProps<{
+    id?: string
     label: string
     header?: boolean
     open: boolean
@@ -39,9 +40,12 @@ export function WorkspaceNavigator(
   const lingui = useLingui()
   const [width, setWidth] = createSignal(0)
   const [drawerOpen, setDrawerOpen] = createSignal(false)
-  const id = createUniqueId()
+  const [bounds, setBounds] = createSignal<{ left: number; top: number; height: number }>()
+  const id = props.id ?? createUniqueId()
   let anchor!: HTMLSpanElement
   let returnFocus: HTMLElement | undefined
+  let focusHost: HTMLElement | undefined
+  let measureLayout = () => {}
   const presentation = createMemo(() => workspaceNavigatorWidth(width(), props.width))
   const closeDrawer = () => setDrawerOpen(false)
   props.onReady?.({
@@ -63,13 +67,28 @@ export function WorkspaceNavigator(
   createEffect(() => {
     if (!presentation().drawer || !props.open) closeDrawer()
   })
+  createEffect(() => {
+    if (drawerOpen()) measureLayout()
+  })
   onMount(() => {
+    focusHost = anchor.closest<HTMLElement>(".workbench-surface") ?? anchor.parentElement ?? undefined
     const resource = anchor.closest<HTMLElement>('[data-ui-part="resource-panel"]') ?? anchor.parentElement!
-    const measure = () => setWidth(Number(resource.dataset.workspaceWidth) || resource.getBoundingClientRect().width)
-    const observer = new ResizeObserver(measure)
+    const frame = anchor.parentElement!
+    measureLayout = () => {
+      setWidth(Number(resource.dataset.workspaceWidth) || resource.getBoundingClientRect().width)
+      const rect = frame.getBoundingClientRect()
+      const top = Math.max(0, rect.top)
+      setBounds({ left: rect.left, top, height: Math.max(0, Math.min(rect.bottom, window.innerHeight) - top) })
+    }
+    const observer = new ResizeObserver(measureLayout)
     observer.observe(resource)
-    measure()
-    onCleanup(() => observer.disconnect())
+    if (frame !== resource) observer.observe(frame)
+    window.addEventListener("resize", measureLayout)
+    measureLayout()
+    onCleanup(() => {
+      observer.disconnect()
+      window.removeEventListener("resize", measureLayout)
+    })
   })
   return (
     <>
@@ -110,12 +129,24 @@ export function WorkspaceNavigator(
             class="workspace-navigator-drawer"
             data-slot="dialog-content"
             data-workspace-navigation
-            style={{ width: `${presentation().width}px` }}
+            style={{
+              width: `${presentation().width}px`,
+              left: bounds() ? `${bounds()!.left}px` : undefined,
+              top: bounds() ? `${bounds()!.top}px` : undefined,
+              height: bounds() ? `${bounds()!.height}px` : undefined,
+            }}
             aria-label={props.label}
             onCloseAutoFocus={(event) => {
-              const target = returnFocus?.isConnected
-                ? returnFocus
-                : document.querySelector<HTMLElement>(`[aria-controls="${id}"]`)
+              const target = [
+                returnFocus,
+                document.querySelector<HTMLElement>(`[aria-controls="${id}"]`),
+                focusHost?.querySelector<HTMLElement>("[data-workspace-navigation-toggle]"),
+              ].find(
+                (element) =>
+                  element?.isConnected &&
+                  element.getClientRects().length > 0 &&
+                  !element.closest('[inert], [aria-hidden="true"]'),
+              )
               if (target) {
                 event.preventDefault()
                 target.focus({ preventScroll: true })

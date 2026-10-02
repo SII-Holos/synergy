@@ -708,12 +708,14 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
             }
             aria-expanded={navigator()?.opened() ?? false}
             aria-controls={navigator()?.id}
+            data-workspace-navigation-toggle
             onClick={() => navigator()?.toggle()}
           />
         </div>
       </div>
       <div class="file-workbench-main">
         <WorkspaceNavigator
+          id={`file-navigation-${props.tab.id}`}
           label={lingui._(P.files)}
           header={false}
           open={file.explorer.open()}
