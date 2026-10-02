@@ -72,6 +72,7 @@ import { useLocale } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
 import { reconcileMessage, removeMessageFromWindow, type MessageWindowState } from "@/context/session-message-window"
+import { clearConversationContent } from "@/context/conversation-content-state"
 import { nextMessageWindowTotal, nextMessageWindowTotalAfterRemoval } from "@/context/session-message-total"
 import { promptSubmitFailure } from "./submit-failure"
 import { runComposerPreflight } from "./composer-preflight"
@@ -951,7 +952,23 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       }))
 
       const queueing = input.working() || !!activeSession.paused
-      const messageID = queueing ? undefined : Identifier.ascending("message")
+      const messageID = prompt.admissionIdentity(
+        JSON.stringify({
+          sessionID: activeSession.id,
+          agent,
+          model,
+          variant,
+          parts: [
+            inlineText(currentPrompt),
+            ...fileAttachmentParts,
+            ...contextFileParts,
+            ...uploadedAttachmentParts,
+            ...noteAttachmentParts,
+            ...sessionAttachmentParts,
+          ].map((part) => (typeof part === "string" ? part : { ...part, id: undefined })),
+        }),
+        () => Identifier.ascending("message"),
+      )
       const textPart = {
         id: Identifier.ascending("part"),
         type: "text" as const,
@@ -1009,7 +1026,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         globalSync.invalidateResource(sessionScopeKey, activeSession.id, "message")
         setSyncStore(
           produce((draft) => {
-            for (const droppedID of result.droppedIds) delete draft.part[droppedID]
+            for (const droppedID of result.droppedIds) clearConversationContent(draft, droppedID)
             draft.message[activeSession.id] = result.window.messages
             draft.messageWindow[activeSession.id] = {
               nextCursor: metadata?.nextCursor ?? null,
@@ -1025,6 +1042,16 @@ export function usePromptSubmit(input: PromptSubmitInput) {
               tailMissingLatest: result.window.tailMissingLatest,
             }
             if (visible) {
+              draft.partSummary[messageID] = optimisticParts.map((part) => ({
+                id: part.id,
+                messageID,
+                sessionID: activeSession.id,
+                type: part.type,
+                preview: "text" in part ? part.text.slice(0, 256) : "",
+                content: { version: `optimistic:${part.id}`, bytes: JSON.stringify(part).length * 2 },
+              }))
+              for (const part of optimisticParts) draft.partVersion[part.id] = `optimistic:${part.id}`
+              draft.partPage[messageID] = { hasMore: false, hasEarlier: false, nextCursor: null, previousCursor: null }
               draft.part[messageID] = optimisticParts
                 .filter((part) => !!part?.id)
                 .slice()
@@ -1036,6 +1063,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
 
       const handoffAcceptedOptimisticMessage = (canonicalID: string) => {
         if (!messageID) return
+        if (canonicalID === messageID) return
         const messages = syncStore.message[activeSession.id]
         if (!messages) return
         const metadata = syncStore.messageWindow[activeSession.id]
@@ -1057,7 +1085,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         setSyncStore(
           produce((draft) => {
             draft.message[activeSession.id] = result.window.messages
-            delete draft.part[messageID]
+            clearConversationContent(draft, messageID)
             if (result.canonicalParts) draft.part[canonicalID] = result.canonicalParts
             if (metadata) {
               draft.messageWindow[activeSession.id] = {
@@ -1090,7 +1118,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         setSyncStore(
           produce((draft) => {
             draft.message[activeSession.id] = result.messages
-            delete draft.part[messageID]
+            clearConversationContent(draft, messageID)
             if (metadata) {
               draft.messageWindow[activeSession.id] = {
                 ...metadata,
@@ -1105,7 +1133,6 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         )
       }
 
-      clearInput()
       let optimisticAdded = false
       if (!queueing) {
         addOptimisticMessage()
@@ -1116,19 +1143,23 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       const inboxRequest = globalSync.captureResourceRequest(sessionScopeKey, activeSession.id, "inbox")
 
       await client.session
-        .input({
-          sessionID: activeSession.id,
-          agent,
-          ...(messageID ? { messageID } : {}),
-          parts: requestParts,
-          metadata: {
-            promptDraft: draftSnapshot,
-            ...(createdSessionForSubmit ? { sessionTransition: { workspaceSelection } } : {}),
+        .input(
+          {
+            sessionID: activeSession.id,
+            agent,
+            ...(messageID ? { messageID } : {}),
+            parts: requestParts,
+            metadata: {
+              promptDraft: draftSnapshot,
+              ...(createdSessionForSubmit ? { sessionTransition: { workspaceSelection } } : {}),
+            },
           },
-        })
+          { throwOnError: true },
+        )
         .then((result) => {
           const accepted = result.data
           if (!accepted) throw new Error("Session input returned no acceptance result")
+          clearInput()
           if (accepted.status === "queued") {
             const item = accepted.item
             // Guard the mutation upsert: the backend may have already consumed

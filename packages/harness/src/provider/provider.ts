@@ -861,7 +861,13 @@ export namespace Provider {
               existingModel?.api.npm ??
               sourceCatalog?.npm ??
               "@ai-sdk/openai-compatible",
-            url: provider?.api ?? existingModel?.api.url ?? sourceCatalog?.api,
+            url:
+              provider?.api ??
+              existingModel?.api.url ??
+              sourceCatalog?.api ??
+              (typeof model.options?.baseURL === "string" ? model.options.baseURL : undefined) ??
+              (typeof provider.options?.baseURL === "string" ? provider.options.baseURL : undefined) ??
+              "",
           },
           status: model.status ?? existingModel?.status ?? "active",
           name,

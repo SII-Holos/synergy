@@ -1207,6 +1207,14 @@
           "reason": "Solid wrapper behavior is verified in test/components/session/session-recovery.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
         },
         {
+          "glob": "src/components/session/history-search-dialog.tsx",
+          "reason": "Production browser search and historical result navigation are verified in test/plugin-ui5/messages-browser.test.ts; Bun cannot instrument the browser bundle. Query cancellation and pagination remain measured in test/components/history-search.test.ts."
+        },
+        {
+          "glob": "src/components/session/virtual-conversation-rows.tsx",
+          "reason": "Production browser prepend, older-text reading, bounded mounting, return-to-latest and reconnect are verified in test/plugin-ui5/messages-browser.test.ts; Bun cannot instrument the browser bundle. Row projection and retention remain measured in the Web conversation row tests."
+        },
+        {
           "glob": "src/components/session/request-submission-notice.tsx",
           "reason": "Solid wrapper behavior is verified in test/components/toolbar-selector.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
         },
@@ -1918,6 +1926,10 @@
         {
           "glob": "src/components/tool/content-preview.tsx",
           "reason": "Solid wrapper exercised by basic-tool-lifecycle.dom.test.ts through Vite; Bun coverage attributes the compiled fixture instead of this TSX source. Preview logic remains measured in content-preview-model.ts."
+        },
+        {
+          "glob": "src/context/markdown-worker.ts",
+          "reason": "Real worker rendering, version replacement, math/code copying and grammar loading are verified in test/markdown-virtual.browser.test.ts; Bun does not instrument browser workers. Parser, document and worker-client behavior remain measured by the UI unit tests."
         },
         {
           "glob": "src/components/tool/index.ts",

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
+import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceFileStatus } from "../../src/workspace-file/status"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -24,6 +25,19 @@ async function withWorkspace<T>(init: (dir: string) => Promise<void>, fn: (dir: 
 }
 
 describe("WorkspaceFileStatus", () => {
+  test("cached status retains the event watermark from its original read", () =>
+    runtime.run(async () => {
+      await withWorkspace(
+        async () => {},
+        async () => {
+          const seq = Bus.currentSeq()
+          const first = await WorkspaceFileStatus.summary()
+          expect(first.sync).toEqual({ epoch: Bus.epoch(), seq })
+          expect((await WorkspaceFileStatus.summary()).sync).toEqual(first.sync)
+        },
+      )
+    }))
+
   test("does not read large untracked files for line counts", () =>
     runtime.run(async () => {
       await withWorkspace(

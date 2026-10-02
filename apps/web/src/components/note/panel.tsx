@@ -20,7 +20,7 @@ import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { archiveNoteConfirm, unarchiveNoteConfirm, deleteArchivedNoteConfirm } from "@/components/dialog/confirm-copy"
 import { SelectionCheckbox } from "@/components/library/shared"
 import type {
-  Agent,
+  AgentSummary,
   BlueprintLoopInfo,
   Event as SynergyEvent,
   NoteInfo,
@@ -401,7 +401,7 @@ function NoteCardSkeleton() {
 }
 
 function RunMenu(props: {
-  agents: Agent[]
+  agents: AgentSummary[]
   title: string
   executionAgent?: string
   canRunInCurrentSession: boolean

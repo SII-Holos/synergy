@@ -151,6 +151,7 @@ export async function copyTextToClipboard(text: string, options: CopyTextOptions
 
 export type CopyControllerOptions = {
   text: CopyTextSource
+  loadText?: () => Promise<string | null | undefined>
   copyLabel?: string
   copiedLabel?: string
   failedLabel?: string
@@ -169,7 +170,7 @@ export function createCopyController(options: CopyControllerOptions) {
   let operation = 0
 
   const text = createMemo(() => resolveText(options.text))
-  const disabled = createMemo(() => text().length === 0)
+  const disabled = createMemo(() => !options.loadText && text().length === 0)
   const copied = createMemo(() => state() === "copied")
   const failed = createMemo(() => state() === "failed")
   const tooltip = createMemo(() => {
@@ -203,11 +204,20 @@ export function createCopyController(options: CopyControllerOptions) {
     const token = ++operation
     if (resetTimer) clearTimeout(resetTimer)
     resetTimer = undefined
-    const value = resolveText(source ?? options.text)
-    const result = await copyTextToClipboard(value, {
-      label: options.copyLabel,
-      failureDescription: options.failureDescription,
-    })
+    let result: ClipboardCopyResult
+    try {
+      const value =
+        source === undefined && options.loadText
+          ? ((await options.loadText()) ?? "")
+          : resolveText(source ?? options.text)
+      if (token !== operation) return { ok: false, reason: "empty" }
+      result = await copyTextToClipboard(value, {
+        label: options.copyLabel,
+        failureDescription: options.failureDescription,
+      })
+    } catch (error) {
+      result = { ok: false, reason: "failed", error }
+    }
 
     if (token !== operation) return result
     if (result.ok) {

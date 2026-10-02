@@ -13,6 +13,7 @@ import { SessionProgress } from "@ericsanchezok/synergy-harness/session/progress
 import { SessionInputProgress } from "@ericsanchezok/synergy-harness/session/input-progress"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -39,35 +40,40 @@ export const SessionLocationError = NamedError.create(
 export async function submitInput(input: InvokeInput): Promise<SessionInbox.InputResult> {
   if (input.model) await Provider.getModel(input.model.providerID, input.model.modelID)
   if (input.agent && !(await Agent.get(input.agent))) throw new Error(`Agent not found: ${input.agent}`)
-  if (input.noReply === true && !SessionManager.isRunning(input.sessionID)) {
-    const messageID = input.messageID ?? Identifier.ascending("message")
-    SessionInvoke.invoke({ ...input, messageID }).catch((error) => {
-      log.error("failed to execute async no-reply input", { sessionID: input.sessionID, messageID, error })
-    })
-    return { status: "started", messageID }
-  }
-
   let item: SessionInbox.Item
   let runID: string | undefined
+  let idleNoReply = false
   {
     using control = await Lock.write(`session-control:${input.sessionID}`)
+    idleNoReply =
+      input.noReply === true &&
+      (!SessionManager.isRunning(input.sessionID) || SessionManager.isPassiveInputRunning(input.sessionID))
     if (input.messageID) {
-      const existing = await MessageV2.get({ sessionID: input.sessionID, messageID: input.messageID }).catch(
-        (error) => {
-          if (error instanceof Storage.NotFoundError) return
-          throw error
-        },
-      )
+      const session = await SessionManager.requireSession(input.sessionID)
+      const existing = await Storage.read<MessageV2.Info>(
+        StoragePath.messageInfo(
+          Identifier.asScopeID(session.scope.id),
+          Identifier.asSessionID(input.sessionID),
+          Identifier.asMessageID(input.messageID),
+        ),
+      ).catch((error) => {
+        if (error instanceof Storage.NotFoundError) return
+        throw error
+      })
       if (existing) return { status: "started", messageID: input.messageID }
     }
     const paused = await SessionLifecycle.snapshot(input.sessionID)
-    if (paused) await SessionManager.waitForIdle(input.sessionID)
+    if (paused && !idleNoReply) await SessionManager.waitForIdle(input.sessionID)
     const rootID = paused ? await SessionInbox.latestRootID(input.sessionID) : undefined
-    item = await SessionInbox.enqueueUser(input, rootID ? { mode: "steer" } : undefined)
+    item = await SessionInbox.enqueueUser(
+      input,
+      idleNoReply ? { mode: "steer", admission: "idle_no_reply" } : rootID ? { mode: "steer" } : undefined,
+    )
     runID = rootID
-    await takeSessionBack(input.sessionID)
+    if (!idleNoReply) await takeSessionBack(input.sessionID)
   }
-  scheduleInput(item, "user-input")
+  if (idleNoReply) SessionManager.scheduleWake(item.sessionID, "durable-no-reply-input")
+  else scheduleInput(item, "user-input")
   return { status: "queued", item, runID }
 }
 

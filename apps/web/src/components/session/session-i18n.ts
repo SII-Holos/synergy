@@ -5,6 +5,29 @@ import type { ProgressIslandSnapshot } from "./session-progress-summary"
  *  Translate at use time via `useLocale().i18n._(descriptor)`. */
 
 export const S = {
+  historyCopyTitle: { id: "session.history.copyTitle", message: "Copy conversation text" },
+  historyCopyDescription: {
+    id: "session.history.copyDescription",
+    message: "Copy all user and assistant text in this conversation",
+  },
+  historyCopied: { id: "session.history.copied", message: "Conversation copied" },
+  historyExportTitle: { id: "session.history.exportTitle", message: "Export conversation text" },
+  historyExportDescription: {
+    id: "session.history.exportDescription",
+    message: "Download all user and assistant text in this conversation",
+  },
+  historyTextFailed: { id: "session.history.textFailed", message: "Unable to read the conversation. Try again." },
+  historySearchTitle: { id: "session.history.searchTitle", message: "Search conversation" },
+  historySearchPlaceholder: { id: "session.history.searchPlaceholder", message: "Search all conversation history" },
+  historySearchReasoning: { id: "session.history.searchReasoning", message: "Include reasoning" },
+  historySearchTools: { id: "session.history.searchTools", message: "Include tool content" },
+  historySearchPreparing: {
+    id: "session.history.searchPreparing",
+    message: "Preparing history search… {count} parts ready",
+  },
+  historySearchMore: { id: "session.history.searchMore", message: "Continue searching" },
+  historySearchEmpty: { id: "session.history.searchEmpty", message: "No matching content" },
+  historySearchFailed: { id: "session.history.searchFailed", message: "Couldn’t search conversation" },
   lspNoServers: { id: "session.lsp.noServers", message: "No LSP servers" },
 
   // conversation.tsx

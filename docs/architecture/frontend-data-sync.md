@@ -11,7 +11,7 @@ The sync layer optimizes identity stability, reconnect recovery, streaming cost,
 `GlobalSDKProvider` opens one WebSocket to:
 
 ```text
-/global/event/ws?stream=delta
+/global/event/ws?stream=projection
 ```
 
 The server sends envelopes containing:
@@ -39,7 +39,7 @@ The connection:
 
 The server owns event subscription and socket lifetime together. A dropped send, send exception, explicit subscription removal, or sustained streaming backpressure closes the affected socket so the client can reconnect and replay or resync. Connected acknowledgements, pongs, and server heartbeats use the same subscription registry as broadcasts; a ping on an unregistered socket closes it instead of reporting healthy transport. Transient control-frame backpressure does not advance the streaming eviction threshold. Failure diagnostics record the send outcome and transport mode without event contents.
 
-Incoming events are batched on an approximately 16 ms cadence while visible. Replaceable high-frequency state such as session status, inbox snapshots, LSP state, and full part updates is coalesced by identity before the Solid batch is applied. While the page is hidden the cadence relaxes to 1 second and streaming `message.part.delta` frames are merged per part into a single pending delta (the ≤1 s server checkpoint converges the authoritative part), keeping the background main-thread cost bounded without dropping sequenced state events. The event queue is capped; when the cap is reached it flushes early so watermarks keep advancing.
+Incoming events are batched on an approximately 16 ms cadence while visible. Unsequenced streaming updates are coalesced by identity before the Solid batch is applied; sequenced state events retain every sequence. While the page is hidden the cadence relaxes to 1 second and streaming `message.part.delta` frames are merged per part into a single pending delta (the ≤1 s server checkpoint converges the authoritative part), keeping the background main-thread cost bounded without dropping sequenced state events. The event queue is capped; when the cap is reached it flushes early so watermarks keep advancing.
 
 ## Store Shape
 
@@ -63,7 +63,7 @@ The sync layer has:
 - **Turn-level diffs** are stored in `message[n].summary.diffs` on the user message and reach the frontend through the existing `message.updated` state event. No new event, store bucket, or route was needed — the normal message reconcile path carries them.
 - **Session-level diffs** live in the `session_diff` bucket and aggregate all turn diffs for the Review workbench panel. They are loaded on demand through `sync.session.diff()` and never fetched implicitly.
 
-Global bootstrap starts the health check and the global config/path/Scope/provider/auth requests concurrently. Scope bootstrap limits concurrent instance requests to two. Each instance uses the generated `scope.bootstrap()` snapshot to load required provider, agent, config, and Scope identity plus optional path, command, session status/list, MCP, Cortex, Agenda, and project LSP/VCS state. The snapshot is reconciled in one Solid batch before the store becomes `partial`; permissions and questions keep their independent owner routes, and the store becomes `complete` after those requests settle. The server stamps the response sequence before reading snapshot fields, so a same-epoch response whose seq trails an event already applied was read before that event happened. Events stay authoritative only for the keys they wrote after the stamp: the write trackers record the last sequenced event write per key — the per-Scope tracker for the session list plus archive tombstones, and the global tracker for session status, permissions, questions, and Cortex tasks plus whole-bucket Cortex replacements — and snapshot application overlays only those post-stamp keys onto the snapshot — every other key converges to the snapshot, including its deletions, so state left stale by a missed event (an idle that never arrived) cannot survive a fail-open resync while a live busy status (which drives the sidebar running icon) is preserved. The per-Scope store registry is reactive: consumers that first observed no store for a Scope ID re-run when it is created or evicted.
+Global bootstrap starts health, capabilities, Core preferences/providers, paths, Scope catalog and provider authentication concurrently. Scope bootstrap limits concurrent instance requests to two. Each instance uses the generated `scope.bootstrapCore()` snapshot for navigation, minimal Agent summaries, current models, necessary preferences and connection state. The snapshot is reconciled in one Solid batch before the store becomes `partial`; permissions and questions keep their independent owner routes, and the store becomes `complete` after those requests settle. The server stamps the response sequence before reading snapshot fields, so a same-epoch response whose seq trails an event already applied was read before that event happened. Events stay authoritative only for the keys they wrote after the stamp: the write trackers record the last sequenced event write per key — the per-Scope tracker for the session list plus archive tombstones, and the global tracker for session status, permissions, questions, and Cortex tasks plus whole-bucket Cortex replacements — and snapshot application overlays only those post-stamp keys onto the snapshot — every other key converges to the snapshot, including its deletions, so state left stale by a missed event (an idle that never arrived) cannot survive a fail-open resync while a live busy status (which drives the sidebar running icon) is preserved. The per-Scope store registry is reactive: consumers that first observed no store for a Scope ID re-run when it is created or evicted.
 
 ## Reconcile, Do Not Replace
 
@@ -84,7 +84,7 @@ Streaming delta application is even narrower: it appends only to the `text` leaf
 
 ## Message Window and Cursor Pagination
 
-The frontend maintains a per-session bounded message window backed by cursor-based pagination via `GET /session/:sessionID/message/page` (generated SDK `session.messagePage`). The unbounded `messages()` API and `/session/:sessionID/message` route remain available for runtime loops, export, and preview consumers.
+The frontend maintains a per-session bounded message window backed by cursor-based pagination via `GET /session/:sessionID/timeline/page` (generated SDK `session.timelinePage`). The unbounded `messages()` API and `/session/:sessionID/message` route remain available for runtime loops, export, and preview consumers.
 
 ### Window state
 
@@ -106,17 +106,17 @@ The `messages` array in the store contains only the visible window messages, not
 
 ### Page size and cap
 
-- The initial latest page uses `limit: 100`, sized to the rendered turn bound (`MAX_RENDERED_TURNS`), not the full transcript; history prepends, backfill, and refresh paths keep `limit: 200`. The store primary-message cap is 500.
+- Timeline requests use at most 100 headers and a 256 KiB decoded summary budget. Part pages have independent cursors, the same count and byte ceilings, and a target Part window for search or hash location. The store primary-message cap is 500.
 - The store's `DEFAULT_CAP` of 500 applies to primary messages in latest loads and to the full retained set during history prepends. Latest mode additionally retains dependency roots referenced by those primary messages, so the visible window may exceed 500 entries without losing a turn anchor.
 
 ### Latest mode
 
-Initial load and reconnect recovery use latest mode (`mode: "latest"`). Incoming `message.updated` events only reconcile into the visible window when both `messages[sessionID]` and `messageWindow[sessionID]` are present — the session message bucket must be loaded. When either is absent (session never loaded or bucket evicted), the event advances resource freshness and the `latestContextMessage` projection but does not create a message window from empty state. The window is instead established by `messagePage` when the user enters the session.
+Initial load and reconnect recovery use latest mode (`mode: "latest"`). Incoming `message.updated` events only reconcile into the visible window when both `messages[sessionID]` and `messageWindow[sessionID]` are present — the session message bucket must be loaded. When either is absent (session never loaded or bucket evicted), the event advances resource freshness and the `latestContextMessage` projection but does not create a message window from empty state. The window is instead established by `timelinePage` when the user enters the session.
 
 - If the session message bucket is loaded and the message already exists, the window updates in place.
 - If the message is new and the window is in latest mode, it is inserted and the primary window is capped by dropping the oldest unreferenced messages.
 - Any root referenced through `rootID` by a retained primary message stays in the window outside the cap. Snapshot `referencedRoots` and live event reconciliation preserve the same dependency-root closure so non-root user guidance always retains its `SessionTurn` anchor.
-- Dropped message IDs release their part buckets from the store.
+- Dropped message IDs release bodies, Part summaries, cursors, content versions and their cache leases from the store.
 
 The window cursor (`nextCursor`) is recorded from each page response so older pages can be loaded later.
 
@@ -149,7 +149,7 @@ When the user requests older messages via "Load earlier", the frontend switches 
 - A subsequent `message.updated` event for a message not already in the window sets `pendingLatest: true` instead of inserting it. The metadata retains the exact unseen IDs in `pendingLatestIds`, so duplicate updates do not add state and a matching `message.removed` clears only that notice without decrementing the window total for a message it never counted. A prepend that cap-evicts messages filters any of their IDs out of `pendingLatestIds`: they are no longer unseen arrivals but are gone from the window, so the tail gap is tracked by `tailMissingLatest` instead.
 - `total` excludes those suppressed live arrivals while history mode remains active. Older-page totals are reduced by the count of remaining `pendingLatestIds` so suppressed live arrivals do not inflate the displayed total; returning to latest replaces the metadata with the server total and clears the pending IDs.
 
-History page responses are intentionally applied without snapshot-version ordering because they extend the existing window rather than replace it. Applying a history page invalidates the `message` resource revision so a concurrent latest-page response cannot subsequently overwrite the prepended window.
+History page responses are intentionally applied without snapshot-version ordering because they extend the existing window rather than replace it. Applying a history page invalidates the `message` resource revision so a concurrent latest-page response cannot subsequently overwrite the prepended window. Explicit older-page, location, return-to-latest and refresh actions are serialized per Session; identical pending actions share their result. They wait for an already active page read and then use the current window, so a click cannot silently join an unrelated latest refresh or disappear behind a loading guard. Recovery waits for accepted navigation before choosing the window to refresh. The history controls expose the queued navigation as loading, and disposed Scope owners cannot dispatch queued work.
 
 ### Return to latest
 
@@ -440,9 +440,9 @@ Composer snapshots, settled-draft notifications, selected-text snapshots, comple
 - The active session survives message-bucket eviction.
 - Composer fallback resolution never writes upward into user intent.
 - The frontend message window is a viewport, not the full transcript. `messages()` and `messagePage()` serve different consumers.
-- Latest mode keeps the newest messages and evicts oldest; history mode preserves the existing window and caps newest overflow.
-- `tailMissingLatest` marks a history window whose newest overflow was cap-evicted; history prepends, reconciles, and removals preserve it, latest page applies clear it, and bottom-return recovery re-fetches latest only in history mode when it is set or unseen arrivals are pending and no history load is in flight.
-- Only a loaded session message bucket — both `messages[sessionID]` and `messageWindow[sessionID]` present — forms an authoritative visible window. Incoming `message.updated` events for an unloaded or evicted session advance resource freshness and the `latestContextMessage` projection but must not create a message window from empty state. The window is established by `messagePage` when the user enters the session.
+- Latest mode keeps the newest messages and evicts oldest; history mode preserves the oldest loaded primary slice and caps newest overflow without discarding a turn's retained prefix. Part-row virtualization keeps partial turns readable without increasing the cap.
+- `tailMissingLatest` marks a history window whose newest overflow was cap-evicted; history prepends, reconciles, and removals preserve it, latest page applies clear it, and bottom-return recovery re-fetches latest only in history mode when it is set or unseen arrivals are pending and no history load is in flight. Explicit history loading, search and hash locations hold recovery until forward scrolling or an explicit return releases them; short target windows and provisional virtual-row heights cannot discard the location.
+- Only a loaded session message bucket — both `messages[sessionID]` and `messageWindow[sessionID]` present — forms an authoritative visible window. Incoming `message.updated` events for an unloaded or evicted session advance resource freshness and the `latestContextMessage` projection but must not create a message window from empty state. The window is established by `timelinePage` when the user enters the session.
 - `messageWindow` metadata and messages are evicted together by the message-bucket LRU.
 - Latest Context usage is sync-owned and independent of history viewport suppression; authoritative latest pages seed it and bucket eviction removes it.
 - The event queue relaxes to a 1 s cadence and merges streaming deltas per part
@@ -452,6 +452,7 @@ Composer snapshots, settled-draft notifications, selected-text snapshots, comple
 - The rendered turn tree is bounded: while pinned at the bottom in latest mode,
   `turnStart` advances so at most `MAX_RENDERED_TURNS` user turns are mounted; the trim re-pins the scroller after layout settles.
 - The initial session pin re-arms when history readiness flips, so a cancelled init chain reruns on the next ready edge; a forced pin opens a settle window during which resize growth re-pins, and growth outside follow reports the bottom distance instead of relying on scroll events.
+- Part-row presentation adds the root message explicitly to its reply projection, so root-only history and search windows retain their user body.
 - Each `SessionTurn` consumes a precomputed projection of its turn members
   instead of rescanning the message window, so a new message invalidates only the projection memo rather than every rendered turn.
 - `BrowserViewEffects` keeps its handled-callID set bounded to the timeline
@@ -485,3 +486,19 @@ Navigation clears a completion notice only after the owner reports ready. Concur
 File state is separate from Scope session and event state. File requests, event filters, cached documents, directory trees, explorer preferences, editor models and preview links are keyed by server, Scope, Workspace ID and binding generation. Session selection uses its canonical Workspace projection; a null or unavailable session binding never falls back to the Scope directory.
 
 File tabs retain their opening Workspace descriptor and encode its identity into the resource ID. An old generation remains explicit and can fail on the server after a rebind. Legacy tabs without an owner require reopening from the intended Workspace. File contexts snapshot the descriptor before asynchronous work, discard results after disposal, and retain at most sixteen inactive/current contexts plus contexts held by mounted file panels. Scope disposal aborts outstanding file work and releases editor models.
+
+## Demand-driven resources and content
+
+`scope.bootstrapCore` establishes navigation, minimal Agent summaries, current model selection, necessary preferences and connection state. Core statuses cover only the navigation page and preserve live status precedence over persisted pauses; complete status APIs retain their cross-Scope recovery scan. `Server-Timing` separates Core configuration, Agent, navigation, status, provider and Workspace reads. Full configuration, complete Agent definitions, commands and panel resources are lazy. Command lists contain summaries without templates; template getters run only during execution in the selected Workspace, so opening Home cannot execute filesystem, MCP or skill templates. Provider catalogs share their immutable base across Scopes; configured overlays compose independently, versioned pages are bounded and historical model IDs resolve in batches. A late page cannot enter a newer catalog.
+
+Worktree inventory does not compute dirty state or directory size. Worktree details and Git status have local loading boundaries; the transcript and Composer do not wait for them. Direct file children use file capability without allocating an Environment. Shared inventory and status requests cache for five seconds with their generation and original event stamp. A consumer abort releases only its subscription; the last consumer cancels the underlying task.
+
+Projection transport replaces inactive Part bodies with `message.part.summary`. Body interests identify Scope, Session, Message, Part and subscription generation; checkpoints establish epoch, sequence and content version before deltas. Version gaps, hidden-page return and reconnect renew interests. Projection replay retains each state sequence without sending inactive bodies. An obsolete unsequenced subscription response cannot replace a current summary. Checkpoint errors permit explicit retry.
+
+Conversation body rows contain one renderable Part, use Virtua overscan four and keep the existing scrolling element. History prepends preserve a visible row identity and pixel offset with one native scroll adjustment; lazy body replacement does not replay an earlier anchor. Recovery refreshes retained history headers through bounded pages anchored at the retained tail, preserves summary row identities while invalidating bodies and Part pages, and fetches latest Context independently. A combined snapshot keeps the first response watermarks so later pages cannot give older headers a newer version. Message and Part location obtain the target window before scrolling. Focus and non-collapsed selection keep mounted rows until released. Expansion and measured-layout caches live outside rows. Message/body cache leases share a 128 MiB byte budget across Scopes, evict inactive content first, and protect active consumers even when those consumers exceed the soft budget. Latest Context remains independent of the mounted transcript.
+
+Terminal Markdown parses and highlights in a lazy worker with cancellation and content-version fences. The 16 MiB Markdown cache contains source, HTML, document blocks and measured layout. Large Markdown documents mount visible blocks only; very large indivisible list items, cells and unsupported blocks render bounded escaped source. Active selections and focus defer replacement until interaction ends. Streaming Markdown retains its incremental renderer. Worker output passes through the existing sanitizer when mounted; trusted generated math markers preserve copying while authored markers are removed.
+
+Full-history search, copy and export read canonical effective history or its independently maintained text projection; they do not infer scope from mounted DOM or cached Parts. Search returns stable Message and Part identities. Default search includes visible user and assistant text; reasoning and tools are opt-in. Short queries scan bounded pages and continue through cursors, including empty result pages. Conversation copy and text download capture the selected Session before awaiting a shared canonical read; the server reads headers, rollback visibility and original Parts in one maintenance-reader snapshot. Portable transcript archives retain raw evidence for round-trip recovery.
+
+Browser telemetry admits one upload at a time, spaces navigation-triggered uploads by at least one second and respects server retry delays with bounded exponential backoff. Collector replacement fences pending upload completion by generation, preventing another Runtime from receiving queued metrics from the previous collector.

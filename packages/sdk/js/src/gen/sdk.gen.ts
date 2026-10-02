@@ -525,6 +525,10 @@ import type {
   ProjectTaskDefaultsUpdateResponses,
   ProjectUpdateDirectoriesErrors,
   ProjectUpdateDirectoriesResponses,
+  ProjectWorktreeDetailsErrors,
+  ProjectWorktreeDetailsResponses,
+  ProjectWorktreeInventoryErrors,
+  ProjectWorktreeInventoryResponses,
   ProjectWorktreesErrors,
   ProjectWorktreesResponses,
   ProviderAuthErrors,
@@ -537,6 +541,8 @@ import type {
   ProviderAuthGithubStatusErrors,
   ProviderAuthGithubStatusResponses,
   ProviderAuthResponses,
+  ProviderCatalogPageErrors,
+  ProviderCatalogPageResponses,
   ProviderConnectionCreateErrors,
   ProviderConnectionCreateInput,
   ProviderConnectionCreateResponses,
@@ -551,6 +557,8 @@ import type {
   ProviderDisconnectResponses,
   ProviderListErrors,
   ProviderListResponses,
+  ProviderModelsByIdErrors,
+  ProviderModelsByIdResponses,
   ProviderModelsRefreshErrors,
   ProviderModelsRefreshResponses,
   ProviderOauthAuthorizeErrors,
@@ -618,6 +626,8 @@ import type {
   SandboxReadinessResponses,
   SandboxStatusErrors,
   SandboxStatusResponses,
+  ScopeBootstrapCoreErrors,
+  ScopeBootstrapCoreResponses,
   ScopeBootstrapErrors,
   ScopeBootstrapResponses,
   ScopeCurrentErrors,
@@ -682,6 +692,10 @@ import type {
   SessionForkResponses,
   SessionGetErrors,
   SessionGetResponses,
+  SessionHistorySearchErrors,
+  SessionHistorySearchResponses,
+  SessionHistoryTextErrors,
+  SessionHistoryTextResponses,
   SessionImportErrors,
   SessionImportResponses,
   SessionInboxErrors,
@@ -706,6 +720,8 @@ import type {
   SessionInputStatusResponses,
   SessionListErrors,
   SessionListResponses,
+  SessionMessageDetailsErrors,
+  SessionMessageDetailsResponses,
   SessionMessageErrors,
   SessionMessagePageErrors,
   SessionMessagePageResponses,
@@ -713,6 +729,10 @@ import type {
   SessionMessagesErrors,
   SessionMessagesResponses,
   SessionModelSelectionInput,
+  SessionPartContentErrors,
+  SessionPartContentResponses,
+  SessionPartPageErrors,
+  SessionPartPageResponses,
   SessionPromptAsyncErrors,
   SessionPromptAsyncResponses,
   SessionPromptErrors,
@@ -741,6 +761,8 @@ import type {
   SessionTagQuery,
   SessionTags,
   SessionThinkingSelection,
+  SessionTimelinePageErrors,
+  SessionTimelinePageResponses,
   SessionTodoErrors,
   SessionTodoResponses,
   SessionUnrollbackErrors,
@@ -3533,7 +3555,7 @@ export class Session extends HeyApiClient {
   /**
    * Submit session input
    *
-   * Persist input before scheduling it. Input on a paused session with an existing task steers that task before its next model call and resumes it; other ordinary input queues a new task. Idle no-reply input starts directly.
+   * Persist input before scheduling it. Input on a paused session with an existing task steers that task before its next model call and resumes it; other ordinary input queues a new task. Idle no-reply input queues durable passive materialization without model execution.
    */
   public input<ThrowOnError extends boolean = false>(
     parameters: {
@@ -3850,6 +3872,242 @@ export class Session extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Get an ordered page of message presentation summaries
+   */
+  public timelinePage<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      cursor?: string
+      limit?: number
+      messageID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "messageID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionTimelinePageResponses, SessionTimelinePageErrors, ThrowOnError>({
+      url: "/session/{sessionID}/timeline/page",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Search original content across the effective Session history
+   */
+  public historySearch<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      query: string
+      reasoning?: boolean
+      tools?: boolean
+      cursor?: string
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "query" },
+            { in: "query", key: "reasoning" },
+            { in: "query", key: "tools" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionHistorySearchResponses,
+      SessionHistorySearchErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/history/search",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read original text from the effective Session history
+   */
+  public historyText<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      messageID?: string
+      rootID?: string
+      role?: "user" | "assistant"
+      latest?: boolean
+      reasoning?: boolean
+      tools?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "messageID" },
+            { in: "query", key: "rootID" },
+            { in: "query", key: "role" },
+            { in: "query", key: "latest" },
+            { in: "query", key: "reasoning" },
+            { in: "query", key: "tools" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionHistoryTextResponses, SessionHistoryTextErrors, ThrowOnError>({
+      url: "/session/{sessionID}/history/text",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Resolve original message metadata by version
+   */
+  public messageDetails<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID: string
+      directory?: string
+      scopeID?: string
+      version?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "version" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionMessageDetailsResponses,
+      SessionMessageDetailsErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/message/{messageID}/details",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get presentation summaries for a message's Parts
+   */
+  public partPage<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID: string
+      directory?: string
+      scopeID?: string
+      cursor?: string
+      limit?: number
+      partID?: string
+      older?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "partID" },
+            { in: "query", key: "older" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionPartPageResponses, SessionPartPageErrors, ThrowOnError>({
+      url: "/session/{sessionID}/message/{messageID}/part/page",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Resolve the original content of a versioned Part
+   */
+  public partContent<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID: string
+      partID: string
+      directory?: string
+      scopeID?: string
+      version?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+            { in: "path", key: "partID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "version" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionPartContentResponses, SessionPartContentErrors, ThrowOnError>({
+      url: "/session/{sessionID}/message/{messageID}/part/{partID}/content",
+      ...options,
+      ...params,
     })
   }
 
@@ -4920,6 +5178,61 @@ export class Project extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * List Worktree identities without computing status or disk usage
+   */
+  public worktreeInventory<ThrowOnError extends boolean = false>(
+    parameters: {
+      scopeID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "scopeID" }] }])
+    return (options?.client ?? this.client).get<
+      ProjectWorktreeInventoryResponses,
+      ProjectWorktreeInventoryErrors,
+      ThrowOnError
+    >({
+      url: "/global/project/{scopeID}/worktree-inventory",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Compute status, disk usage and cleanup protection for one Worktree
+   */
+  public worktreeDetails<ThrowOnError extends boolean = false>(
+    parameters: {
+      scopeID: string
+      target: string
+      sourceWorkspaceID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "scopeID" },
+            { in: "query", key: "target" },
+            { in: "query", key: "sourceWorkspaceID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ProjectWorktreeDetailsResponses,
+      ProjectWorktreeDetailsErrors,
+      ThrowOnError
+    >({
+      url: "/global/project/{scopeID}/worktree-details",
+      ...options,
+      ...params,
     })
   }
 
@@ -7169,6 +7482,34 @@ export class Scope extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Get the essential Scope navigation and composer snapshot
+   */
+  public bootstrapCore<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ScopeBootstrapCoreResponses, ScopeBootstrapCoreErrors, ThrowOnError>({
+      url: "/scope/bootstrap-core",
+      ...options,
+      ...params,
     })
   }
 
@@ -9817,6 +10158,82 @@ export class Oauth extends HeyApiClient {
 }
 
 export class Provider extends HeyApiClient {
+  /**
+   * Read a versioned bounded model directory page
+   */
+  public catalogPage<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scopeID?: string
+      cursor?: string
+      limit?: number
+      query?: string
+      providerID?: string
+      connectedOnly: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "query" },
+            { in: "query", key: "providerID" },
+            { in: "query", key: "connectedOnly" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ProviderCatalogPageResponses, ProviderCatalogPageErrors, ThrowOnError>({
+      url: "/provider/catalog-page",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Resolve model metadata for selected or historical model identities
+   */
+  public modelsById<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      models?: Array<{
+        providerID: string
+        modelID: string
+      }>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "models" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<ProviderModelsByIdResponses, ProviderModelsByIdErrors, ThrowOnError>({
+      url: "/provider/models-by-id",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   /**
    * List providers
    *
@@ -14838,6 +15255,7 @@ export class Event extends HeyApiClient {
       scopeID?: string
       since: number
       epoch?: string
+      mode?: "full" | "projection"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -14850,6 +15268,7 @@ export class Event extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "since" },
             { in: "query", key: "epoch" },
+            { in: "query", key: "mode" },
           ],
         },
       ],

@@ -13,6 +13,7 @@ import { listProvidersForClient, ProviderListResponse } from "./provider-view"
 import { ProviderCatalog } from "@ericsanchezok/synergy-harness/provider/catalog"
 import { ProviderConnection } from "@ericsanchezok/synergy-harness/provider/connection"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
+import { ProviderDirectory } from "./provider-directory"
 
 const log = Log.create({ service: "provider" })
 
@@ -47,6 +48,63 @@ function providerConnectionError(error: unknown) {
 
 export function createProviderRoute(contributions: Hono = new Hono()) {
   return new Hono()
+    .get(
+      "/catalog-page",
+      describeRoute({
+        summary: "Read a versioned bounded model directory page",
+        operationId: "provider.catalogPage",
+        responses: {
+          200: {
+            description: "Model directory page",
+            content: { "application/json": { schema: resolver(ProviderDirectory.Page) } },
+          },
+          ...errors(400, 409),
+        },
+      }),
+      validator(
+        "query",
+        z.object({
+          cursor: z.string().optional(),
+          limit: z.coerce.number().int().min(1).max(100).optional(),
+          query: z.string().max(256).optional(),
+          providerID: z.string().optional(),
+          connectedOnly: z.preprocess(
+            (value) => (value === "true" ? true : value === "false" ? false : value),
+            z.boolean().optional(),
+          ),
+        }),
+      ),
+      async (c) => {
+        try {
+          return c.json(await ProviderDirectory.page(c.req.valid("query")))
+        } catch (error) {
+          if (error instanceof ProviderDirectory.Conflict) return c.json(error.toObject(), 409)
+          throw error
+        }
+      },
+    )
+    .post(
+      "/models-by-id",
+      describeRoute({
+        summary: "Resolve model metadata for selected or historical model identities",
+        operationId: "provider.modelsByID",
+        responses: {
+          200: {
+            description: "Resolved model metadata",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  ProviderDirectory.Page.omit({ nextCursor: true, total: true }).meta({ ref: "ProviderModelLookup" }),
+                ),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      validator("json", z.object({ models: ProviderDirectory.ModelKey.array().max(100) })),
+      async (c) => c.json(await ProviderDirectory.byID(c.req.valid("json").models)),
+    )
     .get(
       "/",
       describeRoute({

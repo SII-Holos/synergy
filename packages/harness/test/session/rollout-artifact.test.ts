@@ -17,6 +17,23 @@ async function collect(input: AsyncIterable<Uint8Array>) {
 }
 
 describe("rollout artifacts", () => {
+  test("checkpoint publishes bytes, artifact metadata and caller evidence in one transaction", () =>
+    runtime.run(async () => {
+      const target = owner()
+      const writer = await RolloutArtifact.open(target, "text/plain")
+      await writer.append(new TextEncoder().encode("atomic checkpoint"))
+      const ref = await writer.checkpoint(async (next, publish) => {
+        await Storage.transaction(async () => {
+          await publish()
+          await Storage.write([...RolloutArtifact.root(target), "fixture-checkpoint"], next)
+        })
+      })
+      expect(await RolloutArtifact.get(target, ref.id)).toEqual(ref)
+      expect(await Storage.read<RolloutArtifact.Ref>([...RolloutArtifact.root(target), "fixture-checkpoint"])).toEqual(
+        ref,
+      )
+      expect(await collect(RolloutArtifact.read(target, ref))).toEqual(Buffer.from("atomic checkpoint"))
+    }))
   test("reads the captured prefix even when a live writer later completes", () =>
     runtime.run(async () => {
       const target = owner()
@@ -101,7 +118,7 @@ describe("rollout artifacts", () => {
       async function* source() {
         while (++produced <= 3) yield new Uint8Array(RolloutArtifact.CHUNK_BYTES)
       }
-      using write = spyOn(Storage, "writeBinary").mockRejectedValue(
+      using write = spyOn(Storage, "prepareBinary").mockRejectedValue(
         Object.assign(new Error("disk full"), { code: "ENOSPC" }),
       )
       await expect(RolloutArtifact.write(target, source(), "application/octet-stream")).rejects.toBeInstanceOf(

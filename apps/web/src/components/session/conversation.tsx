@@ -1,6 +1,7 @@
 import type { PluginComponentProps, PluginConversationService } from "@ericsanchezok/synergy-plugin"
 import { Dynamic } from "solid-js/web"
-import { For, Show, createMemo, onMount } from "solid-js"
+import { For, Show, createMemo, createSignal, onMount } from "solid-js"
+import { VirtualConversationRows } from "./virtual-conversation-rows"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { SessionTurn } from "@ericsanchezok/synergy-ui/session-turn"
 import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
@@ -21,6 +22,7 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
   const workspaceOpen = createMemo(() => props.workspaceOpen?.() ?? false)
   const lastTimelineID = createMemo(() => props.timeline()?.at(-1)?.id)
   const turnProjection = props.turnProjection
+  const [scrollRef, setScrollRef] = createSignal<HTMLDivElement>()
   // Rows below are keyed by the stable message id (see conversation-timeline):
   // message objects are replaced in place by window reload, reconnect replay,
   // rollback copies, and message.updated reconcile. Reference-keyed rows would
@@ -33,7 +35,10 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
       scrolledUp={props.scrolledUp()}
       onScrolledUpChange={props.onScrolledUpChange}
       autoScroll={props.autoScroll}
-      setScrollRef={props.setScrollRef}
+      setScrollRef={(element, releaseOf) => {
+        if (element || !releaseOf || scrollRef() === releaseOf) setScrollRef(element)
+        props.setScrollRef(element, releaseOf)
+      }}
       onScrollToBottom={props.onClearHash}
       onScrollContainer={(el) => {
         if (props.isDesktop()) props.onScheduleScrollSpy(el)
@@ -95,87 +100,104 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
           </Show>
         </div>
       </Show>
-      <For each={timelineSnapshot().keys}>
-        {(key) => {
-          onMount(() => {
-            props.onFirstTurnMounted()
-          })
+      <Show
+        when={props.content}
+        fallback={
+          <For each={timelineSnapshot().keys}>
+            {(key) => {
+              onMount(() => {
+                props.onFirstTurnMounted()
+              })
 
-          // Reading the current snapshot through getters keeps the row mounted
-          // across object replacement while updated message data flows through.
-          const message = () => timelineSnapshot().map.get(key)
-          const rootMessage = () => message() as UserMessage
-          const isLast = () => key === lastTimelineID()
-          const turnMessages = () => {
-            const root = rootMessage()
-            return root ? turnProjection().turnMessagesFor(root) : []
-          }
-          if (!message()) return null
+              // Reading the current snapshot through getters keeps the row mounted
+              // across object replacement while updated message data flows through.
+              const message = () => timelineSnapshot().map.get(key)
+              const rootMessage = () => message() as UserMessage
+              const isLast = () => key === lastTimelineID()
+              const turnMessages = () => {
+                const root = rootMessage()
+                return root ? turnProjection().turnMessagesFor(root) : []
+              }
+              if (!message()) return null
 
-          if (message()?.role === "assistant") {
-            const assistantMessage = () => message() as AssistantMessage
-            const source = () => assistantMessage().metadata?.source as string | undefined
-            const isCommand = () => source() === "command"
+              if (message()?.role === "assistant") {
+                const assistantMessage = () => message() as AssistantMessage
+                const source = () => assistantMessage().metadata?.source as string | undefined
+                const isCommand = () => source() === "command"
 
-            return (
-              <div
-                id={props.anchor(key)}
-                data-message-id={key}
-                data-message-role="assistant"
-                class="min-w-0 w-full max-w-full"
-                style={isLast() ? { animation: "fadeUp 0.3s ease-out both" } : undefined}
-              >
-                <MessageSlotOutlet slot="message.before" sessionId={props.sessionID} messageId={key} role="assistant" />
-                <Dynamic
-                  component={isCommand() ? CommandResultOutput : MailboxMessage}
-                  message={assistantMessage()}
-                  classes={{
-                    root: "min-w-0 w-full relative",
-                    container: "w-full min-w-0 max-w-full pb-1",
-                  }}
-                />
-                <MessageSlotOutlet
-                  slot="message.actions"
-                  sessionId={props.sessionID}
-                  messageId={key}
-                  role="assistant"
-                />
-                <MessageSlotOutlet slot="message.after" sessionId={props.sessionID} messageId={key} role="assistant" />
-              </div>
-            )
-          }
+                return (
+                  <div
+                    id={props.anchor(key)}
+                    data-message-id={key}
+                    data-message-role="assistant"
+                    class="min-w-0 w-full max-w-full"
+                    style={isLast() ? { animation: "fadeUp 0.3s ease-out both" } : undefined}
+                  >
+                    <MessageSlotOutlet
+                      slot="message.before"
+                      sessionId={props.sessionID}
+                      messageId={key}
+                      role="assistant"
+                    />
+                    <Dynamic
+                      component={isCommand() ? CommandResultOutput : MailboxMessage}
+                      message={assistantMessage()}
+                      classes={{
+                        root: "min-w-0 w-full relative",
+                        container: "w-full min-w-0 max-w-full pb-1",
+                      }}
+                    />
+                    <MessageSlotOutlet
+                      slot="message.actions"
+                      sessionId={props.sessionID}
+                      messageId={key}
+                      role="assistant"
+                    />
+                    <MessageSlotOutlet
+                      slot="message.after"
+                      sessionId={props.sessionID}
+                      messageId={key}
+                      role="assistant"
+                    />
+                  </div>
+                )
+              }
 
-          return (
-            <div
-              id={props.anchor(key)}
-              data-message-id={key}
-              data-message-role="user"
-              class="min-w-0 w-full max-w-full"
-              style={isLast() ? { animation: "fadeUp 0.3s ease-out both" } : undefined}
-            >
-              <SessionTurn
-                sessionID={props.sessionID}
-                messageID={key}
-                rootMessage={rootMessage()}
-                messages={turnMessages()}
-                compactionParentIDs={turnProjection().compactionParentIDs}
-                activityDisplay={props.activityDisplay()}
-                lastUserMessageID={props.lastUserMessage()?.id}
-                compactReasoning={props.compactReasoning()}
-                onRewind={props.canRewind(rootMessage()) ? () => props.onRewind?.(rootMessage()) : undefined}
-                rollbackActive={props.rollbackActive}
-                onReviewChanges={props.onReviewChanges}
-                onForkMessage={props.onForkMessage}
-                classes={{
-                  root: "min-w-0 w-full relative",
-                  content: "flex flex-col justify-between !overflow-visible",
-                  container: "w-full min-w-0 max-w-full pb-1",
-                }}
-              />
-            </div>
-          )
-        }}
-      </For>
+              return (
+                <div
+                  id={props.anchor(key)}
+                  data-message-id={key}
+                  data-message-role="user"
+                  class="min-w-0 w-full max-w-full"
+                  style={isLast() ? { animation: "fadeUp 0.3s ease-out both" } : undefined}
+                >
+                  <SessionTurn
+                    sessionID={props.sessionID}
+                    messageID={key}
+                    rootMessage={rootMessage()}
+                    messages={turnMessages()}
+                    compactionParentIDs={turnProjection().compactionParentIDs}
+                    activityDisplay={props.activityDisplay()}
+                    lastUserMessageID={props.lastUserMessage()?.id}
+                    compactReasoning={props.compactReasoning()}
+                    onRewind={props.canRewind(rootMessage()) ? () => props.onRewind?.(rootMessage()) : undefined}
+                    rollbackActive={props.rollbackActive}
+                    onReviewChanges={props.onReviewChanges}
+                    onForkMessage={props.onForkMessage}
+                    classes={{
+                      root: "min-w-0 w-full relative",
+                      content: "flex flex-col justify-between !overflow-visible",
+                      container: "w-full min-w-0 max-w-full pb-1",
+                    }}
+                  />
+                </div>
+              )
+            }}
+          </For>
+        }
+      >
+        <VirtualConversationRows context={props} scrollRef={scrollRef()} />
+      </Show>
       {props.transition?.()}
       <Show when={props.pendingTimeline?.()?.length}>
         <div class="w-full flex flex-col items-start gap-2">

@@ -76,6 +76,7 @@ import { SessionSchemaRegistry } from "./schema-registry"
 import { SessionMutation } from "./mutation"
 import { SessionWorkspaceRuntime } from "./workspace-runtime"
 import { SessionSearchIndex } from "./search-index"
+import { SessionHistoryDisplay } from "./history-display"
 
 export namespace Session {
   export const ModelSelectionInput = ModelSelection.Input
@@ -477,7 +478,7 @@ export namespace Session {
     session = await SessionRecords.hydrate(session)
     const storedRollback = session.history?.rollback
     const [working, history] = await Promise.all([
-      SessionWorking.resolve(session.id),
+      SessionWorking.resolve(session.id, session),
       storedRollback?.canUnrollback === true
         ? SessionHistory.storedInfo(session.id).catch(() => session.history)
         : session.history,
@@ -658,6 +659,7 @@ export namespace Session {
         SessionRecords.serialize(result),
       )
       await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
+      await SessionHistoryDisplay.initialize(scope.id, result.id)
       await writeEndpointIndex(result)
       await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
       if (result.parentID) await upsertChildIndexEntry(scope.id, result.parentID, toChildIndexEntry(result))
@@ -1781,6 +1783,7 @@ export namespace Session {
             asPartID(input.partID),
           ),
         )
+        await SessionHistoryDisplay.partRemoved(scopeID, input.sessionID, input.messageID, input.partID)
         SessionMessageCache.invalidate(input.sessionID)
         Bus.publish(MessageV2.Event.PartRemoved, {
           sessionID: input.sessionID,
@@ -1819,6 +1822,7 @@ export namespace Session {
         Storage.transaction(async (tx) => {
           await assertPartOwner(tx, key)
           await tx.write(key, value)
+          await SessionHistoryDisplay.partWritten(key[1], value)
         }),
       ),
     )
@@ -1920,6 +1924,7 @@ export namespace Session {
         Storage.transaction(async (tx) => {
           await assertPartOwner(tx, key)
           await Storage.write(key, value)
+          await SessionHistoryDisplay.partWritten(scopeID, value)
           if (value.type === "text" || value.type === "tool" || value.type === "attachment")
             await SessionSearchIndex.markDirty(scopeID, asSessionID(value.sessionID))
           SessionMessageCache.upsertPart(value.sessionID, value)

@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/solid"
-import { createMemo, Show, type Component } from "solid-js"
+import { createMemo, onMount, Show, type Component } from "solid-js"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { Tag } from "@ericsanchezok/synergy-ui/tag"
@@ -67,6 +67,10 @@ export const QuickSwitcherList: Component<{
 }> = (props) => {
   const local = useLocal()
   const globalSync = useGlobalSync()
+  const providers = useProviders()
+  onMount(() => {
+    void providers.ensureCatalog().catch(() => {})
+  })
 
   const models = createMemo<QuickSwitcherEntry[]>(() =>
     listQuickSwitcherEntries(local.model.quickSwitcher(), local.model.recent(), props.provider),
@@ -151,6 +155,9 @@ export const ConnectedModelManager: Component<{
 }> = (props) => {
   const globalSync = useGlobalSync()
   const providers = useProviders()
+  onMount(() => {
+    void providers.ensureCatalog().catch(() => {})
+  })
 
   const models = createMemo(() =>
     listSelectableConnectedModels(

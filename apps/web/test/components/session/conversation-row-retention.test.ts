@@ -50,7 +50,7 @@ beforeAll(async () => {
   await Promise.all([
     Bun.write(
       path.join(fixtureDirectory, "index.html"),
-      '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+      '<style>html,body,#root{height:700px;margin:0}.h-full{height:100%}.overflow-y-auto{overflow-y:auto}[data-slot="session-turn-stub"]{min-height:80px}</style><div id="root"></div><script type="module" src="/main.tsx"></script>',
     ),
     Bun.write(
       stubPath,
@@ -64,7 +64,7 @@ beforeAll(async () => {
           const [mounted] = createSignal(++mountCount)
           const root = createMemo(() => props.rootMessage)
           return (
-            <div data-slot="session-turn-stub" data-message-id={props.messageID} data-mount={mounted()}>
+            <div data-slot="session-turn-stub" data-message-id={props.messageID} data-mount={mounted()} data-part-count={props.segment?.parts.length}>
               {root()?.text ?? ""}
             </div>
           )
@@ -102,6 +102,12 @@ beforeAll(async () => {
 
         function App() {
           const [timeline, setTimeline] = createSignal<AnyMsg[]>([])
+          const [contentEnabled, setContentEnabled] = createSignal(false)
+          let scrolledUp = false
+          ;(window as any).__readingHistory = () => { scrolledUp = true }
+          ;(window as any).__enableContent = () => setContentEnabled(true)
+          let locate: ((id: string, behavior: ScrollBehavior, partID?: string) => Promise<boolean>) | undefined
+          ;(window as any).__locate = (id: string, partID?: string) => locate?.(id, "auto", partID)
           ;(window as any).__setTimeline = (msgs: AnyMsg[]) => setTimeline(msgs)
           const autoScroll = {
             contentRef: () => {},
@@ -115,6 +121,11 @@ beforeAll(async () => {
             compactionParentIDs: () => [],
           })
           return createComponent(SessionConversation, { context: {
+            get content() { return contentEnabled() ? {
+              summaries: id => Array.from({length: id === "huge" ? 1001 : 1}, (_, index) => ({id: "part-"+String(index).padStart(4,"0"),messageID:id,sessionID:"ses_1",type:"text",preview:"",content:{version:"one",bytes:10}})),
+              page: () => ({hasMore:false}),load: async () => {},retain: () => ({ready:Promise.resolve(),release() {}}),
+            } : undefined },
+            registerMessageLocator: fn => { locate=fn; return () => { if(locate===fn) locate=undefined } },
             onFirstTurnMounted() {},
             canRewind: () => true,
             get sessionID() { return "ses_1" },
@@ -138,7 +149,7 @@ beforeAll(async () => {
             get historyPendingLatest() { return () => false },
             get onReturnLatest() { return () => {} },
             get onLoadMore() { return () => {} },
-            get scrolledUp() { return () => false },
+            get scrolledUp() { return () => scrolledUp },
             get onScrolledUpChange() { return () => {} },
             get autoScroll() { return autoScroll },
             get onClearHash() { return () => {} },
@@ -248,5 +259,70 @@ describe("conversation row retention", () => {
     )
     await expect(rows.count()).resolves.toBe(1)
     expect(await page.locator('[data-message-id="msg_a"]').count()).toBe(0)
+  })
+  test("a huge message mounts only bounded Part rows and locates an unmounted message", async () => {
+    await page.evaluate(() => {
+      const fixture = window as unknown as { __setTimeline: (messages: unknown[]) => void; __enableContent: () => void }
+      fixture.__setTimeline([
+        { id: "huge", sessionID: "ses_1", role: "user", text: "huge", time: { created: 1 } },
+        { id: "target", sessionID: "ses_1", role: "user", text: "target", time: { created: 2 } },
+      ])
+      fixture.__enableContent()
+    })
+    await page.waitForSelector("[data-display-row]")
+    expect(await page.locator("[data-display-row]").count()).toBeLessThan(30)
+    expect(
+      await page
+        .locator('[data-slot="session-turn-stub"]')
+        .evaluateAll((elements) =>
+          Math.max(...elements.map((element) => Number(element.getAttribute("data-part-count")))),
+        ),
+    ).toBeLessThanOrEqual(6)
+    expect(await page.locator('[data-display-row^="target:"]').count()).toBe(0)
+    expect(
+      await page.evaluate(() =>
+        (window as unknown as { __locate: (id: string) => Promise<boolean> }).__locate("target"),
+      ),
+    ).toBe(true)
+    await page.waitForSelector('[data-display-row^="target:"]')
+    expect(pageErrors).toEqual([])
+  })
+  test("a Part search target identifies the rendered row after loading its window", async () => {
+    expect(
+      await page.evaluate(() =>
+        (window as unknown as { __locate: (id: string, partID: string) => Promise<boolean> }).__locate(
+          "huge",
+          "part-0800",
+        ),
+      ),
+    ).toBe(true)
+    expect(await page.locator('[data-message-id="huge"][data-part-id="part-0800"]').count()).toBe(1)
+    expect(
+      await page.evaluate(() =>
+        (window as unknown as { __locate: (id: string, partID: string) => Promise<boolean> }).__locate(
+          "target",
+          "part-0000",
+        ),
+      ),
+    ).toBe(true)
+    expect(await page.locator('[data-message-id="target"][data-part-id="part-0000"]').count()).toBe(1)
+  })
+
+  test("prepending history preserves the visible content and its viewport offset", async () => {
+    const before = await page.locator('[data-display-row="target:part-0000"]').boundingBox()
+    await page.evaluate(() => {
+      const fixture = window as unknown as { __readingHistory(): void; __setTimeline(messages: unknown[]): void }
+      fixture.__readingHistory()
+      fixture.__setTimeline([
+        { id: "earlier", sessionID: "ses_1", role: "user", text: "earlier", time: { created: 0 } },
+        { id: "huge", sessionID: "ses_1", role: "user", text: "huge", time: { created: 1 } },
+        { id: "target", sessionID: "ses_1", role: "user", text: "target", time: { created: 2 } },
+      ])
+    })
+    await page.waitForTimeout(150)
+    const after = await page.locator('[data-display-row="target:part-0000"]').boundingBox()
+    expect(after).not.toBeNull()
+    expect(Math.abs(after!.y - before!.y)).toBeLessThan(3)
+    expect(pageErrors).toEqual([])
   })
 })

@@ -75,6 +75,21 @@ export namespace Worktree {
     .meta({ ref: "Worktree" })
   export type Info = z.infer<typeof Info>
 
+  export const InventoryEntry = Info.omit({ dirty: true, diskBytes: true }).meta({ ref: "WorktreeInventoryEntry" })
+  export type InventoryEntry = z.infer<typeof InventoryEntry>
+  export const Details = z
+    .object({
+      id: z.string(),
+      state: z.enum(["ready", "unavailable"]),
+      computedAt: z.number(),
+      dirty: z.boolean().optional(),
+      diskBytes: z.number().optional(),
+      cleanupEligible: z.boolean(),
+      cleanupReason: z.string().optional(),
+    })
+    .meta({ ref: "WorktreeDetails" })
+  export type Details = z.infer<typeof Details>
+
   export const RegistryInfo = Info.extend({
     branch: z.string(),
     owner: Owner,
@@ -711,7 +726,7 @@ export namespace Worktree {
     return total
   }
 
-  async function inventory() {
+  async function collectInventory() {
     const { scope, repoRoot } = ensureGitScope()
     const [gitEntries, registry] = await Promise.all([gitList(repoRoot), readRegistry(repoRoot)])
     const seen = new Set<string>()
@@ -730,7 +745,7 @@ export namespace Worktree {
   }
 
   export async function list(): Promise<Info[]> {
-    const { items, repoRoot } = await inventory()
+    const { items, repoRoot } = await collectInventory()
     return mapConcurrent(items, 4, async (item) => {
       const [dirty, diskBytes] = await Promise.all([
         item.stale ? undefined : isDirty(item.path).catch(() => undefined),
@@ -740,6 +755,34 @@ export namespace Worktree {
         ...item,
         dirty,
         diskBytes,
+      }
+    })
+  }
+
+  export async function inventory(): Promise<InventoryEntry[]> {
+    return (await collectInventory()).items.map((item) => InventoryEntry.parse(item))
+  }
+
+  export async function details(input: { target: string }): Promise<Details> {
+    return withTarget(input.target, async () => {
+      const { repoRoot } = ensureGitScope()
+      const item = await resolveBound(input.target)
+      const [dirty, diskBytes, running] = await Promise.all([
+        item.stale ? undefined : isDirty(item.path).catch(() => undefined),
+        item.stale || !item.managed ? undefined : directorySize(item, repoRoot).catch(() => undefined),
+        Promise.all((item.bindings ?? []).map((id) => isSessionRunning(id))).then((states) => states.some(Boolean)),
+      ])
+      const localOnlyCommits =
+        dirty === false ? await localOnlyCommitCount(item.path).catch(() => undefined) : undefined
+      const decision = decide(item, { lock: lockOwner(item.locked), dirty, running, localOnlyCommits })
+      return {
+        id: item.id,
+        state: dirty === undefined || (item.managed && diskBytes === undefined) ? "unavailable" : "ready",
+        computedAt: Date.now(),
+        dirty,
+        diskBytes,
+        cleanupEligible: decision.eligible,
+        cleanupReason: decision.eligible ? undefined : decision.reason,
       }
     })
   }
@@ -1086,7 +1129,7 @@ export namespace Worktree {
   }
 
   async function resolveBound(target: string) {
-    const { items } = await inventory()
+    const { items } = await collectInventory()
     const found = items.find((item) => match(item, target))
     if (!found) throw new NotFoundError({ message: `Worktree not found: ${target}` })
     return found
@@ -1732,7 +1775,7 @@ export namespace Worktree {
   export async function sweep(options?: { maxManaged?: number }): Promise<SweepReport> {
     const { repoRoot } = ensureGitScope()
     const maxManaged = options?.maxManaged ?? DEFAULT_MAX_MANAGED
-    const { items } = await inventory()
+    const { items } = await collectInventory()
     const report: SweepReport = {
       scanned: items.length,
       maxManaged,

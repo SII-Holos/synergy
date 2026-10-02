@@ -128,27 +128,37 @@ export namespace WorkspaceCatalog {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     })
+    const registered = await Storage.snapshot(() => findRegistration(candidate))
+    if (registered) return registered
     return Storage.transaction(async () => {
-      const ids = await Storage.readMany<string>(locations(candidate))
-      const matches = [...new Set(ids.filter((id): id is string => !!id))]
-      if (matches.length > 1)
-        throw new Unavailable({ message: "Workspace location has conflicting registrations", workspaceID: matches[0] })
-      if (matches[0]) {
-        const existing = await get(matches[0], input.scopeID)
-        if (existing.lifecycle !== "active")
-          throw new Unavailable({ message: "Workspace is being removed", workspaceID: existing.id })
-        if (existing.binding.physicalID && input.physicalID && existing.binding.physicalID !== input.physicalID)
-          throw new Unavailable({
-            message: "The directory was replaced; explicitly rebind this Workspace",
-            workspaceID: existing.id,
-          })
-        return existing
-      }
+      const existing = await findRegistration(candidate)
+      if (existing) return existing
       await Storage.write(recordKey(candidate.id), candidate)
       await Storage.write(scopeKey(candidate.scopeID, candidate.id), candidate.id)
       for (const key of locations(candidate)) await Storage.write(key, candidate.id)
       return candidate
     })
+  }
+
+  async function findRegistration(candidate: Info): Promise<Info | undefined> {
+    const ids = await Storage.readMany<string>(locations(candidate))
+    const matches = [...new Set(ids.filter((id): id is string => !!id))]
+    if (matches.length > 1)
+      throw new Unavailable({ message: "Workspace location has conflicting registrations", workspaceID: matches[0] })
+    if (!matches[0]) return
+    const existing = await get(matches[0], candidate.scopeID)
+    if (existing.lifecycle !== "active")
+      throw new Unavailable({ message: "Workspace is being removed", workspaceID: existing.id })
+    if (
+      existing.binding.physicalID &&
+      candidate.binding.physicalID &&
+      existing.binding.physicalID !== candidate.binding.physicalID
+    )
+      throw new Unavailable({
+        message: "The directory was replaced; explicitly rebind this Workspace",
+        workspaceID: existing.id,
+      })
+    return existing
   }
 
   export async function create(input: {

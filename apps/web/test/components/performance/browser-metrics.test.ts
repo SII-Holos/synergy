@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import {
@@ -16,6 +16,74 @@ import {
   shouldRetryBrowserMetricBatch,
   stopBrowserPerformanceMetrics,
 } from "../../../src/components/performance/browser-metrics"
+
+describe("browser metric transport admission", () => {
+  test("rapid navigation shares one pending metric upload", async () => {
+    stopBrowserPerformanceMetrics()
+    const pending = Promise.withResolvers<void>()
+    let calls = 0
+    try {
+      startBrowserPerformanceMetrics({
+        url: "http://localhost/",
+        client: {
+          performance: {
+            browserMetrics: {
+              ingest: () => {
+                calls++
+                return pending.promise
+              },
+            },
+          },
+        } as never,
+      })
+      for (let i = 0; i < 3; i++) {
+        recordTokenReceive({ id: `part_${i}`, messageID: "msg_transport" }, { delta: "text" })
+        window.dispatchEvent(new Event("popstate"))
+      }
+      await Bun.sleep(1)
+      expect(calls).toBe(1)
+    } finally {
+      pending.resolve()
+      await pending.promise
+      stopBrowserPerformanceMetrics()
+    }
+  })
+
+  test("rate limited telemetry waits for the server retry budget while preserving queued metrics", async () => {
+    stopBrowserPerformanceMetrics()
+    let now = 10_000
+    let calls = 0
+    using clock = spyOn(Date, "now").mockImplementation(() => now)
+    try {
+      startBrowserPerformanceMetrics({
+        url: "http://localhost/",
+        client: {
+          performance: {
+            browserMetrics: {
+              ingest: async () => {
+                calls++
+                if (calls === 1) throw { code: "PERF_RATE_LIMITED", retryAfterMs: 4000 }
+              },
+            },
+          },
+        } as never,
+      })
+      recordTokenReceive({ id: "part_retry", messageID: "msg_transport" }, { delta: "text" })
+      window.dispatchEvent(new Event("popstate"))
+      await Bun.sleep(1)
+      now = 11_000
+      window.dispatchEvent(new Event("popstate"))
+      await Bun.sleep(1)
+      expect(calls).toBe(1)
+      now = 14_001
+      window.dispatchEvent(new Event("popstate"))
+      await Bun.sleep(1)
+      expect(calls).toBe(2)
+    } finally {
+      stopBrowserPerformanceMetrics()
+    }
+  })
+})
 
 describe("browser performance effective enablement", () => {
   test("defaults to enabled when no observability config is present", () => {

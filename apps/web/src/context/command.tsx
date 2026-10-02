@@ -207,16 +207,17 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
       }
     }
 
+    const handlePaletteKeyDown = (event: KeyboardEvent) => {
+      if (suspended() || event.defaultPrevented || event.isComposing) return
+      const paletteKeybinds = parseKeybind("mod+shift+p")
+      if (!matchKeybind(paletteKeybinds, event)) return
+      event.preventDefault()
+      event.stopPropagation()
+      showPalette()
+    }
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (suspended() || event.defaultPrevented || event.isComposing) return
-
-      const paletteKeybinds = parseKeybind("mod+shift+p")
-      if (matchKeybind(paletteKeybinds, event)) {
-        event.preventDefault()
-        showPalette()
-        return
-      }
-
       for (const option of options()) {
         if (option.disabled) continue
         if (!option.keybind) continue
@@ -231,10 +232,12 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
     }
 
     onMount(() => {
+      document.addEventListener("keydown", handlePaletteKeyDown, true)
       document.addEventListener("keydown", handleKeyDown)
     })
 
     onCleanup(() => {
+      document.removeEventListener("keydown", handlePaletteKeyDown, true)
       document.removeEventListener("keydown", handleKeyDown)
     })
 

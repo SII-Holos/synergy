@@ -1,18 +1,21 @@
-import { createResource, createSignal, For, Show } from "solid-js"
+import { createResource, createSignal, For, Show, onCleanup } from "solid-js"
 import { useLingui } from "@lingui/solid"
-import type { Worktree } from "@ericsanchezok/synergy-sdk/client"
+import type { WorktreeInventoryEntry } from "@ericsanchezok/synergy-sdk/client"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { sharedRequests } from "@/utils/shared-requests"
+import { loadWorktreeInventory, worktreeInventoryKey } from "@/utils/worktree-inventory"
 import { requestErrorMessage } from "@/utils/error"
 import { useConfirm } from "./confirm-dialog"
 import { projectEntryCopy as copy } from "./project-entry-copy"
 
 export function DialogWorktrees(props: {
   scopeID: string
-  onSelect?: (tree: Worktree) => Promise<void>
+  inventoryVersion?: string
+  onSelect?: (tree: WorktreeInventoryEntry) => Promise<void>
   disabled?: boolean
 }) {
   const { _ } = useLingui()
@@ -20,15 +23,20 @@ export function DialogWorktrees(props: {
   const confirm = useConfirm()
   const [error, setError] = createSignal("")
   const [pending, setPending] = createSignal("")
+  const [expanded, setExpanded] = createSignal("")
+  const lifetime = new AbortController()
+  onCleanup(() => lifetime.abort())
   const [trees, { refetch }] = createResource(async () => {
     try {
-      return (await sdk.client.project.worktrees({ scopeID: props.scopeID }, { throwOnError: true })).data
+      return (
+        await loadWorktreeInventory(sdk.client, sdk.url, props.scopeID, props.inventoryVersion ?? "", lifetime.signal)
+      ).data?.items
     } catch (failure) {
       setError(requestErrorMessage(failure, _(copy.unavailable)))
       return []
     }
   })
-  async function remove(tree: Worktree) {
+  async function remove(tree: WorktreeInventoryEntry) {
     if (
       !(await confirm.ask({
         title: copy.deleteWorktree,
@@ -45,6 +53,7 @@ export function DialogWorktrees(props: {
         { scopeID: props.scopeID, worktreeRemoveInput: { target: tree.id, sourceWorkspaceID: tree.sourceWorkspaceID } },
         { throwOnError: true },
       )
+      sharedRequests.invalidate(worktreeInventoryKey(sdk.url, props.scopeID))
       await refetch()
     } catch (failure) {
       setError(requestErrorMessage(failure, _(copy.failed)))
@@ -83,6 +92,9 @@ export function DialogWorktrees(props: {
                 <Show when={tree.setupFailed || tree.stale}>
                   <small>{tree.setupError ?? _(copy.stale)}</small>
                 </Show>
+                <Show when={expanded() === tree.id}>
+                  <WorktreeDetails scopeID={props.scopeID} tree={tree} />
+                </Show>
               </div>
               <Show when={props.onSelect}>
                 <Button
@@ -93,6 +105,13 @@ export function DialogWorktrees(props: {
                   {_(copy.use)}
                 </Button>
               </Show>
+              <Button
+                variant="ghost"
+                aria-expanded={expanded() === tree.id}
+                onClick={() => setExpanded(expanded() === tree.id ? "" : tree.id)}
+              >
+                {_(copy.details)}
+              </Button>
               <Button variant="ghost" disabled={!!pending()} onClick={() => void remove(tree)}>
                 {_(pending() === tree.id ? copy.loading : copy.remove)}
               </Button>
@@ -101,5 +120,44 @@ export function DialogWorktrees(props: {
         </For>
       </div>
     </Dialog>
+  )
+}
+
+function WorktreeDetails(props: { scopeID: string; tree: WorktreeInventoryEntry }) {
+  const sdk = useGlobalSDK()
+  const { _, i18n } = useLingui()
+  const lifetime = new AbortController()
+  onCleanup(() => lifetime.abort())
+  const [details] = createResource(async () => {
+    const response = await sdk.client.project.worktreeDetails(
+      { scopeID: props.scopeID, target: props.tree.id, sourceWorkspaceID: props.tree.sourceWorkspaceID },
+      { signal: lifetime.signal, throwOnError: true },
+    )
+    return response.data
+  })
+  return (
+    <Show when={!details.loading} fallback={<small>{_(copy.loading)}</small>}>
+      <Show when={!details.error && details()?.state === "ready"} fallback={<small>{_(copy.unavailable)}</small>}>
+        <small>{_(details()?.dirty ? copy.dirty : copy.clean)}</small>
+        <small>
+          {_({
+            ...copy.diskSize,
+            values: {
+              size: new Intl.NumberFormat(i18n().locale, { maximumFractionDigits: 1 }).format(
+                (details()?.diskBytes ?? 0) / 1024 / 1024,
+              ),
+            },
+          })}
+        </small>
+        <small>
+          {_({
+            ...copy.checked,
+            values: {
+              time: new Intl.DateTimeFormat(i18n().locale, { timeStyle: "medium" }).format(details()?.computedAt),
+            },
+          })}
+        </small>
+      </Show>
+    </Show>
   )
 }

@@ -1498,6 +1498,45 @@ async function migrateSessionRootVariants(progress: (current: number, total: num
 
 export const migrations: Migration[] = [
   {
+    id: "20261001-session-text-projection",
+    scope: "session",
+    execution: "session",
+    domain: "session",
+    dependsOn: ["storage/20261001-text-projection-structure", "20261001-session-display-index"],
+    description: "Initialize resumable full history text preparation without blocking on historical bodies",
+    async upSession(owner, progress) {
+      const { SessionHistorySearch } = await import("./history-search")
+      await SessionHistorySearch.initialize(owner.scopeID, owner.sessionID)
+      progress(1, 1)
+    },
+    async up(progress) {
+      const { SessionHistorySearch } = await import("./history-search")
+      for (const scopeID of await SessionMigrationTarget.scopes())
+        for (const sessionID of await SessionMigrationTarget.sessions(scopeID))
+          await SessionHistorySearch.initialize(scopeID, sessionID)
+      progress(1, 1)
+    },
+  },
+  {
+    id: "20261001-session-display-index",
+    scope: "session",
+    execution: "session",
+    domain: "session",
+    dependsOn: ["20260705-message-v2-semantics-derive", "20260923-session-model-selection"],
+    description: "Prepare ordered presentation headers in resumable batches",
+    async upSession(owner, progress) {
+      const { SessionHistory } = await import("./history")
+      await SessionHistory.prepareDisplayOwner(owner, progress)
+    },
+    async up(progress) {
+      const { SessionHistory } = await import("./history")
+      for (const scopeID of await SessionMigrationTarget.scopes()) {
+        for (const sessionID of await SessionMigrationTarget.sessions(scopeID))
+          await SessionHistory.prepareDisplayOwner({ scopeID, sessionID }, progress)
+      }
+    },
+  },
+  {
     id: "20260411-session-endpoint-index",
     description: "Backfill endpoint session index and remove legacy channel index",
     async up(progress) {

@@ -10,6 +10,7 @@
 }
 
 [data-component="markdown"] > *:first-child,
+[data-component="markdown"] [data-markdown-block] > *:first-child,
 [data-component="markdown"] [data-slot="markdown-terminal-from"] > *:first-child,
 [data-component="markdown"] [data-slot="markdown-terminal-to"] > *:first-child {
   margin-top: 0;

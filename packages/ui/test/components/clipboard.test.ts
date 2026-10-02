@@ -3,6 +3,51 @@ import { createRoot } from "solid-js"
 import { configureClipboard, copyTextToClipboard, createCopyController } from "../../src/components/clipboard-core"
 
 describe("clipboard", () => {
+  test("copy fetches original text on demand and retains failed feedback", async () => {
+    const copied: string[] = []
+    const restore = configureClipboard({
+      writer: (value) => {
+        copied.push(value)
+      },
+    })
+    try {
+      await new Promise<void>((resolve, reject) =>
+        createRoot((dispose) => {
+          queueMicrotask(async () => {
+            try {
+              let reads = 0
+              const copy = createCopyController({
+                text: "mounted excerpt",
+                loadText: async () => {
+                  reads++
+                  return "entire original history"
+                },
+              })
+              expect(reads).toBe(0)
+              expect(copy.disabled()).toBe(false)
+              await copy.copy()
+              expect(copied).toEqual(["entire original history"])
+              const failed = createCopyController({
+                text: "",
+                loadText: async () => {
+                  throw new Error("read failed")
+                },
+              })
+              await failed.copy()
+              expect(failed.state()).toBe("failed")
+              resolve()
+            } catch (error) {
+              reject(error)
+            } finally {
+              dispose()
+            }
+          })
+        }),
+      )
+    } finally {
+      restore()
+    }
+  })
   test("uses configured writer before navigator or fallback", async () => {
     const calls: string[] = []
     const navigatorCalls: string[] = []

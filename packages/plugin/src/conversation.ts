@@ -1,5 +1,21 @@
 import type { Accessor, JSX } from "solid-js"
-import type { Message, UserMessage, AssistantMessage, SessionInboxItem } from "@ericsanchezok/synergy-sdk"
+import type {
+  Message,
+  UserMessage,
+  AssistantMessage,
+  SessionInboxItem,
+  SessionPartSummary,
+} from "@ericsanchezok/synergy-sdk"
+
+export interface PluginConversationContent {
+  summaries(messageID: string): readonly SessionPartSummary[]
+  page(messageID: string): { hasMore: boolean; hasEarlier?: boolean } | undefined
+  load(messageID: string, more?: boolean, force?: boolean): Promise<void>
+  retain(part: SessionPartSummary): { ready: Promise<void>; release(): void }
+  text?(messageID: string): Promise<string>
+  loadWindow?(messageID: string, partID?: string): Promise<boolean>
+  loadEarlier?(messageID: string): Promise<void>
+}
 
 export interface PluginTurnProjection {
   readonly roots: readonly UserMessage[]
@@ -17,6 +33,10 @@ export interface PluginConversationViewport {
 }
 
 export interface PluginConversationService {
+  content?: PluginConversationContent
+  registerMessageLocator?: (
+    locate: (messageID: string, behavior?: ScrollBehavior, partID?: string) => Promise<boolean>,
+  ) => () => void
   sessionID: string
   timeline: Accessor<readonly Message[]>
   turnProjection: Accessor<PluginTurnProjection>

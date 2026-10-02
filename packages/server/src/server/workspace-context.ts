@@ -37,7 +37,12 @@ export async function provideWorkspace(c: Context, next: Next) {
       { id: parsed.data.workspaceID, scopeID: scope.id, generation: parsed.data.workspaceGeneration },
       () =>
         WorkspaceAccess.task({ workspace, signal: c.req.raw.signal }, () =>
-          ScopeRuntime.provide({ scope, workspace, fn: next }),
+          ScopeRuntime.provide({
+            scope,
+            workspace,
+            ensure: c.req.method === "GET" || c.req.method === "HEAD" ? "background" : true,
+            fn: next,
+          }),
         ),
     )
   })

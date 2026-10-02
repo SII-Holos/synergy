@@ -12,7 +12,8 @@ import {
 import { ArtifactLocation } from "./artifact-location"
 import { RecordCodec, type BodyContainer, type RecordBody } from "./record-codec"
 import { measureStorageOperation } from "./measure"
-import { StorageQueue, type StorageQueueOptions } from "./queue"
+import { StorageQueue, withStorageQueueOptions, type StorageQueueOptions } from "./queue"
+import { Log } from "../util/log"
 import { observeStorageProgress } from "./progress"
 import type { StorageMaintenanceOperation } from "@ericsanchezok/synergy-util/runtime-startup"
 import { StoragePath } from "./path"
@@ -20,6 +21,13 @@ import { SqliteDriver } from "./sqlite-driver"
 import { PostgresDriver } from "./postgres-driver"
 import { sqlParameterBytes } from "./sql-contract"
 import { Identifier } from "../id/id"
+import { EvidenceOwnerProjection, evidenceOwnerTables, evidenceOwnerTriggers } from "./evidence-owner-projection"
+import {
+  TextProjection,
+  textProjectionSchema,
+  type TextProjectionAppend,
+  type TextProjectionQuery,
+} from "./text-projection"
 import type {
   SqlConnection,
   SqlDriver,
@@ -158,28 +166,22 @@ function metadata(key: string[]) {
             : (key[3] ?? "session-record"),
       scope: key[1] ?? "",
       session: key[2] ?? "",
-      message: message ? (key[4] ?? "") : "",
+      message: message || key[3] === "display_part" ? (key[4] ?? "") : "",
       order: key.at(-1) === "info" ? key.at(-2)! : key.at(-1)!,
     }
   }
   return {
     kind: key[0],
-    scope: ["projects", "compat_catalog"].includes(key[0]) ? (key[1] ?? "") : "",
-    session: "",
-    message: "",
+    scope: ["projects", "compat_catalog", "operations"].includes(key[0]) ? (key[1] ?? "") : "",
+    session: key[0] === "operations" ? (key[2] ?? "") : "",
+    message: key[0] === "operations" ? (key[3] ?? "") : "",
     order: key[0] === "compat_catalog" ? key[2]! : key.at(-1)!,
   }
 }
 
 /**
- * Serves retention's owner enumeration.
- *
- * The key carries `scope_id`, `session_id` and `updated` after the `kind` prefix,
- * which lets `evidenceOwners` aggregate rows in owner order without a
- * temporary b-tree. Counting still visits each live rollout index entry.
- * `key_text` is deliberately absent: selecting it would force a table walk per
- * row and the index would stop paying for itself. The partial predicate keeps
- * tombstoned rows out of a write-maintained index.
+ * Seeks an owner's newest live evidence after its latest record is removed.
+ * Incremental owner statistics avoid an aggregate scan during retention.
  *
  * The open path creates it from `schema` and the owning migration re-runs it for
  * stores created before the index existed, so both share this one definition.
@@ -306,6 +308,7 @@ export const storageRecordsIndexes = (backend: StorageBackend) => [
     : "CREATE INDEX IF NOT EXISTS storage_records_message ON storage_records(namespace, message_id, kind, order_key, key_id)",
   "CREATE INDEX IF NOT EXISTS storage_records_kind ON storage_records(namespace, kind, order_key, key_id)",
   STORAGE_RECORDS_OWNER_INDEX,
+  ...(backend === "sqlite" ? evidenceOwnerTriggers : []),
 ]
 
 export const STORAGE_NODES_PARENT_INDEX =
@@ -324,7 +327,9 @@ const schemaFor = (backend: StorageBackend) => [
   nodesTableDdl(backend, "storage_nodes"),
   STORAGE_NODES_PARENT_INDEX,
   recordsTableDdl(backend, "storage_records"),
+  ...(backend === "sqlite" ? evidenceOwnerTables : []),
   ...storageRecordsIndexes(backend),
+  ...textProjectionSchema(backend),
   "CREATE TABLE IF NOT EXISTS storage_receipts (namespace TEXT NOT NULL, operation_id TEXT NOT NULL, request_hash TEXT NOT NULL, result TEXT NOT NULL, created BIGINT NOT NULL, PRIMARY KEY(namespace, operation_id))",
   "CREATE TABLE IF NOT EXISTS storage_events (namespace TEXT NOT NULL, id TEXT NOT NULL, scope_id TEXT NOT NULL, type TEXT NOT NULL, payload TEXT NOT NULL, position BIGINT NOT NULL, PRIMARY KEY(namespace, id))",
   "CREATE INDEX IF NOT EXISTS storage_events_pending ON storage_events(namespace, position)",
@@ -420,6 +425,35 @@ export class StoreTransaction {
   get raw(): SqlConnection {
     this.check()
     return this.connection
+  }
+
+  textProjectionState(key: string[]) {
+    this.check()
+    return new TextProjection(this.connection, this.namespace, this.backend, (key) =>
+      keyParameter(this.keys, key),
+    ).state(key)
+  }
+
+  async appendTextProjection(input: TextProjectionAppend) {
+    this.check(true)
+    await this.assertAdmitted([input.key])
+    return new TextProjection(this.connection, this.namespace, this.backend, (key) =>
+      keyParameter(this.keys, key),
+    ).append(input)
+  }
+
+  searchTextProjection(input: TextProjectionQuery) {
+    this.check()
+    return new TextProjection(this.connection, this.namespace, this.backend, (key) =>
+      keyParameter(this.keys, key),
+    ).search(input)
+  }
+
+  collectTextProjection() {
+    this.check(true)
+    return new TextProjection(this.connection, this.namespace, this.backend, (key) =>
+      keyParameter(this.keys, key),
+    ).collect()
   }
 
   private check(write = false) {
@@ -855,6 +889,24 @@ export class StoreTransaction {
     return removed
   }
 
+  async pruneEvidenceRecency(prefix: string[], cutoff: number): Promise<PruneDeferral | undefined> {
+    this.check()
+    if (this.backend === "sqlite") {
+      const [owner] = await this.connection.query(
+        "SELECT ready, newest FROM storage_evidence_owners WHERE namespace = ? AND owner = ?",
+        [this.namespace, JSON.stringify(prefix)],
+      )
+      return !owner || !Number(owner.ready) || Number(owner.newest) >= cutoff ? "recent" : undefined
+    }
+    const text = JSON.stringify(prefix)
+    const like = (text.slice(0, -1) + ",").replace(/[!%_]/g, (value) => "!" + value) + "%"
+    const [owner] = await this.connection.query(
+      "SELECT MAX(updated) AS newest FROM storage_records WHERE namespace = ? AND kind = ? AND body IS NOT NULL AND (key_text = ? OR key_text LIKE ? ESCAPE '!')",
+      [this.namespace, prefix[0] === "sessions" ? "rollout" : "operations", text, like],
+    )
+    return owner?.newest !== null && Number(owner?.newest) >= cutoff ? "recent" : undefined
+  }
+
   async pruneDeferral(prefix: string[], limits: PruneLimits, cutoff: number): Promise<PruneDeferral | undefined> {
     this.check()
     const nodes = await this.connection.query<{ key_id: string | Uint8Array }>(
@@ -897,7 +949,12 @@ export class StoreTransaction {
     return rows.map((row) => JSON.parse(row.key_text) as string[])
   }
 
-  private async queryRows<Row extends SqlRow>(input: RecordQuery, columns: string): Promise<Row[]> {
+  async count(input: Omit<RecordQuery, "limit" | "after" | "descending">): Promise<number> {
+    const rows = await this.queryRows(input, "COUNT(*) AS records", true)
+    return Number(rows[0]?.records ?? 0)
+  }
+
+  private async queryRows<Row extends SqlRow>(input: RecordQuery, columns: string, count = false): Promise<Row[]> {
     this.check()
     const conditions = ["namespace = ?", "body IS NOT NULL"]
     const values: SqlValue[] = [this.namespace]
@@ -939,10 +996,10 @@ export class StoreTransaction {
     const limit = input.limit ?? 100
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 10000)
       throw new StorageIntegrityError("Invalid storage page limit")
-    values.push(limit)
+    if (!count) values.push(limit)
     const direction = input.descending ? "DESC" : "ASC"
     return this.connection.query<Row>(
-      `SELECT ${columns} FROM storage_records WHERE ${conditions.join(" AND ")}${this.visibility()} ORDER BY order_key ${direction}, key_id ${direction} LIMIT ?`,
+      `SELECT ${columns} FROM storage_records WHERE ${conditions.join(" AND ")}${this.visibility()}${count ? "" : ` ORDER BY order_key ${direction}, key_id ${direction} LIMIT ?`}`,
       values,
     )
   }
@@ -1305,6 +1362,7 @@ export class TransactionalStore {
             "INSERT INTO storage_namespaces(namespace, version, owner, state) VALUES (?, ?, ?, 'active') ON CONFLICT(namespace) DO UPDATE SET version = CASE WHEN storage_namespaces.version >= 2 THEN storage_namespaces.version ELSE 2 END, owner = excluded.owner, state = excluded.state",
             [options.namespace, options.backend === "sqlite" ? 3 : 2, store.owner],
           )
+          if (options.backend === "sqlite") await EvidenceOwnerProjection.initialize(connection, options.namespace)
         },
         { readOnly: options.readonly },
       )
@@ -1313,6 +1371,7 @@ export class TransactionalStore {
         [options.namespace],
       )
       store.admission.pending = Boolean(pending)
+      if (!options.readonly) store.scheduleEvidencePreparation()
       return store
     } catch (error) {
       await driver.close()
@@ -1476,14 +1535,22 @@ export class TransactionalStore {
     return this.transaction((tx) => tx.pruneTree(prefix))
   }
 
-  pruneTreeWithinBudget(prefix: string[], input: { limits: PruneLimits; cutoff: number; active(): boolean }) {
+  pruneTreeWithinBudget(
+    prefix: string[],
+    input: { limits: PruneLimits; cutoff: number; active(): boolean; maintenance?: boolean; signal?: AbortSignal },
+  ) {
     return this.transaction(
       async (tx) => {
         if (input.active()) return { deferred: "active" as const, records: 0 }
-        const deferred = await tx.pruneDeferral(prefix, input.limits, input.cutoff)
+        const deferred = input.maintenance
+          ? await tx.pruneEvidenceRecency(prefix, input.cutoff)
+          : await tx.pruneDeferral(prefix, input.limits, input.cutoff)
         if (deferred) return { deferred, records: 0 }
         if (input.active()) return { deferred: "active" as const, records: 0 }
-        return { records: await tx.pruneTree(prefix), deferred: undefined }
+        return {
+          records: await tx.pruneTree(prefix, { maintenance: input.maintenance, signal: input.signal }),
+          deferred: undefined,
+        }
       },
       { priority: "background" },
     )
@@ -1588,75 +1655,57 @@ export class TransactionalStore {
     await this.maintainDdl(`DROP INDEX IF EXISTS ${index}`, "drop-index")
   }
 
-  /**
-   * Evidence owners with the recency of their newest record. Only indexed
-   * columns and timestamps are read. Work scales with the live rollout index
-   * entries; the returned result scales with owner count.
-   *
-   * Rollout owners come from the `storage_records_owner` partial index, whose
-   * key carries `scope_id`, `session_id` and `updated` after the `kind` prefix.
-   * That is what lets the group resolve per owner; without it the group is a
-   * temporary b-tree over every rollout row. `MIN(key_text)` must not come back:
-   * `key_text` is not in the index, so selecting it forces a table walk per row
-   * and the index stops paying for itself.
-   *
-   * Operation records store no owner columns -- their `scope_id` and
-   * `session_id` are empty -- so they keep the key-text form. There are only
-   * thousands of them, which keeps that form bounded.
-   */
-  async evidenceOwners(): Promise<
-    Array<{ keyPrefix: string[]; kind: string; scopeID: string; ownerID: string; newest: number; records: number }>
-  > {
+  private evidencePreparation?: Promise<{ ready: boolean; scanned: number }>
+  private evidencePreparationTimer?: ReturnType<typeof setTimeout>
+
+  private scheduleEvidencePreparation(delay = 1_000) {
+    this.evidencePreparationTimer = setTimeout(async () => {
+      if (this.closing || this.unavailable) return
+      if (this.writes.foregroundPending || (this.driver instanceof SqliteDriver && this.driver.foregroundPending)) {
+        this.scheduleEvidencePreparation(250)
+        return
+      }
+      try {
+        const progress = await withStorageQueueOptions(
+          { priority: "background", deadline: performance.now() + 100 },
+          async () => {
+            const owners = await this.prepareEvidenceOwners()
+            const text = await this.transaction((tx) => tx.collectTextProjection(), { priority: "background" })
+            return { ready: owners.ready && text.ready }
+          },
+        )
+        if (!this.closing) this.scheduleEvidencePreparation(progress.ready ? 5_000 : 25)
+      } catch (error) {
+        if (this.closing || this.unavailable) return
+        Log.create({ service: "storage.evidence-owners" }).warn("owner preparation deferred", { error })
+        this.scheduleEvidencePreparation(5_000)
+      }
+    }, delay)
+    this.evidencePreparationTimer.unref()
+  }
+
+  prepareEvidenceOwners(input: { maxRows?: number; signal?: AbortSignal } = {}) {
     this.check()
-    // PostgreSQL has no in-file freelist and no incremental reclaim, so it has
-    // no budget for retention to defend; pruning is SQLite-only.
+    if (this.options.readonly || this.driver.backend !== "sqlite") return Promise.resolve({ ready: true, scanned: 0 })
+    if (this.evidencePreparation) return this.evidencePreparation
+    const pending = measureStorageOperation("prepareEvidenceOwners", "storage_evidence_owners", () =>
+      EvidenceOwnerProjection.advance(this.driver, this.options.namespace, input),
+    )
+    this.evidencePreparation = pending
+    void pending
+      .finally(() => {
+        if (this.evidencePreparation === pending) this.evidencePreparation = undefined
+      })
+      .catch(() => {})
+    return pending
+  }
+
+  async evidenceOwners() {
+    this.check()
     if (this.driver.backend !== "sqlite") return []
-    return measureStorageOperation("evidenceOwners", "storage_records", async () => {
-      const rows = await this.driver.query(
-        `SELECT scope_id, session_id, MAX(updated) AS newest, COUNT(*) AS records FROM storage_records WHERE namespace = ? AND kind = 'rollout' AND body IS NOT NULL AND NOT EXISTS (SELECT 1 FROM storage_records pending WHERE pending.namespace = storage_records.namespace AND pending.kind = 'compat_pending' AND pending.order_key = storage_records.session_id AND pending.body IS NOT NULL) GROUP BY scope_id, session_id`,
-        [this.options.namespace],
-      )
-      const operations = await this.driver.query(
-        `SELECT MIN(key_text) AS key_text, MAX(updated) AS newest, COUNT(*) AS records FROM storage_records WHERE namespace = ? AND kind = 'operations' AND body IS NOT NULL GROUP BY json_extract(key_text, '$[1]'), json_extract(key_text, '$[2]')`,
-        [this.options.namespace],
-      )
-      const sessions = rows.flatMap((row) => {
-        const scopeID = String(row.scope_id)
-        const sessionID = String(row.session_id)
-        // Rollout evidence is addressed through the canonical owner composer
-        // rather than a literal, so a change to the storage key layout cannot
-        // leave retention pruning a prefix that no longer names this evidence. A
-        // row whose owner columns are empty has no such prefix, and pruning
-        // irreversible evidence through a prefix that does not name it is worse
-        // than leaving it in place, so it is not an owner.
-        if (!scopeID || !sessionID) return []
-        return [
-          {
-            keyPrefix: StoragePath.sessionRolloutRoot(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
-            kind: "session",
-            scopeID,
-            ownerID: sessionID,
-            newest: Number(row.newest),
-            records: Number(row.records),
-          },
-        ]
-      })
-      const others = operations.flatMap((row) => {
-        const key = JSON.parse(String(row.key_text)) as string[]
-        if (key.length < 4) return []
-        return [
-          {
-            keyPrefix: key.slice(0, 4),
-            kind: "operation",
-            scopeID: key[1]!,
-            ownerID: key[2]!,
-            newest: Number(row.newest),
-            records: Number(row.records),
-          },
-        ]
-      })
-      return [...sessions, ...others]
-    })
+    return measureStorageOperation("evidenceOwners", "storage_evidence_owners", () =>
+      EvidenceOwnerProjection.list(this.driver, this.options.namespace),
+    )
   }
 
   /**
@@ -1949,6 +1998,8 @@ export class TransactionalStore {
 
   close(): Promise<void> {
     this.closing ??= (async () => {
+      clearTimeout(this.evidencePreparationTimer)
+      await this.evidencePreparation?.catch(() => {})
       await this.writes.close()
       try {
         if (!this.options.readonly) {

@@ -7,6 +7,8 @@ description: Design, write, run, and diagnose Synergy tests with Bun, temporary 
 
 ## Avoid concurrent artifact mutation
 
+For durable input admission, hold passive materialization at a physical barrier and submit another `noReply` input during that ownership interval. Verify both persisted inputs converge to canonical messages without scheduling a model reply; separately preserve task, steer and pause discovery. A successful acceptance response proves admission, while canonical materialization has its own convergence deadline.
+
 When upgrading Bun, validate native FFI with JIT enabled and disabled, including real process exit and PTY bytes. Preserve asynchronous cancellation failures in a child-process regression; a synchronous `try` cannot observe a rejected cancellation promise. Test Home-guard subprocesses from their own fixture directory: an empty explicit config can still discover the repository's working-directory preload and invalidate the intended environment.
 
 Local acceptance fault injectors must match the intended request and an observed stage; auxiliary model calls, empty argument deltas and untriggered hooks are not coverage. Preserve upstream and delivered bytes separately when truncating a stream, and drain request journals on cancellation before reporting usage. For persistence, independently observe the same owned namespace, fail actual database writes or connections, retain a sealed export before cleanup, and keep cloud-adapter protocol fixtures distinct from real-provider deployment acceptance.

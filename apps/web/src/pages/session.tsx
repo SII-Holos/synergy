@@ -480,14 +480,21 @@ function SessionPageContent() {
     if (!rb) return raw
     return messagesHiddenByRollback(raw, rb)
   })
-  const openRewindConfirm = (message: UserMessage | undefined) => {
+  const openRewindConfirm = async (message: UserMessage | undefined) => {
     if (!message?.id) return
     if (!messageAllowsCanonicalActions(message)) return
-    const targetMsg = message
-    const targetID = targetMsg.id
+    const targetID = message.id
     const sessionID = params.id
     if (!sessionID) return
-    const cutParts = dataView().partsFor(targetID)
+    const canonical = await sdk.client.session
+      .message({ sessionID, messageID: targetID }, { throwOnError: true })
+      .catch((error) => {
+        showToast({ type: "error", description: requestErrorMessage(error) })
+        return undefined
+      })
+    if (params.id !== sessionID || canonical?.data?.info.role !== "user") return
+    const targetMsg = canonical.data.info
+    const cutParts = canonical.data.parts
     const retryInput = createRewindRetryInput({ message: targetMsg, parts: cutParts })
     dialog.push(() => (
       <DialogRewindConfirm
@@ -1211,6 +1218,7 @@ function SessionPageContent() {
     navigateMessageByOffset,
     isWorking: () => isWorkingStatus(status()),
     onRewind: openRewindConfirm,
+    locateMessage,
   })
 
   const handleKeyDown = (event: KeyboardEvent) => {
@@ -1219,6 +1227,14 @@ function SessionPageContent() {
 
   const isWorking = createMemo(() => isWorkingStatus(status()))
   const [scrolledUp, setScrolledUp] = createSignal(false)
+  const [historyLocationPinned, setHistoryLocationPinned] = createSignal(false)
+  const releaseHistoryLocation = (event: WheelEvent | KeyboardEvent) => {
+    if (
+      (event instanceof WheelEvent && event.deltaY > 0) ||
+      (event instanceof KeyboardEvent && ["ArrowDown", "PageDown", "End"].includes(event.key))
+    )
+      setHistoryLocationPinned(false)
+  }
 
   const autoScroll = createAutoScroll({
     working: isWorking,
@@ -1245,7 +1261,11 @@ function SessionPageContent() {
     // before the swapped-out owner's cleanup runs; only clear when the
     // binding is still the element this releaser bound.
     if (!el && releaseOf !== undefined && scroller !== releaseOf) return
+    scroller?.removeEventListener("wheel", releaseHistoryLocation)
+    scroller?.removeEventListener("keydown", releaseHistoryLocation)
     scroller = el
+    el?.addEventListener("wheel", releaseHistoryLocation, { passive: true })
+    el?.addEventListener("keydown", releaseHistoryLocation)
     autoScroll.scrollRef(el, releaseOf)
   }
 
@@ -1263,10 +1283,14 @@ function SessionPageContent() {
     const container = scroller
     if (!container) return
     const viewportTop = container.getBoundingClientRect().top
-    const candidates = Array.from(container.querySelectorAll<HTMLElement>("[data-message-id]")).map((node) => {
+    const rows = container.querySelectorAll<HTMLElement>("[data-display-row]")
+    const candidates = Array.from(
+      rows.length ? rows : container.querySelectorAll<HTMLElement>("[data-message-id]"),
+    ).map((node) => {
       const rect = node.getBoundingClientRect()
       return {
         messageID: node.dataset.messageId ?? "",
+        rowKey: node.dataset.displayRow,
         top: rect.top,
         bottom: rect.bottom,
       }
@@ -1280,8 +1304,10 @@ function SessionPageContent() {
   const restorePrependScrollAnchor = (anchor: PrependScrollAnchor | undefined) => {
     const container = scroller
     if (!container || !anchor) return
-    const node = Array.from(container.querySelectorAll<HTMLElement>("[data-message-id]")).find(
-      (candidate) => candidate.dataset.messageId === anchor.messageID,
+    const node = Array.from(
+      container.querySelectorAll<HTMLElement>(anchor.rowKey ? "[data-display-row]" : "[data-message-id]"),
+    ).find((candidate) =>
+      anchor.rowKey ? candidate.dataset.displayRow === anchor.rowKey : candidate.dataset.messageId === anchor.messageID,
     )
     if (!node) return
     const afterOffsetTop = node.getBoundingClientRect().top - container.getBoundingClientRect().top
@@ -1295,6 +1321,8 @@ function SessionPageContent() {
   const loadEarlierMessages = async () => {
     const id = params.id
     if (!id) return
+    setHistoryLocationPinned(true)
+    autoScroll.handleInteraction()
     const scrollAnchor = capturePrependScrollAnchor()
     try {
       const result = await sync.session.history.loadMore(id)
@@ -1323,6 +1351,7 @@ function SessionPageContent() {
     try {
       await sync.session.history.returnLatest(id)
       if (params.id !== id) return
+      setHistoryLocationPinned(false)
       setStore("turnStart", 0)
       afterHistoryLayoutSettles(() => {
         if (params.id === id) autoScroll.forceScrollToBottom()
@@ -1354,6 +1383,7 @@ function SessionPageContent() {
       tailMissingLatest: historyTailMissingLatest,
       pendingLatest: historyPendingLatest,
       historyLoading: historyLoading,
+      locationPinned: historyLocationPinned,
     },
     () => returnToLatestMessages(),
   )
@@ -1459,12 +1489,29 @@ function SessionPageContent() {
   }
 
   const clearHash = () => {
+    setHistoryLocationPinned(false)
     if (!window.location.hash) return
     replaceSessionHistoryUrl(window.history, window.location.pathname + window.location.search)
   }
 
+  let messageLocator: ((messageID: string, behavior?: ScrollBehavior, partID?: string) => Promise<boolean>) | undefined
+  async function locateMessage(messageID: string, partID?: string) {
+    const locate = messageLocator
+    if (!locate) return false
+    const found = await locate(messageID, "auto", partID)
+    if (found && messageLocator === locate) updateHash(messageID)
+    return found
+  }
   const scrollToMessage = (message: UserMessage, behavior: ScrollBehavior = "smooth") => {
     setActiveMessage(message)
+    if (messageLocator) {
+      const locate = messageLocator
+      void locate(message.id, behavior).then((found) => {
+        if (!found || messageLocator !== locate) return
+        updateHash(message.id)
+      })
+      return
+    }
 
     const msgs = visibleUserMessages()
     const index = msgs.findIndex((m) => m.id === message.id)
@@ -1563,6 +1610,10 @@ function SessionPageContent() {
 
             const match = hash.match(/^message-(.+)$/)
             if (match) {
+              if (messageLocator) {
+                void locateMessage(match[1])
+                return
+              }
               const anyMessage = messages().find((message) => message.id === match[1])
               if (anyMessage) {
                 const el = document.getElementById(hash)
@@ -1621,6 +1672,8 @@ function SessionPageContent() {
 
   onCleanup(() => {
     document.removeEventListener("keydown", handleKeyDown)
+    scroller?.removeEventListener("wheel", releaseHistoryLocation)
+    scroller?.removeEventListener("keydown", releaseHistoryLocation)
     if (scrollSpyFrame !== undefined) cancelAnimationFrame(scrollSpyFrame)
     if (initScrollFrame !== undefined) cancelAnimationFrame(initScrollFrame)
     if (historyScrollFrame !== undefined) cancelAnimationFrame(historyScrollFrame)
@@ -1792,6 +1845,26 @@ function SessionPageContent() {
     fork: openForkConfirm,
   }
   const conversation: PluginConversationService = {
+    content: {
+      summaries: (messageID) => sync.data.partSummary[messageID] ?? [],
+      page: (messageID) => sync.data.partPage[messageID],
+      load: (messageID, more, force) => sync.session.content.summaries(params.id!, messageID, more, force),
+      retain: (summary) => sync.session.content.retain(summary),
+      text: (messageID) => sync.session.content.text(params.id!, messageID),
+      loadWindow: async (messageID, partID) => {
+        setHistoryLocationPinned(true)
+        autoScroll.handleInteraction()
+        setStore("turnStart", 0)
+        return sync.session.history.locate(params.id!, messageID, partID)
+      },
+      loadEarlier: (messageID) => sync.session.content.earlier(params.id!, messageID),
+    },
+    registerMessageLocator(locate) {
+      messageLocator = locate
+      return () => {
+        if (messageLocator === locate) messageLocator = undefined
+      }
+    },
     get sessionID() {
       return params.id!
     },

@@ -29,6 +29,7 @@ import { useResourceOpen } from "../context/resource-open"
 import { useDiffComponent } from "../context/diff"
 import { useCodeComponent } from "../context/code"
 import { BasicTool } from "./basic-tool"
+import { ToolExpansionIdentity } from "./tool-expansion"
 import { Card } from "./card"
 import { createCopyController } from "./clipboard"
 import { Icon } from "./icon"
@@ -116,6 +117,7 @@ export interface MessageProps {
   message: MessageType
   parts: PartType[]
   userVariant?: UserMessageVariant
+  loadCopyText?: () => Promise<string>
 }
 
 export interface MessagePartProps {
@@ -1298,7 +1300,12 @@ export function Message(props: MessageProps) {
     <Switch>
       <Match when={props.message.role === "user" && props.message}>
         {(userMessage) => (
-          <UserMessageDisplay message={userMessage() as UserMessage} parts={props.parts} variant={props.userVariant} />
+          <UserMessageDisplay
+            message={userMessage() as UserMessage}
+            parts={props.parts}
+            variant={props.userVariant}
+            loadCopyText={props.loadCopyText}
+          />
         )}
       </Match>
       <Match when={props.message.role === "assistant" && props.message}>
@@ -1373,7 +1380,12 @@ function formatMessageTimestamp(timestamp: number): string {
   return `${hours}:${minutes}`
 }
 
-export function UserMessageDisplay(props: { message: UserMessage; parts: PartType[]; variant?: UserMessageVariant }) {
+export function UserMessageDisplay(props: {
+  message: UserMessage
+  parts: PartType[]
+  variant?: UserMessageVariant
+  loadCopyText?: () => Promise<string>
+}) {
   const { _ } = useLingui()
   const data = useData()
   const [expanded, setExpanded] = createSignal(false)
@@ -1421,6 +1433,7 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
 
   const copy = createCopyController({
     text,
+    loadText: props.loadCopyText,
     copyLabel: _(MESSAGE_PART_DESC.copyMessage),
     copiedLabel: _(MESSAGE_PART_DESC.messageCopied),
     failureDescription: _(MESSAGE_PART_DESC.copyFailure),
@@ -1618,13 +1631,15 @@ export function Part(props: MessagePartProps) {
           )
         }}
       >
-        <Dynamic
-          component={component()}
-          part={props.part}
-          message={props.message}
-          hideDetails={props.hideDetails}
-          defaultOpen={props.defaultOpen}
-        />
+        <ToolExpansionIdentity partID={props.part.id}>
+          <Dynamic
+            component={component()}
+            part={props.part}
+            message={props.message}
+            hideDetails={props.hideDetails}
+            defaultOpen={props.defaultOpen}
+          />
+        </ToolExpansionIdentity>
       </ErrorBoundary>
     </Show>
   )

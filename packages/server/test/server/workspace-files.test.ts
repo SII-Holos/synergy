@@ -71,7 +71,7 @@ describe("GET /workspace/files", () => {
       expect(stat.status).toBe(200)
       const statBody = await stat.json()
       expect(statBody.path).toBe("src/tracked.ts")
-      expect(statBody.gitStatus).toBe("modified")
+      expect(statBody.gitStatus).toBeUndefined()
 
       const read = await app.request(await workspaceUrl("read", tmp.path, { path: "src/tracked.ts", range: "0:1" }))
       expect(read.status).toBe(200)

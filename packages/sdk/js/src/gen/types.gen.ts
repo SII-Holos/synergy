@@ -117,6 +117,71 @@ export type ProjectDirectoriesUpdate = {
   revision: number
 }
 
+export type WorktreeInventoryEntry = {
+  id: string
+  name: string
+  branch?: string
+  path: string
+  scopeID: string
+  sourceWorkspaceID?: string
+  sourceDirectory?: string
+  head?: string
+  baseRef?: string
+  baseRevision?: string
+  resolvedBaseCommit?: string
+  detached?: boolean
+  bare?: boolean
+  isMain?: boolean
+  managed?: boolean
+  stale?: boolean
+  owner?:
+    | {
+        type: "session"
+        sessionID: string
+      }
+    | {
+        type: "superplan"
+        runID: string
+        nodeID?: string
+        mergeID?: string
+      }
+    | {
+        type: "user"
+      }
+    | {
+        type: "external"
+      }
+  bindings?: Array<string>
+  lifecycle?: "active" | "detached" | "gc_candidate" | "deleted"
+  createdAt?: number
+  updatedAt?: number
+  lastUsedAt?: number
+  setupFailed?: boolean
+  setupError?: string
+  locked?: string
+  prunable?: boolean
+}
+
+export type ProjectWorktreeInventory = {
+  items: Array<WorktreeInventoryEntry>
+  version: string
+  generatedAt: number
+  sync: {
+    epoch: string
+    seq: number
+  }
+}
+
+export type WorktreeDetails = {
+  id: string
+  state: "ready" | "unavailable"
+  computedAt: number
+  dirty?: boolean
+  diskBytes?: number
+  cleanupEligible: boolean
+  cleanupReason?: string
+}
+
 export type Worktree = {
   id: string
   name: string
@@ -3093,7 +3158,7 @@ export type ProviderModelCatalogState = {
   failure?: "timeout" | "network" | "rate_limited" | "upstream" | "invalid_response"
 }
 
-export type ProviderListResponse = {
+export type ProviderSelection = {
   all: Array<Provider>
   default: {
     [key: string]: string
@@ -3116,6 +3181,209 @@ export type ProviderListResponse = {
   modelCatalog: {
     [key: string]: ProviderModelCatalogState
   }
+  complete: false
+  version: string
+}
+
+export type ModelRole = "vision" | "nano" | "mini" | "mid" | "thinking" | "long" | "creative"
+
+export type ExternalAgentInfo = {
+  adapter: string
+  path?: string
+  version?: string
+  config?: {
+    [key: string]: unknown
+  }
+}
+
+export type AgentSummary = {
+  name: string
+  description?: string
+  mode: "subagent" | "primary" | "all"
+  native?: boolean
+  hidden?: boolean
+  visibleTo?: Array<string>
+  delegationGroups?: Array<string>
+  topP?: number
+  temperature?: number
+  color?: string
+  controlProfile?: "guarded" | "autonomous" | "full_access"
+  model?: {
+    modelID: string
+    providerID: string
+  }
+  modelRole?: ModelRole
+  modelSource?: "role" | "explicit"
+  source?: "builtin" | "config" | "plugin" | "external"
+  steps?: number
+  external?: ExternalAgentInfo
+  defaultVariant?: string
+}
+
+/**
+ * Prompt attachment upload limits (count and byte sizes)
+ */
+export type AttachmentConfig = {
+  /**
+   * Maximum number of prompt attachments per batch (default: 20)
+   */
+  maxFiles?: number
+  /**
+   * Maximum prompt attachment size in bytes per file (default: 209715200 = 200 MiB)
+   */
+  maxFileBytes?: number
+  /**
+   * Maximum aggregate prompt attachment size in bytes per batch (default: 2147483648 = 2 GiB)
+   */
+  maxTotalBytes?: number
+}
+
+export type QuickSwitcherModelConfig = {
+  /**
+   * Provider id for the quick switcher model preference
+   */
+  providerID: string
+  /**
+   * Model id for the quick switcher model preference
+   */
+  modelID: string
+  /**
+   * Whether to force-add or force-remove the model from the quick switcher
+   */
+  state: "add" | "remove"
+}
+
+/**
+ * Quick switcher model visibility preferences
+ */
+export type QuickSwitcherConfig = {
+  /**
+   * Per-model quick switcher visibility preferences
+   */
+  models?: Array<QuickSwitcherModelConfig>
+}
+
+export type ScopeUiPreferences = {
+  /**
+   * Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5. null clears the role
+   */
+  model?: string | null
+  /**
+   * Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid.
+   */
+  default_agent?: string
+  /**
+   * Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant. A null value clears the role's variant
+   */
+  role_variant?: {
+    [key: string]: string | null
+  }
+  controlProfile?: ControlProfileId
+  attachment?: AttachmentConfig
+  quick_switcher?: QuickSwitcherConfig
+  /**
+   * Default workspace for new sessions started from the Web composer: main = run in the main checkout, worktree = start each new session in an isolated git worktree (default: main). Programmatic session creation (API, channels, Cortex) always uses the main checkout.
+   */
+  defaultSessionWorkspace?: "main" | "worktree"
+  /**
+   * Execution profile for new Web/Desktop composer sessions. Omitted follows the global resource default; null disables execution selection. References an existing global profile without defining hosts or credentials.
+   */
+  defaultSessionEnvironmentProfile?: string | null
+  /**
+   * How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced)
+   */
+  activityDisplay?: "full" | "balanced" | "minimal"
+  /**
+   * Show live reasoning in a compact single-line viewport
+   */
+  compactReasoning?: boolean
+  /**
+   * UI locale (system = follow OS, default: system)
+   */
+  locale?: "system" | "en" | "zh-CN"
+  /**
+   * Records that the human accepted the risk of running with Full Access. Set by the confirmation dialog when Full Access is enabled from the UI; it is an awareness record, not a security boundary.
+   */
+  fullAccessAcknowledged?: boolean
+  boss?: {
+    enabled?: boolean
+  }
+  voice?: {
+    stt?: {
+      model?: string
+    }
+  }
+}
+
+export type SessionWorkspace = {
+  id?: string
+  generation?: number
+  type: string
+  path: string
+  scopeID: string
+  [key: string]: unknown | string | number | string | undefined
+}
+
+export type Path = {
+  home: string
+  state: string
+  config: string
+  worktree: string | null
+  directory: string | null
+  workspace: SessionWorkspace | null
+}
+
+export type SessionScope =
+  | {
+      type: "home"
+      id: "home"
+      local: null
+    }
+  | {
+      type: "project"
+      id: string
+      local: {
+        directory: string
+        worktree: string
+        vcs?: "git"
+        sandboxes: Array<string>
+      } | null
+      name?: string
+      icon?: {
+        url?: string
+        color?: string
+      }
+      pinned?: number
+      time: {
+        created: number
+        updated: number
+        initialized?: number
+        archived?: number
+      }
+    }
+
+export type SessionTags = Array<string>
+
+export type SnapshotWorkspace = {
+  id: string
+  generation: number
+  root: string
+  pathKind?: "workspace"
+}
+
+export type FileDiff = {
+  file: string
+  operationID?: string
+  workspace?: SnapshotWorkspace
+  legacyRoot?: string
+  additions: number
+  deletions: number
+  binary?: boolean
+  preview?: string
+  patch?: string
+  beforeBytes?: number
+  afterBytes?: number
+  truncated?: boolean
 }
 
 export type PermissionAction = "allow" | "deny" | "ask"
@@ -3128,14 +3396,465 @@ export type PermissionRule = {
 
 export type PermissionRuleset = Array<PermissionRule>
 
-export type ModelRole = "vision" | "nano" | "mini" | "mid" | "thinking" | "long" | "creative"
+export type SessionCompletionNotice = {
+  unread: boolean
+  unreadCount: number
+  silent: boolean
+}
 
-export type ExternalAgentInfo = {
-  adapter: string
-  path?: string
-  version?: string
-  config?: {
+export type SessionThinkingSelection =
+  | {
+      mode: "provider-default"
+    }
+  | {
+      mode: "off"
+    }
+  | {
+      mode: "variant"
+      variant: string
+    }
+
+export type SessionModelChoice = {
+  model: {
+    providerID: string
+    modelID: string
+  }
+  thinking: SessionThinkingSelection
+}
+
+export type SessionModelSelection = {
+  revision: number
+  selected: SessionModelChoice
+  preferences: {
+    [key: string]: SessionThinkingSelection
+  }
+  lastUsed?: {
+    model: {
+      providerID: string
+      modelID: string
+    }
+    thinking: SessionThinkingSelection
+    revision: number
+    rootID: string
+    messageID: string
+  }
+  pendingReason?: "next-request" | "tool-turn"
+}
+
+export type SessionPaused = {
+  reason: SessionPausedReason
+  description?: string
+  since: number
+}
+
+export type SessionInteractionMode = "interactive" | "unattended"
+
+export type SessionInteraction = {
+  mode: SessionInteractionMode
+  /**
+   * Why this interaction mode applies, e.g. 'agenda' or 'channel:feishu'
+   */
+  source?: string
+}
+
+export type SessionHistoryInfo = {
+  rollback?: {
+    id: string
+    numTurns: number
+    created: number
+    messageID?: string
+    droppedMessageIDs: Array<string>
+    droppedUserMessageIDs: Array<string>
+    cutMessageID?: string
+    files: Array<string>
+    patchPartIDs: Array<string>
+    canUnrollback: boolean
+  }
+}
+
+export type SessionRollbackAck = {
+  rollbackID: string
+  acknowledgedAt: number
+}
+
+export type SessionCortexDelegation = {
+  taskID: string
+  parentSessionID: string
+  parentMessageID: string
+  description: string
+  agent: string
+  executionRole?: "primary" | "delegated_subagent"
+  startedAt: number
+  completedAt?: number
+  settledAt?: number
+  status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+  model?: {
+    providerID: string
+    modelID: string
+  }
+  error?: string
+  launchFailure?: boolean
+  notifyParentOnComplete?: boolean
+  deliveryNotifiedAt?: number
+  visibility?: "visible" | "hidden"
+  tools?: {
+    [key: string]: boolean
+  }
+  outputConfig?:
+    | {
+        mode?: "summary"
+      }
+    | {
+        mode: "final_response"
+      }
+    | {
+        mode: "structured"
+        schema: {
+          [key: string]: unknown
+        }
+        maxRepairTurns?: 0 | 1 | 2 | 3
+      }
+  output?:
+    | {
+        mode: "summary"
+        value: string
+      }
+    | {
+        mode: "final_response"
+        value: string
+      }
+    | {
+        mode: "structured"
+        value: unknown
+      }
+  owner?: {
+    pluginId: string
+    pluginGeneration: string
+    scopeId: string
+    correlationId: string
+  }
+  timeoutMs?: number
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    reasoningTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
+    cost: number
+    accounting?: RolloutAccountingSummary
+  }
+}
+
+export type SessionWorkingInfo =
+  | {
+      status: "busy"
+      description?: string
+    }
+  | {
+      status: "retry"
+      attempt: number
+      message: string
+      next: number
+    }
+  | {
+      status: "paused"
+      reason: SessionPausedReason
+      description?: string
+      since: number
+    }
+
+export type WorkflowExtension = {
+  kind: string
+  payload?: unknown
+}
+
+export type SessionWorkflowExtension = {
+  kind: "extension"
+  extension: WorkflowExtension
+}
+
+export type SessionWorkflowInfo =
+  | {
+      kind: "plan"
+    }
+  | {
+      kind: "lightloop"
+      instructions: string
+      status?: "running" | "reviewing" | "completed" | "failed" | "cancelled" | "timed_out" | "iteration_exhausted"
+      executionAgent?: string
+      reviewAgent?: string
+      pluginOwner?: {
+        pluginId: string
+        pluginGeneration: string
+        scopeId: string
+        correlationId?: string
+      }
+      budget?: {
+        maxRuntimeMs: number
+        maxIterations: number
+      }
+      deadlineAt?: number
+      terminalError?: string
+      terminalHookDeliveredAt?: number
+      terminalHookError?: string
+      reviewTools?: {
+        [key: string]: boolean
+      }
+      stopRequest?: {
+        summary: string
+        completed?: Array<string>
+        evidence?: Array<string>
+        remaining?: Array<string>
+        requestedAt: number
+        requesterSessionID: string
+        requesterMessageID: string
+        reviewTaskID?: string
+        reviewSessionID?: string
+        reviewToolRecoveryAttempts?: number
+      }
+      review?: {
+        attempts: number
+        lastReason?: string
+        lastReviewedAt?: number
+      }
+    }
+  | {
+      kind: "lattice"
+      runID: string
+      mode: "auto" | "collaborative"
+    }
+  | {
+      kind: "boss"
+      role: "boss" | "worker"
+      workerRole?: string
+      rootID?: string
+      instructions?: string
+    }
+  | SessionWorkflowExtension
+
+export type SessionSuperPlanInfo = {
+  runID: string
+  role: "planner" | "node" | "merge" | "audit"
+  nodeID?: string
+  mergeID?: string
+}
+
+export type Session = {
+  id: string
+  scope: SessionScope
+  parentID?: string
+  forkedFrom?: {
+    sessionID: string
+    messageID?: string
+    title?: string
+  }
+  category?: "project" | "home" | "channel" | "background" | "github"
+  tags?: SessionTags
+  provenance?: "github"
+  endpoint?: SessionEndpoint
+  summary?: {
+    additions: number
+    deletions: number
+    files: number
+    diffs?: Array<FileDiff>
+  }
+  title: string
+  version: string
+  time: {
+    created: number
+    updated: number
+    compacting?: number
+    archived?: number
+  }
+  pinned?: number
+  permission?: PermissionRuleset
+  controlProfile?: "guarded" | "autonomous" | "full_access"
+  /**
+   * Tool names pre-authorized by the user via system scheduling (e.g. agenda wake). Bypasses the ask gate for these tools within this session only.
+   */
+  preAuthorizedActions?: Array<string>
+  toolState?: {
+    expandedGroups?: Array<string>
+    activatedTools?: Array<string>
+  }
+  completionNotice?: SessionCompletionNotice
+  /**
+   * Legacy model preference projection; modelSelection owns live model and thinking choices
+   */
+  modelOverride?: {
+    providerID: string
+    modelID: string
+  }
+  modelSelection?: SessionModelSelection
+  /**
+   * Per-session agent override set by session control
+   */
+  agentOverride?: string
+  paused?: SessionPaused
+  interaction?: SessionInteraction
+  lastExchange?: {
+    user?: string
+    assistant?: string
+  }
+  history?: SessionHistoryInfo
+  rollbackAck?: SessionRollbackAck
+  cortex?: SessionCortexDelegation
+  working?: SessionWorkingInfo
+  workspace: SessionWorkspace | null
+  workspaceID?: string | null
+  environmentID?: string | null
+  workspaceError?: string
+  workflow?: SessionWorkflowInfo
+  agenda?: {
+    itemID: string
+  }
+  superplan?: SessionSuperPlanInfo
+  blueprint?: {
+    loopID?: string
+    loopRole?: "execution" | "audit"
+    phase?: "running" | "auditing"
+  }
+}
+
+export type ScopeBootstrapSessions = {
+  data: Array<Session>
+  total: number
+  offset: number
+  limit: number
+}
+
+export type EnvironmentTarget = {
+  environmentID: string
+  allocationID: string
+  generation: number
+}
+
+export type WorkspaceInfo = {
+  id: string
+  scopeID: string
+  type: string
+  revision: number
+  binding: {
+    state: "bound" | "unbound"
+    hostID: string
+    path: string | null
+    physicalID?: string
+    generation: number
+  }
+  backend?: {
+    provider: string
+    spec: {
+      [key: string]: unknown
+    }
+  }
+  content?: {
+    revision: number
+    manifest: string | null
+  }
+  mountGeneration?: number
+  activeMount?: {
+    id: string
+    generation: number
+    target: EnvironmentTarget
+    path: string
+    state: "preparing" | "active" | "saving" | "unavailable"
+    readOnly?: boolean
+  }
+  importedFrom?: {
+    workspaceID: string
+    hostID: string
+  }
+  metadata: {
     [key: string]: unknown
+  }
+  sharedWritableWorkspaceIDs: Array<string>
+  lifecycle: "active" | "deleting" | "deleted"
+  createdAt: number
+  updatedAt: number
+  [key: string]:
+    | unknown
+    | string
+    | number
+    | {
+        state: "bound" | "unbound"
+        hostID: string
+        path: string | null
+        physicalID?: string
+        generation: number
+      }
+    | {
+        provider: string
+        spec: {
+          [key: string]: unknown
+        }
+      }
+    | {
+        revision: number
+        manifest: string | null
+      }
+    | number
+    | {
+        id: string
+        generation: number
+        target: EnvironmentTarget
+        path: string
+        state: "preparing" | "active" | "saving" | "unavailable"
+        readOnly?: boolean
+      }
+    | {
+        workspaceID: string
+        hostID: string
+      }
+    | {
+        [key: string]: unknown
+      }
+    | Array<string>
+    | "active"
+    | "deleting"
+    | "deleted"
+    | number
+    | undefined
+}
+
+export type ScopeBootstrapCore = {
+  scopeID: string
+  provider: ProviderSelection
+  agent: Array<AgentSummary>
+  config: ScopeUiPreferences
+  path: Path
+  sessions: ScopeBootstrapSessions
+  /**
+   * Non-idle status for sessions included in the navigation page
+   */
+  sessionStatus: {
+    [key: string]: SessionStatus
+  }
+  workspaces: Array<WorkspaceInfo>
+  workspacesComplete: false
+}
+
+export type ProviderListResponse = {
+  all: Array<Provider>
+  default: {
+    [key: string]: string
+  }
+  connected: Array<string>
+  configProviders: Array<string>
+  catalogProviders: Array<string>
+  profiles: {
+    [key: string]: ProviderProfileMetadata
+  }
+  connections: {
+    [key: string]: ProviderConnection
+  }
+  authHealth: {
+    [key: string]: ProviderAuthHealth
+  }
+  runtimeAvailability: {
+    [key: string]: ProviderRuntimeAvailability
+  }
+  modelCatalog: {
+    [key: string]: ProviderModelCatalogState
   }
 }
 
@@ -3194,24 +3913,6 @@ export type ServerConfig = {
    * Additional origins allowed for CORS and Browser viewer WebSockets
    */
   cors?: Array<string>
-}
-
-/**
- * Prompt attachment upload limits (count and byte sizes)
- */
-export type AttachmentConfig = {
-  /**
-   * Maximum number of prompt attachments per batch (default: 20)
-   */
-  maxFiles?: number
-  /**
-   * Maximum prompt attachment size in bytes per file (default: 209715200 = 200 MiB)
-   */
-  maxFileBytes?: number
-  /**
-   * Maximum aggregate prompt attachment size in bytes per batch (default: 2147483648 = 2 GiB)
-   */
-  maxTotalBytes?: number
 }
 
 export type PermissionActionConfig = "ask" | "allow" | "deny"
@@ -5437,31 +6138,6 @@ export type KeybindsConfig = {
   tips_toggle?: string
 }
 
-export type QuickSwitcherModelConfig = {
-  /**
-   * Provider id for the quick switcher model preference
-   */
-  providerID: string
-  /**
-   * Model id for the quick switcher model preference
-   */
-  modelID: string
-  /**
-   * Whether to force-add or force-remove the model from the quick switcher
-   */
-  state: "add" | "remove"
-}
-
-/**
- * Quick switcher model visibility preferences
- */
-export type QuickSwitcherConfig = {
-  /**
-   * Per-model quick switcher visibility preferences
-   */
-  models?: Array<QuickSwitcherModelConfig>
-}
-
 /**
  * @deprecated Always uses stretch layout.
  */
@@ -6012,118 +6688,7 @@ export type Config = {
   }
 }
 
-export type SessionWorkspace = {
-  id?: string
-  generation?: number
-  type: string
-  path: string
-  scopeID: string
-  [key: string]: unknown | string | number | string | undefined
-}
-
-export type Path = {
-  home: string
-  state: string
-  config: string
-  worktree: string | null
-  directory: string | null
-  workspace: SessionWorkspace | null
-}
-
-export type EnvironmentTarget = {
-  environmentID: string
-  allocationID: string
-  generation: number
-}
-
-export type WorkspaceInfo = {
-  id: string
-  scopeID: string
-  type: string
-  revision: number
-  binding: {
-    state: "bound" | "unbound"
-    hostID: string
-    path: string | null
-    physicalID?: string
-    generation: number
-  }
-  backend?: {
-    provider: string
-    spec: {
-      [key: string]: unknown
-    }
-  }
-  content?: {
-    revision: number
-    manifest: string | null
-  }
-  mountGeneration?: number
-  activeMount?: {
-    id: string
-    generation: number
-    target: EnvironmentTarget
-    path: string
-    state: "preparing" | "active" | "saving" | "unavailable"
-    readOnly?: boolean
-  }
-  importedFrom?: {
-    workspaceID: string
-    hostID: string
-  }
-  metadata: {
-    [key: string]: unknown
-  }
-  sharedWritableWorkspaceIDs: Array<string>
-  lifecycle: "active" | "deleting" | "deleted"
-  createdAt: number
-  updatedAt: number
-  [key: string]:
-    | unknown
-    | string
-    | number
-    | {
-        state: "bound" | "unbound"
-        hostID: string
-        path: string | null
-        physicalID?: string
-        generation: number
-      }
-    | {
-        provider: string
-        spec: {
-          [key: string]: unknown
-        }
-      }
-    | {
-        revision: number
-        manifest: string | null
-      }
-    | number
-    | {
-        id: string
-        generation: number
-        target: EnvironmentTarget
-        path: string
-        state: "preparing" | "active" | "saving" | "unavailable"
-        readOnly?: boolean
-      }
-    | {
-        workspaceID: string
-        hostID: string
-      }
-    | {
-        [key: string]: unknown
-      }
-    | Array<string>
-    | "active"
-    | "deleting"
-    | "deleted"
-    | number
-    | undefined
-}
-
-export type Command = {
+export type CommandSummary = {
   name: string
   description?: string
   kind?: "prompt" | "action"
@@ -6134,388 +6699,7 @@ export type Command = {
   mcp?: boolean
   source?: "command" | "mcp" | "skill"
   action?: string
-  template?: string
   hints: Array<string>
-}
-
-export type SessionScope =
-  | {
-      type: "home"
-      id: "home"
-      local: null
-    }
-  | {
-      type: "project"
-      id: string
-      local: {
-        directory: string
-        worktree: string
-        vcs?: "git"
-        sandboxes: Array<string>
-      } | null
-      name?: string
-      icon?: {
-        url?: string
-        color?: string
-      }
-      pinned?: number
-      time: {
-        created: number
-        updated: number
-        initialized?: number
-        archived?: number
-      }
-    }
-
-export type SessionTags = Array<string>
-
-export type SnapshotWorkspace = {
-  id: string
-  generation: number
-  root: string
-  pathKind?: "workspace"
-}
-
-export type FileDiff = {
-  file: string
-  operationID?: string
-  workspace?: SnapshotWorkspace
-  legacyRoot?: string
-  additions: number
-  deletions: number
-  binary?: boolean
-  preview?: string
-  patch?: string
-  beforeBytes?: number
-  afterBytes?: number
-  truncated?: boolean
-}
-
-export type SessionCompletionNotice = {
-  unread: boolean
-  unreadCount: number
-  silent: boolean
-}
-
-export type SessionThinkingSelection =
-  | {
-      mode: "provider-default"
-    }
-  | {
-      mode: "off"
-    }
-  | {
-      mode: "variant"
-      variant: string
-    }
-
-export type SessionModelChoice = {
-  model: {
-    providerID: string
-    modelID: string
-  }
-  thinking: SessionThinkingSelection
-}
-
-export type SessionModelSelection = {
-  revision: number
-  selected: SessionModelChoice
-  preferences: {
-    [key: string]: SessionThinkingSelection
-  }
-  lastUsed?: {
-    model: {
-      providerID: string
-      modelID: string
-    }
-    thinking: SessionThinkingSelection
-    revision: number
-    rootID: string
-    messageID: string
-  }
-  pendingReason?: "next-request" | "tool-turn"
-}
-
-export type SessionPaused = {
-  reason: SessionPausedReason
-  description?: string
-  since: number
-}
-
-export type SessionInteractionMode = "interactive" | "unattended"
-
-export type SessionInteraction = {
-  mode: SessionInteractionMode
-  /**
-   * Why this interaction mode applies, e.g. 'agenda' or 'channel:feishu'
-   */
-  source?: string
-}
-
-export type SessionHistoryInfo = {
-  rollback?: {
-    id: string
-    numTurns: number
-    created: number
-    messageID?: string
-    droppedMessageIDs: Array<string>
-    droppedUserMessageIDs: Array<string>
-    cutMessageID?: string
-    files: Array<string>
-    patchPartIDs: Array<string>
-    canUnrollback: boolean
-  }
-}
-
-export type SessionRollbackAck = {
-  rollbackID: string
-  acknowledgedAt: number
-}
-
-export type SessionCortexDelegation = {
-  taskID: string
-  parentSessionID: string
-  parentMessageID: string
-  description: string
-  agent: string
-  executionRole?: "primary" | "delegated_subagent"
-  startedAt: number
-  completedAt?: number
-  settledAt?: number
-  status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
-  model?: {
-    providerID: string
-    modelID: string
-  }
-  error?: string
-  launchFailure?: boolean
-  notifyParentOnComplete?: boolean
-  deliveryNotifiedAt?: number
-  visibility?: "visible" | "hidden"
-  tools?: {
-    [key: string]: boolean
-  }
-  outputConfig?:
-    | {
-        mode?: "summary"
-      }
-    | {
-        mode: "final_response"
-      }
-    | {
-        mode: "structured"
-        schema: {
-          [key: string]: unknown
-        }
-        maxRepairTurns?: 0 | 1 | 2 | 3
-      }
-  output?:
-    | {
-        mode: "summary"
-        value: string
-      }
-    | {
-        mode: "final_response"
-        value: string
-      }
-    | {
-        mode: "structured"
-        value: unknown
-      }
-  owner?: {
-    pluginId: string
-    pluginGeneration: string
-    scopeId: string
-    correlationId: string
-  }
-  timeoutMs?: number
-  usage?: {
-    inputTokens: number
-    outputTokens: number
-    reasoningTokens: number
-    cacheReadTokens: number
-    cacheWriteTokens: number
-    cost: number
-    accounting?: RolloutAccountingSummary
-  }
-}
-
-export type SessionWorkingInfo =
-  | {
-      status: "busy"
-      description?: string
-    }
-  | {
-      status: "retry"
-      attempt: number
-      message: string
-      next: number
-    }
-  | {
-      status: "paused"
-      reason: SessionPausedReason
-      description?: string
-      since: number
-    }
-
-export type WorkflowExtension = {
-  kind: string
-  payload?: unknown
-}
-
-export type SessionWorkflowExtension = {
-  kind: "extension"
-  extension: WorkflowExtension
-}
-
-export type SessionWorkflowInfo =
-  | {
-      kind: "plan"
-    }
-  | {
-      kind: "lightloop"
-      instructions: string
-      status?: "running" | "reviewing" | "completed" | "failed" | "cancelled" | "timed_out" | "iteration_exhausted"
-      executionAgent?: string
-      reviewAgent?: string
-      pluginOwner?: {
-        pluginId: string
-        pluginGeneration: string
-        scopeId: string
-        correlationId?: string
-      }
-      budget?: {
-        maxRuntimeMs: number
-        maxIterations: number
-      }
-      deadlineAt?: number
-      terminalError?: string
-      terminalHookDeliveredAt?: number
-      terminalHookError?: string
-      reviewTools?: {
-        [key: string]: boolean
-      }
-      stopRequest?: {
-        summary: string
-        completed?: Array<string>
-        evidence?: Array<string>
-        remaining?: Array<string>
-        requestedAt: number
-        requesterSessionID: string
-        requesterMessageID: string
-        reviewTaskID?: string
-        reviewSessionID?: string
-        reviewToolRecoveryAttempts?: number
-      }
-      review?: {
-        attempts: number
-        lastReason?: string
-        lastReviewedAt?: number
-      }
-    }
-  | {
-      kind: "lattice"
-      runID: string
-      mode: "auto" | "collaborative"
-    }
-  | {
-      kind: "boss"
-      role: "boss" | "worker"
-      workerRole?: string
-      rootID?: string
-      instructions?: string
-    }
-  | SessionWorkflowExtension
-
-export type SessionSuperPlanInfo = {
-  runID: string
-  role: "planner" | "node" | "merge" | "audit"
-  nodeID?: string
-  mergeID?: string
-}
-
-export type Session = {
-  id: string
-  scope: SessionScope
-  parentID?: string
-  forkedFrom?: {
-    sessionID: string
-    messageID?: string
-    title?: string
-  }
-  category?: "project" | "home" | "channel" | "background" | "github"
-  tags?: SessionTags
-  provenance?: "github"
-  endpoint?: SessionEndpoint
-  summary?: {
-    additions: number
-    deletions: number
-    files: number
-    diffs?: Array<FileDiff>
-  }
-  title: string
-  version: string
-  time: {
-    created: number
-    updated: number
-    compacting?: number
-    archived?: number
-  }
-  pinned?: number
-  permission?: PermissionRuleset
-  controlProfile?: "guarded" | "autonomous" | "full_access"
-  /**
-   * Tool names pre-authorized by the user via system scheduling (e.g. agenda wake). Bypasses the ask gate for these tools within this session only.
-   */
-  preAuthorizedActions?: Array<string>
-  toolState?: {
-    expandedGroups?: Array<string>
-    activatedTools?: Array<string>
-  }
-  completionNotice?: SessionCompletionNotice
-  /**
-   * Legacy model preference projection; modelSelection owns live model and thinking choices
-   */
-  modelOverride?: {
-    providerID: string
-    modelID: string
-  }
-  modelSelection?: SessionModelSelection
-  /**
-   * Per-session agent override set by session control
-   */
-  agentOverride?: string
-  paused?: SessionPaused
-  interaction?: SessionInteraction
-  lastExchange?: {
-    user?: string
-    assistant?: string
-  }
-  history?: SessionHistoryInfo
-  rollbackAck?: SessionRollbackAck
-  cortex?: SessionCortexDelegation
-  working?: SessionWorkingInfo
-  workspace: SessionWorkspace | null
-  workspaceID?: string | null
-  environmentID?: string | null
-  workspaceError?: string
-  workflow?: SessionWorkflowInfo
-  agenda?: {
-    itemID: string
-  }
-  superplan?: SessionSuperPlanInfo
-  blueprint?: {
-    loopID?: string
-    loopRole?: "execution" | "audit"
-    phase?: "running" | "auditing"
-  }
-}
-
-export type ScopeBootstrapSessions = {
-  data: Array<Session>
-  total: number
-  offset: number
-  limit: number
 }
 
 export type CortexTask = {
@@ -6689,7 +6873,7 @@ export type ScopeBootstrapResponse = {
   config: Config
   path?: Path
   workspaces?: Array<WorkspaceInfo>
-  command?: Array<Command>
+  command?: Array<CommandSummary>
   sessionStatus?: {
     [key: string]: SessionStatus
   }
@@ -7430,7 +7614,7 @@ export type ExperimentOverrides = {
   }
 }
 
-export type ExperimentRuntime = {
+export type ExperimentSnapshotRuntime = {
   lsp?:
     | false
     | {
@@ -7571,9 +7755,6 @@ export type ExperimentRuntime = {
      * Grace period for active ToolTasks during runtime shutdown (default: 3000)
      */
     toolCancelGraceMs?: number
-    /**
-     * Optional concurrency limits for each Tool Executor class
-     */
     toolExecutorConcurrency?: {
       [key: string]: number
     }
@@ -7593,7 +7774,7 @@ export type ExperimentSnapshot = {
   fingerprint: string
   effective: ExperimentOverrides
   overrides: ExperimentOverrides
-  runtime: ExperimentRuntime
+  runtime: ExperimentSnapshotRuntime
   sources: {
     [key: string]:
       | "default"
@@ -8406,6 +8587,162 @@ export type SessionInputResult =
       runID?: string
     }
 
+export type ExperimentRuntime = {
+  lsp?:
+    | false
+    | {
+        [key: string]:
+          | {
+              disabled: true
+            }
+          | {
+              command?: Array<string>
+              extensions?: Array<string>
+              disabled?: boolean
+              env?: {
+                [key: string]: string
+              }
+              initialization?: {
+                [key: string]: unknown
+              }
+            }
+      }
+  formatter?:
+    | false
+    | {
+        [key: string]: {
+          disabled?: boolean
+          command?: Array<string>
+          environment?: {
+            [key: string]: string
+          }
+          extensions?: Array<string>
+        }
+      }
+  execution?: {
+    /**
+     * Reap idle language servers (default: true)
+     */
+    lspIdleReap?: boolean
+    /**
+     * Maximum number of isolated Agent workers (default: derived from the effective memory limit, capped by available CPUs and 64, never below agentWorkerMinIdle). Pass null to clear the explicit ceiling and derive it from the machine.
+     */
+    agentWorkers?: number | null
+    /**
+     * Minimum number of idle Agent workers kept warm (default: 1 on resident servers, 0 for one-shot runs; cannot exceed agentWorkers)
+     */
+    agentWorkerMinIdle?: number
+    /**
+     * Time an excess idle Agent worker remains warm before retirement (default: 60000)
+     */
+    agentWorkerIdleTimeoutMs?: number
+    /**
+     * Maximum queued Agent turns waiting for a worker (default: 256)
+     */
+    agentQueueMax?: number
+    /**
+     * Maximum aggregate queued Agent-turn payload size in MiB (default: 256)
+     */
+    agentQueueMaxMb?: number
+    /**
+     * Turns completed before an Agent worker is recycled (default: 64)
+     */
+    agentWorkerMaxTurns?: number
+    /**
+     * Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 3072)
+     */
+    agentWorkerMaxRssMb?: number
+    /**
+     * Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 2048)
+     */
+    agentWorkerMaxHeapMb?: number
+    /**
+     * Recycle idle Agent workers after post-GC memory grows beyond their warm baseline (default: Linux only)
+     */
+    agentWorkerIdleBaselineRecycle?: boolean
+    /**
+     * Allowed post-GC RSS growth above an Agent worker's warm idle baseline in MiB (default: 256)
+     */
+    agentWorkerIdleBaselineRssGrowthMb?: number
+    /**
+     * Allowed post-GC external-memory growth above an Agent worker's warm idle baseline in MiB (default: 128)
+     */
+    agentWorkerIdleBaselineExternalGrowthMb?: number
+    /**
+     * Grace period before terminating an Agent worker that ignores cancellation (default: 5000)
+     */
+    agentCancelGraceMs?: number
+    /**
+     * Maximum time without an Agent worker heartbeat before forced replacement (default: 45000)
+     */
+    agentHeartbeatTimeoutMs?: number
+    /**
+     * Number of isolated Policy workers (default: min(2, available CPUs - 1), at least 1)
+     */
+    policyWorkers?: number
+    /**
+     * Maximum queued Policy classifications waiting for a worker (default: 256)
+     */
+    policyQueueMax?: number
+    /**
+     * Maximum aggregate queued Policy-classification payload size in MiB (default: 64)
+     */
+    policyQueueMaxMb?: number
+    /**
+     * Maximum total time for a Policy classification before conservative fallback (default: 1000)
+     */
+    policyTimeoutMs?: number
+    /**
+     * Classifications completed before a Policy worker is recycled (default: 512)
+     */
+    policyWorkerMaxRequests?: number
+    /**
+     * RSS threshold in MiB for terminating or recycling a Policy worker (default: 512)
+     */
+    policyWorkerMaxRssMb?: number
+    /**
+     * Heap-used threshold in MiB for terminating or recycling a Policy worker (default: 256)
+     */
+    policyWorkerMaxHeapMb?: number
+    /**
+     * Shutdown grace period before terminating a Policy worker (default: 25)
+     */
+    policyCancelGraceMs?: number
+    /**
+     * Maximum time without a Policy worker heartbeat before forced replacement (default: 15000)
+     */
+    policyHeartbeatTimeoutMs?: number
+    /**
+     * Maximum process-wide concurrent ToolTasks (default: twice available CPUs, bounded to 4-32)
+     */
+    toolConcurrency?: number
+    /**
+     * Maximum queued ToolTasks waiting for execution capacity (default: 32 per tool slot)
+     */
+    toolQueueMax?: number
+    /**
+     * Maximum aggregate queued ToolTask input size in MiB (default: 128)
+     */
+    toolQueueMaxMb?: number
+    /**
+     * Grace period for active ToolTasks during runtime shutdown (default: 3000)
+     */
+    toolCancelGraceMs?: number
+    /**
+     * Optional concurrency limits for each Tool Executor class
+     */
+    toolExecutorConcurrency?: {
+      [key: string]: number
+    }
+  }
+  cortex?: {
+    /**
+     * Maximum number of Cortex subagent tasks that may run concurrently (default: 8)
+     */
+    maxConcurrentTasks?: number
+  }
+}
+
 export type ExperimentFile = {
   version: 1
   label: string
@@ -8960,6 +9297,75 @@ export type Part =
   | CompactionPart
   | CompactionRecoveryPart
 
+export type SessionPartContentReference = {
+  version: string
+  bytes: number
+}
+
+export type SessionTimelineMessage = {
+  info: Message
+  order: string
+  version: string
+  content: SessionPartContentReference
+}
+
+export type SessionTimelinePage = {
+  items: Array<SessionTimelineMessage>
+  referencedRoots: Array<SessionTimelineMessage>
+  nextCursor: string | null
+  hasMore: boolean
+  total: number
+  generation: number
+}
+
+export type SessionHistorySearchPage = {
+  items: Array<{
+    sessionID: string
+    messageID: string
+    partID: string
+    version: string
+    category: "text" | "reasoning" | "tool"
+    role: "user" | "assistant"
+    offset: number
+    text: string
+  }>
+  nextCursor: string | null
+  preparing: boolean
+  prepared: number
+  scanned: number
+  indexed: boolean
+}
+
+export type SessionMessageDetails = {
+  info: Message
+  version: string
+}
+
+export type SessionPartSummary = {
+  id: string
+  sessionID: string
+  messageID: string
+  type: string
+  preview: string
+  render?: boolean
+  status?: string
+  tool?: string
+  content: SessionPartContentReference
+}
+
+export type SessionPartPage = {
+  items: Array<SessionPartSummary>
+  nextCursor: string | null
+  previousCursor: string | null
+  hasMore: boolean
+  hasEarlier: boolean
+}
+
+export type SessionPartContent = {
+  part: Part
+  version: string
+}
+
 export type SessionMessagePage = {
   items: Array<{
     info: Message
@@ -9205,6 +9611,23 @@ export type CortexConcurrencyStatus = {
    * Cortex tasks waiting for an admission slot
    */
   queued: number
+}
+
+export type ProviderDirectoryModel = {
+  providerID: string
+  model: Model
+}
+
+export type ProviderDirectoryPage = {
+  version: string
+  models: Array<ProviderDirectoryModel>
+  nextCursor?: string
+  total: number
+}
+
+export type ProviderModelLookup = {
+  version: string
+  models: Array<ProviderDirectoryModel>
 }
 
 export type ProviderConnectionCreateInput = {
@@ -9601,6 +10024,11 @@ export type WorkspaceFileSearchResponse = {
 }
 
 export type WorkspaceFileStatusSummary = {
+  sync?: {
+    epoch: string
+    seq: number
+  }
+  generatedAt?: number
   capability?: WorkspaceSearchCapability
   files: Array<{
     path: string
@@ -11856,6 +12284,10 @@ export type EventMessageUpdated = {
   type: "message.updated"
   properties: {
     info: Message
+    content?: {
+      version: string
+      bytes: number
+    }
   }
 }
 
@@ -11872,6 +12304,27 @@ export type EventMessagePartUpdated = {
   properties: {
     part: Part
     delta?: string
+  }
+}
+
+export type EventMessagePartSummary = {
+  type: "message.part.summary"
+  properties: {
+    summary: SessionPartSummary
+    delta?: string
+    subscription?: number
+    checkpointEpoch?: string
+    checkpointSeq?: number
+    content?:
+      | {
+          kind: "checkpoint"
+          part: Part
+        }
+      | {
+          kind: "delta"
+          baseVersion: string
+          delta: string
+        }
   }
 }
 
@@ -12491,6 +12944,7 @@ export type Event =
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
+  | EventMessagePartSummary
   | EventMessagePartRemoved
   | EventPermissionAsked
   | EventPermissionReplied
@@ -12813,6 +13267,72 @@ export type ProjectUpdateDirectoriesResponses = {
 
 export type ProjectUpdateDirectoriesResponse =
   ProjectUpdateDirectoriesResponses[keyof ProjectUpdateDirectoriesResponses]
+
+export type ProjectWorktreeInventoryData = {
+  body?: never
+  path: {
+    scopeID: string
+  }
+  query?: never
+  url: "/global/project/{scopeID}/worktree-inventory"
+}
+
+export type ProjectWorktreeInventoryErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectWorktreeInventoryError = ProjectWorktreeInventoryErrors[keyof ProjectWorktreeInventoryErrors]
+
+export type ProjectWorktreeInventoryResponses = {
+  /**
+   * Project folders
+   */
+  200: ProjectWorktreeInventory
+}
+
+export type ProjectWorktreeInventoryResponse =
+  ProjectWorktreeInventoryResponses[keyof ProjectWorktreeInventoryResponses]
+
+export type ProjectWorktreeDetailsData = {
+  body?: never
+  path: {
+    scopeID: string
+  }
+  query: {
+    target: string
+    sourceWorkspaceID?: string
+  }
+  url: "/global/project/{scopeID}/worktree-details"
+}
+
+export type ProjectWorktreeDetailsErrors = {
+  /**
+   * Project folders
+   */
+  400: ProjectDirectoriesInvalid
+  /**
+   * Project folders
+   */
+  409: ProjectDirectoriesConflict
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectWorktreeDetailsError = ProjectWorktreeDetailsErrors[keyof ProjectWorktreeDetailsErrors]
+
+export type ProjectWorktreeDetailsResponses = {
+  /**
+   * Project folders
+   */
+  200: WorktreeDetails
+}
+
+export type ProjectWorktreeDetailsResponse = ProjectWorktreeDetailsResponses[keyof ProjectWorktreeDetailsResponses]
 
 export type ProjectWorktreesData = {
   body?: never
@@ -15042,6 +15562,42 @@ export type ScopeUpdateResponses = {
 }
 
 export type ScopeUpdateResponse = ScopeUpdateResponses[keyof ScopeUpdateResponses]
+
+export type ScopeBootstrapCoreData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/scope/bootstrap-core"
+}
+
+export type ScopeBootstrapCoreErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ScopeBootstrapCoreError = ScopeBootstrapCoreErrors[keyof ScopeBootstrapCoreErrors]
+
+export type ScopeBootstrapCoreResponses = {
+  /**
+   * Essential Scope state; model catalog and auxiliary panels load separately
+   */
+  200: ScopeBootstrapCore
+}
+
+export type ScopeBootstrapCoreResponse = ScopeBootstrapCoreResponses[keyof ScopeBootstrapCoreResponses]
 
 export type ScopeBootstrapData = {
   body?: never
@@ -18159,6 +18715,295 @@ export type SessionPromptResponses = {
 
 export type SessionPromptResponse = SessionPromptResponses[keyof SessionPromptResponses]
 
+export type SessionTimelinePageData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    cursor?: string
+    limit?: number
+    messageID?: string
+  }
+  url: "/session/{sessionID}/timeline/page"
+}
+
+export type SessionTimelinePageErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionTimelinePageError = SessionTimelinePageErrors[keyof SessionTimelinePageErrors]
+
+export type SessionTimelinePageResponses = {
+  /**
+   * Bounded message summaries and lightweight referenced roots
+   */
+  200: SessionTimelinePage
+}
+
+export type SessionTimelinePageResponse = SessionTimelinePageResponses[keyof SessionTimelinePageResponses]
+
+export type SessionHistorySearchData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query: {
+    directory?: string
+    scopeID?: string
+    query: string
+    reasoning?: boolean
+    tools?: boolean
+    cursor?: string
+    limit?: number
+  }
+  url: "/session/{sessionID}/history/search"
+}
+
+export type SessionHistorySearchErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionHistorySearchError = SessionHistorySearchErrors[keyof SessionHistorySearchErrors]
+
+export type SessionHistorySearchResponses = {
+  /**
+   * Stable message and Part matches with resumable preparation and bounded cursors
+   */
+  200: SessionHistorySearchPage
+}
+
+export type SessionHistorySearchResponse = SessionHistorySearchResponses[keyof SessionHistorySearchResponses]
+
+export type SessionHistoryTextData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    messageID?: string
+    rootID?: string
+    role?: "user" | "assistant"
+    latest?: boolean
+    reasoning?: boolean
+    tools?: boolean
+  }
+  url: "/session/{sessionID}/history/text"
+}
+
+export type SessionHistoryTextErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionHistoryTextError = SessionHistoryTextErrors[keyof SessionHistoryTextErrors]
+
+export type SessionHistoryTextResponses = {
+  /**
+   * Original text independent of the mounted window
+   */
+  200: {
+    text: string
+  }
+}
+
+export type SessionHistoryTextResponse = SessionHistoryTextResponses[keyof SessionHistoryTextResponses]
+
+export type SessionMessageDetailsData = {
+  body?: never
+  path: {
+    sessionID: string
+    messageID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    version?: string
+  }
+  url: "/session/{sessionID}/message/{messageID}/details"
+}
+
+export type SessionMessageDetailsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionMessageDetailsError = SessionMessageDetailsErrors[keyof SessionMessageDetailsErrors]
+
+export type SessionMessageDetailsResponses = {
+  /**
+   * Original message metadata without Part bodies
+   */
+  200: SessionMessageDetails
+}
+
+export type SessionMessageDetailsResponse = SessionMessageDetailsResponses[keyof SessionMessageDetailsResponses]
+
+export type SessionPartPageData = {
+  body?: never
+  path: {
+    sessionID: string
+    messageID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    cursor?: string
+    limit?: number
+    partID?: string
+    older?: boolean
+  }
+  url: "/session/{sessionID}/message/{messageID}/part/page"
+}
+
+export type SessionPartPageErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionPartPageError = SessionPartPageErrors[keyof SessionPartPageErrors]
+
+export type SessionPartPageResponses = {
+  /**
+   * Bounded Part summaries with versioned content references
+   */
+  200: SessionPartPage
+}
+
+export type SessionPartPageResponse = SessionPartPageResponses[keyof SessionPartPageResponses]
+
+export type SessionPartContentData = {
+  body?: never
+  path: {
+    sessionID: string
+    messageID: string
+    partID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    version?: string
+  }
+  url: "/session/{sessionID}/message/{messageID}/part/{partID}/content"
+}
+
+export type SessionPartContentErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionPartContentError = SessionPartContentErrors[keyof SessionPartContentErrors]
+
+export type SessionPartContentResponses = {
+  /**
+   * Canonical Part content and its version
+   */
+  200: SessionPartContent
+}
+
+export type SessionPartContentResponse = SessionPartContentResponses[keyof SessionPartContentResponses]
+
 export type SessionMessagePageData = {
   body?: never
   path: {
@@ -19338,10 +20183,91 @@ export type CommandListResponses = {
   /**
    * List of commands
    */
-  200: Array<Command>
+  200: Array<CommandSummary>
 }
 
 export type CommandListResponse = CommandListResponses[keyof CommandListResponses]
+
+export type ProviderCatalogPageData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    cursor?: string
+    limit?: number
+    query?: string
+    providerID?: string
+    connectedOnly: boolean
+  }
+  url: "/provider/catalog-page"
+}
+
+export type ProviderCatalogPageErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProviderCatalogPageError = ProviderCatalogPageErrors[keyof ProviderCatalogPageErrors]
+
+export type ProviderCatalogPageResponses = {
+  /**
+   * Model directory page
+   */
+  200: ProviderDirectoryPage
+}
+
+export type ProviderCatalogPageResponse = ProviderCatalogPageResponses[keyof ProviderCatalogPageResponses]
+
+export type ProviderModelsByIdData = {
+  body?: {
+    models: Array<{
+      providerID: string
+      modelID: string
+    }>
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/models-by-id"
+}
+
+export type ProviderModelsByIdErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProviderModelsByIdError = ProviderModelsByIdErrors[keyof ProviderModelsByIdErrors]
+
+export type ProviderModelsByIdResponses = {
+  /**
+   * Resolved model metadata
+   */
+  200: ProviderModelLookup
+}
+
+export type ProviderModelsByIdResponse = ProviderModelsByIdResponses[keyof ProviderModelsByIdResponses]
 
 export type ProviderListData = {
   body?: never
@@ -27595,6 +28521,7 @@ export type EventReplayData = {
     scopeID?: string
     since: number
     epoch?: string
+    mode?: "full" | "projection"
   }
   url: "/event/replay"
 }

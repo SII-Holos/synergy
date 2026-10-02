@@ -9,6 +9,7 @@ import {
   useContext,
   type ParentProps,
 } from "solid-js"
+import { sharedRequests } from "@/utils/shared-requests"
 import { createFileDraftStorage, type FileDraft } from "./draft-storage"
 export type { FileDraft } from "./draft-storage"
 import { createStore, produce } from "solid-js/store"
@@ -255,6 +256,38 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
   let directoryRunning = 0
   const documentWaiters: VoidFunction[] = []
   const directoryWaiters: VoidFunction[] = []
+
+  let statusGeneration = 0
+  let statusRequest: Promise<void> | undefined
+  let gitStatuses = new Map<string, WorkspaceFileNode["gitStatus"]>()
+  const statusKey = `${resourceKey}\u0000git-status`
+  function loadStatus() {
+    if (disposed || !workspace) return Promise.resolve()
+    if (statusRequest) return statusRequest
+    const generation = statusGeneration
+    const controller = new AbortController()
+    controllers.add(controller)
+    const pending = sharedRequests
+      .request(statusKey, (signal) => sdk.client.workspace.files.status(reference(), { signal, throwOnError: true }), {
+        signal: controller.signal,
+      })
+      .then((response) => {
+        if (disposed || generation !== statusGeneration || !response.data) return
+        gitStatuses = new Map(response.data.files.map((file) => [file.path, file.status]))
+        setStore(
+          produce((draft) => {
+            for (const node of Object.values(draft.nodes)) node.gitStatus = gitStatuses.get(node.path)
+          }),
+        )
+      })
+      .catch(() => {})
+      .finally(() => {
+        controllers.delete(controller)
+        if (statusRequest === pending) statusRequest = undefined
+      })
+    statusRequest = pending
+    return pending
+  }
 
   const normalize = (input: string) => {
     if (!workspace) return undefined
@@ -779,10 +812,12 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
         setStore(
           produce((draft) => {
             if (data.parent) draft.nodes[data.parent.path] = data.parent
-            for (const node of data.children) draft.nodes[node.path] = node
+            for (const node of data.children)
+              draft.nodes[node.path] = { ...node, gitStatus: gitStatuses.get(node.path) ?? node.gitStatus }
           }),
         )
         pruneExplorer()
+        void loadStatus()
       } catch (error) {
         if (disposed || controller.signal.aborted) return
         if (path && isWorkspaceFileNotFoundError(error)) {
@@ -929,6 +964,10 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
       event.properties.workspaceGeneration !== workspace.generation
     )
       return
+    statusGeneration++
+    statusRequest = undefined
+    sharedRequests.invalidate(statusKey)
+    void loadStatus()
     if (event.properties.resync) {
       refresh()
       return

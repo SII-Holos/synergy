@@ -18,6 +18,39 @@ export function bindPluginConversation(
   let releaseContent: (() => void) | undefined
   let releaseContentElement: HTMLElement | undefined
   return {
+    get content(): PluginConversationService["content"] {
+      if (!read().content) return undefined
+      return {
+        summaries: (messageID) => read().content!.summaries(messageID),
+        page: (messageID) => read().content!.page(messageID),
+        load: (messageID, more, force) =>
+          access.run("session.read", () => source.content!.load(messageID, more, force)),
+        text: source.content?.text
+          ? (messageID) => access.run("session.read", () => source.content!.text!(messageID))
+          : undefined,
+        loadWindow: source.content?.loadWindow
+          ? (messageID, partID) => access.run("session.read", () => source.content!.loadWindow!(messageID, partID))
+          : undefined,
+        loadEarlier: source.content?.loadEarlier
+          ? (messageID) => access.run("session.read", () => source.content!.loadEarlier!(messageID))
+          : undefined,
+        retain(part) {
+          read()
+          const lease = source.content!.retain(part)
+          const release = access.own("session.read", () => lease.release)
+          return { ready: access.run("session.read", () => lease.ready), release }
+        },
+      }
+    },
+    registerMessageLocator(locate) {
+      return access.own(
+        "session.read",
+        () =>
+          source.registerMessageLocator?.((messageID, behavior, partID) =>
+            access.run("session.read", () => locate(messageID, behavior, partID)),
+          ) ?? (() => {}),
+      )
+    },
     get sessionID() {
       return read().sessionID
     },

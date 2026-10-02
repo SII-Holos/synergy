@@ -25,7 +25,7 @@ describe("transient storage pressure during rollout recording", () => {
     runtime.run(async () => {
       const args = input()
       {
-        using write = spyOn(Storage, "writeBinary").mockRejectedValue(
+        using write = spyOn(Storage, "prepareBinary").mockRejectedValue(
           new StorageBusyError("Authoritative storage admission deadline exceeded"),
         )
         await expect(
@@ -33,6 +33,7 @@ describe("transient storage pressure during rollout recording", () => {
             throw new Error("must not execute")
           }),
         ).rejects.toBeInstanceOf(StorageBusyError)
+        expect(write).toHaveBeenCalled()
       }
       expect((await RolloutLedger.getRun(args.owner, args.runID)).recording).not.toBe("failed")
       expect((await RolloutLedger.beginCall(args)).status).toBe("running")
@@ -43,12 +44,13 @@ describe("transient storage pressure during rollout recording", () => {
       const args = input()
       let failure: unknown
       {
-        using write = spyOn(Storage, "writeBinary").mockRejectedValue(
+        using write = spyOn(Storage, "prepareBinary").mockRejectedValue(
           new StorageBusyError("Authoritative storage admission deadline exceeded"),
         )
         failure = await RolloutCall.stream(args, async () => {
           throw new Error("must not execute")
         }).catch((error: unknown) => error)
+        expect(write).toHaveBeenCalled()
       }
       expect(SessionRetry.retryable(MessageV2.fromError(failure, { providerID: "test" }))).toBeDefined()
     }))

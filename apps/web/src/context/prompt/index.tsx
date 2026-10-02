@@ -8,6 +8,7 @@ import type { createDraftSessionIndex } from "./draft-index"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { DEFAULT_PROMPT, isPromptEqual } from "./equality"
 import { mergeProjectDrafts, qualifyProjectDraft } from "./project-draft"
+import { draftAdmission, type DraftAdmission } from "./draft-admission"
 import {
   sanitizeContextItemsValue,
   sanitizePromptContextValue,
@@ -158,6 +159,7 @@ function createPromptSession(dir: string, id: string | undefined, drafts: Return
     createStore<{
       prompt: Prompt
       cursor?: number
+      admission?: DraftAdmission
       context: {
         items: (ContextItem & { key: string })[]
       }
@@ -183,6 +185,11 @@ function createPromptSession(dir: string, id: string | undefined, drafts: Return
     cursor: createMemo(() => store.cursor),
     dirty,
     revision: () => revision,
+    admissionIdentity(fingerprint: string, createID: () => string) {
+      const value = draftAdmission(store.admission, fingerprint, createID)
+      setStore("admission", value)
+      return value.messageID
+    },
     restoreIfUnchanged(
       expectedRevision: number,
       snapshot: { prompt: Prompt; context: PromptContextSnapshot; cursor?: number },
@@ -248,6 +255,7 @@ function createPromptSession(dir: string, id: string | undefined, drafts: Return
         setStore("prompt", clonePrompt(DEFAULT_PROMPT))
         setStore("cursor", 0)
         setStore("context", { items: [] })
+        setStore("admission", undefined)
       })
     },
   }
