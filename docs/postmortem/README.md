@@ -19,10 +19,10 @@ Otherwise, write a bug fix with tests.
 
 ## Format
 
-Name files `NNNN-kebab-case-title.md` using the next available number. Use these sections:
+Name files `NNNN-kebab-case-title.md` with the next number. Sections:
 
 - **Executive summary** — one short paragraph a busy reader can absorb in thirty seconds: what broke, the root cause in plain terms, why it escaped, and the durable lesson.
-- **Summary** — the full detail of the failure.
+- **Summary** — failure details.
 - **Timeline** — what was observed and when.
 - **Root cause** — the mechanism, and why every safety net missed it.
 - **Guardrails added** — the concrete fixes, linked: tests, doc updates, gate changes.
@@ -33,6 +33,7 @@ Name files `NNNN-kebab-case-title.md` using the next available number. Use these
 Qualifying incidents:
 
 - [0035: Titlebar controls](0035-native-titlebar-swallowed-controls.md)
+- [0036: Historical data blocked startup](0036-historical-data-blocked-startup.md)
 
 | Number | Title                                                                      | Status      | Date       |
 | ------ | -------------------------------------------------------------------------- | ----------- | ---------- |

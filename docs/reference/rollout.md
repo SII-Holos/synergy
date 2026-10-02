@@ -40,6 +40,8 @@ One-shot execution and the persistent server use the same Home lock, strict conf
 
 Snapshots include winning configuration layers, effective task/runtime settings and a fingerprint. Run provenance records source version/commit, available Git state hashes and installed plugin versions/manifests. Loaded skills retain original content and its hash. These are evidence of the observed environment, not a reproducible image of arbitrary external services or untracked file contents.
 
+Recorded executor-concurrency limits retain their original executor names and validated numeric limits even after an executor is retired. Recovery, export and continuation preserve this evidence and its fingerprint; active runtime configuration and experiment files still accept only supported executors. Applying a task snapshot uses the live runtime's resource settings. See [recorded executor limits](../decisions/implemented/bug-fix/2026-10-01-retain-recorded-executor-limits.md).
+
 Canonical configuration lives in the [configuration domains](configuration.md). The former experimental block is migrated into owning domains. Legacy experimental environment flags have one centralized deprecated input converter for the next release cycle; new experiments should use versioned files. Built-in LSP enablement can use a partial entry; custom servers need a command and extensions, and environment overrides require an explicit command.
 
 ## Evidence and accounting

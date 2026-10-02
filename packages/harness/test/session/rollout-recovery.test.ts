@@ -11,9 +11,38 @@ import { RolloutArtifact } from "../../src/session/rollout/artifact"
 import { RolloutSnapshot } from "../../src/session/rollout/snapshot"
 import { RolloutJournal } from "../../src/session/rollout/journal"
 import { MessageV2 } from "../../src/session/message-v2"
+import { Experiment } from "../../src/config/experiment"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
+
+test("startup recovery preserves recorded executor limits after the executor is retired", () =>
+  runtime.run(async () => {
+    const owner = { kind: "operation" as const, scopeID: "test", operationID: crypto.randomUUID() }
+    const run = await RolloutLedger.beginRun(owner, "historical")
+    const snapshot = Experiment.capture({ model: "test/historical" })
+    const configuration = {
+      ...snapshot,
+      runtime: { execution: { toolExecutorConcurrency: { file: 2, link: 3 } } },
+    }
+    configuration.fingerprint = Experiment.fingerprint({
+      effective: configuration.effective,
+      runtime: configuration.runtime,
+    })
+    const key = [...RolloutArtifact.root(owner), "runs", run.id, "info"]
+    await RolloutJournal.write(owner, key, { ...run, configuration })
+    const recordedRevision = (await RolloutJournal.head(owner)).committed
+
+    await RolloutRecovery.owner(owner)
+    const recovered = await RolloutLedger.getRun(owner, run.id)
+    expect(recovered.status).toBe("interrupted")
+    expect(recovered.configuration).toEqual(configuration)
+    expect((await RolloutSnapshot.read(owner, { revision: recordedRevision })).runs[0].configuration).toEqual(
+      configuration,
+    )
+    await RolloutRecovery.owner(owner)
+    expect(await RolloutLedger.getRun(owner, run.id)).toEqual(recovered)
+  }))
 
 test("startup marks unfinished file evidence incomplete without recapturing or changing completed evidence", () =>
   runtime.run(async () => {
