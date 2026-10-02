@@ -24,6 +24,7 @@ import {
   createSynergyClient,
 } from "@ericsanchezok/synergy-sdk/client"
 import { projectWorkspaceBinding } from "./workspace-catalog"
+import { QuestionSnapshotGate, type QuestionSnapshotToken } from "./question-snapshot"
 import { createScopeRetention } from "./scope-retention"
 import { resolveWorkspaceTransition } from "./workspace-transition"
 import { internMessage, internMessages, internPart, internParts, internProviderList } from "./string-intern"
@@ -269,6 +270,11 @@ function createGlobalSync() {
   const contextProjectionRevision = createSessionContextProjectionRevision()
   const globalSDK = useGlobalSDK()
   const [failure, setFailure] = createSignal<GlobalSyncFailure>()
+  const questionSnapshotGate = new QuestionSnapshotGate()
+  const [questionSnapshots, setQuestionSnapshots] = createSignal<Record<string, QuestionSnapshotToken>>({})
+  const questionSnapshot = (scopeID: string) => questionSnapshots()[scopeID]
+  const captureQuestionSnapshot = (scopeID: string) => questionSnapshotGate.capture(scopeID)
+  const requestScopes = new Map<string, string>()
   const [globalStore, setGlobalStore] = createStore<{
     ready: boolean
     paths: GlobalPaths
@@ -1106,6 +1112,27 @@ function createGlobalSync() {
     }
   }
 
+  async function loadPendingRequests(scopeKey: string): Promise<boolean> {
+    const state = children[scopeKey]
+    if (!state) return false
+    const current = () => !disposed && children[scopeKey] === state
+    const sdk = createScopedClient(scopeKey)
+    const questionRead = captureQuestionSnapshot(scopeKey)
+    await Promise.all([
+      sdk.permission.list().then((result) => {
+        if (!current() || !questionSnapshotGate.accept(questionRead)) return
+        if (!result.data) throw new Error("Permission snapshot returned no data")
+        seedGlobalPermissions(result.data, result.response?.headers, scopeKey)
+      }),
+      sdk.question.list().then((result) => {
+        if (!current()) return
+        if (!result.data) throw new Error("Question snapshot returned no data")
+        seedGlobalQuestions(result.data, result.response?.headers, questionRead)
+      }),
+    ])
+    return current() && questionSnapshotGate.accept(questionRead)
+  }
+
   async function resyncInstance(scopeKey: string): Promise<boolean> {
     const state = children[scopeKey]
     if (!scopeKey || !state) return false
@@ -1120,14 +1147,7 @@ function createGlobalSync() {
         if (!result.data) throw new Error("Scope bootstrap returned no data")
         applyScopeBootstrapSnapshot(scopeKey, store, setStore, result.data, result.response?.headers)
       }),
-      sdk.permission.list().then((result) => {
-        if (!current()) return
-        seedGlobalPermissions(result.data ?? [], result.response?.headers)
-      }),
-      sdk.question.list().then((result) => {
-        if (!current()) return
-        seedGlobalQuestions(result.data ?? [], result.response?.headers)
-      }),
+      loadPendingRequests(scopeKey),
       refreshVolatileAfterResync(scopeKey, store, setStore),
     ])
     return current()
@@ -1147,14 +1167,7 @@ function createGlobalSync() {
           applyScopeBootstrapSnapshot(scopeKey, store, setStore, result.data, result.response?.headers)
           if (store.status !== "complete") setStore("status", "partial")
         }),
-        sdk.permission.list().then((result) => {
-          if (!current()) return
-          seedGlobalPermissions(result.data ?? [], result.response?.headers)
-        }),
-        sdk.question.list().then((result) => {
-          if (!current()) return
-          seedGlobalQuestions(result.data ?? [], result.response?.headers)
-        }),
+        loadPendingRequests(scopeKey),
       ])
       if (!current()) return false
       setStore("status", "complete")
@@ -1184,9 +1197,16 @@ function createGlobalSync() {
     return tracker
   }
 
-  // Post-stamp event-write tracking for the session runtime index. The keys are
-  // globally unique session ids, so one tracker covers every Scope.
   let globalRuntimeTracker = new GlobalRuntimeWriteTracker()
+  const requestTrackers = new Map<string, GlobalRuntimeWriteTracker>()
+  const requestTracker = (scopeID: string) => {
+    let tracker = requestTrackers.get(scopeID)
+    if (!tracker) {
+      tracker = new GlobalRuntimeWriteTracker()
+      requestTrackers.set(scopeID, tracker)
+    }
+    return tracker
+  }
 
   // A reconnect can land in a new runtime epoch, where index entries from the
   // previous epoch can no longer be verified and no event will clear them. The
@@ -1194,6 +1214,10 @@ function createGlobalSync() {
   // is the one point that observes every Scope at once.
   function resetGlobalRuntimeIndex() {
     batch(() => {
+      questionSnapshotGate.reset()
+      setQuestionSnapshots({})
+      requestScopes.clear()
+      requestTrackers.clear()
       setGlobalStore("sessionStatus", reconcile({}))
       setGlobalStore("permission", reconcile({}))
       setGlobalStore("question", reconcile({}))
@@ -1202,20 +1226,33 @@ function createGlobalSync() {
     globalRuntimeTracker = new GlobalRuntimeWriteTracker()
   }
 
-  // The permission and question routes are already cross-Scope, so their
-  // response is authoritative for the whole index rather than for one Scope.
-  // A request whose event write postdates the response stamp is newer and is
-  // kept, so a reply that landed while the fetch was in flight is not
-  // resurrected as still pending.
-  function seedGlobalPermissions(requests: readonly PermissionRequest[], headers: Pick<Headers, "get"> | undefined) {
+  function pruneRequestScopes() {
+    for (const sessionID of requestScopes.keys())
+      if (!globalStore.question[sessionID]?.length && !globalStore.permission[sessionID]?.length)
+        requestScopes.delete(sessionID)
+  }
+
+  function seedGlobalPermissions(
+    requests: readonly PermissionRequest[],
+    headers: Pick<Headers, "get"> | undefined,
+    scopeID: string,
+  ) {
+    for (const request of requests) requestScopes.set(request.sessionID, scopeID)
+    const local = flattenBuckets(globalStore.permission)
     const merged =
-      globalRuntimeTracker.mergeRequests(
+      requestTracker(scopeID).mergeRequests(
         readSyncVersion(headers),
         "permission",
         requests,
-        flattenBuckets(globalStore.permission),
+        local.filter((request) => requestScopes.get(request.sessionID) === scopeID),
       ) ?? requests
-    setGlobalStore("permission", reconcile(groupBySession(merged)))
+    setGlobalStore(
+      "permission",
+      reconcile(
+        groupBySession([...local.filter((request) => requestScopes.get(request.sessionID) !== scopeID), ...merged]),
+      ),
+    )
+    pruneRequestScopes()
   }
 
   // The per-session permission fetch filters server-side, so its response is
@@ -1226,22 +1263,46 @@ function createGlobalSync() {
     sessionID: string,
     requests: readonly PermissionRequest[],
     headers: Pick<Headers, "get"> | undefined,
+    scopeID: string,
   ) {
+    for (const request of requests) requestScopes.set(request.sessionID, scopeID)
     const current = globalStore.permission[sessionID] ?? []
     const scoped = requests.filter((item) => item.sessionID === sessionID)
-    const merged = globalRuntimeTracker.mergeRequests(readSyncVersion(headers), "permission", scoped, current) ?? scoped
+    const merged =
+      requestTracker(scopeID).mergeRequests(readSyncVersion(headers), "permission", scoped, current) ?? scoped
     setGlobalStore("permission", sessionID, reconcile(merged.toSorted((a, b) => a.id.localeCompare(b.id))))
+    pruneRequestScopes()
   }
 
-  function seedGlobalQuestions(requests: readonly QuestionRequest[], headers: Pick<Headers, "get"> | undefined) {
+  function seedGlobalQuestions(
+    requests: readonly QuestionRequest[],
+    headers: Pick<Headers, "get"> | undefined,
+    token: QuestionSnapshotToken,
+  ) {
+    if (!questionSnapshotGate.accept(token)) return false
+    for (const request of requests) requestScopes.set(request.sessionID, token.scopeID)
+    const local = flattenBuckets(globalStore.question)
     const merged =
-      globalRuntimeTracker.mergeRequests(
+      requestTracker(token.scopeID).mergeRequests(
         readSyncVersion(headers),
         "question",
         requests,
-        flattenBuckets(globalStore.question),
+        local.filter((request) => requestScopes.get(request.sessionID) === token.scopeID),
       ) ?? requests
-    setGlobalStore("question", reconcile(groupBySession(merged)))
+    batch(() => {
+      setGlobalStore(
+        "question",
+        reconcile(
+          groupBySession([
+            ...local.filter((request) => requestScopes.get(request.sessionID) !== token.scopeID),
+            ...merged,
+          ]),
+        ),
+      )
+      setQuestionSnapshots((previous) => ({ ...previous, [token.scopeID]: token }))
+    })
+    pruneRequestScopes()
+    return true
   }
 
   // The cross-Scope status route is authoritative for the whole index, so a
@@ -1546,6 +1607,13 @@ function createGlobalSync() {
     const [store, setStore] = ensureScopeState(scopeKey)
     switch (event.type) {
       case "scope.runtime.disposed": {
+        requestTrackers.delete(scopeKey)
+        captureQuestionSnapshot(scopeKey)
+        setQuestionSnapshots((previous) => {
+          const next = { ...previous }
+          delete next[scopeKey]
+          return next
+        })
         scheduleBootstrap(scopeKey)
         break
       }
@@ -1947,13 +2015,14 @@ function createGlobalSync() {
         break
       }
       case "permission.asked": {
+        requestScopes.set(event.properties.sessionID, scopeKey)
         setGlobalStore(
           "permission",
           produce((draft) => {
             upsertPendingRequest(draft, event.properties)
           }),
         )
-        if (stamp) globalRuntimeTracker.permissionWrite(stamp, event.properties.id)
+        if (stamp) requestTracker(scopeKey).permissionWrite(stamp, event.properties.id)
         break
       }
       case "permission.replied": {
@@ -1963,18 +2032,20 @@ function createGlobalSync() {
             removePendingRequest(draft, event.properties.sessionID, event.properties.requestID)
           }),
         )
-        if (stamp) globalRuntimeTracker.permissionWrite(stamp, event.properties.requestID)
+        if (stamp) requestTracker(scopeKey).permissionWrite(stamp, event.properties.requestID)
+        pruneRequestScopes()
         break
       }
       case "question.asked": {
         const request = event.properties
+        requestScopes.set(request.sessionID, scopeKey)
         setGlobalStore(
           "question",
           produce((draft) => {
             upsertPendingRequest(draft, request)
           }),
         )
-        if (stamp) globalRuntimeTracker.questionWrite(stamp, request.id)
+        if (stamp) requestTracker(scopeKey).questionWrite(stamp, request.id)
         break
       }
       case "question.replied":
@@ -1986,7 +2057,8 @@ function createGlobalSync() {
             removePendingRequest(draft, event.properties.sessionID, event.properties.requestID)
           }),
         )
-        if (stamp) globalRuntimeTracker.questionWrite(stamp, event.properties.requestID)
+        if (stamp) requestTracker(scopeKey).questionWrite(stamp, event.properties.requestID)
+        pruneRequestScopes()
         break
       }
       case "lsp.updated": {
@@ -2118,7 +2190,8 @@ function createGlobalSync() {
       }
       for (const ev of data.events) applyEvent(scopeKey, ev)
       watermarks.set(scopeKey, { epoch: data.epoch, seq: data.seq })
-      return true
+      if (!questionSnapshot(scopeKey) && !(await loadPendingRequests(scopeKey))) return false
+      return current()
     } catch {
       if (!current()) return false
       return resyncInstance(scopeKey).catch(() => false)
@@ -2164,6 +2237,10 @@ function createGlobalSync() {
 
   createEffect(() => {
     const isConnected = globalSDK.connected()
+    if (!isConnected) {
+      questionSnapshotGate.reset()
+      setQuestionSnapshots({})
+    }
 
     if (isConnected && globalStore.ready) {
       void globalSDK.capabilities.load().then(
@@ -2311,6 +2388,8 @@ function createGlobalSync() {
     seedGlobalPermissions,
     seedSessionPermissions,
     seedGlobalQuestions,
+    captureQuestionSnapshot,
+    questionSnapshot,
     reconcileCortexFromSession,
     loadGlobalAgenda,
     refreshConfig,

@@ -29,18 +29,11 @@ export const S = {
   convRemovePending: { id: "session.conversation.removePending", message: "Remove pending message" },
   convWithdraw: { id: "session.conversation.withdraw", message: "Withdraw" },
 
-  // permission-dock.tsx
-
   // conversation.tsx — pending timeline tooltips (these mirror the conv descriptors above
   // but the checker sees the raw strings in title attributes)
   convMoveToQueueTitle: { id: "session.conversation.moveToQueueTitle", message: "Move back to queue" },
   convGuideRunTitle: { id: "session.conversation.guideRunTitle", message: "Guide current run" },
   convRemovePendingTitle: { id: "session.conversation.removePendingTitle", message: "Remove pending message" },
-  permDeny: { id: "session.permission.deny", message: "Deny" },
-  permAllowForSession: { id: "session.permission.allowForSession", message: "Allow for session" },
-  permAlwaysAllow: { id: "session.permission.alwaysAllow", message: "Always allow" },
-  permAllowOnce: { id: "session.permission.allowOnce", message: "Allow once" },
-  permFrom: { id: "session.permission.from", message: "from" },
 
   // prompt-dock.tsx
   dockBackToParent: { id: "session.dock.backToParent", message: "Back to parent" },
@@ -230,6 +223,8 @@ export const S = {
   forkConfirmRequestFailed: { id: "session.fork.confirm.requestFailed", message: "Request failed" },
 
   // session-progress summary labels
+  progressEnded: { id: "session.progress.ended", message: "Ended" },
+  progressCancelled: { id: "session.progress.cancelled", message: "{count} cancelled" },
   progressDone: { id: "session.progress.done", message: "Done · {count, plural, one {# task} other {# tasks}}" },
   progressNeedsAttention: {
     id: "session.progress.needsAttention",
@@ -268,20 +263,10 @@ export const S = {
   progressTodoTab: { id: "session.progress.todoTab", message: "To-do" },
   progressCurrentWork: { id: "session.progress.currentWork", message: "Current work" },
   progressCompleteFraction: { id: "session.progress.completeFraction", message: "{completed}/{total} complete" },
-  progressActiveCount: { id: "session.progress.activeCount", message: "{count} active" },
-  progressWaitingCount: { id: "session.progress.waitingCount", message: "{count} waiting" },
   progressViewLabel: { id: "session.progress.viewLabel", message: "Progress view" },
   progressExpand: { id: "session.progress.expand", message: "Expand" },
   progressCollapse: { id: "session.progress.collapse", message: "Collapse" },
   progressNoActivePlan: { id: "session.progress.noActivePlan", message: "No active plan" },
-  progressNoActiveTasks: { id: "session.progress.noActiveTasks", message: "No active tasks" },
-  progressTodoActive: { id: "session.progress.todoActive", message: "active" },
-  progressTodoDone: { id: "session.progress.todoDone", message: "done" },
-  progressTodoSkipped: { id: "session.progress.todoSkipped", message: "skipped" },
-  progressCompleted: { id: "session.progress.completed", message: "{count} completed" },
-  progressActiveCountLabel: { id: "session.progress.activeCountLabel", message: "{count} active" },
-  progressPendingCount: { id: "session.progress.pendingCount", message: "{count} pending" },
-  progressTodoCompleted: { id: "session.progress.todoCompleted", message: "{count} completed" },
 
   // session-inbox
   inboxQueued: { id: "session.inbox.queued", message: "Queued by you" },
@@ -370,33 +355,6 @@ export const S = {
   inboxFailed: { id: "session.inbox.failed", message: "Failed to deliver" },
   inboxRetry: { id: "session.inbox.retry", message: "Retry delivery" },
   inboxRetryFailed: { id: "session.inbox.retryFailed", message: "Failed to retry message" },
-
-  // question-prompt
-  questionNeedsInput: { id: "session.question.needsInput", message: "Choose how to proceed" },
-  questionOpen: { id: "session.question.open", message: "Open" },
-  questionCollapseTitle: { id: "session.question.collapse", message: "Collapse" },
-  questionSkip: { id: "session.question.skip", message: "Skip" },
-  questionSkipTitle: { id: "session.question.skipTitle", message: "Skip question" },
-  questionMoreActions: { id: "session.question.moreActions", message: "More question actions" },
-  questionReview: { id: "session.question.review", message: "Review" },
-  questionOtherAnswer: { id: "session.question.otherAnswer", message: "None of these?" },
-  questionOtherDesc: { id: "session.question.otherDesc", message: "Tell Synergy how to proceed" },
-  questionReviewTitle: { id: "session.question.reviewTitle", message: "Review your answers" },
-  questionNotAnswered: { id: "session.question.notAnswered", message: "Not answered" },
-  questionEdit: { id: "session.question.edit", message: "Edit" },
-  questionPrevious: { id: "session.question.previous", message: "Previous" },
-  questionNext: { id: "session.question.next", message: "Next" },
-  questionSubmit: { id: "session.question.submit", message: "Submit" },
-  questionAdd: { id: "session.question.add", message: "Add" },
-  questionStepsAria: { id: "session.question.stepsAria", message: "Question steps" },
-  questionAria: { id: "session.question.aria", message: "Question awaiting your input" },
-  questionCustomPlaceholder: {
-    id: "session.question.customPlaceholder",
-    message: "Tell Synergy what to do instead...",
-  },
-  questionSingleHint: { id: "session.question.singleHint", message: "Choose one option to continue" },
-  questionMultiHint: { id: "session.question.multiHint", message: "Choose one or more options to continue" },
-  questionStepLabel: { id: "session.question.stepLabel", message: "Question {index}" },
 
   // session-new-view
   newSessionSubtitle: { id: "session.new.subtitle", message: "What are we building today?" },
@@ -644,6 +602,7 @@ export function formatProgressLabel(
   i18n: I18n,
 ): string {
   if (snapshot.status === "hidden") return ""
+  if (snapshot.status === "complete" && snapshot.total === 0) return i18n._(S.progressEnded)
   if (snapshot.status === "complete") return i18n._({ ...S.progressDone, values: { count: snapshot.total } })
   if (snapshot.tone === "failed") return i18n._({ ...S.progressNeedsAttention, values: { count: snapshot.failed } })
   if (snapshot.tone === "blocked")

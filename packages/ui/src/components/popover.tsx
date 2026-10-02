@@ -22,6 +22,7 @@ export interface PopoverProps extends ParentProps, Omit<ComponentProps<typeof Ko
   portalMount?: HTMLElement
   class?: ComponentProps<"div">["class"]
   classList?: ComponentProps<"div">["classList"]
+  contentProps?: Omit<ComponentProps<typeof Kobalte.Content>, "children" | "ref" | "class" | "classList">
 }
 
 export function Popover(props: PopoverProps) {
@@ -36,6 +37,7 @@ export function Popover(props: PopoverProps) {
     "portalMount",
     "class",
     "classList",
+    "contentProps",
     "children",
   ])
 
@@ -44,9 +46,11 @@ export function Popover(props: PopoverProps) {
       <Show
         when={local.triggerAs}
         fallback={
-          <Kobalte.Trigger as="div" data-slot="popover-trigger">
-            {local.trigger}
-          </Kobalte.Trigger>
+          <Show when={local.trigger !== undefined}>
+            <Kobalte.Trigger as="div" data-slot="popover-trigger">
+              {local.trigger}
+            </Kobalte.Trigger>
+          </Show>
         }
       >
         {(trigger) => <Kobalte.Trigger as={trigger()} data-slot="popover-trigger" />}
@@ -55,6 +59,7 @@ export function Popover(props: PopoverProps) {
         <PortalStyleOwner>
           <OverlayLayerProvider layer={layer}>
             <Kobalte.Content
+              {...local.contentProps}
               ref={setLayer}
               data-component="popover-content"
               data-variant={local.variant ?? "default"}
@@ -63,7 +68,6 @@ export function Popover(props: PopoverProps) {
                 [local.class ?? ""]: !!local.class,
               }}
             >
-              {/* <Kobalte.Arrow data-slot="popover-arrow" /> */}
               <Show when={local.title}>
                 <div data-slot="popover-header" classList={{ "sr-only": local.variant === "menu" }}>
                   <Kobalte.Title data-slot="popover-title">{local.title}</Kobalte.Title>

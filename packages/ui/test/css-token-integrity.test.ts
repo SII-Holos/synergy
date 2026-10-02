@@ -116,6 +116,7 @@ const KNOWN_LOCAL_TOKENS = new Set([
   "workbench-card-bg",
   "workbench-card-bg-hover",
   "workbench-row-bg",
+  "workbench-row-bg-hover",
   "workbench-card-secondary-bg",
   "workbench-control-bg",
   "workbench-control-bg-hover",

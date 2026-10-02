@@ -1,157 +1,67 @@
-import { createMemo, createSignal, For, Show } from "solid-js"
+import { createMemo, For, Show } from "solid-js"
+import { useLingui } from "@lingui/solid"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useSessionDataView } from "@/context/session-data-view"
-import { useLocale } from "@/context/locale"
-import { S } from "./session-i18n"
-import type { TodoItem, TodoSummary } from "./session-progress-summary"
 
-interface SessionProgressTodoProps {
-  sessionID: string
-  summary: TodoSummary
-  class?: string
+const statusCopy = {
+  completed: { id: "session.todo.completed", message: "Completed" },
+  in_progress: { id: "session.todo.inProgress", message: "In progress" },
+  pending: { id: "session.todo.pending", message: "Pending" },
+  cancelled: { id: "session.todo.cancelled", message: "Cancelled" },
+  unknown: { id: "session.todo.unknown", message: "Unknown status" },
 }
-
-function statusIcon(status: string): string {
-  switch (status) {
-    case "completed":
-      return "✓"
-    case "in_progress":
-      return "●"
-    case "cancelled":
-      return "✗"
-    default:
-      return "○"
-  }
-}
-function statusClass(status: string): string {
-  switch (status) {
-    case "completed":
-      return "text-text-on-success-base"
-    case "in_progress":
-      return "text-text-interactive-base"
-    case "cancelled":
-      return "text-text-weaker"
-    default:
-      return "text-text-weak"
-  }
-}
-function contentClass(status: string): string {
-  switch (status) {
-    case "completed":
-      return "text-text-weaker"
-    case "cancelled":
-      return "text-text-weaker line-through"
-    default:
-      return "text-text-base"
-  }
-}
-function statusLabel(status: string): string | undefined {
-  switch (status) {
-    case "in_progress":
-      return "active"
-    case "completed":
-      return "done"
-    case "cancelled":
-      return "skipped"
-    default:
-      return undefined
-  }
-}
-function labelClass(status: string): string {
-  switch (status) {
-    case "in_progress":
-      return "bg-text-interactive-base/10 text-text-interactive-base ring-1 ring-inset ring-text-interactive-base/12"
-    case "completed":
-      return "bg-surface-success-base/20 text-text-on-success-base ring-1 ring-inset ring-border-success-base/15"
-    case "cancelled":
-      return "workbench-control-surface text-text-weaker ring-1 ring-inset ring-border-weak-base"
-    default:
-      return ""
-  }
+const priorityCopy = {
+  high: { id: "session.todo.priorityHigh", message: "High priority" },
+  low: { id: "session.todo.priorityLow", message: "Low priority" },
 }
 
-export function SessionProgressTodo(props: SessionProgressTodoProps) {
+export function SessionProgressTodo(props: { sessionID: string; class?: string }) {
   const view = useSessionDataView()
-  const { i18n } = useLocale()
-  const _ = (d: { id: string; message: string }) => i18n._(d)
-  const todos = createMemo<TodoItem[]>(() => view().todosFor(props.sessionID))
-
-  const summaryParts = createMemo(() => {
-    const s = props.summary
-    const parts: string[] = []
-    if (s.completed > 0) parts.push(`${s.completed} completed`)
-    if (s.inProgress > 0) parts.push(`${s.inProgress} active`)
-    if (s.pending > 0) parts.push(`${s.pending} pending`)
-    return parts
-  })
-
-  const [expandedTodoId, setExpandedTodoId] = createSignal<string | undefined>(undefined)
-  const toggleTodo = (id: string) => {
-    setExpandedTodoId((prev) => (prev === id ? undefined : id))
+  const { _ } = useLingui()
+  const todos = createMemo(() => view().todosFor(props.sessionID))
+  const statusLabel = (value: string) => {
+    switch (value) {
+      case "completed":
+        return _(statusCopy.completed)
+      case "in_progress":
+        return _(statusCopy.in_progress)
+      case "cancelled":
+        return _(statusCopy.cancelled)
+      case "pending":
+        return _(statusCopy.pending)
+      default:
+        return _(statusCopy.unknown)
+    }
   }
-
   return (
-    <div class={`session-progress-todo ${props.class ?? ""}`}>
-      <Show
-        when={summaryParts().length > 0}
-        fallback={<div class="text-text-weaker text-xs px-2.5 py-1">{_(S.progressNoActiveTasks)}</div>}
-      >
-        <div class="text-xs text-text-weaker px-2.5 py-1 shrink-0">{summaryParts().join(" · ")}</div>
-      </Show>
-      <Show when={todos().length > 0}>
-        <div class="session-progress-todo-list divide-y divide-border-weak-base/60">
-          <For each={todos()}>
-            {(todo) => {
-              const isActive = () => todo.status === "in_progress"
-              const isExpanded = () => expandedTodoId() === todo.id && todo.content.length > 40
-              return (
-                <>
-                  <div
-                    onClick={() => toggleTodo(todo.id)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e: KeyboardEvent) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault()
-                        toggleTodo(todo.id)
-                      }
-                    }}
-                    class="workbench-control-surface-hover flex items-center gap-2 px-2.5 py-1.5 transition-colors cursor-pointer select-none"
-                    classList={{ "workbench-selected-surface ring-1 ring-inset ring-border-base/32": isActive() }}
-                  >
-                    <span
-                      class={`shrink-0 text-sm leading-none ${statusClass(todo.status)}`}
-                      classList={{ "animate-pulse": isActive() }}
-                    >
-                      {statusIcon(todo.status)}
-                    </span>
-                    <span class={`text-xs leading-snug truncate flex-1 min-w-0 ${contentClass(todo.status)}`}>
-                      {todo.content}
-                    </span>
-                    <Show when={todo.priority === "high"}>
-                      <span class="shrink-0 size-1.5 rounded-full bg-border-warning-base/70" />
-                    </Show>
-                    <Show when={statusLabel(todo.status)}>
-                      {(label) => (
-                        <span class={`shrink-0 text-11-medium px-1.5 py-0.5 rounded-full ${labelClass(todo.status)}`}>
-                          {label()}
-                        </span>
-                      )}
-                    </Show>
-                  </div>
-                  <Show when={isExpanded()}>
-                    <div class="workbench-card-surface flex items-center gap-2 px-2.5 py-1.5 border-t border-border-weak-base/40">
-                      <span class="shrink-0 text-sm leading-none text-text-weaker"> </span>
-                      <span class="text-xs leading-snug text-text-base whitespace-pre-wrap break-words flex-1 min-w-0">
-                        {todo.content}
-                      </span>
-                    </div>
-                  </Show>
-                </>
-              )
-            }}
-          </For>
-        </div>
-      </Show>
-    </div>
+    <ul class={`session-progress-todo-list ${props.class ?? ""}`}>
+      <For each={todos()}>
+        {(todo) => (
+          <li class="session-progress-todo-row" data-status={todo.status}>
+            <span class="session-progress-todo-icon" role="img" aria-label={statusLabel(todo.status)}>
+              <Icon
+                name={getSemanticIcon(
+                  todo.status === "completed"
+                    ? "state.complete"
+                    : todo.status === "cancelled"
+                      ? "state.cancelled"
+                      : todo.status === "in_progress"
+                        ? "session.running"
+                        : "state.empty",
+                )}
+                size="small"
+              />
+            </span>
+            <span class="session-progress-todo-content">{todo.content}</span>
+            <Show when={todo.priority === "high" || todo.priority === "low"}>
+              <span class="session-progress-todo-priority">
+                {_(todo.priority === "high" ? priorityCopy.high : priorityCopy.low)}
+              </span>
+            </Show>
+          </li>
+        )}
+      </For>
+    </ul>
   )
 }

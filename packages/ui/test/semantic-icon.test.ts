@@ -101,6 +101,11 @@ describe("semantic icons", () => {
     expect(getSemanticIcon("blueprint.main")).not.toBe("stamp")
   })
 
+  test("cancelled status has a meaning distinct from dismissing a control", () => {
+    expect(getSemanticIcon("state.cancelled")).toBe("circle-minus")
+    expect(getSemanticIcon("state.cancelled")).not.toBe(getSemanticIcon("action.close"))
+  })
+
   test("semantic tokens do not reuse Lucide glyphs for different meanings", () => {
     const grouped = new Map<string, string[]>()
     for (const [token, icon] of Object.entries(SemanticIconToken)) {

@@ -388,13 +388,16 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           return { phase: "idle", generation: 0, hasSnapshot: false }
         },
         async sync(sessionID: string, options?: SessionSyncOptions) {
-          // The permission route is cross-Scope; the sessionID filter keeps
-          // the payload bounded while the response still seeds the global
+          // The Scope's permission response is session-filtered to keep
+          // the payload bounded while the response seeds the global
           // index. `seedSessionPermissions` replaces this session's slice and
           // keeps any request whose event write postdates the response stamp.
           const syncPermissions = () =>
             retry(() => sdk.client.permission.list({ sessionID }))
-              .then((res) => globalSync.seedSessionPermissions(sessionID, res.data ?? [], res.response?.headers))
+              .then((res) => {
+                if (!res.data) throw new Error("Permission snapshot returned no data")
+                globalSync.seedSessionPermissions(sessionID, res.data, res.response?.headers, sdk.scopeID)
+              })
               .catch(() => {})
           // Force session/message reloads after reconnect or backend restart.
           // Session metadata alone is not enough: tool parts publish as

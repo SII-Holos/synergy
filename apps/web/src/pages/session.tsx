@@ -2194,7 +2194,14 @@ function SessionPageContent() {
     <>
       <BrowserViewEffects timeline={timeline} />
       <Show when={composer()}>{(controller) => controller().extensions()}</Show>
-      <SessionDecisionHost sessionId={params.id}>
+      <SessionDecisionHost
+        sessionId={params.id}
+        onReturnFocus={() => {
+          if (sessionMeta().isReadOnly || !inputRef?.isConnected) return false
+          inputRef.focus({ preventScroll: true })
+          return true
+        }}
+      >
         <PluginPageOutlet
           page="session"
           sessionId={params.id}
