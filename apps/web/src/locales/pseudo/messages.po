@@ -23384,6 +23384,134 @@ msgid "welcome.nature.wind"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.story.arrivalBody"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.arrivalTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.atlas"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.back"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.books"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.enter"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.foyerBody"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.foyerTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.guest"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.journey"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.letter"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.letterBody"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.letterTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.map"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.owner"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.prompt"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.reading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.readingBody"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.readingTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.return"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.reunionBody"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.reunionTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.scene"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.shelvesBody"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.shelvesTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.visitorBody"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.visitorTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.voyageBody"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.story.voyageTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "window.close.aria"
 msgstr ""
 

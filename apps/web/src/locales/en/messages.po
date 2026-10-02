@@ -23384,6 +23384,134 @@ msgid "welcome.nature.wind"
 msgstr "Wind: {direction, select, left {left} right {right} other {calm}}"
 
 #. js-lingui-explicit-id
+msgid "welcome.story.arrivalBody"
+msgstr "The tide is coming in. At the end of the pier, a bookshop has left its door ajar. The sign says: stories welcome, even unfinished ones."
+
+#. js-lingui-explicit-id
+msgid "welcome.story.arrivalTitle"
+msgstr "The last light on the coast"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.atlas"
+msgstr "Find the lighthouse on the map"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.back"
+msgstr "Go back a page"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.books"
+msgstr "Explore the shelves"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.enter"
+msgstr "Push open the door"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.foyerBody"
+msgstr "A bell rings. Beside a sealed letter sits an atlas with salt-stained pages. Someone outside pauses at the window, looking for a familiar face."
+
+#. js-lingui-explicit-id
+msgid "welcome.story.foyerTitle"
+msgstr "A place to begin"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.guest"
+msgstr "Invite the visitor in"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.hint"
+msgstr "Step inside. Every object has a story; your choices decide where it goes."
+
+#. js-lingui-explicit-id
+msgid "welcome.story.journey"
+msgstr "Share the atlas"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.letter"
+msgstr "Read the letter"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.letterBody"
+msgstr "“If the sea brings you home, I will be here.” There is no address, only a tiny lighthouse drawn in the corner. The visitor has the same lighthouse on a pendant."
+
+#. js-lingui-explicit-id
+msgid "welcome.story.letterTitle"
+msgstr "A letter that waited"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.map"
+msgstr "Follow the invitation"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.name"
+msgstr "An interactive short story"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.owner"
+msgstr "Ask about the pendant"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.prompt"
+msgstr "Help me write and build an original interactive illustrated story with clickable objects, branching choices and multiple endings. I explored a seaside bookshop and the direction “{direction}”. First help me choose my own setting, characters and art direction. My idea is: "
+
+#. js-lingui-explicit-id
+msgid "welcome.story.reading"
+msgstr "Host a night of stories"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.readingBody"
+msgstr "You turn the chairs toward the window. One neighbor brings a poem; another brings a tale with no ending. By midnight, every seat is taken. The smallest shop on the coast has become a whole world."
+
+#. js-lingui-explicit-id
+msgid "welcome.story.readingTitle"
+msgstr "A room full of beginnings"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.return"
+msgstr "Give them the letter"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.reunionBody"
+msgstr "The visitor smiles before finishing the first line. Upstairs, a floorboard creaks. Two cups appear on the table. You step outside and leave the door open. Some stories end where they began."
+
+#. js-lingui-explicit-id
+msgid "welcome.story.reunionTitle"
+msgstr "A light, kept for you"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.scene"
+msgstr "The bookshop by the sea"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.shelvesBody"
+msgstr "The atlas opens to an island missing from every modern map. Tucked inside is a handwritten invitation: “Bring a story. We sail at dawn.” There are enough chairs here for a different kind of journey, too."
+
+#. js-lingui-explicit-id
+msgid "welcome.story.shelvesTitle"
+msgstr "Between the pages"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.title"
+msgstr "This bookshop is waiting for you."
+
+#. js-lingui-explicit-id
+msgid "welcome.story.visitorBody"
+msgstr "“My sister used to keep this shop,” the visitor says. “She always left a light for me.” Their gaze settles on the letter. Outside, the rain begins to ease."
+
+#. js-lingui-explicit-id
+msgid "welcome.story.visitorTitle"
+msgstr "Someone has come home"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.voyageBody"
+msgstr "At dawn, a small boat waits by the pier. You carry the atlas and an empty notebook. As the bookshop grows smaller behind you, a new island appears at the edge of the page."
+
+#. js-lingui-explicit-id
+msgid "welcome.story.voyageTitle"
+msgstr "A page beyond the horizon"
+
+#. js-lingui-explicit-id
 msgid "window.close.aria"
 msgstr "Close"
 

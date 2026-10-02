@@ -20,6 +20,8 @@ This replaces the three starter cards described in [workbench optimization](2026
 
 The landscape module runs a bounded cellular simulation in a dedicated Worker and renders its latest acknowledged frame in Canvas 2D. Water movement conserves cell count, terrain blocks movement, watered seeds grow to a finite height, and low gravity changes stepping frequency. Commands and replies carry a preview generation; frame acknowledgement bounds queued rendering work. Pause stops the Worker timer; unmount terminates it. Canvas colors consume resolved theme tokens and redraw on same-mode theme changes. Worker ownership and messaging follow the [Web Workers API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Using_web_workers).
 
+The illustrated bookshop is an authored eight-node story with three reachable endings. Its node-owned choices update local scene state and bounded reading history; invalid actions cannot jump between nodes. Object hotspots and equivalent text buttons share the same actions. Backtracking and restart preserve keyboard focus, and the editable task starter includes the current story direction without automatically submitting it.
+
 ## Alternatives considered
 
 **Independent random selection on every render.** It interrupts interaction and can immediately repeat the same introduction.

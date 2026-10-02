@@ -23384,6 +23384,134 @@ msgid "welcome.nature.wind"
 msgstr "风向：{direction, select, left {向左} right {向右} other {无风}}"
 
 #. js-lingui-explicit-id
+msgid "welcome.story.arrivalBody"
+msgstr "潮水正在涨起。码头尽头，一间书店的门虚掩着。门边的小牌子写着：欢迎带故事进来，没写完的也可以。"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.arrivalTitle"
+msgstr "海岸上最后一盏灯"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.atlas"
+msgstr "在地图上寻找灯塔"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.back"
+msgstr "回看上一页"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.books"
+msgstr "看看书架"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.enter"
+msgstr "推门进去"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.foyerBody"
+msgstr "门铃轻轻响了。柜台上放着一封信，旁边的地图册留下了海盐的痕迹。窗外，一位来客停下脚步，似乎在找一个熟悉的人。"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.foyerTitle"
+msgstr "故事，从这里开始"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.guest"
+msgstr "邀请来客进门"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.hint"
+msgstr "走进去，看看那些物件。每一次选择，都让故事有了不同的方向。"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.journey"
+msgstr "一起翻开地图册"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.letter"
+msgstr "读一读信"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.letterBody"
+msgstr "“如果大海送你回家，我就在这里。”信上没有地址，只在角落画了一座小灯塔。窗外来客的项链上，也挂着同样的灯塔。"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.letterTitle"
+msgstr "等了很久的一封信"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.map"
+msgstr "赴一场黎明之约"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.name"
+msgstr "一段由你选择的故事"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.owner"
+msgstr "问问这条项链"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.prompt"
+msgstr "帮我创作并实现一个原创的互动插画故事：支持点击物件、分支选择和多个结局。我刚体验了海边书店，探索的方向是“{direction}”。先帮我确定自己的场景、人物和画面风格。我的想法是："
+
+#. js-lingui-explicit-id
+msgid "welcome.story.reading"
+msgstr "办一场故事之夜"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.readingBody"
+msgstr "你把椅子转向窗边。有人带来一首诗，有人带来一个还没结尾的故事。到了午夜，每个座位都坐满了。海岸上最小的书店，装下了一个世界。"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.readingTitle"
+msgstr "满屋子，都是新的开始"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.return"
+msgstr "把信交给来客"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.reunionBody"
+msgstr "第一行还没有读完，来客已经笑了。楼上传来轻轻的脚步声，桌上多了两只杯子。你走出书店，留下敞开的门。有些故事，会在开始的地方圆满。"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.reunionTitle"
+msgstr "为你留着的一盏灯"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.scene"
+msgstr "海边书店"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.shelvesBody"
+msgstr "地图册翻开了，里面有一座新地图上找不到的小岛。夹着的手写邀请写道：“带一个故事来，天亮出发。”不过，这里的椅子也足够开启另一种旅程。"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.shelvesTitle"
+msgstr "书页之间"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.title"
+msgstr "这间书店，等你推门。"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.visitorBody"
+msgstr "“我姐姐以前守着这家店。”来客说，“她总会给我留一盏灯。”目光落在信上，窗外的雨也渐渐停了。"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.visitorTitle"
+msgstr "有人，终于回家了"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.voyageBody"
+msgstr "黎明时，一条小船停在码头。你带上地图册和一本空白笔记本。书店在身后越来越小，新的岛屿出现在书页的边缘。"
+
+#. js-lingui-explicit-id
+msgid "welcome.story.voyageTitle"
+msgstr "地平线外，还有一页"
+
+#. js-lingui-explicit-id
 msgid "window.close.aria"
 msgstr "关闭"
 
