@@ -169,8 +169,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const inflightInbox = new Map<string, Promise<void>>()
     const inflightTodo = new Map<string, Promise<void>>()
     const inflightDag = new Map<string, Promise<void>>()
+    const navigation = new Map<string, { key: string; promise: Promise<unknown> }>()
     const [meta, setMeta] = createStore({
       messageLoad: {} as Record<string, SessionMessageLoadState>,
+      messageNavigation: {} as Record<string, string | undefined>,
     })
     // Track the reconnectVersion at the time of each session's last successful
     // message/part snapshot load. After reconnect, force both session metadata
@@ -380,7 +382,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       onState: (sessionID, state) => setMeta("messageLoad", sessionID, state),
     })
 
-    onCleanup(messageLoader.dispose)
+    onCleanup(() => {
+      navigation.clear()
+      messageLoader.dispose()
+    })
 
     const loadMessagePage = (
       sessionID: string,
@@ -399,6 +404,26 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         { mode: "latest", limit: hasMessageSnapshot(sessionID) ? chunk : INITIAL_LATEST_PAGE_LIMIT },
         options,
       )
+
+    const navigateMessages = <T,>(sessionID: string, key: string, run: () => Promise<T>): Promise<T> => {
+      const previous = navigation.get(sessionID)
+      if (previous?.key === key) return previous.promise as Promise<T>
+      const promise: Promise<T> = Promise.resolve()
+        .then(async () => {
+          await previous?.promise.catch(() => {})
+          await messageLoader.pending(sessionID)?.catch(() => {})
+          contentLifetime.signal.throwIfAborted()
+          return run()
+        })
+        .finally(() => {
+          if (navigation.get(sessionID)?.promise !== promise) return
+          navigation.delete(sessionID)
+          setMeta("messageNavigation", sessionID, undefined)
+        })
+      navigation.set(sessionID, { key, promise })
+      setMeta("messageNavigation", sessionID, key)
+      return promise
+    }
 
     const loadInbox = (sessionID: string, options?: RefreshOptions) => {
       if (!options?.force && store.inbox[sessionID] !== undefined) return
@@ -604,7 +629,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             forceSession: plan.forceSession,
             forceMessages: plan.forceMessages,
           }
-          const reloadMessages = () => {
+          const reloadMessages = async () => {
+            while (navigation.has(sessionID)) await navigation.get(sessionID)!.promise.catch(() => {})
+            contentLifetime.signal.throwIfAborted()
             const messages = store.message[sessionID]
             if (
               store.messageWindow[sessionID]?.mode === "history" &&
@@ -653,13 +680,15 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         // empty-state Refresh button to recover if the initial load missed
         // messages or session metadata such as derived rollback state (issue
         // #328 / #316).
-        async refresh(sessionID: string) {
-          const reconnectVersion = globalSync.scopeReconnectVersion(sdk.scopeKey)
-          await Promise.all([
-            loadSession(sessionID, { force: true }).catch(() => {}),
-            loadLatestMessages(sessionID, { force: true, reconnectVersion }),
-            refreshVolatile(sessionID),
-          ])
+        refresh(sessionID: string) {
+          return navigateMessages(sessionID, "refresh", async () => {
+            const reconnectVersion = globalSync.scopeReconnectVersion(sdk.scopeKey)
+            await Promise.all([
+              loadSession(sessionID, { force: true }).catch(() => {}),
+              loadLatestMessages(sessionID, { force: true, reconnectVersion }),
+              refreshVolatile(sessionID),
+            ])
+          })
         },
         async diff(sessionID: string) {
           if (store.session_diff[sessionID] !== undefined) return
@@ -683,21 +712,27 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         dag: loadDag,
         refreshVolatile,
         history: {
-          async locate(sessionID: string, messageID: string, partID?: string) {
-            if (!store.message[sessionID]?.some((message) => message.id === messageID))
-              await loadMessagePage(sessionID, { mode: "history", targetMessageID: messageID, limit: 50 })
-            if (!store.message[sessionID]?.some((message) => message.id === messageID)) return false
-            if (partID && !store.partSummary[messageID]?.some((part) => part.id === partID))
-              await loadPartSummaries(sessionID, messageID, false, true, { partID })
-            else await loadPartSummaries(sessionID, messageID)
-            return !partID || store.partSummary[messageID]?.some((part) => part.id === partID) === true
+          locate(sessionID: string, messageID: string, partID?: string) {
+            return navigateMessages(sessionID, JSON.stringify(["locate", messageID, partID]), async () => {
+              if (!store.message[sessionID]?.some((message) => message.id === messageID))
+                await loadMessagePage(
+                  sessionID,
+                  { mode: "history", targetMessageID: messageID, limit: 50 },
+                  { force: true },
+                )
+              if (!store.message[sessionID]?.some((message) => message.id === messageID)) return false
+              if (partID && !store.partSummary[messageID]?.some((part) => part.id === partID))
+                await loadPartSummaries(sessionID, messageID, false, true, { partID })
+              else await loadPartSummaries(sessionID, messageID)
+              return !partID || store.partSummary[messageID]?.some((part) => part.id === partID) === true
+            })
           },
           more(sessionID: string) {
             return store.messageWindow[sessionID]?.hasMore ?? false
           },
           loading(sessionID: string) {
             const phase = meta.messageLoad[sessionID]?.phase
-            return phase === "loading" || phase === "refreshing"
+            return !!meta.messageNavigation[sessionID] || phase === "loading" || phase === "refreshing"
           },
           mode(sessionID: string) {
             return store.messageWindow[sessionID]?.mode ?? "latest"
@@ -708,29 +743,32 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           tailMissingLatest(sessionID: string) {
             return store.messageWindow[sessionID]?.tailMissingLatest ?? false
           },
-          async loadMore(sessionID: string, count = chunk) {
-            if (this.loading(sessionID)) return
-            const metadata = store.messageWindow[sessionID]
-            if (!metadata?.hasMore || !metadata.nextCursor) return
-            return loadOlderOrRecoverLatest({
-              loadOlder: () =>
-                loadMessagePage(sessionID, {
-                  mode: "history",
-                  cursor: metadata.nextCursor!,
-                  limit: count,
-                }),
-              loadLatest: () =>
-                loadLatestMessages(sessionID, {
-                  force: true,
-                  reconnectVersion: globalSync.scopeReconnectVersion(sdk.scopeKey),
-                }),
+          loadMore(sessionID: string, count = chunk) {
+            return navigateMessages(sessionID, "earlier", async () => {
+              const metadata = store.messageWindow[sessionID]
+              if (!metadata?.hasMore || !metadata.nextCursor) return
+              return loadOlderOrRecoverLatest({
+                loadOlder: () =>
+                  loadMessagePage(
+                    sessionID,
+                    { mode: "history", cursor: metadata.nextCursor!, limit: count },
+                    { force: true },
+                  ),
+                loadLatest: () =>
+                  loadLatestMessages(sessionID, {
+                    force: true,
+                    reconnectVersion: globalSync.scopeReconnectVersion(sdk.scopeKey),
+                  }),
+              })
             })
           },
-          async returnLatest(sessionID: string) {
-            await loadLatestMessages(sessionID, {
-              force: true,
-              reconnectVersion: globalSync.scopeReconnectVersion(sdk.scopeKey),
-            })
+          returnLatest(sessionID: string) {
+            return navigateMessages(sessionID, "latest", () =>
+              loadLatestMessages(sessionID, {
+                force: true,
+                reconnectVersion: globalSync.scopeReconnectVersion(sdk.scopeKey),
+              }),
+            )
           },
         },
       },

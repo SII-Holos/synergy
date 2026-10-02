@@ -26,6 +26,8 @@ test("native public conversation retains bounded history and reconciles updates 
     const conversation = await importPreviewConversation(preview, { title: "History fixture", turns: 360 })
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
     const page = await context.newPage()
+    const cdp = await context.newCDPSession(page)
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 })
     page.setDefaultTimeout(20000)
     diagnostics = await openPluginPreviewPage(preview, page)
     await page.route("**/session/**/timeline**", async (route) => {
@@ -100,6 +102,7 @@ test("native public conversation retains bounded history and reconciles updates 
     const returnLatest = page.getByRole("button", { name: "Return to latest", exact: true })
     await returnLatest.click()
     await page.getByText("Answer 360", { exact: true }).waitFor()
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 })
     const { data } = await preview.client.session.messages(
       { scopeID: "home", sessionID: conversation.id },
       { throwOnError: true },
