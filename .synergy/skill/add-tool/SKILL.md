@@ -65,6 +65,8 @@ The tool icon registry is separate from the product semantic-token registry. Loa
 
 For a tool-failure analyzer, test persisted completed and errored parts with a tool ID outside the built-in search set. Verify that the declared category receives those records and triggers its intervention; testing only a built-in tool does not establish the registration contract.
 
+Search duplicate protection uses the persisted assistant's root and authoritative ToolParts. Test Runtime reopen, context compaction, same-root steers, a newer root, changed filters and failed history reads. Direct executor fixtures must persist their Session, assistant and terminal ToolParts and retain the Scope while executing; a fabricated context or a process-local attempt map cannot prove durable admission.
+
 For external reads with automatic retries, reuse the shared network classifier and cancellable backoff, verify that the operation is safe to replay, and put all attempts, body reads, and waits under one caller deadline. Keep one permission and deduplication admission per tool invocation. Test transient recovery, permanent rejection, cancelled backoff, body failure and size limits; do not turn a generic tool or MCP failure into automatic side-effect replay.
 
 From the tool’s owning package, run the narrow tool test first. Add taxonomy, permission, migration, and server/UI tests when those contracts changed. Then run from the root:

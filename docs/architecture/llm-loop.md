@@ -190,7 +190,9 @@ Current loop-level behavior includes:
 - repeated same-class tool-error stopping
 - tool-category failure analysis and escalation
 
-Each registered tool-failure analyzer owns its declared tool set. Completed and errored parts from that set enter the analyzer even when their tool names are absent from the built-in search category. Classification preserves explicit failure metadata and errored-part diagnostics.
+Each registered tool-failure analyzer owns its declared tool set. Completed and errored parts from that set enter the analyzer even when their tool names are absent from the built-in search category. Registration snapshots the tool and Agent sets before Runtime startup and rejects late changes. Classification preserves explicit failure metadata and errored-part diagnostics.
+
+Search duplicate admission and failure escalation read the active root's authoritative message chronology and ToolParts. Context compaction and Runtime reopening do not remove that evidence. Steers remain in the same root; another root ends the segment. Set-valued filters have canonical ordering, and changed filters or case-sensitive URL paths remain distinct. Storage and malformed-record failures stop admission instead of permitting another external request. Search admission derives the root from the persisted assistant, so caller extra fields cannot select a different task. No separate in-memory attempt ledger is retained.
 
 A blocking job can return `continue` to restart the loop after changing history or `stop` to finish without another model call. Non-blocking jobs capture detached payloads and cannot hold the critical execution path. By default every captured payload runs independently; a job opts into latest-pending coalescing only by defining a stable `key()`. Each background execution receives an abort signal and a finite timeout, so consumers must propagate cancellation through history reads, model calls, child-session work, and other long-running operations.
 

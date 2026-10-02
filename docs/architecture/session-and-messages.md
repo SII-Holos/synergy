@@ -414,6 +414,8 @@ Message info records remain the canonical transcript and `time.created`, followe
 
 Newest-first bounded readers use the derived `session_message_order_v1` index instead of eagerly parsing every message info. The index stores one sortable marker per message plus a ready/count state record. Message creation, chronology changes, removal, and permanent session deletion maintain it under a per-session write lock. Ordinary streaming updates whose `time.created` value is unchanged do not rewrite marker state.
 
+An indexed message that was deleted can be absent while a reader traverses its snapshot. Newest-first readers tolerate that missing-record condition; storage availability and integrity errors propagate instead of hiding unreadable evidence.
+
 The index is not part of session export or canonical recovery state. Missing, incomplete, or internally inconsistent index state is rebuilt from canonical message infos before use; a non-ready state left by interruption also forces a rebuild. Consumers must not derive transcript semantics from marker filenames or treat the index as an independent message source.
 
 ## Model Context Projection
