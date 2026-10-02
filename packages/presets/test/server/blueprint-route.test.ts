@@ -262,7 +262,7 @@ describe("BlueprintRoute start prompt", () => {
       })
     }))
 
-  test("uses the general Blueprint prompt for synergy", () =>
+  test("uses the general Blueprint prompt for the general primary", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
@@ -334,7 +334,7 @@ describe("BlueprintRoute start prompt", () => {
       })
     }))
 
-  test("uses the coding Blueprint prompt for synergy-max", () =>
+  test("uses the coding Blueprint prompt for the coding primary", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({

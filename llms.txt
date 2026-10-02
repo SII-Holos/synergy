@@ -81,4 +81,4 @@ The project-local `.synergy/skill/` files are executable workflows for this repo
 - `add-agent`, `add-cli-command`, and `add-tool`
 - `find-logs`, `inspect-sessions`, `find-simplifications`, `release-log-workflow`, and `report-bug`
 
-Use `Scope` for workspace resolution/context and `Library` for the knowledge subsystem. Current built-in primary agents are `synergy` and `synergy-max`; retired terminology belongs only in migration or research material.
+Use `Scope` for workspace resolution/context and `Library` for the knowledge subsystem. Current built-in primary agents are `atlas`, `forge`, and `pico`; retired terminology belongs only in migration or research material.

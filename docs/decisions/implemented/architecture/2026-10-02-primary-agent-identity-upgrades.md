@@ -14,6 +14,8 @@ Brand names alone do not explain which primary Agent suits a task. The Web prese
 
 Each data owner registers a versioned migration for its structured references. A separate frozen historical mapping makes upgrade behavior independent of future catalog edits. Owner migrations expose reusable configuration and record transforms; central import entry points order them through the same migration graph before validation or publication. Newly discovered project configurations use this entry point. Home merges invalidate Note metadata indexes through Note's public service. Raw usage records stay immutable while query grouping and agent filtering associate historical identities.
 
+Owner record transforms are standalone functions shared by startup, per-Session and import hooks. The central runner invokes startup callbacks independently of their contribution objects, so those callbacks cannot depend on a method receiver. Cross-domain fixtures invoke registered startup callbacks independently; released-ledger startup verifies the same behavior through the runner.
+
 Execution accepts current names only. Product identifiers, models, permissions, tools, delegation and internal agents keep their contracts. Custom-name conflict detection is outside this change.
 
 ## Alternatives considered
@@ -33,3 +35,5 @@ The [test fixture decision](../../implemented/simplification/2026-10-02-primary-
 The Light Loop and Lattice wrapper suites combine three repeated byte-exact identity snapshots into request-boundary and workflow-instruction checks across primary responsibilities and a synthetic agent. Full system rendering, empty-input handling and prompt-size budgets remain covered. Configuration upgrades preserve delegation-rule order and attached JSONC comments, and command names remain unchanged.
 
 The test audit removes or combines nine cases: four CLI name cases and their helper branches, two identity cases, a duplicate migration retry, a separate permission-order fixture and a rename-only scheduled trigger case. Permission ordering stays in the configuration upgrade fixture. Scheduled executor and filter upgrades stay in the cross-domain migration table, while the existing trigger test checks matching and non-matching synthetic agents. Migration runner retry uses its existing generic suite. Full prompt rendering covers identity injection, and migration results replace the exact migration-ID catalog assertion.
+
+Benchmark fault observers and archive assertions select native conversation calls by `usageRole` instead of an agent name stored in `purpose`. Existing record-encoding fixtures use a synthetic identity and include a received auxiliary response, so auxiliary bytes cannot satisfy the conversation-progress condition. Cancellation, disconnect, timeout, terminal evidence and owned-resource cleanup retain their existing Docker acceptance cases.

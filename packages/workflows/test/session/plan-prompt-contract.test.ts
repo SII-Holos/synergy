@@ -45,7 +45,7 @@ describe("Plan Blueprint prompt contract", () => {
     }
   })
 
-  test("keeps synergy domain-general and synergy-max coding-specific", () => {
+  test("keeps general planning domain-general and coding planning code-specific", () => {
     expect(PLAN_GENERAL).toContain("audience, structure, methodology")
     expect(PLAN_GENERAL).toContain("routine production details")
     expect(PLAN_CODING).toContain("existing owner or abstraction to extend")

@@ -10,6 +10,11 @@ import type { Migration } from "@ericsanchezok/synergy-harness/migration"
 
 const log = Log.create({ service: "blueprint.migration" })
 
+const upgradePrimaryAgentRecord: NonNullable<Migration["upgradeRecord"]> = (key, value) => {
+  if (key[0] === "blueprint_loops" && key.length === 3)
+    PrimaryAgentUpgrade.fields(value, ["executionAgent", "auditAgent"])
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
   return value as Record<string, unknown>
@@ -514,15 +519,12 @@ export const migrations: Migration[] = [
     id: "20261002-blueprint-primary-agent-identities",
     description: "Upgrade primary identities in Blueprint executors and auditors",
     scope: "global",
-    upgradeRecord(key, value) {
-      if (key[0] === "blueprint_loops" && key.length === 3)
-        PrimaryAgentUpgrade.fields(value, ["executionAgent", "auditAgent"])
-    },
+    upgradeRecord: upgradePrimaryAgentRecord,
     async up(progress) {
       let done = 0
       for await (const { key, value } of Storage.records<Record<string, unknown>>({ kind: "blueprint_loops" })) {
         const before = JSON.stringify(value)
-        this.upgradeRecord!(key, value)
+        upgradePrimaryAgentRecord(key, value)
         if (before !== JSON.stringify(value)) await Storage.write(key, value)
         progress(++done, 0)
       }

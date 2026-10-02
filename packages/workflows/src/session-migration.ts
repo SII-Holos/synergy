@@ -8,6 +8,11 @@ import type { Migration } from "@ericsanchezok/synergy-harness/migration/types"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 const log = Log.create({ service: "workflow.session-migration" })
 
+const upgradePrimaryAgentRecord: NonNullable<Migration["upgradeRecord"]> = (key, value) => {
+  if (key[0] !== "sessions" || key.length !== 4 || key[3] !== "info") return
+  PrimaryAgentUpgrade.fields(value.workflow, ["executionAgent", "reviewAgent"])
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
   return value as Record<string, unknown>
@@ -334,23 +339,20 @@ export const migrations: Migration[] = [
     id: "20261002-workflow-session-primary-agent-identities",
     description: "Upgrade primary identities in workflow Session bindings",
     scope: "session",
-    upgradeRecord(key, value) {
-      if (key[0] !== "sessions" || key.length !== 4 || key[3] !== "info") return
-      PrimaryAgentUpgrade.fields(value.workflow, ["executionAgent", "reviewAgent"])
-    },
+    upgradeRecord: upgradePrimaryAgentRecord,
     async upSession(owner) {
       const key = ["sessions", owner.scopeID, owner.sessionID, "info"]
       const [value] = await Storage.readMany<Record<string, unknown>>([key])
       if (!value) return
       const before = JSON.stringify(value)
-      this.upgradeRecord!(key, value)
+      upgradePrimaryAgentRecord(key, value)
       if (JSON.stringify(value) !== before) await Storage.write(key, value)
     },
     async up(progress) {
       let done = 0
       for await (const { key, value } of Storage.records<Record<string, unknown>>({ kind: "session" })) {
         const before = JSON.stringify(value)
-        this.upgradeRecord!(key, value)
+        upgradePrimaryAgentRecord(key, value)
         if (JSON.stringify(value) !== before) await Storage.write(key, value)
         progress(++done, 0)
       }

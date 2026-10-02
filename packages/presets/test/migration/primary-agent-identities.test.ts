@@ -73,7 +73,7 @@ test("full composition upgrades owned execution references without rewriting his
     const migrations = [...MigrationRegistry.list().values()]
       .flat()
       .filter((migration) => migration.id.endsWith("primary-agent-identities"))
-    for (const migration of migrations) await migration.up(() => {})
+    for (const { up } of migrations) await up(() => {})
     for (const { key, after } of records) expect(await Storage.read<Record<string, unknown>>(key)).toEqual(after)
     expect((await Storage.readMany([["notes", "home", "_index"]]))[0]).toBeUndefined()
     const config = {

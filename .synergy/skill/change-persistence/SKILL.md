@@ -63,6 +63,8 @@ For segmented backups, test durable source freezing, missing/replaced source ide
 
 For identity changes, keep the versioned historical mapping independent of the current identity catalog. Put reusable `upgradeConfig` and `upgradeRecord` transforms on the owning migration and call the central import entry points before validation or publication. A startup receipt cannot authorize an unupgraded late import or newly discovered project config. Update derived indexes through the owning service, preserve raw evidence and billing records, and test retry, restart, late discovery and imports into an already upgraded Home.
 
+The central runner invokes startup callbacks without a method receiver. Reuse a standalone owner transform from `up`, `upSession` and `upgradeRecord`. Exercise registered startup callbacks independently and retain startup coverage from a released writer and completion ledger.
+
 ## File Snapshot Storage
 
 When changing snapshot Git commands, verify them with an actual supported older Git executable as well as the current version. Run the snapshot suites with that executable first on `PATH`; keep test homes isolated. Initialization must select and verify SHA-1 before publishing repository metadata, preserve existing objects, and retain exit code and stderr on failure. Avoid introducing a version-specific CLI option when the same operation has a compatible form.

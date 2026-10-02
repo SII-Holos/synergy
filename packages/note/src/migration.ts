@@ -10,6 +10,11 @@ import type { Migration } from "@ericsanchezok/synergy-harness/migration"
 
 const log = Log.create({ service: "note.migration" })
 
+const upgradePrimaryAgentRecord: NonNullable<Migration["upgradeRecord"]> = (key, value) => {
+  if (key[0] === "notes" && key.length === 3)
+    PrimaryAgentUpgrade.fields(value.blueprint, ["defaultAgent", "auditAgent"])
+}
+
 export const migrations: Migration[] = [
   {
     id: "20260617-note-drop-contentText",
@@ -313,16 +318,13 @@ export const migrations: Migration[] = [
     id: "20261002-note-primary-agent-identities",
     description: "Upgrade primary identities in Blueprint note defaults",
     scope: "global",
-    upgradeRecord(key, value) {
-      if (key[0] === "notes" && key.length === 3)
-        PrimaryAgentUpgrade.fields(value.blueprint, ["defaultAgent", "auditAgent"])
-    },
+    upgradeRecord: upgradePrimaryAgentRecord,
     async up(progress) {
       const scopes = new Set<string>()
       let done = 0
       for await (const { key, value } of Storage.records<Record<string, unknown>>({ kind: "notes" })) {
         const before = JSON.stringify(value)
-        this.upgradeRecord!(key, value)
+        upgradePrimaryAgentRecord(key, value)
         if (before !== JSON.stringify(value)) {
           await Storage.write(key, value)
           scopes.add(key[1])
