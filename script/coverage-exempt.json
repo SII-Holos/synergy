@@ -463,6 +463,10 @@
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
         {
+          "glob": "src/components/session/session-surface-focus.tsx",
+          "reason": "Solid focus context is exercised in test/components/session/session-progress-island-motion.test.ts, including Composer focus return after expanded receipt removal; Bun cannot instrument Vite/Chromium execution."
+        },
+        {
           "glob": "src/components/session/session-review-tab.tsx",
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
@@ -889,6 +893,10 @@
         {
           "glob": "src/context/session-bottom-recovery.ts",
           "reason": "reactive trigger executed through the dom suite's vite build, invisible to bun coverage"
+        },
+        {
+          "glob": "src/context/session-decision.tsx",
+          "reason": "Solid request owner is exercised in test/components/session/decision-surface.dom.test.tsx for draft persistence and isolation, authoritative cleanup, delayed replies, unknown outcomes and failed storage; Bun cannot instrument Vite/Chromium execution. Pure draft, snapshot and submission modules remain measured by unit tests."
         },
         {
           "glob": "src/context/sync.tsx",
