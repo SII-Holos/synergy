@@ -1109,3 +1109,47 @@ test("resolveAllForSessions targets only matching sessions; unrelated session st
   }))
 
 afterRuntimeTests(() => runtime.close())
+
+for (const order of [
+  ["first", "denied"],
+  ["denied", "first"],
+] as const) {
+  for (const nonBypassable of [false, true]) {
+    test(`a scoped denial precedes the complete batch prompt (${order.join(",")}, mandatory=${nonBypassable})`, () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const sessionID = "ses_batch_denial"
+            const asked: PermissionNext.Request[] = []
+            const replies: Promise<void>[] = []
+            const unsubscribe = Bus.subscribe(PermissionNext.Event.Asked, (event) => {
+              if (event.properties.sessionID !== sessionID) return
+              asked.push(event.properties)
+              replies.push(PermissionNext.reply({ requestID: event.properties.id, reply: "once" }))
+            })
+            try {
+              await expect(
+                PermissionNext.ask({
+                  sessionID,
+                  permission: "write",
+                  patterns: [...order],
+                  metadata: { nonBypassable },
+                  ruleset: PermissionNext.fromConfig({
+                    write: { first: nonBypassable ? "allow" : "ask", denied: "deny" },
+                  }),
+                }),
+              ).rejects.toBeInstanceOf(PermissionNext.DeniedError)
+              expect(asked).toHaveLength(0)
+              expect((await PermissionNext.list()).filter((request) => request.sessionID === sessionID)).toHaveLength(0)
+            } finally {
+              await Promise.all(replies)
+              unsubscribe()
+              await PermissionNext.clearForSession(sessionID)
+            }
+          },
+        })
+      }))
+  }
+}
