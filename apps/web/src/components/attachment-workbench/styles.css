@@ -265,3 +265,230 @@
     min-height: 32px;
   }
 }
+
+.draft-attachment-dialog [data-slot="dialog-body"] {
+  height: min(72dvh, 900px);
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.attachment-image-preview {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.attachment-image-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px;
+}
+.attachment-image-stage img {
+  display: block;
+  max-width: none;
+  height: auto;
+  margin: 0 auto;
+  object-fit: contain;
+}
+
+.attachment-source-preview {
+  padding: 12px;
+  min-height: 100%;
+}
+.attachment-source-preview [data-component="markdown"] pre {
+  margin: 0;
+}
+
+.office-reader {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.office-reader-notice {
+  padding: 8px 12px;
+  color: var(--text-weaker);
+  background: var(--workbench-card-bg);
+  border-bottom: 1px solid var(--workbench-border);
+  font-size: 12px;
+}
+.office-reader-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--workbench-border);
+  background: var(--workbench-control-bg);
+}
+.office-reader-toolbar button {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-weak);
+  border-radius: 6px;
+  background: transparent;
+  font-size: 12px;
+}
+.office-reader-toolbar button:hover:not(:disabled) {
+  background: var(--surface-raised-base-hover);
+  color: var(--text-strong);
+}
+.office-reader-toolbar button:disabled {
+  opacity: 0.4;
+}
+.office-reader-toolbar > span {
+  font-size: 12px;
+  color: var(--text-weaker);
+}
+.office-reader-find {
+  display: flex;
+  align-items: center;
+  min-width: 120px;
+  flex: 1;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--workbench-border);
+  border-radius: 6px;
+  color: var(--text-weaker);
+}
+.office-reader-find input {
+  min-width: 0;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: var(--text-base);
+  font-size: 12px;
+  outline: none;
+}
+.office-reader-find:focus-within {
+  outline: 2px solid var(--border-interactive-base);
+  outline-offset: 2px;
+}
+.office-document-frame {
+  border: 0;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  background: var(--surface-inset-base);
+}
+
+.xlsx-grid {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  outline: none;
+  font-size: 12px;
+  background: var(--workbench-canvas-bg);
+  contain: strict;
+}
+.xlsx-grid:focus-visible {
+  outline: 2px solid var(--border-interactive-base);
+  outline-offset: -2px;
+}
+.xlsx-column-headings {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 28px;
+  background: var(--workbench-control-bg);
+}
+.xlsx-column-heading,
+.xlsx-corner,
+.xlsx-row-heading {
+  position: absolute;
+  height: 28px;
+  padding: 4px 6px;
+  text-align: center;
+  border-right: 1px solid var(--workbench-border);
+  border-bottom: 1px solid var(--workbench-border);
+  color: var(--text-weaker);
+  background: var(--workbench-control-bg);
+}
+.xlsx-corner {
+  position: sticky;
+  left: 0;
+  width: 44px;
+  z-index: 4;
+}
+.xlsx-grid-canvas {
+  position: relative;
+}
+.xlsx-row {
+  position: absolute;
+  width: 100%;
+}
+.xlsx-row-heading {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  width: 44px;
+  height: 100%;
+}
+.xlsx-cell {
+  position: absolute;
+  top: 0;
+  overflow: hidden;
+  padding: 5px 7px;
+  border-right: 1px solid var(--workbench-border);
+  border-bottom: 1px solid var(--workbench-border);
+  color: var(--text-base);
+  background: var(--workbench-canvas-bg);
+  white-space: pre;
+  user-select: none;
+}
+.xlsx-cell[aria-selected="true"] {
+  box-shadow: inset 0 0 0 2px var(--border-interactive-base);
+  background: var(--surface-interactive-base);
+}
+.xlsx-formula-bar {
+  display: flex;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--workbench-border);
+  font-size: 12px;
+}
+.xlsx-formula-bar strong {
+  min-width: 44px;
+  color: var(--text-weaker);
+}
+.xlsx-formula-bar input {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-base);
+  background: transparent;
+  border: 0;
+  font-family: var(--font-family-mono);
+}
+.xlsx-worksheets {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  overflow: auto;
+  padding: 6px 10px;
+  border-top: 1px solid var(--workbench-border);
+}
+.xlsx-worksheets button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-weaker);
+}
+.xlsx-worksheets button[aria-pressed="true"] {
+  color: var(--text-strong);
+  background: var(--surface-interactive-base);
+}
+.xlsx-copy-error {
+  color: var(--text-error);
+  font-size: 12px;
+  padding: 6px 10px;
+}

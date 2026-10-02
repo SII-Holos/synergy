@@ -1238,6 +1238,38 @@ msgid "app.attachment.mode.source"
 msgstr "源文件"
 
 #. js-lingui-explicit-id
+msgid "app.attachment.office.corrupt"
+msgstr "文件已损坏或不完整，请下载原文件检查。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.empty"
+msgstr "此文档没有可预览的页面。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.encrypted"
+msgstr "暂不支持预览加密的 Office 文件，请下载原文件打开。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.find"
+msgstr "查找文档内容"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.matches"
+msgstr "{count} 页匹配"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.nextMatch"
+msgstr "下一个匹配"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.notice"
+msgstr "预览排版可能与原文件不同。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.unsupported"
+msgstr "此 Office 文件使用了暂不支持的格式，请下载原文件打开。"
+
+#. js-lingui-explicit-id
 msgid "app.attachment.pdf.fitWidth"
 msgstr "适应宽度"
 
@@ -1280,6 +1312,26 @@ msgstr "此附件已无法从当前会话中获取。"
 #. js-lingui-explicit-id
 msgid "app.attachment.unsupported"
 msgstr "此文件类型暂不支持预览。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.xlsx.cellValue"
+msgstr "单元格值或公式"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.xlsx.copyCells"
+msgstr "复制选中的单元格"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.xlsx.copyTooLarge"
+msgstr "请选择少于 100,000 个单元格后复制。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.xlsx.matches"
+msgstr "{count} 个匹配单元格"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.xlsx.worksheets"
+msgstr "工作表"
 
 #. js-lingui-explicit-id
 msgid "app.boss.assign.failed"
@@ -11702,6 +11754,10 @@ msgid "directory.navigation.denied"
 msgstr "当前服务无权读取此文件夹。请检查访问权限或选择其他路径。"
 
 #. js-lingui-explicit-id
+msgid "directory.navigation.editPath"
+msgstr "编辑路径"
+
+#. js-lingui-explicit-id
 msgid "directory.navigation.empty"
 msgstr "这里没有子文件夹，可以使用当前文件夹。"
 
@@ -12837,6 +12893,10 @@ msgid "project.entry.computer"
 msgstr "电脑"
 
 #. js-lingui-explicit-id
+msgid "project.entry.computerName"
+msgstr "电脑：{name}"
+
+#. js-lingui-explicit-id
 msgid "project.entry.connected"
 msgstr "已连接"
 
@@ -12907,6 +12967,10 @@ msgstr "文件夹"
 #. js-lingui-explicit-id
 msgid "project.entry.loading"
 msgstr "正在加载…"
+
+#. js-lingui-explicit-id
+msgid "project.entry.locationOptions"
+msgstr "位置选项"
 
 #. js-lingui-explicit-id
 msgid "project.entry.main"
@@ -13007,6 +13071,10 @@ msgstr "草稿已发生变化。请重新选择项目，以保留最新编辑。
 #. js-lingui-explicit-id
 msgid "project.flow.choose"
 msgstr "选择项目"
+
+#. js-lingui-explicit-id
+msgid "project.flow.currentProject"
+msgstr "项目：{name}"
 
 #. js-lingui-explicit-id
 msgid "project.flow.description"
@@ -13179,6 +13247,38 @@ msgstr "请等待 Plan 完成后再启用 Blueprint。"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.attach.waitRun"
 msgstr "请等待当前会话运行结束后再启用 Blueprint。"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.blocked"
+msgstr "发送前，请重试或移除输入框上方的失败附件。"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.failed"
+msgstr "上传失败"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.list"
+msgstr "附件"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.pendingSummary"
+msgstr "{uploading} 个上传中 · {failed} 个失败"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.previewTitle"
+msgstr "附件预览"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.resolveFailed"
+msgstr "处理失败附件"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.retry"
+msgstr "重试上传"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.untitled"
+msgstr "无标题"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -13826,6 +13926,78 @@ msgstr "切换 Light Loop 失败"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.waitStop"
 msgstr "请等待 Light Loop 停止后再启用 Blueprint。"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.bold"
+msgstr "粗体"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.code"
+msgstr "代码"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.collapse"
+msgstr "收起编辑器"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.continueExpand"
+msgstr "继续上拖以展开"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.edit"
+msgstr "编辑"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.expand"
+msgstr "展开编辑器"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.format"
+msgstr "Markdown 格式"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.heading"
+msgstr "标题"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.italic"
+msgstr "斜体"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.link"
+msgstr "链接"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.list"
+msgstr "列表"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.preview"
+msgstr "预览"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.quote"
+msgstr "引用"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.releaseExpand"
+msgstr "松开以展开"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.resize"
+msgstr "调整编辑器高度"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.shortcut"
+msgstr "Ctrl/⌘ + Enter 发送"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.strike"
+msgstr "删除线"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.view"
+msgstr "编辑视图"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -17074,60 +17246,8 @@ msgid "session.starter.addFiles"
 msgstr "添加文件"
 
 #. js-lingui-explicit-id
-msgid "session.starter.develop.description"
-msgstr "理解代码、设计方案，把想法变成实现。"
-
-#. js-lingui-explicit-id
-msgid "session.starter.develop.prompt"
-msgstr "帮我开发这个项目。请先理解相关代码，再提出实施方案。我的目标是："
-
-#. js-lingui-explicit-id
-msgid "session.starter.develop.title"
-msgstr "开发项目"
-
-#. js-lingui-explicit-id
-msgid "session.starter.draftChanged"
-msgstr "草稿已发生变化，请重新选择任务入口，以使用最新草稿。"
-
-#. js-lingui-explicit-id
 msgid "session.starter.openProject"
 msgstr "打开项目"
-
-#. js-lingui-explicit-id
-msgid "session.starter.replaceAction"
-msgstr "使用任务引导"
-
-#. js-lingui-explicit-id
-msgid "session.starter.replaceDescription"
-msgstr "附件和工作位置会保留，不会发送任何内容。"
-
-#. js-lingui-explicit-id
-msgid "session.starter.replaceTitle"
-msgstr "替换草稿正文？"
-
-#. js-lingui-explicit-id
-msgid "session.starter.research.description"
-msgstr "查找资料、比较证据，形成清晰的结论。"
-
-#. js-lingui-explicit-id
-msgid "session.starter.research.prompt"
-msgstr "请研究以下问题，比较可靠来源，解释证据并注明引用。我的问题是："
-
-#. js-lingui-explicit-id
-msgid "session.starter.research.title"
-msgstr "研究问题"
-
-#. js-lingui-explicit-id
-msgid "session.starter.write.description"
-msgstr "整理思路、起草内容，让表达更准确。"
-
-#. js-lingui-explicit-id
-msgid "session.starter.write.prompt"
-msgstr "帮我起草一份清晰、有条理的内容。主题、读者和期望的形式是："
-
-#. js-lingui-explicit-id
-msgid "session.starter.write.title"
-msgstr "撰写内容"
 
 #. js-lingui-explicit-id
 msgid "session.state.auditingBlueprint"
@@ -25076,6 +25196,14 @@ msgid "ui.anchoredTool.viewFile"
 msgstr "查看文件"
 
 #. js-lingui-explicit-id
+msgid "ui.attachment.collapseAll"
+msgstr "收起附件"
+
+#. js-lingui-explicit-id
+msgid "ui.attachment.expandAll"
+msgstr "展开全部 {count} 个附件"
+
+#. js-lingui-explicit-id
 msgid "ui.attachment.openAttachment"
 msgstr "打开 {filename}"
 
@@ -25334,6 +25462,146 @@ msgstr "再显示 {count} 个文件"
 #. js-lingui-explicit-id
 msgid "ui.turnChangeSummary.title"
 msgstr "已更改 {fileCount, plural, one {# 个文件} other {# 个文件}}"
+
+#. js-lingui-explicit-id
+msgid "ui.userMessage.markdown"
+msgstr "Markdown"
+
+#. js-lingui-explicit-id
+msgid "ui.userMessage.source"
+msgstr "查看源码"
+
+#. js-lingui-explicit-id
+msgid "welcome.blocks.field"
+msgstr "俄罗斯方块游戏区域"
+
+#. js-lingui-explicit-id
+msgid "welcome.blocks.help"
+msgstr "左右键移动，上键旋转，下键加速，空格直接落下；长按左右键可连续移动。触屏可连续横拖、轻点旋转、下划落下。"
+
+#. js-lingui-explicit-id
+msgid "welcome.blocks.name"
+msgstr "俄罗斯方块"
+
+#. js-lingui-explicit-id
+msgid "welcome.blocks.over"
+msgstr "{score} 分 · 再来一次"
+
+#. js-lingui-explicit-id
+msgid "welcome.blocks.ready"
+msgstr "点击开始 · ↑ 旋转 · 空格落下"
+
+#. js-lingui-explicit-id
+msgid "welcome.blocks.score"
+msgstr "{score} 分 · 已消 {lines} 行"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.continue"
+msgstr "点击继续"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.keyboardHelp"
+msgstr "Esc 暂停，R 重新开始。点击游戏外部会暂停。"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.loading"
+msgstr "正在准备互动示例…"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.retry"
+msgstr "重试示例"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.statusControl"
+msgstr "点击开始或暂停，Esc 暂停，R 重新开始。"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.subtitle"
+msgstr "从一个念头，到真正做出来。你想创造什么？"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.title"
+msgstr "让想法，动起来。"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.unavailable"
+msgstr "暂时无法加载这个示例，你仍可以在下方开始任务。"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.field"
+msgstr "飞机大战游戏区域"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.help"
+msgstr "移动指针或使用方向键操控，点击或按空格开始自动射击。躲避碰撞；漏掉敌人会中断连击。拾取箭头获得十秒火力、护盾抵挡一次碰撞、十字恢复生命。"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.name"
+msgstr "飞机大战"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.over"
+msgstr "{score} 分 · 再飞一次"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.position"
+msgstr "飞机位置 {x}，{y}"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.ready"
+msgstr "移动操控 · 点击起飞"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.aim"
+msgstr "角度 {angle}°，力度 {power}"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.field"
+msgstr "弹弓游戏区域"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.help"
+msgstr "向后拉小鸟，松手击倒目标。左右键调整角度，上下键调整力度，空格发射，Esc 取消拉弓。"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.lost"
+msgstr "再试一次"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.name"
+msgstr "像素弹弓"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.ready"
+msgstr "向后拉，松开发射 · {shots} 发"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.score"
+msgstr "第 {level} 关 · {score} 分"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.won"
+msgstr "{stars} · 下一关"
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.field"
+msgstr "叠叠高游戏区域"
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.help"
+msgstr "点击或按空格叠放移动的楼层，尽量对齐边缘。"
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.name"
+msgstr "叠叠高"
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.ready"
+msgstr "点击落下"
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.result"
+msgstr "{height} 层 · 再来一次"
 
 #. js-lingui-explicit-id
 msgid "window.close.aria"

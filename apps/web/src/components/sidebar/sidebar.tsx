@@ -1,4 +1,5 @@
 import { runtimeFeatureAvailable } from "../runtime-features"
+import { useNewTaskNavigation } from "../session/welcome/context"
 import { SidebarNavigation } from "./sidebar-navigation"
 import { SidebarSectionButton } from "./sidebar-section-button"
 import { useExtensionOutlet } from "@ericsanchezok/synergy-ui/context/extension-outlet"
@@ -91,6 +92,7 @@ export function Sidebar(props: SidebarProps) {
   const confirm = useConfirm()
   const theme = useTheme()
   const navigate = useNavigate()
+  const newTask = useNewTaskNavigation(navigate)
   const location = useLocation()
   const params = useParams()
   const command = useCommand()
@@ -356,7 +358,7 @@ export function Sidebar(props: SidebarProps) {
   const currentDirectory = createMemo(() => (dir() === "home" ? undefined : dir()))
 
   const handleNewSession = () => {
-    navigate(`/${base64Encode("home")}/session`)
+    newTask(base64Encode("home"))
   }
 
   const handleProjectClick = (worktree: string) => {
@@ -404,7 +406,7 @@ export function Sidebar(props: SidebarProps) {
 
   const handleProjectPlus = (e: MouseEvent, scope: LocalScope) => {
     e.stopPropagation()
-    navigate(`/${base64Encode(scope.id)}/session`)
+    newTask(base64Encode(scope.id))
   }
   const handleProjectPin = (scope: LocalScope) => {
     layout.scopes.pinScope(scope)

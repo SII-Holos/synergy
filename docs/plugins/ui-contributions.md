@@ -47,6 +47,8 @@ Import `Button`, `Input`, `Select`, `Tabs`, `Menu`, `Dialog`, `Popover`, `Toolti
 
 Use semantic tokens for their declared meaning. For example, `state.cancelled` denotes a cancelled task, while `action.close` denotes dismissing a control.
 
+Surface expansion and contraction use `action.expand` (`maximize-2`, two diagonal outward arrows) and `action.collapse` (`minimize-2`, two diagonal inward arrows). Editors, panels and fullscreen content views share this pair. The stable `composer.expand` and `composer.collapse` tokens retain the same sizing meanings; `window.restore` shares the contraction glyph. These are the only same-meaning glyph aliases. New sizing controls reuse the generic action tokens; disclosure controls retain their navigation semantics.
+
 `FormField` supplies the control's ID, description and error relationships to its child function. `Popover.trigger` is a button component receiving trigger attributes, for example `trigger={props => <Button {...props}>Options</Button>}`. This preserves one accessible button and keyboard/focus behavior. Public dialogs, nested menus and popovers inherit the owning plugin's style and overlay layers; authors do not query host dialog DOM or select a global portal target.
 
 Create dialogs with `context.overlays.dialog(handle => <Dialog title="Preferences">…</Dialog>)`. Close that handle to close that dialog. `context.overlays.confirm()` uses the protected host decision surface. Disposing one plugin cannot close another plugin's dialog.

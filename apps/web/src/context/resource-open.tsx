@@ -121,6 +121,11 @@ export function ResourceOpenProvider(props: ParentProps) {
   }
 
   const openAttachment = (attachment: AttachmentFile, options?: ResourceOpenOptions & { serverUrl?: string }) => {
+    const attachmentPanelInit = attachmentWorkbenchPanelInit(attachment)
+    if (options?.prefer === "workspace" && attachmentPanelInit) {
+      void workbench.openPanel("attachment", { init: attachmentPanelInit })
+      return true
+    }
     const path = attachmentPath(attachment)
     if (options?.prefer === "workspace" && path) return openWorkspaceFile(path)
 
@@ -134,7 +139,6 @@ export function ResourceOpenProvider(props: ParentProps) {
       return true
     }
 
-    const attachmentPanelInit = attachmentWorkbenchPanelInit(attachment)
     if (target === "attachment-workspace" && attachmentPanelInit) {
       void workbench.openPanel("attachment", {
         init: attachmentPanelInit,

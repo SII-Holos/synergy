@@ -21,6 +21,7 @@ import { fileRestoreFeedback } from "./file-restore-feedback"
 import { compactSessionWithCurrentModel } from "./compact-action"
 import { HistorySearchDialog } from "./history-search-dialog"
 import { createConversationTextActions } from "./conversation-text-actions"
+import { useNewTaskNavigation } from "./welcome/context"
 
 export function useSessionCommands(params: {
   command: ReturnType<typeof useCommand>
@@ -90,6 +91,7 @@ export function useSessionCommands(params: {
       showToast({ type: "error", title: i18n._(S.historyTextFailed) })
     }
   }
+  const newTask = useNewTaskNavigation(navigate)
 
   command.register(() => [
     {
@@ -128,7 +130,7 @@ export function useSessionCommands(params: {
       keybind: "mod+shift+s",
       slash: "new",
       onSelect: () => {
-        navigate(`/${routeParams.dir}/session`)
+        newTask(routeParams.dir)
       },
     },
     {

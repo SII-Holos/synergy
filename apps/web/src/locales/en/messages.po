@@ -1238,6 +1238,38 @@ msgid "app.attachment.mode.source"
 msgstr "Source"
 
 #. js-lingui-explicit-id
+msgid "app.attachment.office.corrupt"
+msgstr "This file is damaged or incomplete. Download the original to check it."
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.empty"
+msgstr "This document has no pages to preview."
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.encrypted"
+msgstr "Encrypted Office files cannot be previewed. Download the original to open it."
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.find"
+msgstr "Find in document"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.matches"
+msgstr "{count} matching pages"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.nextMatch"
+msgstr "Next match"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.notice"
+msgstr "Preview layout may differ from the original file."
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.unsupported"
+msgstr "This Office file uses an unsupported format. Download the original to open it."
+
+#. js-lingui-explicit-id
 msgid "app.attachment.pdf.fitWidth"
 msgstr "Fit width"
 
@@ -1280,6 +1312,26 @@ msgstr "This attachment is no longer available in the conversation."
 #. js-lingui-explicit-id
 msgid "app.attachment.unsupported"
 msgstr "Preview is not available for this file type."
+
+#. js-lingui-explicit-id
+msgid "app.attachment.xlsx.cellValue"
+msgstr "Cell value or formula"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.xlsx.copyCells"
+msgstr "Copy selected cells"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.xlsx.copyTooLarge"
+msgstr "Select fewer than 100,000 cells to copy."
+
+#. js-lingui-explicit-id
+msgid "app.attachment.xlsx.matches"
+msgstr "{count} matching cells"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.xlsx.worksheets"
+msgstr "Worksheets"
 
 #. js-lingui-explicit-id
 msgid "app.boss.assign.failed"
@@ -11702,6 +11754,10 @@ msgid "directory.navigation.denied"
 msgstr "This service cannot read this folder. Check its access permissions or choose another path."
 
 #. js-lingui-explicit-id
+msgid "directory.navigation.editPath"
+msgstr "Edit path"
+
+#. js-lingui-explicit-id
 msgid "directory.navigation.empty"
 msgstr "This folder has no subfolders. You can use this folder."
 
@@ -12837,6 +12893,10 @@ msgid "project.entry.computer"
 msgstr "Computer"
 
 #. js-lingui-explicit-id
+msgid "project.entry.computerName"
+msgstr "Computer: {name}"
+
+#. js-lingui-explicit-id
 msgid "project.entry.connected"
 msgstr "Connected"
 
@@ -12907,6 +12967,10 @@ msgstr "Folders"
 #. js-lingui-explicit-id
 msgid "project.entry.loading"
 msgstr "Loading…"
+
+#. js-lingui-explicit-id
+msgid "project.entry.locationOptions"
+msgstr "Location options"
 
 #. js-lingui-explicit-id
 msgid "project.entry.main"
@@ -13007,6 +13071,10 @@ msgstr "The draft changed. Choose the project again to keep your latest edits."
 #. js-lingui-explicit-id
 msgid "project.flow.choose"
 msgstr "Choose project"
+
+#. js-lingui-explicit-id
+msgid "project.flow.currentProject"
+msgstr "Project: {name}"
 
 #. js-lingui-explicit-id
 msgid "project.flow.description"
@@ -13179,6 +13247,38 @@ msgstr "Wait for Plan to finish before equipping a Blueprint."
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.attach.waitRun"
 msgstr "Wait for the current session run to finish before equipping a Blueprint."
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.blocked"
+msgstr "Retry or remove failed attachments above the editor before sending."
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.failed"
+msgstr "Upload failed"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.list"
+msgstr "Attachments"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.pendingSummary"
+msgstr "{uploading} uploading · {failed} failed"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.previewTitle"
+msgstr "Attachment preview"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.resolveFailed"
+msgstr "Review failed attachments"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.retry"
+msgstr "Retry upload"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.untitled"
+msgstr "Untitled"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -13826,6 +13926,78 @@ msgstr "Failed to toggle Light Loop"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.waitStop"
 msgstr "Wait for Light Loop to stop before equipping a Blueprint."
+
+#. js-lingui-explicit-id
+msgid "prompt.long.bold"
+msgstr "Bold"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.code"
+msgstr "Code"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.collapse"
+msgstr "Collapse editor"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.continueExpand"
+msgstr "Continue dragging to expand"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.edit"
+msgstr "Edit"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.expand"
+msgstr "Expand editor"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.format"
+msgstr "Markdown formatting"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.heading"
+msgstr "Heading"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.italic"
+msgstr "Italic"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.link"
+msgstr "Link"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.list"
+msgstr "List"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.preview"
+msgstr "Preview"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.quote"
+msgstr "Quote"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.releaseExpand"
+msgstr "Release to expand"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.resize"
+msgstr "Resize editor"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.shortcut"
+msgstr "Ctrl/⌘ + Enter to send"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.strike"
+msgstr "Strikethrough"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.view"
+msgstr "Editor view"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -17074,60 +17246,8 @@ msgid "session.starter.addFiles"
 msgstr "Add files"
 
 #. js-lingui-explicit-id
-msgid "session.starter.develop.description"
-msgstr "Understand code, plan a change, build something."
-
-#. js-lingui-explicit-id
-msgid "session.starter.develop.prompt"
-msgstr "Help me develop this project. First understand the relevant code and propose an implementation plan. My goal is: "
-
-#. js-lingui-explicit-id
-msgid "session.starter.develop.title"
-msgstr "Develop a project"
-
-#. js-lingui-explicit-id
-msgid "session.starter.draftChanged"
-msgstr "Your draft changed. Choose a task starter again to use the latest draft."
-
-#. js-lingui-explicit-id
 msgid "session.starter.openProject"
 msgstr "Open a project"
-
-#. js-lingui-explicit-id
-msgid "session.starter.replaceAction"
-msgstr "Use task starter"
-
-#. js-lingui-explicit-id
-msgid "session.starter.replaceDescription"
-msgstr "Your attachments and working location will stay the same. Nothing will be sent."
-
-#. js-lingui-explicit-id
-msgid "session.starter.replaceTitle"
-msgstr "Replace the draft text?"
-
-#. js-lingui-explicit-id
-msgid "session.starter.research.description"
-msgstr "Find sources, compare evidence, draw conclusions."
-
-#. js-lingui-explicit-id
-msgid "session.starter.research.prompt"
-msgstr "Research the following question. Compare reliable sources, explain the evidence and cite references. My question is: "
-
-#. js-lingui-explicit-id
-msgid "session.starter.research.title"
-msgstr "Research a question"
-
-#. js-lingui-explicit-id
-msgid "session.starter.write.description"
-msgstr "Shape an idea, draft content, refine the wording."
-
-#. js-lingui-explicit-id
-msgid "session.starter.write.prompt"
-msgstr "Help me write a clear, well-structured draft. The topic, audience and desired format are: "
-
-#. js-lingui-explicit-id
-msgid "session.starter.write.title"
-msgstr "Write something"
 
 #. js-lingui-explicit-id
 msgid "session.state.auditingBlueprint"
@@ -25076,6 +25196,14 @@ msgid "ui.anchoredTool.viewFile"
 msgstr "View File"
 
 #. js-lingui-explicit-id
+msgid "ui.attachment.collapseAll"
+msgstr "Collapse attachments"
+
+#. js-lingui-explicit-id
+msgid "ui.attachment.expandAll"
+msgstr "Expand all {count} attachments"
+
+#. js-lingui-explicit-id
 msgid "ui.attachment.openAttachment"
 msgstr "Open {filename}"
 
@@ -25334,6 +25462,146 @@ msgstr "Show {count} more {count, plural, one {file} other {files}}"
 #. js-lingui-explicit-id
 msgid "ui.turnChangeSummary.title"
 msgstr "Changed {fileCount, plural, one {# file} other {# files}}"
+
+#. js-lingui-explicit-id
+msgid "ui.userMessage.markdown"
+msgstr "Markdown"
+
+#. js-lingui-explicit-id
+msgid "ui.userMessage.source"
+msgstr "View source"
+
+#. js-lingui-explicit-id
+msgid "welcome.blocks.field"
+msgstr "Falling-block playfield"
+
+#. js-lingui-explicit-id
+msgid "welcome.blocks.help"
+msgstr "Left and right move, Up rotates, Down lowers and Space drops. Hold left or right to repeat. On touch, drag sideways continuously, tap to rotate, and swipe down to drop."
+
+#. js-lingui-explicit-id
+msgid "welcome.blocks.name"
+msgstr "Falling blocks"
+
+#. js-lingui-explicit-id
+msgid "welcome.blocks.over"
+msgstr "{score} points · Play again"
+
+#. js-lingui-explicit-id
+msgid "welcome.blocks.ready"
+msgstr "Click to play · ↑ rotate · Space drop"
+
+#. js-lingui-explicit-id
+msgid "welcome.blocks.score"
+msgstr "{score} points · {lines} lines"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.continue"
+msgstr "Click to continue"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.keyboardHelp"
+msgstr "Escape pauses. R restarts. Clicking outside pauses the game."
+
+#. js-lingui-explicit-id
+msgid "welcome.common.loading"
+msgstr "Preparing an interactive example…"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.retry"
+msgstr "Retry example"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.statusControl"
+msgstr "Click to play or pause. Escape pauses; R restarts."
+
+#. js-lingui-explicit-id
+msgid "welcome.common.subtitle"
+msgstr "From a spark to something real. What will you create?"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.title"
+msgstr "Bring your ideas to life."
+
+#. js-lingui-explicit-id
+msgid "welcome.common.unavailable"
+msgstr "This example could not load. You can still start a task below."
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.field"
+msgstr "Aircraft playfield"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.help"
+msgstr "Move the pointer or use arrow keys to steer. Click or press Space to start automatic fire. Avoid collisions; missed enemies break your combo. Collect arrows for ten seconds of firepower, a shield for one protected hit, or a cross to repair."
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.name"
+msgstr "Pixel squadron"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.over"
+msgstr "{score} points · Fly again"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.position"
+msgstr "Aircraft at {x}, {y}"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.ready"
+msgstr "Move to steer · Click to fly"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.aim"
+msgstr "Angle {angle}°, power {power}"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.field"
+msgstr "Slingshot playfield"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.help"
+msgstr "Pull the bird back and release to topple the targets. Left and right aim, up and down set power, Space launches. Escape cancels the pull."
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.lost"
+msgstr "Try again"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.name"
+msgstr "Pixel slingshot"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.ready"
+msgstr "Pull back and release · {shots} shots"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.score"
+msgstr "Level {level} · {score} points"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.won"
+msgstr "{stars} · Next level"
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.field"
+msgstr "Stacking playfield"
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.help"
+msgstr "Click or press Space to stack the moving floor. Line up the edges."
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.name"
+msgstr "Tiny tower"
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.ready"
+msgstr "Click to drop"
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.result"
+msgstr "{height} floors · Play again"
 
 #. js-lingui-explicit-id
 msgid "window.close.aria"

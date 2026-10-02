@@ -57,6 +57,14 @@ export const { use: useMarked, provider: MarkedProvider } = createSimpleContext(
         }
         return client().parse(markdown, signal)
       },
+      async parseInline(markdown: string, signal?: AbortSignal) {
+        if (typeof Worker === "undefined") {
+          signal?.throwIfAborted()
+          local ??= createMarkdownParser()
+          return await local.parseInline(markdown)
+        }
+        return client().parseInline(markdown, signal)
+      },
       async document(markdown: string, signal?: AbortSignal) {
         if (typeof Worker === "undefined") {
           local ??= createMarkdownParser()

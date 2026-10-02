@@ -31,11 +31,11 @@ The selected Workspace defines the default writable directory. Declaring another
 
 ## Starting a project task
 
-Web and Desktop let users choose a project, enter a task and send. The project selector keeps the draft and stays on the new-task page; sidebar project navigation still opens project history. Files and execution are summarized beside the project. Their detailed choices live in Working location, with advanced resource operations separated from routine selection. See the [Web product rules](../../apps/web/PRODUCT.md#project-first-task-entry) for draft merging, native folder selection and dialog behavior.
+Web and Desktop let users choose a computer connection, project and applicable main-folder or Worktree mode before sending a task. The compact setup strip appears only before a Session ID exists. The project selector keeps the draft and stays on the new-task page; sidebar project navigation opens project history. Advanced file and execution choices live in developer management. See the [Web product rules](../../apps/web/PRODUCT.md#project-first-task-entry) for responsive controls, draft merging, native folder selection and dialog behavior.
 
 ## Workspace Binding
 
-A session belongs to a Scope and references a stable Workspace identity, or has no local files. The default Workspace is the Scope directory. The Composer working-location panel can select another existing directory; a code task can also enter or create a managed worktree while retaining its Scope identity.
+A session belongs to a Scope and references a stable Workspace identity, or has no local files. New-task setup chooses the project's main folder or a Worktree while retaining Scope ownership. The Session keeps its actual binding after the setup strip disappears; advanced resource management owns explicit binding repair.
 
 Sessions can share a Workspace. Explicitly changing its local binding updates every referencing Session and requires idle file resources. Imported history remains unavailable for local execution until deliberately rebound. Open file tabs retain the directory version they were opened against, so rebinding cannot silently redirect a pending edit.
 

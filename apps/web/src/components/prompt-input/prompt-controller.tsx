@@ -19,6 +19,8 @@ import {
   createSignal,
   createResource,
   untrack,
+  lazy,
+  Suspense,
 } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { createFocusSignal } from "@solid-primitives/active-element"
@@ -62,10 +64,8 @@ import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
 import { getAgentVisual } from "@/components/agent-visual"
 import type { Message } from "@ericsanchezok/synergy-sdk/client"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import { QuickActions } from "./quick-actions"
 import { isHomeScope } from "@/utils/scope"
 import { computeWorkingPhrase, titlecaseStatusLabel } from "@ericsanchezok/synergy-ui/session-status"
-import { SessionAgendaWakeIndicator } from "@/components/session/wake-indicator"
 import { FILE_INPUT_ACCEPT } from "@/components/prompt-input/files"
 import { permissionModeVisual } from "@/components/prompt-input/permission-modes"
 import type {
@@ -86,7 +86,6 @@ import { SessionWorkContext } from "@/components/session/work-context"
 import { usePromptSubmit } from "@/components/prompt-input/submit"
 import { usePromptAttachments } from "@/components/prompt-input/attachments-hook"
 import { usePromptEditor } from "@/components/prompt-input/editor-hook"
-import { sendSessionCommand } from "@/components/prompt-input/session-command"
 import { inlineLength, inlineText } from "@/components/prompt-input/content"
 import {
   resolvePromptSubmitIntent,
@@ -122,6 +121,7 @@ import { LightLoopSubmitControl } from "./light-loop-submit-control"
 import { resolveLightLoopActivity } from "./light-loop-control"
 import { WorktreeUnavailableDialog } from "./worktree-unavailable-dialog"
 import { ComposerDocumentController } from "./composer-document"
+import { ComposerPresentation, bindComposerPresentation, expandedComposerKeyAction } from "./composer-presentation"
 import { createAbortRequestController } from "./abort-request"
 import { ComposerExtensionOutlet } from "@/plugin/registries/composer-extension-registry"
 import { VoiceDictationButton } from "./use-voice-dictation"
@@ -198,6 +198,12 @@ function WorkflowChip(props: {
   )
 }
 
+const DraftAttachmentPreview = lazy(() =>
+  import("@/components/attachment-workbench/draft-preview").then((module) => ({
+    default: module.DraftAttachmentPreview,
+  })),
+)
+
 export function createPromptInputController(props: PromptInputProps) {
   const sdk = useSDK()
   const { capabilities } = useGlobalSDK()
@@ -240,6 +246,7 @@ export function createPromptInputController(props: PromptInputProps) {
   const idle = { type: "idle" as const }
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const sendShortcut = createMemo(() => input.sendShortcut())
+  const presentation = new ComposerPresentation()
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const activeWorkflow = createMemo(() => (params.id ? info()?.workflow : undefined))
   const backendLightLoopActive = createMemo(() =>
@@ -537,7 +544,8 @@ export function createPromptInputController(props: PromptInputProps) {
   const submitPending = createMemo(() => newSessionSubmitPending() || sessionTransitionPending())
   const pendingUploads = createPendingAttachmentTracker()
   onCleanup(() => pendingUploads.clear())
-  const attachmentsUploading = createMemo(() => pendingUploads.uploading())
+  const attachmentsUploading = createMemo(() => pendingUploads.blocking())
+  const attachmentsFailed = createMemo(() => pendingUploads.pending().some((entry) => entry.status === "failed"))
   const canSubmit = createMemo(() => {
     if (props.readOnly || props.locationPending || submitPending()) return false
     const intent = resolvePromptSubmitIntent({
@@ -593,6 +601,8 @@ export function createPromptInputController(props: PromptInputProps) {
       case "continue":
         return i18n._(PI.continueControl)
       default:
+        if (attachmentsFailed())
+          return i18n._({ id: "prompt.attachments.resolveFailed", message: "Review failed attachments" })
         if (attachmentsUploading()) return i18n._(PI.submitWaitUploadsTitle)
         if (activity() === "paused" && hasDraft()) return i18n._(PI.sendAndContinue)
         if (working() && hasDraft()) return i18n._(PI.queueMessage)
@@ -1387,6 +1397,39 @@ export function createPromptInputController(props: PromptInputProps) {
   const uploadedAttachments = createMemo(
     () => prompt.current().filter((part) => part.type === "attachment") as UploadedAttachmentPart[],
   )
+  let draftPreviewId: string | undefined
+  onCleanup(() => {
+    if (draftPreviewId) workflowDialog.close(draftPreviewId)
+  })
+  const openDraftAttachment = (
+    file: import("@ericsanchezok/synergy-ui/attachment-card").AttachmentFile,
+    id: string,
+  ) => {
+    const owner = sessionKey()
+    const serverUrl = sdk.url
+    if (draftPreviewId) workflowDialog.close(draftPreviewId)
+    draftPreviewId = workflowDialog.push(
+      () => (
+        <Suspense>
+          <DraftAttachmentPreview
+            file={file}
+            serverUrl={serverUrl}
+            isValid={() =>
+              sessionKey() === owner &&
+              sdk.url === serverUrl &&
+              uploadedAttachments().some((part) => part.id === id && part.url === file.url)
+            }
+            onInvalid={() => {
+              if (draftPreviewId) workflowDialog.close(draftPreviewId)
+            }}
+          />
+        </Suspense>
+      ),
+      () => {
+        draftPreviewId = undefined
+      },
+    )
+  }
   const noteAttachments = createMemo(
     () => prompt.current().filter((part) => part.type === "note") as NoteAttachmentPart[],
   )
@@ -1686,6 +1729,7 @@ export function createPromptInputController(props: PromptInputProps) {
       () => {
         composerDocument.abortSubmit(new DOMException("Composer navigation changed", "AbortError"))
         composerDocument.changed()
+        if (!newSessionSubmitPending()) presentation.collapse()
       },
       { defer: true },
     ),
@@ -1693,7 +1737,10 @@ export function createPromptInputController(props: PromptInputProps) {
   createEffect(
     on(
       () => store.mode,
-      () => composerDocument.changed(),
+      () => {
+        composerDocument.changed()
+        if (store.mode === "shell") presentation.collapse()
+      },
       { defer: true },
     ),
   )
@@ -1708,26 +1755,33 @@ export function createPromptInputController(props: PromptInputProps) {
     onCleanup(() => document.removeEventListener("selectionchange", onSelectionChange))
   })
 
-  const { addAttachments, removeAttachment, handlePaste, handleDragOver, handleDragLeave, handleDrop } =
-    usePromptAttachments({
-      editor: editorElement,
-      isFocused,
-      addPart,
-      noteAttachments,
-      sessionAttachments,
-      localArmedLoop,
-      activeLoopID: () => info()?.blueprint?.loopID,
-      working,
-      workflowKind: armedWorkflowKind,
-      clearPendingWorkflows: () => {
-        setPendingPlan(false)
-        setPendingLightLoop(false)
-        setPendingBoss(false)
-      },
-      setLocalArmedLoop,
-      setStore,
-      pendingUploads,
-    })
+  const {
+    addAttachments,
+    retryAttachment,
+    removeAttachment,
+    handlePaste,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+  } = usePromptAttachments({
+    editor: editorElement,
+    isFocused,
+    addPart,
+    noteAttachments,
+    sessionAttachments,
+    localArmedLoop,
+    activeLoopID: () => info()?.blueprint?.loopID,
+    working,
+    workflowKind: armedWorkflowKind,
+    clearPendingWorkflows: () => {
+      setPendingPlan(false)
+      setPendingLightLoop(false)
+      setPendingBoss(false)
+    },
+    setLocalArmedLoop,
+    setStore,
+    pendingUploads,
+  })
 
   const addToHistory = (prompt: Prompt, mode: "normal" | "shell") => {
     const text = inlineText(prompt).trim()
@@ -1882,6 +1936,7 @@ export function createPromptInputController(props: PromptInputProps) {
     }
 
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      if (presentation.expanded && store.mode === "normal") return
       if (event.altKey || event.ctrlKey || event.metaKey) return
       const { collapsed } = getCaretState()
       if (!collapsed) return
@@ -1914,6 +1969,25 @@ export function createPromptInputController(props: PromptInputProps) {
 
     const modEnter = event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
     const plainEnter = event.key === "Enter" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
+
+    if (event.key === "Escape" && store.popover) {
+      setStore("popover", null)
+      event.preventDefault()
+      return
+    }
+    if (presentation.expanded && store.mode === "normal") {
+      const action = expandedComposerKeyAction(event)
+      if (action === "send") handleSubmit(event)
+      if (action === "newline") {
+        addPart({ type: "text", content: "\n", start: 0, end: 0 })
+        event.preventDefault()
+      }
+      if (action === "collapse") {
+        presentation.collapse()
+        event.preventDefault()
+      }
+      return
+    }
 
     if (sendShortcut() === "enter") {
       if (plainEnter) {
@@ -1951,6 +2025,7 @@ export function createPromptInputController(props: PromptInputProps) {
     noteAttachments,
     sessionAttachments,
     attachmentsUploading,
+    attachmentsFailed,
     selectedControlProfile,
     pendingPlan,
     clearPendingPlan: () => setPendingPlan(false),
@@ -1983,6 +2058,7 @@ export function createPromptInputController(props: PromptInputProps) {
       await props.onValidateLocation?.()
       await composerDocument!.beforeSubmit()
     },
+    onAccepted: (unchanged) => presentation.accepted(unchanged),
   })
   const handleSubmit = (event: Event) => {
     if (props.locationPending || abandonPending() || (continuePending() && !working())) {
@@ -2027,28 +2103,6 @@ export function createPromptInputController(props: PromptInputProps) {
     requestAnimationFrame(() => void handleSubmit(new Event("submit", { cancelable: true })))
   })
 
-  const runRuntimeCommand = (name: string) => {
-    const sessionID = params.id
-    const currentModel = local.model.current()
-    const currentAgent = local.agent.current()
-    if (!sessionID || !currentModel || !currentAgent) return
-
-    sendSessionCommand({
-      client: sdk.client,
-      sessionID,
-      command: name,
-      agent: currentAgent.name,
-      model: { modelID: currentModel.id, providerID: currentModel.provider.id },
-      variant: local.model.variant.current(),
-    }).catch((err) => {
-      showToast({
-        type: "error",
-        title: i18n._(PI.commandSendFailed),
-        description: err instanceof Error ? err.message : i18n._(PI.genericRequestFailed),
-      })
-    })
-  }
-
   const views: Record<PluginInputViewPart, () => import("solid-js").JSX.Element> = {
     leading: () => (
       <>
@@ -2082,21 +2136,7 @@ export function createPromptInputController(props: PromptInputProps) {
           onEnvironmentChange={props.onNewSessionEnvironmentChange}
           startOptions={newSessionStartOptions()}
           disabled={!!props.readOnly || composerSubmitting() || !!props.sessionTransitionPending}
-        >
-          {" "}
-          <Show when={params.id}>
-            <div class="relative z-20 ml-auto hidden md:flex items-center gap-1.5">
-              <SessionAgendaWakeIndicator sessionID={params.id!} />
-              <QuickActions
-                class="relative"
-                onCommand={(id) => command.trigger(id)}
-                onRuntimeCommand={runRuntimeCommand}
-                commandsDisabled={working()}
-                commands={command.options}
-              />
-            </div>
-          </Show>
-        </SessionWorkContext>
+        />
       </>
     ),
     context: () => (
@@ -2155,8 +2195,12 @@ export function createPromptInputController(props: PromptInputProps) {
             notes={noteAttachments}
             sessions={sessionAttachments}
             pending={pendingUploads.pending}
+            pendingFile={pendingUploads.file}
+            retryAttachment={retryAttachment}
+            order={() => prompt.current().flatMap((part) => ("id" in part ? [part.id] : []))}
             serverUrl={sdk.url}
             removeAttachment={removeAttachment}
+            onOpen={openDraftAttachment}
           />
         </Show>
       </>
@@ -2619,6 +2663,22 @@ export function createPromptInputController(props: PromptInputProps) {
       await handleDrop(event)
     },
   }
+  onCleanup(
+    bindComposerPresentation(composerInput, {
+      state: presentation,
+      preview() {
+        let offset = 0
+        const references: Array<{ start: number; end: number; path: string }> = []
+        for (const part of prompt.current()) {
+          if (part.type !== "text" && part.type !== "file") continue
+          if (part.type === "file")
+            references.push({ start: offset, end: offset + part.content.length, path: part.path })
+          offset += part.content.length
+        }
+        return { text: inlineText(prompt.current()), references }
+      },
+    }),
+  )
   return {
     input: composerInput,
     pickFiles() {

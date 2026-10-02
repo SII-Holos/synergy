@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { createMarkdownParser } from "../src/context/markdown-parser"
 import { createMarkdownWorkerClient } from "../src/context/markdown-worker-client"
 
 test("Markdown worker jobs are lazy, cancellable, and fenced by their request identity", async () => {
@@ -53,4 +54,27 @@ test("a failed Markdown worker rejects pending work and the next request creates
   expect(await next).toBe("recovered")
   expect(starts).toBe(2)
   client.dispose()
+})
+
+test("inline formulas retain inline markup through the shared worker boundary", async () => {
+  const parser = createMarkdownParser()
+  let receive!: (event: MessageEvent) => void
+  const client = createMarkdownWorkerClient(() => ({
+    postMessage: (message) => {
+      if (message.cancel) return
+      void Promise.resolve(
+        message.inline ? parser.parseInline(message.markdown!) : parser.parse(message.markdown!),
+      ).then((html) => receive({ data: { id: message.id, html } } as MessageEvent))
+    },
+    onMessage: (callback) => (receive = callback),
+    terminate: () => parser.dispose(),
+  }))
+  try {
+    const inline = await client.parseInline("$x^2$")
+    expect(inline).toContain('class="katex"')
+    expect(inline).not.toContain("<p>")
+    expect(await client.parse("ordinary paragraph")).toBe("<p>ordinary paragraph</p>\n")
+  } finally {
+    client.dispose()
+  }
 })

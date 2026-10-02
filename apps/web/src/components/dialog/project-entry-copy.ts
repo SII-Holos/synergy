@@ -4,6 +4,8 @@ export const projectEntryCopy = {
     message: "Project folders changed. Review the selected main folder, then start the task again.",
   },
   computer: { id: "project.entry.computer", message: "Computer" },
+  computerName: { id: "project.entry.computerName", message: "Computer: {name}" },
+  locationOptions: { id: "project.entry.locationOptions", message: "Location options" },
   manageComputers: { id: "project.entry.manageComputers", message: "Manage computers" },
   connected: { id: "project.entry.connected", message: "Connected" },
   unavailable: { id: "project.entry.unavailable", message: "Unavailable" },

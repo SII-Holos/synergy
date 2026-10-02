@@ -1,7 +1,14 @@
 import type { MarkdownDocument } from "./markdown-document"
 import { markdownMathMarker } from "./marked-math"
 
-type Request = { id: number; markdown?: string; cancel?: boolean; blocks?: boolean; mathMarker?: string }
+type Request = {
+  id: number
+  markdown?: string
+  cancel?: boolean
+  blocks?: boolean
+  inline?: boolean
+  mathMarker?: string
+}
 type Result = { id: number; html?: string; document?: MarkdownDocument; error?: string }
 type Port = {
   postMessage(message: Request): void
@@ -45,7 +52,7 @@ export function createMarkdownWorkerClient(create: () => Port) {
     })
     return created
   }
-  const request = async (markdown: string, signal?: AbortSignal, blocks = false): Promise<Result> => {
+  const request = async (markdown: string, signal?: AbortSignal, blocks = false, inline = false): Promise<Result> => {
     if (disposed) throw new DOMException("Markdown worker disposed", "AbortError")
     signal?.throwIfAborted()
     const size = markdown.length * 2
@@ -72,7 +79,7 @@ export function createMarkdownWorkerClient(create: () => Port) {
       pending.set(requestID, { resolve, reject, cleanup })
       signal?.addEventListener("abort", abort, { once: true })
       try {
-        connected.postMessage({ id: requestID, markdown, blocks, mathMarker: markdownMathMarker() })
+        connected.postMessage({ id: requestID, markdown, blocks, inline, mathMarker: markdownMathMarker() })
       } catch (error) {
         pending.delete(requestID)
         cleanup()
@@ -83,6 +90,9 @@ export function createMarkdownWorkerClient(create: () => Port) {
   return {
     async parse(markdown: string, signal?: AbortSignal) {
       return (await request(markdown, signal)).html ?? ""
+    },
+    async parseInline(markdown: string, signal?: AbortSignal) {
+      return (await request(markdown, signal, false, true)).html ?? ""
     },
     async document(markdown: string, signal?: AbortSignal) {
       const response = await request(markdown, signal, true)

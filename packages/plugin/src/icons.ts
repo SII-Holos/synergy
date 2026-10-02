@@ -1,3 +1,8 @@
+const surfaceSizingIcons = {
+  expand: "maximize-2",
+  collapse: "minimize-2",
+} as const
+
 export const SemanticIconToken = {
   // Product entities
   "holos.main": "satellite",
@@ -46,6 +51,8 @@ export const SemanticIconToken = {
   "agenda.main": "calendar-clock",
   "kanban.main": "kanban",
   "terminal.main": "code",
+  "composer.expand": surfaceSizingIcons.expand,
+  "composer.collapse": surfaceSizingIcons.collapse,
 
   // Session runtime
   "session.default": "message-square",
@@ -152,7 +159,7 @@ export const SemanticIconToken = {
   "product.update.install": "rotate-cw",
   "window.minimize": "minus",
   "window.maximize": "square",
-  "window.restore": "minimize-2",
+  "window.restore": surfaceSizingIcons.collapse,
   "window.close": "square-x",
 
   // Navigation
@@ -190,6 +197,8 @@ export const SemanticIconToken = {
   "command.start": "zap",
 
   // Generic actions and state
+  "action.expand": surfaceSizingIcons.expand,
+  "action.collapse": surfaceSizingIcons.collapse,
   "action.pin": "pin",
   "action.unpin": "pin-off",
   "action.download": "download-cloud",

@@ -1238,6 +1238,38 @@ msgid "app.attachment.mode.source"
 msgstr "⟦Source⟧"
 
 #. js-lingui-explicit-id
+msgid "app.attachment.office.corrupt"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.encrypted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.find"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.matches"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.nextMatch"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.notice"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.office.unsupported"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.attachment.pdf.fitWidth"
 msgstr "⟦Fit width⟧"
 
@@ -1280,6 +1312,26 @@ msgstr "⟦This attachment is no longer available in the conversation.⟧"
 #. js-lingui-explicit-id
 msgid "app.attachment.unsupported"
 msgstr "⟦Preview is not available for this file type.⟧"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.xlsx.cellValue"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.xlsx.copyCells"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.xlsx.copyTooLarge"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.xlsx.matches"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.xlsx.worksheets"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.boss.assign.failed"
@@ -11707,6 +11759,10 @@ msgid "directory.navigation.denied"
 msgstr "⟦This service cannot read this folder. Check its access permissions or choose another path.⟧"
 
 #. js-lingui-explicit-id
+msgid "directory.navigation.editPath"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "directory.navigation.empty"
 msgstr "⟦This folder has no subfolders. You can use this folder.⟧"
 
@@ -12843,6 +12899,10 @@ msgid "project.entry.computer"
 msgstr "⟦Computer⟧"
 
 #. js-lingui-explicit-id
+msgid "project.entry.computerName"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "project.entry.connected"
 msgstr "⟦Connected⟧"
 
@@ -12913,6 +12973,10 @@ msgstr "⟦Folders⟧"
 #. js-lingui-explicit-id
 msgid "project.entry.loading"
 msgstr "⟦Loading…⟧"
+
+#. js-lingui-explicit-id
+msgid "project.entry.locationOptions"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "project.entry.main"
@@ -13013,6 +13077,10 @@ msgstr "⟦The draft changed. Choose the project again to keep your latest edits
 #. js-lingui-explicit-id
 msgid "project.flow.choose"
 msgstr "⟦Choose project⟧"
+
+#. js-lingui-explicit-id
+msgid "project.flow.currentProject"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "project.flow.description"
@@ -13185,6 +13253,38 @@ msgstr "⟦Wait for Plan to finish before equipping a Blueprint.⟧"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.attach.waitRun"
 msgstr "⟦Wait for the current session run to finish before equipping a Blueprint.⟧"
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.blocked"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.list"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.pendingSummary"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.previewTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.resolveFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.attachments.untitled"
+msgstr ""
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -13832,6 +13932,78 @@ msgstr "⟦Failed to toggle Light Loop⟧"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.waitStop"
 msgstr "⟦Wait for Light Loop to stop before equipping a Blueprint.⟧"
+
+#. js-lingui-explicit-id
+msgid "prompt.long.bold"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.code"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.collapse"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.continueExpand"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.edit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.expand"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.format"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.heading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.italic"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.link"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.list"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.preview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.quote"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.releaseExpand"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.resize"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.shortcut"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.strike"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.long.view"
+msgstr ""
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -25082,6 +25254,14 @@ msgid "ui.anchoredTool.viewFile"
 msgstr "⟦View File⟧"
 
 #. js-lingui-explicit-id
+msgid "ui.attachment.collapseAll"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.attachment.expandAll"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "ui.attachment.openAttachment"
 msgstr "⟦Open {filename}⟧"
 
@@ -25340,6 +25520,146 @@ msgstr "⟦Show {count} more {count, plural, one {file} other {files}}⟧"
 #. js-lingui-explicit-id
 msgid "ui.turnChangeSummary.title"
 msgstr "⟦Changed {fileCount, plural, one {# file} other {# files}}⟧"
+
+#. js-lingui-explicit-id
+msgid "ui.userMessage.markdown"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.userMessage.source"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.blocks.field"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.blocks.help"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.blocks.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.blocks.over"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.blocks.ready"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.blocks.score"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.continue"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.keyboardHelp"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.statusControl"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.subtitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.field"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.help"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.over"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.position"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.ready"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.aim"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.field"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.help"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.lost"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.ready"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.score"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.won"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.field"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.help"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.ready"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.result"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "window.close.aria"

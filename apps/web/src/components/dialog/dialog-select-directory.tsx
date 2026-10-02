@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
+import { createResizeObserver } from "@solid-primitives/resize-observer"
 import type { DirectoryPage, SynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -39,6 +40,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   )
   const [path, setPath] = createSignal(home())
   const [draft, setDraft] = createSignal(home())
+  const [editingPath, setEditingPath] = createSignal(false)
   const [query, setQuery] = createSignal("")
   const [hidden, setHidden] = createSignal(false)
   const [listing, setListing] = createSignal<DirectoryPage>()
@@ -47,11 +49,27 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   const [error, setError] = createSignal("")
   const [searched, setSearched] = createSignal(false)
   let pathInput: HTMLInputElement | undefined
+  let pathEditButton: HTMLButtonElement | undefined
+  const [pathNavigation, setPathNavigation] = createSignal<HTMLElement>()
   let request: AbortController | undefined
   onCleanup(() => request?.abort())
   createEffect(() => {
     if (!props.client && sdk.client !== client) dialog.close()
   })
+  createEffect(() => {
+    path()
+    editingPath()
+    const navigation = pathNavigation()
+    queueMicrotask(() => {
+      if (navigation?.isConnected) navigation.scrollLeft = navigation.scrollWidth
+    })
+  })
+  createResizeObserver(
+    () => (editingPath() ? undefined : pathNavigation()),
+    (_, navigation) => {
+      navigation.scrollLeft = navigation.scrollWidth
+    },
+  )
   const crumbs = createMemo(() => {
     const current = path()
     const separator = current.includes("\\") ? "\\" : "/"
@@ -97,13 +115,14 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
                 options,
               )
             ).data
-      if (controller.signal.aborted) return
+      if (controller.signal.aborted) return false
       setSearched(search && !!query().trim())
       setPath(result.path)
       if (draft() === target) setDraft(result.path)
       setListing(cursor ? { ...result, entries: [...(listing()?.entries ?? []), ...result.entries] } : result)
+      return true
     } catch (failure) {
-      if (controller.signal.aborted) return
+      if (controller.signal.aborted) return false
       const code =
         failure &&
         typeof failure === "object" &&
@@ -124,14 +143,29 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
                 : copy.failed,
         ),
       )
+      return false
     } finally {
       if (!controller.signal.aborted) setLoading(false)
     }
   }
   function enter(target: string) {
+    setEditingPath(false)
     setQuery("")
     if (!props.multiple) setSelected([])
     void load(target)
+  }
+  function closePath() {
+    setDraft(path())
+    setEditingPath(false)
+    queueMicrotask(() => {
+      if (pathEditButton?.isConnected) pathEditButton.focus()
+    })
+  }
+  async function submitPath() {
+    if (loading() || !draft().trim()) return
+    setQuery("")
+    if (!props.multiple) setSelected([])
+    if ((await load(draft())) && draft() === path()) closePath()
   }
   function select(target: string) {
     setSelected((previous) =>
@@ -163,10 +197,12 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
       description={_({ ...copy.service, values: { service: serverDisplayName(props.serverUrl ?? sdk.url) } })}
       footer={
         <div data-slot="dialog-actions">
-          <Button variant="ghost" onClick={() => dialog.close()}>
+          <Button variant="ghost" size="large" onClick={() => dialog.close()}>
             {_(copy.cancel)}
           </Button>
           <Button
+            variant="primary"
+            size="large"
             disabled={loading() || !!error() || !listing() || (props.multiple && !selected().length)}
             onClick={choose}
           >
@@ -178,47 +214,105 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
       class="directory-navigation"
     >
       <div data-slot="dialog-form" class="project-flow">
-        <form
-          class="directory-navigation-path"
-          onSubmit={(event) => {
-            event.preventDefault()
-            enter(draft())
-          }}
-        >
+        <div class="directory-navigation-toolbar">
           <IconButton
             type="button"
             icon={getSemanticIcon("navigation.home")}
             aria-label={_(copy.home)}
+            variant="ghost"
+            size="large"
             onClick={() => enter(home())}
           />
           <IconButton
             type="button"
             icon={getSemanticIcon("navigation.back")}
             aria-label={_(copy.up)}
+            variant="ghost"
+            size="large"
             disabled={!listing()?.parent || loading()}
             onClick={() => enter(listing()!.parent!)}
           />
-          <TextField
-            ref={pathInput}
-            label={_(copy.path)}
-            hideLabel
-            value={draft()}
-            onChange={setDraft}
-            spellcheck={false}
-          />
-          <Button type="submit" disabled={!draft().trim()}>
-            {_(copy.go)}
-          </Button>
-        </form>
-        <nav class="directory-navigation-crumbs" aria-label={_(copy.current)}>
-          <For each={crumbs()}>
-            {(crumb) => (
-              <button type="button" onClick={() => enter(crumb.path)}>
-                {crumb.name}
-              </button>
-            )}
-          </For>
-        </nav>
+          <Show
+            when={editingPath()}
+            fallback={
+              <>
+                <nav
+                  ref={setPathNavigation}
+                  class="directory-navigation-crumbs"
+                  aria-label={_(copy.current)}
+                  title={path()}
+                >
+                  <For each={crumbs()}>
+                    {(crumb, index) => (
+                      <>
+                        <Show when={index() > 0}>
+                          <span aria-hidden="true">›</span>
+                        </Show>
+                        <button
+                          type="button"
+                          title={crumb.path}
+                          aria-current={index() === crumbs().length - 1 ? "page" : undefined}
+                          onClick={() => enter(crumb.path)}
+                        >
+                          {crumb.name}
+                        </button>
+                      </>
+                    )}
+                  </For>
+                </nav>
+                <Button
+                  ref={pathEditButton}
+                  variant="ghost"
+                  onClick={() => {
+                    setDraft(path())
+                    setEditingPath(true)
+                    queueMicrotask(() => {
+                      if (!pathInput?.isConnected) return
+                      pathInput.focus()
+                      pathInput.select()
+                    })
+                  }}
+                >
+                  {_(copy.editPath)}
+                </Button>
+              </>
+            }
+          >
+            <form
+              class="directory-navigation-path"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void submitPath()
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Escape") return
+                event.preventDefault()
+                event.stopPropagation()
+                closePath()
+              }}
+            >
+              <TextField
+                ref={pathInput}
+                label={_(copy.path)}
+                hideLabel
+                value={draft()}
+                onChange={setDraft}
+                spellcheck={false}
+              />
+              <Button type="submit" variant="ghost" disabled={loading() || !draft().trim()}>
+                {_(copy.go)}
+              </Button>
+              <IconButton
+                type="button"
+                variant="ghost"
+                size="large"
+                icon={getSemanticIcon("action.close")}
+                aria-label={_(copy.cancel)}
+                onClick={closePath}
+              />
+            </form>
+          </Show>
+        </div>
         <form
           class="directory-navigation-search"
           onSubmit={(event) => {
@@ -233,7 +327,13 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
             value={query()}
             onChange={setQuery}
           />
-          <Button type="submit" icon={getSemanticIcon("action.search")} aria-label={_(copy.search)} />
+          <IconButton
+            type="submit"
+            variant="ghost"
+            size="large"
+            icon={getSemanticIcon("action.search")}
+            aria-label={_(copy.search)}
+          />
         </form>
         <Checkbox
           checked={hidden()}
@@ -294,6 +394,8 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
                     </span>
                   </button>
                   <IconButton
+                    variant="ghost"
+                    size="large"
                     icon={getSemanticIcon("navigation.forward")}
                     aria-label={`${_(copy.enter)}: ${entry.name}`}
                     disabled={loading()}
@@ -315,12 +417,17 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
             </Show>
           </div>
         </Show>
-        <Show when={props.multiple && listing() && !loading() && !error()}>
-          <Button variant="secondary" aria-pressed={selected().includes(path())} onClick={() => select(path())}>
-            {_(copy.selectCurrent)}
-          </Button>
-        </Show>
         <div class="directory-navigation-selection">
+          <Show when={props.multiple && listing() && !loading() && !error()}>
+            <Button
+              variant="ghost"
+              icon={getSemanticIcon(selected().includes(path()) ? "state.success" : "action.add")}
+              aria-pressed={selected().includes(path())}
+              onClick={() => select(path())}
+            >
+              {_(copy.selectCurrent)}
+            </Button>
+          </Show>
           <span title={selected().join("\n")}>
             {props.multiple ? _({ ...copy.selected, values: { count: selected().length } }) : (selected()[0] ?? path())}
           </span>

@@ -94,6 +94,7 @@ type PromptSubmitInput = {
   noteAttachments: Accessor<NoteAttachmentPart[]>
   sessionAttachments: Accessor<SessionAttachmentPart[]>
   attachmentsUploading: Accessor<boolean>
+  attachmentsFailed?: Accessor<boolean>
   selectedControlProfile: Accessor<ControlProfileId>
   pendingPlan: Accessor<boolean>
   clearPendingPlan: () => void
@@ -119,6 +120,7 @@ type PromptSubmitInput = {
   queueScroll: () => void
   onWorktreeUnavailable: () => void
   beforeSubmit: () => Promise<void>
+  onAccepted?: (unchanged: boolean) => void
 }
 
 export function usePromptSubmit(input: PromptSubmitInput) {
@@ -238,6 +240,17 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         return
       }
       if (shouldBlockSubmitForUploadingAttachments({ uploading: input.attachmentsUploading(), intent: submitIntent })) {
+        if (input.attachmentsFailed?.()) {
+          showToast({
+            type: "warning",
+            title: i18n._({ id: "prompt.attachments.resolveFailed", message: "Review failed attachments" }),
+            description: i18n._({
+              id: "prompt.attachments.blocked",
+              message: "Retry or remove failed attachments above the editor before sending.",
+            }),
+          })
+          return
+        }
         showToast({
           type: "warning",
           title: i18n._(PI.submitWaitUploadsTitle),
@@ -687,6 +700,9 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       }
 
       const finishNewSessionTransition = () => {
+        input.onAccepted?.(
+          prompt.revision() === restoreRevision && (binding.isCurrent() || params.id === activeSession.id),
+        )
         if (!createdSessionForSubmit) return
         const progress = worktreeWorkspaceSelection
           ? createNewSessionWorkspaceSuccessProgress({ selection: worktreeWorkspaceSelection })
@@ -1160,6 +1176,9 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           const accepted = result.data
           if (!accepted) throw new Error("Session input returned no acceptance result")
           clearInput()
+          input.onAccepted?.(
+            prompt.revision() === restoreRevision && (binding.isCurrent() || params.id === activeSession.id),
+          )
           if (accepted.status === "queued") {
             const item = accepted.item
             // Guard the mutation upsert: the backend may have already consumed
