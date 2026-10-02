@@ -496,12 +496,16 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
         }
         return
       }
+      const nestedOverlay =
+        event.target instanceof Element ? event.target.closest('[role="dialog"], [role="menu"]') : undefined
       const action = resolveWorkbenchEscapeAction({
         key: event.key,
         opened: state().opened(),
         menuOpen: local.addOpen || local.actionsOpen || local.menuTabId !== undefined,
         focusWithin: event.target instanceof Node && Boolean(root?.contains(event.target)),
-        dialogActive: Boolean(dialog.active),
+        dialogActive: Boolean(
+          dialog.active || (nestedOverlay && nestedOverlay !== root && root?.contains(nestedOverlay)),
+        ),
         editableFocus: isEditableEscapeTarget(event.target),
       })
       if (action === "none") return

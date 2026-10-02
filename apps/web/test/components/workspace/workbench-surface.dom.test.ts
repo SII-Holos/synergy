@@ -32,6 +32,7 @@ beforeAll(async () => {
     const entries = ["side", "bottom", "extra"].map(id => ({
       id, label: id, icon: "file", surfaces: ["side", "bottom"], cardinality: "multi",
       component: () => { window.mounts[id]++; return <div>
+        {id === "side" && location.search === "?workspace-navigation" ? window.navigationPanel() : null}
         {(() => { if (crash() && id === "side") throw new Error("Panel crashed"); return null })()}
         <button>{id} action</button><input aria-label={id + " draft"} />
       </div> }
@@ -89,6 +90,7 @@ beforeAll(async () => {
     import { I18nProvider } from "@lingui/solid"
     import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
     import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
+    import { Popover } from "@ericsanchezok/synergy-ui/popover"
     import { WorkbenchSurface } from ${JSON.stringify(`/@fs/${source}/components/workspace/workbench-surface.tsx`)}
     import { WorkspaceNavigator } from ${JSON.stringify(`/@fs/${source}/components/workspace/workspace-navigator.tsx`)}
     import { DefaultSession } from ${JSON.stringify(`/@fs/${source}/plugin/default-session.tsx`)}
@@ -109,23 +111,34 @@ beforeAll(async () => {
       return <Show when={mount?.()}>{element => <Portal mount={element()}><button class="stb-icon-btn" onClick={() => window.fixture.open("side")}>Open side</button></Portal>}</Show>
     }
     function NavigatorProbe(props = {}) {
+      const dialog = useDialog()
       const [open, setOpen] = createSignal(true)
       const [revision, setRevision] = createSignal(1)
-      let navigation
-      return <div data-ui-part="resource-panel" style={{width:props.width ?? "100vw",height:"400px",display:"flex"}}>
-        <WorkspaceNavigator id={props.navigationId ?? (props.remount ? "file-navigation" : undefined)} label="Documents" header={location.search !== "?navigator-own-header"} open={open()} width={320} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} onResize={() => {}} onReady={value => navigation = value}>
-          <button onClick={() => {setRevision(value => value+1); props.remount?.(); navigation.closeDrawer()}}>Select document</button>
-          {location.search === "?navigator-own-header" && <button onClick={() => navigation.closeDrawer()}>Close documents</button>}
+      const [navigation, setNavigation] = createSignal()
+      return <div data-ui-part="resource-panel" style={{width:props.width ?? "100vw",height:"448px",display:"flex","flex-direction":"column"}}>
+        <div style="height:48px;flex-shrink:0">
+          <Show when={revision()} keyed>{() => <button data-workspace-navigation-toggle aria-controls={navigation()?.id} aria-expanded={navigation()?.opened()} onClick={() => navigation()?.toggle()}>Toggle navigation</button>}</Show>
+        </div>
+        <div data-workspace-fixture-content style="position:relative;display:flex;flex:1;min-height:0">
+        <WorkspaceNavigator id={props.navigationId ?? (props.remount ? "file-navigation" : undefined)} label="Documents" header={location.search !== "?navigator-own-header"} open={open()} width={320} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} onResize={() => {}} onReady={setNavigation}>
+          <button onClick={() => {setRevision(value => value+1); props.remount?.(); navigation()?.closeDrawer()}}>Select document</button>
+          {location.search === "?navigator-own-header" && <button onClick={() => navigation()?.closeDrawer()}>Close documents</button>}
+          {(location.search === "?navigator-layers" || props.layers) && <>
+            <Popover title="Navigation options" triggerAs={props => <button {...props}>Options</button>}><button>Option action</button></Popover>
+            <button onClick={() => dialog.push(() => <Dialog title="File action"><button>Confirm action</button></Dialog>)}>Open file action</button>
+          </>}
         </WorkspaceNavigator>
-        <Show when={revision()} keyed>{() => <button data-workspace-navigation-toggle aria-controls={navigation.id} aria-expanded={navigation.opened()} onClick={() => navigation.toggle()}>Toggle navigation</button>}</Show>
+        <input aria-label="Document draft" style="min-width:0;flex:1" />
+        </div>
       </div>
     }
+    window.navigationPanel = () => <NavigatorProbe width="100%" layers />
     function Fixture() {
       const dialog = useDialog()
       const [resourceRevision, setResourceRevision] = createSignal(1)
       if (location.search === "?navigator-remount") return <Show when={resourceRevision()} keyed>{() => <NavigatorProbe remount={() => setResourceRevision(value => value+1)} />}</Show>
       if (location.search === "?navigator-new-tab") return <div class="workbench-surface"><Show when={resourceRevision()} keyed>{revision => <NavigatorProbe navigationId={"file-navigation-" + revision} remount={() => setResourceRevision(value => value+1)} />}</Show></div>
-      if (location.search === "?navigator-offset") return <div style="margin-left:700px;margin-top:96px;width:400px"><NavigatorProbe width="400px" /></div>
+      if (location.search === "?navigator-offset") return <><input aria-label="Conversation draft" style="position:absolute;left:40px;top:160px" /><div style="margin-left:700px;margin-top:96px;width:400px"><NavigatorProbe width="400px" /></div></>
       if (location.search === "?navigator-nested") return <button onClick={() => dialog.push(() => <Dialog title="Workspace"><NavigatorProbe /></Dialog>)}>Open host</button>
       if (location.search === "?toolbar") {
         const history = createMemoryHistory()
@@ -137,7 +150,7 @@ beforeAll(async () => {
           <div data-plugin-ui="synergy" style="display:contents"><aside class="sb-root sb-integrated sb-expanded" style="width:260px"><div class="sb-navigation"><button>Navigation</button></div></aside></div> : part === "route" ?
           <DefaultSession context={{ layout: { minimumWidth: () => 350, promptHeight: () => 120, render: view => view === "workbench.side" ? <WorkbenchSurface surface="side" /> : view === "conversation" ? <WorkspaceToggleProbe /> : view === "composer" ? <div style="position:absolute;bottom:0;left:0;right:0;z-index:50"><input aria-label="Composer draft" /></div> : null } }} /> : null }}} />
       </div>
-      if (location.search && location.search !== "?restored") return <NavigatorProbe />
+      if (location.search && location.search !== "?restored" && location.search !== "?workspace-navigation") return <NavigatorProbe />
       return <>
         <button onClick={() => window.fixture.open("side")}>Open side</button>
         <button onClick={() => window.fixture.open("bottom")}>Open bottom</button>
@@ -585,13 +598,146 @@ test("a navigation drawer stays within its resource content in split layout", as
   )
   const bounds = await drawer.boundingBox()
   expect(bounds!.x).toBe(700)
-  expect(bounds!.y).toBe(96)
+  expect(bounds!.y).toBe(144)
   expect(bounds!.height).toBe(400)
   await page.keyboard.press("Escape")
   await drawer.waitFor({ state: "hidden" })
   await page.waitForFunction(() => document.activeElement?.textContent === "Toggle navigation")
   expect(errors).toEqual([])
 })
+
+for (const colorScheme of ["light", "dark"] as const) {
+  test(`narrow navigation only covers resource content and leaves the conversation usable in ${colorScheme} mode`, async () => {
+    await page.emulateMedia({ colorScheme, reducedMotion: "reduce" })
+    await page.goto(baseUrl + "?navigator-offset")
+    const content = page.locator("[data-workspace-fixture-content]")
+    const contentBounds = await content.boundingBox()
+    await page.getByRole("button", { name: "Toggle navigation", exact: true }).click()
+    const drawer = page.getByRole("dialog", { name: "Documents", exact: true })
+    await drawer.waitFor()
+    const backdrop = page.locator(".workspace-navigator-overlay")
+    expect(await backdrop.boundingBox()).toEqual(contentBounds)
+    expect(await backdrop.evaluate((element) => getComputedStyle(element).backdropFilter)).toBe("none")
+    const conversation = page.getByRole("textbox", { name: "Conversation draft", exact: true })
+    expect(await conversation.isVisible()).toBe(true)
+    await conversation.click({ timeout: 2000 })
+    await drawer.waitFor({ state: "detached" })
+    await conversation.fill("Continue the conversation")
+    expect(await conversation.evaluate((element) => element === document.activeElement)).toBe(true)
+    expect(errors).toEqual([])
+  })
+}
+
+test("a navigation disclosure closes its open drawer without reopening on the same click", async () => {
+  await page.goto(baseUrl + "?navigator-offset")
+  const trigger = page.getByRole("button", { name: "Toggle navigation", exact: true })
+  const drawer = page.getByRole("dialog", { name: "Documents", exact: true })
+  await trigger.click()
+  await drawer.waitFor()
+  await trigger.click({ timeout: 2000 })
+  await drawer.waitFor({ state: "detached" })
+  expect(await trigger.getAttribute("aria-expanded")).toBe("false")
+  await trigger.press("Enter")
+  await drawer.waitFor()
+  await page.keyboard.press("Escape")
+  await drawer.waitFor({ state: "detached" })
+  await page.waitForFunction(() => document.activeElement?.textContent === "Toggle navigation")
+  expect(errors).toEqual([])
+})
+
+test("the resource backdrop dismisses navigation without focusing the covered document", async () => {
+  await page.goto(baseUrl + "?navigator-offset")
+  await page.getByRole("button", { name: "Toggle navigation", exact: true }).click()
+  const drawer = page.getByRole("dialog", { name: "Documents", exact: true })
+  await drawer.waitFor()
+  const backdrop = page.locator(".workspace-navigator-overlay")
+  const bounds = (await backdrop.boundingBox())!
+  await page.mouse.click(bounds.x + bounds.width - 8, bounds.y + 80)
+  await drawer.waitFor({ state: "detached" })
+  await page.waitForFunction(() => document.activeElement?.textContent === "Toggle navigation")
+  expect(await page.getByRole("textbox", { name: "Document draft" }).inputValue()).toBe("")
+  expect(errors).toEqual([])
+})
+
+test("navigation remains behind its own menu and file dialog until they are dismissed", async () => {
+  await page.setViewportSize({ width: 375, height: 900 })
+  await page.goto(baseUrl + "?navigator-layers")
+  await page.getByRole("button", { name: "Toggle navigation", exact: true }).click()
+  const drawer = page.getByRole("dialog", { name: "Documents", exact: true })
+  await drawer.waitFor()
+  await page.getByRole("button", { name: "Options", exact: true }).click()
+  const option = page.getByRole("button", { name: "Option action", exact: true })
+  await option.focus()
+  await page.keyboard.press("Escape")
+  await option.waitFor({ state: "detached" })
+  expect(await drawer.count()).toBe(1)
+  await page.getByRole("button", { name: "Open file action", exact: true }).click()
+  const action = page.getByRole("dialog", { name: "File action", exact: true })
+  await action.waitFor()
+  await page.keyboard.press("Escape")
+  await action.waitFor({ state: "detached" })
+  await drawer.waitFor()
+  await page.waitForFunction(() => document.activeElement?.textContent === "Open file action")
+  await page.keyboard.press("Escape")
+  await drawer.waitFor({ state: "detached" })
+  expect(errors).toEqual([])
+})
+
+test("navigation follows its content bounds and restores the preferred width at the drawer threshold", async () => {
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.goto(baseUrl + "?navigator-offset")
+  await page.getByRole("button", { name: "Toggle navigation", exact: true }).click()
+  await page.getByRole("dialog", { name: "Documents", exact: true }).waitFor()
+  const resource = page.locator('[data-ui-part="resource-panel"]')
+  await resource.evaluate((element) => {
+    const resource = element as HTMLElement
+    resource.style.width = "519px"
+    resource.style.height = "300px"
+    resource.parentElement!.style.transform = "translateX(-80px)"
+  })
+  const content = page.locator("[data-workspace-fixture-content]")
+  expect(await page.locator(".workspace-navigator-overlay").boundingBox()).toEqual(await content.boundingBox())
+  expect((await page.locator(".workspace-navigator-drawer").boundingBox())!.height).toBe(252)
+  await resource.evaluate((element) => ((element as HTMLElement).style.width = "520px"))
+  const navigation = page.getByRole("complementary", { name: "Documents", exact: true })
+  await navigation.waitFor()
+  expect(await page.getByRole("dialog", { name: "Documents", exact: true }).count()).toBe(0)
+  expect((await navigation.boundingBox())!.width).toBe(240)
+  await resource.evaluate((element) => ((element as HTMLElement).style.width = "800px"))
+  await page.waitForFunction(
+    () => document.querySelector(".workspace-navigator")!.getBoundingClientRect().width === 320,
+  )
+  expect((await navigation.boundingBox())!.width).toBe(320)
+  expect(errors).toEqual([])
+})
+
+for (const width of [375, 1200]) {
+  test(`the real workspace yields Escape to a resource menu and navigation before closing at ${width}px`, async () => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto(baseUrl + "?workspace-navigation")
+    await page.getByRole("button", { name: "Open side", exact: true }).click()
+    const workspace = page.locator(".workbench-surface--side")
+    await page.getByRole("button", { name: "Toggle navigation", exact: true }).click()
+    const drawer = page.getByRole("dialog", { name: "Documents", exact: true })
+    await drawer.waitFor()
+    await page.getByRole("button", { name: "Options", exact: true }).click()
+    const option = page.getByRole("button", { name: "Option action", exact: true })
+    await option.focus()
+    await page.keyboard.press("Escape")
+    await option.waitFor({ state: "detached" })
+    expect(await drawer.isVisible()).toBe(true)
+    expect(await workspace.getAttribute("aria-hidden")).toBe("false")
+    await page.keyboard.press("Escape")
+    await drawer.waitFor({ state: "detached" })
+    expect(await workspace.getAttribute("aria-hidden")).toBe("false")
+    await page.waitForFunction(() => document.activeElement?.textContent === "Toggle navigation")
+    await page.keyboard.press("Escape")
+    await page.waitForFunction(
+      () => document.querySelector(".workbench-surface--side")!.getAttribute("aria-hidden") === "true",
+    )
+    expect(errors).toEqual([])
+  })
+}
 
 test("fullscreen owns display and hit testing without discarding the composer", async () => {
   await page.goto(baseUrl + "?composed")
@@ -862,6 +1008,28 @@ test("Escape closes a nested navigation drawer and returns focus inside its work
   await page.getByRole("dialog").waitFor({ state: "detached" })
   await page.setViewportSize({ width: 1200, height: 1000 })
 }, 30000)
+
+test("leaving document navigation with Tab preserves the enclosing mobile workspace focus boundary", async () => {
+  await page.setViewportSize({ width: 375, height: 900 })
+  await page.goto(baseUrl + "?navigator-nested")
+  await page.getByRole("button", { name: "Open host", exact: true }).click()
+  const host = page.getByRole("dialog", { name: "Workspace", exact: true })
+  await page.getByRole("button", { name: "Toggle navigation", exact: true }).click()
+  const drawer = page.getByRole("dialog", { name: "Documents", exact: true })
+  await drawer.waitFor()
+  await page.getByRole("button", { name: "Select document", exact: true }).focus()
+  await page.keyboard.press("Tab")
+  await page.waitForFunction(
+    () => document.querySelector('[role="dialog"]')?.contains(document.activeElement),
+    undefined,
+    { timeout: 2000 },
+  )
+  expect(await host.evaluate((element) => element.contains(document.activeElement))).toBe(true)
+  await page.keyboard.press("Escape")
+  await host.waitFor({ state: "detached" })
+  await page.waitForFunction(() => document.activeElement?.textContent === "Open host")
+  expect(errors).toEqual([])
+})
 
 test("the automatic workspace overlay contains keyboard focus and restores the preferred width", async () => {
   await page.setViewportSize({ width: 375, height: 900 })

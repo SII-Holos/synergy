@@ -14,17 +14,16 @@
   height: 100%;
 }
 .workspace-navigator-overlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: 99;
+  z-index: 1;
   background: var(--surface-overlay);
 }
 .workspace-navigator-drawer {
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 100;
-  max-width: calc(100vw - 24px);
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 2;
+  max-width: calc(100% - 24px);
   overscroll-behavior: contain;
 }
 .workspace-navigator-drawer-header {
@@ -50,6 +49,10 @@
 
 .workspace-navigator-overlay[data-expanded] {
   animation: workspace-navigation-fade var(--motion-duration-base) var(--motion-ease-standard);
+}
+.workspace-navigator-overlay[data-closed],
+.workspace-navigator-drawer[data-closed] {
+  pointer-events: none;
 }
 .workspace-navigator-drawer[data-expanded] {
   animation: workspace-navigation-slide var(--motion-duration-base) var(--motion-ease-standard);
