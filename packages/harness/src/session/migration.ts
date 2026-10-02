@@ -1524,6 +1524,12 @@ export const migrations: Migration[] = [
     domain: "session",
     dependsOn: ["20260705-message-v2-semantics-derive", "20260923-session-model-selection"],
     description: "Prepare ordered presentation headers in resumable batches",
+    upgradeRecord(key, value) {
+      if (key[0] !== "sessions" || key.length !== 4 || key[3] !== "display_state") return
+      value.ready = false
+      delete value.cursor
+      delete value.sourceGeneration
+    },
     async upSession(owner, progress) {
       const { SessionHistory } = await import("./history")
       await SessionHistory.prepareDisplayOwner(owner, progress)

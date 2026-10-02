@@ -10,6 +10,8 @@ import { MigrationRegistry } from "../../src/migration/registry"
 import { upgradeImportedConfig } from "../../src/migration"
 import { PermissionNext } from "../../src/permission/next"
 import { ConfigReferenceMigration } from "../../src/config/reference-migration"
+import { SessionHistoryDisplay } from "../../src/session/history-display"
+import type { MessageV2 } from "../../src/session/message-v2"
 
 function migration(domain: "config" | "session") {
   const entries = domain === "config" ? configMigrations : sessionMigrations
@@ -184,5 +186,48 @@ test("Markdown identity collisions leave both original files untouched", async (
     await expect(ConfigReferenceMigration.directory(Global.Path.config)).rejects.toThrow("both identities exist")
     expect(await Bun.file(oldFile).text()).toBe(oldText)
     expect(await Bun.file(currentFile).text()).toBe(currentText)
+  })
+})
+
+test("Session identity upgrades refresh already-prepared presentation headers", async () => {
+  await using fixture = await migrationFixture()
+  await fixture.run(async () => {
+    const scopeID = "scope-display"
+    const sessionID = "session-display"
+    const info: MessageV2.User = {
+      id: "message-display",
+      sessionID,
+      role: "user",
+      agent: "synergy",
+      time: { created: 1 },
+      model: { providerID: "fixture", modelID: "model" },
+      isRoot: true,
+      visible: true,
+    }
+    const key = ["sessions", scopeID, sessionID, "messages", info.id, "info"]
+    await Storage.write(key, info)
+    await SessionHistoryDisplay.initialize(scopeID, sessionID)
+    await SessionHistoryDisplay.messageWritten(scopeID, info)
+    await migration("session").up(() => {})
+    const current = await Storage.read<MessageV2.User>(key)
+    await SessionHistoryDisplay.prepare(scopeID, sessionID, async () => [current])
+    const expected = SessionHistoryDisplay.summarizeMessage(current)
+    expect(current.agent).toBe("atlas")
+    expect(await SessionHistoryDisplay.header(scopeID, sessionID, info.id)).toEqual(expected)
+    const page = await SessionHistoryDisplay.timelinePage({ sessionID }, { hidden: new Set() }, scopeID)
+    expect(page.total).toBe(1)
+    expect(page.items).toEqual([expected])
+    expect(await SessionHistoryDisplay.latestRoot(scopeID, sessionID, { hidden: new Set() })).toBe(info.id)
+    const imported: Record<string, unknown> = {
+      version: 1,
+      ready: true,
+      count: 1,
+      generation: 4,
+      cursor: "old",
+      sourceGeneration: 4,
+    }
+    const displayUpgrade = sessionMigrations.find((entry) => entry.id === "20261001-session-display-index")!
+    displayUpgrade.upgradeRecord!(["sessions", scopeID, sessionID, "display_state"], imported)
+    expect(imported).toEqual({ version: 1, ready: false, count: 1, generation: 4 })
   })
 })

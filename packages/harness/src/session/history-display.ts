@@ -145,6 +145,17 @@ export namespace SessionHistoryDisplay {
     await Storage.write(key(scopeID, sessionID), { version: 1, ready: true, count: 0, generation: 0 } satisfies State)
   }
 
+  export async function invalidate(scopeID: string, sessionID: string) {
+    const current = await state(scopeID, sessionID)
+    await Storage.write(key(scopeID, sessionID), {
+      ...current,
+      ready: false,
+      generation: current.generation + 1,
+      cursor: undefined,
+      sourceGeneration: undefined,
+    })
+  }
+
   export async function messageWritten(scopeID: string, info: MessageV2.Info, backfill = false) {
     const [previous] = await Storage.readMany<MessageSummary>([
       StoragePath.sessionDisplayMessage(scopeID, info.sessionID, info.id),

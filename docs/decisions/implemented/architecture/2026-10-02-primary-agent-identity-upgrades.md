@@ -16,6 +16,8 @@ Each data owner registers a versioned migration for its structured references. A
 
 Owner record transforms are standalone functions shared by startup, per-Session and import hooks. The central runner invokes startup callbacks independently of their contribution objects, so those callbacks cannot depend on a method receiver. Cross-domain fixtures invoke registered startup callbacks independently; released-ledger startup verifies the same behavior through the runner.
 
+Canonical message upgrades invalidate already-prepared presentation headers in the same transaction. The display-index owner's import hook also invalidates imported readiness and scan cursors, so upgraded originals cannot be paired with stale summary identities or content versions. The existing demand-driven reader rebuilds the projection before returning a timeline page.
+
 Execution accepts current names only. Product identifiers, models, permissions, tools, delegation and internal agents keep their contracts. A configuration containing both a retired key and its current replacement fails with an explicit identity conflict before writing that document. This includes delegation permission maps: property order must never silently discard a rule. Markdown definitions publish prepared bytes with a no-replace link before removing the source; an existing destination is preserved along with the original source. Interrupted publication may retain both definitions and requires conflict resolution before retrying, rather than guessing which instructions to discard.
 
 ## Alternatives considered

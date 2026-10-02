@@ -2,6 +2,7 @@ import type { Migration } from "../migration/types"
 import { SessionMigrationTarget } from "../migration/session-target"
 import { PrimaryAgentUpgrade } from "../agent/primary-identity-upgrade"
 import { Storage } from "../storage/storage"
+import { SessionHistoryDisplay } from "./history-display"
 
 function upgradeRecord(key: string[], value: Record<string, unknown>) {
   if (key[0] !== "sessions") return
@@ -24,24 +25,30 @@ function upgradeRecord(key: string[], value: Record<string, unknown>) {
   }
 }
 
+async function upgradeRecords(progress: Parameters<Migration["up"]>[0]) {
+  let done = 0
+  for (const kind of ["session", "message", "inbox", "inbox-removed"]) {
+    for await (const { key, value } of SessionMigrationTarget.records<Record<string, unknown>>({ kind })) {
+      const before = JSON.stringify(value)
+      upgradeRecord(key, value)
+      if (before !== JSON.stringify(value))
+        await Storage.transaction(async () => {
+          await Storage.write(key, value)
+          if (kind === "message") await SessionHistoryDisplay.invalidate(key[1], key[2])
+        })
+      progress(++done, 0)
+    }
+  }
+  progress(done, done)
+}
+
 export const primaryAgentMigration: Migration = {
   id: "20261002-session-primary-agent-identities",
   description: "Upgrade primary agent identities in Sessions, messages and pending input",
   scope: "session",
   upgradeRecord,
   upSession(owner, progress) {
-    return SessionMigrationTarget.provide(owner, () => this.up(progress))
+    return SessionMigrationTarget.provide(owner, () => upgradeRecords(progress))
   },
-  async up(progress) {
-    let done = 0
-    for (const kind of ["session", "message", "inbox", "inbox-removed"]) {
-      for await (const { key, value } of SessionMigrationTarget.records<Record<string, unknown>>({ kind })) {
-        const before = JSON.stringify(value)
-        upgradeRecord(key, value)
-        if (before !== JSON.stringify(value)) await Storage.write(key, value)
-        progress(++done, 0)
-      }
-    }
-    progress(done, done)
-  },
+  up: upgradeRecords,
 }
