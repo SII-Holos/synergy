@@ -146,6 +146,8 @@ Use the [secret-detection package](../../../packages/secret-detection/README.md)
 
 ## CI preparation and timing
 
+Exercise shared-cache inspection while another run retires a reference after enumeration. Tolerate only a missing retired reference; malformed or unreadable live references must still stop inspection, and surviving references must continue to prevent collection. Keep the deterministic race regression separate from native Docker lifecycle controls.
+
 For deadline-accounting unit tests, advance one controlled clock for both the event loop and lifecycle measurements. Yield to the real timer callbacks before and after a pause, and assert nested queue, active and wall durations exactly. Keep real timeout and cancellation controls separately; do not make correctness depend on synchronous evidence writes finishing within a millisecond budget.
 
 The deterministic Docker fixtures reserve one CPU and the default 2 GiB for the host in CI. On a four-CPU runner this admits a two-CPU preparation request alongside an existing native trial working set; default two-CPU reservation caused `cpu_budget` waits through the trial's stopping deadline. Keep actual memory, disk, CPU pressure and native hard-limit checks active. Local research retains its declared resource defaults.
