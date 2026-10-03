@@ -48,6 +48,8 @@ For full-width selectors, measure the actual value and chevron bounds; an expand
 
 For resource configuration flows, test list search across all visible resource groups, field errors that reveal an entry excluded by search, and focus return after a rename or page switch. Keep editing inside the shared Settings save boundary. Verify transport-specific drafts and key/value rows with spaces, colons and equals signs; duplicate or unnamed entries must fail validation before record normalization can discard them. Confirm that creating and editing a server does not execute its command.
 
+Pass reactive local collections to the shared `List` as arrays, such as `items={models()}`. Function-valued `items` are filter-driven loaders; passing a memo as a loader does not subscribe the list to later catalog updates. Hold catalog publication until the initial rows are visible, then verify new models appear and their quick-switch preferences can change without search input or remounting.
+
 ## Library and statistics recovery
 
 Verify experience states through the persisted reward status and generated DTO, including a failed stub with no intent and an evaluated zero reward. Test detail failure, duplicate reads, local retry and disposal independently of encoding. Unified search keeps result ownership by query and content group. Test a pending group under the real Suspense owner: independent fetches alone do not prevent the parent fallback from hiding ready results. Do not infer timestamps absent from a public summary. For sparse daily statistics, cover skipped dates, month/year and leap-day boundaries, snapshot-relative ranges and local date labels; a successful refresh must publish one response without a second compute request.
