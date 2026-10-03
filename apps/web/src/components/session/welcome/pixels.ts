@@ -43,12 +43,13 @@ export function sprite(
   scale: number,
   ink: string,
   detail = ink,
+  outline = ink,
 ) {
   for (let row = 0; row < mask.length; row++)
     for (let col = 0; col < mask[row]!.length; col++) {
       const cell = mask[row]![col]
       if (cell === "0") continue
-      ctx.fillStyle = cell === "2" ? detail : ink
+      ctx.fillStyle = cell === "3" ? outline : cell === "2" ? detail : ink
       ctx.fillRect(Math.round(x + col * scale), Math.round(y + row * scale), scale, scale)
     }
 }

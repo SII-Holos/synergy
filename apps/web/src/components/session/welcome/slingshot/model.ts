@@ -1,7 +1,6 @@
 import Matter from "matter-js"
 import { advanceFixed, sceneStep } from "../timing"
-import { slingshotLevels, type Shape } from "./levels"
-export { slingshotLevels } from "./levels"
+import { createSlingLevel, type Shape } from "./levels"
 
 const { Bodies, Body, Composite, Engine, Events, Query, Sleeping } = Matter
 export const slingAnchor = { x: 98, y: 224 }
@@ -43,7 +42,7 @@ const initial = (seed: number, level: number, banked = 0): SlingSnapshot => ({
   settled: 0,
   remainder: 0,
   sequence: 100,
-  bodies: slingshotLevels[level % 6]!.map((shape, id) => ({
+  bodies: createSlingLevel(seed, level).map((shape, id) => ({
     ...shape,
     id,
     angle: 0,
@@ -134,6 +133,7 @@ export function createSlingshot(seed: number, restored?: SlingSnapshot, level = 
       Composite.remove(engine.world, body)
       bodies.delete(id)
     }
+    if (removed.size) for (const { body } of bodies.values()) Sleeping.set(body, false)
     removed.clear()
     const snapshot = readBodies()
     const elapsed = state.phase === "flying" ? state.elapsed + dt : state.elapsed

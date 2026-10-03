@@ -25606,7 +25606,7 @@ msgstr "Slingshot playfield"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.help"
-msgstr "Pull the bird back and release to topple the targets. Left and right aim, up and down set power, Space launches. Escape cancels the pull."
+msgstr "Pull the courier back and release to topple the guards. Break supports to bring down the structure. Left and right aim, up and down set power, Space launches. Escape cancels the pull."
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.lost"
@@ -25618,7 +25618,7 @@ msgstr "Pixel slingshot"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.ready"
-msgstr "Pull back and release · {shots} shots"
+msgstr "Level {level} · Pull back and release · {shots} shots"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.score"

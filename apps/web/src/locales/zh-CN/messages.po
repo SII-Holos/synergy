@@ -25606,7 +25606,7 @@ msgstr "弹弓游戏区域"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.help"
-msgstr "向后拉小鸟，松手击倒目标。左右键调整角度，上下键调整力度，空格发射，Esc 取消拉弓。"
+msgstr "向后拉小精灵，松手击倒守卫。击碎支撑，让结构倒塌。左右键调整角度，上下键调整力度，空格发射，Esc 取消拉弓。"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.lost"
@@ -25618,7 +25618,7 @@ msgstr "像素弹弓"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.ready"
-msgstr "向后拉，松开发射 · {shots} 发"
+msgstr "第 {level} 关 · 向后拉，松开发射 · {shots} 发"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.score"
