@@ -64,6 +64,9 @@ for (const environment of ["development", "production"] as const) {
     await docFrame.getByText("中文阅读验收", { exact: true }).waitFor({ timeout: 8000 })
     expect(await docFrame.getByText("42", { exact: true }).isVisible()).toBe(true)
     expect((await docFrame.locator("body").boundingBox())!.width).toBeGreaterThan(0)
+    expect(
+      await docFrame.locator(".office-paper").evaluate((element) => getComputedStyle(element).backgroundColor),
+    ).toBe("rgb(255, 255, 255)")
     await page.getByRole("button", { name: "Close dialog", exact: true }).press("Escape")
     await page.waitForFunction(() => document.activeElement?.textContent === "Open preview")
     expect(await page.evaluate(() => document.activeElement?.textContent)).toBe("Open preview")
