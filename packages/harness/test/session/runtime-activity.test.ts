@@ -4,6 +4,8 @@ import { SessionManager } from "../../src/session/manager"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../support/fixture"
 import { testRuntime } from "../support/runtime"
+import { WorkingInfo } from "../../src/session/types"
+import { resolve, toStatus } from "../../src/session/working"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
@@ -30,6 +32,12 @@ test("activity snapshots retain the real phase and reject obsolete root, lease a
           type: "busy",
           activity: { phase: "running_tools", tool: { id: "read", count: 2 } },
         })
+        const working = WorkingInfo.parse(await resolve(session.id))
+        expect(working).toMatchObject({
+          status: "busy",
+          activity: { phase: "running_tools", rootID: "root-1", tool: { id: "read", count: 2 } },
+        })
+        expect(toStatus(working)).toEqual((await SessionManager.listStatuses())[session.id])
         SessionManager.bindRootTask(first, "root-2")
         expect(SessionManager.setActivity(session.id, { phase: "responding" }, owner)).toBe(false)
         SessionManager.signalAbort(session.id)

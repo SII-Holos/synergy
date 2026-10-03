@@ -7,6 +7,7 @@ import solid from "vite-plugin-solid"
 
 type Fixture = {
   prepare(): void
+  respond(): void
   phase(value: {
     phase: "waiting_model" | "running_tools" | "preparing_files"
     startedAt: number
@@ -200,5 +201,16 @@ test("folded process headers follow actual phases and parallel tool count", asyn
     expect(await trigger.getAttribute("aria-expanded")).toBe("false")
     expect(await page.locator('[data-slot="turn-process-trigger"]').count()).toBe(1)
   }
+  expect(errors).toEqual([])
+}, 30000)
+
+test("streaming a text-only response keeps the current system status visible", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => window.__conversationProcess.respond())
+  await frames()
+  await page.getByText("Final answer stays mounted.", { exact: true }).waitFor()
+  expect(await page.locator('[data-slot="turn-process-trigger"]').textContent()).toContain("Generating response")
+  expect(await page.locator('[data-slot="turn-process-trigger"]').count()).toBe(1)
   expect(errors).toEqual([])
 }, 30000)

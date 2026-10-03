@@ -498,17 +498,8 @@ export function resolveTurnWorking(input: {
   return !!input.sessionStatus && input.sessionStatus.type !== "idle"
 }
 
-export function shouldShowProviderPrelude(input: {
-  working: boolean
-  hasError: boolean
-  latestAssistant?: AssistantMessage
-  latestAssistantTimelineItems: readonly (SessionTurnTimelineItem | ActivityTimelineItem)[]
-  hasTurnContent?: boolean
-}): boolean {
-  if (!input.working || input.hasError || input.hasTurnContent) return false
-  if (!input.latestAssistant) return true
-  if (input.latestAssistant.time.completed != null) return false
-  return input.latestAssistantTimelineItems.length === 0
+export function shouldShowCurrentActivity(input: { working: boolean; hasError: boolean }): boolean {
+  return input.working && !input.hasError
 }
 
 function TimelineItemDisplay(props: {
@@ -958,47 +949,6 @@ function TimelineDisplayInner(props: {
   )
 }
 
-function ProviderPrelude(props: {
-  text: string
-  elapsed?: string
-  segments?: readonly string[]
-  variant?: "running" | "completed"
-}) {
-  return (
-    <div
-      data-component="provider-prelude"
-      data-variant={props.variant ?? "running"}
-      role="status"
-      aria-live="polite"
-      aria-label={props.text}
-    >
-      <span data-slot="provider-prelude-text">{props.text}</span>
-      <Show when={props.elapsed}>
-        {(elapsed) => (
-          <>
-            <span data-slot="provider-prelude-separator" aria-hidden="true">
-              ·
-            </span>
-            <span data-slot="provider-prelude-time" aria-hidden="true">
-              {elapsed()}
-            </span>
-          </>
-        )}
-      </Show>
-      <For each={props.segments ?? []}>
-        {(segment) => (
-          <>
-            <span data-slot="provider-prelude-separator" aria-hidden="true">
-              ·
-            </span>
-            <span data-slot="provider-prelude-stat">{segment}</span>
-          </>
-        )}
-      </For>
-    </div>
-  )
-}
-
 function MailboxSourceBadge(props: { message: UserMessage }) {
   const { _ } = useLingui()
   const data = useData()
@@ -1387,17 +1337,7 @@ export function SessionTurn(
       ? { type: "busy" as const, activity: props.submission.activity }
       : view.statusFor(props.sessionID),
   )
-  const showProviderPrelude = createMemo(() =>
-    hasCompactionEvent()
-      ? false
-      : shouldShowProviderPrelude({
-          working: working(),
-          hasError: !!error(),
-          latestAssistant: lastAssistantMessage(),
-          latestAssistantTimelineItems: latestAssistantTimelineItems(),
-          hasTurnContent: props.segment?.process?.hasTurnContent ?? hasTimelineItems(),
-        }),
-  )
+  const showCurrentActivity = createMemo(() => shouldShowCurrentActivity({ working: working(), hasError: !!error() }))
   const showExecutionCompletion = createMemo(() => !working() && !!props.executionSummary)
 
   const autoScroll = createAutoScroll({
@@ -1597,14 +1537,14 @@ export function SessionTurn(
                     <Show
                       when={
                         hasTimelineItems() ||
-                        (showProcessHeader() && (hasProcess() || showProviderPrelude())) ||
+                        (showProcessHeader() && (hasProcess() || showCurrentActivity())) ||
                         (showFooter() && (showExecutionCompletion() || (!working() && !!visibleDiffPanelState())))
                       }
                     >
                       <div data-slot="session-turn-timeline">
                         <Show when={showProcessHeader()}>
                           <div data-slot="turn-process-meta">
-                            <Show when={hasProcess() || showProviderPrelude()}>
+                            <Show when={hasProcess() || showCurrentActivity()}>
                               <button
                                 type="button"
                                 data-slot="turn-process-trigger"

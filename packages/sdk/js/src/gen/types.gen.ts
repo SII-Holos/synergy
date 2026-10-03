@@ -3939,6 +3939,7 @@ export type SessionWorkingInfo =
   | {
       status: "busy"
       description?: string
+      activity?: SessionActivity
     }
   | {
       status: "retry"

@@ -36,6 +36,7 @@ export function SessionSubmissionStatus(props: {
       </Show>
       <Show when={progress().phase === "error" && !props.hideError}>
         <ErrorCard
+          role="alert"
           summary={translateSessionTransitionCopy(progress().title, i18n)}
           description={translateSessionTransitionCopy(progress().description, i18n)}
           error={error()}

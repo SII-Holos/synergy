@@ -50364,6 +50364,9 @@
               },
               "description": {
                 "type": "string"
+              },
+              "activity": {
+                "$ref": "#/components/schemas/SessionActivity"
               }
             },
             "required": ["status"]

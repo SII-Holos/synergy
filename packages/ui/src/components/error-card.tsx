@@ -21,11 +21,12 @@ export interface ErrorCardProps {
   summary?: string
   description?: string
   actions?: JSX.Element
+  role?: JSX.HTMLAttributes<HTMLDivElement>["role"]
 }
 
 export function ErrorCard(props: ErrorCardProps) {
   const { _ } = useLingui()
-  const [local] = splitProps(props, ["error", "input", "defaultOpen", "summary", "description", "actions"])
+  const [local] = splitProps(props, ["error", "input", "defaultOpen", "summary", "description", "actions", "role"])
   const copy = createCopyController({
     text: () => errorDetailsText(local.error, local.input),
     get copyLabel() {
@@ -47,7 +48,7 @@ export function ErrorCard(props: ErrorCardProps) {
   )
 
   return (
-    <div data-component="error-card" data-expanded={open() ? "" : undefined}>
+    <div data-component="error-card" data-expanded={open() ? "" : undefined} role={local.role}>
       <Collapsible open={open()} onOpenChange={setOpen} variant="ghost">
         <Collapsible.Trigger data-slot="error-card-header" type="button">
           <span data-slot="error-card-leading" aria-hidden="true">

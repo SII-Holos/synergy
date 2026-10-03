@@ -142,6 +142,13 @@ window.__conversationProcess = {
     setStatus("running")
     setActivity(value)
   },
+  respond() {
+    setSubmission(undefined)
+    setStatus("running")
+    setActivity({ phase: "responding", startedAt: 1, rootID: "root" })
+    setData("part", "final", [part("final", "answer", "text", "Final answer stays mounted.")])
+    setData("message", "session", [root, final])
+  },
   stream() {
     setData("part", "final", [part("final", "answer", "text", "Final answer stays mounted.")])
     setData("message", "session", [root, work, more, final])
