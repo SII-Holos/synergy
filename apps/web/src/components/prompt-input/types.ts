@@ -48,7 +48,7 @@ export type PromptInputStore = {
 export interface PromptInputProps {
   projectDirectories?: import("@ericsanchezok/synergy-sdk/client").ProjectDirectories
   projectDirectoryError?: string
-  onProjectDirectoriesRefresh?: () => void
+  onProjectDirectoriesRefresh?: () => void | Promise<void>
   onWorkspaceTransition?: (request: SessionWorkspaceTransitionRequest) => void
   readOnly?: boolean
   locationPending?: boolean
@@ -59,6 +59,7 @@ export interface PromptInputProps {
   newSessionEnvironmentProfile?: string | null
   onNewSessionEnvironmentProfileChange?: (profile: string | null | undefined) => void
   newSessionWorkspaceSelection?: NewSessionWorkspaceSelection
+  newSessionWorkspaceSelectionKey?: string
   newSessionCanonicalDirectory?: string
   newSessionCurrentDirectory?: string
   newSessionCanCreateWorktree?: boolean

@@ -31,7 +31,7 @@ test.skipIf(process.platform !== "darwin")(
 )
 
 test.skipIf(process.platform !== "darwin")(
-  "identity upgrade preserves generations and never adopts replaced or missing directories",
+  "identity upgrade preserves generations and never adopts mismatched, replaced, missing or foreign directories",
   async () => {
     await using fixture = await runtimeHome()
     const host = {
@@ -42,17 +42,18 @@ test.skipIf(process.platform !== "darwin")(
     await runtime.run(async () => {
       const records = []
       const hostID = await host.workspaceLocation.hostID()
-      for (const name of ["kept", "replaced", "missing", "foreign"]) {
+      for (const name of ["kept", "replaced", "missing", "foreign", "old-mount"]) {
         const directory = path.join(host.home, name)
         await fs.mkdir(directory)
         const identity = await legacyDirectory(directory)
+        const [device, ...object] = identity.physicalID!.split(":")
         records.push(
           await WorkspaceCatalog.register({
             scopeID: "identity-upgrade",
             type: "main",
             hostID: name === "foreign" ? "another-host" : hostID,
             path: identity.path,
-            physicalID: identity.physicalID,
+            physicalID: name === "old-mount" ? [BigInt(device) + 1n, ...object].join(":") : identity.physicalID,
           }),
         )
       }

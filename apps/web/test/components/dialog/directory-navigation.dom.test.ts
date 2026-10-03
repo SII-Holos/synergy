@@ -53,6 +53,7 @@ beforeAll(async () => {
     import {render} from "solid-js/web"
     import {setupI18n} from "@lingui/core"
     import {I18nProvider} from "@lingui/solid"
+    import {ThemeProvider} from "@ericsanchezok/synergy-ui/theme"
     import {DialogProvider,useDialog} from "@ericsanchezok/synergy-ui/context/dialog"
     import {Dialog} from "@ericsanchezok/synergy-ui/dialog"
     import {TextField} from "@ericsanchezok/synergy-ui/text-field"
@@ -67,7 +68,7 @@ beforeAll(async () => {
       return <Dialog title="New project"><TextField label="Project name" defaultValue="Draft project"/>{location.search.includes("fields")?<ProjectFolderFields folders={folders()} main={folders()[0]} disabled={picking()} onChange={setFolders} onAdd={add}/>:<button id="browse" onClick={browse}>Browse folders</button>}</Dialog>
     }
     function App(){const dialog=useDialog();return <button id="open" onClick={()=>dialog.show(()=><Parent/>)}>New project</button>}
-    render(()=> <I18nProvider i18n={setupI18n({locale:"en",messages:{en:{}}})}><DialogProvider><App/></DialogProvider></I18nProvider>,document.getElementById("root"))
+    render(()=> <ThemeProvider><I18nProvider i18n={setupI18n({locale:"en",messages:{en:{}}})}><DialogProvider><App/></DialogProvider></I18nProvider></ThemeProvider>,document.getElementById("root"))
   `,
   )
   server = await createServer({
@@ -102,9 +103,9 @@ beforeAll(async () => {
   base = server.resolvedUrls!.local[0]!
   await server.warmupRequest("/main.tsx")
   browser = await chromium.launch({ headless: true })
-  page = await browser.newPage({ viewport: { width: 1024, height: 768 } })
-  page.setDefaultTimeout(4000)
-  page.on("pageerror", (error) => errors.push(error.message))
+  const context = await browser.newContext({ viewport: { width: 1024, height: 768 } })
+  context.setDefaultTimeout(4000)
+  page = await context.newPage()
 }, 60_000)
 
 afterAll(async () => {
@@ -127,7 +128,19 @@ async function selectFolder(name: string) {
 }
 
 async function open(query = "") {
+  const previous = page
+  const media = await previous.evaluate(() => ({
+    colorScheme: matchMedia("(prefers-color-scheme: dark)").matches ? ("dark" as const) : ("light" as const),
+    reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? ("reduce" as const)
+      : ("no-preference" as const),
+  }))
+  page = await previous.context().newPage()
+  await page.setViewportSize(previous.viewportSize()!)
+  await page.emulateMedia(media)
+  await previous.close()
   errors.length = 0
+  page.on("pageerror", (error) => errors.push(error.message))
   await page.goto(base + query)
   await page.locator("#open").click()
   await page.getByRole("textbox", { name: "Project name", exact: true }).fill("Keep this draft")
@@ -232,6 +245,48 @@ test("shrinking an open picker keeps the current folder visible without losing s
   expect(await page.getByRole("textbox", { name: "Project name" }).inputValue()).toBe("Keep this draft")
   expect(errors).toEqual([])
 }, 20_000)
+
+test("long paths leave the edit action and its keyboard focus unobstructed in either theme", async () => {
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme, reducedMotion: "reduce" })
+    for (const width of [1280, 375, 320]) {
+      await page.setViewportSize({ width, height: 768 })
+      await open()
+      await edit().click()
+      await editor().fill("/projects/research/working-files/current-project-folder-with-a-long-name")
+      await editor().press("Enter")
+      await editor().waitFor({ state: "detached" })
+      const facts = await edit().evaluate((element) => {
+        const button = element.getBoundingClientRect()
+        const navigation = element.parentElement!.querySelector("nav")!.getBoundingClientRect()
+        const style = getComputedStyle(element)
+        const ring = Math.max(0, parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth))
+        const current = element.parentElement!.querySelector('[aria-current="page"]')!.getBoundingClientRect()
+        const target = document.elementFromPoint(button.x + button.width / 2, button.y + button.height / 2)
+        return {
+          focused: document.activeElement === element,
+          visibleFocus: element.matches(":focus-visible") && style.outlineStyle !== "none",
+          hit: element === target || element.contains(target),
+          gap: button.left - ring - navigation.right,
+          currentRight: current.right - navigation.right,
+          right: button.right + ring,
+          height: button.height,
+        }
+      })
+      expect(facts.focused).toBe(true)
+      expect(facts.visibleFocus).toBe(true)
+      expect(facts.hit).toBe(true)
+      expect(facts.gap).toBeGreaterThanOrEqual(0)
+      expect(facts.currentRight).toBeLessThanOrEqual(1)
+      expect(facts.right).toBeLessThanOrEqual(width)
+      expect(facts.height).toBeGreaterThanOrEqual(32)
+      await page.keyboard.press("Escape")
+      await page.locator(".directory-navigation").waitFor({ state: "detached" })
+      expect(await page.getByRole("textbox", { name: "Project name" }).inputValue()).toBe("Keep this draft")
+    }
+  }
+  expect(errors).toEqual([])
+}, 30_000)
 
 test("single selection keeps the current-folder action and the footer reachable in a narrow short window", async () => {
   await page.setViewportSize({ width: 375, height: 568 })

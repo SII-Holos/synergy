@@ -12982,12 +12982,24 @@ msgid "project.entry.addFolder"
 msgstr "Add folder"
 
 #. js-lingui-explicit-id
+msgid "project.entry.additionalFolder"
+msgstr "Shared folder"
+
+#. js-lingui-explicit-id
+msgid "project.entry.cancel"
+msgstr "Cancel"
+
+#. js-lingui-explicit-id
 msgid "project.entry.changed"
 msgstr "Project folders changed. Review the selected main folder, then start the task again."
 
 #. js-lingui-explicit-id
 msgid "project.entry.checked"
 msgstr "Checked {time}"
+
+#. js-lingui-explicit-id
+msgid "project.entry.chooseFolder"
+msgstr "Choose folder"
 
 #. js-lingui-explicit-id
 msgid "project.entry.chooseFolders"
@@ -13004,6 +13016,10 @@ msgstr "Computer"
 #. js-lingui-explicit-id
 msgid "project.entry.computerName"
 msgstr "Computer: {name}"
+
+#. js-lingui-explicit-id
+msgid "project.entry.confirmFolder"
+msgstr "Confirm the project folders to restore access."
 
 #. js-lingui-explicit-id
 msgid "project.entry.connected"
@@ -13070,8 +13086,16 @@ msgid "project.entry.folderImpact"
 msgstr "The main folder applies to new tasks. Other folders are shared with existing tasks; disk files will not be moved or deleted."
 
 #. js-lingui-explicit-id
+msgid "project.entry.folderMissing"
+msgstr "This folder cannot be opened. Check its location or choose another folder."
+
+#. js-lingui-explicit-id
 msgid "project.entry.folders"
 msgstr "Folders"
+
+#. js-lingui-explicit-id
+msgid "project.entry.folderUnbound"
+msgstr "This folder is unavailable on this computer. Choose its location here."
 
 #. js-lingui-explicit-id
 msgid "project.entry.loading"
@@ -13110,6 +13134,10 @@ msgid "project.entry.newWorktree"
 msgstr "New Worktree"
 
 #. js-lingui-explicit-id
+msgid "project.entry.notGit"
+msgstr "The main folder is not a Git repository."
+
+#. js-lingui-explicit-id
 msgid "project.entry.onSend"
 msgstr "Created when you start the task."
 
@@ -13120,6 +13148,34 @@ msgstr "Open existing project"
 #. js-lingui-explicit-id
 msgid "project.entry.originalMain"
 msgstr "Previous main folder"
+
+#. js-lingui-explicit-id
+msgid "project.entry.recoverAction"
+msgstr "Confirm and restore"
+
+#. js-lingui-explicit-id
+msgid "project.entry.recoverDescription"
+msgstr "Confirm the folders you want to use. This also restores access for tasks using these folders."
+
+#. js-lingui-explicit-id
+msgid "project.entry.recovered"
+msgstr "Ready"
+
+#. js-lingui-explicit-id
+msgid "project.entry.recoverFailed"
+msgstr "Could not restore all project folders. Restored folders are kept; retry the remaining folders."
+
+#. js-lingui-explicit-id
+msgid "project.entry.recovering"
+msgstr "Restoring…"
+
+#. js-lingui-explicit-id
+msgid "project.entry.recoverTitle"
+msgstr "Confirm project folders"
+
+#. js-lingui-explicit-id
+msgid "project.entry.recoverUnavailable"
+msgstr "A project folder is unavailable. Review its location in project settings."
 
 #. js-lingui-explicit-id
 msgid "project.entry.remove"

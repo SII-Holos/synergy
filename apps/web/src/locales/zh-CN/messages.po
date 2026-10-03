@@ -12982,12 +12982,24 @@ msgid "project.entry.addFolder"
 msgstr "添加文件夹"
 
 #. js-lingui-explicit-id
+msgid "project.entry.additionalFolder"
+msgstr "共享目录"
+
+#. js-lingui-explicit-id
+msgid "project.entry.cancel"
+msgstr "取消"
+
+#. js-lingui-explicit-id
 msgid "project.entry.changed"
 msgstr "项目文件夹已更改。请确认当前主目录，再开始任务。"
 
 #. js-lingui-explicit-id
 msgid "project.entry.checked"
 msgstr "检查于 {time}"
+
+#. js-lingui-explicit-id
+msgid "project.entry.chooseFolder"
+msgstr "选择目录"
 
 #. js-lingui-explicit-id
 msgid "project.entry.chooseFolders"
@@ -13004,6 +13016,10 @@ msgstr "电脑"
 #. js-lingui-explicit-id
 msgid "project.entry.computerName"
 msgstr "电脑：{name}"
+
+#. js-lingui-explicit-id
+msgid "project.entry.confirmFolder"
+msgstr "确认项目目录以恢复访问。"
 
 #. js-lingui-explicit-id
 msgid "project.entry.connected"
@@ -13070,8 +13086,16 @@ msgid "project.entry.folderImpact"
 msgstr "更换主目录只影响新任务。其他文件夹与已有任务共享；不会移动或删除磁盘文件。"
 
 #. js-lingui-explicit-id
+msgid "project.entry.folderMissing"
+msgstr "无法打开此目录，请检查其位置或选择其他目录。"
+
+#. js-lingui-explicit-id
 msgid "project.entry.folders"
 msgstr "文件夹"
+
+#. js-lingui-explicit-id
+msgid "project.entry.folderUnbound"
+msgstr "此电脑无法使用该目录，请选择它在此电脑上的位置。"
 
 #. js-lingui-explicit-id
 msgid "project.entry.loading"
@@ -13110,6 +13134,10 @@ msgid "project.entry.newWorktree"
 msgstr "新建 Worktree"
 
 #. js-lingui-explicit-id
+msgid "project.entry.notGit"
+msgstr "主目录不是 Git 仓库。"
+
+#. js-lingui-explicit-id
 msgid "project.entry.onSend"
 msgstr "开始任务时创建。"
 
@@ -13120,6 +13148,34 @@ msgstr "打开已有项目"
 #. js-lingui-explicit-id
 msgid "project.entry.originalMain"
 msgstr "原主目录"
+
+#. js-lingui-explicit-id
+msgid "project.entry.recoverAction"
+msgstr "确认并恢复"
+
+#. js-lingui-explicit-id
+msgid "project.entry.recoverDescription"
+msgstr "请确认要使用的目录。使用这些目录的任务也将恢复访问。"
+
+#. js-lingui-explicit-id
+msgid "project.entry.recovered"
+msgstr "可用"
+
+#. js-lingui-explicit-id
+msgid "project.entry.recoverFailed"
+msgstr "部分项目目录未能恢复。已恢复的目录会保留，请重试其余目录。"
+
+#. js-lingui-explicit-id
+msgid "project.entry.recovering"
+msgstr "正在恢复…"
+
+#. js-lingui-explicit-id
+msgid "project.entry.recoverTitle"
+msgstr "确认项目目录"
+
+#. js-lingui-explicit-id
+msgid "project.entry.recoverUnavailable"
+msgstr "项目目录不可用，请在项目设置中检查其位置。"
 
 #. js-lingui-explicit-id
 msgid "project.entry.remove"

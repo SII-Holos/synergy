@@ -2135,6 +2135,7 @@ export function createPromptInputController(props: PromptInputProps) {
           environmentProfile={props.newSessionEnvironmentProfile}
           onEnvironmentProfileChange={props.onNewSessionEnvironmentProfileChange}
           workspaceSelection={props.newSessionWorkspaceSelection}
+          workspaceSelectionKey={props.newSessionWorkspaceSelectionKey}
           onEnvironmentChange={props.onNewSessionEnvironmentChange}
           startOptions={newSessionStartOptions()}
           disabled={!!props.readOnly || composerSubmitting() || !!props.sessionTransitionPending}

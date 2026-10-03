@@ -192,6 +192,15 @@ export namespace WorkspaceBinding {
         reason: "directory_unavailable",
       })
     })
+    if (
+      !actual.physicalID ||
+      (info.binding.physicalID.startsWith("volume-v1:") && !actual.physicalID.startsWith("volume-v1:"))
+    )
+      throw new WorkspaceCatalog.Unavailable({
+        message: "The Workspace directory identity cannot be verified; rebind it before executing",
+        workspaceID,
+        reason: "identity_unverified",
+      })
     if (actual.physicalID !== info.binding.physicalID)
       throw new WorkspaceCatalog.Unavailable({
         message: "The Workspace directory was replaced; rebind it before executing",

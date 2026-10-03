@@ -955,22 +955,31 @@ function SessionPageContent() {
       !sdk.isHome && globalSDK.capabilities.has("workbench") ? { client: sdk.client, scopeID: sdk.scopeID } : false,
     async ({ client, scopeID }) => {
       try {
-        return { data: (await client.project.directories({ scopeID }, { throwOnError: true })).data, error: "" }
+        return {
+          client,
+          scopeID,
+          data: (await client.project.directories({ scopeID }, { throwOnError: true })).data,
+          error: "",
+        }
       } catch (error) {
-        return { data: undefined, error: error instanceof Error ? error.message : String(error) }
+        return { client, scopeID, data: undefined, error: error instanceof Error ? error.message : String(error) }
       }
     },
   )
+  const projectDirectorySnapshot = () => {
+    const snapshot = projectDirectories.latest
+    return snapshot?.client === sdk.client && snapshot.scopeID === sdk.scopeID ? snapshot : undefined
+  }
   const mainFolder = createMemo(() =>
-    projectDirectories()?.data?.folders.find(
-      (folder) => folder.workspaceID === projectDirectories()?.data?.mainWorkspaceID,
+    projectDirectorySnapshot()?.data?.folders.find(
+      (folder) => folder.workspaceID === projectDirectorySnapshot()?.data?.mainWorkspaceID,
     ),
   )
   const scopeRoot = createMemo(() => mainFolder()?.path ?? sync.scope?.local?.worktree ?? sync.data.path.directory)
   const newSessionWorkspaceSelection = createMemo(() =>
     globalSDK.capabilities.has("workbench") && !sdk.isHome
       ? projectTaskIntent({
-          directories: projectDirectories()?.data,
+          directories: projectDirectorySnapshot()?.data,
           selected: store.newSessionWorkspaceSelection,
           preference: sync.data.config.defaultSessionWorkspace ?? "main",
         })
@@ -989,7 +998,7 @@ function SessionPageContent() {
         item.id === id ||
         (choice.mode === "existing" && [item.metadata.worktreeID, item.binding.path].includes(choice.target)),
     )
-    const folder = projectDirectories()?.data?.folders.find((item) => item.workspaceID === id)
+    const folder = projectDirectorySnapshot()?.data?.folders.find((item) => item.workspaceID === id)
     projectFiles.setTaskWorkspace(
       record
         ? catalogFileWorkspace(record)
@@ -1696,16 +1705,18 @@ function SessionPageContent() {
                 !params.id &&
                 !sdk.isHome &&
                 globalSDK.capabilities.has("workbench") &&
-                (!projectDirectories()?.data || projectDirectories.loading || !!projectDirectories()?.error)
+                (!projectDirectorySnapshot()?.data || projectDirectories.loading || !!projectDirectorySnapshot()?.error)
               )
             },
             onValidateLocation: async () => {
               if (params.id || sdk.isHome || !globalSDK.capabilities.has("workbench")) return
-              const expected = projectDirectories()?.data?.revision
-              const result = (await sdk.client.project.directories({ scopeID: sdk.scopeID }, { throwOnError: true }))
-                .data
+              const client = sdk.client
+              const scopeID = sdk.scopeID
+              const expected = projectDirectorySnapshot()?.data?.revision
+              const result = (await client.project.directories({ scopeID }, { throwOnError: true })).data
+              if (sdk.client !== client || sdk.scopeID !== scopeID) throw new Error(i18n._(projectEntryCopy.changed))
               if (expected === result.revision) return
-              updateProjectDirectories({ data: result, error: "" })
+              updateProjectDirectories({ client, scopeID, data: result, error: "" })
               setStore(
                 "newSessionWorkspaceSelection",
                 store.newSessionWorkspaceSelection?.mode === "create" ? { mode: "create" } : undefined,
@@ -1713,13 +1724,14 @@ function SessionPageContent() {
               throw new Error(i18n._(projectEntryCopy.changed))
             },
             get projectDirectories() {
-              return projectDirectories()?.data
+              return projectDirectorySnapshot()?.data
             },
             get projectDirectoryError() {
-              return projectDirectories()?.error
+              return projectDirectorySnapshot()?.error
             },
-            onProjectDirectoriesRefresh: () => {
-              void refreshProjectDirectories()
+            onProjectDirectoriesRefresh: async () => {
+              const result = await refreshProjectDirectories()
+              if (result?.error) throw new Error(result.error)
             },
             get newSessionEnvironmentID() {
               return store.newSessionEnvironment?.scopeID === sdk.scopeID ? store.newSessionEnvironment.id : undefined
@@ -1736,6 +1748,9 @@ function SessionPageContent() {
               setStore("newSessionEnvironment", { scopeID: sdk.scopeID, id: undefined, profile }),
             get newSessionWorkspaceSelection() {
               return newSessionWorkspaceSelection()
+            },
+            get newSessionWorkspaceSelectionKey() {
+              return JSON.stringify(store.newSessionWorkspaceSelection ?? null)
             },
             get newSessionCanonicalDirectory() {
               return scopeRoot() ?? undefined

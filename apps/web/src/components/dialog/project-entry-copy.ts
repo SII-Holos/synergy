@@ -34,6 +34,35 @@ export const projectEntryCopy = {
   manageWorktrees: { id: "project.entry.manageWorktrees", message: "Manage Worktrees" },
   shared: { id: "project.entry.shared", message: "Based on {folder}; {count} other folders stay shared." },
   onSend: { id: "project.entry.onSend", message: "Created when you start the task." },
+  notGit: { id: "project.entry.notGit", message: "The main folder is not a Git repository." },
+  confirmFolder: { id: "project.entry.confirmFolder", message: "Confirm the project folders to restore access." },
+  recoverTitle: { id: "project.entry.recoverTitle", message: "Confirm project folders" },
+  recoverDescription: {
+    id: "project.entry.recoverDescription",
+    message: "Confirm the folders you want to use. This also restores access for tasks using these folders.",
+  },
+  recoverAction: { id: "project.entry.recoverAction", message: "Confirm and restore" },
+  recovering: { id: "project.entry.recovering", message: "Restoring…" },
+  recovered: { id: "project.entry.recovered", message: "Ready" },
+  recoverFailed: {
+    id: "project.entry.recoverFailed",
+    message: "Could not restore all project folders. Restored folders are kept; retry the remaining folders.",
+  },
+  recoverUnavailable: {
+    id: "project.entry.recoverUnavailable",
+    message: "A project folder is unavailable. Review its location in project settings.",
+  },
+  folderMissing: {
+    id: "project.entry.folderMissing",
+    message: "This folder cannot be opened. Check its location or choose another folder.",
+  },
+  folderUnbound: {
+    id: "project.entry.folderUnbound",
+    message: "This folder is unavailable on this computer. Choose its location here.",
+  },
+  additionalFolder: { id: "project.entry.additionalFolder", message: "Shared folder" },
+  chooseFolder: { id: "project.entry.chooseFolder", message: "Choose folder" },
+  cancel: { id: "project.entry.cancel", message: "Cancel" },
   folderImpact: {
     id: "project.entry.folderImpact",
     message:
