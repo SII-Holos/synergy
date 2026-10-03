@@ -15,6 +15,8 @@ Do not forward a queued stdin EOF after the native worker confirms whole-tree dr
 
 ## Trace the Whole Decision
 
+For multi-target approvals, exercise both ask/deny target orders before publication of any pending event, including mandatory confirmation and persisted rules. Verify that multiple ask targets produce one complete request, cancellation removes it, and all-allow requests still resolve without prompting.
+
 1. Read [Execution boundaries](../../../docs/architecture/execution-boundaries.md) and `packages/presets/AGENTS.md`.
 2. Start at `session/tool-resolver.ts`, then trace the operation through capability classification, the enforcement gate, profile compilation, saved/session permission layers, SmartAllow, approval side effects, sandbox policy, and the tool implementation.
 3. Inspect `packages/util/src/capability.ts` for the shared capability catalog and public severity/category metadata. Keep classification independent from profile policy: classifiers describe what an operation can do; profiles decide allow, ask, or deny.
