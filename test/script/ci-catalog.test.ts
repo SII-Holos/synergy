@@ -7,6 +7,7 @@ import { catalog, changedFiles, workspaceInputs } from "../../script/ci/catalog"
 import { distributionCommands } from "../../script/ci/distributions"
 import { buildUnits, createPlan, LIMITS, selectAffected, type Task } from "../../script/ci/plan"
 import { commands } from "../../script/ci/run"
+import { requiresSandbox } from "../../script/ci"
 
 const tasks: Task[] = ["synergy", "codex", "opencode", "pi", "deepseek"].map((variant) => ({
   id: `native-${variant}`,
@@ -17,6 +18,26 @@ const tasks: Task[] = ["synergy", "codex", "opencode", "pi", "deepseek"].map((va
   owners: [],
   needs: [],
 }))
+
+test("independent Web distribution verification prepares its required native sandbox asset", async () => {
+  const entries = await catalog()
+  const suite = entries.find((entry) => entry.kind === "suite" && entry.package === "apps/web")!
+  for (const id of ["web-integration", "installed-core-binary", suite.id]) {
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "diagnostic",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks: entries,
+      only: [id],
+    })
+    expect(requiresSandbox(plan)).toBe(id !== suite.id)
+  }
+})
 
 test("every PostgreSQL matrix executes the retained usage rebuild and clear control", async () => {
   const entries = await catalog()
