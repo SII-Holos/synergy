@@ -9392,6 +9392,7 @@ export type SessionAbortResult = {
 export type OriginUser = {
   type: "user" | "cortex" | "agenda" | "blueprint" | "channel" | "compaction" | "agent" | "plugin" | "system"
   sessionID?: string
+  taskID?: string
   pluginID?: string
   label?: string
   detail?: string

@@ -64031,6 +64031,10 @@
           "sessionID": {
             "type": "string"
           },
+          "taskID": {
+            "type": "string",
+            "pattern": "^ctx.*"
+          },
           "pluginID": {
             "type": "string"
           },
