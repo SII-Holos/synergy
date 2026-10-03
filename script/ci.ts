@@ -170,7 +170,8 @@ async function main() {
     const output = values.output ?? path.join(ROOT, OUTPUT, "plan.json")
     await Bun.write(output, JSON.stringify(plan, null, 2))
     const sandbox = plan.tasks.some(
-      (task) => plan.selected.includes(task.id) && ["sandbox", "artifacts"].includes(task.kind),
+      (task) =>
+        plan.selected.includes(task.id) && (task.profile !== undefined || ["sandbox", "artifacts"].includes(task.kind)),
     )
     process.env.SYNERGY_CI_SANDBOX_BUNDLE = sandbox ? "1" : "0"
     const outputs: Record<string, string> = {

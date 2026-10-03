@@ -4,19 +4,6 @@ import { useLocale } from "@/context/locale"
 import { S } from "./stats-i18n"
 import { calendarDays } from "./calendar-range"
 
-const HEATMAP_STYLE = `
-@keyframes heatmapCellEnter {
-  from {
-    opacity: 0;
-    transform: translateY(4px) scale(0.94);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-`
-
 const LEVEL_COLORS = [
   "var(--surface-inset-base)",
   "color-mix(in srgb, var(--chart-series-3) 28%, transparent)",
@@ -81,16 +68,15 @@ function formatHourTick(hour: number) {
 
 function DayView(props: { cells: DayCell[]; columns: number }) {
   return (
-    <div class="mt-4 rounded-xl bg-surface-base/34 p-3 ring-1 ring-inset ring-border-weaker-base">
-      <div class="grid gap-1.5" style={{ "grid-template-columns": `repeat(${props.columns}, minmax(0, 1fr))` }}>
+    <div class="stats-heatmap-body">
+      <div class="grid gap-1.5" style={{ "grid-template-columns": `repeat(${props.columns}, minmax(14px, 1fr))` }}>
         <For each={props.cells}>
           {(cell) => (
             <div
-              class="aspect-square min-h-4 rounded-[8px] border transition-transform duration-120 "
+              class="stats-heatmap-cell aspect-square min-h-4 rounded-[4px] border"
               style={{
                 "background-color": LEVEL_COLORS[cell.level],
                 "border-color": LEVEL_BORDERS[cell.level],
-                animation: "heatmapCellEnter var(--motion-duration-normal) var(--motion-ease-standard) both",
               }}
               title={cell.label}
             />
@@ -104,9 +90,9 @@ function DayView(props: { cells: DayCell[]; columns: number }) {
 function HourView(props: { rows: Array<{ label: string; cells: HourCell[] }> }) {
   const HOUR_LABELS = [0, 6, 12, 18, 23] as const
   return (
-    <div class="mt-4 rounded-xl bg-surface-base/34 p-3 ring-1 ring-inset ring-border-weaker-base">
+    <div class="stats-heatmap-body">
       <div
-        class="grid items-center gap-x-1.5 gap-y-2"
+        class="stats-heatmap-grid--hours grid items-center gap-x-1.5 gap-y-2"
         style={{ "grid-template-columns": "auto repeat(24, minmax(0, 1fr))" }}
       >
         <div />
@@ -125,11 +111,10 @@ function HourView(props: { rows: Array<{ label: string; cells: HourCell[] }> }) 
               <For each={row.cells}>
                 {(cell) => (
                   <div
-                    class="aspect-square min-h-3 rounded-[6px] border transition-transform duration-120 "
+                    class="stats-heatmap-cell aspect-square min-h-3 rounded-[4px] border"
                     style={{
                       "background-color": LEVEL_COLORS[cell.level],
                       "border-color": LEVEL_BORDERS[cell.level],
-                      animation: "heatmapCellEnter var(--motion-duration-normal) var(--motion-ease-standard) both",
                     }}
                     title={cell.label}
                   />
@@ -287,11 +272,10 @@ export function ActivityHeatmap(props: {
 
   return (
     <>
-      <style>{HEATMAP_STYLE}</style>
-      <section class="rounded-xl bg-surface-raised-base px-4 py-4">
-        <div class="flex flex-wrap items-start justify-between gap-3">
+      <section class="stats-chart-section stats-activity">
+        <div class="stats-chart-header">
           <div>
-            <h3 class="app-panel-row-title tracking-tight text-text-base">{totalLabel()}</h3>
+            <h3 class="app-panel-section-title text-text-strong">{totalLabel()}</h3>
             <p class="mt-1 app-panel-caption text-text-weak">{subtitle()}</p>
           </div>
           <div class="flex flex-wrap items-center justify-end gap-1.5">
@@ -301,9 +285,9 @@ export function ActivityHeatmap(props: {
                 return (
                   <button
                     type="button"
-                    class={`rounded-full px-2.5 py-1 app-panel-caption font-medium transition-all duration-180 ${
+                    class={`stats-range-button app-panel-control ${
                       active()
-                        ? "bg-surface-interactive-solid text-text-on-interactive-base shadow-sm"
+                        ? "bg-surface-interactive-solid text-text-on-interactive-base"
                         : "bg-surface-inset-base/70 text-text-weak hover:bg-surface-inset-base hover:text-text-base"
                     }`}
                     aria-pressed={active()}
@@ -320,7 +304,7 @@ export function ActivityHeatmap(props: {
         <Show
           when={granularity() === "hour" ? hourRows().length > 0 : dayCells().length > 0}
           fallback={
-            <div class="mt-4 flex h-32 items-center justify-center rounded-xl bg-surface-inset-base/45 app-panel-caption font-medium text-text-weak">
+            <div class="mt-4 flex h-32 items-center justify-center app-panel-caption text-text-weak">
               {i18n._(S.heatmapEmpty.id)}
             </div>
           }

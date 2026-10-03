@@ -33,10 +33,12 @@ test("huge paragraphs, lists and tables keep their final content in separate blo
 
 test("one huge nested list item or table cell cannot bypass the block budget", async () => {
   for (const markdown of [
-    "- " + "deep **nested** ".repeat(30_000) + "列表末尾",
-    "|head|\n|---|\n|" + "**cell** ".repeat(30_000) + "单元末尾|",
+    "- " + "deep **nested** ".repeat(12_000) + "列表末尾",
+    "|head|\n|---|\n|" + "**cell** ".repeat(12_000) + "单元末尾|",
   ]) {
+    expect(markdown.length).toBeGreaterThan(100_000)
     const document = await parseMarkdownDocument(createMarkdownParser(), markdown)
+    expect(document.blocks.length).toBeGreaterThan(1)
     expect(Math.max(...document.blocks.map((block) => block.html.length))).toBeLessThan(100_000)
     expect(new JSDOM(document.blocks.map((block) => block.html).join("")).window.document.body.textContent).toContain(
       markdown.includes("列表末尾") ? "列表末尾" : "单元末尾",

@@ -18,7 +18,7 @@ PR 使用 base/head 两侧的 workspace、测试和静态资源导入关系计�
 
 普通包测试执行一次，同时产生 JUnit、lcov 和批次耗时。Harness、Web、Presets、UI、Local Runtime 分别使用 4、4、4、2、2 个分区，按登记的历史文件耗时均衡分配；原有批次与特殊隔离文件保持完整，执行清单逐文件核对，无遗漏或重复。每批拥有独立 Home 和 fixture 根。六个 UI DOM 夹具共享一次 Solid/Vite 编译，每个测试仍使用独立进程和 DOM；缓存校验实际输入和输出字节。真实 sandbox、macOS/Windows 原生 Workspace、PostgreSQL 16/17/18 与安装产物保持独立任务。Windows 原生与 Desktop 分成可分别重跑的任务，同平台串行；原生结果生成 JUnit 与 lcov，要求两个 Local Runtime 分区的完整基线共同计算原有覆盖率门槛。
 
-Linux 基础准备、core 分发、full 分发和 benchmark 准备各有独立生产任务；消费者只在需要时等待对应产物。core binary 验证独立启动与真实工具调用，core 包验证实际安装、启动和完成任务；full 保留六类业务结果、一次完整导入导出和组件安装、升级、移除、managed/attach 生命周期。基础准备并行生成一次 Web 生产产物，构建契约和浏览器 smoke 消费经过清单校验的同一产物。消费者验证计划、提交、run、原始计划 attempt、Bun、ABI、完整文件列表、字节摘要和模式；每个场景有独立 Home，结束时验证发行树未变。
+Linux 基础准备、core 分发、full 分发和 benchmark 准备各有独立生产任务；消费者只在需要时等待对应产物。选中 core/full 分发的计划均启用 Linux sandbox helper 准备，将打包所需二进制纳入基础构建与校验清单；单独选中的 Web 集成验证也满足该前置条件。core binary 验证独立启动与真实工具调用，core 包验证实际安装、启动和完成任务；full 保留六类业务结果、一次完整导入导出和组件安装、升级、移除、managed/attach 生命周期。基础准备并行生成一次 Web 生产产物，构建契约和浏览器 smoke 消费经过清单校验的同一产物。消费者验证计划、提交、run、原始计划 attempt、Bun、ABI、完整文件列表、字节摘要和模式；每个场景有独立 Home，结束时验证发行树未变。
 
 压缩业务控制在真实读取、修改和原生压缩后继续执行，并验证磁盘结果、导出与完整用量；完成条件是业务事件，执行上限只防止挂死。四组短语义控制继续覆盖协议、模型与 JIT 的成对配置。历史 ARM/JIT 的四组 120 轮压力复现通过显式诊断开关运行。五种 native harness 均保留实际接入和适配器行为；正常、故障、短语义、压缩等场景组各自执行，公共纯逻辑只验证一次。长流完成态保留 30 MiB 完整性，取消和失败使用小数据保留终态、已接收字节、用量和 Runtime 清理。PostgreSQL 三版本执行登记的 PG 入口，缺少配置必须失败。取舍见 [业务反馈决策](../decisions/implemented/testing/2026-09-30-business-ci-feedback.md)。
 

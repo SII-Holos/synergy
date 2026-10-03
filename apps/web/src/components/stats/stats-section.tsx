@@ -172,7 +172,7 @@ function StatsContent(props: {
   ]
 
   return (
-    <div class="library-stats-content flex flex-col gap-5 pb-5">
+    <div class="library-stats-content stats-content flex flex-col gap-5 pb-5">
       <nav class="stats-section-nav" aria-label={i18n._({ id: "stats.section.navigation", message: "Usage sections" })}>
         <For each={sections()}>{(section) => <a href={`#usage-${section.id}`}>{section.label}</a>}</For>
       </nav>
