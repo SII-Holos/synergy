@@ -14,6 +14,8 @@ The Workspace startup migration upgrades only local active bindings whose comple
 
 Live native exclusion claims retain current-mount identity and canonical path overlap. They coordinate concurrently running processes, including older runtimes, and are not converted into a second durable catalog.
 
+Home relocation persists only the canonical path and physical identity returned by inspection. The legacy identity is verification evidence for migration, not another binding field. Transfer regressions assert this boundary for external, managed, colliding, shared-location and shared-writable workspaces; full composition also verifies both migration domains are registered.
+
 ## Alternatives considered
 
 **Ignore device numbers on mismatch.** Inode and birth time alone do not establish which volume owns a directory. Automatic adoption would weaken replacement detection.

@@ -122,12 +122,14 @@ test.each(["external", "managed", "collision", "shared-location", "foreign", "sh
         if (kind === "collision" || kind === "shared-location")
           await Storage.provide({ store: target.store, artifactDirectory: path.join(targetRoot, "data") }, async () => {
             if (kind === "collision") {
+              const identity = await targetHost.workspaceLocation!.identify(occupied.path)
               existing = {
                 ...workspace,
                 binding: {
                   ...workspace.binding,
                   hostID: await targetHost.workspaceLocation!.hostID(),
-                  ...(await targetHost.workspaceLocation!.identify(occupied.path)),
+                  path: identity.path,
+                  physicalID: identity.physicalID,
                 },
               }
               await Storage.transaction((tx) => WorkspaceCatalog.writeRelocated(existing!, tx))
@@ -159,25 +161,32 @@ test.each(["external", "managed", "collision", "shared-location", "foreign", "sh
         if (kind === "foreign") {
           expect(imported.binding.state).toBe("unbound")
         } else {
+          const identity = await targetHost.workspaceLocation!.identify(expectedPath)
           expect(imported.binding).toMatchObject({
             state: "bound",
             hostID: await targetHost.workspaceLocation!.hostID(),
-            ...(await targetHost.workspaceLocation!.identify(expectedPath)),
+            path: identity.path,
+            physicalID: identity.physicalID,
             generation: kind === "managed" ? 2 : 1,
           })
+          expect(imported.binding).not.toHaveProperty("legacyPhysicalID")
           if (kind === "collision") expect(info.workspaceID).not.toBe(workspace.id)
           if (kind === "shared-location") expect(info.workspaceID).toBe(existing!.id)
         }
         if (kind === "sharing") {
           expect(imported.sharedWritableWorkspaceIDs).toHaveLength(1)
-          expect(
-            (await restored.store.read<WorkspaceCatalog.Info>(["workspace", imported.sharedWritableWorkspaceIDs[0]]))
-              .binding,
-          ).toMatchObject({
+          const identity = await targetHost.workspaceLocation!.identify(occupied.path)
+          const shared = await restored.store.read<WorkspaceCatalog.Info>([
+            "workspace",
+            imported.sharedWritableWorkspaceIDs[0],
+          ])
+          expect(shared.binding).toMatchObject({
             state: "bound",
             hostID: await targetHost.workspaceLocation!.hostID(),
-            ...(await targetHost.workspaceLocation!.identify(occupied.path)),
+            path: identity.path,
+            physicalID: identity.physicalID,
           })
+          expect(shared.binding).not.toHaveProperty("legacyPhysicalID")
         }
         const project = await restored.store.read<typeof scope & { futureField: string }>(["projects", scope.id])
         expect(project.local).toEqual({ directory: expectedPath, worktree: expectedPath, sandboxes: [expectedPath] })
