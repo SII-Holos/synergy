@@ -1,83 +1,73 @@
-const EASING_REPOSITION = "cubic-bezier(0.2, 0, 0, 1)"
-const EASING_ENTRANCE = "cubic-bezier(0.05, 0.7, 0.1, 1)"
-const DURATION_REPOSITION = 250
-const DURATION_ENTRANCE = 160
-const STAGGER_MS = 18
-const MAX_STAGGER = 120
+export type FlipSnapshot = {
+  positions: Map<string, number>
+  visible: boolean
+}
 
-/**
- * Create the FLIP runner owned by a FlipList instance. Returns a function that
- * snapshots row positions and animates rows that moved or entered since the
- * previous snapshot.
- */
-export function createFlipRunner(options: { selector?: string; dataKey?: string; reduceMotion: boolean }) {
+function visible(container: HTMLElement) {
+  return (
+    !container.closest('[inert], [aria-hidden="true"]') &&
+    container.getClientRects().length > 0 &&
+    container.ownerDocument.defaultView!.getComputedStyle(container).visibility !== "hidden"
+  )
+}
+
+export function createFlipRunner(options: { selector?: string; dataKey?: string; reduceMotion: () => boolean }) {
   const selector = options.selector ?? "[data-session-id]"
   const dataKey = options.dataKey ?? "sessionId"
-  let previousPositions: Map<string, number> | undefined
-
-  return (container: HTMLDivElement | undefined) => {
-    // An unassigned ref must never store an empty map as the baseline. The
-    // component seeds the real baseline from onMount once the ref and its
-    // rows are in the DOM; this guard is defensive only.
-    if (!container) return
-
-    const rows = Array.from(container.querySelectorAll<HTMLElement>(selector))
-    for (const row of rows) {
-      for (const animation of row.getAnimations()) animation.cancel()
+  const animations = new Set<Animation>()
+  const rows = (container: HTMLElement) => Array.from(container.querySelectorAll<HTMLElement>(selector))
+  const cancel = () => {
+    for (const animation of animations) {
+      animation.onfinish = null
+      animation.cancel()
     }
+    animations.clear()
+  }
+  const positions = (container: HTMLElement) => {
+    const origin = container.getBoundingClientRect().top
+    return new Map(
+      rows(container).flatMap((row) => {
+        const id = row.dataset[dataKey]
+        return id ? [[id, row.getBoundingClientRect().top - origin] as const] : []
+      }),
+    )
+  }
 
-    const nextPositions = new Map<string, number>()
-    for (const row of rows) {
-      const id = row.dataset[dataKey as keyof typeof row.dataset] as string | undefined
-      if (!id) continue
-      nextPositions.set(id, row.getBoundingClientRect().top)
-    }
-
-    const storedPositions = previousPositions
-    previousPositions = nextPositions
-    if (options.reduceMotion || !storedPositions) return
-
-    const repositioning: Array<{ element: HTMLElement; delta: number; index: number }> = []
-    const entering: HTMLElement[] = []
-    let index = 0
-
-    for (const row of rows) {
-      const id = row.dataset[dataKey as keyof typeof row.dataset] as string | undefined
-      if (!id) continue
-      const currentY = nextPositions.get(id)
-      const previousY = storedPositions.get(id)
-      if (currentY === undefined) continue
-      if (previousY === undefined) {
-        entering.push(row)
-        continue
+  return {
+    capture(container: HTMLElement): FlipSnapshot {
+      const snapshot = { positions: positions(container), visible: visible(container) }
+      cancel()
+      return snapshot
+    },
+    play(container: HTMLElement, snapshot: FlipSnapshot) {
+      if (options.reduceMotion() || !snapshot.visible || !visible(container)) return
+      const nextPositions = positions(container)
+      const style = container.ownerDocument.defaultView!.getComputedStyle(container)
+      const duration = (role: "base" | "fast") => {
+        const value = style.getPropertyValue(`--motion-duration-${role}`).trim()
+        return value ? parseFloat(value) * (value.endsWith("ms") ? 1 : 1000) : role === "base" ? 180 : 120
       }
-      const delta = previousY - currentY
-      if (Math.abs(delta) > 0.5) {
-        repositioning.push({ element: row, delta, index })
-        index += 1
+      const easing = style.getPropertyValue("--motion-ease-standard").trim() || "cubic-bezier(0.2, 0, 0, 1)"
+      for (const row of rows(container)) {
+        const id = row.dataset[dataKey]
+        if (!id) continue
+        const currentY = nextPositions.get(id)
+        const previousY = snapshot.positions.get(id)
+        if (currentY === undefined) continue
+        const entering = previousY === undefined
+        const delta = entering ? 4 : previousY - currentY
+        if (!entering && Math.abs(delta) <= 0.5) continue
+        const animation = row.animate(
+          [
+            { transform: `translateY(${delta}px)`, ...(entering ? { opacity: 0 } : {}) },
+            { transform: "translateY(0)", ...(entering ? { opacity: 1 } : {}) },
+          ],
+          { duration: duration(entering ? "fast" : "base"), easing },
+        )
+        animations.add(animation)
+        animation.onfinish = () => animations.delete(animation)
       }
-    }
-
-    for (const row of entering) {
-      row.animate(
-        [
-          { opacity: 0, transform: "translateY(4px)" },
-          { opacity: 1, transform: "translateY(0)" },
-        ],
-        { duration: DURATION_ENTRANCE, easing: EASING_ENTRANCE },
-      )
-    }
-
-    if (repositioning.length === 0) return
-
-    const staggerDelay = Math.min(STAGGER_MS, MAX_STAGGER / Math.max(1, repositioning.length))
-    for (const { element, delta, index } of repositioning) {
-      element.animate([{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }], {
-        duration: DURATION_REPOSITION,
-        easing: EASING_REPOSITION,
-        delay: index * staggerDelay,
-        fill: "backwards",
-      })
-    }
+    },
+    cancel,
   }
 }
