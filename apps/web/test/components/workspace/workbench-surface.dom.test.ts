@@ -48,6 +48,7 @@ beforeAll(async () => {
     }))
     window.fixture = { retarget: () => states.side.setTabs([{id:"side",panelId:"extra"}]), open: id => states[id].setOpened(true), close: id => states[id].close(), crash: setCrash, resize: (id,size) => states[id].setSize(size), size: id => states[id].size(), populate: () => states.side.setTabs(Array.from({length:20}, (_,i) => ({ id: i ? 'tab-'+i : 'side', panelId:'side', title: 'Long document title ' + i }))) }
     export const useWorkbenchPanels = () => ({
+      openingForTab: () => undefined,
       surface: id => states[id], panels: () => entries, panelForTab: tab => entries.find(x => x.id === tab?.panelId),
       interact() {}, activateTab(name, id) { states[name].setActive(id) }, getPanel: id => entries.find(entry => entry.id === id),
       panelTitle: tab => tab.title ?? tab.panelId, openPanel: () => {}, closeTab: () => {}, closeOtherTabs: () => {}, moveTab: () => {}

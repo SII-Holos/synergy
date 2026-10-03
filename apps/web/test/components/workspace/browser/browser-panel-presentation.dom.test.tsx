@@ -26,19 +26,23 @@ beforeAll(async () => {
     path.join(directory, "sdk.ts"),
     `
     export const useSDK = () => ({url:"http://fixture.test",scopeID:"home",client:{browser:{
-      session:async () => ({data:{ownerKey:"scope:home:scope",hostStatus:"ready",seq:1,epoch:"epoch-one",pages:window.pages,presentation:window.presentation}})
+      session:async () => ({data:{ownerKey:"scope:home:scope",hostStatus:"ready",seq:window.seq,epoch:"epoch-one",pages:window.catalogPages,presentation:window.presentation}})
     }}})
   `,
   )
   await Bun.write(
     path.join(directory, "platform.ts"),
     `
-    window.attachments=[]; window.detachments=[];
+    window.attachments=[]; window.detachments=[]; window.dataRequests=[];
     export const usePlatform = () => ({browserNative:{
       presentationCapability:async () => ({protocolVersion:5,managedLocal:true,status:"ready"}),
       attachView:async input => window.attachments.push(input), resizeView:async () => {},
       detachView:async input => window.detachments.push(input), focusView:async () => {}, onEvent:() => () => {},
-      dataAction:async () => ({type:"state",passwordStorage:true,passwords:[],history:[]}),
+      get dataAction() { return window.dataUnavailable ? undefined : async input => {
+        window.dataRequests.push(input);
+        if(window.dataFailure) throw new Error("Native data unavailable");
+        return input.action.type === "importSources" ? {type:"sources",sources:[{id:"file",browser:"file",mode:"file",kinds:["passwords","cookies"]}]} : {type:"state",passwordStorage:true,passwords:[],history:[]};
+      }},
       pageAction:async () => ({type:"state",back:false,forward:false,zoom:1})
     }})
   `,
@@ -56,7 +60,8 @@ beforeAll(async () => {
   await Bun.write(
     path.join(directory, "workbench.ts"),
     `
-    export const useWorkbenchPanels = () => ({surface:() => ({active:() => window.activeTabId}),openPanel:() => {}})
+    import {useDialog} from "@ericsanchezok/synergy-ui/context/dialog"
+    export const useWorkbenchPanels = () => ({sessionKey:() => "fixture",showDialog:useDialog().show,openingForTab:() => undefined,surface:() => ({active:() => window.activeTabId}),openPanel:() => {}})
   `,
   )
   await Bun.write(path.join(directory, "draft.ts"), "export const useBrowserDraft = () => ({})")
@@ -76,7 +81,9 @@ beforeAll(async () => {
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
     window.presentation={kind:"native",protocolVersion:5,capabilities:{native:true},reason:"desktop-local"};
-    window.pages=["one","two"].map(id => ({id:"page-"+id,profileId:"personal",status:"active",url:"https://example.test/"+id,title:id,isLoading:false,lastActiveAt:null}));
+    window.pages=["one","two"].map(id => ({id:"page-"+id,profileId:"personal",status:"active",url:new URLSearchParams(location.search).has("blank") ? "about:blank" : "https://example.test/"+id,title:id,isLoading:false,lastActiveAt:null}));
+    window.catalogPages=new URLSearchParams(location.search).has("missing") ? [] : window.pages;
+    window.seq=1; window.dataUnavailable=new URLSearchParams(location.search).has("no-data");
     const route={mode:"scope",scopeID:"home",path_directory:"home"};
     const i18n=setupI18n({locale:"en",messages:{en:messages}});
     function Harness() {
@@ -85,6 +92,7 @@ beforeAll(async () => {
       const [tab,setTab]=createSignal();
       const open=id => {window.activeTabId=id;setTab({id,...browserPageTab(window.pages.find(p=>p.id===id),route)})};
       return <Suspense><Show when={loaded()} keyed>{state => <>
+        {(() => {window.publishPage=() => {window.seq++; window.catalogPages=window.pages; state.store.upsertPage(window.pages[0])}; return null})()}
         <output aria-label="Presentation">{state.store.presentation()?.kind ?? "none"}</output>
         <button onClick={() => open("page-one")}>Open first</button>
         <button onClick={() => open("page-two")}>Open second</button>
@@ -130,6 +138,10 @@ type Fixture = Window & {
   presentation: unknown
   deliverPresentation(value: unknown): void
   attachments: Array<{ pageId: string; visible: boolean }>
+  publishPage(): void
+  dataUnavailable: boolean
+  dataFailure: boolean
+  dataRequests: Array<{ pageId: string; action: { type: string } }>
 }
 
 test("catalog metadata initializes presentation without waiting for an event or allocating a view", async () => {
@@ -158,5 +170,42 @@ test("mounting and changing peer page panels preserves the catalog's current nat
   )
   expect(await page.getByLabel("Presentation").innerText()).toBe("native")
   expect(await page.getByRole("combobox").inputValue()).toBe("https://example.test/two")
+  expect(errors).toEqual([])
+})
+
+test("the real new-tab import entry opens a dialog while its page is missing and recovers the same target", async () => {
+  await page.goto(`${url}?blank&missing`)
+  await page.getByRole("button", { name: "Open first", exact: true }).click()
+  await page.getByRole("button", { name: "Import browser data", exact: true }).click()
+  await page.getByRole("dialog", { name: "Import browser data", exact: true }).waitFor()
+  await page.getByRole("alert").waitFor()
+  expect(await page.evaluate(() => (window as unknown as Fixture).dataRequests)).toEqual([])
+  await page.evaluate(() => (window as unknown as Fixture).publishPage())
+  await page.getByRole("button", { name: "Retry", exact: true }).click()
+  await page.getByRole("button", { name: "Choose file and import", exact: true }).waitFor()
+  const requests = await page.evaluate(() => (window as unknown as Fixture).dataRequests)
+  expect(requests.filter((input) => input.action.type === "importSources").map((input) => input.pageId)).toEqual([
+    "page-one",
+  ])
+  expect(requests.some((input) => input.action.type === "import")).toBe(false)
+  expect(errors).toEqual([])
+})
+
+test("missing native data capability and native failures stay visible through the real import entry", async () => {
+  await page.goto(`${url}?blank&no-data`)
+  await page.getByRole("button", { name: "Open first", exact: true }).click()
+  await page.getByRole("button", { name: "Import browser data", exact: true }).click()
+  await page.getByRole("dialog", { name: "Import browser data", exact: true }).waitFor()
+  await page.getByRole("alert").waitFor()
+  await page.evaluate(() => {
+    const fixture = window as unknown as Fixture
+    fixture.dataUnavailable = false
+    fixture.dataFailure = true
+  })
+  await page.getByRole("button", { name: "Retry", exact: true }).click()
+  await page.getByRole("alert").waitFor()
+  await page.evaluate(() => ((window as unknown as Fixture).dataFailure = false))
+  await page.getByRole("button", { name: "Retry", exact: true }).click()
+  await page.getByRole("button", { name: "Choose file and import", exact: true }).waitFor()
   expect(errors).toEqual([])
 })

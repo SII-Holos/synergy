@@ -4,6 +4,7 @@ import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solidPlugin from "vite-plugin-solid"
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 
 let browser: Browser
 let page: Page
@@ -36,10 +37,10 @@ beforeAll(async () => {
       one: { tabs: [{ id: "file", panelId: "file" }, { id: "old", panelId: "browser", resourceId: "old" }], active: "file" },
       two: { tabs: [{ id: "two-file", panelId: "file" }], active: "two-file" }
     })
-    export const surface = { tabs: () => state[task()].tabs, active: () => state[task()].active,
+    export const surface = { tabs: () => state[task()].tabs, savedTabs: () => state[task()].tabs, hasOpening: () => false, active: () => state[task()].active,
       setTabs: tabs => setState(task(), "tabs", tabs), setActive: active => setState(task(), "active", active), opened: () => false }
     window.switchTask = id => setTask(id)
-    export const useWorkbenchPanels = () => ({ sessionKey: task, surface: () => surface })
+    export const useWorkbenchPanels = () => ({ sessionKey: task, surface: () => surface, openingForTab: () => undefined })
   `,
   )
   await Bun.write(
@@ -80,7 +81,12 @@ beforeAll(async () => {
       },
     },
     optimizeDeps: { noDiscovery: true, include: ["solid-js", "solid-js/web", "zod"] },
-    server: { host: "127.0.0.1", port: 0, fs: { allow: [path.resolve(source, "../../..")] } },
+    server: {
+      host: "127.0.0.1",
+      port: await fixturePort(),
+      strictPort: true,
+      fs: { allow: [path.resolve(source, "../../..")] },
+    },
   })
   await server.listen()
   url = server.resolvedUrls!.local[0]!

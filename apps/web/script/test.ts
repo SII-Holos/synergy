@@ -33,6 +33,7 @@ const playwrightIsolated = [
   "test/components/library/library-interaction.dom.test.tsx",
   "test/components/workspace/browser/browser-interaction.dom.test.tsx",
   "test/components/workspace/browser/browser-panel-presentation.dom.test.tsx",
+  "test/components/workspace/browser/browser-opening.dom.test.tsx",
   "test/components/workspace/browser/browser-workbench-sync.dom.test.tsx",
   "test/components/session/session-recovery.dom.test.ts",
   "test/components/search/session-search-dialog.dom.test.ts",
@@ -121,6 +122,7 @@ await runBatchedTests({
   isolated: playwrightIsolated,
   isolatedTimeoutMs: 120000,
   browserOnly: [
+    "test/components/workspace/browser/browser-import-target.test.ts",
     "test/components/execution/controls.render.test.ts",
     "test/components/execution/trajectory.test.ts",
     "test/components/session/workbench-navigation.render.test.ts",

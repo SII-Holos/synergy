@@ -10926,6 +10926,10 @@ msgid "browser.import.cookies"
 msgstr "⟦Cookies⟧"
 
 #. js-lingui-explicit-id
+msgid "browser.import.desktopUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "browser.import.done"
 msgstr "⟦Done⟧"
 
@@ -10984,6 +10988,10 @@ msgstr "⟦Saved accounts for signing in⟧"
 #. js-lingui-explicit-id
 msgid "browser.import.passwords"
 msgstr "⟦Passwords⟧"
+
+#. js-lingui-explicit-id
+msgid "browser.import.preparing"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "browser.import.progress"
@@ -11068,6 +11076,22 @@ msgstr "⟦unsettled⟧"
 #. js-lingui-explicit-id
 msgid "browser.page.back"
 msgstr "⟦Back to webpage⟧"
+
+#. js-lingui-explicit-id
+msgid "browser.prepare.cleanup"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.prepare.closed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.prepare.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.prepare.timeout"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "browser.settings.advanced"

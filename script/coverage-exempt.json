@@ -735,6 +735,18 @@
           "reason": "Source selection, data switches, narrow layout and partial results are exercised by browser-interaction.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
         },
         {
+          "glob": "src/components/workspace/browser/browser-import-entry.tsx",
+          "reason": "Immediate dialog mounting, lazy form lifetime, unavailable native capability and retry are exercised by browser-opening.dom.test.tsx, browser-panel-presentation.dom.test.tsx and browser-interaction.dom.test.tsx in Chromium; Vite execution does not contribute Bun coverage. Target binding remains measured in browser-import-target.test.ts."
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-import.tsx",
+          "reason": "The Solid hook captures its initiating tab and Session and is exercised by browser-opening.dom.test.tsx for pending discovery, frame replacement and target closure in Chromium; Vite execution does not contribute Bun coverage. Target binding remains measured in browser-import-target.test.ts."
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-preparing.tsx",
+          "reason": "The lightweight frame, disabled navigation, first-frame presentation, visible preparation failures and Retry are exercised by browser-opening.dom.test.tsx and browser-panel-presentation.dom.test.tsx in Chromium; Vite execution does not contribute Bun coverage."
+        },
+        {
           "glob": "src/components/workspace/browser/browser-new-tab.tsx",
           "reason": "New-tab search composition/submission, footer styles and keyboard import/focus return are exercised by browser-interaction.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
         },
@@ -912,7 +924,7 @@
         },
         {
           "glob": "src/context/workbench/index.tsx",
-          "reason": "global context requires full app bootstrap"
+          "reason": "Rendered workbench lifecycle and selection are covered by browser-opening.dom.test.tsx, resource-home.dom.test.ts and workbench-surface.dom.test.ts in Chromium; Vite execution does not contribute Bun coverage. Close, reveal and resource policies remain directly measured under test/context/workbench."
         },
         {
           "glob": "src/custom-elements.d.ts",

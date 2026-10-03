@@ -4,7 +4,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { browser as B } from "@/locales/messages"
 
-export function BrowserNewTab(props: { onNavigate: (url: string) => void; onImport: () => void }) {
+export function BrowserNewTab(props: { pending?: boolean; onNavigate: (url: string) => void; onImport: () => void }) {
   const { _ } = useLingui()
   return (
     <div class="browser-new-tab">
@@ -12,6 +12,7 @@ export function BrowserNewTab(props: { onNavigate: (url: string) => void; onImpo
         <div class="browser-new-tab-search">
           <Icon name={getSemanticIcon("action.search")} size="small" />
           <input
+            disabled={props.pending}
             aria-label={_(B.enterUrl)}
             placeholder={_(B.enterUrl)}
             onKeyDown={(event) => {
@@ -23,7 +24,7 @@ export function BrowserNewTab(props: { onNavigate: (url: string) => void; onImpo
         </div>
       </div>
       <div class="browser-new-tab-footer">
-        <Button class="browser-import-entry" size="small" variant="ghost" onClick={props.onImport}>
+        <Button class="browser-import-entry" size="small" variant="ghost" onClick={() => props.onImport()}>
           <Icon name={getSemanticIcon("action.import")} size="small" />
           {_(B.importData)}
         </Button>

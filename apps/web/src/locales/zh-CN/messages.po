@@ -10926,6 +10926,10 @@ msgid "browser.import.cookies"
 msgstr "Cookie"
 
 #. js-lingui-explicit-id
+msgid "browser.import.desktopUnavailable"
+msgstr "当前 Desktop 窗口无法导入浏览器数据，请重新打开后重试。"
+
+#. js-lingui-explicit-id
 msgid "browser.import.done"
 msgstr "完成"
 
@@ -10984,6 +10988,10 @@ msgstr "用于登录网站的已保存账号"
 #. js-lingui-explicit-id
 msgid "browser.import.passwords"
 msgstr "密码"
+
+#. js-lingui-explicit-id
+msgid "browser.import.preparing"
+msgstr "正在准备浏览器…"
 
 #. js-lingui-explicit-id
 msgid "browser.import.progress"
@@ -11068,6 +11076,22 @@ msgstr "未稳定"
 #. js-lingui-explicit-id
 msgid "browser.page.back"
 msgstr "返回网页"
+
+#. js-lingui-explicit-id
+msgid "browser.prepare.cleanup"
+msgstr "无法关闭浏览器页面"
+
+#. js-lingui-explicit-id
+msgid "browser.prepare.closed"
+msgstr "浏览器目标已变化或关闭，请重新打开导入窗口。"
+
+#. js-lingui-explicit-id
+msgid "browser.prepare.failed"
+msgstr "浏览器准备失败，请重试。"
+
+#. js-lingui-explicit-id
+msgid "browser.prepare.timeout"
+msgstr "浏览器准备超时，请重试以检查同一页面。"
 
 #. js-lingui-explicit-id
 msgid "browser.settings.advanced"
