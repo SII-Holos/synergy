@@ -155,6 +155,8 @@ For deadline-accounting unit tests, advance one controlled clock for both the ev
 
 Docker network recovery fixtures use a local admission clock and a separate exact-deadline rejection case. Keep real scheduling persistence and owned cleanup assertions; thread-pool or filesystem contention must not decide whether the scripted retry occurs. See the [clock decision](../../../docs/decisions/implemented/testing/2026-10-02-benchmark-network-admission-clock.md).
 
+After Compose startup, wait for complete daemon memory observations at the sampler's one-second cadence within the fixture's existing pressure budget. A container can stop between listing and statistics collection. Preserve unknown memory and include other projects; verify both recovery and persistent-missing rejection through the Unix API fixture. See the [sampling decision](../../../docs/decisions/implemented/testing/2026-10-03-benchmark-docker-observation-readiness.md).
+
 The deterministic Docker fixtures reserve one CPU and the default 2 GiB for the host in CI. On a four-CPU runner this admits a two-CPU preparation request alongside an existing native trial working set; default two-CPU reservation caused `cpu_budget` waits through the trial's stopping deadline. Keep actual memory, disk, CPU pressure and native hard-limit checks active. Local research retains its declared resource defaults.
 
 Use [CI verification](../../../docs/operations/ci.md) to select a task or test file. Lifecycle normal/fault tasks share a verified, immutable prepared bundle and own independent writable environments. Preserve every lifecycle scenario and all five native harnesses on full runs. External harnesses install only their actual runtime dependencies.

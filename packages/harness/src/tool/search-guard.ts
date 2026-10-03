@@ -158,8 +158,11 @@ export namespace SearchGuard {
     return undefined
   }
 
-  export function buildRecord(part: MessageV2.ToolPart): SearchRecord | undefined {
-    if (!SEARCH_TOOLS.has(part.tool)) return undefined
+  export function buildRecord(
+    part: MessageV2.ToolPart,
+    tools: ReadonlySet<string> = SEARCH_TOOLS,
+  ): SearchRecord | undefined {
+    if (!tools.has(part.tool)) return undefined
     const query = extractQuery(part.tool, part.state.input)
     const domain = extractDomain(part.state.input)
     if (part.state.status === "error") {

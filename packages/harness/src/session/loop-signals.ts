@@ -27,7 +27,7 @@ function recentToolRecords(ctx: LoopJob.Context, tools: Set<string>): SearchGuar
     msg.parts.flatMap((part) => {
       if (part.type !== "tool") return []
       if (!tools.has(part.tool)) return []
-      const record = SearchGuard.buildRecord(part)
+      const record = SearchGuard.buildRecord(part, tools)
       return record ? [record] : []
     }),
   )

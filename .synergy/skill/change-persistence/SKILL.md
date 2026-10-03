@@ -78,6 +78,8 @@ For snapshot lease changes, test metadata-gate contention separately from active
 
 ## Verify
 
+For indexed history reads, seed real SQL records and inject a targeted read failure at the first record, a later individual record and a batch. Assert that injection was reached and the original error propagated; separately delete records after the reader captures its index snapshot and verify that only missing records are skipped. Register the regression in the PostgreSQL test inventory and run both engines.
+
 When adding a migration domain, update the complete-product registry contract in `packages/presets/test/migration/registry.test.ts` and run the Presets migration suite alongside the owning domain's upgrade tests.
 
 For hierarchical deletion, measure missing-key and batched-key cleanup beside a large unrelated namespace, and inspect real engine plans for namespace-only probes. Distinguish records, derived nodes and artifact references when admitting online retention. Exercise wide trees, deep ancestors, a newly active owner, a refreshed record and cancellation after deletion begins; a count of deleted records cannot establish that a bounded node traversal is exhausted. Pair SQLite format 2/3 fixtures with PostgreSQL. Keep whole-owner offline deletion atomic and require exclusive ownership after closing runtime admission.

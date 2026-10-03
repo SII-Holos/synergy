@@ -25,6 +25,7 @@ export namespace Environment {
     if (scope) await ScopeContext.provide({ scope, workspace: null, fn: () => Bus.publish(Event.Updated, info) })
   }
   const pending = RuntimeContext.state(() => new Map<string, Promise<Info>>())
+  const providerRequests = RuntimeContext.state(() => new Set<string>())
   const epoch = RuntimeContext.state(() => randomUUID())
   const consumers = RuntimeContext.state(() => new Map<string, (info: Info) => Promise<void>>())
   const lostResources = RuntimeContext.state(() => new Map<string, (info: Info) => Promise<boolean>>())
@@ -246,22 +247,25 @@ export namespace Environment {
   }
 
   async function release(id: string, scopeID: string, idleBefore?: number, expectedGeneration?: number) {
-    const info = await Storage.transaction(async () => {
-      const info = await get(id, scopeID)
-      if (expectedGeneration !== undefined && info.generation !== expectedGeneration)
-        throw new Stale({ environmentID: id, message: "Environment allocation changed" })
-      if (info.state === "idle") return info
-      if (idleBefore !== undefined && info.lastUsedAt > idleBefore) return info
-      if (info.state !== "ready")
-        throw new Unavailable({ environmentID: id, message: "Reconcile the Environment before releasing it" })
-      if ((await uses(id)).length)
-        throw new Busy({ environmentID: id, message: "Environment still has active or unreconciled uses" })
-      return write({ ...info, state: "releasing" })
+    await get(id, scopeID)
+    return providerRequest(id, async () => {
+      const info = await Storage.transaction(async () => {
+        const info = await get(id, scopeID)
+        if (expectedGeneration !== undefined && info.generation !== expectedGeneration)
+          throw new Stale({ environmentID: id, message: "Environment allocation changed" })
+        if (info.state === "idle") return info
+        if (idleBefore !== undefined && info.lastUsedAt > idleBefore) return info
+        if (info.state !== "ready")
+          throw new Unavailable({ environmentID: id, message: "Reconcile the Environment before releasing it" })
+        if ((await uses(id)).length)
+          throw new Busy({ environmentID: id, message: "Environment still has active or unreconciled uses" })
+        return write({ ...info, state: "releasing" })
+      })
+      if (info.state !== "releasing") return info
+      await releaseResources(info)
+      await EnvironmentProviders.get(info.provider).deallocate(requestOf(info))
+      return updateAllocation(info, undefined)
     })
-    if (info.state !== "releasing") return info
-    await releaseResources(info)
-    await EnvironmentProviders.get(info.provider).deallocate(requestOf(info))
-    return updateAllocation(info, undefined)
   }
 
   export async function reclaimIdle(scopeID: string, now = Date.now()) {
@@ -284,33 +288,37 @@ export namespace Environment {
 
   export async function reconcile(id: string, scopeID: string): Promise<Info> {
     const info = await get(id, scopeID)
-    if (!info.allocation) return info
-    const status = await EnvironmentProviders.get(info.provider).inspect(requestOf(info))
-    if (status.state === "pending") {
-      const provider = EnvironmentProviders.get(info.provider)
-      if (info.state === "releasing") {
-        await releaseResources(info)
-        await provider.deallocate(requestOf(info))
+    // Recovery cannot retire a provider request still owned by this Runtime.
+    if (providerRequests().has(id)) return info
+    return providerRequest(id, async () => {
+      if (!info.allocation) return info
+      const status = await EnvironmentProviders.get(info.provider).inspect(requestOf(info))
+      if (status.state === "pending") {
+        const provider = EnvironmentProviders.get(info.provider)
+        if (info.state === "releasing") {
+          await releaseResources(info)
+          await provider.deallocate(requestOf(info))
+          return updateAllocation(info, undefined)
+        }
+        if (info.state !== "allocating" || !provider.resume || (await uses(id)).length)
+          return updateAllocation(info, "unknown")
+        return updateAllocation(info, await provider.resume(requestOf(info)))
+      }
+      if (status.state === "unknown") return updateAllocation(info, "unknown")
+      if (status.state === "absent") {
+        let retained = false
+        for (const lost of lostResources().values()) retained = (await lost(info)) || retained
+        if (retained) return updateAllocation(info, "unknown")
+        if ((await uses(id)).length) return updateAllocation(info, "unknown")
         return updateAllocation(info, undefined)
       }
-      if (info.state !== "allocating" || !provider.resume || (await uses(id)).length)
-        return updateAllocation(info, "unknown")
-      return updateAllocation(info, await provider.resume(requestOf(info)))
-    }
-    if (status.state === "unknown") return updateAllocation(info, "unknown")
-    if (status.state === "absent") {
-      let retained = false
-      for (const lost of lostResources().values()) retained = (await lost(info)) || retained
-      if (retained) return updateAllocation(info, "unknown")
-      if ((await uses(id)).length) return updateAllocation(info, "unknown")
-      return updateAllocation(info, undefined)
-    }
-    if (info.state === "releasing") {
-      await releaseResources(info)
-      await EnvironmentProviders.get(info.provider).deallocate(requestOf(info))
-      return updateAllocation(info, undefined)
-    }
-    return updateAllocation(info, status.allocation)
+      if (info.state === "releasing") {
+        await releaseResources(info)
+        await EnvironmentProviders.get(info.provider).deallocate(requestOf(info))
+        return updateAllocation(info, undefined)
+      }
+      return updateAllocation(info, status.allocation)
+    })
   }
 
   async function recover() {
@@ -354,23 +362,36 @@ export namespace Environment {
         environmentID: id,
         message: "Environment allocation is uncertain; reconcile it before executing",
       })
-    const requestID = `alloc_${randomUUID().replaceAll("-", "")}`
-    info = await Storage.transaction(async () => {
-      const latest = await get(id, scopeID)
-      if (latest.state !== "idle")
-        throw new Busy({ environmentID: id, message: "Environment is already being allocated" })
-      await Storage.write(StoragePath.environmentActive(id), scopeID)
-      return write({
-        ...latest,
-        state: "allocating",
-        generation: latest.generation + 1,
-        allocation: { requestID, capabilities: [] },
+    return providerRequest(id, async () => {
+      const requestID = `alloc_${randomUUID().replaceAll("-", "")}`
+      info = await Storage.transaction(async () => {
+        const latest = await get(id, scopeID)
+        if (latest.state !== "idle")
+          throw new Busy({ environmentID: id, message: "Environment is already being allocated" })
+        await Storage.write(StoragePath.environmentActive(id), scopeID)
+        return write({
+          ...latest,
+          state: "allocating",
+          generation: latest.generation + 1,
+          allocation: { requestID, capabilities: [] },
+        })
       })
+      const allocation = EnvironmentSchema.Allocation.parse(
+        await EnvironmentProviders.get(info.provider).allocate(requestOf(info)),
+      )
+      return updateAllocation(info, allocation)
     })
-    const allocation = EnvironmentSchema.Allocation.parse(
-      await EnvironmentProviders.get(info.provider).allocate(requestOf(info)),
-    )
-    return updateAllocation(info, allocation)
+  }
+
+  async function providerRequest<T>(id: string, body: () => Promise<T>): Promise<T> {
+    const requests = providerRequests()
+    if (requests.has(id)) throw new Busy({ environmentID: id, message: "Environment has an owned provider request" })
+    requests.add(id)
+    try {
+      return await body()
+    } finally {
+      requests.delete(id)
+    }
   }
 
   async function updateAllocation(previous: Info, allocation: EnvironmentSchema.Allocation | "unknown" | undefined) {

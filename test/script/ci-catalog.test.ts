@@ -46,6 +46,33 @@ test("every PostgreSQL matrix executes the retained usage rebuild and clear cont
   }
 })
 
+test("every PostgreSQL matrix executes task context continuity", async () => {
+  const entries = await catalog()
+  const controls = entries.filter((entry) => entry.kind === "postgres")
+  expect(controls.map((entry) => entry.variant).sort()).toEqual(["16", "17", "18"])
+  const plan = createPlan({
+    base: "base",
+    head: "head",
+    sha: "tested",
+    run: "fixture",
+    mode: "full",
+    changed: [],
+    baseWorkspaces: [],
+    headWorkspaces: [],
+    tasks: entries,
+  })
+  for (const control of controls) {
+    expect(control.inputs).toContain("packages/harness/test/session/context-continuity.test.ts")
+    const recipe = await commands(control, plan)
+    const verification = recipe.find((entry) => entry.args.includes("test/session/context-continuity.test.ts"))
+    expect(verification).toBeDefined()
+    expect(verification!.cwd).toBe("packages/harness")
+    expect(verification!.env?.SYNERGY_TEST_STORAGE_BACKEND).toBe("postgres")
+    expect(verification!.env?.SYNERGY_REQUIRE_POSTGRES_TESTS).toBe("1")
+    expect(verification!.env?.SYNERGY_TEST_POSTGRES_URL).toBeTruthy()
+  }
+})
+
 test("Environment acceptance retains executable coverage and required Docker evidence", async () => {
   const entries = await catalog()
   const environment = entries.find((entry) => entry.kind === "environment")!

@@ -156,7 +156,7 @@ Top-level sessions build memory and experience context in parallel from the curr
 - experiences are retrieved within the current Scope.
 - child sessions receive lightweight always-only memory context.
 
-Recall has a bounded timeout and a loop-level cache. The context remains available across steps and compaction boundaries. The root message records which memory or experience context was injected so the durable task can be inspected later.
+Recall has a bounded timeout and a loop-level cache. Each task root collects context at its first model preparation, even when a pre-model job has already compacted the history. The context remains available to root and child sessions across steps and compaction boundaries; a newly materialized Inbox root replaces the previous task's cached context. The root message records which memory or experience context was injected so the durable task can be inspected later.
 
 ## Tool Resolution and Execution
 
@@ -189,6 +189,8 @@ Current loop-level behavior includes:
 - repeated successful tool-call warnings
 - repeated same-class tool-error stopping
 - tool-category failure analysis and escalation
+
+Each registered tool-failure analyzer owns its declared tool set. Completed and errored parts from that set enter the analyzer even when their tool names are absent from the built-in search category. Classification preserves explicit failure metadata and errored-part diagnostics.
 
 A blocking job can return `continue` to restart the loop after changing history or `stop` to finish without another model call. Non-blocking jobs capture detached payloads and cannot hold the critical execution path. By default every captured payload runs independently; a job opts into latest-pending coalescing only by defining a stable `key()`. Each background execution receives an abort signal and a finite timeout, so consumers must propagate cancellation through history reads, model calls, child-session work, and other long-running operations.
 

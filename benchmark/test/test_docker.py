@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from fixtures.resources import fixture_resources
+from fixtures.resources import fixture_resources, healthy_docker_snapshot
 
 from synergy_bench.catalog import tree_digest
 from synergy_bench.prepare import BENCHMARK
@@ -89,7 +89,7 @@ async def test_admission_preserves_native_network_topology_and_removes_only_owne
             assert network["Internal"] is (topology == "restricted")
             if topology == "restricted":
                 assert len(services["egress"]["NetworkSettings"]["Networks"]) == 2
-        snapshot = await DockerStats().snapshot()
+        snapshot = await healthy_docker_snapshot(DockerStats(), timeout_seconds=pool.pressure_timeout_seconds)
         assert snapshot.healthy
         assert len([row for row in snapshot.containers if row["project"] == project]) == len(services)
     finally:
