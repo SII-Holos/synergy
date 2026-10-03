@@ -1,6 +1,19 @@
 .project-flow {
   min-width: 0;
 }
+.workspace-directory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.workspace-directory-dialog .workspace-directory-copy > * {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  overflow: visible;
+}
+.workspace-directory-row > [data-component="icon"] {
+  flex-shrink: 0;
+}
 .project-flow-list {
   display: flex;
   flex-direction: column;
