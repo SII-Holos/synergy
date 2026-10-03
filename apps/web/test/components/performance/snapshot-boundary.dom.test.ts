@@ -23,14 +23,17 @@ beforeAll(async () => {
   directory = await mkdtemp(path.join(import.meta.dir, ".snapshot-fixture-"))
   await Bun.write(
     path.join(directory, "index.html"),
-    '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+    '<!doctype html><div id="root"></div><script type="module" src="/main.tsx"></script>',
   )
   await Bun.write(
     path.join(directory, "main.tsx"),
     `
     import { createSignal, onMount } from "solid-js"
     import { render } from "solid-js/web"
+    import {MetaProvider} from "@solidjs/meta"
+    import {Font} from "@ericsanchezok/synergy-ui/font"
     import {DialogProvider, useDialog} from "@ericsanchezok/synergy-ui/context/dialog"
+    import {ThemeProvider, useTheme} from "@ericsanchezok/synergy-ui/theme"
     import {createIntlFormatter} from "/@fs/${source}/context/locale/formatter.ts"
     import { setupI18n } from "@lingui/core"
     import { I18nProvider } from "@lingui/solid"
@@ -40,6 +43,7 @@ beforeAll(async () => {
     import { messages as zh } from ${JSON.stringify(`/@fs/${source}/locales/zh-CN/messages.po`)}
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
+    import ${JSON.stringify(`/@fs/${source}/components/app-panel.css`)}
     import ${JSON.stringify(`/@fs/${source}/components/performance/performance-panel.css`)}
     const query = new URLSearchParams(location.search)
     document.documentElement.dataset.colorScheme = query.get("theme") || "light"
@@ -51,6 +55,7 @@ beforeAll(async () => {
       fail: () => setState(s => ({ ...s, loading: false, error: "diagnostic:" + "x".repeat(300) })),
       ready: () => setState({ loading: false, error: null, generatedAt: "2026-09-25T06:20:00.000Z" }),
     }
+    function Appearance() { useTheme().setColorScheme(query.get("theme") || "light"); return null }
     function DetailFixture() {
       const dialog=useDialog()
       const [error,setError]=createSignal("Controlled trace failure")
@@ -61,13 +66,13 @@ beforeAll(async () => {
       return <FrontendSection _={i18n._.bind(i18n)} summary={{generatedAt:"2026-10-01T00:00:00Z",quality:{partial:true},top:{slowFrontend:[]},frontend:{cls:0,longTaskCount:0}}} />
     }
     function Results() { onMount(() => window.mounts++); return <div data-results>Healthy results</div> }
-    render(() => <I18nProvider i18n={i18n}><DialogProvider>
-      {query.has("rankings") ? <TopRankings _={i18n._.bind(i18n)} summary={{top:{slowRoutes:[{label:"http.request.duration",value:12,unit:"ms",traceId:"http-1"},{label:"GET /sessions",value:15,unit:"ms",traceId:"http-2"}]}}} onTrace={()=>{}}/> : query.has("trace") ? <DetailFixture/> : query.has("vitals") ? <VitalsFixture/> : query.has("issues") ? <IssueList _={i18n._.bind(i18n)} fmt={createIntlFormatter(()=>"en")} issues={[{issueId:"issue-1",code:"PERF_HTTP_SLOW_REQUEST",title:"Slow http.request",message:"Technical exception details",severity:"warning",lastSeenTime:1,occurrenceCount:2,module:"server",evidence:{},traceId:"trace-fixture"}]} onTrace={()=>{}}/> : query.has("summary") ? <div class="performance-workbench"><SummaryCards _={i18n._.bind(i18n)} summary={{health:{status:"healthy",openIssueCount:0},backend:{activeSessions:0,pendingSessions:0},resources:{owners:[],serviceMemory:{rssBytes:1048576,source:"process_api",completeness:"partial"},childProcessRssBytes:50,measuredChildProcessCount:5,childProcessCount:7},sessions:{llmCallCount:0,toolCallCount:0}}} /></div> : <PerformanceSnapshotBoundary loading={state().loading} error={state().error}
+    render(() => <MetaProvider><Font/><I18nProvider i18n={i18n}><ThemeProvider><Appearance/><DialogProvider>
+      {query.has("rankings") ? <TopRankings _={i18n._.bind(i18n)} summary={{top:{slowRoutes:[{label:"http.request.duration",value:12,unit:"ms",traceId:"http-1"},{label:"GET /sessions",value:15,unit:"ms",traceId:"http-2"}]}}} onTrace={()=>{}}/> : query.has("trace") ? <DetailFixture/> : query.has("vitals") ? <VitalsFixture/> : query.has("issues") ? <IssueList _={i18n._.bind(i18n)} fmt={createIntlFormatter(()=>"en")} issues={[{issueId:"issue-1",code:"PERF_HTTP_SLOW_REQUEST",title:"Slow http.request",message:"Technical exception details",severity:"warning",lastSeenTime:1,occurrenceCount:2,module:"server",evidence:{},traceId:"trace-fixture"}]} onTrace={()=>{}}/> : query.has("summary") ? <div class="performance-workbench synergy-workbench-canvas app-panel"><SummaryCards _={i18n._.bind(i18n)} summary={{health:{status:"healthy",openIssueCount:0},backend:{activeSessions:0,pendingSessions:0},resources:{owners:[],serviceMemory:{rssBytes:1048576,source:"process_api",completeness:"partial"},childProcessRssBytes:50,measuredChildProcessCount:5,childProcessCount:7},sessions:{llmCallCount:0,toolCallCount:0}}} /></div> : <PerformanceSnapshotBoundary loading={state().loading} error={state().error}
         generatedAt={state().generatedAt} attemptedAt={1} formatTime={() => "14:20:00"}
         onRetry={() => { window.retries++; setState(s => ({ ...s, loading: true, error: null })) }}>
         <Results />
       </PerformanceSnapshotBoundary>}
-    </DialogProvider></I18nProvider>, document.querySelector("#root"))
+    </DialogProvider></ThemeProvider></I18nProvider></MetaProvider>, document.querySelector("#root"))
   `,
   )
   await Bun.write(
@@ -174,9 +179,9 @@ test("summary prioritizes four signals and separates unavailable resource metric
   const resources = page.getByRole("region", { name: "Resource usage", exact: true })
   await resources.waitFor({ timeout: 5000 })
   expect(await page.locator(".performance-summary-grid > .performance-card").count()).toBe(4)
-  expect(await resources.locator(".performance-card").filter({ hasText: "Long tasks" }).textContent()).toContain("—")
-  expect(await resources.locator(".performance-card").filter({ hasText: "Disk ops" }).textContent()).toContain("—")
-  expect(await resources.locator(".performance-card").filter({ hasText: "LLM calls" }).textContent()).toContain("0")
+  expect(await resources.getByRole("group", { name: "Long tasks", exact: true }).textContent()).toContain("—")
+  expect(await resources.getByRole("group", { name: "Disk ops", exact: true }).textContent()).toContain("—")
+  expect(await resources.getByRole("group", { name: "LLM calls", exact: true }).textContent()).toContain("0")
 })
 
 test("summary adapts to four, two and one columns while keeping session counts readable", async () => {
@@ -193,6 +198,11 @@ test("summary adapts to four, two and one columns while keeping session counts r
     expect(await grid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)).toBe(
       columns,
     )
+    const resources = page.locator(".performance-resource-grid")
+    expect(await resources.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)).toBe(
+      columns,
+    )
+    expect(await resources.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
     const sessions = grid.locator(".performance-card").filter({ hasText: "会话" }).locator(".performance-metric-value")
     expect(await sessions.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
   }
@@ -205,6 +215,33 @@ test("session summary keeps each count adjacent to its label", async () => {
   expect(await card.locator(".performance-session-count").first().textContent()).toBe("0 active")
   expect(await card.locator(".performance-session-count").last().textContent()).toBe("0 pending")
 })
+
+test.each(["light", "dark"])(
+  "%s: resource rows have no nested frames and groups retain natural heights",
+  async (theme) => {
+    await page.setViewportSize({ width: 1280, height: 812 })
+    await page.goto(`${baseUrl}?summary&theme=${theme}`)
+    const resources = page.getByRole("region", { name: "Resource usage", exact: true })
+    await resources.waitFor()
+    const grid = resources.locator(".performance-resource-grid")
+    expect(await grid.evaluate((element) => getComputedStyle(element).borderLeftWidth)).toBe("0px")
+    const rows = resources.locator(".performance-card, .performance-resource-metric")
+    expect(await rows.count()).toBe(13)
+    expect(
+      await rows.evaluateAll((elements) =>
+        elements.every((element) => {
+          const style = getComputedStyle(element)
+          return style.borderLeftWidth === "0px" && style.borderRightWidth === "0px" && style.borderTopWidth === "0px"
+        }),
+      ),
+    ).toBe(true)
+    const groups = resources.locator(".performance-resource-group")
+    const cpu = await groups.nth(0).boundingBox()
+    const memory = await groups.nth(1).boundingBox()
+    expect(cpu!.height).toBeLessThan(memory!.height)
+    expect(await resources.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  },
+)
 
 test("trace details use the wide window, retry locally and return focus after Escape", async () => {
   await page.setViewportSize({ width: 1280, height: 800 })
@@ -278,11 +315,11 @@ test("issues expose a translated category and severity before the original error
 
 test("memory values keep their provenance and coverage in supporting text", async () => {
   await page.goto(`${baseUrl}?summary`)
-  const memory = page.locator(".performance-resource-group .performance-card").filter({ hasText: "Service memory" })
+  const memory = page.getByRole("group", { name: "Service memory", exact: true })
   expect(await memory.locator(".performance-metric-value").innerText()).toBe("1 MiB")
   expect(await memory.locator("p.app-panel-caption").innerText()).toContain("process sum")
   expect(await memory.locator("p.app-panel-caption").innerText()).toContain("partial")
-  const child = page.locator(".performance-resource-group .performance-card").filter({ hasText: "Tool child RSS" })
+  const child = page.getByRole("group", { name: "Tool child RSS", exact: true })
   expect(await child.locator(".performance-metric-value").innerText()).toBe("50 B")
   expect(await child.locator("p.app-panel-caption").innerText()).toContain("5/7")
 })
