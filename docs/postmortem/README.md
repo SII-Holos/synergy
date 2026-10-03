@@ -30,6 +30,7 @@ Name files `NNNN-kebab-case-title.md` using the next available number. Use these
 
 ## Index
 
+- [0039: Paused output blocked process activation](0039-paused-output-blocked-process-activation.md)
 - [0038: Session latency](0038-session-interactions-amplified-global-work.md)
 - [0035: Titlebar controls](0035-native-titlebar-swallowed-controls.md)
 - [0036: Directory replacement blocked history](0036-directory-replacement-blocked-history.md)
