@@ -25,17 +25,24 @@ beforeAll(async () => {
     stubs,
     `
     import {createStore} from "solid-js/store"
-    export const [state,patch]=createStore({id:undefined,running:false,status:"idle",empty:false,disabled:false,width:700,home:false,git:true,profile:"native",error:"",extras:false,selection:{mode:"workspace",workspaceID:"main",workspaceGeneration:1}})
+    export const [state,patch]=createStore({id:undefined,running:false,status:"idle",empty:false,disabled:false,width:700,home:false,git:true,available:true,extraAvailable:true,shared:false,deriveSelection:false,mainRev:1,extraRev:1,gen:1,extraGen:1,failExtra:false,holdExtra:false,emptyTrees:false,holdInventory:false,url:"http://fixture.example",scopeID:"project",profile:"native",error:"",extras:false,selection:{mode:"workspace",workspaceID:"main",workspaceGeneration:1}})
     const h=window.fixture={patch,requests:[],selection:undefined}
-    export const directories=()=>({revision:1,mainWorkspaceID:"main",additionalWorkspaceIDs:[],folders:[{workspaceID:"main",generation:1,path:"/projects/main-folder",git:state.git,available:true}]})
+    const folder=id=>({workspaceID:id,generation:id==="main"?state.gen:state.extraGen,path:id==="main"?"/projects/main-folder":"/projects/shared-folder",git:id==="main"&&state.git&&state.available,available:id==="main"?state.available:state.extraAvailable,...((id==="main"?state.available:state.extraAvailable)?{}:{unavailable:{name:"WorkspaceUnavailable",data:{workspaceID:id,reason:"identity_changed",message:"Identity changed"}}})})
+    export const directories=()=>({version:1,scopeID:state.scopeID,revision:1,mainWorkspaceID:"main",additionalWorkspaceIDs:state.shared?["extra"]:[],folders:[folder("main"),...(state.shared?[folder("extra")]:[])]})
+    const record=id=>({id,scopeID:state.scopeID,type:"directory",revision:id==="main"?state.mainRev:state.extraRev,binding:{generation:id==="main"?state.gen:state.extraGen,state:"bound",path:folder(id).path,hostID:"host",physicalID:"identity"},lifecycle:"active",metadata:{},sharedWritableWorkspaceIDs:[],createdAt:1,updatedAt:1})
     const trees=[{id:"tree",name:"Existing Worktree",branch:"feature/long-existing-worktree-branch",path:"/projects/worktrees/existing",sourceWorkspaceID:"main",bindings:[]}]
     const scope={id:"project",name:${JSON.stringify(project)},local:{worktree:"/projects/main-folder",directory:"/projects/main-folder",sandboxes:[],vcs:"git"}}
-    const client={project:{async worktreeInventory(){h.requests.push("worktrees");return {data:{items:trees}}}},session:{async selectWorkspace(){h.requests.push("selectWorkspace")}}}
+    const client={project:{async worktreeInventory(input,options){
+      h.requests.push("worktrees");const scopeID=input.scopeID;const url=state.url
+      if(state.holdInventory){h.inventoryPending=true;await new Promise(resolve=>h.releaseInventory=resolve);h.inventoryPending=false}
+      options.signal?.throwIfAborted()
+      return {data:{items:state.emptyTrees?[]:trees.map(tree=>({...tree,branch:scopeID==="project"&&url==="http://fixture.example"?tree.branch:"feature/new-project-worktree"}))}}
+    },async directories(){return {data:directories()}}},workspace:{async list(){return {data:[record("main"),...(state.shared?[record("extra")]:[])]}},async rebind(input,options){h.requests.push("rebind:"+input.workspaceID);if(input.workspaceID==="extra"&&state.holdExtra)await new Promise(resolve=>h.release=resolve);options.signal?.throwIfAborted();if(input.workspaceID==="extra"&&state.failExtra)throw {name:"WorkspaceBusy",data:{message:"Folder busy"}};if(input.workspaceID==="main")patch({available:true,gen:state.gen+1,mainRev:state.mainRev+1});else patch({extraAvailable:true,extraGen:state.extraGen+1,extraRev:state.extraRev+1});return {data:record(input.workspaceID)}}},session:{async selectWorkspace(){h.requests.push("selectWorkspace")}}}
     export const useParams=()=>({get id(){return state.id}})
     export const useNavigate=()=>()=>{}
-    export const useSDK=()=>({get isHome(){return state.home},get scopeID(){return state.home?"home":"project"},get scopeKey(){return state.home?"home":"project"},client})
-    export const useGlobalSDK=()=>({url:"http://fixture.example",capabilities:{has:()=>true}})
-    export const useSync=()=>({scope,data:{workspaces:[],path:{workspace:{path:"/projects/main-folder"}}},session:{get:()=>state.empty?undefined:{id:state.id,status:state.status,workspaceID:"main",workspace:{path:"/projects/main-folder",type:"git"}},sync:async()=>{}}})
+    export const useSDK=()=>({get isHome(){return state.home},get scopeID(){return state.home?"home":state.scopeID},get scopeKey(){return state.home?"home":state.scopeID},client})
+    export const useGlobalSDK=()=>({get url(){return state.url},capabilities:{has:()=>true}})
+    export const useSync=()=>({scope,data:{get workspaces(){return [record("main")]},path:{workspace:{path:"/projects/main-folder"}}},session:{get:()=>state.empty?undefined:{id:state.id,status:state.status,workspaceID:"main",workspace:{path:"/projects/main-folder",type:"git"}},sync:async()=>{}}})
     export const useLayout=()=>({scopes:{list:()=>[scope]}})
     export const useGlobalSync=()=>({refreshScopes:async()=>{}})
     export const useServer=()=>({url:"http://${computer}",list:["http://offline.example:4322"],setActive:()=>{},scopes:{open:()=>{}}})
@@ -45,6 +52,7 @@ beforeAll(async () => {
     export const useCommand=()=>({register:()=>{}})
     export const usePrompt=()=>({prepareProjectTransfer:()=>({commit:()=>true,release:()=>{}})})
     export const useConfirm=()=>({ask:async()=>true})
+    export const useProjectDirectoryPicker=()=>({pickProjectDirectories:async()=>null})
     export const DialogScopeEdit=()=>null
     export const DialogWorktrees=()=>null
     export const DialogWorkingLocation=()=>null
@@ -76,7 +84,7 @@ beforeAll(async () => {
       const dialog=useDialog()
       const input={readOnly:()=>false,primaryAction:()=>"send",submit:async()=>{},stop:async()=>{},dragging:()=>false,className:()=>"",current:()=>({mode:"normal"}),setComposing:()=>{},dragOver:()=>{},dragLeave:()=>{},drop:async()=>{},
         editor:{label:()=>"Message",completion:()=>undefined,placeholder:()=>undefined,mount:()=>()=>{},beforeInput:()=>{},input:()=>{},paste:async()=>{},keyDown:()=>{}},
-        render:part=>part==="leading"?<><div data-extension>Composer extension</div><SessionWorkContext directories={directories()} directoryError={state.error} onRefresh={()=>patch("error","")} workspaceSelection={state.selection} running={state.running} disabled={state.disabled} environmentProfile={state.profile} startOptions={[]} onSelect={selection=>{window.fixture.selection=selection;patch("selection",selection)}}>{state.extras&&<><button data-shortcuts>Quick actions</button><span data-agenda>Scheduled wake</span></>}</SessionWorkContext></>:part==="context"?<><button data-attachment>Attachment</button><p data-permission>Permission request</p><p role="alert" data-error>Request failed</p></>:part==="toolbar"?<button type="submit" data-send>Send</button>:null}
+        render:part=>part==="leading"?<><div data-extension>Composer extension</div><SessionWorkContext directories={directories()} directoryError={state.error} onRefresh={()=>patch("error","")} workspaceSelection={state.deriveSelection&&state.selection.mode==="workspace"?{...state.selection,workspaceGeneration:state.gen}:state.selection} workspaceSelectionKey={JSON.stringify(state.selection)} running={state.running} disabled={state.disabled} environmentProfile={state.profile} startOptions={[]} onSelect={selection=>{window.fixture.selection=selection;patch("selection",selection)}}>{state.extras&&<><button data-shortcuts>Quick actions</button><span data-agenda>Scheduled wake</span></>}</SessionWorkContext></>:part==="context"?<><button data-attachment>Attachment</button><p data-permission>Permission request</p><p role="alert" data-error>Request failed</p></>:part==="toolbar"?<button type="submit" data-send>Send</button>:null}
       return <><div data-pane style={{width:state.width+"px","max-width":"100%"}}><DefaultComposer context={{input}}/></div><button data-open-form onClick={()=>dialog.show(()=><Dialog title="Folder form"><div data-folder-form style={{width:"200px","max-width":"100%"}}><ProjectFolderFields folders={[]} main="" onChange={()=>{}} onAdd={()=>{}} computer={<ComputerMenu/>}/></div></Dialog>)}>Open form</button></>
     }
     render(()=> <I18nProvider i18n={setupI18n({locale:"en",messages:{en:{}}})}><DialogProvider><App/></DialogProvider></I18nProvider>,document.getElementById("root"))
@@ -96,7 +104,7 @@ beforeAll(async () => {
             /(?:^@\/|\/src\/)context\/(sdk|global-sdk|sync|global-sync|layout|server|platform|command|prompt)(\.tsx)?$/.test(
               id,
             ) ||
-            /(?:^\.\/|^\.\.\/dialog\/|\/dialog\/)(dialog-scope-edit|dialog-worktrees|dialog-working-location|dialog-create-project|dialog-select-server|dialog-select-project|confirm-dialog)(\.tsx)?$/.test(
+            /(?:^\.\/|^\.\.\/dialog\/|\/dialog\/)(dialog-scope-edit|dialog-worktrees|dialog-working-location|dialog-create-project|dialog-select-server|dialog-select-project|confirm-dialog|project-directory-picker)(\.tsx)?$/.test(
               id,
             )
           )
@@ -122,9 +130,9 @@ beforeAll(async () => {
   base = server.resolvedUrls!.local[0]!
   await server.warmupRequest("/main.tsx")
   browser = await chromium.launch({ headless: true })
-  page = await browser.newPage({ viewport: { width: 1024, height: 768 } })
-  page.setDefaultTimeout(4000)
-  page.on("pageerror", (error) => errors.push(error.message))
+  const context = await browser.newContext({ viewport: { width: 1024, height: 768 } })
+  context.setDefaultTimeout(4000)
+  page = await context.newPage()
 }, 60_000)
 
 afterAll(async () => {
@@ -135,6 +143,11 @@ afterAll(async () => {
 
 async function open() {
   errors.length = 0
+  const previous = page
+  page = await previous.context().newPage()
+  await page.setViewportSize(previous.viewportSize()!)
+  await previous.close()
+  page.on("pageerror", (error) => errors.push(error.message))
   await page.goto(base)
   await page.locator("[data-worktree-task-selector]").waitFor()
   expect(errors).toEqual([])
@@ -214,7 +227,8 @@ test("compact computer controls retain full identity, actual health and keyboard
   await patch({ width: 320 })
   const trigger = page.getByRole("button", { name: `Computer: ${computer}`, exact: true })
   await trigger.focus()
-  await page.getByRole("tooltip").filter({ hasText: computer }).waitFor()
+  await page.waitForTimeout(900)
+  expect(await page.getByRole("tooltip").count()).toBe(0)
   await trigger.press("Enter")
   const menu = page.getByRole("dialog", { name: "Computer", exact: true })
   const connected = menu.getByRole("button").filter({ hasText: computer })
@@ -311,7 +325,8 @@ test("a long computer name keeps the folder heading on one line and menu state p
 
 test("repair and advanced location actions stay reachable in a narrow touch composer", async () => {
   const previous = page
-  page = await browser.newPage({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true })
+  const context = await browser.newContext({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true })
+  page = await context.newPage()
   try {
     await open()
     await patch({ width: 200, error: "Folders unavailable", profile: "custom" })
@@ -329,12 +344,12 @@ test("repair and advanced location actions stay reachable in a narrow touch comp
     await menu.waitFor({ state: "detached" })
     await assertSingleLine()
   } finally {
-    await page.close()
+    await context.close()
     page = previous
   }
 }, 20_000)
 
-test("Home omits folder choices and a non-Git main keeps existing Worktrees without offering creation", async () => {
+test("Home omits folder choices and a non-Git main explains disabled Worktree creation", async () => {
   await open()
   await patch({ home: true, width: 200 })
   expect(await page.locator("[data-worktree-task-selector]").count()).toBe(0)
@@ -342,7 +357,8 @@ test("Home omits folder choices and a non-Git main keeps existing Worktrees with
   await patch({ home: false, git: false })
   await page.locator("[data-worktree-task-selector]").click()
   const menu = page.getByRole("dialog", { name: "Worktrees", exact: true })
-  expect(await menu.getByRole("button", { name: /New Worktree/ }).count()).toBe(0)
+  expect(await menu.getByRole("button", { name: /New Worktree/ }).isDisabled()).toBe(true)
+  expect(await menu.getByText("The main folder is not a Git repository.").isVisible()).toBe(true)
   expect(
     await menu
       .getByRole("button", { name: "feature/long-existing-worktree-branch 0 linked tasks", exact: true })
@@ -350,6 +366,133 @@ test("Home omits folder choices and a non-Git main keeps existing Worktrees with
   ).toBe(true)
   await page.keyboard.press("Escape")
   await menu.waitFor({ state: "detached" })
+  expect(errors).toEqual([])
+}, 20_000)
+
+test("refreshed Worktrees never retain the prior project or connection while loading", async () => {
+  for (const changed of [{ scopeID: "next-project" }, { url: "http://next-computer.example" }]) {
+    await open()
+    const trigger = page.locator("[data-worktree-task-selector]")
+    await trigger.click()
+    const menu = page.getByRole("dialog", { name: "Worktrees", exact: true })
+    const prior = menu.getByRole("button", { name: /feature\/long-existing-worktree-branch/ })
+    await prior.waitFor()
+    await patch({ ...changed, holdInventory: true })
+    expect(await prior.count()).toBe(0)
+    await page.waitForFunction("window.fixture.inventoryPending")
+    await page.evaluate("window.fixture.releaseInventory()")
+    await menu.getByRole("button", { name: /feature\/new-project-worktree/ }).waitFor()
+    expect(await prior.count()).toBe(0)
+  }
+  expect(errors).toEqual([])
+}, 20_000)
+
+test("all three setup controls suppress hover and focus tooltips", async () => {
+  await open()
+  for (const selector of [
+    "[data-computer-selector]",
+    "[data-project-task-selector]",
+    "[data-worktree-task-selector]",
+  ]) {
+    const trigger = page.locator(selector)
+    await trigger.hover()
+    await page.waitForTimeout(900)
+    expect(await page.getByRole("tooltip").count()).toBe(0)
+    await trigger.focus()
+    await page.waitForTimeout(900)
+    expect(await page.getByRole("tooltip").count()).toBe(0)
+  }
+}, 20_000)
+
+async function openRecovery() {
+  await page.locator("[data-worktree-task-selector]").click()
+  await page
+    .getByRole("dialog", { name: "Worktrees", exact: true })
+    .getByRole("button", { name: /New Worktree/ })
+    .click()
+  const dialog = page.getByRole("dialog", { name: "Confirm project folders", exact: true })
+  await dialog.getByRole("button", { name: "Confirm and restore", exact: true }).waitFor()
+  return dialog
+}
+
+test("an unavailable main without Worktrees offers confirmation and cancellation keeps the editor and draft", async () => {
+  await open()
+  await page.getByRole("textbox", { name: "Message", exact: true }).fill("Keep this draft")
+  const editor = await page.getByRole("textbox", { name: "Message", exact: true }).elementHandle()
+  await patch({ available: false, git: false, emptyTrees: true, gen: 2 })
+  const dialog = await openRecovery()
+  expect(await dialog.getByText("/projects/main-folder", { exact: true }).isVisible()).toBe(true)
+  expect(await dialog.getByRole("button", { name: "Choose folder", exact: true }).count()).toBe(0)
+  expect(
+    (await page.evaluate<string[]>("window.fixture.requests")).filter((value) => value.startsWith("rebind:")),
+  ).toEqual([])
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click()
+  await dialog.waitFor({ state: "detached" })
+  await page.waitForFunction(() => document.activeElement?.hasAttribute("data-worktree-task-selector"))
+  expect(await editor!.evaluate((element) => element.isConnected)).toBe(true)
+  expect(await page.getByRole("textbox", { name: "Message", exact: true }).innerText()).toBe("Keep this draft")
+  expect(await page.evaluate("window.fixture.selection")).toBeUndefined()
+  expect(errors).toEqual([])
+}, 20_000)
+
+test("recovery keeps partial success, blocks duplicate confirmation and selects deferred creation after retry", async () => {
+  await open()
+  const editor = await page.getByRole("textbox", { name: "Message", exact: true }).elementHandle()
+  await patch({
+    available: false,
+    extraAvailable: false,
+    shared: true,
+    deriveSelection: true,
+    failExtra: true,
+    holdExtra: true,
+  })
+  const dialog = await openRecovery()
+  await dialog
+    .getByRole("button", { name: "Confirm and restore", exact: true })
+    .evaluate((button: HTMLButtonElement) => {
+      button.click()
+      button.click()
+    })
+  await page.waitForFunction("window.fixture.requests.includes('rebind:extra')")
+  expect(
+    (await page.evaluate<string[]>("window.fixture.requests")).filter((value) => value.startsWith("rebind:")),
+  ).toEqual(["rebind:main", "rebind:extra"])
+  await page.evaluate("window.fixture.release()")
+  await dialog.getByRole("alert").waitFor()
+  expect(await dialog.getByText("Ready", { exact: true }).isVisible()).toBe(true)
+  expect(await page.evaluate("window.fixture.selection")).toBeUndefined()
+  await patch({ failExtra: false, holdExtra: false })
+  await dialog.getByRole("button", { name: "Confirm and restore", exact: true }).click()
+  await dialog.waitFor({ state: "detached" })
+  expect(await page.evaluate<SessionWorkspaceSelection>("window.fixture.selection")).toEqual({
+    mode: "create",
+    sourceWorkspaceID: "main",
+  })
+  expect(
+    (await page.evaluate<string[]>("window.fixture.requests")).filter((value) => value.startsWith("rebind:")),
+  ).toEqual(["rebind:main", "rebind:extra", "rebind:extra"])
+  expect(await editor!.evaluate((element) => element.isConnected)).toBe(true)
+  expect(await page.locator("[data-worktree-task-selector]").getAttribute("aria-label")).toContain(
+    "Created when you start the task.",
+  )
+  expect(errors).toEqual([])
+}, 20_000)
+
+test("switching projects during recovery cancels the old operation and leaves the new intent alone", async () => {
+  await open()
+  await patch({ available: false, extraAvailable: false, shared: true, holdExtra: true })
+  const dialog = await openRecovery()
+  await dialog.getByRole("button", { name: "Confirm and restore", exact: true }).click()
+  await page.waitForFunction("window.fixture.requests.includes('rebind:extra')")
+  await patch({ scopeID: "other-project" })
+  await dialog.waitFor({ state: "detached" })
+  await page.evaluate("window.fixture.release()")
+  await page.waitForFunction(() => !document.querySelector('[role="dialog"]'))
+  expect(await page.evaluate("window.fixture.selection")).toBeUndefined()
+  expect(await page.evaluate<string[]>("window.fixture.requests.filter(value=>value.startsWith('rebind:'))")).toEqual([
+    "rebind:main",
+    "rebind:extra",
+  ])
   expect(errors).toEqual([])
 }, 20_000)
 

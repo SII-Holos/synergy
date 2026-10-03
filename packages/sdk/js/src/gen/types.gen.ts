@@ -68,12 +68,22 @@ export type Scope = {
   }
 }
 
+export type WorkspaceUnavailable = {
+  name: "WorkspaceUnavailable"
+  data: {
+    message: string
+    workspaceID: string
+    reason?: "binding_unavailable" | "identity_unverified" | "directory_unavailable" | "identity_changed"
+  }
+}
+
 export type ProjectFolder = {
   workspaceID: string
   generation: number
   path: string
   available: boolean
   git: boolean
+  unavailable?: WorkspaceUnavailable
 }
 
 export type ProjectDirectories = {
