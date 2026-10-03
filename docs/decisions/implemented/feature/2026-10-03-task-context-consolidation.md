@@ -12,6 +12,8 @@ The top-right Task details entry contains the actual session workspace, branch a
 
 Sidebar rows retain the primary runtime status and add an independent worktree marker. Workspace failures preserve their structured identity and open the existing revision-checked rebind flow after restoring the draft. Rebinding remains an explicit user choice. The composer has no Inbox anchor or execution spacer; QuickAction code remains registered but hidden.
 
+The public composer-layout Inbox render part remains implemented for custom plugin layouts. It renders the same session-owned queue content used by Task details; only the default presentation stops mounting it beside the composer. Packed-plugin acceptance checks both the default absence and an explicit custom layout's native Inbox content.
+
 ## Alternatives considered
 
 **Keep an Inbox button beside the composer.** This preserves the previous location but splits task information between unrelated corners and reintroduces layout pressure.

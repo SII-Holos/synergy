@@ -48,6 +48,8 @@ description: Add, modify, or review Synergy Plugin API 4 definitions, generated 
 
 Viewport reference bindings must carry their acquired element through cleanup and permission disposal. Test both replacement within one surface and disposal after a successor surface has mounted; stale releases must not clear successor references.
 
+Moving a host view in the default layout does not retire its public render part. Exercise the old part through a packed custom layout and keep the host-owned behavior available, while separately verifying the default layout's new placement.
+
 Await Host Service work before leaving an `await using` resource scope. Delay real resource disposal in a rejection fixture to expose premature release and unhandled errors; preserve the specific validation failure and selected Environment use until the invocation settles.
 
 ## Verify

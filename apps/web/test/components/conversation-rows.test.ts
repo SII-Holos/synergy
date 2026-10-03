@@ -137,6 +137,28 @@ test("prepending a process page retains existing batch identities and Part membe
   )
 })
 
+test("closing and reopening a prepended activity preserves its identity, content and bounded rows", () => {
+  const input = {
+    timeline: [root],
+    messagesFor: () => [reply],
+    summaries: (id: string) => (id === reply.id ? parts.slice(6, 24) : []),
+    page: () => ({ hasMore: false }),
+    process: () => ({ open: true, working: false }),
+  }
+  const initial = buildConversationRows(input)
+  const loaded = { ...input, summaries: (id: string) => (id === reply.id ? parts.slice(1, 24) : []) }
+  const prepended = buildConversationRows({ ...loaded, previous: initial })
+  const closed = buildConversationRows({ ...loaded, previous: prepended, activity: () => false })
+  expect(closed.some((row) => row.kind === "body")).toBe(false)
+  const reopened = buildConversationRows({ ...loaded, previous: closed, activity: () => true })
+  expect(reopened.filter((row) => row.kind === "activity").map((row) => row.key)).toEqual(
+    prepended.filter((row) => row.kind === "activity").map((row) => row.key),
+  )
+  const rows = reopened.filter((row) => row.kind === "body")
+  expect(rows.flatMap((row) => row.parts.map((part) => part.id))).toEqual(parts.slice(1, 24).map((part) => part.id))
+  expect(Math.max(...rows.map((row) => row.parts.length))).toBeLessThanOrEqual(6)
+})
+
 function processFixture() {
   const work = { ...reply, id: "work", finish: "tool-calls" } as Message
   const more = { ...reply, id: "more", finish: "tool-calls" } as Message
