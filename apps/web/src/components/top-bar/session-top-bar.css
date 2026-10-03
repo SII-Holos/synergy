@@ -129,8 +129,10 @@
   line-height: 20px;
 }
 
-.stb-left > [data-component="tooltip-trigger"] {
+.stb-left > [data-component="tooltip-trigger"],
+.stb-center > [data-component="tooltip-trigger"] {
   min-width: 0;
+  max-width: 100%;
 }
 .stb-left > [data-component="tooltip-trigger"]:first-child {
   flex: 0 1 auto;
