@@ -503,6 +503,8 @@ An active preparation attempt reports preparing and omits the previous attempt's
 
 Navigation clears a completion notice only after the owner reports ready. Concurrent clears share an in-flight guard through optimistic rollback so a rejected write cannot feed back into the reactive effect as an unbounded retry. Readiness replies from a previous server cannot mutate the current server or its navigation state.
 
+Project-folder recovery captures the connection, Scope, project configuration, explicit draft selection and confirmed binding revisions. Derived binding generations and defaults can refresh without changing the user's intent. Mutations run sequentially through the generated SDK; uncertain replies reconcile against validated directory and catalog reads before retry. Successful folders remain restored after a later failure. Navigation or changed configuration cancels remaining work and prevents stale intent updates. Completion refreshes directory and Worktree projections once alongside the existing `workspace.updated` reconciliation, retaining Composer and trigger nodes during refresh. Retained projections belong to their captured client, connection and Scope; a pending load for another owner cannot display the previous owner's Worktrees.
+
 ## Workspace file contexts
 
 File state is separate from Scope session and event state. File requests, event filters, cached documents, directory trees, explorer preferences, editor models and preview links are keyed by server, Scope, Workspace ID and binding generation. Session selection uses its canonical Workspace projection; a null or unavailable session binding never falls back to the Scope directory.

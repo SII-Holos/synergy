@@ -35430,6 +35430,32 @@
         },
         "required": ["type", "id", "local", "time"]
       },
+      "WorkspaceUnavailable": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "WorkspaceUnavailable"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "workspaceID": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string",
+                "enum": ["binding_unavailable", "identity_unverified", "directory_unavailable", "identity_changed"]
+              }
+            },
+            "required": ["message", "workspaceID"]
+          }
+        },
+        "required": ["name", "data"]
+      },
       "ProjectFolder": {
         "type": "object",
         "properties": {
@@ -35449,6 +35475,9 @@
           },
           "git": {
             "type": "boolean"
+          },
+          "unavailable": {
+            "$ref": "#/components/schemas/WorkspaceUnavailable"
           }
         },
         "required": ["workspaceID", "generation", "path", "available", "git"]

@@ -1,7 +1,40 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import { testRuntime } from "../support/runtime"
 import { WorkspaceCatalog } from "../../src/workspace/catalog"
 import { Storage } from "../../src/storage/storage"
+import { WorkspaceBinding } from "../../src/workspace/binding"
+import { WorkspaceLocation } from "../../src/workspace/location"
+import { tmpdir } from "../support/fixture"
+
+test("missing stable volume evidence reports unverified identity and never downgrades the saved binding", async () => {
+  await using runtime = await testRuntime()
+  await using directory = await tmpdir()
+  await runtime.run(async () => {
+    const source = WorkspaceLocation.source()
+    const location = await source.identify(directory.path)
+    const record = await WorkspaceCatalog.register({
+      scopeID: "project",
+      type: "directory",
+      hostID: await source.hostID(),
+      path: location.path,
+      physicalID: "volume-v1:fixture-volume:inode:birth",
+    })
+    using inspection = spyOn(source, "identify").mockResolvedValue({
+      path: location.path,
+      physicalID: "device:inode:birth",
+    })
+    await expect(WorkspaceBinding.validate(record.id, "project")).rejects.toMatchObject({
+      name: "WorkspaceUnavailable",
+      data: { reason: "identity_unverified" },
+    })
+    expect((await WorkspaceCatalog.get(record.id, "project")).binding).toEqual(record.binding)
+    inspection.mockResolvedValue({ path: location.path, physicalID: "volume-v1:replacement-volume:inode:birth" })
+    await expect(WorkspaceBinding.validate(record.id, "project")).rejects.toMatchObject({
+      name: "WorkspaceUnavailable",
+      data: { reason: "identity_changed" },
+    })
+  })
+})
 
 describe("Workspace catalog", () => {
   test("an existing registration remains readable while the writer is occupied", async () => {

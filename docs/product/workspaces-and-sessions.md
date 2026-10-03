@@ -35,7 +35,7 @@ Web and Desktop let users choose a computer connection, project and applicable m
 
 ## Workspace Binding
 
-A session belongs to a Scope and references a stable Workspace identity, or has no local files. New-task setup chooses the project's main folder or a Worktree while retaining Scope ownership. The Session keeps its actual binding after the setup strip disappears; advanced resource management owns explicit binding repair.
+A session belongs to a Scope and references a stable Workspace identity, or has no local files. New-task setup chooses the project's main folder or a Worktree while retaining Scope ownership. The Session keeps its actual binding after the setup strip disappears; new-task folder choices offer confirmation for unavailable project folders, and advanced resource management handles custom binding repair.
 
 Directory selection and recovery follow the explicit confirmation, draft preservation and flat-list rules in the [Web product contract](../../apps/web/PRODUCT.md#working-directory-selection).
 

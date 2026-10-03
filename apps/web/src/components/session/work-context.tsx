@@ -26,6 +26,8 @@ import { ComputerMenu } from "../dialog/computer-menu"
 import { DialogScopeEdit } from "../dialog/dialog-scope-edit"
 import { DialogWorktrees } from "../dialog/dialog-worktrees"
 import { DialogWorkingLocation } from "../dialog/dialog-working-location"
+import { DialogProjectDirectoryRecovery } from "../dialog/dialog-project-directory-recovery"
+import { sameProjectDirectories } from "../dialog/project-directory-recovery"
 import { projectEntryCopy as copy } from "../dialog/project-entry-copy"
 import { workspaceBranch, workspaceLabel } from "../dialog/workspace-dialog-model"
 import { locationCopy } from "../dialog/task-location-copy"
@@ -36,6 +38,7 @@ type WorkContextProps = {
   environmentID?: string | null
   environmentProfile?: string | null
   workspaceSelection?: SessionWorkspaceSelection
+  workspaceSelectionKey?: string
   onEnvironmentChange?: (id: string | null | undefined) => void
   onEnvironmentProfileChange?: (profile: string | null | undefined) => void
   startOptions: PromptStartOptionGroup[]
@@ -44,7 +47,7 @@ type WorkContextProps = {
   uploading?: boolean
   directories?: ProjectDirectories
   directoryError?: string
-  onRefresh?: () => void
+  onRefresh?: () => void | Promise<void>
   onSelect?: (selection: SessionWorkspaceSelection) => void
 }
 export function SessionWorkContext(props: WorkContextProps) {
@@ -76,31 +79,54 @@ function WorkContextContent(props: WorkContextProps) {
   )
   const session = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   let inventoryRequest: AbortController | undefined
-  onCleanup(() => inventoryRequest?.abort())
+  let disposed = false
+  onCleanup(() => {
+    disposed = true
+    inventoryRequest?.abort()
+  })
   const inventoryVersion = createMemo(() =>
     JSON.stringify([
       props.directories?.revision,
       sync.data.workspaces.map((workspace) => [workspace.id, workspace.binding.generation]),
     ]),
   )
-  const [trees] = createResource(
-    () => (!sdk.isHome && globalSDK.capabilities.has("workbench") ? `${sdk.scopeID}:${inventoryVersion()}` : false),
-    async () => {
+  const [trees, { refetch: refreshTrees }] = createResource(
+    () =>
+      !sdk.isHome && globalSDK.capabilities.has("workbench")
+        ? { client: sdk.client, url: globalSDK.url, scopeID: sdk.scopeID, version: inventoryVersion() }
+        : false,
+    async (owner) => {
       inventoryRequest?.abort()
       const controller = new AbortController()
       inventoryRequest = controller
       try {
         setError("")
-        return (
-          await loadWorktreeInventory(sdk.client, globalSDK.url, sdk.scopeID, inventoryVersion(), controller.signal)
-        ).data?.items
+        return {
+          ...owner,
+          items:
+            (await loadWorktreeInventory(owner.client, owner.url, owner.scopeID, owner.version, controller.signal)).data
+              ?.items ?? [],
+        }
       } catch (failure) {
-        if (controller.signal.aborted) return undefined
+        if (
+          controller.signal.aborted ||
+          sdk.client !== owner.client ||
+          sdk.scopeID !== owner.scopeID ||
+          globalSDK.url !== owner.url
+        )
+          return undefined
         setError(requestErrorMessage(failure, _(copy.unavailable)))
-        return []
+        return { ...owner, items: [] }
       }
     },
   )
+  const treeItems = () => {
+    const snapshot = trees.latest
+    return snapshot?.client === sdk.client && snapshot.scopeID === sdk.scopeID && snapshot.url === globalSDK.url
+      ? snapshot.items
+      : []
+  }
+  const needsRecovery = () => props.directories?.folders.some((folder) => !folder.available)
   const [environment] = createResource(
     () => session()?.environmentID,
     async (environmentID) => (await sdk.client.environment.get({ environmentID }, { throwOnError: true })).data,
@@ -108,7 +134,7 @@ function WorkContextContent(props: WorkContextProps) {
   const actual = () => session()?.workspace
   const selectedTree = () =>
     props.workspaceSelection?.mode === "existing" ? props.workspaceSelection.target : undefined
-  const selectedWorkspace = () => trees()?.find((tree) => tree.id === selectedTree() || tree.path === selectedTree())
+  const selectedWorkspace = () => treeItems().find((tree) => tree.id === selectedTree() || tree.path === selectedTree())
   const selectedDirectory = () => {
     const selection = props.workspaceSelection
     return selection?.mode === "workspace"
@@ -183,6 +209,47 @@ function WorkContextContent(props: WorkContextProps) {
   }
   const useTree = (tree: WorktreeInventoryEntry) =>
     select({ mode: "existing", target: tree.id, sourceWorkspaceID: tree.sourceWorkspaceID })
+  function recover(mode: "create" | "main") {
+    const directories = props.directories
+    if (!directories || pending() || props.disabled || props.running) return
+    const client = sdk.client
+    const scopeID = sdk.scopeID
+    const url = globalSDK.url
+    const selectionKey = () => props.workspaceSelectionKey ?? JSON.stringify(props.workspaceSelection)
+    const selection = selectionKey()
+    const isCurrent = () =>
+      !disposed &&
+      sdk.client === client &&
+      sdk.scopeID === scopeID &&
+      globalSDK.url === url &&
+      !!props.directories &&
+      sameProjectDirectories(directories, props.directories) &&
+      selectionKey() === selection
+    setOpen(false)
+    document.querySelector<HTMLButtonElement>("[data-worktree-task-selector]")?.focus({ preventScroll: true })
+    dialog.show(() => (
+      <DialogProjectDirectoryRecovery
+        directories={directories}
+        isCurrent={isCurrent}
+        onRecovered={async (restored) => {
+          await props.onRefresh?.()
+          await refreshTrees()
+          if (!isCurrent()) return
+          const folder = restored.folders.find((item) => item.workspaceID === restored.mainWorkspaceID)
+          if (!folder?.available) return
+          if (mode === "create" && !folder.git) {
+            setError(_(copy.notGit))
+            return
+          }
+          await select(
+            mode === "create"
+              ? { mode: "create", sourceWorkspaceID: folder.workspaceID }
+              : { mode: "workspace", workspaceID: folder.workspaceID, workspaceGeneration: folder.generation },
+          )
+        }}
+      />
+    ))
+  }
   function settings() {
     const project = scope()
     if (project) dialog.show(() => <DialogScopeEdit scope={{ ...project, expanded: true }} onSaved={props.onRefresh} />)
@@ -213,7 +280,7 @@ function WorkContextContent(props: WorkContextProps) {
     ))
   return (
     <div class="session-work-context" role="group" aria-label={_(copy.computer)}>
-      <ComputerMenu disabled={props.disabled || props.uploading || pending()} />
+      <ComputerMenu showTooltip={false} disabled={props.disabled || props.uploading || pending()} />
       <ProjectTaskButton
         label={getScopeLabel(scope(), sdk.scopeKey)}
         path={main()?.path}
@@ -221,17 +288,7 @@ function WorkContextContent(props: WorkContextProps) {
         uploading={props.uploading}
         onSettings={sdk.isHome ? undefined : settings}
       />
-      <Show
-        when={
-          !sdk.isHome &&
-          ((trees()?.length ?? 0) > 0 ||
-            main()?.git ||
-            props.workspaceSelection?.mode === "none" ||
-            (props.workspaceSelection?.mode === "workspace" && !mainSelected()) ||
-            actual()?.type === "git_worktree" ||
-            (params.id && actual()?.path !== main()?.path))
-        }
-      >
+      <Show when={!sdk.isHome && globalSDK.capabilities.has("workbench")}>
         <Popover
           variant="menu"
           title={_(copy.worktrees)}
@@ -240,7 +297,7 @@ function WorkContextContent(props: WorkContextProps) {
           placement="top-start"
           class="project-select-popover"
           triggerAs={(attributes) => (
-            <Tooltip value={open() || dialog.active ? "" : location()}>
+            <Tooltip inactive value={location()}>
               <button
                 {...attributes}
                 class="session-work-context-button"
@@ -259,15 +316,17 @@ function WorkContextContent(props: WorkContextProps) {
           <button
             type="button"
             class="project-flow-row"
-            disabled={props.running || pending() || !main()?.available}
+            disabled={props.running || pending() || !main()}
             aria-pressed={mainSelected()}
             onClick={() =>
-              main() &&
-              void select({
-                mode: "workspace",
-                workspaceID: main()!.workspaceID,
-                workspaceGeneration: main()!.generation,
-              })
+              needsRecovery()
+                ? recover("main")
+                : main() &&
+                  void select({
+                    mode: "workspace",
+                    workspaceID: main()!.workspaceID,
+                    workspaceGeneration: main()!.generation,
+                  })
             }
           >
             <Icon name={getSemanticIcon("workspace.main")} size="small" />
@@ -278,38 +337,46 @@ function WorkContextContent(props: WorkContextProps) {
               </Show>
             </span>
           </button>
-          <Show when={main()?.git}>
-            <button
-              type="button"
-              class="project-flow-row"
-              disabled={props.running || pending()}
-              aria-pressed={!params.id && props.workspaceSelection?.mode === "create"}
-              onClick={() => void select({ mode: "create", sourceWorkspaceID: main()!.workspaceID })}
-            >
-              <Icon name={getSemanticIcon("workspace.worktree")} size="small" />
-              <span class="project-flow-row-copy">
-                <strong>{_(copy.newWorktree)}</strong>
-                <small>
-                  {(props.directories?.additionalWorkspaceIDs.length ?? 0) > 0
-                    ? _({
-                        ...copy.shared,
-                        values: {
-                          folder: getFilename(main()!.path),
-                          count: props.directories!.additionalWorkspaceIDs.length,
-                        },
-                      })
-                    : _(copy.onSend)}
-                </small>
-              </span>
-              <span class="project-flow-check">
-                <Show when={!params.id && props.workspaceSelection?.mode === "create"}>
-                  <Icon name={getSemanticIcon("state.success")} size="small" />
-                </Show>
-              </span>
-            </button>
-          </Show>
+          <button
+            type="button"
+            class="project-flow-row"
+            disabled={props.running || pending() || !main() || (main()?.available && !main()?.git)}
+            aria-pressed={!params.id && props.workspaceSelection?.mode === "create"}
+            onClick={() =>
+              needsRecovery()
+                ? recover("create")
+                : void select({ mode: "create", sourceWorkspaceID: main()!.workspaceID })
+            }
+          >
+            <Icon name={getSemanticIcon("workspace.worktree")} size="small" />
+            <span class="project-flow-row-copy">
+              <strong>{_(copy.newWorktree)}</strong>
+              <small>
+                {!main()
+                  ? _(copy.unavailable)
+                  : main()?.available && !main()?.git
+                    ? _(copy.notGit)
+                    : needsRecovery()
+                      ? _(copy.confirmFolder)
+                      : (props.directories?.additionalWorkspaceIDs.length ?? 0) > 0
+                        ? _({
+                            ...copy.shared,
+                            values: {
+                              folder: getFilename(main()!.path),
+                              count: props.directories!.additionalWorkspaceIDs.length,
+                            },
+                          })
+                        : _(copy.onSend)}
+              </small>
+            </span>
+            <span class="project-flow-check">
+              <Show when={!params.id && props.workspaceSelection?.mode === "create"}>
+                <Icon name={getSemanticIcon("state.success")} size="small" />
+              </Show>
+            </span>
+          </button>
           <div class="project-flow-list">
-            <For each={trees()}>
+            <For each={treeItems()}>
               {(tree) => (
                 <button
                   type="button"
