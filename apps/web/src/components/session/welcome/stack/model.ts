@@ -91,7 +91,7 @@ function tick(state: Stack, dt: number): Stack {
   if (state.phase === "missed") return { ...state, cut, camera }
   const cooldown = Math.max(0, state.cooldown - dt)
   if (state.cooldown > 0) return { ...state, cut, camera, cooldown }
-  const speed = Math.min(250, 105 + state.height * 12)
+  const speed = 125 + 475 * (1 - Math.exp(-state.height / 36))
   const x = Math.max(80, Math.min(640 - state.moving.width, state.moving.x + state.moving.direction * speed * dt))
   const direction = x <= 80 ? 1 : x >= 640 - state.moving.width ? -1 : state.moving.direction
   return { ...state, cooldown, cut, camera, moving: { ...state.moving, x, direction } }

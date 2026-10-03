@@ -54,3 +54,14 @@ test("idle motion and timed landings have the same result at 30, 60 and 120 Hz",
   expect(run(30)).toEqual(run(120))
   expect(run(60)).toEqual(run(120))
 })
+test("higher towers keep accelerating past the first milestones without becoming unbounded", () => {
+  const distance = (height: number) => {
+    const state = { ...createStack(2), height }
+    return advanceStack(state, 0.1).moving.x - state.moving.x
+  }
+  expect(distance(12)).toBeGreaterThan(distance(0) * 1.8)
+  expect(distance(24)).toBeGreaterThan(distance(12) * 1.3)
+  expect(distance(48)).toBeGreaterThan(distance(24) * 1.2)
+  expect(distance(96)).toBeGreaterThan(distance(48))
+  expect(distance(10_000)).toBeLessThanOrEqual(60)
+})
