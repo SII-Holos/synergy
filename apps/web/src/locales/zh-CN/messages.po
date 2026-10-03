@@ -12102,6 +12102,18 @@ msgid "execution.cancelRead"
 msgstr "取消读取"
 
 #. js-lingui-explicit-id
+msgid "execution.changes.diagnostics"
+msgstr "查看记录详情"
+
+#. js-lingui-explicit-id
+msgid "execution.changes.incomplete"
+msgstr "更改记录不完整"
+
+#. js-lingui-explicit-id
+msgid "execution.changes.incompleteDescription"
+msgstr "部分文件更改未能记录，这不代表任务执行失败。"
+
+#. js-lingui-explicit-id
 msgid "execution.chartEvents"
 msgstr "{count} 个事件 · {start}–{end}"
 
@@ -15879,6 +15891,10 @@ msgstr "输出"
 msgid "session-turn.token-reasoning"
 msgstr "推理"
 
+#. js-lingui-explicit-id
+msgid "session.agenda.retry"
+msgstr "未能加载定时任务，重试"
+
 #. Runtime translation descriptors for all wake-indicator UI strings.
  *  Each is a base MessageDescriptor with `id` + English `message`.
  *  Call sites spread in `values` when the message contains ICU placeholders.
@@ -17467,10 +17483,6 @@ msgstr "等待你回复"
 #. js-lingui-explicit-id
 msgid "session.state.worktree"
 msgstr "隔离工作区会话"
-
-#. js-lingui-explicit-id
-msgid "session.state.worktree.unread"
-msgstr "隔离工作区会话；回复已生成"
 
 #. js-lingui-explicit-id
 msgid "session.subagent.ariaLabel"
@@ -25805,6 +25817,10 @@ msgid "workspace.dialog.recoverSaved"
 msgstr "恢复已保存副本"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.recovery"
+msgstr "无法确认此目录的身份。请确认位置并重新绑定，继续使用。对话和草稿已保留。"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.register"
 msgstr "添加目录"
 
@@ -25865,32 +25881,12 @@ msgid "workspace.home.unavailable"
 msgstr "此项目暂无可用资源。"
 
 #. js-lingui-explicit-id
-msgid "workspace.location.directory"
-msgstr "本地目录"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.explanation"
-msgstr "文件归属于此 Workspace，命令在所选 Environment 中运行。已打开的文件仍保留原 Workspace 归属。"
-
-#. js-lingui-explicit-id
 msgid "workspace.location.isolated"
 msgstr "独立工作区"
 
 #. js-lingui-explicit-id
-msgid "workspace.location.open"
-msgstr "工作位置：{project}，{state}"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.planned"
-msgstr "待准备独立工作区"
-
-#. js-lingui-explicit-id
 msgid "workspace.location.stored"
 msgstr "存储型 Workspace"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.unavailable"
-msgstr "Workspace 不可用"
 
 #. js-lingui-explicit-id
 msgid "workspace.navigation.close"

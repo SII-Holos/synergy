@@ -12102,6 +12102,18 @@ msgid "execution.cancelRead"
 msgstr "Cancel reading"
 
 #. js-lingui-explicit-id
+msgid "execution.changes.diagnostics"
+msgstr "View recording details"
+
+#. js-lingui-explicit-id
+msgid "execution.changes.incomplete"
+msgstr "Change recording incomplete"
+
+#. js-lingui-explicit-id
+msgid "execution.changes.incompleteDescription"
+msgstr "Some file changes could not be recorded. This does not indicate a task failure."
+
+#. js-lingui-explicit-id
 msgid "execution.chartEvents"
 msgstr "{count} events · {start}–{end}"
 
@@ -15879,6 +15891,10 @@ msgstr "output"
 msgid "session-turn.token-reasoning"
 msgstr "reasoning"
 
+#. js-lingui-explicit-id
+msgid "session.agenda.retry"
+msgstr "Could not load scheduled activity. Retry"
+
 #. Runtime translation descriptors for all wake-indicator UI strings.
  *  Each is a base MessageDescriptor with `id` + English `message`.
  *  Call sites spread in `values` when the message contains ICU placeholders.
@@ -17467,10 +17483,6 @@ msgstr "Waiting for you"
 #. js-lingui-explicit-id
 msgid "session.state.worktree"
 msgstr "Worktree session"
-
-#. js-lingui-explicit-id
-msgid "session.state.worktree.unread"
-msgstr "Worktree session; response ready"
 
 #. js-lingui-explicit-id
 msgid "session.subagent.ariaLabel"
@@ -25805,6 +25817,10 @@ msgid "workspace.dialog.recoverSaved"
 msgstr "Recover saved copy"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.recovery"
+msgstr "This directory could not be verified. Confirm its location and rebind it to continue. Your conversation and draft are preserved."
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.register"
 msgstr "Add directory"
 
@@ -25865,32 +25881,12 @@ msgid "workspace.home.unavailable"
 msgstr "No resources are available in this project."
 
 #. js-lingui-explicit-id
-msgid "workspace.location.directory"
-msgstr "Local directory"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.explanation"
-msgstr "Files belong to this Workspace. Commands run in the selected Environment. Open files keep their original Workspace."
-
-#. js-lingui-explicit-id
 msgid "workspace.location.isolated"
 msgstr "Isolated worktree"
 
 #. js-lingui-explicit-id
-msgid "workspace.location.open"
-msgstr "Working location: {project}, {state}"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.planned"
-msgstr "Worktree pending"
-
-#. js-lingui-explicit-id
 msgid "workspace.location.stored"
 msgstr "Stored Workspace"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.unavailable"
-msgstr "Workspace unavailable"
 
 #. js-lingui-explicit-id
 msgid "workspace.navigation.close"

@@ -119,6 +119,7 @@ type PromptSubmitInput = {
   abort: () => void
   editor: () => HTMLDivElement | undefined
   queueScroll: () => void
+  onWorkspaceUnavailable: (workspaceID: string) => void
   onWorktreeUnavailable: () => void
   beforeSubmit: () => Promise<void>
   onAccepted?: (unchanged: boolean) => void
@@ -504,6 +505,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           })
           .then((x) => x.data ?? undefined)
           .catch((err) => {
+            const failure = promptSubmitFailure(err)
+            if (failure.kind === "workspace-unavailable") input.onWorkspaceUnavailable(failure.workspaceID)
             showToast({
               type: "error",
               title: i18n._(PI.submitFailedStart),
@@ -1265,6 +1268,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           failActiveSessionSubmit(i18n._(PI.submitFailedSend), failure.message, {
             focus: !worktreeUnavailable,
           })
+          if (failure.kind === "workspace-unavailable") {
+            input.onWorkspaceUnavailable(failure.workspaceID)
+            return
+          }
           if (worktreeUnavailable) {
             input.onWorktreeUnavailable()
             return

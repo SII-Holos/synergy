@@ -2053,6 +2053,8 @@ export function createPromptInputController(props: PromptInputProps) {
     abort,
     editor: editorElement,
     queueScroll,
+    onWorkspaceUnavailable: (workspaceID) =>
+      workflowDialog.show(() => <DialogWorkspace sessionID={params.id} mode="manage" recoveryID={workspaceID} />),
     onWorktreeUnavailable: () => workflowDialog.show(() => <WorktreeUnavailableDialog />),
     beforeSubmit: async () => {
       await props.onValidateLocation?.()

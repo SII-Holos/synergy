@@ -2,7 +2,7 @@ import { afterEach, expect, mock, test } from "bun:test"
 import { plugin } from "bun"
 import { transformAsync } from "@babel/core"
 import { setupI18n } from "@lingui/core"
-import { createComponent, createSignal, type JSX } from "solid-js"
+import { createComponent, createSignal, onCleanup, type JSX } from "solid-js"
 import { render } from "solid-js/web"
 import type { ExecutionSummary } from "@ericsanchezok/synergy-sdk/client"
 
@@ -236,11 +236,11 @@ test("navigation clears the old round, ignores its late response, and disposal a
   expect(execution.state.summary?.revision).toBe(2)
 })
 
-test("unsupported servers offer no details; supported summaries open retained child evidence", async () => {
+test("task details remain reachable without execution support; supported summaries open retained child evidence", async () => {
   setEnabled(false)
   mount(() => createComponent(TaskDetailsPopover, {}))
   expect(pending).toHaveLength(0)
-  expect(document.querySelector(".execution-trigger")).toBeNull()
+  expect(document.querySelector(".execution-trigger")).not.toBeNull()
   setEnabled(true)
   expect(pending).toHaveLength(1)
   pending[0]!.resolve(summary())
@@ -306,4 +306,52 @@ test("evidence blocks copy complete current text and keep empty content explicit
   } finally {
     restoreClipboard()
   }
+})
+
+test("task details retain inbox ownership while navigating and survive summary failure", async () => {
+  const states: Array<() => boolean> = []
+  let disposed = 0
+  const content = document.createElement("p")
+  content.textContent = "Queued follow-up"
+  mount(() =>
+    createComponent(TaskDetailsPopover, {
+      inboxCount: 2,
+      context: (active) => {
+        states.push(active)
+        const location = document.createElement("p")
+        location.textContent = "Project workspace"
+        return location
+      },
+      inbox: (active) => {
+        states.push(active)
+        onCleanup(() => disposed++)
+        return content
+      },
+    }),
+  )
+  pending[0]!.reject(new Error("summary unavailable"))
+  await flush()
+  const trigger = document.querySelector<HTMLButtonElement>(".execution-trigger")!
+  expect(trigger.querySelector(".execution-trigger-count")?.textContent).toBe("2")
+  trigger.click()
+  await flush()
+  expect(states.map((active) => active())).toEqual([true, false])
+  expect(document.querySelector(".execution-popover")?.textContent).toContain("Project workspace")
+  const entry = document.querySelector<HTMLButtonElement>(".execution-inbox-entry")!
+  entry.click()
+  expect(states.map((active) => active())).toEqual([false, true])
+  const back = document.querySelector<HTMLButtonElement>(".execution-inbox-back")!
+  expect(document.activeElement).toBe(back)
+  back.click()
+  expect(document.activeElement).toBe(entry)
+  expect(states.map((active) => active())).toEqual([true, false])
+  entry.click()
+  trigger.click()
+  await flush()
+  expect(states.map((active) => active())).toEqual([false, false])
+  expect(disposed).toBe(0)
+  trigger.click()
+  await flush()
+  entry.click()
+  expect(document.querySelector(".execution-inbox p")).toBe(content)
 })

@@ -1524,6 +1524,15 @@ function SidebarSessionRow(props: {
       <span class={props.flyout ? "sb-flyout-session-title" : "sb-session-title"}>
         <span class="sb-session-title-text">{props.entry.title || _(sidebar.untitled)}</span>
       </span>
+      <Show when={visual().worktree}>
+        <span
+          class="sb-session-worktree"
+          title={_({ id: "session.state.worktree", message: "Worktree session" })}
+          aria-label={_({ id: "session.state.worktree", message: "Worktree session" })}
+        >
+          <Icon name={getSemanticIcon("workspace.worktree")} size="small" />
+        </span>
+      </Show>
       <Show when={props.entry.tags?.length}>
         <span class="sb-session-tags" title={props.entry.tags?.map((tag) => `#${tag}`).join(" ")}>
           {props.entry.tags?.map((tag) => `#${tag}`).join(" ")}

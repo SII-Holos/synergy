@@ -9,7 +9,6 @@ import type { PluginComposerLayoutService } from "@ericsanchezok/synergy-plugin"
 import { NewSessionGreeting } from "@/components/session/session-new-view"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { SlotOutlet } from "@/plugin/slot-outlet"
-import { SessionInbox } from "@/components/session/session-inbox"
 import { SubagentSessionFooter } from "@/components/session/subagent-session-footer"
 import { PromptDockFloatLayer } from "@/components/session/prompt-dock-float-layer"
 import {
@@ -2010,20 +2009,7 @@ function SessionPageContent() {
             <SlotOutlet slot="session.empty" sessionId={params.id} />
           </>
         )
-      if (part === "inbox")
-        return (
-          <Show when={params.id}>
-            {(id) => (
-              <SessionInbox
-                sessionID={id()}
-                sync={sync}
-                sdk={sdk}
-                hasCanonicalRoot={rootMessages().length > 0}
-                freezeHint={rollbackActive()}
-              />
-            )}
-          </Show>
-        )
+      if (part === "inbox") return null
       return (
         <Show when={sessionMeta().cortex}>
           {(delegation) => (
@@ -2045,6 +2031,8 @@ function SessionPageContent() {
     conversation: () => (
       <div data-ui-part="conversation" class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
         <SessionTopBar
+          hasCanonicalRoot={rootMessages().length > 0}
+          inboxFrozen={rollbackActive()}
           onWorkspaceTransition={startWorkspaceTransition}
           sessionTransitionPending={sessionTransitionPending}
         />

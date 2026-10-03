@@ -1836,3 +1836,10 @@ button.sb-session-group-header:focus-visible,
     padding-left: max(12px, var(--workbench-native-inset, 0px));
   }
 }
+
+.sb-session-worktree {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--icon-weak-base);
+  margin-inline-start: 4px;
+}

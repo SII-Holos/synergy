@@ -20,6 +20,7 @@ type SessionInboxProps = {
   sync: ReturnType<typeof useSync>
   sdk: ReturnType<typeof useSDK>
   freezeHint?: boolean
+  active?: boolean
   hasCanonicalRoot?: boolean
 }
 
@@ -211,12 +212,11 @@ export function SessionInbox(props: SessionInboxProps) {
 function SessionInboxContent(props: SessionInboxProps) {
   const sessionID = props.sessionID
   const client = props.sdk.client
-  const [open, setOpen] = createSignal(false)
   const [operations, setOperations] = createSignal<
     Record<string, { kind: "remove" | "restore"; item: SessionInboxItem; pending: boolean; error?: unknown }>
   >({})
   const [removed, { refetch }] = createResource(
-    () => open(),
+    () => props.active !== false,
     async () => (await client.session.inboxRemoved({ sessionID }, { throwOnError: true })).data,
   )
   const change = async (item: SessionInboxItem, kind: "remove" | "restore") => {
@@ -251,7 +251,6 @@ function SessionInboxContent(props: SessionInboxProps) {
     ),
   )
   const items = createMemo(() => view().items)
-  const count = createMemo(() => view().count)
   const firstTaskLocked = (item: SessionInboxItem) =>
     item.mode === "task" && item.status !== "failed" && props.hasCanonicalRoot === false
   // Bulk "Send all" guides every actionable item; failed items stay out of
@@ -259,12 +258,6 @@ function SessionInboxContent(props: SessionInboxProps) {
   const actionableItems = createMemo(() =>
     items().filter((item) => item.status !== "failed" && isInboxItemInteractive(item) && !firstTaskLocked(item)),
   )
-
-  const titleDetail = createMemo(() => {
-    if (view().status === "loading") return _(S.inboxDebug)
-    if (count() === 0) return _(S.inboxClear)
-    return i18n._({ ...S.inboxItemsWaiting, values: { count: count() } })
-  })
 
   const note = createMemo(() => {
     const steers = items().filter((i) => i.mode === "steer").length
@@ -342,123 +335,95 @@ function SessionInboxContent(props: SessionInboxProps) {
   )
 
   return (
-    <div class="session-inbox-anchor">
-      <Popover
-        open={open()}
-        onOpenChange={setOpen}
-        placement="left-end"
-        gutter={8}
-        class="session-inbox-popover"
-        title={
-          <div class="session-inbox-title">
-            <span class="session-inbox-title-main">{_(S.inboxTitle)}</span>
-            <span class="session-inbox-title-subtitle">{titleDetail()}</span>
-          </div>
-        }
-        triggerAs={(triggerProps) => (
-          <button
-            {...triggerProps}
-            type="button"
-            class="session-inbox-trigger statusbar-glass relative flex size-9 items-center justify-center rounded-full focus:outline-none"
-            data-active={count() > 0}
-            aria-label={_(S.inboxSessionAria)}
-          >
-            <Icon name={getSemanticIcon("session.inbox")} size="small" />
-            <Show when={count() > 0}>
-              <span class="session-inbox-badge">{Math.min(count(), 9)}</span>
+    <div class="session-inbox-panel">
+      <Switch>
+        <Match when={view().status === "loading"}>
+          <div class="px-1 py-2 text-12-regular text-text-weak">{_(S.inboxLoading)}</div>
+        </Match>
+        <Match when={view().status === "empty"}>
+          <div class="px-1 py-2 text-12-regular text-text-weak">{_(S.inboxEmpty)}</div>
+        </Match>
+        <Match when={true}>
+          <div class="session-inbox-list">
+            <Show when={props.freezeHint}>
+              <div class="px-1 py-1 text-11-medium text-text-subtle">{_(S.inboxFrozen)}</div>
             </Show>
-          </button>
-        )}
-      >
-        <Switch>
-          <Match when={view().status === "loading"}>
-            <div class="px-1 py-2 text-12-regular text-text-weak">{_(S.inboxLoading)}</div>
-          </Match>
-          <Match when={view().status === "empty"}>
-            <div class="px-1 py-2 text-12-regular text-text-weak">{_(S.inboxEmpty)}</div>
-          </Match>
-          <Match when={true}>
-            <div class="session-inbox-list">
-              <Show when={props.freezeHint}>
-                <div class="px-1 py-1 text-11-medium text-text-subtle">{_(S.inboxFrozen)}</div>
+            <div class="session-inbox-queue-note">
+              <span>{note()}</span>
+              <Show when={!props.freezeHint && actionableItems().length > 1}>
+                <button type="button" class="session-inbox-send-all" onClick={guideAll}>
+                  {_(S.inboxSendAll)}
+                </button>
               </Show>
-              <div class="session-inbox-queue-note">
-                <span>{note()}</span>
-                <Show when={!props.freezeHint && actionableItems().length > 1}>
-                  <button type="button" class="session-inbox-send-all" onClick={guideAll}>
-                    {_(S.inboxSendAll)}
-                  </button>
-                </Show>
-              </div>
-              <For each={items()}>
-                {(item) => (
-                  <div>
-                    <InboxRow
-                      item={item}
-                      disabled={props.freezeHint || firstTaskLocked(item) || operations()[item.id]?.pending}
-                      onGuide={guide}
-                      onRemove={remove}
-                      onRetry={retry}
-                      i18n={i18n}
-                    />
-                    {operationNotice(item)}
-                  </div>
-                )}
-              </For>
             </div>
-          </Match>
-        </Switch>
-        <For
-          each={Object.values(operations()).filter(
-            (operation) =>
-              operation.error &&
-              !items().some((item) => item.id === operation.item.id) &&
-              (removed.error || !removed()?.some((item) => item.id === operation.item.id)),
-          )}
-        >
-          {(operation) => (
-            <div>
-              <span>{operation.item.summary.preview || operation.item.summary.title}</span>
-              {operationNotice(operation.item)}
-            </div>
-          )}
-        </For>
-        <Show when={removed.loading}>
-          <div role="status">{_(S.inboxLoading)}</div>
-        </Show>
-        <Show when={removed.error}>
-          <div role="alert" class="session-inbox-operation">
-            {_(S.inboxRemovedLoadFailed)}
-            <Button size="small" onClick={() => void refetch()}>
-              {_(S.inboxRetry)}
-            </Button>
-          </div>
-        </Show>
-        <Show when={!removed.error && removed()?.length}>
-          <div class="session-inbox-removed-list">
-            <h3>{_(S.inboxRemovedHeading)}</h3>
-            <For each={removed()}>
+            <For each={items()}>
               {(item) => (
-                <div class="session-inbox-removed-item">
-                  <details>
-                    <summary>{item.summary.preview || item.summary.title}</summary>
-                    <InboxDetail item={item} i18n={i18n} />
-                  </details>
-                  <Button
-                    variant="secondary"
-                    size="small"
-                    disabled={operations()[item.id]?.pending}
-                    onClick={() => void change(item, "restore")}
-                  >
-                    {_(S.inboxRestore)}
-                  </Button>
+                <div>
+                  <InboxRow
+                    item={item}
+                    disabled={props.freezeHint || firstTaskLocked(item) || operations()[item.id]?.pending}
+                    onGuide={guide}
+                    onRemove={remove}
+                    onRetry={retry}
+                    i18n={i18n}
+                  />
                   {operationNotice(item)}
                 </div>
               )}
             </For>
           </div>
-        </Show>
-      </Popover>
+        </Match>
+      </Switch>
+      <For
+        each={Object.values(operations()).filter(
+          (operation) =>
+            operation.error &&
+            !items().some((item) => item.id === operation.item.id) &&
+            (removed.error || !removed()?.some((item) => item.id === operation.item.id)),
+        )}
+      >
+        {(operation) => (
+          <div>
+            <span>{operation.item.summary.preview || operation.item.summary.title}</span>
+            {operationNotice(operation.item)}
+          </div>
+        )}
+      </For>
+      <Show when={removed.loading}>
+        <div role="status">{_(S.inboxLoading)}</div>
+      </Show>
+      <Show when={removed.error}>
+        <div role="alert" class="session-inbox-operation">
+          {_(S.inboxRemovedLoadFailed)}
+          <Button size="small" onClick={() => void refetch()}>
+            {_(S.inboxRetry)}
+          </Button>
+        </div>
+      </Show>
+      <Show when={!removed.error && removed()?.length}>
+        <div class="session-inbox-removed-list">
+          <h3>{_(S.inboxRemovedHeading)}</h3>
+          <For each={removed()}>
+            {(item) => (
+              <div class="session-inbox-removed-item">
+                <details>
+                  <summary>{item.summary.preview || item.summary.title}</summary>
+                  <InboxDetail item={item} i18n={i18n} />
+                </details>
+                <Button
+                  variant="secondary"
+                  size="small"
+                  disabled={operations()[item.id]?.pending}
+                  onClick={() => void change(item, "restore")}
+                >
+                  {_(S.inboxRestore)}
+                </Button>
+                {operationNotice(item)}
+              </div>
+            )}
+          </For>
+        </div>
+      </Show>
     </div>
   )
 }

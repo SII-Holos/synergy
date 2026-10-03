@@ -44,7 +44,6 @@ export function PromptDock(props: PluginComponentProps<PluginComposerLayoutServi
             </For>
             <div class="relative">
               <Show when={layout.input()}>{(input) => <DefaultComposer context={{ input: input() }} />}</Show>
-              {layout.render("inbox")}
             </div>
           </Show>
         </Show>
