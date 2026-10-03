@@ -113,6 +113,13 @@ export namespace WorkspaceCatalog {
     return records.flatMap((record) => (record === undefined ? [] : [Info.parse(record)]))
   }
 
+  export async function findByLocation(input: { scopeID: string; hostID: string; path: string }) {
+    return Storage.snapshot(async () => {
+      const [id] = await Storage.readMany<string>([locationKey(input.scopeID, input.hostID, `path:${input.path}`)])
+      return id ? get(id, input.scopeID) : undefined
+    })
+  }
+
   export async function register(input: RegisterInput): Promise<Info> {
     const candidate = Info.parse({
       id: `wsp_${randomUUID().replaceAll("-", "")}`,

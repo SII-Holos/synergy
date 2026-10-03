@@ -53,6 +53,20 @@ export namespace WorkspaceBinding {
       : importHistory(workspace, scopeID)
   }
 
+  export async function describeDefault(scope: Scope): Promise<Workspace | null> {
+    const workspace = ScopeContext.defaultWorkspace(scope)
+    const source = RuntimeContext.current().host.workspaceLocation
+    if (workspace && source) {
+      const existing = await WorkspaceCatalog.findByLocation({
+        scopeID: scope.id,
+        hostID: await source.hostID(),
+        path: path.resolve(workspace.path),
+      })
+      if (existing) return WorkspaceCatalog.projection(existing)
+    }
+    return migrate(workspace, scope.id)
+  }
+
   export async function adopt(workspace: Workspace | null, scopeID: string): Promise<Workspace | null> {
     if (!workspace) return null
     if (workspace.scopeID !== scopeID) throw new Error("Workspace belongs to a different Scope")

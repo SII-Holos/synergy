@@ -12,6 +12,8 @@ A legacy directory can be absent when its Workspace reference is migrated. The c
 
 The Workspace chooser applies the same verified-identity requirement to selection and sharing. A retained `bound` path without a physical identity remains visible for explicit rebinding; successful rebinding enables selection with the new generation.
 
+Implicit Scope context resolves an existing default Workspace through the host-qualified location index. It describes the saved binding without registering the directory again. Missing registrations retain the ordinary initial migration path. Explicit registration, selection and native validation remain separate operations, so opening history cannot replace the stored physical identity or binding generation.
+
 ## Alternatives considered
 
 **Adopt the first directory found later.** Availability does not prove continuity with the historical files. This would authorize unrelated bytes under an old Session and generation.
@@ -20,6 +22,10 @@ The Workspace chooser applies the same verified-identity requirement to selectio
 
 **Delete unresolved historical references.** The original location and identity remain useful for history and user-directed recovery. Refusing native access preserves that information without inventing file ownership.
 
+**Re-register the default directory before every metadata request.** A replaced directory would reject Session history and Scope bootstrap before their handlers run. Catalog projection preserves the historical reference while native admission continues to reject replacement files.
+
 ## Consequences
 
 Users explicitly rebind locations that could not be verified during migration. Existing verified bindings and no-Workspace Sessions retain their behavior. No persisted schema rewrite or opportunistic backfill is needed: admission checks protect already persisted unresolved records. The [incident record](../../../postmortem/0028-unverified-workspace-directory-access.md) and the native route regression cover absent paths, repeated registration, explicit rebind, stale generations and replacement after verification.
+
+The [history-read incident](../../../postmortem/0036-directory-replacement-blocked-history.md) adds mounted HTTP coverage for historical messages, bootstrap and path metadata while preserving file-access refusal.

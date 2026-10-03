@@ -8,6 +8,7 @@ import { Server } from "../../src/server/server"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { testRuntime } from "../support/runtime"
 
 const runtime = await testRuntime()
@@ -92,6 +93,60 @@ function url(scopeID: string, workspace: { id?: string; generation?: number }, e
     path: "same.txt",
   })}`
 }
+
+test("replacing a project directory preserves historical reads without granting access to replacement files", () =>
+  runtime.run(async () => {
+    await using parent = await tmpdir()
+    const directory = path.join(parent.path, "project")
+    await fs.mkdir(directory)
+    const { scope } = await Scope.fromDirectory(directory)
+    const session = await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create()
+        const message = await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          sessionID: session.id,
+          role: "user",
+          isRoot: true,
+          agent: "test",
+          model: { providerID: "test", modelID: "test" },
+          time: { created: Date.now() },
+        })
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          sessionID: session.id,
+          messageID: message.id,
+          type: "text",
+          text: "Retained historical message",
+        })
+        return session
+      },
+    })
+    const original = await WorkspaceCatalog.get(session.workspaceID!, scope.id)
+    await fs.rename(directory, directory + "-original")
+    await fs.mkdir(directory)
+    await fs.writeFile(path.join(directory, "same.txt"), "replacement files")
+    const app = Server.App()
+    for (const endpoint of [`/session/${session.id}`, "/scope/bootstrap-core", "/path"]) {
+      const response = await app.request(`${endpoint}?scopeID=${scope.id}`)
+      expect(response.status).toBe(200)
+      expect(response.headers.get("x-synergy-epoch")).toBeTruthy()
+    }
+    const history = await app.request(`/session/${session.id}/message?scopeID=${scope.id}`)
+    expect(history.status).toBe(200)
+    expect(await history.json()).toMatchObject([{ parts: [{ type: "text", text: "Retained historical message" }] }])
+    const foreign = await app.request(url("home", session.workspace!))
+    expect(foreign.status).toBe(404)
+    expect((await app.request(url(scope.id, session.workspace!))).status).toBe(409)
+    const register = await app.request(`/workspace?scopeID=${scope.id}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: directory }),
+    })
+    expect(register.status).toBe(409)
+    expect(await WorkspaceCatalog.get(original.id, scope.id)).toEqual(original)
+  }))
 
 test("file requests select a Workspace inside their Scope, including Home", () =>
   runtime.run(async () => {
