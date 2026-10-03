@@ -432,7 +432,7 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
     ${customChrome}
     <main class="startup-center">
       <div class="startup-brand"><div class="startup-mark" aria-hidden="true">${icon}</div><span>Synergy</span></div>
-      <h1 class="startup-status" data-startup-status role="status">Opening Synergy</h1>
+      <h1 class="startup-status" data-startup-status aria-live="polite" aria-atomic="true">Opening Synergy</h1>
       <p class="startup-intro">Getting your workspace ready.</p>
       <ol class="startup-stages" aria-label="Startup stages">
         <li class="startup-stage" data-stage="storage" data-state="active" aria-current="step"><span class="startup-stage__mark" aria-hidden="true">1</span><span>Prepare</span></li>

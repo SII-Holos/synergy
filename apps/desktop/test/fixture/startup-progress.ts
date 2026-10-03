@@ -126,7 +126,7 @@ async function run() {
       )
       await window.webContents.executeJavaScript(startupStatusScript(startup.status()))
       assert.equal(
-        await window.webContents.executeJavaScript(`document.querySelector('[role="status"]').textContent`),
+        await window.webContents.executeJavaScript(`document.querySelector('[data-startup-status]').textContent`),
         "Updating saved data",
       )
       assert.equal(
@@ -174,7 +174,7 @@ async function run() {
       console.log(`Startup progress: ${mode} animation settled`)
       const state = await window.webContents.executeJavaScript(`(() => {
         const bar = document.querySelector('[role="progressbar"]')
-        const title = document.querySelector('[role="status"]')
+        const title = document.querySelector('[data-startup-status]')
         return { value: bar.getAttribute('aria-valuenow'), text: bar.getAttribute('aria-valuetext'),
           title: title.textContent, height: bar.getBoundingClientRect().height,
           titleHeight: title.getBoundingClientRect().height,
@@ -305,6 +305,14 @@ async function run() {
         )
       }
       window.webContents.debugger.attach()
+      await window.webContents.debugger.sendCommand("Accessibility.enable")
+      await window.webContents.executeJavaScript(`new Promise(resolve => requestAnimationFrame(resolve))`)
+      const accessibility: { nodes: { role: { value: string }; name?: { value: string } }[] } =
+        await window.webContents.debugger.sendCommand("Accessibility.getFullAXTree")
+      assert.ok(
+        accessibility.nodes.some((node) => node.role.value === "heading" && node.name?.value === "Updating saved data"),
+        "the startup title remains a heading for screen-reader navigation",
+      )
       await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", {
         features: [{ name: "prefers-reduced-motion", value: "reduce" }],
       })
@@ -353,7 +361,7 @@ async function run() {
       startup.receive('SYNERGY_STARTUP_V1 {"phase":"recovery","current":10001}\n')
       await window.webContents.executeJavaScript(startupStatusScript(startup.status()))
       assert.equal(
-        await window.webContents.executeJavaScript(`document.querySelector('[role="status"]').textContent`),
+        await window.webContents.executeJavaScript(`document.querySelector('[data-startup-status]').textContent`),
         "Restoring saved work",
       )
       assert.equal(
@@ -363,7 +371,7 @@ async function run() {
       startup.receive('SYNERGY_STARTUP_V1 {"phase":"starting"}\n')
       await window.webContents.executeJavaScript(startupStatusScript(startup.status()))
       assert.equal(
-        await window.webContents.executeJavaScript(`document.querySelector('[role="status"]').textContent`),
+        await window.webContents.executeJavaScript(`document.querySelector('[data-startup-status]').textContent`),
         "Starting Synergy",
       )
       await window.loadURL(

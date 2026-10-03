@@ -14,7 +14,7 @@ The shared startup schema adds an optional enumerated `task`. CLI maps known mig
 
 Accepted progress events anchor the clocks. Discovering a total cannot reduce checked counts. Duplicate counts, stale steps, regressive or duplicate maintenance stages and ordinary logs do not reset the last-progress age. Local timer ticks update elapsed labels only, and retries cannot decrease the total elapsed time. After 30 seconds of silence, unknown-total motion pauses and explanatory copy appears without declaring success, failure or continued backend activity. Accepted progress resumes the animation. Existing inactivity and fixed engine deadlines retain their behavior.
 
-The page uses the persisted Desktop skin's text, muted text and border colors, a restrained brand mark and one aligned reading column. Unknown-total motion stops under reduced motion. The page can scroll in short windows and reflows at narrow widths and increased zoom. Count-only updates preserve task announcements. Custom window controls receive native state directly in the startup view before the application renderer is ready; delayed initial or action replies cannot overwrite newer state.
+The page uses the persisted Desktop skin's text, muted text and border colors, a restrained brand mark and one aligned reading column. Unknown-total motion stops under reduced motion. The page can scroll in short windows and reflows at narrow widths and increased zoom. Count-only updates preserve task announcements, and the live title retains heading semantics for screen-reader navigation. Custom window controls receive native state directly in the startup view before the application renderer is ready; delayed initial or action replies cannot overwrite newer state.
 
 ## Alternatives considered
 
