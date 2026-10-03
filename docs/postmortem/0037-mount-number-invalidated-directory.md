@@ -24,6 +24,9 @@ The durable catalog and native mount receipt reused a current-mount device ident
 - [Native regressions](../../packages/local-runtime/test/workspace/identity.test.ts) exercise catalog and receipt upgrades, unchanged generations and rejected replacement.
 - [Identity regressions](../../packages/util/test/filesystem-identity.test.ts) distinguish mount-number changes from volume or object replacement.
 
+- [Project-folder recovery decision](../decisions/implemented/bug-fix/2026-10-04-project-folder-worktree-recovery.md) preserves validation reasons and exposes direct confirmation. The project-folder projection had converted every validation failure to `available: false`, then skipped Git detection; the Composer interpreted that result as non-Git and hid Worktree creation. Regression tests cover visible creation, explicit recovery and retained draft state.
+- Obsolete direct-directory mount receipts could also block confirmed rebinding because detachment required the rejected physical identity. Native detachment now validates the immutable mount reference and waits for exclusive ownership before releasing only the watcher and receipt. Materialized mounts still validate physical identity before deleting files; native regressions cover both cases and active users.
+
 ## Lessons
 
 An identity format must match the lifetime of the record that stores it. Recovery must preserve negative evidence, and all durable consumers need migration before admission.

@@ -25,7 +25,12 @@ export function useComputerLabel() {
       : serverDisplayName(url)
 }
 
-export function ComputerMenu(props: { value?: string; onChange?: (url: string) => void; disabled?: boolean }) {
+export function ComputerMenu(props: {
+  value?: string
+  onChange?: (url: string) => void
+  disabled?: boolean
+  showTooltip?: boolean
+}) {
   const { _ } = useLingui()
   const server = useServer()
   const platform = usePlatform()
@@ -66,7 +71,11 @@ export function ComputerMenu(props: { value?: string; onChange?: (url: string) =
       onOpenChange={setOpen}
       class="project-computer-menu"
       triggerAs={(attributes) => (
-        <Tooltip class="project-computer-control" value={open() ? "" : identity(current())}>
+        <Tooltip
+          class="project-computer-control"
+          inactive={props.showTooltip === false}
+          value={open() ? "" : identity(current())}
+        >
           <button
             {...attributes}
             type="button"

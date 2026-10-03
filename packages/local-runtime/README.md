@@ -8,6 +8,8 @@
 
 Run `bun test test/client.test.ts` for the in-process Scope/event contract and `bun run typecheck`. Tests use the isolated home preload declared in `bunfig.toml`.
 
+Package entrypoint contracts are verified by `bun test test/component.test.ts test/cli/scope.test.ts test/skill/summary.test.ts test/workspace/relocation.test.ts`: selected worker registration, Home reload wiring, CLI Scope cleanup, discovered skill summaries and copied Git metadata independence.
+
 `registerLocalRuntime()` also registers bundled model SDK factories and the custom SDK loader. Agent worker bootstrap creates an explicit Runtime context, registers local capabilities, then starts the harness runner.
 
 Source workers launch this package’s `src/agent-worker.ts` through the harness worker-entry registration. The full product registers its own entry; compiled executables dispatch the same composition through `__agent-turn-runner`.

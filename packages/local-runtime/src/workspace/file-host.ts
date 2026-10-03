@@ -629,24 +629,29 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
   }
 
   async detach(reference: WorkspaceProtocol.Reference) {
-    await this.serial(`mount:${reference.id}`, async () => {
-      const receipt = MountReceipt.parse(await this.receipt("mounts", reference.id))
+    const input = WorkspaceProtocol.Reference.parse(reference)
+    await this.serial(`mount:${input.id}`, async () => {
+      const receipt = MountReceipt.parse(await this.receipt("mounts", input.id))
+      const mount = receipt.mount
+      if (!mount) throw new Error("Workspace mount is unavailable")
+      if (mount.id !== input.id || mount.workspaceID !== input.workspaceID || mount.generation !== input.generation)
+        throw new Error("Workspace mount changed")
       if (receipt.detached) return
-      const mount = await this.required(reference)
+      if (receipt.input.source.kind === "materialized") await this.required(input)
       const lease = await this.acquire({
-        id: `detach:${reference.id}`,
-        owner: reference.id,
+        id: `detach:${input.id}`,
+        owner: input.id,
         ancestors: [],
         roots: [mount.path],
         kind: "exclusive",
         signal: this.shutdown.signal,
       })
       try {
-        await this.required(reference)
-        await this.observations.get(reference.id)?.watcher.unsubscribe()
-        this.observations.delete(reference.id)
+        if (receipt.input.source.kind === "materialized") await this.required(input)
+        await this.observations.get(input.id)?.watcher.unsubscribe()
+        this.observations.delete(input.id)
         if (receipt.input.source.kind === "materialized") await fs.rm(mount.path, { recursive: true })
-        await this.persist("mounts", reference.id, { ...receipt, detached: true })
+        await this.persist("mounts", input.id, { ...receipt, detached: true })
       } finally {
         await lease.release()
       }

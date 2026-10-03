@@ -7,7 +7,7 @@ import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { iife } from "@ericsanchezok/synergy-util/iife"
-import { createMemo, createSignal, For, Match, onCleanup, onMount, Show, Switch } from "solid-js"
+import { createMemo, createSignal, For, Match, onCleanup, onMount, Show, Switch, untrack, type JSX } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import { providerFlow } from "@/locales/messages"
@@ -17,6 +17,9 @@ import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
 import { requestErrorMessage } from "@/utils/error"
 import { providerConnectCopy, providerConnectReason, providerCTA } from "./provider-recommendation"
+import { providerAuthMethodLabel } from "./provider-auth-method-label"
+import { translateDescriptor } from "@/locales/translate"
+import type { ProviderSetupDraft } from "./provider-setup-drafts"
 import {
   resolveProviderAuthMethods,
   runProviderDeviceCallback,
@@ -41,13 +44,17 @@ export function ProviderConnectionFlow(props: {
   iconID?: string
   compact?: boolean
   skipAutoAdvance?: boolean
+  prepareConnection?: () => Promise<string>
+  draft?: ProviderSetupDraft
+  onDraftChange?: (value: Partial<ProviderSetupDraft>) => void
+  apiOptions?: JSX.Element
   onBack?: () => void
   onComplete?: () => void | Promise<void>
 }) {
   const globalSync = useGlobalSync()
   const globalSDK = useGlobalSDK()
   const platform = usePlatform()
-  const { _ } = useLingui()
+  const { _, i18n } = useLingui()
   const provider = createMemo(() => globalSync.data.provider.all.find((x) => x.id === props.providerID))
   const providerName = createMemo(() => props.providerName ?? provider()?.name ?? props.providerID)
   const profiles = createMemo(() => globalSync.data.provider.profiles)
@@ -61,19 +68,33 @@ export function ProviderConnectionFlow(props: {
   const connected = createMemo(
     () => props.connectedOverride ?? globalSync.data.provider.connected.includes(props.providerID),
   )
-  const [persisted, setPersisted] = createSignal(false)
+  const controller = new AbortController()
+  const serverURL = globalSDK.url
+  const active = () => !controller.signal.aborted && globalSDK.url === serverURL
+  onCleanup(() => controller.abort())
+  const [targetID, setTargetID] = createSignal(props.draft?.targetID ?? props.providerID)
+  const [persisted, setPersisted] = createSignal(props.draft?.credentialsSaved ?? false)
   const [refreshing, setRefreshing] = createSignal(false)
   const [store, setStore] = createStore({
     methodIndex: undefined as undefined | number,
     authorization: undefined as undefined | ProviderAuthAuthorization,
-    state: "pending" as undefined | "pending" | "complete" | "error",
+    state: props.draft?.credentialsSaved ? "error" : (undefined as undefined | "pending" | "complete" | "error"),
     error: undefined as string | undefined,
   })
 
   const method = createMemo(() => (store.methodIndex !== undefined ? methods().at(store.methodIndex) : undefined))
 
+  async function prepare() {
+    const id = props.prepareConnection ? await props.prepareConnection() : props.providerID
+    if (!active()) throw new DOMException("Connection view closed", "AbortError")
+    setTargetID(id)
+    return id
+  }
+
   async function selectMethod(index: number) {
+    if (!active() || persisted() || store.state === "pending") return
     const selected = methods()[index]
+    if (!selected) return
     setStore(
       produce((draft) => {
         draft.methodIndex = index
@@ -85,39 +106,43 @@ export function ProviderConnectionFlow(props: {
 
     if (selected.type === "oauth") {
       setStore("state", "pending")
-      await globalSDK.client.provider.oauth
-        .authorize(
+      try {
+        const providerID = await prepare()
+        const response = await globalSDK.client.provider.oauth.authorize(
           {
-            providerID: props.providerID,
+            providerID,
             method: index,
           },
-          { throwOnError: true },
+          { throwOnError: true, signal: controller.signal },
         )
-        .then((x) => {
-          setStore("state", "complete")
-          setStore("authorization", x.data!)
-        })
-        .catch((e: unknown) => {
-          setStore("state", "error")
-          setStore("error", requestErrorMessage(e))
-        })
+        if (!active()) return
+        setStore("state", "complete")
+        setStore("authorization", response.data!)
+      } catch (error) {
+        if (!active()) return
+        setStore("state", "error")
+        setStore("error", requestErrorMessage(error))
+      }
     }
 
     if (selected.type === "import") {
       setStore("state", "pending")
-      await globalSDK.client.provider.credentials
-        .importCredentials(
+      try {
+        const providerID = await prepare()
+        await globalSDK.client.provider.credentials.importCredentials(
           {
-            providerID: props.providerID,
+            providerID,
             method: index,
           },
-          { throwOnError: true },
+          { throwOnError: true, signal: controller.signal },
         )
-        .then(() => complete())
-        .catch((e) => {
-          setStore("state", "error")
-          setStore("error", String(e))
-        })
+        if (!active()) return
+        await complete()
+      } catch (error) {
+        if (!active()) return
+        setStore("state", "error")
+        setStore("error", requestErrorMessage(error))
+      }
     }
   }
 
@@ -126,9 +151,11 @@ export function ProviderConnectionFlow(props: {
   })
 
   async function complete() {
+    if (!active()) return
     setPersisted(true)
+    props.onDraftChange?.({ credentialsSaved: true, apiKey: "" })
     await globalSync.refreshProviders()
-    await props.onComplete?.()
+    if (!active()) return
     const suffix = props.intent === "recover" ? _(providerFlow.reconnected) : _(providerFlow.connected)
     showToast({
       type: "success",
@@ -136,9 +163,11 @@ export function ProviderConnectionFlow(props: {
       title: `${providerName()} ${suffix}`,
       description: props.completeDescription ?? _(providerFlow.modelsAvailable.id, { provider: providerName() }),
     })
+    await props.onComplete?.()
   }
 
   function resetMethod() {
+    if (!active()) return
     setPersisted(false)
     setStore(
       produce((draft) => {
@@ -157,9 +186,10 @@ export function ProviderConnectionFlow(props: {
       await complete()
       resetMethod()
     } catch (error) {
+      if (!active()) return
       setStore("error", requestErrorMessage(error))
     } finally {
-      setRefreshing(false)
+      if (active()) setRefreshing(false)
     }
   }
 
@@ -168,6 +198,11 @@ export function ProviderConnectionFlow(props: {
     if (item.type === "oauth") return _(providerFlow.methodOauthDesc)
     if (item.type === "import") return _(providerFlow.methodImportDesc)
     return _(providerFlow.methodGenericDesc)
+  }
+
+  function methodLabel(item: ProviderAuthMethod) {
+    const descriptor = providerAuthMethodLabel(provider()?.profileID ?? props.providerID, item)
+    return descriptor ? translateDescriptor(descriptor, i18n()) : item.label
   }
 
   function methodIcon(item: ProviderAuthMethod) {
@@ -208,7 +243,7 @@ export function ProviderConnectionFlow(props: {
 
       <div class="provider-flow-body">
         <Switch>
-          <Match when={store.methodIndex === undefined}>
+          <Match when={store.methodIndex === undefined && !persisted()}>
             <div class="provider-method-list">
               <div class="provider-flow-intro">
                 <div class="provider-flow-eyebrow">
@@ -225,7 +260,7 @@ export function ProviderConnectionFlow(props: {
                       <Icon name={methodIcon(item)} size="small" />
                     </span>
                     <span class="provider-method-copy">
-                      <span class="provider-method-title">{item.label}</span>
+                      <span class="provider-method-title">{methodLabel(item)}</span>
                       <span class="provider-method-description">{methodDescription(item)}</span>
                     </span>
                     <Icon name={getSemanticIcon("navigation.expand")} size="small" class="text-text-weaker" />
@@ -263,16 +298,18 @@ export function ProviderConnectionFlow(props: {
           <Match when={method()?.type === "api"}>
             {iife(() => {
               const [formStore, setFormStore] = createStore({
-                value: "",
+                value: untrack(() => props.draft?.apiKey ?? ""),
                 error: undefined as string | undefined,
                 busy: false,
                 persisted: false,
               })
               const credentialCommand = createProviderCredentialCommand(async () => {
+                const providerID = await prepare()
                 await globalSDK.client.auth.set(
-                  { providerID: props.providerID, auth: { type: "api", key: formStore.value.trim() } },
-                  { throwOnError: true },
+                  { providerID, auth: { type: "api", key: formStore.value.trim() } },
+                  { throwOnError: true, signal: controller.signal },
                 )
+                if (!active()) return
                 setFormStore("persisted", true)
               }, complete)
 
@@ -286,15 +323,17 @@ export function ProviderConnectionFlow(props: {
                   setFormStore("error", _(providerFlow.apiKeyRequired))
                   return
                 }
+                setFormStore("value", apiKey)
 
                 setFormStore("error", undefined)
                 setFormStore("busy", true)
                 try {
                   await credentialCommand.run()
                 } catch (error) {
+                  if (!active()) return
                   setFormStore("error", requestErrorMessage(error))
                 } finally {
-                  setFormStore("busy", false)
+                  if (active()) setFormStore("busy", false)
                 }
               }
 
@@ -336,12 +375,14 @@ export function ProviderConnectionFlow(props: {
                     value={formStore.value}
                     onChange={(value) => {
                       setFormStore("value", value)
+                      props.onDraftChange?.({ apiKey: value })
                       credentialCommand.reset()
                     }}
                     disabled={formStore.busy || formStore.persisted}
                     validationState={formStore.error && !formStore.persisted ? "invalid" : undefined}
                     error={formStore.persisted ? undefined : formStore.error}
                   />
+                  {props.apiOptions}
                   <Show when={formStore.persisted && formStore.error}>
                     <p class="settings-request-error" role="alert">
                       {_(refreshFailed)} <span>{formStore.error}</span>
@@ -399,7 +440,7 @@ export function ProviderConnectionFlow(props: {
                     setFormStore("busy", true)
                     try {
                       await globalSDK.client.provider.oauth.callback(
-                        { providerID: props.providerID, method: store.methodIndex, code },
+                        { providerID: targetID(), method: store.methodIndex, code },
                         { throwOnError: true, signal: controller.signal },
                       )
                       await complete()
@@ -410,7 +451,7 @@ export function ProviderConnectionFlow(props: {
                         setStore("error", requestErrorMessage(error))
                       } else setFormStore("error", requestErrorMessage(error, _(providerFlow.invalidAuthCode)))
                     } finally {
-                      setFormStore("busy", false)
+                      if (!controller.signal.aborted) setFormStore("busy", false)
                     }
                   }
 
@@ -480,7 +521,7 @@ export function ProviderConnectionFlow(props: {
                       callback: () =>
                         globalSDK.client.provider.oauth.callback(
                           {
-                            providerID: props.providerID,
+                            providerID: targetID(),
                             method: store.methodIndex,
                           },
                           { signal: controller.signal, throwOnError: true },

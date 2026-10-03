@@ -6,6 +6,82 @@ import { NativeWorkspaceFiles } from "../../src/workspace/file-host"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
 import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
 
+test("detaching an unavailable directory mount releases only its receipt and still honors active ownership", async () => {
+  await using tmp = await tmpdir()
+  const root = path.join(tmp.path, "workspace")
+  await fs.mkdir(root)
+  await Bun.write(path.join(root, "file"), "original")
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") })
+  const host = new NativeWorkspaceFiles({
+    directory: path.join(tmp.path, "receipts"),
+    materializationRoot: path.join(tmp.path, "views"),
+    coordinator,
+  })
+  const reference = { id: "mount", workspaceID: "workspace", generation: 1 }
+  try {
+    await host.mount({ ...reference, readOnly: false, source: { kind: "directory", path: root } })
+    await fs.rename(root, root + "-previous")
+    await fs.mkdir(root)
+    await Bun.write(path.join(root, "file"), "replacement")
+    await expect(host.inspect(reference)).rejects.toThrow("changed")
+    await expect(host.read({ mount: reference, path: "file", maximumBytes: 100 })).rejects.toThrow("changed")
+    await expect(host.detach({ ...reference, generation: 2 })).rejects.toThrow("changed")
+    const held = await coordinator.acquire({
+      id: "active",
+      owner: "active",
+      ancestors: [],
+      roots: [root],
+      kind: "operation",
+    })
+    let settled = false
+    const detaching = host.detach(reference).finally(() => {
+      settled = true
+    })
+    void detaching.catch(() => {})
+    try {
+      await Bun.sleep(25)
+      expect(settled).toBe(false)
+    } finally {
+      await held.release()
+    }
+    await detaching
+    await host.detach(reference)
+    expect(await host.inspect(reference)).toBeUndefined()
+    expect(await Bun.file(path.join(root, "file")).text()).toBe("replacement")
+    expect(await Bun.file(path.join(root + "-previous", "file")).text()).toBe("original")
+  } finally {
+    await host.close()
+  }
+})
+
+test("detaching a replaced materialized mount cannot delete the replacement directory", async () => {
+  await using tmp = await tmpdir()
+  const host = new NativeWorkspaceFiles({
+    directory: path.join(tmp.path, "receipts"),
+    materializationRoot: path.join(tmp.path, "views"),
+    coordinator: new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") }),
+  })
+  try {
+    const empty = WorkspaceTree.encode({ version: 1, entries: [] })
+    const manifest = WorkspaceTree.hash(empty)
+    await host.putBlob(manifest, empty)
+    const mount = await host.mount({
+      id: "materialized",
+      workspaceID: "workspace",
+      generation: 1,
+      readOnly: false,
+      source: { kind: "materialized", manifest },
+    })
+    await fs.rename(mount.path, mount.path + "-previous")
+    await fs.mkdir(mount.path)
+    await Bun.write(path.join(mount.path, "file"), "replacement")
+    await expect(host.detach(mount)).rejects.toThrow("changed")
+    expect(await Bun.file(path.join(mount.path, "file")).text()).toBe("replacement")
+  } finally {
+    await host.close()
+  }
+})
+
 test("active file host retains a mutation until its checkpoint is acknowledged and deduplicates lost responses", async () => {
   await using tmp = await tmpdir()
   const root = path.join(tmp.path, "workspace")

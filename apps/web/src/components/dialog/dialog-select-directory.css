@@ -12,6 +12,26 @@
 .directory-navigation-toolbar > [data-component="button"] {
   flex-shrink: 0;
 }
+.directory-navigation [data-component="button"].directory-navigation-edit {
+  min-width: max-content;
+  padding-inline: 8px;
+  border-color: transparent;
+  color: var(--text-weak);
+  box-shadow: none;
+}
+.directory-navigation [data-component="button"].directory-navigation-edit:focus:not(:hover) {
+  background: transparent;
+}
+.directory-navigation [data-component="button"].directory-navigation-edit:hover {
+  background: var(--surface-float-base-hover);
+  color: var(--text-base);
+}
+.directory-navigation [data-component="button"].directory-navigation-edit:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+  box-shadow: none;
+  color: var(--text-base);
+}
 .directory-navigation-path [data-component="input"],
 .directory-navigation-search [data-component="input"] {
   flex: 1;
@@ -77,7 +97,7 @@
   color: var(--icon-weak-base);
 }
 .directory-navigation-crumbs button:hover {
-  background: var(--surface-hover-base);
+  background: var(--surface-float-base-hover);
   color: var(--text-base);
 }
 .directory-navigation-crumbs button:focus-visible {
@@ -85,9 +105,7 @@
   outline-offset: -2px;
 }
 .directory-navigation-list {
-  border: 1px solid var(--border-weak-base);
-  border-radius: 12px;
-  padding: 4px;
+  padding: 2px;
   max-height: min(360px, 40dvh);
 }
 .directory-navigation-entry {
@@ -149,7 +167,7 @@
   max-width: 100%;
   padding-inline: 10px 2px;
   border-radius: var(--radius-md);
-  background: var(--surface-raised-base-hover);
+  background: var(--surface-interactive-selected-weak);
   color: var(--text-base);
   font-size: 14px;
   line-height: 20px;

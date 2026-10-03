@@ -129,6 +129,7 @@ export function ProjectTaskButton(props: {
       class="project-select-popover"
       triggerAs={(attributes) => (
         <Tooltip
+          inactive
           class="session-work-context-project"
           value={
             opened() || dialog.active

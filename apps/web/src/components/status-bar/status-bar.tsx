@@ -216,7 +216,10 @@ function WorkspaceIconButton(props: { isWorktree: boolean; workspaceName?: strin
         type="button"
         aria-label={i18n._(workspaceCopy.title)}
         disabled={!props.sessionID}
-        onClick={() => dialog.show(() => <DialogWorkspace sessionID={props.sessionID} />)}
+        onClick={() =>
+          props.sessionID &&
+          dialog.show(() => <DialogWorkspace target={{ kind: "session", sessionID: props.sessionID! }} />)
+        }
         classList={iconButtonClass(props.isWorktree ? "success" : "base")}
       >
         <Icon name={icon()} size="small" />

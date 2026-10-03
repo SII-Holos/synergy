@@ -318,6 +318,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
                 <Button
                   ref={pathEditButton}
                   variant="ghost"
+                  class="directory-navigation-edit"
                   onClick={() => {
                     setDraft(path())
                     setEditingPath(true)

@@ -1,6 +1,19 @@
 .project-flow {
   min-width: 0;
 }
+.workspace-directory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.workspace-directory-dialog .workspace-directory-copy > * {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  overflow: visible;
+}
+.workspace-directory-row > [data-component="icon"] {
+  flex-shrink: 0;
+}
 .project-flow-list {
   display: flex;
   flex-direction: column;
@@ -27,7 +40,7 @@
 }
 .project-flow-row:hover:not(:disabled),
 .project-flow-row[aria-pressed="true"] {
-  background: var(--surface-hover-base);
+  background: var(--surface-float-base-hover);
 }
 .project-flow-row:focus-visible {
   outline: 2px solid var(--border-focus);
@@ -181,7 +194,7 @@
   color: var(--text-weak);
 }
 .project-folder-empty:hover {
-  background: var(--workbench-control-bg-hover);
+  background: var(--surface-float-base-hover);
   color: var(--text-base);
 }
 .project-folder-list {
@@ -225,7 +238,7 @@
 }
 .project-icon-button:hover,
 .project-icon-button[aria-expanded="true"] {
-  background: var(--workbench-control-bg-hover);
+  background: var(--surface-float-base-hover);
 }
 .project-add-folder {
   display: inline-flex;
@@ -239,7 +252,7 @@
 }
 .project-add-folder:hover {
   color: var(--text-base);
-  background: var(--workbench-control-bg-hover);
+  background: var(--surface-float-base-hover);
 }
 .project-create-dialog [data-slot="dialog-header"] {
   position: relative;
@@ -267,7 +280,6 @@
   align-items: center;
   justify-content: center;
   border-radius: 12px;
-  background: var(--workbench-control-bg);
   color: var(--icon-base);
 }
 .project-create-icon [data-component="icon"] {
@@ -285,6 +297,24 @@
   color: var(--text-weak);
   font-size: 12px;
   line-height: 18px;
+}
+.project-recovery-folders {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.project-recovery-folder {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+.project-recovery-path {
+  font-size: 13px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+  max-width: 100%;
 }
 .project-inline-error {
   color: var(--text-error);

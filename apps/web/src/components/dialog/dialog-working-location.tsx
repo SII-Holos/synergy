@@ -27,7 +27,10 @@ export function DialogWorkingLocation(props: {
   summary: string
   nativeFiles: boolean
   profile?: string | null
+  environmentID?: string | null
+  mainWorkspaceID?: string | null
   selection?: SessionWorkspaceSelection
+  onWorkspaceSelect?: (selection: SessionWorkspaceSelection) => void
   onProfileChange?: (value: string | null | undefined) => void
   onEnvironmentChange?: (value: string | null | undefined) => void
   groups: PromptStartOptionGroup[]
@@ -57,7 +60,9 @@ export function DialogWorkingLocation(props: {
                 <Button
                   variant="secondary"
                   disabled={props.running}
-                  onClick={() => dialog.push(() => <DialogWorkspace mode="select" sessionID={props.sessionID} />)}
+                  onClick={() =>
+                    dialog.push(() => <DialogWorkspace target={{ kind: "session", sessionID: props.sessionID! }} />)
+                  }
                 >
                   {_(copy.chooseFiles)}
                 </Button>
@@ -149,9 +154,20 @@ export function DialogWorkingLocation(props: {
             <Button
               variant="ghost"
               onClick={() =>
-                dialog.push(() => (
-                  <DialogWorkspace mode="manage" sessionID={props.sessionID} selection={props.selection} />
-                ))
+                dialog.push(() =>
+                  props.sessionID ? (
+                    <DialogWorkspace target={{ kind: "session", sessionID: props.sessionID }} />
+                  ) : props.onWorkspaceSelect ? (
+                    <DialogWorkspace
+                      target={{ kind: "draft", selection: props.selection, onSelect: props.onWorkspaceSelect }}
+                      environmentProfile={props.profile}
+                      environmentID={props.environmentID}
+                      mainWorkspaceID={props.mainWorkspaceID}
+                    />
+                  ) : (
+                    <DialogWorkspace mode="manage" />
+                  ),
+                )
               }
             >
               {_(copy.manageFiles)}

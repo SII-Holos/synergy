@@ -265,6 +265,7 @@ describe("MenuField interaction contract", () => {
     const opener = page.getByRole("button", { name: "Configure plugin", exact: true })
     await opener.click()
     const dialog = page.getByRole("dialog", { name: "Plugin configuration", exact: true })
+    await page.waitForFunction((element) => element?.contains(document.activeElement), await dialog.elementHandle())
     const trigger = dialog.getByRole("button", { name: "Delivery: queued", exact: true })
     expect(await trigger.getAttribute("id")).toBe("plugin-setting-delivery")
     await trigger.press("Enter")
@@ -284,6 +285,10 @@ describe("MenuField interaction contract", () => {
     expect(await dialog.isVisible()).toBe(true)
     expect(await dialog.getByLabel("Note", { exact: true }).inputValue()).toBe("Retained field")
     await trigger.press("Space")
+    await page.waitForFunction(
+      (element) => element === document.activeElement,
+      await page.getByRole("option", { name: "queued", exact: true }).elementHandle(),
+    )
     await direct.press("Enter")
     await page.getByRole("listbox").waitFor({ state: "detached" })
     expect(JSON.parse((await page.locator("output").textContent())!).delivery).toBe("direct")
@@ -302,10 +307,13 @@ describe("MenuField interaction contract", () => {
   test("long labels wrap and keyboard navigation scrolls a bounded list in short viewports", async () => {
     await page.setViewportSize({ width: 375, height: 320 })
     await page.goto(server.resolvedUrls!.local[0]! + "?long")
+    await page.mouse.move(0, 0)
     const trigger = page.getByRole("button", { name: /^Project: A complete/ })
     await trigger.press("ArrowDown")
     const long = page.getByRole("option", { name: /^A complete project name/ })
     await long.waitFor()
+    await page.waitForFunction((element) => element === document.activeElement, await long.elementHandle())
+    await page.waitForFunction(() => document.querySelector(".menu-field-surface")!.scrollTop > 0)
     const geometry = await page.locator(".menu-field-surface").evaluate((surface) => {
       const bounds = surface.getBoundingClientRect()
       const label = surface.querySelector('[aria-selected="true"] .menu-field-item-label')!

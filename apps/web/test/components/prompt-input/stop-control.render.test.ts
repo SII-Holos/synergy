@@ -43,6 +43,7 @@ const statusForType = () =>
       ? { type: "paused" as const, reason: "aborted" as const, since: 1 }
       : { type: statusType() as "idle" | "busy" }
 const [promptParts, setPromptParts] = createSignal<Prompt>([])
+const [transitionError, setTransitionError] = createSignal(false)
 let draftResets = 0
 const toastTitles: string[] = []
 let abandonFails = false
@@ -130,6 +131,12 @@ mock.module("../../../src/context/sdk", () => ({
     url: "http://127.0.0.1:0",
     event: { listen: () => () => {}, on: () => () => {} },
   }),
+}))
+
+mock.module("../../../src/context/server", () => ({
+  useServer: () => ({ url: "http://127.0.0.1:0" }),
+  serverDisplayName: (url: string) => url,
+  normalizeServerUrl: (url: string) => url,
 }))
 
 mock.module("../../../src/context/sync", () => ({
@@ -285,7 +292,14 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
 type Harness = { root: HTMLDivElement; dispose: () => void }
 
 function Toolbar() {
-  return createPromptInputController({}).input.render("toolbar")
+  return createPromptInputController({
+    get readOnly() {
+      return transitionError()
+    },
+    get sessionTransitionError() {
+      return transitionError()
+    },
+  }).input.render("toolbar")
 }
 
 function mount(): Harness {
@@ -315,6 +329,7 @@ const controlCount = () =>
 afterEach(() => {
   setStatusType("idle")
   setPromptParts([])
+  setTransitionError(false)
   abortCalls.length = 0
   continueCalls.length = 0
   abandonCalls.length = 0
@@ -326,6 +341,45 @@ afterEach(() => {
 })
 
 describe("single composer control", () => {
+  test("a recovery reason appears once and describes the disabled send action", async () => {
+    setTransitionError(true)
+    setPromptParts(message("Keep after recovery"))
+    const harness = mount()
+    try {
+      const control = document.querySelector<HTMLButtonElement>(".prompt-input-submit")!
+      expect(control.disabled).toBe(true)
+      expect(control.getAttribute("aria-label")).toBe(PI.sendMessage.message)
+      const description = document.getElementById(control.getAttribute("aria-describedby")!)
+      expect(description?.textContent).toBe(PI.recoveryRequired.message)
+      control.dispatchEvent(new FocusEvent("focus"))
+      await settle()
+      expect(document.querySelector('[role="tooltip"]')).toBeNull()
+      expect(document.body.textContent?.split(PI.recoveryRequired.message)).toHaveLength(2)
+      setTransitionError(false)
+      await settle()
+      expect(control.disabled).toBe(false)
+      expect(control.hasAttribute("aria-describedby")).toBe(false)
+    } finally {
+      harness.dispose()
+    }
+  })
+
+  test("a queued message tooltip presents the action only once", async () => {
+    setStatusType("busy")
+    setPromptParts(message("Queue this"))
+    const harness = mount()
+    try {
+      const control = primaryControl(PI.queueMessage.message)!
+      control.dispatchEvent(new FocusEvent("focus"))
+      await settle()
+      const tooltip = document.querySelector('[role="tooltip"]')
+      expect(tooltip).not.toBeNull()
+      expect(tooltip?.textContent?.split(PI.queueMessage.message)).toHaveLength(2)
+    } finally {
+      harness.dispose()
+    }
+  })
+
   test("a failed abandonment reports failure and keeps the paused draft available", async () => {
     setStatusType("paused")
     setPromptParts(message("Keep after failure"))
@@ -452,6 +506,12 @@ describe("single composer control", () => {
       const control = primaryControl(PI.pauseControl.message)
       expect(control, "no pause control for a running session").toBeDefined()
       expect(control!.disabled).toBe(false)
+
+      control!.dispatchEvent(new FocusEvent("focus"))
+      await settle()
+      const tooltip = document.querySelector('[role="tooltip"]')!
+      expect(tooltip.textContent).toContain(PI.pauseControl.message)
+      expect(tooltip.textContent).toContain(PI.pauseControlHint.message)
 
       control!.click()
       await settle()

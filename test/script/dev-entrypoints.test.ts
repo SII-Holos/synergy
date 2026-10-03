@@ -1,8 +1,75 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
+import { mkdtemp, rm } from "node:fs/promises"
+import os from "node:os"
 import { createDevPlan } from "../../script/dev"
 
 const root = path.resolve(import.meta.dir, "../..")
+for (const exitCode of [0, 7]) {
+  test(`dev forwards live Computer build status and compiler output before exit ${exitCode}`, async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "synergy-dev-computer-progress-"))
+    const reporter = Bun.pathToFileURL(path.join(root, "apps/desktop/script/prepare-computer-progress.ts")).href
+    const orchestrator = Bun.pathToFileURL(path.join(root, "script/dev.ts")).href
+    const source = `
+      import { ComputerBuildProgress } from ${JSON.stringify(reporter)}
+      const progress = new ComputerBuildProgress()
+      try {
+        await progress.step("Building arm64", async () => {
+          console.log("native compiler output")
+          await Bun.stdin.text()
+          if (${exitCode} !== 0) throw new Error("compiler fixture failed")
+        })
+        progress.ready()
+      } catch {
+        process.exitCode = ${exitCode}
+      }
+    `
+    const entry = path.join(directory, "forward.ts")
+    await Bun.write(
+      entry,
+      `
+      import { spawnDevProcess } from ${JSON.stringify(orchestrator)}
+      const child = spawnDevProcess({ label: "desktop", cwd: ${JSON.stringify(directory)}, command: [process.execPath, "-e", ${JSON.stringify(source)}] })
+      process.exitCode = await child.exited
+    `,
+    )
+    const child = Bun.spawn([process.execPath, entry], {
+      cwd: directory,
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const visible = Promise.withResolvers<void>()
+    let errors = ""
+    const stderr = (async () => {
+      const decoder = new TextDecoder()
+      for await (const chunk of child.stderr) {
+        errors += decoder.decode(chunk, { stream: true })
+        if (errors.includes("[desktop] [computer] Building arm64 · elapsed 0s\n")) visible.resolve()
+      }
+      errors += decoder.decode()
+      visible.reject(new Error(`Child exited before live progress was visible: ${errors}`))
+      return errors
+    })()
+    const stdout = new Response(child.stdout).text()
+    try {
+      await visible.promise
+      expect(child.exitCode).toBeNull()
+      child.stdin.end("release compiler\n")
+      const [code, output, errors] = await Promise.all([child.exited, stdout, stderr])
+      expect(code).toBe(exitCode)
+      expect(output).toContain("[desktop] native compiler output\n")
+      expect(errors).toContain(exitCode === 0 ? "[desktop] [computer] Driver ready" : "Building arm64 failed")
+      expect(errors).not.toContain("\r")
+    } finally {
+      child.stdin.end()
+      await child.exited
+      await Promise.all([stdout, stderr])
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+}
+
 for (const args of [
   ["server"],
   ["app"],

@@ -18,6 +18,10 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { createEffect, createMemo, createSignal, For, Show, onCleanup } from "solid-js"
 import { disconnectProviderConfirm } from "@/components/dialog/confirm-copy"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { ProviderAdditionalAccountSetup } from "./ProviderAdditionalAccountSetup"
+import { createProviderSetupDrafts, type ProviderSetupDrafts } from "@/components/provider/provider-setup-drafts"
+import { providerCatalogPresentation } from "@/components/provider/provider-catalog-presentation"
+import { useLocale } from "@/context/locale"
 import { ProviderConnectionFlow } from "@/components/provider/ProviderConnectionFlow"
 import { translateDescriptor } from "@/locales/translate"
 import {
@@ -74,31 +78,15 @@ const envRecoveryFallbackDesc = {
     "Update the server environment, restart Synergy, then refresh this page. Environment values are never overwritten by Settings.",
 }
 const catalogRefreshing = { id: "settings.providers.catalog.refreshing", message: "Refreshing model list" }
-const catalogBundled = { id: "settings.providers.catalog.bundled", message: "Showing default models" }
-const catalogPending = { id: "settings.providers.catalog.pending", message: "Model list needs refresh" }
-const catalogCached = { id: "settings.providers.catalog.cached", message: "Showing the last synced model list" }
-const catalogRefreshAction = { id: "settings.providers.catalog.refresh", message: "Refresh models" }
-const addAccountAction = { id: "settings.providers.account.add", message: "Add account" }
+const catalogBundled = { id: "settings.providers.catalog.bundled", message: "Using preloaded models" }
+const catalogCached = { id: "settings.providers.catalog.cached", message: "Using saved model list" }
+const catalogUpdated = { id: "settings.providers.catalog.updated", message: "Model list updated" }
+const catalogRefreshAction = { id: "settings.providers.catalog.refresh", message: "Refresh list" }
+const addAccountAction = { id: "settings.providers.account.add", message: "Add another account" }
 const editAccountAction = { id: "settings.providers.account.edit", message: "Edit account" }
 const removeAccountAction = { id: "settings.providers.account.remove", message: "Remove account" }
-const accountConnectionLabel = { id: "settings.providers.account.connection", message: "Account connection" }
-const accountConnectionDescription = {
-  id: "settings.providers.account.connection.description",
-  message: "This account has independent credentials. It is not a credential failover entry.",
-}
-const addAccountTitle = { id: "settings.providers.account.add.title", message: "Add provider account" }
-function addAccountDescription(providerName: string) {
-  return {
-    id: "settings.providers.account.add.description",
-    message: "Create a named account connection for {providerName}. Connect its credentials separately after creation.",
-    values: { providerName },
-  }
-}
+
 const editAccountTitle = { id: "settings.providers.account.edit.title", message: "Edit provider account" }
-const editAccountDescription = {
-  id: "settings.providers.account.edit.description",
-  message: "Update this account connection without changing sibling accounts.",
-}
 const accountNameLabel = { id: "settings.providers.account.name", message: "Account name" }
 const accountNamePlaceholder = { id: "settings.providers.account.name.placeholder", message: "Work account" }
 const endpointLabel = { id: "settings.providers.account.endpoint", message: "API endpoint" }
@@ -112,14 +100,9 @@ const endpointPlaceholder = {
 }
 const enabledLabel = { id: "settings.providers.account.enabled", message: "Enabled" }
 const cancelAction = { id: "settings.providers.account.cancel", message: "Cancel" }
-const createAction = { id: "settings.providers.account.create", message: "Create account" }
-const creatingAction = { id: "settings.providers.account.creating", message: "Creating..." }
 const saveAction = { id: "settings.providers.account.save", message: "Save changes" }
 const savingAction = { id: "settings.providers.account.saving", message: "Saving..." }
-const closeDialogLabel = { id: "settings.providers.account.dialog.close", message: "Close account dialog" }
-const createdToast = { id: "settings.providers.account.created", message: "Provider account created" }
 const savedToast = { id: "settings.providers.account.saved", message: "Provider account updated" }
-const requestFailedToast = { id: "settings.providers.account.requestFailed", message: "Account update failed" }
 const removeAccountTitle = { id: "settings.providers.account.remove.title", message: "Remove provider account?" }
 const removeAccountDescription = {
   id: "settings.providers.account.remove.description",
@@ -147,24 +130,42 @@ export function ProvidersPanel(props: {
   summaries: ProviderConnectionSummary[]
   authMethods: ProviderAuthResponse
   providerFocusID?: string
+  drafts?: ProviderSetupDrafts
 }) {
   const { _, i18n } = useLingui()
+  const { fmt } = useLocale()
+  const drafts = props.drafts ?? createProviderSetupDrafts()
+  if (!props.drafts) onCleanup(() => drafts.clear())
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const dialog = useDialog()
   const confirm = useConfirm()
-  const [catalogOpen, setCatalogOpen] = createSignal(false)
-  const [creatingAccountFor, setCreatingAccountFor] = createSignal<ProviderConnectionSummary>()
+  const catalogOpen = () => drafts.view.catalogOpen
+  const setCatalogOpen = (value: boolean) => drafts.setView("catalogOpen", value)
+  const creatingAccountFor = () => props.summaries.find((item) => item.id === drafts.view.addingSourceID)
+  const setCreatingAccountFor = (value?: ProviderConnectionSummary) => drafts.setView("addingSourceID", value?.id)
   const [authEditing, setAuthEditing] = createSignal(false)
-  const [catalogError, setCatalogError] = createSignal<string>()
-  const [query, setQuery] = createSignal("")
-  const [accountQuery, setAccountQuery] = createSignal("")
-  const [selectedID, setSelectedID] = createSignal<string | undefined>(props.providerFocusID)
+  const [catalogError, setCatalogError] = createSignal<{ providerID: string; message: string }>()
+  const [catalogResult, setCatalogResult] = createSignal<{
+    providerID: string
+    catalog: ProviderConnectionSummary["catalog"]
+  }>()
+  const query = () => drafts.view.query
+  const setQuery = (value: string) => drafts.setView("query", value)
+  const accountQuery = () => drafts.view.accountQuery
+  const setAccountQuery = (value: string) => drafts.setView("accountQuery", value)
+  const selectedID = () => drafts.view.selectedID
+  const setSelectedID = (value?: string) => drafts.setView("selectedID", value)
   const [refreshingID, setRefreshingID] = createSignal<string | undefined>()
   const pendingCatalogReads = new Set<string>()
 
+  let focusID = props.providerFocusID
+  if (!selectedID() && focusID) setSelectedID(focusID)
   createEffect(() => {
-    if (props.providerFocusID) setSelectedID(props.providerFocusID)
+    const id = props.providerFocusID
+    if (id === focusID) return
+    focusID = id
+    if (id) chooseProvider(id)
   })
 
   const serviceHint = (provider: ProviderConnectionSummary) => {
@@ -216,7 +217,7 @@ export function ProvidersPanel(props: {
         (provider.connected || provider.removable || providerNeedsAction(provider.health)) &&
         `${provider.name} ${provider.id}`.toLocaleLowerCase().includes(accountQuery().toLocaleLowerCase().trim()),
     )
-  let origin: { catalog: boolean; providerID?: string; scroll: number } | undefined
+  const origin = () => drafts.view.origin
   let restoration = 0
   let alive = true
   onCleanup(() => {
@@ -224,19 +225,22 @@ export function ProvidersPanel(props: {
   })
   const body = () => document.querySelector<HTMLElement>(".settings-panel-content")
   function rememberOrigin(providerID?: string) {
-    origin = { catalog: catalogOpen(), providerID, scroll: body()?.scrollTop ?? 0 }
+    drafts.setView("origin", { catalog: catalogOpen(), providerID, scroll: body()?.scrollTop ?? 0 })
   }
   function chooseProvider(id: string) {
+    if (selectedID() && selectedID() !== id) drafts.remove(`existing:${selectedID()}`)
+    cancelSetup()
     rememberOrigin(id)
     setSelectedID(id)
     setCatalogOpen(false)
     setAuthEditing(false)
   }
   function back() {
+    if (selectedID()) drafts.remove(`existing:${selectedID()}`)
     setSelectedID(undefined)
-    setCreatingAccountFor(undefined)
+    cancelSetup()
     setAuthEditing(false)
-    setCatalogOpen(origin?.catalog ?? false)
+    setCatalogOpen(origin()?.catalog ?? false)
     const version = ++restoration
     requestAnimationFrame(async () => {
       const content = body()
@@ -246,41 +250,68 @@ export function ProvidersPanel(props: {
           .map((animation) => animation.finished.catch(() => undefined)),
       )
       if (!alive || version !== restoration) return
-      const target = origin?.providerID
+      const target = origin()?.providerID
         ? [...document.querySelectorAll<HTMLElement>("[data-provider-id]")].find(
-            (node) => node.dataset.providerId === origin?.providerID,
+            (node) => node.dataset.providerId === origin()?.providerID,
           )
         : document.querySelector<HTMLElement>("[data-add-service]")
-      if (content) content.scrollTop = origin?.scroll ?? 0
+      if (content) content.scrollTop = origin()?.scroll ?? 0
       target?.focus({ preventScroll: true })
     })
   }
   const statusLabel = (provider: ProviderConnectionSummary) =>
     translateDescriptor(providerStatusLabel(provider.health, provider.availability), i18n())
 
+  const catalogState = (provider: ProviderConnectionSummary) =>
+    providerCatalogPresentation(
+      catalogResult()?.providerID === provider.id ? catalogResult()?.catalog : provider.catalog,
+      refreshingID() === provider.id,
+    )
   const catalogLabel = (provider: ProviderConnectionSummary) => {
-    if (refreshingID() === provider.id || provider.catalog?.refreshing) return _(catalogRefreshing)
-    if (provider.catalog?.failure)
-      return provider.catalog.source === "bundled" ? `${_(catalogPending)} · ${_(catalogBundled)}` : _(catalogPending)
-    if (provider.catalog?.source === "bundled") return _(catalogBundled)
-    return _(catalogCached)
+    switch (catalogState(provider).status) {
+      case "loading":
+        return _(catalogRefreshing)
+      case "failed":
+        return _({ id: "settings.providers.catalog.failed", message: "Could not refresh the model list" })
+      case "bundled":
+        return _(catalogBundled)
+      case "updated":
+        return _(catalogUpdated)
+      case "cached":
+        return _(catalogCached)
+      default:
+        return ""
+    }
   }
-
   async function refreshModels(providerID: string) {
+    if (refreshingID()) return
     setCatalogError(undefined)
     setRefreshingID(providerID)
     try {
       if (!pendingCatalogReads.has(providerID)) {
-        await globalSDK.client.provider.models.refresh({ providerID }, { throwOnError: true })
+        const response = await globalSDK.client.provider.models.refresh({ providerID }, { throwOnError: true })
         pendingCatalogReads.add(providerID)
+        if (alive && selectedID() === providerID && response.data)
+          setCatalogResult({ providerID, catalog: response.data })
       }
+      if (!alive) return
       await globalSync.refreshProviders()
       pendingCatalogReads.delete(providerID)
+      if (alive && catalogResult()?.providerID === providerID) setCatalogResult(undefined)
     } catch (error) {
-      setCatalogError(requestErrorMessage(error))
+      if (alive && selectedID() === providerID) setCatalogError({ providerID, message: requestErrorMessage(error) })
     } finally {
-      setRefreshingID(undefined)
+      if (alive) setRefreshingID(undefined)
     }
+  }
+  function cancelSetup() {
+    const sourceID = drafts.view.addingSourceID
+    if (sourceID) drafts.remove(`additional:${sourceID}`)
+    setCreatingAccountFor(undefined)
+    if (sourceID)
+      requestAnimationFrame(() => {
+        if (alive) document.querySelector<HTMLElement>("[data-add-provider-account]")?.focus()
+      })
   }
 
   function confirmDisconnect(provider: ProviderConnectionSummary) {
@@ -295,6 +326,8 @@ export function ProvidersPanel(props: {
   }
 
   function openAddAccount(provider: ProviderConnectionSummary) {
+    setAuthEditing(false)
+    drafts.remove(`existing:${provider.id}`)
     setCreatingAccountFor(provider)
   }
 
@@ -302,11 +335,10 @@ export function ProvidersPanel(props: {
     dialog.push(() => (
       <ProviderAccountDialog
         connection={provider}
-        profileID={provider.profileID}
-        providerName={provider.profile?.displayName ?? provider.profile?.name ?? provider.name}
+        allowEndpoint={props.authMethods[provider.id]?.some((method) => method.type === "api") ?? false}
         onSaved={async (connection) => {
           await globalSync.refreshProviders()
-          setSelectedID(connection.id)
+          if (alive) setSelectedID(connection.id)
         }}
       />
     ))
@@ -343,7 +375,7 @@ export function ProvidersPanel(props: {
                 setCatalogOpen(true)
               }}
             >
-              {_({ id: "settings.providers.addService", message: "Add service" })}
+              {_({ id: "settings.providers.addService", message: "Add model service" })}
             </Button>
           }
         >
@@ -351,17 +383,23 @@ export function ProvidersPanel(props: {
             variant="ghost"
             icon={getSemanticIcon("navigation.back")}
             onClick={() => {
-              if (!selected()) origin = { catalog: false, scroll: 0 }
+              if (!selected()) drafts.setView("origin", { catalog: false, scroll: 0 })
               back()
             }}
           >
-            {selected() && origin?.catalog
+            {selected() && origin()?.catalog
               ? _({ id: "settings.providers.backToServices", message: "Back to services" })
               : _({ id: "settings.providers.back", message: "Back to accounts" })}
           </Button>
         </Show>
       }
     >
+      <p class="providers-immediate-hint">
+        {_({
+          id: "settings.providers.immediate",
+          message: "Account actions take effect immediately. You can leave Settings without saving them again.",
+        })}
+      </p>
       <Show when={!selected() && !catalogOpen()}>
         <TextField
           hideLabel
@@ -407,9 +445,12 @@ export function ProvidersPanel(props: {
                 >
                   <ProviderIcon id={provider.profileID} class="size-6 shrink-0" />
                   <span class="providers-connected-copy">
-                    <span class="settings-row-title">{provider.name}</span>
+                    <span class="settings-row-title">
+                      {provider.profile?.displayName ?? provider.profile?.name ?? provider.name}
+                    </span>
                     <span class="settings-row-description">
-                      {provider.connected
+                      {provider.removable ? `${provider.name} · ` : ""}
+                      {provider.connected || providerNeedsAction(provider.health)
                         ? statusLabel(provider)
                         : _({
                             id: "settings.providers.unfinished",
@@ -417,7 +458,8 @@ export function ProvidersPanel(props: {
                           })}
                     </span>
                     <span class="settings-row-description">
-                      {_(modelCount(provider.modelCount))} · {catalogLabel(provider)}
+                      {_(modelCount(provider.modelCount))}
+                      <Show when={provider.catalog}> · {catalogLabel(provider)}</Show>
                     </span>
                   </span>
                   <Icon name={getSemanticIcon("navigation.expand")} size="small" />
@@ -505,7 +547,9 @@ export function ProvidersPanel(props: {
                     <div class="flex items-center gap-3 min-w-0">
                       <ProviderIcon id={provider().profileID} class="providers-detail-icon" />
                       <div class="min-w-0">
-                        <div class="providers-detail-title">{provider().name}</div>
+                        <div class="providers-detail-title">
+                          {provider().profile?.displayName ?? provider().profile?.name ?? provider().name}
+                        </div>
                         <Show when={serviceHint(provider()) ?? providerConnectReason(provider().id, profileMap())}>
                           {(text) => <div class="providers-detail-copy">{text()}</div>}
                         </Show>
@@ -520,20 +564,60 @@ export function ProvidersPanel(props: {
                     </span>
                   </div>
 
-                  <div class="providers-detail-meta">
-                    <span>{_(modelCount(provider().modelCount))}</span>
-                    <Show when={provider().removable}>
-                      <span>{_(accountConnectionLabel)}</span>
+                  <div
+                    class="providers-catalog-status"
+                    classList={{ "providers-catalog-warning": catalogState(provider()).tone === "warning" }}
+                    role="status"
+                  >
+                    <div class="providers-catalog-copy">
+                      <span>{_(modelCount(provider().modelCount))}</span>
+                      <Show when={provider().catalog}>
+                        <span> · {catalogLabel(provider())}</span>
+                        <Show when={catalogState(provider()).verifiedAt}>
+                          {(timestamp) => (
+                            <time dateTime={new Date(timestamp()).toISOString()}>
+                              {_({
+                                id: "settings.providers.catalog.lastUpdated",
+                                message: "Last updated {time}",
+                                values: { time: fmt.dateTime(timestamp()) },
+                              })}
+                            </time>
+                          )}
+                        </Show>
+                        <Show when={catalogState(provider()).status === "failed" && provider().modelCount > 0}>
+                          <span class="providers-catalog-note">
+                            {provider().catalog?.source === "bundled"
+                              ? _(catalogBundled)
+                              : _({
+                                  id: "settings.providers.catalog.stillAvailable",
+                                  message: "You can keep using the existing models.",
+                                })}
+                          </span>
+                        </Show>
+                      </Show>
+                    </div>
+                    <Show when={provider().connected && provider().catalog}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="small"
+                        icon={getSemanticIcon("action.refresh")}
+                        disabled={Boolean(refreshingID()) || provider().catalog?.refreshing}
+                        onClick={() => void refreshModels(provider().id)}
+                      >
+                        {_(catalogRefreshAction)}
+                      </Button>
                     </Show>
                   </div>
 
                   <div class="providers-account-actions">
-                    <div class="providers-account-actions-copy">
-                      <Show when={provider().removable}>{_(accountConnectionDescription)}</Show>
-                    </div>
+                    <Show when={provider().removable}>
+                      <span class="providers-account-actions-copy">{provider().name}</span>
+                    </Show>
                     <div class="providers-connect-actions">
-                      <Show when={canAddProviderAccount(provider())}>
+                      <Show when={provider().connected && canAddProviderAccount(provider()) && !creatingAccountFor()}>
                         <Button
+                          data-add-provider-account
                           type="button"
                           variant="ghost"
                           size="small"
@@ -543,39 +627,51 @@ export function ProvidersPanel(props: {
                           {_(addAccountAction)}
                         </Button>
                       </Show>
-                      <Show when={provider().removable}>
-                        <Button type="button" variant="ghost" size="small" onClick={() => openEditAccount(provider())}>
-                          {_(editAccountAction)}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="small"
-                          icon={getSemanticIcon("action.remove")}
-                          onClick={() => confirmRemoveAccount(provider())}
-                        >
-                          {_(removeAccountAction)}
-                        </Button>
+                      <Show
+                        when={
+                          (provider().connected && provider().health?.recovery !== "update_environment") ||
+                          provider().removable
+                        }
+                      >
+                        <details class="providers-management">
+                          <summary>{_({ id: "settings.providers.account.manage", message: "Manage account" })}</summary>
+                          <div class="providers-management-actions">
+                            <Show when={provider().connected && provider().health?.recovery !== "update_environment"}>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="small"
+                                onClick={() => {
+                                  cancelSetup()
+                                  setAuthEditing(true)
+                                }}
+                              >
+                                {_({ id: "settings.providers.updateCredentials", message: "Update credentials" })}
+                              </Button>
+                            </Show>
+                            <Show when={provider().removable}>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="small"
+                                onClick={() => openEditAccount(provider())}
+                              >
+                                {_(editAccountAction)}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="small"
+                                onClick={() => confirmRemoveAccount(provider())}
+                              >
+                                {_(removeAccountAction)}
+                              </Button>
+                            </Show>
+                          </div>
+                        </details>
                       </Show>
                     </div>
                   </div>
-
-                  <Show when={provider().connected && provider().catalog}>
-                    <div class="providers-auth-warning" role="status">
-                      <Icon name={getSemanticIcon("action.refresh")} size="small" />
-                      <span>{catalogLabel(provider())}</span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="small"
-                        disabled={refreshingID() === provider().id || provider().catalog?.refreshing}
-                        onClick={() => void refreshModels(provider().id)}
-                      >
-                        {_(catalogRefreshAction)}
-                      </Button>
-                    </div>
-                  </Show>
-
                   <Show when={providerNeedsAction(provider().health)}>
                     <div class="providers-auth-warning" role="status">
                       <Icon name={getSemanticIcon("providers.reconnect")} size="small" />
@@ -598,23 +694,36 @@ export function ProvidersPanel(props: {
                     </div>
                   </Show>
 
-                  <Show when={catalogError()}>
-                    <p class="settings-request-error" role="alert">
-                      {catalogError()}
+                  <Show when={catalogError()?.providerID === provider().id && catalogError()}>
+                    <p class="providers-auth-warning" role="alert">
+                      {catalogError()?.message}
                     </p>
                   </Show>
                   <Show
                     when={creatingAccountFor()}
                     fallback={
                       <Show
-                        when={!provider().connected || providerNeedsAction(provider().health) || authEditing()}
-                        fallback={
-                          <Button variant="secondary" onClick={() => setAuthEditing(true)}>
-                            {_({ id: "settings.providers.updateCredentials", message: "Update credentials" })}
-                          </Button>
+                        when={
+                          !provider().connected ||
+                          providerNeedsAction(provider().health) ||
+                          authEditing() ||
+                          drafts.peek(`existing:${provider().id}`)?.credentialsSaved
                         }
                       >
                         <div class="providers-connect-section">
+                          <Show when={authEditing()}>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="small"
+                              onClick={() => {
+                                drafts.remove(`existing:${provider().id}`)
+                                setAuthEditing(false)
+                              }}
+                            >
+                              {_(cancelAction)}
+                            </Button>
+                          </Show>
                           <Show
                             when={provider().health?.recovery !== "update_environment"}
                             fallback={<p class="providers-connect-copy">{_(envRecoveryFallbackDesc)}</p>}
@@ -627,8 +736,11 @@ export function ProvidersPanel(props: {
                                   iconID={provider().profileID}
                                   intent={providerNeedsAction(provider().health) ? "recover" : "connect"}
                                   compact
+                                  draft={drafts.get(`existing:${providerID}`)}
+                                  onDraftChange={(value) => drafts.update(`existing:${providerID}`, value)}
                                   connectedOverride={false}
                                   onComplete={() => {
+                                    drafts.remove(`existing:${providerID}`)
                                     setAuthEditing(false)
                                     setCreatingAccountFor(undefined)
                                   }}
@@ -641,15 +753,15 @@ export function ProvidersPanel(props: {
                     }
                   >
                     {(account) => (
-                      <ProviderAccountDialog
-                        inline
-                        profileID={account().profileID}
-                        providerName={account().name}
-                        onCancel={() => setCreatingAccountFor(undefined)}
-                        onSaved={async (connection) => {
-                          await globalSync.refreshProviders()
-                          setSelectedID(connection.id)
-                          setAuthEditing(true)
+                      <ProviderAdditionalAccountSetup
+                        source={account()}
+                        summaries={props.summaries}
+                        drafts={drafts}
+                        onCancel={cancelSetup}
+                        onComplete={(providerID) => {
+                          setCreatingAccountFor(undefined)
+                          setSelectedID(providerID)
+                          setAuthEditing(false)
                         }}
                       />
                     )}
@@ -712,135 +824,110 @@ function ProviderGroup(props: {
 }
 
 function ProviderAccountDialog(props: {
-  inline?: boolean
-  onCancel?: () => void
-  profileID: string
-  providerName: string
-  connection?: ProviderConnection
+  connection: ProviderConnection
+  allowEndpoint: boolean
   onSaved: (connection: ProviderConnection) => void | Promise<void>
 }) {
   const { _ } = useLingui()
   const dialog = useDialog()
-  const close = () => (props.onCancel ? props.onCancel() : dialog.close())
   const globalSDK = useGlobalSDK()
-  const [name, setName] = createSignal(props.connection?.name ?? "")
-  const [endpoint, setEndpoint] = createSignal(props.connection?.endpoint ?? "")
-  const [enabled, setEnabled] = createSignal(props.connection?.enabled ?? true)
+  const [name, setName] = createSignal(props.connection.name)
+  const [endpoint, setEndpoint] = createSignal(props.connection.endpoint ?? "")
+  const [enabled, setEnabled] = createSignal(props.connection.enabled)
   const [busy, setBusy] = createSignal(false)
   const [persisted, setPersisted] = createSignal(false)
   const [error, setError] = createSignal<string>()
-  const editing = () => props.connection !== undefined
-  const ready = () => name().trim().length > 0
-
+  let active = true
+  onCleanup(() => {
+    active = false
+  })
   const command = createProviderAccountCommand(
     async () => {
-      const connection = await saveProviderAccount(
-        globalSDK.client.provider.connection,
-        editing()
-          ? {
-              mode: "update",
-              providerID: props.connection!.id,
-              name: name().trim(),
-              endpoint: endpoint().trim() || null,
-              enabled: enabled(),
-            }
-          : {
-              mode: "create",
-              profileID: props.profileID,
-              name: name().trim(),
-              ...(endpoint().trim() ? { endpoint: endpoint().trim() } : {}),
-              enabled: enabled(),
-            },
-      )
-      setPersisted(true)
+      const connection = await saveProviderAccount(globalSDK.client.provider.connection, {
+        mode: "update",
+        providerID: props.connection.id,
+        name: name().trim(),
+        endpoint: endpoint().trim() || null,
+        enabled: enabled(),
+      })
+      if (active) setPersisted(true)
       return connection
     },
     async (connection) => {
-      await props.onSaved(connection)
+      if (active) await props.onSaved(connection)
     },
   )
-
   async function submit(event: SubmitEvent) {
     event.preventDefault()
-    if (!ready() || busy()) return
+    if (!name().trim() || busy()) return
     setBusy(true)
     setError(undefined)
     try {
       await command.run()
-      showToast({ type: "success", title: editing() ? _(savedToast) : _(createdToast) })
-      close()
+      if (!active) return
+      showToast({ type: "success", title: _(savedToast) })
+      dialog.close()
     } catch (cause) {
-      setError(requestErrorMessage(cause))
-      showToast({
-        type: "error",
-        title: _(requestFailedToast),
-        description: requestErrorMessage(cause),
-      })
+      if (active) setError(requestErrorMessage(cause))
     } finally {
-      setBusy(false)
+      if (active) setBusy(false)
     }
   }
-
-  const form = () => (
-    <form data-slot="dialog-form" onSubmit={submit}>
-      <Show when={error()}>
-        <p class="settings-request-error" role="alert">
-          {error()}
-        </p>
-      </Show>
-      <div class="provider-account-dialog-fields">
-        <TextField
-          autofocus
-          label={_(accountNameLabel)}
-          required
-          placeholder={_(accountNamePlaceholder)}
-          value={name()}
-          disabled={busy() || persisted()}
-          onChange={setName}
-        />
-        <TextField
-          label={_(endpointLabel)}
-          description={_(endpointDescription)}
-          placeholder={_(endpointPlaceholder)}
-          value={endpoint()}
-          disabled={busy() || persisted()}
-          onChange={setEndpoint}
-        />
-        <Switch checked={enabled()} disabled={busy() || persisted()} onChange={setEnabled}>
-          {_(enabledLabel)}
-        </Switch>
-      </div>
-      <div data-slot="dialog-actions" class="provider-account-dialog-actions">
-        <Button type="button" variant="ghost" size="large" disabled={busy()} onClick={() => close()}>
-          {_(cancelAction)}
-        </Button>
-        <Button type="submit" variant="primary" size="large" disabled={busy() || !ready()}>
-          {busy()
-            ? editing()
-              ? _(savingAction)
-              : _(creatingAction)
-            : persisted()
-              ? _({ id: "settings.providers.account.retryRefresh", message: "Refresh connection" })
-              : editing()
-                ? _(saveAction)
-                : _(createAction)}
-        </Button>
-      </div>
-    </form>
-  )
   return (
-    <Show
-      when={props.inline}
-      fallback={
-        <Dialog title={editing() ? _(editAccountTitle) : _(addAccountTitle)} size="form">
-          {form()}
-        </Dialog>
-      }
-    >
-      <div class="providers-account-create">
-        <h2 class="ds-section-label">{_(addAccountTitle)}</h2>
-        {form()}
-      </div>
-    </Show>
+    <Dialog title={_(editAccountTitle)} size="form">
+      <form data-slot="dialog-form" onSubmit={submit}>
+        <Show when={error()}>
+          <p class="settings-request-error" role="alert">
+            <Show when={persisted()}>
+              {_({
+                id: "settings.providers.account.savedRefreshFailed",
+                message: "Account changes saved. Refresh the connection to update this view.",
+              })}
+            </Show>
+            {error()}
+          </p>
+        </Show>
+        <div class="provider-account-dialog-fields">
+          <TextField
+            autofocus
+            label={_(accountNameLabel)}
+            required
+            maxLength={80}
+            placeholder={_(accountNamePlaceholder)}
+            value={name()}
+            disabled={busy() || persisted()}
+            onChange={setName}
+          />
+          <Show when={props.allowEndpoint || props.connection.endpoint}>
+            <details class="providers-advanced">
+              <summary>{_({ id: "settings.providers.account.advanced", message: "Advanced settings" })}</summary>
+              <TextField
+                label={_(endpointLabel)}
+                description={_(endpointDescription)}
+                placeholder={_(endpointPlaceholder)}
+                value={endpoint()}
+                disabled={busy() || persisted()}
+                onChange={setEndpoint}
+              />
+            </details>
+          </Show>
+          <Switch checked={enabled()} disabled={busy() || persisted()} onChange={setEnabled}>
+            {_(enabledLabel)}
+          </Switch>
+        </div>
+        <div data-slot="dialog-actions" class="provider-account-dialog-actions">
+          <Button type="button" variant="ghost" size="large" disabled={busy()} onClick={() => dialog.close()}>
+            {_(cancelAction)}
+          </Button>
+          <Button type="submit" variant="primary" size="large" disabled={busy() || !name().trim()}>
+            {busy()
+              ? _(savingAction)
+              : persisted()
+                ? _({ id: "settings.providers.account.retryRefresh", message: "Refresh connection" })
+                : _(saveAction)}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   )
 }
