@@ -136,6 +136,8 @@ function recordBody(value: SqlValue): RecordBody {
 }
 
 function metadata(key: string[]) {
+  if (key[0] === "usage_parent")
+    return { kind: key[0], scope: key[1] ?? "", session: key[2] ?? "", message: key[3] ?? "", order: key.at(-1)! }
   if (["usage_time", "usage_link"].includes(key[0]))
     return {
       kind: key[0],
@@ -1666,14 +1668,11 @@ export class TransactionalStore {
         return
       }
       try {
-        const progress = await withStorageQueueOptions(
-          { priority: "background", deadline: performance.now() + 100 },
-          async () => {
-            const owners = await this.prepareEvidenceOwners()
-            const text = await this.transaction((tx) => tx.collectTextProjection(), { priority: "background" })
-            return { ready: owners.ready && text.ready }
-          },
-        )
+        const progress = await withStorageQueueOptions({ priority: "background" }, async () => {
+          const owners = await this.prepareEvidenceOwners()
+          const text = await this.transaction((tx) => tx.collectTextProjection(), { priority: "background" })
+          return { ready: owners.ready && text.ready }
+        })
         if (!this.closing) this.scheduleEvidencePreparation(progress.ready ? 5_000 : 25)
       } catch (error) {
         if (this.closing || this.unavailable) return

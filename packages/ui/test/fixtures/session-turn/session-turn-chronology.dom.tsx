@@ -261,6 +261,34 @@ globalThis.__chronologyHarness = {
   setMode,
   setPreview,
   setSegmented,
+  addCompaction: (state = "committed") => {
+    move(8)
+    setData("message", sessionID, 1, {
+      ...assistantMessage,
+      mode: "compaction",
+      agent: "compaction",
+      metadata: { compactionAttempt: { state } },
+      time: { created: 1, completed: state === "running" ? undefined : 2 },
+      error: state === "failed" ? { name: "UnknownError", data: { message: "Provider unavailable" } } : undefined,
+    })
+    setData(
+      "part",
+      assistantID,
+      state !== "committed"
+        ? []
+        : [
+            {
+              id: "recovery",
+              sessionID,
+              messageID: assistantID,
+              type: "compaction_recovery",
+              summary: "Durable summary",
+              mechanical: false,
+              validated: true,
+            },
+          ],
+    )
+  },
   setProgress: (value) => setData("part", assistantID, 1, "text", value),
   reset: () => {
     for (const key of Object.keys(expanded)) setExpanded(key, undefined)

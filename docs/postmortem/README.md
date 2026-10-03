@@ -1,6 +1,6 @@
 # Postmortems
 
-Postmortems explain escaped failures, their causes, missed safeguards and added guardrails.
+Postmortems explain failures, causes and guardrails.
 
 ## When to write one
 
@@ -32,6 +32,7 @@ Name files `NNNN-kebab-case-title.md` using the next available number. Use these
 
 Qualifying incidents:
 
+- [0036: Session latency](0036-session-interactions-amplified-global-work.md)
 - [0035: Titlebar controls](0035-native-titlebar-swallowed-controls.md)
 
 | Number | Title                                                                      | Status      | Date       |

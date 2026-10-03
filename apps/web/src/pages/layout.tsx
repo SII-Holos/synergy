@@ -233,7 +233,7 @@ export default function Layout(props: ParentProps) {
         if (next) layout.nav.prefetchSession(next)
       }
 
-      if (import.meta.env.DEV) {
+      {
         navStart({
           dir: base64Encode(session.scope.id!),
           from: params.id,
@@ -263,7 +263,7 @@ export default function Layout(props: ParentProps) {
     if (offset > 0 && nextSession) layout.nav.prefetchSession(nextSession, "high")
     if (offset < 0 && prevSession) layout.nav.prefetchSession(prevSession, "high")
 
-    if (import.meta.env.DEV) {
+    {
       navStart({
         dir: base64Encode(targetSession.scope.id!),
         from: params.id,

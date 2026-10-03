@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { ScopeContext } from "../../src/scope/context"
@@ -12,6 +12,39 @@ const runtime = await testRuntime()
 afterAll(() => runtime.close())
 
 describe("Workspace snapshots", () => {
+  test("bounds concurrent capture while retaining every file across batch boundaries", () =>
+    runtime.run(async () => {
+      await using directory = await tmpdir()
+      const names = Array.from({ length: 37 }, (_, index) => `capture-${index}.txt`)
+      await Promise.all(names.map((name) => Bun.write(path.join(directory.path, name), `bytes:${name}`)))
+      const open = fs.open
+      let pending = 0
+      let peak = 0
+      using measured = spyOn(fs, "open").mockImplementation(async (filename, flags, mode) => {
+        if (!String(filename).startsWith(directory.path) || !String(filename).includes("capture-"))
+          return open(filename, flags, mode)
+        pending++
+        peak = Math.max(peak, pending)
+        try {
+          await Bun.sleep(2)
+          return await open(filename, flags, mode)
+        } finally {
+          pending--
+        }
+      })
+      await ScopeContext.provide({
+        scope: await directory.scope(),
+        fn: async () => {
+          const hash = await Snapshot.track("capture-batches")
+          expect(peak).toBeGreaterThan(1)
+          expect(peak).toBeLessThanOrEqual(16)
+          expect(pending).toBe(0)
+          const repo = SnapshotStore.repository(ScopeContext.current.scope.id)
+          for (const name of names)
+            expect(await SnapshotStore.command(repo, ["show", `${hash}:${name}`])).toBe(`bytes:${name}`)
+        },
+      })
+    }))
   test("captures exact bytes independently of Git attributes and restored timestamps", () =>
     runtime.run(async () => {
       await using directory = await tmpdir()

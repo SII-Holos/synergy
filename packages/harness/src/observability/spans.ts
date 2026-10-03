@@ -194,7 +194,7 @@ export namespace ObservabilitySpans {
       processId: ctx.processId,
       pid: ctx.pid,
       tool: ctx.tool,
-      labels: { ...redacted.value, status },
+      labels: { ...redacted.value, status: redacted.value.status ?? status, spanStatus: status },
     })
     ObservabilityLiveEvents.publish({ type: "trace.ended", trace: span })
     const config = ObservabilityConfig.current()

@@ -166,3 +166,42 @@ test("pruned historical rollouts retain message accounting without reviving expl
     await UsageMigration.preserve(owner)
     expect((await UsageQuery.summary({ scopeID: owner.scopeID })).accounting.tokens.total.known).toBe(0)
   }))
+
+test("lineage upgrade preserves orphaned historical descendants and is idempotent", () =>
+  runtime.run(async () => {
+    const scopeID = crypto.randomUUID()
+    const parent = { kind: "session" as const, scopeID, sessionID: crypto.randomUUID() }
+    const owner = { kind: "operation" as const, scopeID, operationID: crypto.randomUUID() }
+    const call = await RolloutLedger.beginCall({
+      owner,
+      runID: "child",
+      purpose: "title",
+      request: {},
+      model: { providerID: "test", modelID: "test", sdk: "@ai-sdk/openai", pricing: null },
+    })
+    await RolloutLedger.finishCall(owner, "child", call.id, {
+      status: "completed",
+      sdkUsage: { inputTokens: 40, outputTokens: 10 },
+    })
+    await UsageLedger.link(owner, "child", { owner: parent, runID: "removed-root", messageID: "message" })
+    const link = await Storage.read<Parameters<typeof UsageLedger.parentKey>[0]>(
+      StoragePath.usageLink(scopeID, UsageLedger.ownerKey(owner), "child"),
+    )
+    await Storage.remove(UsageLedger.parentKey(link)!)
+    expect((await UsageQuery.collect({ scopeID, sessionID: parent.sessionID, includeDescendants: true })).length).toBe(
+      0,
+    )
+    for (let n = 0; n < 2; n++) {
+      await UsageMigration.lineageMigration.up(() => {})
+      expect(
+        (await UsageQuery.summary({ scopeID, sessionID: parent.sessionID, includeDescendants: true })).accounting.tokens
+          .total.total,
+      ).toBe(50)
+    }
+    await UsageLedger.link(owner, "child", {
+      owner: { ...parent, sessionID: "other" },
+      runID: "other",
+      messageID: "message",
+    })
+    expect(await UsageQuery.collect({ scopeID, sessionID: parent.sessionID, includeDescendants: true })).toEqual([])
+  }))

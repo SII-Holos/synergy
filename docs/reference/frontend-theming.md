@@ -96,7 +96,7 @@ Plugin Kit `build`, `validate`, and `dev` use this exact parser for both source 
 
 Color scheme and skin identity are separate. `system`, `light`, and `dark` choose the effective variant; the selected namespaced theme ID chooses the resolved colors. The validated `synergy-skin-cache-v1` Web snapshot stores the raw Theme JSON plus flattened light/dark shell colors. The preloader reads only named shell fields after hex validation, while `ThemeProvider` reparses the raw theme before using it.
 
-Desktop persists `DesktopSkinStateV2` with the source, theme ID, and both shell variants. BrowserWindow background, startup overlay, diagnostic page, and temporary window controls use the persisted effective variant before the Web renderer loads. Source-only legacy state migrates to V2 with the generated Synergy fallback. Theme application sends a strict full-skin IPC update; OS appearance changes select a variant without replacing the skin.
+Desktop persists `DesktopSkinStateV2` with the source, theme ID, and both shell variants. Saves serialize per destination in invocation order and replace the validated file atomically; a failed save rejects its caller without blocking later updates. BrowserWindow background, startup overlay, diagnostic page, and temporary window controls use the persisted effective variant before the Web renderer loads. Source-only legacy state migrates to V2 with the generated Synergy fallback. Theme application sends a strict full-skin IPC update; OS appearance changes select a variant without replacing the skin.
 
 ## Creating a New Selectable Theme
 

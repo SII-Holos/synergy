@@ -1505,24 +1505,25 @@ export async function migrateToolInputSemantics(
 ) {
   let done = 0
   for await (const { key, value } of SessionMigrationTarget.records<Record<string, unknown>>({ kind: "part" })) {
+    progress(++done, 0)
     if (value.type !== "tool" || typeof value.tool !== "string" || (tools && !tools.has(value.tool))) continue
     const state = asRecord(value.state)
     const input = asRecord(state?.input)
     if (!state || !input || value.inputShape === "envelope") continue
     const upgraded = Tool.upgradeInput(value.tool, input)
-    const next = { ...value, state: { ...state, input: upgraded } }
+    const next: Record<string, unknown> = { ...value, state: { ...state, input: upgraded } }
     if (value.tool === "bash" && typeof upgraded.workBrief === "string") {
       const intent = upgraded.workBrief.trim()
       if (value.workBrief === undefined && intent) Object.assign(next, { workBrief: intent })
       delete upgraded.workBrief
     }
-    if (JSON.stringify(next) !== JSON.stringify(value))
+    if (JSON.stringify(upgraded) !== JSON.stringify(input) || next.workBrief !== value.workBrief)
       await Storage.transaction(async () => {
         await Storage.write(key, next)
         await SessionHistoryDisplay.invalidatePart(key[1], key[2], key[4], key[6])
       })
-    progress(++done, done)
   }
+  progress(done, done)
 }
 
 export const migrations: Migration[] = [
@@ -1565,9 +1566,14 @@ export const migrations: Migration[] = [
     },
     async up(progress) {
       const { SessionHistory } = await import("./history")
+      let phase = 0
       for (const scopeID of await SessionMigrationTarget.scopes()) {
-        for (const sessionID of await SessionMigrationTarget.sessions(scopeID))
-          await SessionHistory.prepareDisplayOwner({ scopeID, sessionID }, progress)
+        for (const sessionID of await SessionMigrationTarget.sessions(scopeID)) {
+          progress(0, 0, ++phase)
+          await SessionHistory.prepareDisplayOwner({ scopeID, sessionID }, (current, total) =>
+            progress(current, total, phase),
+          )
+        }
       }
     },
   },
@@ -2266,7 +2272,7 @@ export const migrations: Migration[] = [
   {
     id: "20260907-snapshot-shared-store",
     scope: "session",
-    execution: "session",
+    execution: "startup",
     async upSession(owner) {
       const { SnapshotMaintenance } = await import("./snapshot-maintenance")
       await SnapshotMaintenance.registerLegacy(undefined, owner.scopeID, owner.sessionID)

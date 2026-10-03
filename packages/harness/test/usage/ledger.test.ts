@@ -12,6 +12,72 @@ import { RolloutArtifact } from "../../src/session/rollout/artifact"
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
 
+test("session usage does not read unrelated owners' counters, including an empty session", () =>
+  runtime.run(async () => {
+    const scopeID = crypto.randomUUID()
+    const owner = { kind: "session" as const, scopeID, sessionID: crypto.randomUUID() }
+    const foreign = ["usage", scopeID, "session_foreign", "run", "tool", "broken"]
+    await Storage.write(foreign, { unavailable: true })
+    await Storage.write(["usage_time", scopeID, "session_foreign", "00000000000000001_broken"], { key: foreign })
+    expect((await UsageQuery.records({ scopeID, sessionID: owner.sessionID })).items).toEqual([])
+    await invocation({ owner })
+    expect((await UsageQuery.summary({ scopeID, sessionID: owner.sessionID })).accounting.tokens.total.total).toBe(1500)
+    const first = await UsageQuery.records({ scopeID, sessionID: owner.sessionID }, { limit: 1 })
+    const ids = first.items.map((item) => item.id)
+    let cursor = first.nextCursor
+    while (cursor) {
+      const page = await UsageQuery.records({ scopeID, sessionID: owner.sessionID }, { cursor, limit: 1 })
+      ids.push(...page.items.map((item) => item.id))
+      cursor = page.nextCursor
+    }
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(ids.length).toBe(3)
+    await Storage.removeTree(["usage_time", scopeID, "session_foreign"])
+    await Storage.remove(foreign)
+  }))
+
+test("descendant selection never decodes unrelated lineage, even for an empty session", () =>
+  runtime.run(async () => {
+    const scopeID = crypto.randomUUID()
+    const owner = { kind: "session" as const, scopeID, sessionID: crypto.randomUUID() }
+    await Storage.write(["usage_link", scopeID, "session_foreign", "broken"], { invalid: true })
+    expect((await UsageQuery.records({ scopeID, sessionID: owner.sessionID, includeDescendants: true })).items).toEqual(
+      [],
+    )
+    await invocation({ owner })
+    expect(
+      (await UsageQuery.summary({ scopeID, sessionID: owner.sessionID, includeDescendants: true })).accounting.tokens
+        .total.total,
+    ).toBe(1500)
+    await Storage.removeTree(["usage_link", scopeID, "session_foreign"])
+  }))
+
+test("selected usage collection includes every page without reading unrelated counters", () =>
+  runtime.run(async () => {
+    const scopeID = crypto.randomUUID()
+    const owner = { kind: "session" as const, scopeID, sessionID: crypto.randomUUID() }
+    await invocation({ owner })
+    const template = (await UsageQuery.records({ scopeID, sessionID: owner.sessionID })).items[0]
+    await Storage.transaction(async () => {
+      for (let index = 0; index < 510; index++) {
+        const value = { ...template, id: `extra-${index}`, entityID: `extra-${index}` }
+        await Storage.write(UsageLedger.key(value), value)
+        await UsageLedger.index(value)
+      }
+      const foreign = ["usage", scopeID, "session_foreign", "run", "tool", "broken"]
+      await Storage.write(foreign, { unavailable: true })
+      await Storage.write(["usage_time", scopeID, "session_foreign", "00000000000000001_broken"], { key: foreign })
+    })
+    const values = await UsageQuery.collect({ scopeID, sessionID: owner.sessionID })
+    expect(values).toHaveLength(513)
+    expect(new Set(values.map((value) => value.id)).size).toBe(513)
+    expect(values.every((value) => value.owner.kind === "session" && value.owner.sessionID === owner.sessionID)).toBe(
+      true,
+    )
+    await Storage.removeTree(["usage_time", scopeID, "session_foreign"])
+    await Storage.removeTree(["usage", scopeID, "session_foreign"])
+  }))
+
 async function invocation(
   input: Partial<Pick<Parameters<typeof RolloutLedger.beginCall>[0], "owner" | "purpose" | "usageRole" | "runID">> = {},
 ) {
@@ -53,6 +119,30 @@ async function invocation(
   await RolloutLedger.finishRun(owner, input.runID ?? "run", "completed")
   return { owner, call }
 }
+
+test("owner-scoped usage pages merge descendant sessions and operations in canonical order", () =>
+  runtime.run(async () => {
+    const scopeID = crypto.randomUUID()
+    const owner = { kind: "session" as const, scopeID, sessionID: crypto.randomUUID() }
+    const child = { ...owner, sessionID: crypto.randomUUID() }
+    const operation = { kind: "operation" as const, scopeID, operationID: crypto.randomUUID() }
+    for (const target of [owner, child, operation]) await invocation({ owner: target })
+    await UsageLedger.link(child, "run", { owner, runID: "run", messageID: "root" })
+    await UsageLedger.link(operation, "run", { owner: child, runID: "run", messageID: "child" })
+    const expected = (await UsageQuery.records({ scopeID })).items.map((item) => item.id)
+    const filter = { scopeID, sessionID: owner.sessionID }
+    const ids: string[] = []
+    let cursor: string | undefined
+    do {
+      const page = await UsageQuery.records(filter, { limit: 2, cursor })
+      ids.push(...page.items.map((item) => item.id))
+      cursor = page.nextCursor ?? undefined
+    } while (cursor)
+    expect(ids).toEqual(expected)
+    expect(ids).toHaveLength(9)
+    expect((await UsageQuery.summary(filter)).accounting.tokens.total.total).toBe(4500)
+    expect((await UsageQuery.records({ ...filter, includeDescendants: false })).items).toHaveLength(3)
+  }))
 
 test("canonical usage keeps independent input totals, unknown splits and compact records after evidence deletion", () =>
   runtime.run(async () => {

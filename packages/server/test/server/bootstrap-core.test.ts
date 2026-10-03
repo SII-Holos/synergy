@@ -1,9 +1,12 @@
 import { afterAll, expect, spyOn, test } from "bun:test"
 import { Hono } from "hono"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { Command } from "@ericsanchezok/synergy-local-runtime/command/command"
+import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { createScopeBootstrapRoute } from "../../src/server/scope-bootstrap-route"
 import { testRuntime } from "../support/runtime"
@@ -60,6 +63,9 @@ test("core bootstrap is bounded and never awaits an auxiliary command resource",
         using commands = spyOn(Command, "list").mockImplementation(async () => {
           throw new Error("auxiliary resource unavailable")
         })
+        using workspaces = spyOn(WorkspaceCatalog, "list").mockImplementation(async () => {
+          throw new Error("Unrelated workspace catalog is unavailable")
+        })
         using statuses = spyOn(SessionManager, "listStatuses").mockImplementation(async () => {
           throw new Error("Complete status discovery is unavailable")
         })
@@ -82,6 +88,37 @@ test("core bootstrap is bounded and never awaits an auxiliary command resource",
         expect(data.config.provider).toBeUndefined()
         expect(commands).not.toHaveBeenCalled()
         expect(statuses).not.toHaveBeenCalled()
+        expect(workspaces).not.toHaveBeenCalled()
+        expect(data.workspaces).toEqual([])
+      },
+    }),
+  ))
+
+test("core bootstrap loads selected workspace identities without decoding unrelated catalog rows", () =>
+  runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const selected = await WorkspaceCatalog.create({ scopeID: "home", backend: { provider: "objects", spec: {} } })
+        const session = await Session.create({ workspaceID: selected.id })
+        const unrelated = crypto.randomUUID()
+        await Storage.write(["workspace", unrelated], { unreadable: true })
+        await Storage.write(["workspace_scope", "home", unrelated], unrelated)
+        try {
+          const response = await new Hono()
+            .route("/scope", createScopeBootstrapRoute())
+            .request("/scope/bootstrap-core")
+          expect(response.status).toBe(200)
+          const data = await response.json()
+          expect(data.sessions.data.some((item: { id: string }) => item.id === session.id)).toBe(true)
+          expect(data.workspaces.map((item: { id: string }) => item.id)).toContain(selected.id)
+          expect(data.workspaces.map((item: { id: string }) => item.id)).not.toContain(unrelated)
+          expect(data.workspacesComplete).toBe(false)
+        } finally {
+          await Storage.remove(["workspace_scope", "home", unrelated])
+          await Storage.remove(["workspace", unrelated])
+        }
       },
     }),
   ))

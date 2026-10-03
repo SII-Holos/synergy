@@ -161,23 +161,29 @@ export namespace FileWatcherEvents {
     platform?: PathPlatform
     process: (batch: WorkspaceChange[]) => Promise<void>
     overflow: () => Promise<void>
+    onError?: (error: unknown) => void
   }) {
     const pending = new Map<string, WorkspaceChange>()
-    const idleWaiters = new Set<() => void>()
+    const idleWaiters = new Set<{ resolve(): void; reject(error: unknown): void }>()
     let timer: ReturnType<typeof setTimeout> | undefined
     let draining: Promise<void> | undefined
     let overflowed = false
     let disposed = false
+    let failure: { error: unknown } | undefined
 
     const settled = () => !timer && !draining && pending.size === 0 && !overflowed
     const resolveIdle = () => {
       if (!settled()) return
-      for (const resolve of idleWaiters) resolve()
+      for (const waiter of idleWaiters) {
+        if (failure) waiter.reject(failure.error)
+        else waiter.resolve()
+      }
       idleWaiters.clear()
     }
 
     const run = () => {
       if (disposed || draining) return
+      failure = undefined
       draining = Promise.resolve()
         .then(async () => {
           while (!disposed && (overflowed || pending.size > 0)) {
@@ -191,6 +197,12 @@ export namespace FileWatcherEvents {
             pending.clear()
             await input.process(batch)
           }
+        })
+        .catch((error: unknown) => {
+          failure = { error }
+          for (const waiter of idleWaiters) waiter.reject(error)
+          idleWaiters.clear()
+          input.onError?.(error)
         })
         .finally(() => {
           draining = undefined
@@ -238,8 +250,8 @@ export namespace FileWatcherEvents {
         return pending.size
       },
       idle() {
-        if (settled()) return Promise.resolve()
-        return new Promise<void>((resolve) => idleWaiters.add(resolve))
+        if (settled()) return failure ? Promise.reject(failure.error) : Promise.resolve()
+        return new Promise<void>((resolve, reject) => idleWaiters.add({ resolve, reject }))
       },
       async dispose() {
         disposed = true
@@ -317,11 +329,13 @@ export namespace FileWatcherEvents {
     }) => Promise<T>
     disconnect: (subscription: T) => Promise<void>
     onError: (error: unknown) => void | Promise<void>
+    resync?: (context: { generation: number; isCurrent: () => boolean }) => void | Promise<void>
     shouldRetry?: (error: unknown) => boolean
     retryMs?: number
   }) {
     const retryMs = input.retryMs ?? 1_000
     let current: T | undefined
+    let ready = false
     let connecting: Promise<void> | undefined
     let handlingFailure: Promise<void> | undefined
     let disconnecting: Promise<void> | undefined
@@ -372,6 +386,7 @@ export namespace FileWatcherEvents {
       if (disposed || (expectedGeneration !== undefined && expectedGeneration !== generation)) return Promise.resolve()
       if (input.shouldRetry?.(error) === false) retryBlocked = true
       generation += 1
+      ready = false
       if (handlingFailure) return handlingFailure
 
       const task = (async () => {
@@ -404,6 +419,9 @@ export namespace FileWatcherEvents {
             return
           }
           current = subscription
+          if (attempt > 1)
+            await input.resync?.({ generation: attempt, isCurrent: () => !disposed && attempt === generation })
+          if (!disposed && attempt === generation) ready = true
         } catch (error) {
           await fail(error, attempt)
         }
@@ -448,7 +466,7 @@ export namespace FileWatcherEvents {
         await task
       },
       active() {
-        return current !== undefined
+        return current !== undefined && ready
       },
     }
   }

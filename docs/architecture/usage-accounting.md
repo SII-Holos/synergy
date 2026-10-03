@@ -68,3 +68,9 @@ Latest primary context is tied to one actual conversation request's input and mo
 After an upgrade, compatibility totals reflect the history captured so far until the background rebuild completes. They can temporarily be lower than the previous message-derived snapshot. The structured API exposes this transition through `coverage.migration`; the projection does not wait indefinitely on failed historical capture or combine old and new totals that could overlap.
 
 See [Activity and statistics](../product/activity-and-statistics.md), [Agent storage](agent-storage.md), and the [decision record](../decisions/implemented/architecture/2026-09-28-retained-usage-accounting.md).
+
+Selected Session and run queries resolve compact lineage first and read counters through the selected owners’ indexes. Session owners use the storage Scope/session index; operation owners use their exact prefix. Their sorted streams retain the global time/cursor order, including ties and descendant operations. Global statistics retain the global query path. See [bounded session interaction work](../decisions/implemented/bug-fix/2026-10-03-session-interaction-latency.md).
+
+## Lineage query indexes
+
+Retained usage links publish a parent-owner/run index in the same transaction as the canonical link. Descendant queries begin with the selected owner or run and traverse only reachable links, including children whose parent transcript or counters have been removed. Exact run ancestry and owner-only ancestry remain distinct. The usage-domain `20261003-usage-parent-index-v1` migration builds historical entries in bounded transactions before query admission; transfer reconciliation publishes the same index and removes replaced parent links. Session reads do not decode unrelated lineage or hold a Scope-wide read transaction.

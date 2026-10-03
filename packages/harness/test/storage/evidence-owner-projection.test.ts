@@ -1,4 +1,4 @@
-import { afterAll, expect, test } from "bun:test"
+import { afterAll, expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import { tmpdir } from "../support/fixture"
 import { testRuntime } from "../support/runtime"
@@ -8,6 +8,52 @@ import type { SqlDriver } from "../../src/storage/sql-contract"
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
 const key = (id: string) => ["sessions", "scope", "session", "rollout", "events", id]
+
+test("background text cleanup progresses after owner preparation takes longer than an admission budget", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    const store = await TransactionalStore.open({
+      backend: "sqlite",
+      namespace: "slow-preparation",
+      filename: path.join(tmp.path, "agent.sqlite"),
+    })
+    try {
+      const sourceKey = ["sessions", "scope", "session", "messages", "message", "parts", "part"]
+      await store.write(sourceKey, { text: "old text" })
+      const source = await store.versioned(sourceKey)
+      await store.transaction((tx) =>
+        tx.appendTextProjection({
+          key: sourceKey,
+          revision: source.revision,
+          version: "v1",
+          category: "text",
+          offset: 0,
+          fragments: [{ offset: 0, text: "old text" }],
+          complete: true,
+        }),
+      )
+      await store.write(sourceKey, { text: "new text" })
+      const prepare = store.prepareEvidenceOwners.bind(store)
+      using delayed = spyOn(store, "prepareEvidenceOwners").mockImplementation(async (input) => {
+        await Bun.sleep(150)
+        return prepare(input)
+      })
+      const driver = (store as unknown as { driver: SqlDriver }).driver
+      const deadline = Date.now() + 3_000
+      let remaining = 1
+      while (remaining && Date.now() < deadline) {
+        await Bun.sleep(100)
+        const [row] = await driver.query("SELECT COUNT(*) AS count FROM storage_text_gc WHERE namespace = ?", [
+          store.options.namespace,
+        ])
+        remaining = Number(row.count)
+      }
+      expect(delayed).toHaveBeenCalled()
+      expect(remaining).toBe(0)
+    } finally {
+      await store.close()
+    }
+  }))
 
 test("operation newest removal withholds retention until a bounded recount converges", () =>
   runtime.run(async () => {

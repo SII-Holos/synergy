@@ -84,6 +84,8 @@ The Web composer uses the same intent layering:
 
 An explicit selector choice saves model and thinking together through `session.setModelSelection`. Provider authentication remains provider-specific; the `openai-codex` native Codex path does not receive the normal OpenAI API-key/base-URL override.
 
+Catalog providers may rely on their SDK's built-in endpoint. Their client model metadata represents an absent endpoint as an empty string, while SDK construction omits the endpoint override. Explicit model and provider connection options retain precedence over a catalog endpoint. Navigation validates this same model metadata even when another provider handles the selected conversation.
+
 ### Model variants and reasoning options
 
 Model capability metadata from catalogs such as models.dev describes what a model advertises, but it does not prove that a service reusing another provider's AI SDK package accepts the same provider option semantics. Automatic reasoning variants are derived from model identity (`model.id`, API model ID, or model family) combined with the direct transport. They are not selected from provider IDs, and a shared npm package alone does not establish option compatibility, so custom provider aliases retain correct behavior.
@@ -146,7 +148,7 @@ Historical reasoning replay for `openai-codex` is conditional: `MessageV2.projec
 
 ## Library Recall
 
-The harness requests optional context through `SessionContextContributions`. It owns the contribution deadline, cancellation signal, fallback boundary, and loop cache; Library owns retrieval, embedding, prompt rendering, injection metadata, and experience completion callbacks. With no registered contributor, or when Library retrieval is disabled, context collection performs no Library retrieval or embedding work. `registerLibrary()` installs the Library contribution for hosts that need it.
+The harness requests optional context through `SessionContextContributions`. It owns the contribution deadline, cancellation signal, fallback boundary, and loop cache; Library owns retrieval, embedding, prompt rendering, injection metadata, and experience completion callbacks. With no registered contributor, or when Library retrieval is disabled, context collection performs no Library retrieval or embedding work. `registerLibrary()` installs the Library contribution for hosts that need it. That contribution selects a three-second automatic-recall deadline and shares one query embedding between semantic Memory and Experience retrieval. Failure or timeout retains always-memory context without duplicate embedding retries; explicit searches retain their own execution policy.
 
 Top-level sessions build memory and experience context in parallel from the current task text.
 

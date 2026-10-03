@@ -61,14 +61,14 @@ export namespace RuntimeReloadPath {
         absolutePath(path.join(Global.Path.config, "command")),
         absolutePath(path.join(Global.Path.config, "commands")),
       ],
-      skill: SkillSourceProfile.existingRootPaths(ScopeContext.current.directory).filter(
-        (root) => !isContained(ScopeContext.current.directory, root),
-      ),
+      skill: SkillSourceProfile.existingRootPaths(null),
       tool: [absolutePath(path.join(Global.Path.config, "tool"))],
     }
   }
 
   function projectConfigRoots() {
+    const directory = ScopeContext.tryWorkspace()?.path
+    if (!directory) return { agent: [], command: [], skill: [], tool: [] }
     return {
       agent: [
         absolutePath(path.join(ScopeContext.current.directory, ".synergy", "agent")),
@@ -101,6 +101,7 @@ export namespace RuntimeReloadPath {
   }
 
   function projectLegacyConfigFiles() {
+    if (!ScopeContext.tryWorkspace()) return []
     return [
       path.join(ScopeContext.current.directory, "synergy.jsonc"),
       path.join(ScopeContext.current.directory, "synergy.json"),
@@ -111,7 +112,7 @@ export namespace RuntimeReloadPath {
 
   function matchesSkillEntryFile(normalized: string) {
     const basename = pathApi().basename(normalized)
-    return SkillSourceProfile.allRoots(ScopeContext.current.directory).some((root) => {
+    return SkillSourceProfile.allRoots(ScopeContext.tryWorkspace()?.path ?? null).some((root) => {
       const accepted = root.acceptedEntryNames.some((name) =>
         process.platform === "win32" ? name.toLowerCase() === basename.toLowerCase() : name === basename,
       )
@@ -130,8 +131,9 @@ export namespace RuntimeReloadPath {
     const globalDomainDir = absolutePath(ConfigDomain.directory())
     if (isContained(globalDomainDir, normalized) && domainForFile(normalized)) return "global"
 
-    const projectDomainDir = absolutePath(path.join(ScopeContext.current.directory, ".synergy", "synergy.d"))
-    if (isContained(projectDomainDir, normalized) && domainForFile(normalized)) return "project"
+    const directory = ScopeContext.tryWorkspace()?.path
+    const projectDomainDir = directory && absolutePath(path.join(directory, ".synergy", "synergy.d"))
+    if (projectDomainDir && isContained(projectDomainDir, normalized) && domainForFile(normalized)) return "project"
 
     const globalRoots = globalConfigRoots()
     const allGlobalRoots = [...globalRoots.agent, ...globalRoots.command, ...globalRoots.skill, ...globalRoots.tool]
@@ -160,9 +162,10 @@ export namespace RuntimeReloadPath {
     }
 
     const globalDomainDir = absolutePath(ConfigDomain.directory())
-    const projectDomainDir = absolutePath(path.join(ScopeContext.current.directory, ".synergy", "synergy.d"))
+    const directory = ScopeContext.tryWorkspace()?.path
+    const projectDomainDir = directory && absolutePath(path.join(directory, ".synergy", "synergy.d"))
     if (
-      (isContained(globalDomainDir, normalized) || isContained(projectDomainDir, normalized)) &&
+      (isContained(globalDomainDir, normalized) || (projectDomainDir && isContained(projectDomainDir, normalized))) &&
       domainForFile(normalized)
     ) {
       const domain = domainForFile(normalized)!
@@ -194,6 +197,7 @@ export namespace RuntimeReloadPath {
   }
   export function builtinSourceEditWarning(filePath: string) {
     if (!EnvironmentResources.localFiles()) return undefined
+    if (!ScopeContext.tryWorkspace()) return undefined
     const normalized = path.resolve(filePath)
     const builtinRoot = path.resolve(ScopeContext.current.directory, "packages")
     if (!isPathContained(builtinRoot, normalized)) return undefined

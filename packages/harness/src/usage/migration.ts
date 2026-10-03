@@ -10,7 +10,31 @@ import { Lock } from "../util/lock"
 
 export namespace UsageMigration {
   export const id = "20260928-independent-usage-ledger-v1"
+  export const lineageMigration: Migration = {
+    id: "20261003-usage-parent-index-v1",
+    scope: "derived",
+    description: "Index retained usage lineage by parent owner and run",
+    async up(progress) {
+      let completed = 0
+      let after: string[] | undefined
+      for (;;) {
+        const rows = await Storage.query<UsageSchema.Link>({ kind: "usage_link", after, limit: 128 })
+        if (!rows.length) break
+        await Storage.transaction(async () => {
+          for (const row of rows) {
+            const current = await Storage.read<UsageSchema.Link>(row.key)
+            await UsageLedger.indexLink(UsageSchema.Link.parse(current))
+          }
+        })
+        completed += rows.length
+        progress(completed, 0)
+        after = rows.at(-1)!.key
+      }
+      progress(completed, completed)
+    },
+  }
   const migrations: Migration[] = [
+    lineageMigration,
     {
       id,
       scope: "derived",

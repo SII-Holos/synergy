@@ -59,7 +59,7 @@ export function resolveCompactionCardPresentation(input: {
     }
   }
 
-  const complete = input.hasRecovery && input.messageCompleted
+  const complete = (input.hasRecovery || input.attemptState === "committed") && input.messageCompleted
   if (!complete) {
     return {
       status: "running",

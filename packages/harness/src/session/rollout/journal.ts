@@ -1,4 +1,5 @@
 import z from "zod"
+import { setImmediate } from "node:timers/promises"
 import { Storage } from "../../storage/storage"
 import { Lock } from "../../util/lock"
 import { RolloutArtifact } from "./artifact"
@@ -148,6 +149,7 @@ export namespace RolloutJournal {
         if (event.seq !== start + i) throw new Error("Rollout journal sequence mismatch")
         yield event
       }
+      await setImmediate()
     }
   }
 }
