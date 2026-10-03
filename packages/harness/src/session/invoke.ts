@@ -412,14 +412,15 @@ export namespace SessionInvoke {
   }
 
   async function recallMemory(
-    step: number,
+    firstModelPreparation: boolean,
     sessionID: string,
     scopeID: string,
     messages: MessageV2.WithParts[],
     isTopSession: boolean,
     signal: AbortSignal,
   ): Promise<SessionContextContributions.Collected | undefined> {
-    if (step > 1) return isTopSession ? getCachedResult(sessionID) : undefined
+    if (!firstModelPreparation) return getCachedResult(sessionID)
+    evictRecallCache(sessionID)
     return SessionContextContributions.collect({ sessionID, scopeID, messages, isTopSession, signal })
   }
 
@@ -559,6 +560,7 @@ export namespace SessionInvoke {
 
     const runtime = SessionManager.registerRuntime(sessionID)
     let step = 0
+    let recalledRootID: string | undefined
     let emergencyCompactionTriggered = false
     let hardOverflowCompactionRootID: string | undefined
     let session = await Session.get(sessionID)
@@ -932,6 +934,7 @@ export namespace SessionInvoke {
               // prompt assembly, cortex context, and memory recall (flashback) all
               // run concurrently to minimise time-to-first-token.
               const isTopSession = !session.parentID
+              const firstModelPreparation = recalledRootID !== R.id
 
               const turnPreparation = await Promise.all([
                 ToolResolver.availability({
@@ -950,12 +953,13 @@ export namespace SessionInvoke {
                 buildCortexExecutionContext(sessionID),
                 buildCortexReminder(sessionID),
                 SessionExecutionContributions.advisory(sessionID, scopeID, lease.signal),
-                recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession, lease.signal),
+                recallMemory(firstModelPreparation, sessionID, scopeID, sessionMessages, isTopSession, lease.signal),
               ]).catch(async (error) => {
                 await completeAssistantWithError({ sessionID, processor, model, error, abort })
                 return undefined
               })
               if (!turnPreparation) break
+              recalledRootID = R.id
 
               let [
                 toolAvailability,
@@ -1021,9 +1025,9 @@ export namespace SessionInvoke {
               // Layer 3: Dynamic advisory context — loop-stable memory/experience, volatile across turns
               if (memoryResult) {
                 lateSystemParts.push(memoryResult.context)
-                if (step === 1) cacheResult(sessionID, memoryResult)
+                if (firstModelPreparation) cacheResult(sessionID, memoryResult)
                 const { injection } = memoryResult
-                if (step === 1) SessionContextContributions.committed(sessionID, memoryResult)
+                if (firstModelPreparation) SessionContextContributions.committed(sessionID, memoryResult)
                 if (Object.keys(injection).length > 0 && !R.metadata?.injectedContext) {
                   const updated = await Session.mergeMessageMetadata({
                     sessionID,
