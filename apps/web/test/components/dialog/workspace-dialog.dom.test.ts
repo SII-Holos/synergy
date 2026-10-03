@@ -54,7 +54,7 @@ beforeAll(async () => {
     import {DialogProvider,useDialog} from "@ericsanchezok/synergy-ui/context/dialog"
     import {DialogWorkspace} from ${JSON.stringify(`/@fs/${appSrc}/components/dialog/dialog-workspace.tsx`)}
     import ${JSON.stringify(`/@fs/${appSrc}/index.css`)}
-    function App(){const dialog=useDialog();return <><button id="manager" onClick={()=>dialog.show(()=><DialogWorkspace mode="manage"/>)}>Manage directories</button><button id="draft" onClick={()=>dialog.show(()=><DialogWorkspace target={{kind:"draft",selection:{mode:"workspace",workspaceID:"wsp_b",workspaceGeneration:1},onSelect:value=>window.fixture.selected.push(value)}}/>)}>Choose for draft</button><button id="recover" onClick={()=>dialog.show(()=><DialogWorkspace mode="recover" recovery={{workspaceID:"wsp_unverified",reason:"identity_unverified",isCurrent:()=>window.fixture.isCurrent()}} target={{kind:"draft",onSelect:value=>window.fixture.selected.push(value)}}/>)}>Recover draft</button><button id="recover-session" onClick={()=>dialog.show(()=><DialogWorkspace mode="recover" recovery={{workspaceID:"wsp_unverified"}} target={{kind:"session",sessionID:"created-session",onApplied:value=>window.fixture.selected.push(value)}}/>)}>Recover created session</button><button id="select-remote" onClick={()=>dialog.show(()=><DialogWorkspace mode="select" environmentProfile="remote" target={{kind:"draft",onSelect:value=>window.fixture.selected.push(value)}}/>)}>Remote files</button><button id="open" onClick={()=>dialog.show(()=><DialogWorkspace target={{kind:"session",sessionID:"session"}}/>)}>Open</button></>}
+    function App(){const dialog=useDialog();return <><button id="copies" onClick={()=>dialog.show(()=><DialogWorkspace copiesOnly target={{kind:"draft",selection:{mode:"current"},onSelect:value=>window.fixture.selected.push(value)}}/>)}>Choose a Worktree</button><button id="existing" onClick={()=>dialog.show(()=><DialogWorkspace copiesOnly target={{kind:"draft",selection:{mode:"existing",target:window.fixture.existingTarget},onSelect:value=>window.fixture.selected.push(value)}}/>)}>Continue existing Worktree</button><button id="manager" onClick={()=>dialog.show(()=><DialogWorkspace mode="manage"/>)}>Manage directories</button><button id="draft" onClick={()=>dialog.show(()=><DialogWorkspace target={{kind:"draft",selection:{mode:"workspace",workspaceID:"wsp_b",workspaceGeneration:1},onSelect:value=>window.fixture.selected.push(value)}}/>)}>Choose for draft</button><button id="recover" onClick={()=>dialog.show(()=><DialogWorkspace mode="recover" recovery={{workspaceID:"wsp_unverified",reason:"identity_unverified",isCurrent:()=>window.fixture.isCurrent()}} target={{kind:"draft",onSelect:value=>window.fixture.selected.push(value)}}/>)}>Recover draft</button><button id="recover-session" onClick={()=>dialog.show(()=><DialogWorkspace mode="recover" recovery={{workspaceID:"wsp_unverified"}} target={{kind:"session",sessionID:"created-session",onApplied:value=>window.fixture.selected.push(value)}}/>)}>Recover created session</button><button id="select-remote" onClick={()=>dialog.show(()=><DialogWorkspace mode="select" environmentProfile="remote" target={{kind:"draft",onSelect:value=>window.fixture.selected.push(value)}}/>)}>Remote files</button><button id="open" onClick={()=>dialog.show(()=><DialogWorkspace target={{kind:"session",sessionID:"session"}}/>)}>Open</button></>}
     render(()=><I18nProvider i18n={setupI18n({locale:"en",messages:{en:{}}})}><DialogProvider><App/></DialogProvider></I18nProvider>,document.getElementById("root"))
   `,
   )
@@ -135,6 +135,57 @@ test("draft directory recovery applies a choice without creating or sending a ta
     { mode: "workspace", workspaceID: "wsp_b", workspaceGeneration: 1 },
   ])
   expect(await page.evaluate<unknown[]>("window.fixture.requests")).toEqual([])
+}, 20_000)
+
+test.each(["wsp_b", "tree_b", "/second"])(
+  "an existing Worktree target stays selected when reopening the directory chooser (%s)",
+  async (target) => {
+    await page.goto(base)
+    await page.evaluate((value) => {
+      const fixture = (
+        window as unknown as {
+          fixture: { existingTarget: string; rows: { type: string; metadata: { worktreeID?: string } }[] }
+        }
+      ).fixture
+      fixture.existingTarget = value
+      fixture.rows[1]!.type = "git_worktree"
+      fixture.rows[1]!.metadata.worktreeID = "tree_b"
+    }, target)
+    await page.locator("#existing").click()
+    await workspaceRow("wsp_b").waitFor()
+    expect(await workspaceRow("wsp_b").getAttribute("aria-pressed")).toBe("true")
+    expect(await workspaceRow("wsp_b").textContent()).toContain("Currently used")
+    await page.getByRole("button", { name: "Use this directory", exact: true }).click()
+    await page.getByRole("dialog").waitFor({ state: "detached" })
+    expect(await page.evaluate<unknown[]>("window.fixture.selected")).toEqual([
+      { mode: "workspace", workspaceID: "wsp_b", workspaceGeneration: 1 },
+    ])
+    expect(await page.evaluate<unknown[]>("window.fixture.requests")).toEqual([])
+  },
+  20_000,
+)
+
+test("a copies-only chooser cannot confirm a hidden main directory", async () => {
+  await page.goto(base)
+  await page.locator("#copies").click()
+  const apply = page.locator('[data-slot="dialog-footer"] button').last()
+  await apply.waitFor()
+  expect(await workspaceRow("wsp_a").count()).toBe(0)
+  expect(await apply.isDisabled()).toBe(true)
+  expect(await page.evaluate<unknown[]>("window.fixture.selected")).toEqual([])
+}, 20_000)
+
+test("an unresolved existing Worktree requires an explicit replacement", async () => {
+  await page.goto(base)
+  await page.evaluate("window.fixture.existingTarget='missing-tree'")
+  await page.locator("#existing").click()
+  const apply = page.locator('[data-slot="dialog-footer"] button').last()
+  await apply.waitFor()
+  expect(await apply.isDisabled()).toBe(true)
+  await page.getByRole("button", { name: "No project files", exact: true }).click()
+  await page.getByRole("button", { name: "Use no project files", exact: true }).click()
+  await page.getByRole("dialog").waitFor({ state: "detached" })
+  expect(await page.evaluate<unknown[]>("window.fixture.selected")).toEqual([{ mode: "none" }])
 }, 20_000)
 
 test("expired recovery closes without applying to another connection or project", async () => {

@@ -65,22 +65,34 @@ export function DialogWorkspace(props: WorkspaceDialogProps) {
   }
   const initialSelection = draftSelection()
   const initialSession = sessionID() ? sync.session.get(sessionID()!) : undefined
-  const currentID =
+  const defaultWorkspaceID = props.mainWorkspaceID ?? sync.data.path.workspace?.id
+  const currentID = createMemo(() =>
     props.mode === "manage"
       ? undefined
       : initialSelection?.mode === "workspace"
         ? initialSelection.workspaceID
         : initialSelection?.mode === "none"
           ? null
-          : sessionID()
-            ? initialSession?.workspaceID
-            : sync.data.path.workspace?.id
+          : initialSelection?.mode === "existing"
+            ? records.data.find(
+                (item) =>
+                  item.type === "git_worktree" &&
+                  [item.id, item.metadata.worktreeID, item.binding.path].includes(initialSelection.target),
+              )?.id
+            : sessionID()
+              ? initialSession?.workspaceID
+              : defaultWorkspaceID,
+  )
   const initial =
     props.mode === "recover"
       ? props.recovery.workspaceID
       : props.mode === "manage"
         ? (props.initialID ?? sync.data.path.workspace?.id)
-        : currentID
+        : initialSelection?.mode === "existing"
+          ? initialSelection.target
+          : currentID()
+  let resolveInitialExisting =
+    props.mode !== "manage" && props.mode !== "recover" && initialSelection?.mode === "existing"
   const mainID = () => props.mainWorkspaceID ?? sync.data.path.workspace?.id
   const [view, setView] = createSignal<"list" | "manage" | "create">("list")
   const [directoryBrowsing, setDirectoryBrowsing] = createSignal(props.mode === "manage")
@@ -116,6 +128,7 @@ export function DialogWorkspace(props: WorkspaceDialogProps) {
     props.mode === "manage" || directoryBrowsing() || item.backend?.provider === "objects"
   const available = (item: WorkspaceInfo) =>
     compatible(item) &&
+    (!props.copiesOnly || item.type === "git_worktree") &&
     workspaceAvailable(item) &&
     !(failedBinding()?.workspaceID === item.id && failedBinding()?.generation === item.binding.generation)
   const bindingChanged = () =>
@@ -129,7 +142,7 @@ export function DialogWorkspace(props: WorkspaceDialogProps) {
             .toLowerCase()
             .includes(search().trim().toLowerCase()),
       ),
-      { currentID, mainID: mainID() ?? undefined, available, locale: i18n().locale },
+      { currentID: currentID(), mainID: mainID() ?? undefined, available, locale: i18n().locale },
     ),
   )
   const sharingDirty = createMemo(() => {
@@ -224,7 +237,9 @@ export function DialogWorkspace(props: WorkspaceDialogProps) {
           if (failed)
             setFailedBinding({ workspaceID: failed.id, generation: selectedGeneration() ?? failed.binding.generation })
         }
-        select(selected(), true)
+        const initialID = resolveInitialExisting ? (currentID() ?? selected()) : selected()
+        resolveInitialExisting = false
+        select(initialID, true)
       }
       const profiles = await client.environment.profiles({ scopeID }, options)
       const id = sessionID() ? (sync.session.get(sessionID()!)?.environmentID ?? null) : props.environmentID
@@ -512,8 +527,8 @@ export function DialogWorkspace(props: WorkspaceDialogProps) {
                     <Show when={workspaceBranch(item)}>
                       <small>{workspaceBranch(item)}</small>
                     </Show>
-                    <Show when={item.id === currentID || item.id === mainID()}>
-                      <small>{_(item.id === currentID ? copy.current : copy.main)}</small>
+                    <Show when={item.id === currentID() || item.id === mainID()}>
+                      <small>{_(item.id === currentID() ? copy.current : copy.main)}</small>
                     </Show>
                     <Show when={!available(item)}>
                       <span class="block text-small text-text-weak">
