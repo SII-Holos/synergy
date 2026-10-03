@@ -304,6 +304,7 @@ test("discovery cards contain installation state at desktop and phone widths and
   await page.keyboard.press("Escape")
   await page.getByRole("dialog").waitFor({ state: "detached" })
   expect(await search.inputValue()).toBe("Test")
+  await card.and(page.locator(":focus")).waitFor()
   expect(await card.evaluate((el) => el === document.activeElement)).toBe(true)
 })
 
