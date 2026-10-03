@@ -7,6 +7,7 @@ export const POSTGRES_TEST_FILES = [
   "test/storage/compat-defer.test.ts",
   "test/storage/large-artifacts.test.ts",
   "test/storage/packed-import.test.ts",
+  "test/session/message-read-errors.test.ts",
   "test/storage/postgres-contract.test.ts",
   "test/storage/postgres-ownership.test.ts",
   "test/storage/prune-contract.test.ts",
