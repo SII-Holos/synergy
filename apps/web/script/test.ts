@@ -41,6 +41,7 @@ const playwrightIsolated = [
   "test/components/workspace/resource-home.dom.test.ts",
   "test/components/workspace/mobile-workspace-dialog.dom.test.ts",
   "test/components/performance/snapshot-boundary.dom.test.ts",
+  "test/components/stats/presentation.dom.test.ts",
   "test/plugin/global-themes-registrar-lifecycle.test.tsx",
   "test/components/session/rollback-files.dom.test.ts",
   "test/components/session/session-review-workspace.dom.test.ts",

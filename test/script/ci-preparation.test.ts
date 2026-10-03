@@ -5,6 +5,53 @@ import path from "node:path"
 import { createPlan, type Task } from "../../script/ci/plan"
 import { executeUnit } from "../../script/ci/run"
 import { distributionPaths, publishDistribution } from "../../script/ci/distributions"
+import { createIsolatedTestEnv } from "../../packages/testing/src/env"
+
+test("a profile-only Web plan prepares the sandbox assets required by its distribution", async () => {
+  const isolated = await createIsolatedTestEnv()
+  try {
+    const root = path.resolve(import.meta.dir, "../..")
+    const output = path.join(isolated.env.SYNERGY_TEST_ROOT!, "github-output")
+    const plan = path.join(isolated.env.SYNERGY_TEST_ROOT!, "plan.json")
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        "script/ci.ts",
+        "plan",
+        "--base",
+        "HEAD",
+        "--head",
+        "HEAD",
+        "--sha",
+        "HEAD",
+        "--mode",
+        "diagnostic",
+        "--only",
+        "web-integration",
+        "--output",
+        plan,
+      ],
+      {
+        cwd: root,
+        env: { ...isolated.env, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: undefined },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    )
+    const [, stderr, code] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ])
+    expect({ code, stderr }).toEqual({ code: 0, stderr: "" })
+    expect((await Bun.file(plan).json()).selected).toEqual(["web-integration"])
+    const lines = (await Bun.file(output).text()).split("\n")
+    expect(lines).toContain("full=true")
+    expect(lines).toContain("sandbox=1")
+  } finally {
+    await isolated.dispose()
+  }
+}, 30000)
 
 test.each([undefined, "full"] as const)(
   "Linux %s tasks overlap in separate Homes and publish separate results",

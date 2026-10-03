@@ -21,19 +21,6 @@ type Segment = {
 const LEFT_KEYS: TokenKey[] = ["input", "reasoning", "cacheRead"]
 const RIGHT_KEYS: TokenKey[] = ["output", "cacheWrite"]
 
-const ANIMATION_STYLE = `
-@keyframes tokenRingEnter {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-`
-
 function tokenValue(tokens: StatsSnapshot["tokenCost"]["tokens"], key: TokenKey) {
   switch (key) {
     case "input":
@@ -51,7 +38,7 @@ function tokenValue(tokens: StatsSnapshot["tokenCost"]["tokens"], key: TokenKey)
 
 function Connector(props: { color: string; side: "left" | "right" }) {
   return (
-    <div class={`flex min-w-10 items-center ${props.side === "left" ? "justify-end" : "justify-start"}`}>
+    <div class={`stats-token-connector items-center ${props.side === "left" ? "justify-end" : "justify-start"}`}>
       <div
         class="h-px w-full rounded-full opacity-70"
         style={{
@@ -79,16 +66,12 @@ function Callout(props: {
   return (
     <div class={`flex items-center gap-3 ${isLeft() ? "justify-end" : "justify-start"}`}>
       {isLeft() ? null : <Connector color={props.segment.color} side="right" />}
-      <div
-        class={`min-w-0 flex-1 rounded-xl bg-surface-inset-base/40 px-3 py-2.5 ring-1 ring-inset ring-border-weaker-base ${
-          isLeft() ? "text-right" : "text-left"
-        }`}
-      >
+      <div class={`stats-token-callout ${isLeft() ? "text-right" : "text-left"}`}>
         <div class={`flex items-center gap-2 ${isLeft() ? "justify-end" : "justify-start"}`}>
           <span class="app-panel-caption font-medium text-text-weaker">{props.segment.label}</span>
           <span class="h-2 w-2 shrink-0 rounded-full" style={{ "background-color": props.segment.color }} />
         </div>
-        <div class="mt-1 text-lg font-semibold tracking-tight text-text-strong tabular-nums">
+        <div class="mt-1 app-panel-section-title text-text-strong tabular-nums">
           {formatCompact(props.segment.value)}
         </div>
         <div class="mt-1 app-panel-caption text-text-weak">{props.shareLabel}</div>
@@ -189,17 +172,16 @@ export function TokenRing(props: { tokens: StatsSnapshot["tokenCost"]["tokens"];
 
   return (
     <>
-      <style>{ANIMATION_STYLE}</style>
-      <section class="rounded-xl bg-surface-raised-base px-4 py-5">
-        <div class="grid items-center gap-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
-          <div class="order-2 grid gap-2.5 lg:order-1">
+      <section class="stats-chart-section stats-tokens">
+        <div class="stats-token-grid">
+          <div class="stats-token-left grid gap-2.5">
             <For each={leftSegments()}>
               {(segment) => <Callout align="left" segment={segment} shareLabel={formatShare(segment.share)} />}
             </For>
           </div>
 
-          <div class="order-1 flex justify-center lg:order-2">
-            <div class="relative rounded-full bg-surface-inset-base/35 p-3 ring-1 ring-inset ring-border-weaker-base">
+          <div class="stats-token-chart flex justify-center">
+            <div class="relative p-3">
               <div class="relative h-40 w-40 sm:h-44 sm:w-44">
                 <Doughnut data={chartData()} options={chartOptions()} />
                 <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-7 text-center">
@@ -215,7 +197,7 @@ export function TokenRing(props: { tokens: StatsSnapshot["tokenCost"]["tokens"];
             </div>
           </div>
 
-          <div class="order-3 grid gap-2.5">
+          <div class="stats-token-right grid gap-2.5">
             <For each={rightSegments()}>
               {(segment) => <Callout align="right" segment={segment} shareLabel={formatShare(segment.share)} />}
             </For>

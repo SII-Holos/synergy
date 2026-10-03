@@ -725,12 +725,14 @@ export function SummaryCards(props: {
               {_({ id: "app.performance.resources.cpu", message: "CPU and event loop" })}
             </h3>
             <MetricCard
+              variant="resource"
               _={_}
               label={P.summaryCpu}
               value={formatChartPercent(ratioToPercent(resources()?.cpuUtilizationRatio))}
               icon="performance.cpu"
             />
             <MetricCard
+              variant="resource"
               _={_}
               label={P.summaryEventLoop}
               value={formatChartDuration(resources()?.eventLoopLagP95Ms)}
@@ -740,6 +742,7 @@ export function SummaryCards(props: {
           <div class="performance-resource-group">
             <h3 class="app-panel-section-title">{_({ id: "app.performance.resources.memory", message: "Memory" })}</h3>
             <MetricCard
+              variant="resource"
               _={_}
               label={P.summaryServiceMemory}
               value={formatChartBytes(cards().serviceMemory?.rssBytes)}
@@ -755,30 +758,35 @@ export function SummaryCards(props: {
               icon="performance.memory"
             />
             <MetricCard
+              variant="resource"
               _={_}
               label={P.summaryServerRss}
               value={formatChartBytes(cards().serverRssBytes)}
               icon="performance.memory"
             />
             <MetricCard
+              variant="resource"
               _={_}
               label={P.summaryHeapUsed}
               value={formatChartBytes(resources()?.heapUsedBytes)}
               icon="performance.memory"
             />
             <MetricCard
+              variant="resource"
               _={_}
               label={P.summaryExternal}
               value={formatChartBytes(resources()?.externalBytes)}
               icon="performance.memory"
             />
             <MetricCard
+              variant="resource"
               _={_}
               label={P.summaryArrayBuffers}
               value={formatChartBytes(resources()?.arrayBuffersBytes)}
               icon="performance.memory"
             />
             <MetricCard
+              variant="resource"
               _={_}
               label={P.summaryToolChildRss}
               value={formatChartBytes(cards().childProcessRssBytes)}
@@ -794,6 +802,7 @@ export function SummaryCards(props: {
           <div class="performance-resource-group">
             <h3 class="app-panel-section-title">{_({ id: "app.performance.resources.disk", message: "Disk" })}</h3>
             <MetricCard
+              variant="resource"
               _={_}
               label={P.summaryDiskIo}
               value={_(P.summaryDiskIoValue.id, {
@@ -803,6 +812,7 @@ export function SummaryCards(props: {
               icon="performance.disk"
             />
             <MetricCard
+              variant="resource"
               _={_}
               label={P.summaryDiskOps}
               value={
@@ -821,18 +831,21 @@ export function SummaryCards(props: {
               {_({ id: "app.performance.resources.calls", message: "Model and tool calls" })}
             </h3>
             <MetricCard
+              variant="resource"
               _={_}
               label={P.summaryLlmCalls}
               value={String(summary()?.sessions?.llmCallCount ?? "—")}
               icon="performance.network"
             />
             <MetricCard
+              variant="resource"
               _={_}
               label={P.summaryToolCalls}
               value={String(summary()?.sessions?.toolCallCount ?? "—")}
               icon="performance.trace"
             />
             <MetricCard
+              variant="resource"
               _={_}
               label={P.summaryLongTasks}
               value={String(frontend()?.longTaskCount ?? "—")}
@@ -955,19 +968,26 @@ function MetricCard(props: {
   onClick?: () => void
   icon: Parameters<typeof getSemanticIcon>[0]
   tone?: "default" | "warning"
+  variant?: "summary" | "resource"
 }) {
   return (
-    <div class="performance-card rounded-xl p-4">
+    <div
+      class={props.variant === "resource" ? "performance-resource-metric" : "performance-card rounded-xl p-4"}
+      role="group"
+      aria-label={props._(props.label)}
+    >
       <div class="flex items-center justify-between gap-3">
         <div class="app-panel-caption font-medium text-text-weak">{props._(props.label)}</div>
-        <Icon
-          name={getSemanticIcon(props.icon)}
-          size="small"
-          classList={{
-            "text-icon-weak-base": props.tone !== "warning",
-            "text-icon-warning-base": props.tone === "warning",
-          }}
-        />
+        <Show when={props.variant !== "resource"}>
+          <Icon
+            name={getSemanticIcon(props.icon)}
+            size="small"
+            classList={{
+              "text-icon-weak-base": props.tone !== "warning",
+              "text-icon-warning-base": props.tone === "warning",
+            }}
+          />
+        </Show>
       </div>
       <div
         class="performance-metric-value mt-2 app-panel-value text-text-strong tabular-nums"
@@ -983,7 +1003,7 @@ function MetricCard(props: {
         </Show>
       </div>
       <Show when={props.hint || props.value === "—"}>
-        <p class="app-panel-caption text-text-weak mt-1">
+        <p class="performance-metric-hint app-panel-caption text-text-weak mt-1">
           {props.hint ??
             props._({ id: "app.performance.metric.unavailable", message: "No measurement in this snapshot" })}
         </p>
