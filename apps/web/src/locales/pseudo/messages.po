@@ -15892,6 +15892,10 @@ msgid "session-turn.token-reasoning"
 msgstr "⟦reasoning⟧"
 
 #. js-lingui-explicit-id
+msgid "session.activity.operations"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.agenda.retry"
 msgstr ""
 

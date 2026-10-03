@@ -1,7 +1,12 @@
 import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
 import type { AssistantMessage, UserMessage, TurnExecutionState } from "@ericsanchezok/synergy-sdk"
 import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack } from "solid-js"
+import { useLingui } from "@lingui/solid"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { createDisclosureMotionRef } from "@ericsanchezok/synergy-ui/hooks"
+import "./conversation-rows.css"
 import { Dynamic } from "solid-js/web"
 import { SessionTurn, resolveActivityDisclosure } from "@ericsanchezok/synergy-ui/session-turn"
 import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
@@ -31,13 +36,21 @@ export function VirtualConversationRows(
   const [handle, setHandle] = createSignal<VirtualizerHandle>()
   const [margin, setMargin] = createSignal(0)
   const [retained, setRetained] = createSignal<string[]>([])
+  const [interactionBlocks, setInteractionBlocks] = createSignal<string[]>([])
   const [interactionRoots, setInteractionRoots] = createSignal<string[]>([])
   const [expanded, setExpanded] = createSignal<ReadonlyMap<string, boolean>>(new Map())
   const activityView = {
     getExpanded: (key: string) => props.activityView?.getExpanded(key) ?? expanded().get(key),
     setExpanded: (key: string, value: boolean) => {
-      if (props.activityView) props.activityView.setExpanded(key, value)
-      else setExpanded((previous) => new Map(previous).set(key, value))
+      const set = (id: string, open: boolean) => {
+        if (props.activityView) props.activityView.setExpanded(id, open)
+        else setExpanded((previous) => new Map(previous).set(id, open))
+      }
+      if (!value && key.startsWith("turn-process:")) {
+        for (const row of requestedRows())
+          if (row.kind === "activity" && `turn-process:${row.root.id}` === key) set(row.activity.key, false)
+      }
+      set(key, value)
     },
   }
   const processState = createMemo((previous: Map<string, { working: boolean; held: boolean }> | undefined) => {
@@ -45,22 +58,34 @@ export function VirtualConversationRows(
     for (const root of props.timeline()) {
       if (root.role !== "user") continue
       const state = input.executionFor?.(root.id)
-      const working = state
-        ? ["preparing", "running", "approval"].includes(state.status)
-        : root.id === props.lastUserMessage()?.id && props.isWorking()
       const last = previous?.get(root.id)
+      const final = props
+        .turnProjection()
+        .turnMessagesFor(root)
+        .findLast((message) => message.role === "assistant")
+      const working = state
+        ? ["preparing", "running", "approval"].includes(state.status) ||
+          (state.status === "completed" && !!last?.working && final?.time.completed == null)
+        : root.id === props.lastUserMessage()?.id && props.isWorking()
       const reading = props.scrolledUp() || interactionRoots().includes(root.id)
       next.set(root.id, { working, held: reading && (!!last?.held || (!!last?.working && !working)) })
     }
     return next
   })
-  const rows = createMemo<ConversationRow[]>((previous) =>
+  const requestedRows = createMemo<ConversationRow[]>((previous) =>
     buildConversationRows({
       previous,
       timeline: props.timeline(),
       messagesFor: (root) => props.turnProjection().turnMessagesFor(root as UserMessage),
       summaries: content.summaries,
       page: content.page,
+      activity: (block) =>
+        activityView.getExpanded(block.key) ??
+        (props.activityDisplay() === "full" ||
+          interactionBlocks().includes(block.key) ||
+          (props.activityDisplay() !== "minimal" &&
+            (block.active ||
+              (props.scrolledUp() && !!previous?.find((row) => row.key === block.key)?.activity?.open)))),
       process: (root) => {
         const state = processState().get(root.id)!
         return {
@@ -75,6 +100,33 @@ export function VirtualConversationRows(
       },
     }),
   )
+  let container: HTMLDivElement | undefined
+  const [rows, setRows] = createSignal<ConversationRow[]>(requestedRows())
+  createEffect(
+    on(requestedRows, (next) => {
+      const current = untrack(rows)
+      const nextKeys = new Set(next.map((row) => row.key))
+      const mounted = new Set(
+        [...(container?.querySelectorAll<HTMLElement>("[data-display-row]") ?? [])].map(
+          (row) => row.dataset.displayRow,
+        ),
+      )
+      const exits = current.filter(
+        (row) =>
+          !nextKeys.has(row.key) &&
+          mounted.has(row.key) &&
+          ((row.kind === "body" && row.processBody) || row.kind === "activity" || row.activity),
+      )
+      const merged = [...next]
+      for (const row of exits) {
+        const following = current.slice(current.indexOf(row) + 1).find((item) => nextKeys.has(item.key))
+        const index = following ? merged.findIndex((item) => item.key === following.key) : merged.length
+        merged.splice(index, 0, { ...row, exiting: true })
+      }
+      setRows(merged)
+    }),
+  )
+  const finishExit = (key: string) => setRows((previous) => previous.filter((row) => row.key !== key || !row.exiting))
   const keys = createMemo(() => rows().map((row) => row.key))
   const layout = layouts.get(props)?.get(props.sessionID)
   const initialCache =
@@ -98,7 +150,6 @@ export function VirtualConversationRows(
     }
   })
   const byKey = createMemo(() => new Map(rows().map((row) => [row.key, row])))
-  let container: HTMLDivElement | undefined
   const kept = createMemo(() =>
     retained()
       .map((key) => keys().indexOf(key))
@@ -148,12 +199,14 @@ export function VirtualConversationRows(
   const pinInteraction = () => {
     const ids = new Set<string>()
     const roots = new Set<string>()
+    const blocks = new Set<string>()
     const add = (node: Node | null) => {
       const element = node instanceof Element ? node : node?.parentElement
       const row = element?.closest<HTMLElement>("[data-display-row]")
       if (row && container?.contains(row)) {
         ids.add(row.dataset.displayRow!)
         roots.add(row.dataset.turnRoot!)
+        if (row.dataset.activityBlock) blocks.add(row.dataset.activityBlock)
       }
     }
     add(document.activeElement)
@@ -173,6 +226,7 @@ export function VirtualConversationRows(
     }
     setRetained([...ids])
     setInteractionRoots([...roots])
+    setInteractionBlocks([...blocks])
   }
   onMount(() => {
     const measure = () => {
@@ -200,6 +254,8 @@ export function VirtualConversationRows(
                 .some((message) => message.id === messageID)),
         )
         if (root) activityView.setExpanded(`turn-process:${root.id}`, true)
+        const block = requestedRows().find((row) => row.kind === "activity" && row.activity.parts.includes(partID))
+        if (block?.activity) activityView.setExpanded(block.activity.key, true)
       }
       let index = rows().findIndex((row) => row.message.id === messageID)
       if (index < 0) return false
@@ -255,6 +311,7 @@ export function VirtualConversationRows(
                 <ConversationDisplayRow
                   context={props}
                   row={row}
+                  onExit={finishExit}
                   activityView={activityView}
                   executionFor={input.executionFor}
                   onRestoreChanges={input.onRestoreChanges}
@@ -272,6 +329,7 @@ function ConversationDisplayRow(
   input: ProcessControls & {
     context: PluginConversationService
     row: () => ConversationRow
+    onExit: (key: string) => void
     activityView: NonNullable<PluginConversationService["activityView"]>
   },
 ) {
@@ -279,6 +337,12 @@ function ConversationDisplayRow(
   const content = props.content!
   const row = input.row
   const execution = useExecution()
+  const { _ } = useLingui()
+  const exitMotion = createDisclosureMotionRef({
+    visible: () => !row().exiting,
+    animate: () => !props.scrolledUp(),
+    onHidden: () => input.onExit(row().key),
+  })
   const [failure, setFailure] = createSignal<string>()
   const [loading, setLoading] = createSignal(false)
   const [retry, setRetry] = createSignal(0)
@@ -365,6 +429,7 @@ function ConversationDisplayRow(
       after: current.kind === "body" && current.after,
       beforeTool: current.kind === "body" && current.beforeTool,
       beforeReasoning: current.kind === "body" && current.beforeReasoning,
+      activityBody: current.kind === "body" && !!current.activity,
       processHeader: current.kind === "process",
       processBody: current.kind === "body" && current.processBody,
       process: current.process,
@@ -380,14 +445,17 @@ function ConversationDisplayRow(
   }
   return (
     <div
+      ref={exitMotion}
       data-display-row={row().key}
+      data-row-kind={row().kind}
+      data-activity-block={row().activity?.key}
+      data-process-body={segment().processBody ? "" : undefined}
       data-turn-root={row().root.id}
       data-message-id={row().message.id}
       data-message-role={row().message.role}
       data-part-id={partID()}
       id={anchor()}
-      class="min-w-0 w-full max-w-full"
-      classList={{ "pb-5": row().kind !== "process" }}
+      class="conversation-display-row min-w-0 w-full max-w-full"
     >
       <Show when={failure()}>
         <button type="button" class="text-12-medium text-text-weak" onClick={() => void load()}>
@@ -407,78 +475,108 @@ function ConversationDisplayRow(
         }
       >
         <Show
-          when={!standalone()}
+          when={row().kind === "activity"}
           fallback={
-            <Show when={row().kind === "body"}>
-              <Show when={segment().before}>
-                <MessageSlotOutlet
-                  slot="message.before"
-                  sessionId={props.sessionID}
-                  messageId={row().message.id}
-                  role="assistant"
-                />
-              </Show>
-              <Dynamic
-                component={row().message.metadata?.source === "command" ? CommandResultOutput : MailboxMessage}
-                message={row().message as AssistantMessage}
-                partIDs={segment().parts.map((part) => part.id)}
-                showHeader={segment().before}
-                classes={{ root: "min-w-0 w-full relative", container: "w-full min-w-0 max-w-full pb-1" }}
+            <Show
+              when={!standalone()}
+              fallback={
+                <Show when={row().kind === "body"}>
+                  <Show when={segment().before}>
+                    <MessageSlotOutlet
+                      slot="message.before"
+                      sessionId={props.sessionID}
+                      messageId={row().message.id}
+                      role="assistant"
+                    />
+                  </Show>
+                  <Dynamic
+                    component={row().message.metadata?.source === "command" ? CommandResultOutput : MailboxMessage}
+                    message={row().message as AssistantMessage}
+                    partIDs={segment().parts.map((part) => part.id)}
+                    showHeader={segment().before}
+                    classes={{ root: "min-w-0 w-full relative", container: "w-full min-w-0 max-w-full" }}
+                  />
+                  <Show when={segment().after}>
+                    <MessageSlotOutlet
+                      slot="message.actions"
+                      sessionId={props.sessionID}
+                      messageId={row().message.id}
+                      role="assistant"
+                    />
+                    <MessageSlotOutlet
+                      slot="message.after"
+                      sessionId={props.sessionID}
+                      messageId={row().message.id}
+                      role="assistant"
+                    />
+                  </Show>
+                </Show>
+              }
+            >
+              <SessionTurn
+                sessionID={props.sessionID}
+                messageID={row().root.id}
+                rootMessage={row().root as UserMessage}
+                messages={
+                  row().kind === "footer" || row().kind === "process"
+                    ? props.turnProjection().turnMessagesFor(row().root as UserMessage)
+                    : [row().message]
+                }
+                segment={segment()}
+                copyMessageText={content.text}
+                compactionParentIDs={props.turnProjection().compactionParentIDs}
+                activityDisplay={props.activityDisplay()}
+                activityView={input.activityView}
+                executionState={input.executionFor?.(row().root.id)}
+                following={!props.scrolledUp()}
+                lastUserMessageID={props.lastUserMessage()?.id}
+                compactReasoning={props.compactReasoning()}
+                onRewind={
+                  props.canRewind(row().root as UserMessage)
+                    ? () => props.onRewind?.(row().root as UserMessage)
+                    : undefined
+                }
+                rollbackActive={props.rollbackActive}
+                onReviewChanges={props.onReviewChanges}
+                onRestoreChanges={input.onRestoreChanges}
+                onForkMessage={props.onForkMessage}
+                executionSummary={
+                  row().kind === "footer" && execution.available() ? execution.round(row().root.id) : undefined
+                }
+                onExecutionDetails={
+                  row().kind === "footer" && execution.available()
+                    ? () => void execution.open(row().root.id)
+                    : undefined
+                }
+                classes={{
+                  root: "min-w-0 w-full relative",
+                  content: "flex flex-col justify-between !overflow-visible",
+                  container: "w-full min-w-0 max-w-full",
+                }}
               />
-              <Show when={segment().after}>
-                <MessageSlotOutlet
-                  slot="message.actions"
-                  sessionId={props.sessionID}
-                  messageId={row().message.id}
-                  role="assistant"
-                />
-                <MessageSlotOutlet
-                  slot="message.after"
-                  sessionId={props.sessionID}
-                  messageId={row().message.id}
-                  role="assistant"
-                />
-              </Show>
             </Show>
           }
         >
-          <SessionTurn
-            sessionID={props.sessionID}
-            messageID={row().root.id}
-            rootMessage={row().root as UserMessage}
-            messages={
-              row().kind === "footer" || row().kind === "process"
-                ? props.turnProjection().turnMessagesFor(row().root as UserMessage)
-                : [row().message]
-            }
-            segment={segment()}
-            copyMessageText={content.text}
-            compactionParentIDs={props.turnProjection().compactionParentIDs}
-            activityDisplay={props.activityDisplay()}
-            activityView={input.activityView}
-            executionState={input.executionFor?.(row().root.id)}
-            following={!props.scrolledUp()}
-            lastUserMessageID={props.lastUserMessage()?.id}
-            compactReasoning={props.compactReasoning()}
-            onRewind={
-              props.canRewind(row().root as UserMessage) ? () => props.onRewind?.(row().root as UserMessage) : undefined
-            }
-            rollbackActive={props.rollbackActive}
-            onReviewChanges={props.onReviewChanges}
-            onRestoreChanges={input.onRestoreChanges}
-            onForkMessage={props.onForkMessage}
-            executionSummary={
-              row().kind === "footer" && execution.available() ? execution.round(row().root.id) : undefined
-            }
-            onExecutionDetails={
-              row().kind === "footer" && execution.available() ? () => void execution.open(row().root.id) : undefined
-            }
-            classes={{
-              root: "min-w-0 w-full relative",
-              content: "flex flex-col justify-between !overflow-visible",
-              container: "w-full min-w-0 max-w-full pb-1",
+          <button
+            type="button"
+            data-slot="activity-batch-trigger"
+            aria-expanded={row().activity?.open}
+            onClick={() => {
+              const block = row().activity
+              if (block) input.activityView.setExpanded(block.key, !block.open)
             }}
-          />
+          >
+            <span>
+              {row().activity?.tools
+                ? _({
+                    id: "session.activity.operations",
+                    message: "{count, plural, one {# action} other {# actions}}",
+                    values: { count: row().activity!.tools },
+                  })
+                : _({ id: "session.reasoning.title", message: "Reasoning" })}
+            </span>
+            <Icon name={getSemanticIcon("navigation.expand")} size="small" />
+          </button>
         </Show>
       </Show>
     </div>

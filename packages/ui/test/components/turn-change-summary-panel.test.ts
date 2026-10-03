@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
   resolveTurnDiffPanelState,
-  TURN_DIFF_PENDING_DELAY_MS,
   turnChangeSummaryHiddenCount,
   turnChangeSummaryFiles,
   turnChangeSummaryTitle,
@@ -47,24 +46,21 @@ describe("TurnChangeSummaryPanel helpers", () => {
     expect(turnChangeSummaryToggleLabel({ expanded: true, hiddenCount: 2 })).toBe("Hide files")
   })
 
-  test("delays pending without delaying ready or error", () => {
-    expect(TURN_DIFF_PENDING_DELAY_MS).toBe(150)
-    expect(resolveTurnDiffPanelState("pending", false)).toBe("hidden")
-    expect(resolveTurnDiffPanelState("pending", true)).toBe("pending")
-    expect(resolveTurnDiffPanelState("ready", false)).toBe("ready")
-    expect(resolveTurnDiffPanelState("error", false)).toBe("error")
+  test("shows a change card only when recorded files exist", () => {
+    const states: TurnDiffPanelState[] = ["hidden", "pending", "ready", "partial", "error"]
+    for (const state of states) {
+      expect(resolveTurnDiffPanelState(state, false)).toBe("hidden")
+      expect(resolveTurnDiffPanelState(state, true)).toBe(state)
+    }
   })
 
-  test("keeps settled states immediate and hides absent state", () => {
-    const states: Array<[TurnDiffPanelState, TurnDiffPanelState]> = [
-      ["hidden", "hidden"],
-      ["ready", "ready"],
-      ["error", "error"],
-    ]
-
-    for (const [input, expected] of states) {
-      expect(resolveTurnDiffPanelState(input, false)).toBe(expected)
-    }
+  test("retains confirmed binary and empty-file changes with zero line counts", () => {
+    const files = turnChangeSummaryFiles([
+      { file: "empty.txt", additions: 0, deletions: 0 },
+      { file: "image.png", additions: 0, deletions: 0, binary: true },
+    ])
+    expect(files).toHaveLength(2)
+    expect(resolveTurnDiffPanelState("partial", files.length > 0)).toBe("partial")
   })
 })
 
@@ -78,9 +74,4 @@ test("the summary preserves backend net counts without adding obsolete operation
   expect(files).toHaveLength(2)
   expect(files[0]).toMatchObject({ file: "same.txt", workspace, additions: 3, deletions: 4 })
   expect(files[0]?.operationID).toBeUndefined()
-})
-
-test("pending results preserve an existing card while partial results remain visible", () => {
-  expect(resolveTurnDiffPanelState("pending", false, true)).toBe("pending")
-  expect(resolveTurnDiffPanelState("partial", false)).toBe("partial")
 })

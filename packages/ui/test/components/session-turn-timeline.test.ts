@@ -794,7 +794,7 @@ describe("session turn timeline", () => {
     } satisfies SessionStatus
 
     expect(providerPreludeText(status)).toBe("Awaiting response…")
-    expect(providerPreludeText({ type: "busy" })).toBe("Awaiting response…")
+    expect(providerPreludeText({ type: "busy" })).toBe("Synergy is thinking…")
   })
 
   test("formats provider prelude elapsed time as a quiet timer label", () => {

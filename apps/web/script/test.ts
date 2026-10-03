@@ -45,6 +45,7 @@ const playwrightIsolated = [
   "test/components/session/rollback-files.dom.test.ts",
   "test/components/session/session-review-workspace.dom.test.ts",
   "test/components/session/conversation-reading-anchor.dom.test.ts",
+  "test/components/session/conversation-process.dom.test.ts",
   "test/components/dialog/workspace-dialog.dom.test.ts",
   "test/components/dialog/directory-navigation.dom.test.ts",
   "test/components/dialog/directory-selection.dom.test.ts",

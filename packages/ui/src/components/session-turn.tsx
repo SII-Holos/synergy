@@ -37,11 +37,7 @@ import { createDisclosureMotionRef } from "../utils/disclosure-motion"
 import { projectActivityBatches, resolveActivityDisclosure } from "./session-turn-process"
 export { resolveActivityDisclosure } from "./session-turn-process"
 import { TurnChangeSummaryPanel } from "./turn-change-summary-panel"
-import {
-  resolveTurnDiffPanelState,
-  TURN_DIFF_PENDING_DELAY_MS,
-  type TurnDiffPanelState,
-} from "./turn-change-summary-panel-model"
+import { resolveTurnDiffPanelState, type TurnDiffPanelState } from "./turn-change-summary-panel-model"
 import { Message, Part, getToolInfo } from "./message-part"
 import { MessageSlotOutlet, type MessageSlotName } from "./message-slots"
 import { AttachmentGallery } from "./attachment-card"
@@ -501,7 +497,7 @@ export function resolveTurnWorking(input: {
   return !!input.sessionStatus && input.sessionStatus.type !== "idle"
 }
 
-const awaitingResponse = { id: "ui.session.awaitingResponse", message: "Awaiting response…" }
+const awaitingResponse = { id: "ui.session.awaitingResponse", message: "Synergy is thinking…" }
 
 export function providerPreludeText(status: SessionStatus | undefined, fallback = awaitingResponse.message): string {
   if (status?.type === "busy") {
@@ -1063,6 +1059,7 @@ export function SessionTurn(
       after: boolean
       beforeTool?: boolean
       beforeReasoning?: boolean
+      activityBody?: boolean
       processHeader?: boolean
       processBody?: boolean
       process?: { open: boolean; working: boolean; hasContent: boolean; hasTurnContent: boolean }
@@ -1256,7 +1253,7 @@ export function SessionTurn(
         result.push(...accessor())
       }
 
-      return projectActivityBatches(result)
+      return props.segment?.activityBody ? result : projectActivityBatches(result)
     },
     emptyDisplayItems,
     { equals: same },
@@ -1274,23 +1271,12 @@ export function SessionTurn(
   const showUserChrome = createMemo(
     () => (props.segment?.user ?? true) && shouldShowTurnUserChrome(message(), parts(), hasCompactionEvent()),
   )
-  const [pendingDelayElapsed, setPendingDelayElapsed] = createSignal(false)
   const [animateReadyDiffPanel, setAnimateReadyDiffPanel] = createSignal(false)
   const diffSettlementStatus = createMemo(() => message()?.summary?.diffState?.status)
   const incompleteFileRecording = createMemo(() => {
     const state = message()?.summary?.diffState
     return state?.status === "partial" || (state?.status === "error" && state.code === "incomplete")
   })
-
-  createEffect(
-    on(diffSettlementStatus, (status) => {
-      setPendingDelayElapsed(false)
-      if (status !== "pending") return
-
-      const pendingTimer = setTimeout(() => setPendingDelayElapsed(true), TURN_DIFF_PENDING_DELAY_MS)
-      onCleanup(() => clearTimeout(pendingTimer))
-    }),
-  )
 
   createEffect(on(diffSettlementStatus, (status) => setAnimateReadyDiffPanel(status === "ready"), { defer: true }))
 
@@ -1300,7 +1286,7 @@ export function SessionTurn(
       hasCompactionEvent: hasCompactionEvent(),
       isCompactedParent: !!msg && compactionParentIDs().has(msg.id),
     })
-    return resolveTurnDiffPanelState(projected, pendingDelayElapsed(), (msg?.summary?.diffs.length ?? 0) > 0)
+    return resolveTurnDiffPanelState(projected, (msg?.summary?.diffs.length ?? 0) > 0)
   })
   const visibleDiffPanelState = createMemo<Exclude<TurnDiffPanelState, "hidden"> | undefined>(() => {
     const state = diffPanelState()
@@ -1407,9 +1393,7 @@ export function SessionTurn(
           hasTurnContent: props.segment?.process?.hasTurnContent ?? hasTimelineItems(),
         }),
   )
-  const showExecutionCompletion = createMemo(
-    () => !working() && (!!props.executionSummary || !!props.onExecutionDetails),
-  )
+  const showExecutionCompletion = createMemo(() => !working() && !!props.executionSummary)
 
   const autoScroll = createAutoScroll({
     working,
@@ -1537,7 +1521,13 @@ export function SessionTurn(
   )
 
   return (
-    <div data-component="session-turn" data-activity-display={activityDisplay()} class={props.classes?.root}>
+    <div
+      data-component="session-turn"
+      data-segment-footer={props.segment?.footer ? "" : undefined}
+      data-activity-body={props.segment?.activityBody ? "" : undefined}
+      data-activity-display={activityDisplay()}
+      class={props.classes?.root}
+    >
       <div
         ref={autoScroll.scrollRef}
         onScroll={autoScroll.handleScroll}
@@ -1731,7 +1721,9 @@ export function SessionTurn(
                                       >
                                         <TimelineDisplay
                                           item={current()}
-                                          initialReasoning={index() === 0 && reasoningItem(current())}
+                                          initialReasoning={
+                                            !props.segment?.activityBody && index() === 0 && reasoningItem(current())
+                                          }
                                           serverUrl={data.serverUrl}
                                           rollbackActive={props.rollbackActive === true}
                                           onRewind={props.onRewind}
@@ -1781,6 +1773,7 @@ export function SessionTurn(
                           when={
                             showFooter() &&
                             !working() &&
+                            lastAssistantMessage()?.time.completed != null &&
                             (markdownText() || (props.copyMessageText && lastAssistantMessage()))
                           }
                         >

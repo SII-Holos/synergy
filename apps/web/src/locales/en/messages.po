@@ -15892,6 +15892,10 @@ msgid "session-turn.token-reasoning"
 msgstr "reasoning"
 
 #. js-lingui-explicit-id
+msgid "session.activity.operations"
+msgstr "{count, plural, one {# action} other {# actions}}"
+
+#. js-lingui-explicit-id
 msgid "session.agenda.retry"
 msgstr "Could not load scheduled activity. Retry"
 
@@ -25470,7 +25474,7 @@ msgstr "Generating media"
 
 #. js-lingui-explicit-id
 msgid "ui.session.awaitingResponse"
-msgstr "Awaiting response…"
+msgstr "Synergy is thinking…"
 
 #. js-lingui-explicit-id
 msgid "ui.sessionReview.loadingFile"

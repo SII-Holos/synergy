@@ -15892,6 +15892,10 @@ msgid "session-turn.token-reasoning"
 msgstr "推理"
 
 #. js-lingui-explicit-id
+msgid "session.activity.operations"
+msgstr "执行了 {count} 项操作"
+
+#. js-lingui-explicit-id
 msgid "session.agenda.retry"
 msgstr "未能加载定时任务，重试"
 
@@ -25470,7 +25474,7 @@ msgstr "正在生成"
 
 #. js-lingui-explicit-id
 msgid "ui.session.awaitingResponse"
-msgstr "等待回复……"
+msgstr "Synergy 正在思考…"
 
 #. js-lingui-explicit-id
 msgid "ui.sessionReview.loadingFile"

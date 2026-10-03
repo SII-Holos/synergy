@@ -80,6 +80,8 @@ Global command-palette navigation must work while an editor or terminal owns foc
 
 For user decisions and recoverable queue operations, retain state by request identity, keep structured errors, and reconcile uncertain transport results before retrying. A public preview is not a restoration payload: restore through the domain's original input and idempotent receipt. Verify delayed replies after a request switch, lost replies after server success, failed restoration, and stopped progress motion separately from pending state.
 
+Logical conversation disclosures must be independent of message boundaries and virtual render chunks. Verify cross-message reasoning/tools, public-prose separators, terminal marker ordering, final Markdown identity, focused/selected content and bounded mounted bodies with real virtual-list components. Exit animations may retain only mounted rows and must release their content leases after settling.
+
 ## Preserve Browser Capability Boundaries
 
 1. Route ordinary App/UI identifiers through `generateUUID()` or `generateRandomBytes()` from the shared utility package. Do not call `crypto.randomUUID()` or `crypto.getRandomValues()` directly from browser source.

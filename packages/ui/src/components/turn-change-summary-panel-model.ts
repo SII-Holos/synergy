@@ -29,15 +29,8 @@ const SHOW_DESC = /** i18n */ {
 
 export type TurnDiffPanelState = "hidden" | "pending" | "ready" | "partial" | "error"
 
-export const TURN_DIFF_PENDING_DELAY_MS = 150
-
-export function resolveTurnDiffPanelState(
-  state: TurnDiffPanelState,
-  pendingDelayElapsed: boolean,
-  hasFiles = false,
-): TurnDiffPanelState {
-  if (state === "pending" && !pendingDelayElapsed && !hasFiles) return "hidden"
-  return state
+export function resolveTurnDiffPanelState(state: TurnDiffPanelState, hasFiles: boolean): TurnDiffPanelState {
+  return hasFiles ? state : "hidden"
 }
 
 export function turnChangeSummaryTitle(fileCount: number, i18n?: I18n) {
