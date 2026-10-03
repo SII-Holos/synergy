@@ -26,6 +26,8 @@ Linux 基础准备、core 分发、full 分发和 benchmark 准备各有独立�
 
 `All checks passed` 始终执行，核对计划摘要、测试 SHA、run、模式、全部选中任务、job 结果、报告摘要和逐文件执行清单。安装和矩阵的 JUnit 场景必须恰好执行一次且成功。结果版本 2 记录 `unit`、`planAttempt`、`executionAttempt`；报告按产物目录隔离。GitHub“仅重跑失败 job”沿用原计划和成功产物，汇总根据 API 的最近一次实际 unit 执行选择证据。GitHub 会给未执行的兄弟 job 复制新的 attempt 编号；已完成且开始、结束均早于记录创建时间的复制记录不算新执行，也不重复计入计算时间。最新失败、缺失、重复、损坏、旧 SHA、错误 run 或计划不能通过。产物过期须全量重跑。新提交重新计算当前 PR 影响范围，不能沿用上一个 SHA 的通过结论。覆盖率只合并所选最新完整成功报告，阈值与 exemption 不变。
 
+选中的 core/full 分发消费者必须让基础准备生成并发布 Linux sandbox helper，即使计划没有选中安装产物或 sandbox 测试。独立的 Web 分发验收同样依赖该原生包；普通 Web suite 不因此额外准备 sandbox。准备条件来自选中任务的分发 profile 和显式 prerequisites，不能只按测试 kind 判断。
+
 ## 维护验证成本
 
 测试的价值由它保护的业务行为、实际故障和独有覆盖决定。开发变更同时审视新增与已有测试，合并重复覆盖、移除过时场景，保留安装、生命周期、迁移、恢复、平台差异与覆盖率门槛。具体步骤由 [testing-guide](../../.synergy/skill/testing-guide/SKILL.md#review-test-value-and-ci-cost) 拥有，源开发入口 [develop-synergy](../../.synergy/skill/develop-synergy/SKILL.md#verify-and-diagnose) 必须执行这项审视。

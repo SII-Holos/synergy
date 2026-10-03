@@ -215,8 +215,9 @@
   pointer-events: auto;
 }
 
-.workbench-surface-tab-close:hover {
-  background: var(--workbench-control-bg-hover, var(--surface-raised-base-hover));
+.workbench-surface-tab-close:hover,
+.workbench-surface-tab-close:focus-visible {
+  background: var(--surface-inset-strong-hover);
   color: var(--icon-strong);
 }
 
