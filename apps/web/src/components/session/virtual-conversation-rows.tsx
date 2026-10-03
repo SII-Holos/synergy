@@ -82,7 +82,8 @@ export function VirtualConversationRows(
       activity: (block) =>
         activityView.getExpanded(block.key) ??
         (props.activityDisplay() === "full" ||
-          interactionBlocks().includes(block.key) ||
+          (interactionBlocks().includes(block.key) &&
+            !!previous?.find((row) => row.key === block.key)?.activity?.open) ||
           (props.activityDisplay() !== "minimal" &&
             (block.active ||
               (props.scrolledUp() && !!previous?.find((row) => row.key === block.key)?.activity?.open)))),
