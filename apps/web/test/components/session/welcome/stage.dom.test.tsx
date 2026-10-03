@@ -363,7 +363,7 @@ test("same-mode theme changes redraw canvas without losing progress, and remount
   await page.emulateMedia({ reducedMotion: "no-preference" })
 })
 
-test("ambient motion freezes in place after clicking the title and keyboard focus leaving pauses play", async () => {
+test("ambient motion continues when outside clicks and keyboard focus pause play", async () => {
   await page.setViewportSize({ width: 960, height: 920 })
   await open("flight")
   const ambient = page.locator(".welcome-ambient")
@@ -374,13 +374,104 @@ test("ambient motion freezes in place after clicking the title and keyboard focu
   const title = (await page.getByRole("heading").boundingBox())!
   await page.mouse.click(title.x + title.width / 2, title.y + title.height / 2)
   await page.waitForTimeout(50)
+  expect(await page.locator(".welcome-stage").getAttribute("data-active")).toBeNull()
   const paused = await frame()
   await page.waitForTimeout(120)
-  expect(await frame()).toBe(paused)
+  expect((await frame()) === paused).toBe(false)
   const board = page.locator(".welcome-game-canvas")
   await board.click()
   await page.keyboard.press("Tab")
   expect(await page.locator(".welcome-stage").getAttribute("data-active")).toBeNull()
+  expect(await ambient.getAttribute("data-moving")).toBe("")
+})
+
+test("game controls and composer states pause play independently of the ambient field", async () => {
+  await page.setViewportSize({ width: 960, height: 920 })
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await open("flight")
+  const stage = page.locator(".welcome-stage")
+  const board = page.locator(".welcome-game-canvas")
+  const ambient = page.locator(".welcome-ambient")
+  const frame = () => ambient.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
+  const remainsMoving = async () => {
+    await page.waitForFunction(() => !document.querySelector(".welcome-stage")?.hasAttribute("data-active"))
+    expect(await stage.getAttribute("data-active")).toBeNull()
+    expect(await ambient.getAttribute("data-moving")).toBe("")
+    const before = await frame()
+    await page.waitForFunction(
+      (snapshot) => document.querySelector<HTMLCanvasElement>(".welcome-ambient")?.toDataURL() !== snapshot,
+      before,
+    )
+    const game = await board.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
+    await page.waitForTimeout(120)
+    expect((await board.evaluate((el) => (el as HTMLCanvasElement).toDataURL())) === game).toBe(true)
+  }
+  await board.click()
+  expect(await page.locator(".welcome-flight").getAttribute("data-phase")).toBe("playing")
+  await page.locator(".welcome-game-status").click()
+  await remainsMoving()
+  await page.locator(".welcome-game-status").click()
+  await page.keyboard.press("Escape")
+  await remainsMoving()
+  await page.locator(".welcome-game-status").click()
+  await page.getByRole("textbox").fill("Keep this draft")
+  await remainsMoving()
+  await page.locator(".welcome-game-status").click()
+  await page.getByRole("button", { name: "Overlay", exact: true }).click()
+  await remainsMoving()
+  await page.getByRole("button", { name: "Overlay", exact: true }).click()
+  await page.locator(".welcome-game-status").click()
+  await page.locator(".session-composer").evaluate((el) => el.setAttribute("data-expanded", ""))
+  await remainsMoving()
+  await page.locator(".session-composer").evaluate((el) => el.removeAttribute("data-expanded"))
+  await page.locator("main").evaluate((el) => (el.style.display = "none"))
+  await remainsMoving()
+  expect(await page.getByRole("textbox").inputValue()).toBe("Keep this draft")
+  expect(errors).toEqual([])
+}, 15000)
+
+test("ambient visibility and reduced motion resume without resuming a paused game", async () => {
+  await page.setViewportSize({ width: 960, height: 920 })
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await open("blocks")
+  await page.locator(".welcome-game-canvas").focus()
+  await page.keyboard.press("Escape")
+  const stage = page.locator(".welcome-stage")
+  const ambient = page.locator(".welcome-ambient")
+  const frame = () => ambient.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
+  const expectFrozen = async () => {
+    await page.waitForFunction(() => !document.querySelector(".welcome-ambient")?.hasAttribute("data-moving"))
+    expect(await ambient.getAttribute("data-moving")).toBeNull()
+    const before = await frame()
+    await page.waitForTimeout(160)
+    expect((await frame()) === before).toBe(true)
+  }
+  const expectMoving = async () => {
+    await page.waitForFunction(() => document.querySelector(".welcome-ambient")?.hasAttribute("data-moving"))
+    expect(await stage.getAttribute("data-active")).toBeNull()
+    expect(await ambient.getAttribute("data-moving")).toBe("")
+    const before = await frame()
+    await page.waitForFunction(
+      (snapshot) => document.querySelector<HTMLCanvasElement>(".welcome-ambient")?.toDataURL() !== snapshot,
+      before,
+    )
+  }
+  await expectMoving()
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" })
+    document.dispatchEvent(new Event("visibilitychange"))
+  })
+  await expectFrozen()
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" })
+    document.dispatchEvent(new Event("visibilitychange"))
+  })
+  await expectMoving()
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await expectFrozen()
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await expectMoving()
+  expect(errors).toEqual([])
 })
 
 test("touch gestures rotate and drop blocks without changing the draft", async () => {
