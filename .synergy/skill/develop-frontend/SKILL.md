@@ -82,6 +82,8 @@ Global command-palette navigation must work while an editor or terminal owns foc
 
 For user decisions and recoverable queue operations, retain state by request identity, keep structured errors, and reconcile uncertain transport results before retrying. A public preview is not a restoration payload: restore through the domain's original input and idempotent receipt. Verify delayed replies after a request switch, lost replies after server success, failed restoration, and stopped progress motion separately from pending state.
 
+For immediate Settings connection commands, keep setup inputs under the dialog owner without registering them as preference changes. Reuse a stable creation ID, recover a lost response through the canonical connection snapshot, and retry reads after a known write without repeating it. Abort disposed authentication waits and prevent late responses from completing a different view. Present catalog source and verification time independently of authentication health; inspect structured failure fields even when the transport succeeds. Cover these boundaries with the actual connection components.
+
 Logical conversation disclosures must be independent of message boundaries and virtual render chunks. Verify cross-message reasoning/tools, public-prose separators, terminal marker ordering, final Markdown identity, focused/selected content and bounded mounted bodies with real virtual-list components. Exit animations may retain only mounted rows and must release their content leases after settling.
 
 ## Preserve Browser Capability Boundaries

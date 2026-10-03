@@ -22013,48 +22013,24 @@ msgid "settings.providers.account.add"
 msgstr "⟦Add account⟧"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.account.add.description"
-msgstr "⟦Create a named account connection for {providerName}. Connect its credentials separately after creation.⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.account.add.title"
-msgstr "⟦Add provider account⟧"
+msgid "settings.providers.account.advanced"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.providers.account.cancel"
 msgstr "⟦Cancel⟧"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.account.connection"
-msgstr "⟦Account connection⟧"
+msgid "settings.providers.account.connectAnother"
+msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.providers.account.connection.description"
-msgstr "⟦This account has independent credentials. It is not a credential failover entry.⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.account.create"
-msgstr "⟦Create account⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.account.created"
-msgstr "⟦Provider account created⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.account.creating"
-msgstr "⟦Creating...⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.account.dialog.close"
-msgstr "⟦Close account dialog⟧"
+msgid "settings.providers.account.connectAnother.description"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.providers.account.edit"
 msgstr "⟦Edit account⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.account.edit.description"
-msgstr "⟦Update this account connection without changing sibling accounts.⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.account.edit.title"
@@ -22077,12 +22053,28 @@ msgid "settings.providers.account.endpoint.placeholder"
 msgstr "⟦https://api.example.com/v1⟧"
 
 #. js-lingui-explicit-id
+msgid "settings.providers.account.finishSetup"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.manage"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.providers.account.name"
 msgstr "⟦Account name⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.account.name.placeholder"
 msgstr "⟦Work account⟧"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.numbered"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.remark"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.providers.account.remove"
@@ -22097,10 +22089,6 @@ msgid "settings.providers.account.remove.title"
 msgstr "⟦Remove provider account?⟧"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.account.requestFailed"
-msgstr "⟦Account update failed⟧"
-
-#. js-lingui-explicit-id
 msgid "settings.providers.account.retryRefresh"
 msgstr "⟦Refresh connection⟧"
 
@@ -22111,6 +22099,10 @@ msgstr "⟦Save changes⟧"
 #. js-lingui-explicit-id
 msgid "settings.providers.account.saved"
 msgstr "⟦Provider account updated⟧"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.savedRefreshFailed"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.providers.account.saving"
@@ -22141,8 +22133,12 @@ msgid "settings.providers.catalog.cached"
 msgstr "⟦Showing the last synced model list⟧"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.catalog.pending"
-msgstr "⟦Model list needs refresh⟧"
+msgid "settings.providers.catalog.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.lastUpdated"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.providers.catalog.refresh"
@@ -22151,6 +22147,14 @@ msgstr "⟦Refresh models⟧"
 #. js-lingui-explicit-id
 msgid "settings.providers.catalog.refreshing"
 msgstr "⟦Refreshing model list⟧"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.stillAvailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.updated"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.providers.connectAction"
@@ -22175,6 +22179,50 @@ msgstr "⟦Add a service to start choosing models.⟧"
 #. js-lingui-explicit-id
 msgid "settings.providers.empty.title"
 msgstr "⟦No connected services⟧"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.immediate"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.method.apiKey"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.method.chatgpt"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.method.claude"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.method.codexImport"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.method.copilot"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.method.copilotEnterprise"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.method.github"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.method.githubToken"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.method.grok"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.method.minimax"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.providers.modelCount"

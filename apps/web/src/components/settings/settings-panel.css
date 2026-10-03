@@ -3073,6 +3073,107 @@
   line-height: var(--settings-type-caption-line-height);
 }
 
+.providers-immediate-hint {
+  color: var(--text-weak);
+  font-size: var(--settings-type-caption-size);
+  line-height: var(--settings-type-caption-line-height);
+}
+
+.providers-catalog-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  color: var(--text-weak);
+  font-size: var(--settings-type-caption-size);
+  line-height: var(--settings-type-caption-line-height);
+}
+
+.providers-catalog-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.providers-catalog-copy time,
+.providers-catalog-note {
+  display: block;
+}
+
+.providers-catalog-warning {
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--text-base);
+  background: color-mix(in oklch, var(--icon-warning-base) 12%, var(--settings-card-bg));
+}
+
+.providers-management,
+.providers-advanced {
+  min-width: 0;
+  color: var(--text-weak);
+  font-size: var(--settings-type-control-size);
+  line-height: var(--settings-type-control-line-height);
+}
+
+.providers-management > summary,
+.providers-advanced > summary {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.providers-management > summary::after,
+.providers-advanced > summary::after {
+  content: "+";
+  margin-inline-start: 8px;
+}
+
+.providers-management[open] > summary::after,
+.providers-advanced[open] > summary::after {
+  content: "−";
+}
+
+.providers-management > summary:hover,
+.providers-advanced > summary:hover {
+  background: var(--settings-control-bg);
+  color: var(--text-strong);
+}
+
+.providers-management > summary:focus-visible,
+.providers-advanced > summary:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.providers-management-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.providers-account-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-block-start: 16px;
+  border-top: 1px solid var(--settings-border);
+}
+
+.providers-setup-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.providers-advanced > [data-component] {
+  margin-block-start: 12px;
+}
+
 .provider-account-dialog {
   --dialog-body-padding: 0;
 }
