@@ -1,7 +1,6 @@
 import type { StoreOptions } from "../../src/storage/sql-contract"
 
 export const POSTGRES_TEST_FILES = [
-  "test/session/context-continuity.test.ts",
   "test/storage/artifact-pack.test.ts",
   "test/storage/backend-selection.test.ts",
   "test/storage/compat-defer.test.ts",
@@ -13,6 +12,7 @@ export const POSTGRES_TEST_FILES = [
   "test/storage/transactional-store.test.ts",
   "test/storage/text-projection.test.ts",
   "test/storage/usage-ledger.test.ts",
+  "test/session/context-continuity.test.ts",
 ] as const
 
 type Backend = "sqlite" | "postgres"
