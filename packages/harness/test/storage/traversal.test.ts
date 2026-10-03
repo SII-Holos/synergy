@@ -21,6 +21,9 @@ beforeAll(async () => {
         await tx.write(key, value)
         if (index % 19 === 0) await tx.remove(key)
         else expected.set(JSON.stringify(key), value)
+        const usage = ["usage_time", "scope", `operation_${index % 2}`, String(index).padStart(6, "0")]
+        await tx.write(usage, value)
+        expected.set(JSON.stringify(usage), value)
       }
     })
   } finally {
@@ -111,6 +114,43 @@ test("filtered cursor pages seek into their index in both directions", async () 
       expect(new Set([...first, ...second].map((row) => JSON.stringify(row.key))).size).toBe(60)
       expect(plans.join("\n")).toMatch(/order_key.*[<>]/)
       expect(plans.join("\n")).not.toContain("TEMP B-TREE")
+    } finally {
+      tx.finish()
+    }
+  }
+})
+
+test("prefix cursor pages retain indexed range seeks without sorting their full history", async () => {
+  for (const descending of [false, true]) {
+    const { tx, plans } = transaction()
+    try {
+      let after: string[] | undefined
+      const seen: string[][] = []
+      for (;;) {
+        plans.length = 0
+        const page = await tx.query({
+          kind: "usage_time",
+          scopeID: "scope",
+          sessionID: "",
+          prefix: ["usage_time", "scope", "operation_1"],
+          limit: 30,
+          descending,
+          after,
+        })
+        const detail = plans.join("\n")
+        expect(detail).toMatch(/storage_records_(kind|session)/)
+        expect(detail).not.toContain("SCAN storage_records")
+        expect(detail).not.toContain("TEMP B-TREE")
+        if (after) expect(detail).toMatch(/order_key.*[<>]/)
+        if (!page.length) break
+        seen.push(...page.map((row) => row.key))
+        after = page.at(-1)!.key
+      }
+      expect(seen).toEqual(
+        (await tx.query({ kind: "usage_time", descending, limit: 1000 }))
+          .filter((row) => row.key[2] === "operation_1")
+          .map((row) => row.key),
+      )
     } finally {
       tx.finish()
     }

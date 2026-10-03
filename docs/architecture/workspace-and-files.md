@@ -195,6 +195,8 @@ Workspace events enter one per-Workspace drain that deduplicates paths, processe
 
 Logical Workspace services use catalog identity and binding generation without projecting a controller path. Mounted views expose an observation epoch and monotonic version from the execution host's native watcher; the execution image includes the verified Linux binding. Observation polls existing mounts without holding Environment uses, so a file panel cannot allocate compute or prevent idle reclamation. Content publication, attachment, detachment and observation changes invalidate file caches and emit a Workspace resync, including branch refresh. A new subscription epoch forces a refresh after listener recovery. Catalog changes increment their revision and publish events in the same business transaction.
 
+Failed incremental watcher batches require the same full resync as queue overflow. Idle waiters receive the failure; the drain retries reconciliation after at least one second without requiring a new native event. Repeated failures retain pending reconciliation, events received during a resync remain queued, and disposal cancels retries.
+
 ## Classic and Anchored Coding Tools
 
 Synergy supports ordinary file tools and an anchored coding harness. The anchored family uses:

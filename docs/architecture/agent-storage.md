@@ -2,6 +2,8 @@
 
 ## Authority and ownership
 
+Ordered record queries accept an optional logical `prefix`. It includes that exact key and its descendants, comparing complete serialized segments case-sensitively. Prefix filtering occurs in SQL before the page limit and combines with indexed kind/owner filters, timestamp bounds and the existing composite cursor; it does not create a separate physical prefix index.
+
 `Storage.Handle` binds one `TransactionalStore` namespace and one artifact directory. Logical keys do not resolve through the current project directory. The Runtime owns the Handle, runs migrations and recovery before admission, drains outstanding writes during shutdown, and closes only Handles it opened. An embedding caller can supply a Handle and retain responsibility for its lifetime. Scope and Session identify logical ownership; Workspace files and execution environments do not own Agent records.
 
 SQLite is the default backend. PostgreSQL is an explicit deployment choice using the same transaction, revision, pagination, receipt and outbox contract. One Runtime owns a namespace. PostgreSQL advisory ownership and a namespace owner identity fence stale writers; ordinary transactions are serialized inside that owner. Multiple sessions can run concurrently, but automatic Runtime failover and simultaneous replicas writing one namespace are not supported.

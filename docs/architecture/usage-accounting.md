@@ -52,6 +52,8 @@ A run-filtered query or clear follows descendants only through recorded parent r
 
 ## Query contract
 
+Session selections merge bounded, cursor-ordered time-index pages from the selected Session and its descendants. Operation pages apply an exact logical key prefix inside the storage query before its limit, preserving half-open time bounds and canonical timestamp/key ordering without materializing their complete histories. The parent-lineage index migration runs at startup on imported links; deferred Session imports maintain the same index through normal usage writes.
+
 Workbench exposes these routes under the existing global authentication boundary:
 
 | Route                                | Behavior                                                                                                                                                                                                                                   |

@@ -1,4 +1,4 @@
-import { afterAll, expect, test } from "bun:test"
+import { afterAll, expect, spyOn, test } from "bun:test"
 import { testRuntime } from "../support/runtime"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
 import { RolloutTransport } from "../../src/session/rollout/transport"
@@ -142,6 +142,48 @@ test("owner-scoped usage pages merge descendant sessions and operations in canon
     expect(ids).toHaveLength(9)
     expect((await UsageQuery.summary(filter)).accounting.tokens.total.total).toBe(4500)
     expect((await UsageQuery.records({ ...filter, includeDescendants: false })).items).toHaveLength(3)
+  }))
+
+test("operation descendants page without enumerating their entire time index", () =>
+  runtime.run(async () => {
+    const scopeID = crypto.randomUUID()
+    const owner = { kind: "session" as const, scopeID, sessionID: crypto.randomUUID() }
+    const operation = { kind: "operation" as const, scopeID, operationID: crypto.randomUUID() }
+    await invocation({ owner: operation })
+    await UsageLedger.link(operation, "run", { owner, runID: "run", messageID: "root" })
+    const template = (await UsageQuery.records({ scopeID })).items[0]
+    await Storage.transaction(async () => {
+      for (let index = 0; index < 600; index++) {
+        const value = { ...template, id: `extra-${index}`, entityID: `extra-${index}` }
+        await Storage.write(UsageLedger.key(value), value)
+        await UsageLedger.index(value)
+      }
+      const foreign = ["usage", scopeID, "operation_foreign", "run", "tool", "broken"]
+      await Storage.write(foreign, { unavailable: true })
+      await Storage.write(["usage_time", scopeID, "operation_foreign", "00000000000000001_broken"], { key: foreign })
+    })
+    const list = Storage.list
+    let enumerated = 0
+    using observed = spyOn(Storage, "list").mockImplementation(async (prefix) => {
+      const rows = await list(prefix)
+      if (prefix[0] === "usage_time") enumerated += rows.length
+      return rows
+    })
+    const filter = { scopeID, sessionID: owner.sessionID }
+    const first = await UsageQuery.records(filter, { limit: 100 })
+    expect(first.items).toHaveLength(100)
+    expect(enumerated).toBe(0)
+    const ids = first.items.map((item) => item.id)
+    let cursor = first.nextCursor
+    while (cursor) {
+      const page = await UsageQuery.records(filter, { limit: 100, cursor })
+      ids.push(...page.items.map((item) => item.id))
+      cursor = page.nextCursor
+    }
+    expect(ids).toHaveLength(603)
+    expect(new Set(ids).size).toBe(ids.length)
+    await Storage.removeTree(["usage_time", scopeID, "operation_foreign"])
+    await Storage.removeTree(["usage", scopeID, "operation_foreign"])
   }))
 
 test("canonical usage keeps independent input totals, unknown splits and compact records after evidence deletion", () =>

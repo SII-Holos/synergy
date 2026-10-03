@@ -200,23 +200,30 @@ export namespace FileWatcherEvents {
         })
         .catch((error: unknown) => {
           failure = { error }
+          if (!disposed) {
+            pending.clear()
+            overflowed = true
+          }
           for (const waiter of idleWaiters) waiter.reject(error)
           idleWaiters.clear()
           input.onError?.(error)
         })
         .finally(() => {
           draining = undefined
-          if (!disposed && (overflowed || pending.size > 0)) run()
+          if (!disposed && (overflowed || pending.size > 0)) {
+            if (failure) schedule(Math.max(input.debounceMs, 1000))
+            else run()
+          }
           resolveIdle()
         })
     }
 
-    const schedule = () => {
+    const schedule = (delay = input.debounceMs) => {
       if (disposed || timer || draining) return
       timer = setTimeout(() => {
         timer = undefined
         run()
-      }, input.debounceMs)
+      }, delay)
     }
 
     return {

@@ -13,6 +13,7 @@ export namespace UsageMigration {
   export const lineageMigration: Migration = {
     id: "20261003-usage-parent-index-v1",
     scope: "derived",
+    execution: "startup",
     description: "Index retained usage lineage by parent owner and run",
     async up(progress) {
       let completed = 0

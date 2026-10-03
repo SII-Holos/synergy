@@ -14,6 +14,8 @@ MCP discovery checks negotiated prompts and resources capabilities. A server tha
 
 Watcher recovery first establishes the replacement subscription and then reconciles changes made during the gap. It becomes active only after reconciliation succeeds for the current generation. A drain exposes failed reconciliation to its idle waiter; recovery retries instead of declaring completion. Configuration reconciliation checks the reload result instead of treating a resolved failure response as success.
 
+A failed event batch also leaves the drain requiring a full resync, even when its native subscription remains healthy. Failure rejects current idle waiters, discards incomplete incremental work, and schedules reconciliation after at least one second. Failed resyncs retain that requirement and retry at the same bounded frequency without needing another native event. Events arriving during reconciliation remain queued; disposal cancels pending retries.
+
 Registry tool schemas use Zod input projection so input transforms remain available to the model while runtime parsers continue to validate and transform execution arguments. HTTP duration metrics preserve numerical HTTP status separately from span outcome, keeping failed requests in error-rate buckets.
 
 Buffered browser metrics use validated per-sample attribution before batch page defaults. This preserves the completed navigation when the batch flush occurs on a later page. The trigger allowlist includes the finite values emitted by navigation entry points; it does not accept arbitrary text. Real-store tests cover page changes, missing batch identifiers and secret rejection.

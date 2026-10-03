@@ -281,31 +281,15 @@ export namespace UsageQuery {
     after?: string[],
     owner?: UsageSchema.Owner | string,
   ) {
-    if (typeof owner === "object" && owner.kind === "operation") {
-      const keys = (await Storage.list(["usage_time", owner.scopeID, UsageLedger.ownerKey(owner)]))
-        .filter(
-          (key) =>
-            (!after || compareKeys(key, after) > 0) &&
-            (filter.from === undefined || key.at(-1)! >= String(filter.from).padStart(17, "0")) &&
-            (filter.to === undefined || key.at(-1)! < String(filter.to).padStart(17, "0")),
-        )
-        .sort(compareKeys)
-      for (let offset = 0; offset < keys.length; offset += 256) {
-        const indexes = await Storage.readMany<{ key: string[] }>(keys.slice(offset, offset + 256))
-        const records = await Storage.readMany<UsageSchema.Record>(
-          indexes.flatMap((index) => (index ? [index.key] : [])),
-        )
-        for (const record of records)
-          if (record && matches(record, filter, selection)) yield UsageSchema.Record.parse(record)
-      }
-      return
-    }
+    const operation = typeof owner === "object" && owner.kind === "operation" ? owner : undefined
     let cursor = after
     for (;;) {
       const batch = await Storage.query<{ key: string[] }>({
         kind: "usage_time",
+        prefix: operation ? ["usage_time", operation.scopeID, UsageLedger.ownerKey(operation)] : undefined,
         scopeID: filter.scopeID,
-        sessionID: typeof owner === "string" ? owner : owner?.sessionID,
+        sessionID:
+          typeof owner === "string" ? owner : owner?.kind === "session" ? owner.sessionID : operation ? "" : undefined,
         after: cursor,
         orderFrom: filter.from === undefined ? undefined : String(filter.from).padStart(17, "0"),
         orderTo: filter.to === undefined ? undefined : String(filter.to).padStart(17, "0"),

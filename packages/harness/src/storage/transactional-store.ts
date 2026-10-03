@@ -57,6 +57,7 @@ export interface PruneLimits {
 export type PruneDeferral = "records" | "nodes" | "artifacts" | "active" | "recent"
 export interface RecordQuery {
   kind?: string
+  prefix?: string[]
   scopeID?: string
   sessionID?: string
   messageID?: string
@@ -975,6 +976,12 @@ export class StoreTransaction {
     // an equality on the column alone does not imply `message_id <> ''`, and
     // without this the message-keyed page would fall back to a full scan.
     if (this.keys === "bytes" && input.messageID !== undefined) conditions.push("message_id <> ''")
+    if (input.prefix?.length) {
+      const key = JSON.stringify(input.prefix)
+      const descendants = key.slice(0, -1) + ","
+      conditions.push("(key_text = ? OR substr(key_text, 1, length(?)) = ?)")
+      values.push(key, descendants, descendants)
+    }
     if (input.after !== undefined) {
       const comparison = input.descending ? "<" : ">"
       // Row-value bounds let SQLite seek past the cursor instead of filtering the index prefix.
