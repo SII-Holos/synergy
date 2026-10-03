@@ -7,6 +7,12 @@ import solid from "vite-plugin-solid"
 
 type Fixture = {
   prepare(): void
+  phase(value: {
+    phase: "waiting_model" | "running_tools" | "preparing_files"
+    startedAt: number
+    rootID?: string
+    tool?: { id?: string; count: number }
+  }): void
   stream(): void
   terminal(): void
   complete(): void
@@ -146,12 +152,12 @@ test("detached reading holds the process and large blocks retain bounded mounted
   expect(errors).toEqual([])
 }, 60000)
 
-test("preparing a turn shows thinking without a premature Details-only footer", async () => {
+test("preparing a turn reports submission without a premature Details-only footer", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
   await page.evaluate(() => window.__conversationProcess.prepare())
   await frames()
-  expect(await page.locator('[data-slot="turn-process-trigger"]').textContent()).toContain("Synergy is thinking")
+  expect(await page.locator('[data-slot="turn-process-trigger"]').textContent()).toContain("Submitting message")
   expect(await page.locator('[data-component="execution-completion"]').count()).toBe(0)
   expect(await page.locator('[data-kind="copy-markdown"]').count()).toBe(0)
   expect(errors).toEqual([])
@@ -171,5 +177,28 @@ test("focusing a closed activity header preserves its state until the first expl
   await trigger.click()
   await frames()
   expect(await trigger.getAttribute("aria-expanded")).toBe("false")
+  expect(errors).toEqual([])
+}, 30000)
+
+test("folded process headers follow actual phases and parallel tool count", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  const trigger = page.locator('[data-slot="turn-process-trigger"]')
+  await trigger.waitFor()
+  if ((await trigger.getAttribute("aria-expanded")) === "true") await trigger.click()
+  for (const [activity, label] of [
+    [{ phase: "preparing_files", startedAt: 1, rootID: "root" }, "Preparing project files"],
+    [{ phase: "waiting_model", startedAt: 2, rootID: "root" }, "Waiting for model response"],
+    [
+      { phase: "running_tools", startedAt: 3, rootID: "root", tool: { id: "read", count: 3 } },
+      "Calling tools · 3 active",
+    ],
+  ] as const) {
+    await page.evaluate((activity) => window.__conversationProcess.phase(activity), activity)
+    await frames()
+    expect(await trigger.textContent()).toContain(label)
+    expect(await trigger.getAttribute("aria-expanded")).toBe("false")
+    expect(await page.locator('[data-slot="turn-process-trigger"]').count()).toBe(1)
+  }
   expect(errors).toEqual([])
 }, 30000)

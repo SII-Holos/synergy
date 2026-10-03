@@ -146,70 +146,6 @@ const REASONING_DESC = defineDescriptor("session-status.thinking", "Thinking")
 const REASONING_LABEL_DESC = defineDescriptor("session-status.thinking-label", "Thinking · {label}")
 const TEXT_DESC = defineDescriptor("session-status.gathering-thoughts", "Gathering thoughts")
 
-// ── Working-phrase descriptor IDs ───────────────────────────────────
-
-const WAITING_PHRASE_DESCRIPTORS = [
-  defineDescriptor(
-    "session-status.phrase.waiting.0",
-    "{agentName} waiting on {count, plural, one {# background task} other {# background tasks}}…",
-  ),
-  defineDescriptor(
-    "session-status.phrase.waiting.1",
-    "{count, plural, one {# task} other {# tasks}} still cooking — {agentName} standing by…",
-  ),
-  defineDescriptor(
-    "session-status.phrase.waiting.2",
-    "{agentName} hanging tight — {count, plural, one {# task} other {# tasks}} in flight",
-  ),
-  defineDescriptor(
-    "session-status.phrase.waiting.3",
-    "{agentName} sitting tight — {count, plural, one {# task} other {# tasks}} running",
-  ),
-  defineDescriptor(
-    "session-status.phrase.waiting.4",
-    "{count, plural, one {# agent} other {# agents}} at work — {agentName} on standby…",
-  ),
-] as const
-
-const THINKING_PHRASE_DESCRIPTORS = [
-  defineDescriptor("session-status.phrase.thinking.0", "{agentName} is cooking…"),
-  defineDescriptor("session-status.phrase.thinking.1", "{agentName} putting it together…"),
-  defineDescriptor("session-status.phrase.thinking.2", "{agentName} connecting the dots…"),
-  defineDescriptor("session-status.phrase.thinking.3", "{agentName} on it…"),
-  defineDescriptor("session-status.phrase.thinking.4", "{agentName} brewing something up…"),
-  defineDescriptor("session-status.phrase.thinking.5", "{agentName} weaving things together…"),
-] as const
-
-/** Default English messages for the phrase catalogue, keyed by descriptor ID. */
-export const PHRASE_DEFAULTS = Object.fromEntries(
-  [...WAITING_PHRASE_DESCRIPTORS, ...THINKING_PHRASE_DESCRIPTORS].map((descriptor) => [
-    descriptor.id,
-    descriptor.message!,
-  ]),
-)
-
-/** @deprecated Use computeWorkingPhrase so the active catalog is respected. */
-export const WAITING_TASKS_PHRASES = WAITING_PHRASE_DESCRIPTORS.map(
-  (descriptor) => (name: string, count: number) => resolveMsg(undefined, descriptor, { agentName: name, count }),
-)
-
-/** @deprecated Use computeWorkingPhrase so the active catalog is respected. */
-export const THINKING_PHRASES = THINKING_PHRASE_DESCRIPTORS.map(
-  (descriptor) => (name: string) => resolveMsg(undefined, descriptor, { agentName: name }),
-)
-
-// ── Public API ──────────────────────────────────────────────────────
-
-export function pickStatusPhrase<T>(phrases: readonly T[], seed: string): T {
-  const hash = seed.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
-  return phrases[hash % phrases.length]!
-}
-
-export function titlecaseStatusLabel(str: string): string {
-  if (!str) return str
-  return str.charAt(0).toUpperCase() + str.slice(1)
-}
-
 export function computeStatusFromPart(part: PartType | undefined, i18n?: I18n): string | undefined {
   if (!part) return undefined
 
@@ -238,18 +174,6 @@ export function computeStatusFromPart(part: PartType | undefined, i18n?: I18n): 
   return undefined
 }
 
-export function computeWorkingPhrase(
-  params: { agentName: string; cortexRunning: number; seed: string },
-  i18n?: I18n,
-): string {
-  if (params.cortexRunning > 0) {
-    const descriptor = pickStatusPhrase(WAITING_PHRASE_DESCRIPTORS, params.seed)
-    return resolveMsg(i18n, descriptor, { agentName: params.agentName, count: params.cortexRunning })
-  }
-  const descriptor = pickStatusPhrase(THINKING_PHRASE_DESCRIPTORS, params.seed)
-  return resolveMsg(i18n, descriptor, { agentName: params.agentName })
-}
-
 export function extractRunningTaskSessionID(part: ToolPart | undefined): string | undefined {
   if (!part?.state || !("metadata" in part.state)) return undefined
   return part.state.metadata?.sessionId as string | undefined
@@ -272,6 +196,7 @@ const ACTIVITY_DESC = {
   checking_receipt: defineDescriptor("session.activity.checkingReceipt", "Confirming message receipt"),
   reconnecting: defineDescriptor("session.activity.reconnecting", "Reconnecting"),
   queued_storage: defineDescriptor("session.activity.queuedStorage", "Waiting to save message"),
+  retrying_input: defineDescriptor("session.activity.retryingInput", "Waiting to retry preparation"),
   materializing_input: defineDescriptor("session.activity.materializingInput", "Preparing execution"),
   preparing_files: defineDescriptor("session.activity.preparingFiles", "Preparing project files"),
   preparing_context: defineDescriptor("session.activity.preparingContext", "Preparing context"),
@@ -302,6 +227,15 @@ export function sessionActivityLabel(
       attempt: status.attempt,
     })
   if (!current || !activity) return resolveMsg(i18n, defineDescriptor("session.activity.processing", "Processing task"))
+  if (activity.phase === "preparing_workspace" && activity.workspaceOperation) {
+    const actions = {
+      create: defineDescriptor("session.activity.createWorktree", "Preparing workspace · create worktree"),
+      bind: defineDescriptor("session.activity.bindWorktree", "Preparing workspace · bind worktree"),
+      enter: defineDescriptor("session.activity.enterWorktree", "Preparing workspace · enter worktree"),
+      leave: defineDescriptor("session.activity.leaveWorktree", "Preparing workspace · return to project"),
+    }
+    return resolveMsg(i18n, actions[activity.workspaceOperation])
+  }
   if (activity.phase === "running_tools") {
     if (activity.tool && activity.tool.count > 1)
       return resolveMsg(i18n, defineDescriptor("session.activity.parallelTools", "Calling tools · {count} active"), {

@@ -296,6 +296,7 @@ export const Activity = z
       "checking_receipt",
       "reconnecting",
       "queued_storage",
+      "retrying_input",
       "materializing_input",
       "preparing_files",
       "preparing_context",
@@ -310,6 +311,7 @@ export const Activity = z
     ]),
     startedAt: z.number(),
     rootID: z.string().optional(),
+    workspaceOperation: z.enum(["create", "bind", "enter", "leave"]).optional(),
     tool: z.object({ id: z.string().optional(), count: z.number().int().positive() }).optional(),
   })
   .meta({ ref: "SessionActivity" })

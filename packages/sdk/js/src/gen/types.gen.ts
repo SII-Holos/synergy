@@ -3148,6 +3148,7 @@ export type SessionActivity = {
     | "checking_receipt"
     | "reconnecting"
     | "queued_storage"
+    | "retrying_input"
     | "materializing_input"
     | "preparing_files"
     | "preparing_context"
@@ -3161,6 +3162,7 @@ export type SessionActivity = {
     | "stopping"
   startedAt: number
   rootID?: string
+  workspaceOperation?: "create" | "bind" | "enter" | "leave"
   tool?: {
     id?: string
     count: number

@@ -1,5 +1,12 @@
 import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
-import type { UserMessage, AssistantMessage, Part, TurnExecutionState } from "@ericsanchezok/synergy-sdk"
+import type {
+  UserMessage,
+  AssistantMessage,
+  Part,
+  TurnExecutionState,
+  SessionStatus,
+  SessionActivity,
+} from "@ericsanchezok/synergy-sdk"
 import type { Data } from "@ericsanchezok/synergy-ui/context/data"
 import { createSignal } from "solid-js"
 import { createStore } from "solid-js/store"
@@ -82,6 +89,8 @@ const [data, setData] = createStore<Data>({
   },
 })
 const [status, setStatus] = createSignal<TurnExecutionState["status"]>("running")
+const [activity, setActivity] = createSignal<SessionActivity>({ phase: "waiting_model", startedAt: 1, rootID: "root" })
+const [submission, setSubmission] = createSignal<{ activity?: SessionActivity; failed: boolean }>()
 const [reading, setReading] = createSignal(false)
 const [expanded, setExpanded] = createStore<Record<string, boolean>>({})
 const [scroll, setScroll] = createSignal<HTMLDivElement>()
@@ -126,6 +135,12 @@ window.__conversationProcess = {
   prepare() {
     setData("message", "session", [root])
     setStatus("preparing")
+    setSubmission({ activity: { phase: "submitting_input", startedAt: 1 }, failed: false })
+  },
+  phase(value: SessionActivity) {
+    setSubmission(undefined)
+    setStatus("running")
+    setActivity(value)
   },
   stream() {
     setData("part", "final", [part("final", "answer", "text", "Final answer stays mounted.")])
@@ -149,7 +164,7 @@ window.__conversationProcess = {
   retained: () => retained,
 }
 const runtime = {
-  statusFor: () => (status() === "running" ? { type: "busy" as const } : { type: "idle" as const }),
+  statusFor: (): SessionStatus => (status() === "running" ? { type: "busy", activity: activity() } : { type: "idle" }),
   permissionsFor: () => [],
   questionsFor: () => [],
   cortexTasks: () => [],
@@ -173,6 +188,7 @@ render(
                   <VirtualConversationRows
                     context={context as PluginConversationService}
                     scrollRef={scroll()}
+                    submissionFor={() => submission()}
                     executionFor={() => ({ rootID: "root", status: status(), startedAt: 1, stoppedAt: [] })}
                   />
                 </div>

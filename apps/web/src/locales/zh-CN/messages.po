@@ -15768,50 +15768,6 @@ msgid "session-status.managing-tasks"
 msgstr "正在管理任务"
 
 #. js-lingui-explicit-id
-msgid "session-status.phrase.thinking.0"
-msgstr "{agentName} 正在酝酿…"
-
-#. js-lingui-explicit-id
-msgid "session-status.phrase.thinking.1"
-msgstr "{agentName} 正在整理思路…"
-
-#. js-lingui-explicit-id
-msgid "session-status.phrase.thinking.2"
-msgstr "{agentName} 正在串联线索…"
-
-#. js-lingui-explicit-id
-msgid "session-status.phrase.thinking.3"
-msgstr "{agentName} 正在处理…"
-
-#. js-lingui-explicit-id
-msgid "session-status.phrase.thinking.4"
-msgstr "{agentName} 正在构思…"
-
-#. js-lingui-explicit-id
-msgid "session-status.phrase.thinking.5"
-msgstr "{agentName} 正在整合内容…"
-
-#. ── Working-phrase descriptor IDs ───────────────────────────────────
-msgid "session-status.phrase.waiting.0"
-msgstr "{agentName} 正在等待 {count, plural, one {# 个后台任务} other {# 个后台任务}}…"
-
-#. ── Working-phrase descriptor IDs ───────────────────────────────────
-msgid "session-status.phrase.waiting.1"
-msgstr "{count, plural, one {# 个任务} other {# 个任务}}仍在处理中——{agentName} 正在待命…"
-
-#. ── Working-phrase descriptor IDs ───────────────────────────────────
-msgid "session-status.phrase.waiting.2"
-msgstr "{agentName} 正在等待——{count, plural, one {# 个任务} other {# 个任务}}进行中"
-
-#. ── Working-phrase descriptor IDs ───────────────────────────────────
-msgid "session-status.phrase.waiting.3"
-msgstr "{agentName} 正在待命——{count, plural, one {# 个任务} other {# 个任务}}运行中"
-
-#. ── Working-phrase descriptor IDs ───────────────────────────────────
-msgid "session-status.phrase.waiting.4"
-msgstr "{count, plural, one {# 个智能体} other {# 个智能体}}正在工作——{agentName} 待命中…"
-
-#. js-lingui-explicit-id
 msgid "session-status.planning-next-steps"
 msgstr "正在规划下一步"
 
@@ -15948,6 +15904,10 @@ msgid "session.activity.approval"
 msgstr "等待你的确认"
 
 #. js-lingui-explicit-id
+msgid "session.activity.bindWorktree"
+msgstr "正在准备工作区 · 绑定 worktree"
+
+#. js-lingui-explicit-id
 msgid "session.activity.checkingReceipt"
 msgstr "正在确认发送结果"
 
@@ -15956,8 +15916,20 @@ msgid "session.activity.checkingSubmission"
 msgstr "正在检查提交"
 
 #. js-lingui-explicit-id
+msgid "session.activity.createWorktree"
+msgstr "正在准备工作区 · 创建 worktree"
+
+#. js-lingui-explicit-id
+msgid "session.activity.enterWorktree"
+msgstr "正在准备工作区 · 进入 worktree"
+
+#. js-lingui-explicit-id
 msgid "session.activity.finalizing"
 msgstr "正在整理结果"
+
+#. js-lingui-explicit-id
+msgid "session.activity.leaveWorktree"
+msgstr "正在准备工作区 · 返回项目目录"
 
 #. js-lingui-explicit-id
 msgid "session.activity.materializingInput"
@@ -16018,6 +15990,10 @@ msgstr "正在生成回复"
 #. js-lingui-explicit-id
 msgid "session.activity.retry"
 msgstr "等待重试 · 第 {attempt} 次"
+
+#. js-lingui-explicit-id
+msgid "session.activity.retryingInput"
+msgstr "等待重试准备过程"
 
 #. js-lingui-explicit-id
 msgid "session.activity.runningTools"
@@ -17685,24 +17661,36 @@ msgid "session.submission.check"
 msgstr "核对状态"
 
 #. js-lingui-explicit-id
-msgid "session.submission.checkingReceipt"
-msgstr "正在确认消息回执…"
-
-#. js-lingui-explicit-id
 msgid "session.submission.details"
 msgstr "错误详情"
+
+#. js-lingui-explicit-id
+msgid "session.submission.dismiss"
+msgstr "关闭"
 
 #. js-lingui-explicit-id
 msgid "session.submission.failed"
 msgstr "提交失败。"
 
 #. js-lingui-explicit-id
-msgid "session.submission.preparing"
-msgstr "正在准备任务"
+msgid "session.submission.restoreDraft"
+msgstr "恢复草稿"
 
 #. js-lingui-explicit-id
 msgid "session.submission.retry"
 msgstr "重试提交"
+
+#. js-lingui-explicit-id
+msgid "session.submission.retryAction"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "session.submission.savedFailure"
+msgstr "消息已保存，请重试以继续处理。"
+
+#. js-lingui-explicit-id
+msgid "session.submission.startFailed"
+msgstr "无法开始执行"
 
 #. js-lingui-explicit-id
 msgid "session.submission.unknown"
@@ -17740,18 +17728,6 @@ msgstr "重试"
 msgid "session.tags.saveFailed"
 msgstr "无法保存标签"
 
-#. session-transition-card.tsx — generic transition card
-msgid "session.transition.card.dismissAria"
-msgstr "关闭会话进度"
-
-#. js-lingui-explicit-id
-msgid "session.transition.card.dismissTitle"
-msgstr "关闭"
-
-#. js-lingui-explicit-id
-msgid "session.transition.card.retry"
-msgstr "重试"
-
 #. js-lingui-explicit-id
 msgid "session.transition.continue"
 msgstr "继续任务"
@@ -17759,42 +17735,6 @@ msgstr "继续任务"
 #. js-lingui-explicit-id
 msgid "session.transition.desc.cancelled"
 msgstr "这条消息已取消，你可以关闭此提示。"
-
-#. js-lingui-explicit-id
-msgid "session.transition.desc.delayed"
-msgstr "消息已保存。准备时间比平时更长，系统会继续处理。"
-
-#. js-lingui-explicit-id
-msgid "session.transition.desc.initializing"
-msgstr "你的第一条消息已保存，正在初始化会话。"
-
-#. js-lingui-explicit-id
-msgid "session.transition.desc.queued"
-msgstr "你的第一条消息已排队等待处理。"
-
-#. js-lingui-explicit-id
-msgid "session.transition.desc.reconnecting"
-msgstr "消息此前已保存，正在重新连接以查询处理进度。"
-
-#. js-lingui-explicit-id
-msgid "session.transition.desc.retrying"
-msgstr "消息已保存，正在自动重试准备流程。"
-
-#. js-lingui-explicit-id
-msgid "session.transition.desc.stalled"
-msgstr "你的第一条消息仍已保存，但初始化未完成。请重试以恢复处理。"
-
-#. js-lingui-explicit-id
-msgid "session.transition.desc.storage"
-msgstr "消息已保存，正在等待存储可用。"
-
-#. js-lingui-explicit-id
-msgid "session.transition.desc.submitting"
-msgstr "正在提交你的第一条消息。"
-
-#. js-lingui-explicit-id
-msgid "session.transition.detail.messageQueued"
-msgstr "第一条消息已排队。"
 
 #. js-lingui-explicit-id
 msgid "session.transition.errorDetails"
@@ -17805,136 +17745,8 @@ msgid "session.transition.recoveryFailed"
 msgstr "暂时无法确认恢复结果，请检查连接后重试。"
 
 #. js-lingui-explicit-id
-msgid "session.transition.retryInitialization"
-msgstr "重试初始化"
-
-#. js-lingui-explicit-id
-msgid "session.transition.step.failed"
-msgstr "失败"
-
-#. js-lingui-explicit-id
-msgid "session.transition.step.initialize"
-msgstr "初始化执行"
-
-#. session-transition-progress.ts — general session startup factory
-msgid "session.transition.step.prepareSession"
-msgstr "准备会话"
-
-#. js-lingui-explicit-id
-msgid "session.transition.step.submitMessage"
-msgstr "提交消息"
-
-#. js-lingui-explicit-id
-msgid "session.transition.title.accepted"
-msgstr "会话请求已接受"
-
-#. js-lingui-explicit-id
-msgid "session.transition.title.stalled"
-msgstr "会话初始化需要处理"
-
-#. js-lingui-explicit-id
-msgid "session.transition.title.starting"
-msgstr "正在启动会话"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.card.dismissAria"
-msgstr "关闭副本状态"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.card.dismissTitle"
-msgstr "关闭"
-
-#. worktree-transition-card.tsx
-msgid "session.worktree.card.mainCheckout"
-msgstr "项目文件"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.card.retry"
-msgstr "重试"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.card.sessionWorktree"
-msgstr "Worktree"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.card.worktreeSession"
-msgstr "Worktree任务"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.desc.leaving"
-msgstr "正在将此任务切回项目文件。"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.desc.mainActive"
-msgstr "此任务现在使用项目文件，原Worktree仍然可用。"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.desc.moving"
-msgstr "正在为此任务创建Worktree。"
-
-#. js-lingui-explicit-id
 msgid "session.worktree.desc.refreshFailed"
 msgstr "文件位置已更改，但无法刷新任务状态。{message}"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.desc.refreshing"
-msgstr "文件位置已更改，正在更新任务状态。"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.desc.started"
-msgstr "Worktree已准备完成，第一条消息已排队。"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.desc.starting"
-msgstr "正在准备Worktree并发送第一条消息。"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.desc.worktreeActive"
-msgstr "此任务现在使用Worktree。"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.detail.conversationReady"
-msgstr "会话数据已准备完成。"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.detail.creatingConversation"
-msgstr "正在创建会话数据。"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.detail.dispatchingPrompt"
-msgstr "正在发送你的第一条消息。"
-
-#. worktree-session.ts — factory detail strings
-msgid "session.worktree.detail.preparingWorktree"
-msgstr "正在准备项目文件的Worktree。"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.detail.preparingWorktreeBind"
-msgstr "正在为此任务准备副本。"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.detail.promptDispatched"
-msgstr "第一条消息已发送。"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.detail.refreshingStatus"
-msgstr "正在加载任务的新文件位置。"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.detail.updatingWorkspace"
-msgstr "正在更新此任务使用的文件。"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.detail.usingCheckout"
-msgstr "正在使用选中的副本。"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.detail.workspaceSetupComplete"
-msgstr "Worktree已准备完成。"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.detail.workspaceUpdated"
-msgstr "任务的文件位置已更新。"
 
 #. js-lingui-explicit-id
 msgid "session.worktree.dialog.cancel"
@@ -17956,7 +17768,7 @@ msgstr "工作树名称"
 msgid "session.worktree.dialog.namePlaceholder"
 msgstr "自动生成"
 
-#. worktree-transition-dialog.tsx
+#. js-lingui-explicit-id
 msgid "session.worktree.dialog.title"
 msgstr "将会话移至隔离工作区？"
 
@@ -17964,89 +17776,17 @@ msgstr "将会话移至隔离工作区？"
 msgid "session.worktree.setupCommandFailed"
 msgstr "Worktree的准备命令失败。"
 
-#. worktree-progress-components.tsx
-msgid "session.worktree.step.active"
-msgstr "进行中"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.step.bindWorktree"
-msgstr "使用已有副本"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.step.complete"
-msgstr "完成"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.step.createBind"
-msgstr "创建并使用副本"
-
-#. worktree-session.ts — factory step labels
-msgid "session.worktree.step.createCheckout"
-msgstr "创建Worktree"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.step.pending"
-msgstr "等待中"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.step.prepareSession"
-msgstr "准备会话"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.step.refreshStatus"
-msgstr "刷新文件位置"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.step.returnCheckout"
-msgstr "切回项目文件"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.step.sendPrompt"
-msgstr "发送消息"
-
 #. js-lingui-explicit-id
 msgid "session.worktree.title.leaveFailed"
 msgstr "无法切回项目文件"
-
-#. worktree-session.ts — factory title/description strings
-msgid "session.worktree.title.leaving"
-msgstr "正在切回项目文件"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.title.mainActive"
-msgstr "已使用项目文件"
 
 #. js-lingui-explicit-id
 msgid "session.worktree.title.moveFailed"
 msgstr "无法使用Worktree"
 
 #. js-lingui-explicit-id
-msgid "session.worktree.title.moving"
-msgstr "正在准备Worktree"
-
-#. js-lingui-explicit-id
 msgid "session.worktree.title.refreshFailed"
 msgstr "无法刷新文件位置"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.title.refreshing"
-msgstr "正在刷新文件位置"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.title.setupFailed"
-msgstr "Worktree准备失败"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.title.started"
-msgstr "Worktree任务已接受"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.title.starting"
-msgstr "正在Worktree中启动任务"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.title.worktreeActive"
-msgstr "已使用Worktree"
 
 #. js-lingui-explicit-id
 msgid "settings.account.actions.create"

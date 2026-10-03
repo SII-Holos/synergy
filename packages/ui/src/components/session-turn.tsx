@@ -1057,6 +1057,7 @@ export function SessionTurn(
     }
     activityView?: PluginConversationActivityView
     following?: boolean
+    submission?: { activity?: import("@ericsanchezok/synergy-sdk/client").SessionActivity; failed: boolean }
     executionState?: import("@ericsanchezok/synergy-sdk/client").TurnExecutionState
     classes?: {
       root?: string
@@ -1156,16 +1157,17 @@ export function SessionTurn(
     if (assistantPart?.type === "tool" && assistantPart.tool === "bash") return assistantPart
   })
 
-  const working = createMemo(
-    () =>
-      props.segment?.process?.working ??
-      (props.executionState
-        ? ["preparing", "running", "approval"].includes(props.executionState.status)
-        : resolveTurnWorking({
-            isLastUserMessage: isLastUserMessage(),
-            messages: turnMessages(),
-            sessionStatus: view.statusFor(props.sessionID),
-          })),
+  const working = createMemo(() =>
+    props.submission
+      ? !props.submission.failed
+      : (props.segment?.process?.working ??
+        (props.executionState
+          ? ["preparing", "running", "approval"].includes(props.executionState.status)
+          : resolveTurnWorking({
+              isLastUserMessage: isLastUserMessage(),
+              messages: turnMessages(),
+              sessionStatus: view.statusFor(props.sessionID),
+            }))),
   )
 
   const isToolRenderBoundary = (tool: string) => {
@@ -1380,7 +1382,11 @@ export function SessionTurn(
     <MessageSlotOutlet slot={slot} sessionId={props.sessionID} messageId={messageId} role={role} />
   )
   const hasTimelineItems = createMemo(() => timelineItems().length > 0)
-  const sessionStatus = createMemo(() => view.statusFor(props.sessionID))
+  const sessionStatus = createMemo(() =>
+    props.submission?.activity
+      ? { type: "busy" as const, activity: props.submission.activity }
+      : view.statusFor(props.sessionID),
+  )
   const showProviderPrelude = createMemo(() =>
     hasCompactionEvent()
       ? false
@@ -1489,7 +1495,8 @@ export function SessionTurn(
         ? _({ id: "session.process.stopped", message: "Stopped" })
         : props.executionState?.status === "interrupted"
           ? _({ id: "session.process.interrupted", message: "Interrupted" })
-          : props.executionState?.status === "failed" ||
+          : props.submission?.failed ||
+              props.executionState?.status === "failed" ||
               (!props.executionState && (error() || (paused()?.type === "paused" && paused()?.reason === "failed")))
             ? _({ id: "session.process.failed", message: "Execution failed" })
             : paused() || !lastAssistantMessage()?.time.completed

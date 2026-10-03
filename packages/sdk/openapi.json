@@ -47765,6 +47765,7 @@
               "checking_receipt",
               "reconnecting",
               "queued_storage",
+              "retrying_input",
               "materializing_input",
               "preparing_files",
               "preparing_context",
@@ -47783,6 +47784,10 @@
           },
           "rootID": {
             "type": "string"
+          },
+          "workspaceOperation": {
+            "type": "string",
+            "enum": ["create", "bind", "enter", "leave"]
           },
           "tool": {
             "type": "object",
