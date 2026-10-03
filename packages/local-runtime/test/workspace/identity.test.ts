@@ -121,3 +121,74 @@ test.skipIf(process.platform !== "darwin")(
     }
   },
 )
+
+test.skipIf(process.platform !== "darwin")(
+  "invalid mount receipts retain evidence without blocking verified identities or granting admission",
+  async () => {
+    await using tmp = await tmpdir()
+    const root = path.join(tmp.path, "environments")
+    const directory = path.join(root, "environment", "allocation", "workspace")
+    const host = new NativeWorkspaceFiles({
+      directory,
+      materializationRoot: path.join(tmp.path, "views"),
+      coordinator: new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") }),
+    })
+    try {
+      const source = path.join(tmp.path, "source")
+      await fs.mkdir(source)
+      const reference = { id: "kept", workspaceID: "kept", generation: 1 }
+      await host.mount({ ...reference, readOnly: true, source: { kind: "directory", path: source } })
+      const file = path.join(directory, "mounts", createHash("sha256").update(reference.id).digest("hex"))
+      const receipt = await Bun.file(file).json()
+      receipt.mount.physicalID = (await legacyDirectory(source)).physicalID
+      await Bun.write(file, JSON.stringify(receipt))
+      const malformed = ["{", "null", JSON.stringify({ input: null, digest: 1 })]
+      for (const [index, raw] of malformed.entries())
+        await Bun.write(
+          path.join(directory, "mounts", createHash("sha256").update(`invalid-${index}`).digest("hex")),
+          raw,
+        )
+      const progress: number[] = []
+      await migrateNativeMountIdentities(root, (current, total) => {
+        expect(total).toBe(4)
+        progress.push(current)
+      })
+      expect(progress).toEqual([1, 2, 3, 4])
+      expect((await host.inspect(reference))?.physicalID).toStartWith("volume-v1:")
+      for (const [index, raw] of malformed.entries()) {
+        const id = `invalid-${index}`
+        const filename = createHash("sha256").update(id).digest("hex")
+        const evidence = path.join(directory, "identity-migration-issues", filename)
+        expect(await Bun.file(path.join(directory, "mounts", filename)).text()).toBe(raw)
+        expect(await Bun.file(evidence).json()).toEqual({
+          reason: "invalid-receipt",
+          sha256: createHash("sha256").update(raw).digest("hex"),
+        })
+        expect((await fs.stat(evidence)).mode & 0o777).toBe(0o600)
+        await expect(host.inspect({ id, workspaceID: id, generation: 1 })).rejects.toThrow()
+      }
+      const upgraded = await Bun.file(file).text()
+      await migrateNativeMountIdentities(root, () => {})
+      expect(await Bun.file(file).text()).toBe(upgraded)
+      expect(await fs.readdir(path.join(directory, "identity-migration-issues"))).toHaveLength(3)
+    } finally {
+      await host.close()
+    }
+  },
+)
+
+test.skipIf(process.platform !== "darwin")("mount migration keeps read and evidence-write failures fatal", async () => {
+  await using tmp = await tmpdir()
+  const directory = path.join(tmp.path, "environment", "allocation", "workspace")
+  const file = path.join(directory, "mounts", "invalid")
+  await Bun.write(file, "{")
+  await fs.chmod(file, 0)
+  try {
+    await expect(migrateNativeMountIdentities(tmp.path, () => {})).rejects.toThrow("EACCES")
+  } finally {
+    await fs.chmod(file, 0o600)
+  }
+  await Bun.write(path.join(directory, "identity-migration-issues"), "occupied")
+  await expect(migrateNativeMountIdentities(tmp.path, () => {})).rejects.toThrow("EEXIST")
+  expect(await Bun.file(file).text()).toBe("{")
+})

@@ -1,5 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
+import { createHash } from "node:crypto"
 import { z } from "zod"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
@@ -16,10 +17,26 @@ export async function migrateNativeMountIdentities(root: string, progress: (curr
   if (!exists) return
   const files = await Array.fromAsync(new Bun.Glob("*/*/workspace/mounts/*").scan({ cwd: root, absolute: true }))
   for (const [index, file] of files.entries()) {
-    const raw = z.record(z.string(), z.unknown()).parse(await Bun.file(file).json())
-    const receipt = MountReceipt.parse(raw)
-    const mount = receipt.mount
-    if (mount && !receipt.detached && !mount.physicalID.startsWith("volume-v1:")) {
+    const bytes = await fs.readFile(file)
+    let json: unknown
+    try {
+      json = JSON.parse(bytes.toString())
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error
+    }
+    const raw = z.record(z.string(), z.unknown()).safeParse(json)
+    const receipt = MountReceipt.safeParse(json)
+    if (!raw.success || !receipt.success) {
+      await AtomicFile.writeJsonAtomic(
+        path.join(path.dirname(file), "..", "identity-migration-issues", path.basename(file)),
+        JSON.stringify({ reason: "invalid-receipt", sha256: createHash("sha256").update(bytes).digest("hex") }),
+        { private: true, durable: true },
+      )
+      progress(index + 1, files.length)
+      continue
+    }
+    const mount = receipt.data.mount
+    if (mount && !receipt.data.detached && !mount.physicalID.startsWith("volume-v1:")) {
       const actual = await identifyFilesystemObject(mount.path).catch((error: NodeJS.ErrnoException) => {
         if (["ENOENT", "ENOTDIR", "EACCES", "EPERM"].includes(error.code ?? "")) return undefined
         throw error
@@ -28,8 +45,8 @@ export async function migrateNativeMountIdentities(root: string, progress: (curr
         await AtomicFile.writeJsonAtomic(
           file,
           JSON.stringify({
-            ...raw,
-            mount: { ...z.record(z.string(), z.unknown()).parse(raw.mount), physicalID: actual.physicalID },
+            ...raw.data,
+            mount: { ...z.record(z.string(), z.unknown()).parse(raw.data.mount), physicalID: actual.physicalID },
           }),
           { private: true, durable: true },
         )

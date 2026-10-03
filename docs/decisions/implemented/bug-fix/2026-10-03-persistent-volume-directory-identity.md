@@ -16,6 +16,8 @@ Live native exclusion claims retain current-mount identity and canonical path ov
 
 Home relocation persists only the canonical path and physical identity returned by inspection. The legacy identity is verification evidence for migration, not another binding field. Transfer regressions assert this boundary for external, managed, colliding, shared-location and shared-writable workspaces; full composition also verifies both migration domains are registered.
 
+A malformed native receipt remains unchanged and continues to fail individual admission. Migration durably records its content hash and an explicit invalid-receipt reason, then continues with other receipts. Read, permission and evidence-write errors still stop migration. This preserves recovery evidence without letting one invalid record prevent unrelated verified workspaces from starting.
+
 ## Alternatives considered
 
 **Ignore device numbers on mismatch.** Inode and birth time alone do not establish which volume owns a directory. Automatic adoption would weaken replacement detection.
@@ -26,4 +28,4 @@ Home relocation persists only the canonical path and physical identity returned 
 
 ## Consequences
 
-Normal macOS mount-number changes no longer invalidate newly verified durable bindings. Legacy records with insufficient evidence still require one explicit recovery action. Native tests cover replacement, missing and foreign directories, index consistency, repeated upgrades, receipt restoration and JIT-disabled execution; pure identity tests cover device-number changes and distinct volumes.
+Normal macOS mount-number changes no longer invalidate newly verified durable bindings. Legacy records with insufficient evidence still require one explicit recovery action. Native tests cover replacement, missing and foreign directories, index consistency, repeated upgrades, receipt restoration, malformed-record evidence, fatal storage failures and JIT-disabled execution; pure identity tests cover device-number changes and distinct volumes.
