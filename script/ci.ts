@@ -62,6 +62,14 @@ export function requiresBuild(plan: Plan) {
   return plan.tasks.some((task) => plan.selected.includes(task.id) && needsBuild(task))
 }
 
+export function requiresSandbox(plan: Plan) {
+  return plan.tasks.some(
+    (task) =>
+      plan.selected.includes(task.id) &&
+      (!!task.profile || ["sandbox", "artifacts"].includes(task.kind) || task.prerequisites?.includes("sandbox")),
+  )
+}
+
 async function command(args: string[], cwd = ROOT) {
   const child = Bun.spawn(args, { cwd, stdout: "inherit", stderr: "inherit" })
   if ((await child.exited) !== 0) throw new Error(`CI preparation failed: ${args[0]}`)
@@ -169,10 +177,7 @@ async function main() {
     })
     const output = values.output ?? path.join(ROOT, OUTPUT, "plan.json")
     await Bun.write(output, JSON.stringify(plan, null, 2))
-    const sandbox = plan.tasks.some(
-      (task) =>
-        plan.selected.includes(task.id) && (task.profile !== undefined || ["sandbox", "artifacts"].includes(task.kind)),
-    )
+    const sandbox = requiresSandbox(plan)
     process.env.SYNERGY_CI_SANDBOX_BUNDLE = sandbox ? "1" : "0"
     const outputs: Record<string, string> = {
       sha,
