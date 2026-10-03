@@ -7,6 +7,7 @@ export type ConversationActivity = {
   reasoning: number
   active: boolean
   open: boolean
+  entries: ConversationRow[]
 }
 
 export type ConversationRow = {
@@ -25,6 +26,7 @@ export type ConversationRow = {
       beforeTool: boolean
       beforeReasoning: boolean
       processBody?: boolean
+      event?: "agent-delivery" | "compaction"
     }
   | { kind: "activity"; activity: ConversationActivity }
   | { kind: "process" }
@@ -50,6 +52,20 @@ export function buildConversationRows(input: {
         : [root, ...input.messagesFor(root).filter((message) => message.id !== root.id)]
     const processState = root.role === "user" ? input.process?.(root) : undefined
     const lastAssistant = messages.findLast((message) => message.role === "assistant")
+    const eventFor = (message: Message) => {
+      if (
+        message.role === "user" &&
+        message.isRoot === false &&
+        ["cortex", "agent"].includes(message.origin?.type ?? "")
+      )
+        return "agent-delivery" as const
+      if (
+        message.role === "assistant" &&
+        (message.metadata?.compactionAttempt ||
+          input.summaries(message.id).some((part) => part.type === "compaction_recovery"))
+      )
+        return "compaction" as const
+    }
     const isProcessPart = (message: Message, parts: readonly SessionPartSummary[], index: number) =>
       message.role === "assistant" &&
       (parts[index].type === "tool" ||
@@ -64,18 +80,43 @@ export function buildConversationRows(input: {
         (message) => message.role === "assistant" && input.summaries(message.id).some((part) => part.render !== false),
       ),
       hasContent: messages.some((message) => {
+        if (eventFor(message)) return true
         const parts = input.summaries(message.id).filter((part) => part.render !== false)
         return parts.some((_, index) => isProcessPart(message, parts, index))
       }),
     }
     let header = false
     for (const message of messages) {
-      if (process && message.role === "assistant" && !header) {
+      const event = eventFor(message)
+      if (process && (message.role === "assistant" || event) && !header) {
         rows.push({ key: `${root.id}:process`, root, message: root, kind: "process", process })
         header = true
       }
       const parts = input.summaries(message.id).filter((part) => part.render !== false)
       const page = input.page(message.id)
+      if (event) {
+        if (
+          message.role === "assistant" &&
+          (message.metadata?.compactionAttempt as { state?: string } | undefined)?.state === "empty"
+        )
+          continue
+        if (!process || process.open)
+          rows.push({
+            key: `${message.id}:${event}`,
+            root,
+            message,
+            kind: "body",
+            parts,
+            before: true,
+            after: true,
+            beforeTool: false,
+            beforeReasoning: false,
+            process,
+            processBody: true,
+            event,
+          })
+        continue
+      }
       if (page?.hasEarlier)
         rows.push({ key: `${message.id}:earlier`, root, message, kind: "load", more: true, older: true })
       const firstTool = parts.findIndex((part) => part.type === "tool"),
@@ -130,8 +171,9 @@ function groupActivities(
     if (
       row.process &&
       row.kind === "body" &&
-      row.message.role === "assistant" &&
-      row.parts.every((part) => part.type === "tool" || part.type === "reasoning")
+      (row.event ||
+        (row.message.role === "assistant" &&
+          row.parts.every((part) => part.type === "tool" || part.type === "reasoning")))
     ) {
       if (!block) {
         block = {
@@ -141,6 +183,7 @@ function groupActivities(
           reasoning: 0,
           active: row.process.working,
           open: true,
+          entries: [],
         }
         blocks.push(block)
         result.push({
@@ -152,10 +195,11 @@ function groupActivities(
           activity: block,
         })
       }
+      block.entries.push(row)
       for (const part of row.parts) {
         block.parts.push(part.id)
         if (part.type === "tool") block.tools++
-        else block.reasoning++
+        else if (part.type === "reasoning") block.reasoning++
       }
       row.activity = block
     } else if (row.kind !== "process") {

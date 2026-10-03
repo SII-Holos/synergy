@@ -17065,12 +17065,32 @@ msgid "session.permissionDock.sessionScope"
 msgstr "对本会话中匹配的后续请求有效；运行时重建或服务重启后失效"
 
 #. js-lingui-explicit-id
+msgid "session.process.agentDelivery"
+msgstr "子代理已返回"
+
+#. js-lingui-explicit-id
+msgid "session.process.agentDetail"
+msgstr "代理结果"
+
+#. js-lingui-explicit-id
+msgid "session.process.agentMessage"
+msgstr "代理消息"
+
+#. js-lingui-explicit-id
 msgid "session.process.approval"
 msgstr "等待批准"
 
 #. js-lingui-explicit-id
+msgid "session.process.compactionDetail"
+msgstr "上下文压缩"
+
+#. js-lingui-explicit-id
 msgid "session.process.completed"
 msgstr "已完成"
+
+#. js-lingui-explicit-id
+msgid "session.process.copyResult"
+msgstr "复制结果"
 
 #. js-lingui-explicit-id
 msgid "session.process.executing"
@@ -17089,6 +17109,18 @@ msgid "session.process.interrupted"
 msgstr "已中断"
 
 #. js-lingui-explicit-id
+msgid "session.process.latest"
+msgstr "回到最新"
+
+#. js-lingui-explicit-id
+msgid "session.process.loadFailed"
+msgstr "无法加载过程详情。"
+
+#. js-lingui-explicit-id
+msgid "session.process.openSource"
+msgstr "打开来源会话"
+
+#. js-lingui-explicit-id
 msgid "session.process.paused"
 msgstr "已暂停"
 
@@ -17101,12 +17133,28 @@ msgid "session.process.reading"
 msgstr "正在读取文件"
 
 #. js-lingui-explicit-id
+msgid "session.process.records"
+msgstr "执行过程"
+
+#. js-lingui-explicit-id
+msgid "session.process.resultUnavailable"
+msgstr "完整任务结果暂不可用，当前显示原始通知。"
+
+#. js-lingui-explicit-id
 msgid "session.process.stopped"
 msgstr "已停止"
 
 #. js-lingui-explicit-id
 msgid "session.process.thinking"
 msgstr "正在思考"
+
+#. js-lingui-explicit-id
+msgid "session.process.unavailable"
+msgstr "这条过程记录已不可用。"
+
+#. js-lingui-explicit-id
+msgid "session.process.viewEvent"
+msgstr "查看详情：{title}"
 
 #. js-lingui-explicit-id
 msgid "session.process.viewReasoning"
@@ -25387,22 +25435,6 @@ msgstr "命令输出"
 #. js-lingui-explicit-id
 msgid "ui.compaction.complete"
 msgstr "上下文已整理"
-
-#. js-lingui-explicit-id
-msgid "ui.compaction.copied"
-msgstr "已复制"
-
-#. js-lingui-explicit-id
-msgid "ui.compaction.copyDetails"
-msgstr "复制详情"
-
-#. js-lingui-explicit-id
-msgid "ui.compaction.copyFailure"
-msgstr "无法复制上下文压缩错误详情。"
-
-#. js-lingui-explicit-id
-msgid "ui.compaction.errorDetails"
-msgstr "错误详情"
 
 #. js-lingui-explicit-id
 msgid "ui.compaction.failed"

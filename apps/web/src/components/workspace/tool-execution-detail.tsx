@@ -21,6 +21,7 @@ import { getToolInfo } from "@ericsanchezok/synergy-ui/message-part"
 import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"
 import { translateDescriptor } from "@/locales/translate"
 import "./tool-execution-detail.css"
+import { ProcessEventDetailWorkbenchContent } from "./process-event-detail"
 
 const statuses: Record<ToolPart["state"]["status"], MessageDescriptor> = {
   pending: { id: "session.execution.pending", message: "Pending" },
@@ -99,10 +100,32 @@ function ExecutionCodeBlock(props: {
 export function ExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) {
   const sdk = useSDK()
   const params = useParams()
+  const state = () =>
+    executionDetailState(props.tab.state, { server: sdk.url, scope: sdk.scopeKey, sessionID: params.id ?? "" })
+  return (
+    <Show when={state()}>
+      {(selection) => (
+        <Show
+          when={selection().kind === "tool"}
+          fallback={<ProcessEventDetailWorkbenchContent {...props} state={selection()} />}
+        >
+          <ToolExecutionDetailWorkbenchContent {...props} />
+        </Show>
+      )}
+    </Show>
+  )
+}
+
+function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) {
+  const sdk = useSDK()
+  const params = useParams()
   const data = useSessionDataView()
   const { _, i18n } = useLingui()
   const owner = () => ({ server: sdk.url, scope: sdk.scopeKey, sessionID: params.id ?? "" })
-  const state = createMemo(() => executionDetailState(props.tab.state, owner()))
+  const state = createMemo(() => {
+    const value = executionDetailState(props.tab.state, owner())
+    return value?.kind === "tool" ? value : undefined
+  })
   const selectionIdentity = createMemo(() => JSON.stringify(state()))
   const selected = createMemo(() => (state() ? executionDetailSelection(state()!) : undefined))
   const live = createMemo(() => {

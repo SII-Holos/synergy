@@ -11,6 +11,11 @@ type Fixture = {
   terminal(): void
   complete(): void
   grow(count: number): void
+  prepend(count: number): void
+  delivery(): void
+  compaction(state: "running" | "committed" | "failed"): void
+  mode(value: "balanced" | "full" | "minimal"): void
+  locate(messageID: string, partID?: string): Promise<boolean>
   reading(value: boolean): void
   retained(): number
 }
@@ -18,6 +23,7 @@ declare global {
   interface Window {
     __conversationProcess: Fixture
     answerNode?: Element | null
+    __processSelection?: unknown
   }
 }
 let server: ViteDevServer, browser: Browser, page: Page, directory: string, url: string
@@ -67,6 +73,140 @@ afterAll(async () => {
   await server?.close()
   if (directory) await rm(directory, { recursive: true, force: true })
 })
+
+test("a late child delivery has one chronological process row and opens the right inspector", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => window.__conversationProcess.delivery())
+  const delivery = page.locator('[data-component="process-event-row"]')
+  await delivery.waitFor()
+  expect(await delivery.count()).toBe(1)
+  expect(await page.locator('[data-row-kind="process"] [data-component="process-event-row"]').count()).toBe(0)
+  expect(await page.locator('[data-row-kind="footer"] [data-component="process-event-row"]').count()).toBe(0)
+  expect(await delivery.locator("button").textContent()).toContain("Check browser readiness")
+  await delivery.locator("button").click()
+  expect(await page.evaluate(() => window.__processSelection)).toEqual({
+    kind: "agent-delivery",
+    sessionID: "session",
+    messageID: "delivery",
+  })
+  expect(await page.getByText("Captured child result", { exact: true }).count()).toBe(0)
+})
+
+test("a long logical block uses a bounded independent viewport", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => window.__conversationProcess.grow(1000))
+  const viewport = page.locator('[data-component="process-viewport"]').last()
+  await viewport.waitFor()
+  const geometry = await viewport.evaluate((el) => ({
+    height: el.clientHeight,
+    overflow: el.scrollHeight > el.clientHeight,
+  }))
+  expect(geometry.height).toBeLessThanOrEqual(270)
+  expect(geometry.overflow).toBe(true)
+  await viewport.hover()
+  await frames()
+  const mainOffset = await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)
+  await page.mouse.wheel(0, -300)
+  await frames()
+  expect(await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)).toBe(mainOffset)
+  expect(await page.evaluate(() => window.__conversationProcess.retained())).toBeLessThan(120)
+})
+
+test("a process locator opens a closed group and finds an offscreen part in its own viewport", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.grow(1000)
+    window.__conversationProcess.mode("minimal")
+  })
+  expect(await page.evaluate(() => window.__conversationProcess.locate("more", "many-400"))).toBe(true)
+  const part = page.locator('[data-part-id="many-400"]')
+  await part.waitFor()
+  expect(
+    await part.evaluate((el) => {
+      const viewport = el.closest('[data-component="process-viewport"]')!
+      const bounds = viewport.getBoundingClientRect(),
+        row = el.getBoundingClientRect()
+      return row.bottom > bounds.top && row.top < bounds.bottom
+    }),
+  ).toBe(true)
+}, 30000)
+
+test("local reading survives new actions, history prepend and reopening without moving the outer stream", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => window.__conversationProcess.grow(1000))
+  await page.evaluate(() => window.__conversationProcess.locate("more", "many-400"))
+  const viewport = page.locator('[data-component="process-viewport"]').last()
+  await viewport.focus()
+  await viewport.press("ArrowUp")
+  await viewport.evaluate(async (element) => {
+    let previous = element.scrollTop,
+      stable = 0
+    for (let i = 0; i < 40 && stable < 4; i++) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      const next = element.scrollTop
+      stable = next === previous ? stable + 1 : 0
+      previous = next
+    }
+  })
+  await frames()
+  const part = page.locator('[data-slot="activity-step"][data-part-id="many-400"]')
+  const before = await part.evaluate((el) => el.getBoundingClientRect().top)
+  const outer = await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)
+  await page.evaluate(() => window.__conversationProcess.prepend(24))
+  await frames()
+  expect(Math.abs((await part.evaluate((el) => el.getBoundingClientRect().top)) - before)).toBeLessThan(2)
+  expect(await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)).toBe(outer)
+  await page.locator('[data-slot="process-latest"]').last().waitFor()
+  const header = page.locator('[data-slot="activity-batch-trigger"]').last()
+  const relative = await part.evaluate(
+    (el) =>
+      el.getBoundingClientRect().top - el.closest('[data-component="process-viewport"]')!.getBoundingClientRect().top,
+  )
+  await header.click()
+  await header.click()
+  await frames()
+  await frames()
+  expect(
+    Math.abs(
+      (await part.evaluate(
+        (el) =>
+          el.getBoundingClientRect().top -
+          el.closest('[data-component="process-viewport"]')!.getBoundingClientRect().top,
+      )) - relative,
+    ),
+  ).toBeLessThan(2)
+  expect(await page.evaluate(() => window.__conversationProcess.retained())).toBeLessThan(120)
+}, 30000)
+
+test("compaction has one compact lifecycle row and exposes running status while collapsed", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.compaction("running")
+    window.__conversationProcess.mode("minimal")
+  })
+  expect(await page.locator('[data-slot="turn-process-trigger"]').textContent()).toContain("Compressing context")
+  await page.locator('[data-slot="turn-process-trigger"]').click()
+  await page.locator('[data-slot="activity-batch-trigger"]').last().click()
+  const card = page.locator('[data-component="compaction-card"]')
+  await card.waitFor()
+  expect(await card.count()).toBe(1)
+  expect(await card.getAttribute("data-status")).toBe("running")
+  expect(await card.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThanOrEqual(30)
+  await page.evaluate(() => window.__conversationProcess.compaction("committed"))
+  expect(await card.getAttribute("data-status")).toBe("complete")
+  await card.locator("button").click()
+  expect(await page.evaluate(() => window.__processSelection)).toEqual({
+    kind: "compaction",
+    sessionID: "session",
+    messageID: "compression",
+  })
+  expect(await page.getByText("Compressed continuation", { exact: true }).count()).toBe(0)
+}, 30000)
 
 test("logical execution folds across messages, preserves prose and retains the final Markdown through exit", async () => {
   await page.goto(url)

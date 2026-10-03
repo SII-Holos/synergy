@@ -8,6 +8,7 @@ import {
   type ResourceOpenOptions,
   type ToolReviewTarget,
   type ToolActivityTarget,
+  type ActivityDetailTarget,
 } from "@ericsanchezok/synergy-ui/context/resource-open"
 import { ImagePreview, type ImagePreviewImage } from "@ericsanchezok/synergy-ui/image-preview"
 import {
@@ -89,7 +90,7 @@ export function ResourceOpenProvider(props: ParentProps) {
   const plugins = usePluginHost()
   const params = useParams()
 
-  const openToolActivity = (target: ToolActivityTarget) => {
+  const openActivityDetail = (target: ActivityDetailTarget) => {
     if (params.id !== target.sessionID) return false
     void workbench.openPanel("execution-detail", {
       reuseExisting: true,
@@ -97,7 +98,8 @@ export function ResourceOpenProvider(props: ParentProps) {
     })
     return true
   }
-  const isToolActivitySelected = (target: ToolActivityTarget) => {
+  const openToolActivity = (target: ToolActivityTarget) => openActivityDetail({ ...target, kind: "tool" })
+  const isActivityDetailSelected = (target: ActivityDetailTarget) => {
     const side = workbench.surface("side")
     if (!side.opened()) return false
     const tab = side.tabs().find((tab) => tab.id === side.active() && tab.panelId === "execution-detail")
@@ -105,10 +107,12 @@ export function ResourceOpenProvider(props: ParentProps) {
     return (
       state?.sessionID === target.sessionID &&
       state.messageID === target.messageID &&
-      state.partID === target.partID &&
-      (!target.callID || state.callID === target.callID)
+      state.kind === target.kind &&
+      (target.kind !== "tool" ||
+        (state.kind === "tool" && state.partID === target.partID && (!target.callID || state.callID === target.callID)))
     )
   }
+  const isToolActivitySelected = (target: ToolActivityTarget) => isActivityDetailSelected({ ...target, kind: "tool" })
 
   const openToolReview = (target: ToolReviewTarget) => {
     void workbench.openPanel("session-review", {
@@ -213,6 +217,8 @@ export function ResourceOpenProvider(props: ParentProps) {
         openToolReview,
         openToolActivity,
         isToolActivitySelected,
+        openActivityDetail,
+        isActivityDetailSelected,
       }}
     >
       {props.children}

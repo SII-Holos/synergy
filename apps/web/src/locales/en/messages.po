@@ -17065,12 +17065,32 @@ msgid "session.permissionDock.sessionScope"
 msgstr "For matching requests in this session; expires when the runtime is recreated or the server restarts"
 
 #. js-lingui-explicit-id
+msgid "session.process.agentDelivery"
+msgstr "Subagent returned"
+
+#. js-lingui-explicit-id
+msgid "session.process.agentDetail"
+msgstr "Agent result"
+
+#. js-lingui-explicit-id
+msgid "session.process.agentMessage"
+msgstr "Agent message"
+
+#. js-lingui-explicit-id
 msgid "session.process.approval"
 msgstr "Waiting for approval"
 
 #. js-lingui-explicit-id
+msgid "session.process.compactionDetail"
+msgstr "Context compaction"
+
+#. js-lingui-explicit-id
 msgid "session.process.completed"
 msgstr "Work completed"
+
+#. js-lingui-explicit-id
+msgid "session.process.copyResult"
+msgstr "Copy result"
 
 #. js-lingui-explicit-id
 msgid "session.process.executing"
@@ -17089,6 +17109,18 @@ msgid "session.process.interrupted"
 msgstr "Interrupted"
 
 #. js-lingui-explicit-id
+msgid "session.process.latest"
+msgstr "Back to latest"
+
+#. js-lingui-explicit-id
+msgid "session.process.loadFailed"
+msgstr "Unable to load process details."
+
+#. js-lingui-explicit-id
+msgid "session.process.openSource"
+msgstr "Open source session"
+
+#. js-lingui-explicit-id
 msgid "session.process.paused"
 msgstr "Paused"
 
@@ -17101,12 +17133,28 @@ msgid "session.process.reading"
 msgstr "Reading files"
 
 #. js-lingui-explicit-id
+msgid "session.process.records"
+msgstr "Process history"
+
+#. js-lingui-explicit-id
+msgid "session.process.resultUnavailable"
+msgstr "The full task result is not available. The original notification is shown."
+
+#. js-lingui-explicit-id
 msgid "session.process.stopped"
 msgstr "Stopped"
 
 #. js-lingui-explicit-id
 msgid "session.process.thinking"
 msgstr "Thinking"
+
+#. js-lingui-explicit-id
+msgid "session.process.unavailable"
+msgstr "This process record is no longer available."
+
+#. js-lingui-explicit-id
+msgid "session.process.viewEvent"
+msgstr "View details: {title}"
 
 #. js-lingui-explicit-id
 msgid "session.process.viewReasoning"
@@ -25387,22 +25435,6 @@ msgstr "Command output"
 #. js-lingui-explicit-id
 msgid "ui.compaction.complete"
 msgstr "Context compressed"
-
-#. js-lingui-explicit-id
-msgid "ui.compaction.copied"
-msgstr "Copied"
-
-#. js-lingui-explicit-id
-msgid "ui.compaction.copyDetails"
-msgstr "Copy details"
-
-#. js-lingui-explicit-id
-msgid "ui.compaction.copyFailure"
-msgstr "Unable to copy the compaction error details."
-
-#. js-lingui-explicit-id
-msgid "ui.compaction.errorDetails"
-msgstr "Error details"
 
 #. js-lingui-explicit-id
 msgid "ui.compaction.failed"

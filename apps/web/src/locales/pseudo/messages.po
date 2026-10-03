@@ -17065,11 +17065,31 @@ msgid "session.permissionDock.sessionScope"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.process.agentDelivery"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.process.agentDetail"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.process.agentMessage"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.process.approval"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.process.compactionDetail"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.process.completed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.process.copyResult"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17089,6 +17109,18 @@ msgid "session.process.interrupted"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.process.latest"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.process.loadFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.process.openSource"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.process.paused"
 msgstr ""
 
@@ -17101,11 +17133,27 @@ msgid "session.process.reading"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.process.records"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.process.resultUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.process.stopped"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.process.thinking"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.process.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.process.viewEvent"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -25387,22 +25435,6 @@ msgstr "⟦Command output⟧"
 #. js-lingui-explicit-id
 msgid "ui.compaction.complete"
 msgstr "⟦Context compressed⟧"
-
-#. js-lingui-explicit-id
-msgid "ui.compaction.copied"
-msgstr "⟦Copied⟧"
-
-#. js-lingui-explicit-id
-msgid "ui.compaction.copyDetails"
-msgstr "⟦Copy details⟧"
-
-#. js-lingui-explicit-id
-msgid "ui.compaction.copyFailure"
-msgstr "⟦Unable to copy the compaction error details.⟧"
-
-#. js-lingui-explicit-id
-msgid "ui.compaction.errorDetails"
-msgstr "⟦Error details⟧"
 
 #. js-lingui-explicit-id
 msgid "ui.compaction.failed"

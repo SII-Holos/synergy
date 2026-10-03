@@ -6,6 +6,10 @@ import { createServer, type ViteDevServer } from "vite"
 import solid from "vite-plugin-solid"
 
 type Fixture = {
+  event(kind: "agent-delivery" | "compaction", messageID?: string): void
+  child(taskID: string, value: string): void
+  resolveEvent(index: number, text: string, state?: "running" | "committed" | "failed"): void
+  refreshEvent(): void
   switchOwner(server: string, scope: string, sessionID?: string): void
   select(partID: string): void
   activity(revision: number, messageID?: string): void
@@ -52,8 +56,18 @@ beforeAll(async () => {
     let activityListener
     let resultUnmounts=0
     let copied=""
+    let child={taskID:"ctx_original",parentSessionID:"session",output:{mode:"final_response",value:"Saved child result"}}
+    const [eventLive,setEventLive]=createSignal()
     configureClipboard({writer(text){copied=text}})
     const h=window.fixture={state,open,
+      event(kind,messageID="event"){setState({...owner,kind,messageID})},
+      child(taskID,value){child={taskID,parentSessionID:owner.sessionID,output:{mode:"final_response",value}}},
+      resolveEvent(index,text,status="committed"){
+        const request=requests[index]
+        const info={id:request.messageID,sessionID:request.sessionID,role:request.kind==="compaction"?"assistant":"user",time:{created:1,completed:status==="running"?undefined:2},metadata:request.kind==="compaction"?{compactionAttempt:{state:status}}:undefined,origin:request.kind==="agent-delivery"?{type:"cortex",sessionID:"child",taskID:"ctx_original",label:"Evidence review"}:undefined,error:status==="failed"?{name:"UnknownError",data:{message:text}}:undefined}
+        request.resolve({data:{info,parts:[{id:"event-part",messageID:info.id,sessionID:info.sessionID,type:request.kind==="compaction"&&status==="committed"?"compaction_recovery":"text",text,summary:request.kind==="compaction"?text:undefined,mechanical:false}]}})
+      },
+      refreshEvent(){setEventLive({id:state().messageID,time:{created:1,completed:3},metadata:{compactionAttempt:{state:"committed"}}})},
       switchOwner(server,scope,sessionID="session"){batch(()=>{setOwner({server,scope,sessionID});setState({...owner,messageID:"message",partID:"part-a",callID:"call-part-a"})})},
       select(partID){setState({...state(),partID,callID:"call-"+partID})},
       activity(revision,messageID="message"){activityListener?.({properties:{sessionID:owner.sessionID,messageID,callID:state().callID,revision}})},
@@ -63,9 +77,10 @@ beforeAll(async () => {
       close(){setOpen(false)},facts(){return {requests:requests.length,aborted:requests.map(request=>request.signal.aborted),resultUnmounts,copied}}
     }
     export {h}
-    export const useSDK=()=>({get url(){return owner.server},get scopeKey(){return owner.scope},event:{on(type,listener){activityListener=listener;return()=>{activityListener=undefined}}},client:{session:{toolActivity:async(target,options)=>new Promise(resolve=>requests.push({...target,partID:state().partID,signal:options.signal,resolve}))}}})
+    export const useSDK=()=>({get url(){return owner.server},get scopeKey(){return owner.scope},event:{on(type,listener){activityListener=listener;return()=>{activityListener=undefined}}},client:{session:{message:async(target,options)=>new Promise(resolve=>requests.push({...target,kind:state().kind,signal:options.signal,resolve})),get:async()=>({data:{cortex:child}}),toolActivity:async(target,options)=>new Promise(resolve=>requests.push({...target,partID:state().partID,signal:options.signal,resolve}))}}})
     export const useParams=()=>({get id(){return owner.sessionID}})
-    export const useSessionDataView=()=>()=>({messagesFor:()=>[],partsFor:()=>[]})
+    export const useSessionDataView=()=>()=>({messagesFor:()=>eventLive()?[eventLive()]:[],partsFor:()=>[]})
+    export const useData=()=>({navigateToSession(){}})
     export const useWorkbenchPanels=()=>({updateTab(id,patch){setState(patch.state)}})
     export const Button=props=><button {...props}>{props.children}</button>
     export const ToolResultBody=props=>{onCleanup(()=>resultUnmounts++);return <output data-result>{props.part.state.error??props.part.state.output}</output>}
@@ -74,7 +89,8 @@ beforeAll(async () => {
     export const externalLookup=undefined
     export const externalLoadNotify=()=>0
     export const Icon=()=> <span/>
-    export const Markdown=props=> <div>{props.text}</div>
+    export const Markdown=props=> <div data-markdown>{props.text}</div>
+    export const compactionErrorText=error=>error?.data?.message
     export const ErrorCard=props=><div>{props.error}</div>
     export const getToolInfo=(tool,input)=>({subtitle:input.filePath??input.command})
     export const getSemanticIcon=()=>"arrow-left"
@@ -111,6 +127,7 @@ beforeAll(async () => {
             "@/context/sdk",
             "@/context/session-data-view",
             "@/context/workbench",
+            "@ericsanchezok/synergy-ui/context/data",
             "@solidjs/router",
             ...[
               "button",
@@ -123,6 +140,7 @@ beforeAll(async () => {
               "message-part",
               "semantic-icon",
               "clipboard",
+              "compaction-card",
             ].map((name) => `@ericsanchezok/synergy-ui/${name}`),
           ].map((name) => [name, bridge]),
         ].reverse(),
@@ -148,6 +166,53 @@ afterAll(async () => {
   await server?.close()
   if (fixture) await rm(fixture, { recursive: true, force: true })
 })
+
+test("agent notices read the exact task result and never substitute a reused child task", async () => {
+  for (const task of ["ctx_original", "ctx_later"]) {
+    await page.goto(base)
+    await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture?.facts().requests === 1)
+    await page.evaluate((task) => {
+      const fixture = (window as unknown as { fixture: Fixture }).fixture
+      fixture.event("agent-delivery")
+      fixture.child(task, "Full original child result")
+    }, task)
+    await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture.facts().requests === 2)
+    await page.evaluate(() =>
+      (window as unknown as { fixture: Fixture }).fixture.resolveEvent(1, "Original notification"),
+    )
+    await page
+      .getByText(task === "ctx_original" ? "Full original child result" : "Original notification", { exact: true })
+      .waitFor()
+    expect(
+      await page
+        .getByText(task === "ctx_original" ? "Original notification" : "Full original child result", { exact: true })
+        .count(),
+    ).toBe(0)
+  }
+  expect(errors).toEqual([])
+}, 30000)
+
+test("compaction refresh preserves visible evidence and late event reads cannot replace the new selection", async () => {
+  await page.goto(base)
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture?.facts().requests === 1)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.event("compaction"))
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture.facts().requests === 2)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.resolveEvent(1, "Captured summary"))
+  await page.getByText("Captured summary", { exact: true }).waitFor()
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.refreshEvent())
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture.facts().requests === 3)
+  expect(await page.getByText("Captured summary", { exact: true }).count()).toBe(1)
+  expect(await page.getByText("Loading tool result…", { exact: true }).count()).toBe(0)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.event("compaction", "new-event"))
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture.facts().requests === 4)
+  expect((await inspect()).aborted[2]).toBe(true)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.resolveEvent(3, "Current summary"))
+  await page.getByText("Current summary", { exact: true }).waitFor()
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.resolveEvent(2, "Stale summary"))
+  expect(await page.getByText("Stale summary", { exact: true }).count()).toBe(0)
+  expect(await page.getByText("Captured summary", { exact: true }).count()).toBe(0)
+  expect(errors).toEqual([])
+}, 30000)
 
 test("retained historical results cannot cross a connection or Scope with the same message identity", async () => {
   for (const next of [

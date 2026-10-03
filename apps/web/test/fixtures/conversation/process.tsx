@@ -83,9 +83,11 @@ const [data, setData] = createStore<Data>({
 })
 const [status, setStatus] = createSignal<TurnExecutionState["status"]>("running")
 const [reading, setReading] = createSignal(false)
+const [mode, setMode] = createSignal<"balanced" | "full" | "minimal">("balanced")
 const [expanded, setExpanded] = createStore<Record<string, boolean>>({})
 const [scroll, setScroll] = createSignal<HTMLDivElement>()
 let retained = 0
+let locate: ((messageID: string, behavior?: ScrollBehavior, partID?: string) => Promise<boolean>) | undefined
 const context: Partial<PluginConversationService> = {
   sessionID: "session",
   timeline: () => [data.message.session[0]],
@@ -97,7 +99,7 @@ const context: Partial<PluginConversationService> = {
     turnMessagesFor: () => data.message.session.slice(1),
     compactionParentIDs: new Set<string>(),
   }),
-  activityDisplay: () => "balanced",
+  activityDisplay: mode,
   activityView: { getExpanded: (key) => expanded[key], setExpanded: (key, value) => setExpanded(key, value) },
   isWorking: () => status() === "running",
   scrolledUp: reading,
@@ -105,6 +107,10 @@ const context: Partial<PluginConversationService> = {
   canRewind: () => false,
   anchor: (id) => "message-" + id,
   onFirstTurnMounted() {},
+  registerMessageLocator: (value) => {
+    locate = value
+    return () => {}
+  },
   content: {
     summaries: (id) =>
       data.part[id].map((p) => ({
@@ -145,6 +151,53 @@ window.__conversationProcess = {
       Array.from({ length: count }, (_, i) => part("more", "many-" + i, "tool")),
     )
   },
+  prepend(count: number) {
+    setData("part", "more", [
+      ...Array.from({ length: count }, (_, i) => part("more", "older-" + i, "tool")),
+      ...data.part.more,
+    ])
+  },
+  delivery() {
+    const message: UserMessage = {
+      ...root,
+      id: "delivery",
+      isRoot: false,
+      origin: { type: "cortex", sessionID: "child", label: "Check browser readiness" },
+      time: { created: 50 },
+    }
+    setData("part", message.id, [part(message.id, "delivery-text", "text", "Captured child result")])
+    setData("message", "session", [root, work, more, message])
+  },
+  compaction(state: "running" | "committed" | "failed") {
+    const message: AssistantMessage = {
+      ...assistant("compression"),
+      mode: "compaction",
+      agent: "compaction",
+      metadata: { compactionAttempt: { state } },
+      time: { created: 60, completed: state === "running" ? undefined : 70 },
+      error: state === "failed" ? { name: "UnknownError", data: { message: "Provider unavailable" } } : undefined,
+    }
+    setData(
+      "part",
+      message.id,
+      state === "committed"
+        ? [
+            {
+              id: "recovery",
+              sessionID: "session",
+              messageID: message.id,
+              type: "compaction_recovery",
+              summary: "Compressed continuation",
+              mechanical: false,
+              validated: true,
+            },
+          ]
+        : [],
+    )
+    setData("message", "session", [root, work, more, message])
+  },
+  mode: setMode,
+  locate: (messageID: string, partID?: string) => locate?.(messageID, "auto", partID) ?? Promise.resolve(false),
   reading: setReading,
   retained: () => retained,
 }
@@ -156,6 +209,10 @@ const runtime = {
 }
 const resource = {
   openToolActivity: () => true,
+  openActivityDetail: (target: unknown) => {
+    window.__processSelection = target
+    return true
+  },
   open: () => false,
   openAttachment: () => false,
   resolveWorkspacePath: (v: string) => v,

@@ -60,6 +60,7 @@ import { Dynamic } from "solid-js/web"
 import { createAutoScroll } from "../hooks"
 import { getSpecialUserMessageRenderer } from "./special-user-message"
 import { CompactionCard } from "./compaction-card"
+import { ProcessEventRow } from "./process-event-row"
 import { createCopyController } from "./clipboard"
 import { hasVisibleUserMessageContent, isSystemPart } from "./user-message-utils"
 import { ActivityReceipt, ActivityTrace } from "./activity-trace"
@@ -933,24 +934,31 @@ function TimelineDisplayInner(props: {
       </Match>
       <Match when={nonRootUser()}>
         {(item) => (
-          <div data-slot="session-turn-rewind-wrapper">
-            <div data-slot="session-turn-chip" data-origin={item().message.origin?.type ?? "guided"}>
-              <Icon name={getSemanticIcon(originIconToken(item().message.origin))} size="small" />
-              <span data-slot="session-turn-chip-label">{item().originLabel}</span>
-            </div>
-            <button
-              type="button"
-              data-slot="session-turn-rewind-button"
-              onClick={(event) => {
-                event.stopPropagation()
-                props.onRewind?.()
-              }}
-              title={_(SESSION_TURN_DESC.rewindTitle)}
-            >
-              <Icon name={getSemanticIcon("session.rewind")} size="small" />
-              <span>{_(SESSION_TURN_DESC.rewind)}</span>
-            </button>
-          </div>
+          <Show
+            when={["cortex", "agent"].includes(item().message.origin?.type ?? "")}
+            fallback={
+              <div data-slot="session-turn-rewind-wrapper">
+                <div data-slot="session-turn-chip" data-origin={item().message.origin?.type ?? "guided"}>
+                  <Icon name={getSemanticIcon(originIconToken(item().message.origin))} size="small" />
+                  <span data-slot="session-turn-chip-label">{item().originLabel}</span>
+                </div>
+                <button
+                  type="button"
+                  data-slot="session-turn-rewind-button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    props.onRewind?.()
+                  }}
+                  title={_(SESSION_TURN_DESC.rewindTitle)}
+                >
+                  <Icon name={getSemanticIcon("session.rewind")} size="small" />
+                  <span>{_(SESSION_TURN_DESC.rewind)}</span>
+                </button>
+              </div>
+            }
+          >
+            <ProcessEventRow message={item().message} />
+          </Show>
         )}
       </Match>
       <Match when={timelineItem()}>
@@ -1062,6 +1070,7 @@ export function SessionTurn(
       activityBody?: boolean
       processHeader?: boolean
       processBody?: boolean
+      contentMessageID?: string
       process?: { open: boolean; working: boolean; hasContent: boolean; hasTurnContent: boolean }
     }
     activityView?: PluginConversationActivityView
@@ -1189,7 +1198,7 @@ export function SessionTurn(
     if (props.segment && isCompactionAssistant(item)) {
       const ownsRecovery = segmentParts()[item.id]?.some((part) => part.type === "compaction_recovery")
       const placeholder =
-        props.segment.footer &&
+        props.segment.contentMessageID === item.id &&
         isProjectedCompactionAttempt(item) &&
         !view.partsFor(item.id).some((part) => part.type === "compaction_recovery")
       if (!ownsRecovery && !placeholder) return []
@@ -1217,6 +1226,12 @@ export function SessionTurn(
         if (item.role === "user") {
           const userMsg = item as UserMessage
           if (userMsg.isRoot !== false) return emptyDisplayItems
+          if (
+            props.segment &&
+            props.segment.contentMessageID !== userMsg.id &&
+            !props.segment.parts.some((part) => part.messageID === userMsg.id)
+          )
+            return emptyDisplayItems
           const itemParts = partsFor(item.id)
           // A user's own mid-run message (steer / follow-up) renders as their
           // message bubble; system-injected non-root messages (cortex, agenda,
@@ -1485,7 +1500,15 @@ export function SessionTurn(
     const end = execution?.endedAt ?? lastAssistantMessage()?.time.completed
     return start !== undefined && end !== undefined ? Math.max(0, Math.round((end - start) / 1000)) : undefined
   }
+  const compacting = createMemo(() =>
+    assistantMessages().some(
+      (item) =>
+        isCompactionAssistant(item) &&
+        (item.metadata?.compactionAttempt as { state?: unknown } | undefined)?.state === "running",
+    ),
+  )
   const activeAction = () => {
+    if (compacting()) return _({ id: "ui.compaction.running", message: "Compressing context..." })
     if (props.executionState?.status === "approval")
       return _({ id: "session.process.approval", message: "Waiting for approval" })
     if (props.executionState?.status === "preparing")
@@ -1640,7 +1663,7 @@ export function SessionTurn(
                                   <span data-slot="activity-live-indicator" aria-hidden="true" />
                                 </Show>
                                 <span>
-                                  {showProviderPrelude()
+                                  {showProviderPrelude() && !compacting()
                                     ? providerPreludeText(sessionStatus(), _(awaitingResponse))
                                     : processLabel()}
                                 </span>

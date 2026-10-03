@@ -15,6 +15,9 @@ import { MessageSlotOutlet } from "@ericsanchezok/synergy-ui/message-slots"
 import { useExecution } from "@/context/execution"
 import { buildConversationRows, type ConversationRow } from "./conversation-rows"
 import { ToolExpansionProvider } from "@ericsanchezok/synergy-ui/tool-expansion"
+import { ProcessViewport } from "@ericsanchezok/synergy-ui/process-viewport"
+import { CompactionCard } from "@ericsanchezok/synergy-ui/compaction-card"
+import { useData } from "@ericsanchezok/synergy-ui/context/data"
 
 // Provenance: https://github.com/inokawa/virtua/blob/0.42.3/src/solid/Virtualizer.tsx
 // Local adaptation: Part identities, retained interaction rows and prepend offsets share the existing scroll element.
@@ -37,6 +40,7 @@ export function VirtualConversationRows(
   const [margin, setMargin] = createSignal(0)
   const [retained, setRetained] = createSignal<string[]>([])
   const [interactionBlocks, setInteractionBlocks] = createSignal<string[]>([])
+  const [readingBlocks, setReadingBlocks] = createSignal<string[]>([])
   const [interactionRoots, setInteractionRoots] = createSignal<string[]>([])
   const [expanded, setExpanded] = createSignal<ReadonlyMap<string, boolean>>(new Map())
   const activityView = {
@@ -67,12 +71,15 @@ export function VirtualConversationRows(
         ? ["preparing", "running", "approval"].includes(state.status) ||
           (state.status === "completed" && !!last?.working && final?.time.completed == null)
         : root.id === props.lastUserMessage()?.id && props.isWorking()
-      const reading = props.scrolledUp() || interactionRoots().includes(root.id)
+      const reading =
+        props.scrolledUp() ||
+        interactionRoots().includes(root.id) ||
+        readingBlocks().some((key) => key.startsWith(`${root.id}:activity:`))
       next.set(root.id, { working, held: reading && (!!last?.held || (!!last?.working && !working)) })
     }
     return next
   })
-  const requestedRows = createMemo<ConversationRow[]>((previous) =>
+  const projectionRows = createMemo<ConversationRow[]>((previous) =>
     buildConversationRows({
       previous,
       timeline: props.timeline(),
@@ -82,7 +89,7 @@ export function VirtualConversationRows(
       activity: (block) =>
         activityView.getExpanded(block.key) ??
         (props.activityDisplay() === "full" ||
-          (interactionBlocks().includes(block.key) &&
+          ((interactionBlocks().includes(block.key) || readingBlocks().includes(block.key)) &&
             !!previous?.find((row) => row.key === block.key)?.activity?.open) ||
           (props.activityDisplay() !== "minimal" &&
             (block.active ||
@@ -101,6 +108,7 @@ export function VirtualConversationRows(
       },
     }),
   )
+  const requestedRows = createMemo(() => projectionRows().filter((row) => row.kind !== "body" || !row.activity))
   let container: HTMLDivElement | undefined
   const [rows, setRows] = createSignal<ConversationRow[]>(requestedRows())
   createEffect(
@@ -205,7 +213,10 @@ export function VirtualConversationRows(
       const element = node instanceof Element ? node : node?.parentElement
       const row = element?.closest<HTMLElement>("[data-display-row]")
       if (row && container?.contains(row)) {
-        ids.add(row.dataset.displayRow!)
+        const owner = row
+          .closest('[data-component="process-window"]')
+          ?.parentElement?.closest<HTMLElement>("[data-display-row]")
+        ids.add(owner?.dataset.displayRow ?? row.dataset.displayRow!)
         roots.add(row.dataset.turnRoot!)
         if (row.dataset.activityBlock) blocks.add(row.dataset.activityBlock)
       }
@@ -233,10 +244,13 @@ export function VirtualConversationRows(
     const measure = () => {
       const scroll = input.scrollRef
       if (scroll && container)
+        container.style.setProperty("--process-viewport-limit", `${scroll.clientHeight * 0.45}px`)
+      if (scroll && container)
         setMargin(container.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop)
     }
     const observer = new ResizeObserver(measure)
     if (container?.parentElement) observer.observe(container.parentElement)
+    if (input.scrollRef) observer.observe(input.scrollRef)
     measure()
     captureAnchor()
     document.addEventListener("focusin", pinInteraction)
@@ -244,39 +258,72 @@ export function VirtualConversationRows(
     document.addEventListener("selectionchange", pinInteraction)
     const release = props.registerMessageLocator?.(async (messageID, behavior, partID) => {
       if (content.loadWindow && !(await content.loadWindow(messageID, partID))) return false
-      if (partID) {
-        const root = props.timeline().find(
-          (root) =>
-            root.id === messageID ||
-            (root.role === "user" &&
-              props
-                .turnProjection()
-                .turnMessagesFor(root)
-                .some((message) => message.id === messageID)),
+      const root = props.timeline().find(
+        (root) =>
+          root.id === messageID ||
+          (root.role === "user" &&
+            props
+              .turnProjection()
+              .turnMessagesFor(root)
+              .some((message) => message.id === messageID)),
+      )
+      if (root && root.id !== messageID) activityView.setExpanded(`turn-process:${root.id}`, true)
+      if (partID || root?.id !== messageID) {
+        const block = requestedRows().find(
+          (row) =>
+            row.kind === "activity" &&
+            row.activity.entries.some(
+              (entry) =>
+                entry.message.id === messageID &&
+                (!partID || (entry.kind === "body" && entry.parts.some((part) => part.id === partID))),
+            ),
         )
-        if (root) activityView.setExpanded(`turn-process:${root.id}`, true)
-        const block = requestedRows().find((row) => row.kind === "activity" && row.activity.parts.includes(partID))
         if (block?.activity) activityView.setExpanded(block.activity.key, true)
       }
-      let index = rows().findIndex((row) => row.message.id === messageID)
+      const owns = (row: ConversationRow) =>
+        row.kind === "activity"
+          ? row.activity.entries.some(
+              (entry) =>
+                entry.message.id === messageID &&
+                (!partID || (entry.kind === "body" && entry.parts.some((part) => part.id === partID))),
+            )
+          : row.message.id === messageID &&
+            (!partID || (row.kind === "body" && row.parts.some((part) => part.id === partID)))
+      let index = rows().findIndex(owns)
       if (index < 0) return false
       await content.load(messageID)
-      index = rows().findIndex(
-        (row) =>
-          row.message.id === messageID &&
-          (!partID || (row.kind === "body" && row.parts.some((part) => part.id === partID))),
-      )
+      index = rows().findIndex(owns)
       if (index < 0 || !handle()) return false
       handle()!.scrollToIndex(index, { align: "start", smooth: behavior === "smooth" })
+      const group = rows()[index]
+      for (let attempt = 0; attempt < 24; attempt++) {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+        if (group.kind !== "activity") break
+        container?.dispatchEvent(new CustomEvent("process-locate", { detail: { key: group.key, messageID, partID } }))
+        const mounted = [
+          ...(container?.querySelectorAll<HTMLElement>('[data-component="process-viewport"] [data-display-row]') ?? []),
+        ].some(
+          (element) =>
+            element.dataset.messageId === messageID &&
+            (!partID ||
+              [...element.querySelectorAll<HTMLElement>("[data-part-id]")].some(
+                (part) => part.dataset.partId === partID,
+              )),
+        )
+        if (mounted) break
+      }
       if (partID)
         await new Promise<void>((resolve) =>
           requestAnimationFrame(() => {
-            const part = [...container!.querySelectorAll<HTMLElement>("[data-part-id]")].find(
-              (element) => element.dataset.partId === partID,
-            )
-            if (part && input.scrollRef)
-              input.scrollRef.scrollBy({
-                top: part.getBoundingClientRect().top - input.scrollRef.getBoundingClientRect().top,
+            const part = [
+              ...container!.querySelectorAll<HTMLElement>(
+                group.kind === "activity" ? '[data-component="process-viewport"] [data-part-id]' : "[data-part-id]",
+              ),
+            ].find((element) => element.dataset.partId === partID)
+            const scroll = part?.closest<HTMLElement>('[data-component="process-viewport"]') ?? input.scrollRef
+            if (part && scroll)
+              scroll.scrollBy({
+                top: part.getBoundingClientRect().top - scroll.getBoundingClientRect().top,
                 behavior,
               })
             resolve()
@@ -293,7 +340,7 @@ export function VirtualConversationRows(
     })
   })
   return (
-    <div ref={container} class="w-full min-w-0 max-w-full">
+    <div ref={container} data-component="virtual-conversation-rows" class="w-full min-w-0 max-w-full">
       <Show when={input.scrollRef}>
         <ToolExpansionProvider value={expansionState}>
           <Virtualizer
@@ -316,6 +363,11 @@ export function VirtualConversationRows(
                   activityView={activityView}
                   executionFor={input.executionFor}
                   onRestoreChanges={input.onRestoreChanges}
+                  onReading={(key, reading) =>
+                    setReadingBlocks((previous) =>
+                      reading ? [...new Set([...previous, key])] : previous.filter((value) => value !== key),
+                    )
+                  }
                 />
               )
             }}
@@ -332,6 +384,7 @@ function ConversationDisplayRow(
     row: () => ConversationRow
     onExit: (key: string) => void
     activityView: NonNullable<PluginConversationService["activityView"]>
+    onReading?: (key: string, reading: boolean) => void
   },
 ) {
   const props = input.context
@@ -382,7 +435,7 @@ function ConversationDisplayRow(
   })
   createEffect(() => {
     const current = row()
-    if (current.kind !== "body" || content.page(current.message.id)) return
+    if (current.kind !== "body" || current.event || content.page(current.message.id)) return
     void content
       .load(current.message.id)
       .then(() => {
@@ -395,7 +448,7 @@ function ConversationDisplayRow(
   createEffect(() => {
     retry()
     const current = row()
-    if (current.kind !== "body") return
+    if (current.kind !== "body" || current.event) return
     const wanted = new Set(current.parts.map((part) => part.id))
     for (const part of current.parts) {
       const previous = retainedParts.get(part.id)
@@ -433,6 +486,7 @@ function ConversationDisplayRow(
       activityBody: current.kind === "body" && !!current.activity,
       processHeader: current.kind === "process",
       processBody: current.kind === "body" && current.processBody,
+      contentMessageID: current.kind === "body" ? current.message.id : undefined,
       process: current.process,
     }
   }
@@ -514,72 +568,302 @@ function ConversationDisplayRow(
                 </Show>
               }
             >
-              <SessionTurn
-                sessionID={props.sessionID}
-                messageID={row().root.id}
-                rootMessage={row().root as UserMessage}
-                messages={
-                  row().kind === "footer" || row().kind === "process"
-                    ? props.turnProjection().turnMessagesFor(row().root as UserMessage)
-                    : [row().message]
+              <Show
+                when={
+                  row().kind === "body" && (row() as Extract<ConversationRow, { kind: "body" }>).event === "compaction"
                 }
-                segment={segment()}
-                copyMessageText={content.text}
-                compactionParentIDs={props.turnProjection().compactionParentIDs}
-                activityDisplay={props.activityDisplay()}
-                activityView={input.activityView}
-                executionState={input.executionFor?.(row().root.id)}
-                following={!props.scrolledUp()}
-                lastUserMessageID={props.lastUserMessage()?.id}
-                compactReasoning={props.compactReasoning()}
-                onRewind={
-                  props.canRewind(row().root as UserMessage)
-                    ? () => props.onRewind?.(row().root as UserMessage)
-                    : undefined
+                fallback={
+                  <SessionTurn
+                    sessionID={props.sessionID}
+                    messageID={row().root.id}
+                    rootMessage={row().root as UserMessage}
+                    messages={
+                      row().kind === "footer" || row().kind === "process"
+                        ? props.turnProjection().turnMessagesFor(row().root as UserMessage)
+                        : [row().message]
+                    }
+                    segment={segment()}
+                    copyMessageText={content.text}
+                    compactionParentIDs={props.turnProjection().compactionParentIDs}
+                    activityDisplay={props.activityDisplay()}
+                    activityView={input.activityView}
+                    executionState={input.executionFor?.(row().root.id)}
+                    following={!props.scrolledUp()}
+                    lastUserMessageID={props.lastUserMessage()?.id}
+                    compactReasoning={props.compactReasoning()}
+                    onRewind={
+                      props.canRewind(row().root as UserMessage)
+                        ? () => props.onRewind?.(row().root as UserMessage)
+                        : undefined
+                    }
+                    rollbackActive={props.rollbackActive}
+                    onReviewChanges={props.onReviewChanges}
+                    onRestoreChanges={input.onRestoreChanges}
+                    onForkMessage={props.onForkMessage}
+                    executionSummary={
+                      row().kind === "footer" && execution.available() ? execution.round(row().root.id) : undefined
+                    }
+                    onExecutionDetails={
+                      row().kind === "footer" && execution.available()
+                        ? () => void execution.open(row().root.id)
+                        : undefined
+                    }
+                    classes={{
+                      root: "min-w-0 w-full relative",
+                      content: "flex flex-col justify-between !overflow-visible",
+                      container: "w-full min-w-0 max-w-full",
+                    }}
+                  />
                 }
-                rollbackActive={props.rollbackActive}
-                onReviewChanges={props.onReviewChanges}
-                onRestoreChanges={input.onRestoreChanges}
-                onForkMessage={props.onForkMessage}
-                executionSummary={
-                  row().kind === "footer" && execution.available() ? execution.round(row().root.id) : undefined
-                }
-                onExecutionDetails={
-                  row().kind === "footer" && execution.available()
-                    ? () => void execution.open(row().root.id)
-                    : undefined
-                }
-                classes={{
-                  root: "min-w-0 w-full relative",
-                  content: "flex flex-col justify-between !overflow-visible",
-                  container: "w-full min-w-0 max-w-full",
-                }}
-              />
+              >
+                <CompactionCard message={row().message} />
+              </Show>
             </Show>
           }
         >
-          <button
-            type="button"
-            data-slot="activity-batch-trigger"
-            aria-expanded={row().activity?.open}
-            onClick={() => {
-              const block = row().activity
-              if (block) input.activityView.setExpanded(block.key, !block.open)
-            }}
-          >
-            <span>
-              {row().activity?.tools
-                ? _({
-                    id: "session.activity.operations",
-                    message: "{count, plural, one {# action} other {# actions}}",
-                    values: { count: row().activity!.tools },
-                  })
-                : _({ id: "session.reasoning.title", message: "Reasoning" })}
-            </span>
-            <Icon name={getSemanticIcon("navigation.expand")} size="small" />
-          </button>
+          <div data-component="conversation-activity">
+            <button
+              type="button"
+              data-slot="activity-batch-trigger"
+              aria-expanded={row().activity?.open}
+              onClick={() => {
+                const block = row().activity
+                if (block) input.activityView.setExpanded(block.key, !block.open)
+              }}
+            >
+              <span>
+                {row().activity?.tools
+                  ? _({
+                      id: "session.activity.operations",
+                      message: "{count, plural, one {# action} other {# actions}}",
+                      values: { count: row().activity!.tools },
+                    })
+                  : row().activity?.entries.some((entry) => entry.kind === "body" && entry.event)
+                    ? _({ id: "session.process.records", message: "Process history" })
+                    : _({ id: "session.reasoning.title", message: "Reasoning" })}
+              </span>
+              <Icon name={getSemanticIcon("navigation.expand")} size="small" />
+            </button>
+            <Show when={row().activity?.open}>
+              <ConversationActivityBody
+                context={props}
+                row={row}
+                activityView={input.activityView}
+                onReading={input.onReading}
+                executionFor={input.executionFor}
+                onRestoreChanges={input.onRestoreChanges}
+              />
+            </Show>
+          </div>
         </Show>
       </Show>
     </div>
+  )
+}
+
+function ConversationActivityBody(
+  input: ProcessControls & {
+    context: PluginConversationService
+    row: () => ConversationRow
+    activityView: NonNullable<PluginConversationService["activityView"]>
+    onReading?: (key: string, value: boolean) => void
+  },
+) {
+  const [scroll, setScroll] = createSignal<HTMLDivElement>()
+  const [handle, setHandle] = createSignal<VirtualizerHandle>()
+  const [retained, setRetained] = createSignal<number[]>([])
+  const data = useData()
+  const entries = () => input.row().activity?.entries ?? []
+  const keys = createMemo(() => entries().map((entry) => entry.key))
+  const byKey = createMemo(() => new Map(entries().map((entry) => [entry.key, entry])))
+  let viewport: HTMLDivElement | undefined
+  let pause: (() => void) | undefined
+  const layoutKey = `${input.context.sessionID}:${input.row().key}`
+  const layout = layouts.get(input.context)?.get(layoutKey)
+  const initialCache =
+    layout && layout.keys.length === keys().length && layout.keys.every((key, index) => key === keys()[index])
+      ? layout.cache
+      : undefined
+  let anchor: { key: string; offset: number; partID?: string } | undefined
+  let anchorFrame: number | undefined
+  const captureAnchor = () => {
+    if (!viewport) return
+    const bounds = viewport.getBoundingClientRect()
+    const row = [
+      ...viewport.querySelectorAll<HTMLElement>(
+        '[data-slot="activity-step"][data-part-id], [data-component="process-reasoning"][data-part-id], [data-display-row]',
+      ),
+    ].find((element) => {
+      if (
+        element.dataset.displayRow &&
+        element.querySelector('[data-slot="activity-step"], [data-component="process-reasoning"]')
+      )
+        return false
+      const rect = element.getBoundingClientRect()
+      return rect.bottom > bounds.top && rect.top < bounds.bottom
+    })
+    if (row)
+      anchor = {
+        key: row.closest<HTMLElement>("[data-display-row]")!.dataset.displayRow!,
+        partID: row.dataset.partId,
+        offset: row.getBoundingClientRect().top - bounds.top,
+      }
+  }
+  const restoreAnchor = (saved: { key: string; offset: number; partID?: string }) => {
+    const index = saved.partID
+        ? entries().findIndex((entry) => entry.kind === "body" && entry.parts.some((part) => part.id === saved.partID))
+        : keys().indexOf(saved.key),
+      virtual = handle()
+    if (index < 0 || !virtual || !viewport) return
+    virtual.scrollToIndex(index, { align: "start", offset: -saved.offset })
+    if (!saved.partID) return
+    if (anchorFrame !== undefined) cancelAnimationFrame(anchorFrame)
+    anchorFrame = requestAnimationFrame(() => {
+      anchorFrame = undefined
+      const part = [
+        ...(viewport?.querySelectorAll<HTMLElement>(
+          '[data-slot="activity-step"][data-part-id], [data-component="process-reasoning"][data-part-id]',
+        ) ?? []),
+      ].find((element) => element.dataset.partId === saved.partID)
+      const row = part?.closest<HTMLElement>("[data-display-row]")
+      if (part && row)
+        virtual.scrollToIndex(index, {
+          align: "start",
+          offset: part.getBoundingClientRect().top - row.getBoundingClientRect().top - saved.offset,
+        })
+    })
+  }
+  let previous = keys()
+  createEffect(() => {
+    const next = keys(),
+      saved = anchor
+    if (saved && next.indexOf(saved.key) > previous.indexOf(saved.key) && next.includes(previous[0])) {
+      if (anchorFrame !== undefined) cancelAnimationFrame(anchorFrame)
+      anchorFrame = requestAnimationFrame(() => {
+        anchorFrame = undefined
+        restoreAnchor(saved)
+      })
+    }
+    previous = next
+  })
+  onCleanup(() => {
+    if (anchorFrame !== undefined) cancelAnimationFrame(anchorFrame)
+    const virtual = handle()
+    if (!virtual) return
+    const cache = virtual.cache,
+      current = keys()
+    const entries = layouts.get(input.context) ?? new Map()
+    layouts.set(input.context, entries)
+    entries.delete(layoutKey)
+    entries.set(layoutKey, { keys: current, cache, bytes: JSON.stringify([current, cache]).length * 2 })
+    let bytes = [...entries.values()].reduce((total, entry) => total + entry.bytes, 0)
+    for (const [key, entry] of entries) {
+      if (bytes <= 4 * 1024 * 1024) break
+      entries.delete(key)
+      bytes -= entry.bytes
+    }
+  })
+  const pin = () => {
+    const indices = new Set<number>()
+    const add = (node: Node | null) => {
+      const element = node instanceof Element ? node : node?.parentElement
+      const row = element?.closest<HTMLElement>("[data-display-row]")
+      if (row && viewport?.contains(row)) {
+        const index = keys().indexOf(row.dataset.displayRow!)
+        if (index >= 0) indices.add(index)
+      }
+    }
+    add(document.activeElement)
+    const selection = document.getSelection()
+    if (selection && !selection.isCollapsed) {
+      add(selection.anchorNode)
+      add(selection.focusNode)
+      if (indices.size === 2) {
+        const start = Math.min(...indices),
+          end = Math.max(...indices)
+        for (const element of viewport?.querySelectorAll<HTMLElement>("[data-display-row]") ?? []) {
+          const index = keys().indexOf(element.dataset.displayRow!)
+          if (index >= start && index <= end) indices.add(index)
+        }
+      }
+    }
+    setRetained([...indices])
+  }
+  onMount(() => {
+    const container = viewport?.closest('[data-component="virtual-conversation-rows"]')
+    const locate = (event: Event) => {
+      const target = (event as CustomEvent<{ key: string; messageID: string; partID?: string }>).detail
+      if (target.key !== input.row().key) return
+      const index = entries().findIndex(
+        (entry) =>
+          entry.message.id === target.messageID &&
+          (!target.partID || (entry.kind === "body" && entry.parts.some((part) => part.id === target.partID))),
+      )
+      if (index >= 0) {
+        pause?.()
+        handle()?.scrollToIndex(index, { align: "start" })
+      }
+    }
+    container?.addEventListener("process-locate", locate)
+    document.addEventListener("focusin", pin)
+    document.addEventListener("focusout", pin)
+    document.addEventListener("selectionchange", pin)
+    onCleanup(() => {
+      container?.removeEventListener("process-locate", locate)
+      document.removeEventListener("focusin", pin)
+      document.removeEventListener("focusout", pin)
+      document.removeEventListener("selectionchange", pin)
+    })
+  })
+  return (
+    <ProcessViewport
+      identity={`${data.serverUrl}:${data.directory}:${layoutKey}`}
+      controls={(value) => {
+        pause = value.pause
+      }}
+      anchor={() => {
+        captureAnchor()
+        return anchor
+      }}
+      restoreAnchor={restoreAnchor}
+      onScroll={captureAnchor}
+      active={input.row().activity?.active ?? false}
+      following={!input.context.scrolledUp()}
+      revision={entries()
+        .map((entry) =>
+          entry.kind === "body" ? entry.parts.map((part) => `${part.id}:${part.content.version}`).join(",") : entry.key,
+        )
+        .join(";")}
+      onReading={(value) => input.onReading?.(input.row().key, value)}
+      ref={(element) => {
+        viewport = element
+        setScroll(element)
+      }}
+    >
+      <Show when={scroll()}>
+        <Virtualizer
+          ref={setHandle}
+          data={keys()}
+          scrollRef={scroll()}
+          overscan={2}
+          keepMounted={retained()}
+          cache={initialCache}
+        >
+          {(key) => {
+            const row = createMemo<ConversationRow>((previous) => byKey().get(key) ?? previous!, byKey().get(key)!)
+            return (
+              <ConversationDisplayRow
+                context={input.context}
+                row={row}
+                activityView={input.activityView}
+                onExit={() => {}}
+                executionFor={input.executionFor}
+                onRestoreChanges={input.onRestoreChanges}
+              />
+            )
+          }}
+        </Virtualizer>
+      </Show>
+    </ProcessViewport>
   )
 }

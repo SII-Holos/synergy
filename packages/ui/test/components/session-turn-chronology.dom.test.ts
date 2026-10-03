@@ -9,6 +9,7 @@ let harness: {
   setPreview: (preview: boolean) => void
   setSegmented: (value: boolean) => void
   addCompaction: (state?: "committed" | "running" | "failed") => void
+  selection: () => unknown
   reset: () => void
 }
 
@@ -199,7 +200,12 @@ test("segmented completed compaction renders once in its owning body without pha
   expect(card.getAttribute("data-status")).toBe("complete")
   ;(card.querySelector("button") as HTMLButtonElement).click()
   await waitForUpdate()
-  expect(card.textContent).toContain("Durable summary")
+  expect(card.textContent).not.toContain("Durable summary")
+  expect(harness.selection()).toEqual({
+    kind: "compaction",
+    sessionID: "session-activity-switch",
+    messageID: "assistant-activity-switch",
+  })
 })
 
 test.each(["running", "failed"] as const)(
