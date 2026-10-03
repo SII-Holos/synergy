@@ -16350,6 +16350,26 @@ msgid "session.cmd.undoDesc"
 msgstr "撤销上一个消息回合"
 
 #. js-lingui-explicit-id
+msgid "session.content.loadFailed"
+msgstr "这部分内容暂时无法加载"
+
+#. js-lingui-explicit-id
+msgid "session.content.retry"
+msgstr "重新加载内容"
+
+#. js-lingui-explicit-id
+msgid "session.content.retrying"
+msgstr "正在重试…"
+
+#. js-lingui-explicit-id
+msgid "session.content.syncFailed"
+msgstr "这部分内容暂时无法同步"
+
+#. js-lingui-explicit-id
+msgid "session.content.syncHint"
+msgstr "内容仍在更新，请稍后重试。"
+
+#. js-lingui-explicit-id
 msgid "session.conversation.guide"
 msgstr "引导"
 

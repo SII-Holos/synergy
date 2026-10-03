@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test"
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
@@ -18,6 +19,11 @@ type Fixture = {
   locate(messageID: string, partID?: string): Promise<boolean>
   reading(value: boolean): void
   retained(): number
+  contentRecover(id: string): void
+  contentPending(id: string): void
+  contentFinish(id: string): void
+  contentReads(id: string): number
+  contentReconnect(): void
 }
 declare global {
   interface Window {
@@ -33,6 +39,13 @@ const frames = () =>
   page.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   )
+const contentPage = async (scenario: string) => {
+  await page.close()
+  page = await browser.newPage()
+  page.setDefaultTimeout(15000)
+  page.on("pageerror", (error) => errors.push(error.message))
+  await page.goto(`${url}?content=${scenario}`)
+}
 beforeAll(async () => {
   directory = await mkdtemp(path.join(import.meta.dir, ".conversation-process-"))
   await Bun.write(
@@ -53,7 +66,12 @@ beforeAll(async () => {
     cacheDir: path.join(directory, ".vite"),
     plugins: [solid()],
     resolve: { alias: [{ find: "@/context/execution", replacement: path.join(directory, "execution.ts") }] },
-    server: { host: "127.0.0.1", port: 0, fs: { allow: [path.resolve(app, "../.."), directory] } },
+    server: {
+      host: "127.0.0.1",
+      port: await fixturePort(),
+      strictPort: true,
+      fs: { allow: [path.resolve(app, "../.."), directory] },
+    },
   })
   await server.listen()
   await server.warmupRequest("/main.tsx")
@@ -72,7 +90,7 @@ afterAll(async () => {
   await browser?.close()
   await server?.close()
   if (directory) await rm(directory, { recursive: true, force: true })
-})
+}, 30000)
 
 test("a late child delivery has one chronological process row and opens the right inspector", async () => {
   await page.goto(url)
@@ -214,7 +232,7 @@ test("logical execution folds across messages, preserves prose and retains the f
     .getByText("I will check the project first.", { exact: true })
     .waitFor()
     .catch(async (error) => {
-      throw new Error(JSON.stringify({ errors, html: await page.locator("#root").innerHTML() }), { cause: error })
+      throw new Error(JSON.stringify({ url: page.url(), errors, html: await page.content() }), { cause: error })
     })
   expect(await page.locator('[data-row-kind="activity"]').count()).toBe(2)
   expect(await page.locator('[data-slot="activity-batch-trigger"][aria-expanded="true"]').count()).toBe(1)
@@ -311,5 +329,105 @@ test("focusing a closed activity header preserves its state until the first expl
   await trigger.click()
   await frames()
   expect(await trigger.getAttribute("aria-expanded")).toBe("false")
+  expect(errors).toEqual([])
+}, 30000)
+
+test("SDK conflicts recover in real conversation rows across activity modes without altering literal message text", async () => {
+  for (const mode of ["full", "balanced", "minimal"] as const) {
+    await contentPage("conflict")
+    await page
+      .getByText("I will check the project first.", { exact: true })
+      .waitFor()
+      .catch(async (error) => {
+        throw new Error(JSON.stringify({ url: page.url(), errors, html: await page.content() }), { cause: error })
+      })
+    await page.waitForFunction(() => window.__conversationProcess.contentReads("progress") === 2)
+    await page.evaluate((mode) => window.__conversationProcess.mode(mode), mode)
+    await frames()
+    expect(await page.locator("[data-content-error]").count()).toBe(0)
+    expect(await page.getByText("Literal message: [object Object]", { exact: true }).count()).toBe(1)
+  }
+  expect(errors).toEqual([])
+}, 60000)
+
+test("each part clears only its own failure and keeps the existing Markdown mounted", async () => {
+  await contentPage("mixed")
+  await page
+    .getByText("Content unavailable: progress", { exact: true })
+    .waitFor()
+    .catch(async (error) => {
+      throw new Error(JSON.stringify({ url: page.url(), errors, html: await page.content() }), { cause: error })
+    })
+  await page.evaluate(() => {
+    window.answerNode = document.querySelector('[data-part-id="progress"] [data-component="markdown"]')
+    window.__conversationProcess.contentRecover("progress")
+  })
+  await page.getByText("Content unavailable: progress-2", { exact: true }).waitFor()
+  expect(await page.getByText("Content unavailable: progress", { exact: true }).count()).toBe(0)
+  expect(
+    await page.evaluate(
+      () => window.answerNode === document.querySelector('[data-part-id="progress"] [data-component="markdown"]'),
+    ),
+  ).toBe(true)
+  await page.evaluate(() => window.__conversationProcess.contentRecover("progress-2"))
+  await page.waitForFunction(() => !document.querySelector("[data-content-error]"))
+  expect(errors).toEqual([])
+}, 60000)
+
+test("manual retry is keyboard accessible, disables duplicate requests and clears the recovered error", async () => {
+  await contentPage("mixed")
+  await page.getByText("Content unavailable: progress", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.contentRecover("progress-2")
+    window.__conversationProcess.contentPending("progress")
+  })
+  const retry = page.getByRole("button", { name: "Retry loading content", exact: true })
+  await retry.focus()
+  await page.evaluate(() => {
+    window.answerNode = document.activeElement?.closest("[data-display-row]")
+  })
+  await retry.press("Enter")
+  const pending = page.getByRole("button", { name: "Retrying…", exact: true })
+  await pending.waitFor()
+  expect(await pending.isDisabled()).toBe(true)
+  await pending.evaluate((button) => (button as HTMLButtonElement).click())
+  expect(await page.evaluate(() => window.__conversationProcess.contentReads("progress"))).toBe(2)
+  await page.evaluate(() => window.__conversationProcess.contentFinish("progress"))
+  await page.waitForFunction(() => !document.querySelector("[data-content-error]"))
+  expect(await page.evaluate(() => document.activeElement === window.answerNode)).toBe(true)
+  await contentPage("mixed")
+  await page.getByText("Content unavailable: progress", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.contentRecover("progress-2")
+    window.__conversationProcess.contentPending("progress")
+  })
+  await page.getByRole("button", { name: "Retry loading content", exact: true }).press("Enter")
+  await page.getByRole("button", { name: "Retrying…", exact: true }).waitFor()
+  await page.getByRole("button", { name: "Outside conversation", exact: true }).focus()
+  await page.evaluate(() => window.__conversationProcess.contentFinish("progress"))
+  await page.waitForFunction(() => !document.querySelector("[data-content-error]"))
+  expect(await page.evaluate(() => document.activeElement?.hasAttribute("data-outside-control"))).toBe(true)
+  expect(errors).toEqual([])
+}, 60000)
+
+test("exhausted conflicts show a sync retry and malformed errors use a readable fallback", async () => {
+  await contentPage("stalled")
+  await page.getByText("Couldn’t sync this content", { exact: true }).waitFor()
+  expect(await page.evaluate(() => window.__conversationProcess.contentReads("progress"))).toBe(8)
+  await frames()
+  expect(await page.evaluate(() => window.__conversationProcess.contentReads("progress"))).toBe(8)
+  await contentPage("malformed")
+  await page.getByText("Couldn’t load this content", { exact: true }).waitFor()
+  expect(await page.locator("[data-content-error]").innerText()).not.toContain("[object Object]")
+  expect(await page.getByRole("button", { name: "Retry loading content", exact: true }).count()).toBe(1)
+  expect(errors).toEqual([])
+}, 60000)
+
+test("reconnect renews invalidated body leases even when the summary version stays the same", async () => {
+  await contentPage("conflict")
+  await page.waitForFunction(() => window.__conversationProcess.contentReads("progress") === 2)
+  await page.evaluate(() => window.__conversationProcess.contentReconnect())
+  await page.waitForFunction(() => window.__conversationProcess.contentReads("progress") === 3)
+  expect(await page.locator("[data-content-error]").count()).toBe(0)
   expect(errors).toEqual([])
 }, 30000)

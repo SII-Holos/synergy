@@ -2,7 +2,7 @@ import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
 import type { UserMessage, AssistantMessage, Part, TurnExecutionState } from "@ericsanchezok/synergy-sdk"
 import type { Data } from "@ericsanchezok/synergy-ui/context/data"
 import { createSignal } from "solid-js"
-import { createStore } from "solid-js/store"
+import { createStore, reconcile } from "solid-js/store"
 import { render } from "solid-js/web"
 import { setupI18n } from "@lingui/core"
 import { I18nProvider } from "@lingui/solid"
@@ -12,6 +12,8 @@ import { MarkedProvider } from "@ericsanchezok/synergy-ui/context/marked"
 import { DiffComponentProvider } from "@ericsanchezok/synergy-ui/context/diff"
 import { ResourceOpenProvider } from "@ericsanchezok/synergy-ui/context/resource-open"
 import { VirtualConversationRows } from "../../../src/components/session/virtual-conversation-rows"
+import { createPartMaterializer } from "../../../src/context/part-materializer"
+import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 
 const root: UserMessage = {
   id: "root",
@@ -86,6 +88,90 @@ const [reading, setReading] = createSignal(false)
 const [mode, setMode] = createSignal<"balanced" | "full" | "minimal">("balanced")
 const [expanded, setExpanded] = createStore<Record<string, boolean>>({})
 const [scroll, setScroll] = createSignal<HTMLDivElement>()
+const [versions, setVersions] = createStore<Record<string, string>>({})
+const [hasPage, setHasPage] = createSignal(true)
+const scenario = new URL(location.href).searchParams.get("content")
+const faults = new Map<string, "denied" | "conflict" | "stalled" | "pending" | "malformed">()
+const reads = new Map<string, number>()
+const completions = new Map<string, (response: Response) => void>()
+if (scenario) {
+  setData("part", "root", 0, reconcile(part("root", "request", "text", "Literal message: [object Object]")))
+  setData("part", "work", [
+    part("work", "thought", "reasoning", "Check evidence"),
+    part("work", "progress", "text", "I will check the project first."),
+    part("work", "progress-2", "text", "Second paragraph stays readable."),
+    part("work", "command-0", "tool"),
+  ])
+  faults.set(
+    "progress",
+    scenario === "mixed"
+      ? "denied"
+      : scenario === "stalled"
+        ? "stalled"
+        : scenario === "malformed"
+          ? "malformed"
+          : "conflict",
+  )
+  if (scenario === "mixed") faults.set("progress-2", "denied")
+}
+const client = createSynergyClient({
+  baseUrl: "http://fixture.local",
+  fetch: Object.assign(
+    async (request: Parameters<typeof fetch>[0]): Promise<Response> => {
+      const url = new URL(request instanceof Request ? request.url : String(request))
+      const id = url.pathname.split("/").at(-2)!
+      reads.set(id, (reads.get(id) ?? 0) + 1)
+      const fault = faults.get(id)
+      if (fault === "conflict" || fault === "stalled") {
+        if (fault === "conflict") faults.delete(id)
+        return Response.json(
+          { name: "SessionDisplayConflict", data: { message: "Part content changed; refresh its summary" } },
+          { status: 409 },
+        )
+      }
+      if (fault === "denied")
+        return Response.json(
+          { name: "PermissionDenied", data: { message: `Content unavailable: ${id}` } },
+          { status: 403 },
+        )
+      if (fault === "malformed") return Response.json({ data: { message: { detail: "unavailable" } } }, { status: 500 })
+      if (fault === "pending")
+        return new Promise((resolve) => {
+          completions.set(id, resolve)
+        })
+      const body = Object.values(data.part)
+        .flat()
+        .find((item) => item.id === id)!
+      return Response.json({ part: body, version: url.searchParams.get("version") })
+    },
+    { preconnect() {} },
+  ),
+})
+const materializer = createPartMaterializer({
+  read: async (summary, signal) => {
+    const response = await client.session.partContent(
+      {
+        sessionID: summary.sessionID,
+        messageID: summary.messageID,
+        partID: summary.id,
+        version: summary.content.version,
+      },
+      { signal, throwOnError: true },
+    )
+    return response.data!
+  },
+  refresh: async (summary) => {
+    const version = `${summary.content.version}-next`
+    setVersions(summary.id, version)
+    return { ...summary, content: { ...summary.content, version } }
+  },
+  wait: async () => {},
+  apply: (body) => {
+    const index = data.part[body.messageID].findIndex((item) => item.id === body.id)
+    setData("part", body.messageID, index, reconcile(body))
+  },
+  evict: () => {},
+})
 let retained = 0
 let locate: ((messageID: string, behavior?: ScrollBehavior, partID?: string) => Promise<boolean>) | undefined
 const context: Partial<PluginConversationService> = {
@@ -117,14 +203,24 @@ const context: Partial<PluginConversationService> = {
         ...p,
         preview: "",
         status: p.type === "tool" ? p.state.status : undefined,
-        content: { version: "v1", bytes: 64 },
+        content: { version: versions[p.id] ?? "v1", bytes: 64 },
       })),
-    page: () => ({ hasMore: false }),
-    load: async () => {},
+    page: () => (hasPage() ? { hasMore: false } : undefined),
+    load: async () => {
+      await Promise.resolve()
+      setHasPage(true)
+    },
     text: async () => "Final answer stays mounted.",
-    retain: () => {
+    retain: (summary) => {
       retained++
-      return { ready: Promise.resolve(), release: () => retained-- }
+      const lease = scenario ? materializer.retain(summary) : undefined
+      return {
+        ready: lease?.ready ?? Promise.resolve(),
+        release: () => {
+          retained--
+          lease?.release()
+        },
+      }
     },
   },
 }
@@ -200,6 +296,26 @@ window.__conversationProcess = {
   locate: (messageID: string, partID?: string) => locate?.(messageID, "auto", partID) ?? Promise.resolve(false),
   reading: setReading,
   retained: () => retained,
+  contentRecover(id) {
+    faults.delete(id)
+    setVersions(id, `${versions[id] ?? "v1"}-recovered`)
+  },
+  contentPending(id) {
+    faults.set(id, "pending")
+  },
+  contentFinish(id) {
+    faults.delete(id)
+    const body = Object.values(data.part)
+      .flat()
+      .find((item) => item.id === id)!
+    completions.get(id)?.(Response.json({ part: body, version: versions[id] ?? "v1" }))
+    completions.delete(id)
+  },
+  contentReads: (id) => reads.get(id) ?? 0,
+  contentReconnect() {
+    materializer.invalidate("work")
+    setHasPage(false)
+  },
 }
 const runtime = {
   statusFor: () => (status() === "running" ? { type: "busy" as const } : { type: "idle" as const }),
@@ -232,6 +348,9 @@ render(
                     scrollRef={scroll()}
                     executionFor={() => ({ rootID: "root", status: status(), startedAt: 1, stoppedAt: [] })}
                   />
+                  <button type="button" data-outside-control>
+                    Outside conversation
+                  </button>
                 </div>
               </DataProvider>
             </DiffComponentProvider>

@@ -2,6 +2,7 @@ import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
 import type { AssistantMessage, UserMessage, TurnExecutionState } from "@ericsanchezok/synergy-sdk"
 import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack } from "solid-js"
+import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -18,6 +19,8 @@ import { ToolExpansionProvider } from "@ericsanchezok/synergy-ui/tool-expansion"
 import { ProcessViewport } from "@ericsanchezok/synergy-ui/process-viewport"
 import { CompactionCard } from "@ericsanchezok/synergy-ui/compaction-card"
 import { useData } from "@ericsanchezok/synergy-ui/context/data"
+import { requestErrorMessage } from "../../utils/error"
+import { PartContentSyncError } from "../../context/part-materializer"
 
 // Provenance: https://github.com/inokawa/virtua/blob/0.42.3/src/solid/Virtualizer.tsx
 // Local adaptation: Part identities, retained interaction rows and prepend offsets share the existing scroll element.
@@ -397,29 +400,61 @@ function ConversationDisplayRow(
     animate: () => !props.scrolledUp(),
     onHidden: () => input.onExit(row().key),
   })
-  const [failure, setFailure] = createSignal<string>()
+  const [loadFailure, setLoadFailure] = createSignal<{ error: unknown }>()
+  const [partStates, setPartStates] = createStore<
+    Record<string, { pending: boolean; failed: boolean; error?: unknown } | undefined>
+  >({})
   const [loading, setLoading] = createSignal(false)
   const [retry, setRetry] = createSignal(0)
-  const refreshed = new Set<string>()
-  const load = async () => {
+  let loadGeneration = 0
+  let hadPage = false
+  let rowElement: HTMLDivElement | undefined
+  let retryFocus: HTMLButtonElement | undefined
+  const failure = () => {
+    if (loadFailure()) return loadFailure()
     const current = row()
-    if (current.kind === "body") {
-      for (const entry of retainedParts.values()) entry.lease.release()
-      retainedParts.clear()
-      setFailure(undefined)
+    if (current.kind !== "body") return
+    return current.parts.map((part) => partStates[part.id]).find((state) => state?.failed)
+  }
+  const retrying = () => {
+    const current = row()
+    return (
+      loading() ||
+      (current.kind === "body" &&
+        !loadFailure() &&
+        !current.parts.some((part) => partStates[part.id]?.failed && !partStates[part.id]?.pending))
+    )
+  }
+  const load = async () => {
+    if (loading()) return
+    const focused = document.activeElement
+    if (
+      focused instanceof HTMLButtonElement &&
+      focused.closest("[data-content-error]") &&
+      rowElement?.contains(focused)
+    )
+      retryFocus = focused
+    const current = row()
+    if (current.kind === "body" && !loadFailure()) {
+      for (const part of current.parts) {
+        if (!partStates[part.id]?.failed || partStates[part.id]?.pending) continue
+        retainedParts.get(part.id)?.lease.release()
+        retainedParts.delete(part.id)
+      }
       setRetry((value) => value + 1)
       return
     }
-    if (current.kind !== "load") return
+    if (current.kind !== "load" && current.kind !== "body") return
+    const generation = ++loadGeneration
     setLoading(true)
-    setFailure(undefined)
     try {
-      if (current.older && content.loadEarlier) await content.loadEarlier(current.message.id)
-      else await content.load(current.message.id, current.more)
+      if (current.kind === "load" && current.older && content.loadEarlier) await content.loadEarlier(current.message.id)
+      else await content.load(current.message.id, current.kind === "load" && current.more, current.kind === "body")
+      if (alive && generation === loadGeneration) setLoadFailure(undefined)
     } catch (error) {
-      setFailure(error instanceof Error ? error.message : String(error))
+      if (alive && generation === loadGeneration) setLoadFailure({ error })
     } finally {
-      setLoading(false)
+      if (alive && generation === loadGeneration) setLoading(false)
     }
   }
   onMount(() => {
@@ -430,19 +465,34 @@ function ConversationDisplayRow(
   let alive = true
   onCleanup(() => {
     alive = false
+    loadGeneration++
     for (const entry of retainedParts.values()) entry.lease.release()
     retainedParts.clear()
   })
   createEffect(() => {
     const current = row()
-    if (current.kind !== "body" || current.event || content.page(current.message.id)) return
+    if (current.kind !== "body" || current.event) return
+    if (content.page(current.message.id)) {
+      hadPage = true
+      return
+    }
+    const renew = hadPage
+    const generation = ++loadGeneration
     void content
       .load(current.message.id)
       .then(() => {
-        if (alive) void load()
+        if (!alive || generation !== loadGeneration) return
+        setLoadFailure(undefined)
+        if (!renew) return
+        for (const entry of retainedParts.values()) entry.lease.release()
+        retainedParts.clear()
+        setRetry((value) => value + 1)
       })
       .catch((error) => {
-        if (alive) setFailure(error instanceof Error ? error.message : String(error))
+        if (alive && generation === loadGeneration) setLoadFailure({ error })
+      })
+      .finally(() => {
+        if (alive && generation === loadGeneration) setLoading(false)
       })
   })
   createEffect(() => {
@@ -456,21 +506,36 @@ function ConversationDisplayRow(
       const lease = content.retain(part)
       retainedParts.set(part.id, { version: part.content.version, lease })
       previous?.lease.release()
-      void lease.ready.catch((error) => {
-        if (retainedParts.get(part.id)?.lease !== lease) return
-        setFailure(error instanceof Error ? error.message : String(error))
-        const identity = `${part.id}:${part.content.version}`
-        if (!refreshed.has(identity)) {
-          refreshed.add(identity)
-          void content.load(current.message.id, false, true).catch(() => {})
-        }
-      })
+      setPartStates(
+        part.id,
+        reconcile({ pending: true, failed: partStates[part.id]?.failed ?? false, error: partStates[part.id]?.error }),
+      )
+      void lease.ready
+        .then(() => {
+          if (!alive || retainedParts.get(part.id)?.lease !== lease) return
+          setPartStates(part.id, reconcile({ pending: false, failed: false }))
+        })
+        .catch((error) => {
+          if (!alive || retainedParts.get(part.id)?.lease !== lease) return
+          setPartStates(part.id, reconcile({ pending: false, failed: true, error }))
+        })
     }
     for (const [key, entry] of retainedParts)
       if (!wanted.has(key)) {
         entry.lease.release()
         retainedParts.delete(key)
+        setPartStates(key, undefined)
       }
+  })
+  createEffect(() => {
+    const currentFailure = failure()
+    const busy = !!currentFailure && retrying()
+    if (busy || !retryFocus) return
+    const previous = retryFocus
+    retryFocus = undefined
+    if (document.activeElement !== document.body && document.activeElement !== previous) return
+    if (currentFailure && previous.isConnected) previous.focus({ preventScroll: true })
+    else rowElement?.focus({ preventScroll: true })
   })
   const standalone = () => row().root.role === "assistant"
   const segment = () => {
@@ -500,7 +565,11 @@ function ConversationDisplayRow(
   }
   return (
     <div
-      ref={exitMotion}
+      ref={(element) => {
+        rowElement = element
+        exitMotion(element)
+      }}
+      tabIndex={-1}
       data-display-row={row().key}
       data-row-kind={row().kind}
       data-activity-block={row().activity?.key}
@@ -513,22 +582,43 @@ function ConversationDisplayRow(
       class="conversation-display-row min-w-0 w-full max-w-full"
     >
       <Show when={failure()}>
-        <button type="button" class="text-12-medium text-text-weak" onClick={() => void load()}>
-          {failure()}
-        </button>
-      </Show>
-      <Show
-        when={row().kind !== "load"}
-        fallback={
-          <div class="min-h-6" aria-busy={loading()}>
-            <Show when={failure()}>
-              <button type="button" onClick={() => void load()}>
-                {failure()}
-              </button>
+        <div
+          data-content-error
+          class="flex items-start gap-3 py-2 text-12-medium text-text-weak"
+          role="status"
+          aria-live="polite"
+        >
+          <div class="min-w-0 flex-1 break-words">
+            <p>
+              {failure()?.error instanceof PartContentSyncError
+                ? _({ id: "session.content.syncFailed", message: "Couldn’t sync this content" })
+                : _({ id: "session.content.loadFailed", message: "Couldn’t load this content" })}
+            </p>
+            <Show
+              when={failure()?.error instanceof PartContentSyncError}
+              fallback={<Show when={requestErrorMessage(failure()?.error, "")}>{(reason) => <p>{reason()}</p>}</Show>}
+            >
+              <p>
+                {_({
+                  id: "session.content.syncHint",
+                  message: "This content is still updating. Try again in a moment.",
+                })}
+              </p>
             </Show>
           </div>
-        }
-      >
+          <button
+            type="button"
+            class="shrink-0 text-12-medium text-text-strong hover:text-text-base disabled:text-text-weak"
+            disabled={retrying()}
+            onClick={() => void load()}
+          >
+            {retrying()
+              ? _({ id: "session.content.retrying", message: "Retrying…" })
+              : _({ id: "session.content.retry", message: "Retry loading content" })}
+          </button>
+        </div>
+      </Show>
+      <Show when={row().kind !== "load"} fallback={<div class="min-h-6" aria-busy={loading()} />}>
         <Show
           when={row().kind === "activity"}
           fallback={

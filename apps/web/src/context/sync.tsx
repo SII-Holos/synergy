@@ -8,6 +8,7 @@ import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
 import type { Message, Part, Session, SessionPartSummary } from "@ericsanchezok/synergy-sdk/client"
 import { createPartMaterializer } from "./part-materializer"
+import { createPartSummaryLoader, planPartSummaryPage } from "./part-summary-loader"
 import { contentBudgetKey } from "./content-budget"
 import { clearConversationContent } from "./conversation-content-state"
 import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState } from "./global-sync"
@@ -42,7 +43,42 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     onCleanup(scope.release)
     const [store, setStore] = scope.state
     const contentLifetime = new AbortController()
-    const partPages = new Map<string, Promise<void>>()
+    const partPages = createPartSummaryLoader({
+      page: (messageID) => store.partPage[messageID],
+      summaries: (messageID) => store.partSummary[messageID] ?? [],
+      read: async (request, cursor, signal) => {
+        const freshness = globalSync.capturePartSnapshotRequest(sdk.scopeKey, request.sessionID)
+        const response = await sdk.client.session.partPage(
+          {
+            sessionID: request.sessionID,
+            messageID: request.messageID,
+            cursor,
+            partID: request.partID,
+            older: request.older,
+            limit: 100,
+          },
+          { signal, throwOnError: true },
+        )
+        if (!response.data) throw new Error("Missing conversation summary")
+        return {
+          page: response.data,
+          action: globalSync.partSnapshotAction(sdk.scopeKey, request.sessionID, request.messageID, freshness),
+        }
+      },
+      apply: (request, page, action) => {
+        const planned = planPartSummaryPage(
+          store.partSummary[request.messageID] ?? [],
+          store.partPage[request.messageID],
+          page,
+          request,
+          action,
+        )
+        batch(() => {
+          setStore("partSummary", request.messageID, reconcile(planned.items, { key: "id" }))
+          setStore("partPage", request.messageID, reconcile(planned.page))
+        })
+      },
+    })
     const retainedContent = globalSync.retainContentCache(sdk.scopeKey, () =>
       createPartMaterializer({
         memory: globalSync.contentBudget,
@@ -63,9 +99,19 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           if (!response.data) throw new Error("Missing conversation content")
           return response.data
         },
+        refresh: async (summary, signal) => {
+          const current = store.partSummary[summary.messageID]?.find((part) => part.id === summary.id)
+          if (!current || current.content.version !== summary.content.version) return current
+          await loadPartSummaries(summary.sessionID, summary.messageID, false, true, {
+            partID: summary.id,
+            version: summary.content.version,
+            signal,
+          })
+          return store.partSummary[summary.messageID]?.find((part) => part.id === summary.id)
+        },
         isCurrent: (summary) => {
           const current = store.partSummary[summary.messageID]?.find((item) => item.id === summary.id)
-          return !current || current.content.version === summary.content.version
+          return current?.content.version === summary.content.version
         },
         apply: (part, summary) => {
           setStore("partVersion", part.id, summary.content.version)
@@ -96,67 +142,20 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       messageID: string,
       more = false,
       force = false,
-      options?: { partID?: string; older?: boolean },
-    ): Promise<void> => {
-      const pending = partPages.get(messageID)
-      if (pending)
-        return pending.then(() => {
-          if (options?.partID && !store.partSummary[messageID]?.some((part) => part.id === options.partID))
-            return loadPartSummaries(sessionID, messageID, false, true, options)
-        })
-      if (!force && !more && store.partPage[messageID]) return Promise.resolve()
-      const cursor = more
-        ? options?.older
-          ? store.partPage[messageID]?.previousCursor
-          : store.partPage[messageID]?.nextCursor
-        : undefined
-      if (more && !cursor) return Promise.resolve()
-      const request = (async () => {
-        for (let attempt = 0; attempt < 3; attempt++) {
-          const freshness = globalSync.capturePartSnapshotRequest(sdk.scopeKey, sessionID)
-          const response = await sdk.client.session.partPage(
-            {
-              sessionID,
-              messageID,
-              cursor: cursor ?? undefined,
-              partID: options?.partID,
-              older: options?.older,
-              limit: 100,
-            },
-            { signal: contentLifetime.signal, throwOnError: true },
-          )
-          const page = response.data
-          if (!page || contentLifetime.signal.aborted) return
-          const action = globalSync.partSnapshotAction(sdk.scopeKey, sessionID, messageID, freshness)
-          if (action === "retry") continue
-          const previous = store.partPage[messageID]
-          const current = store.partSummary[messageID] ?? []
-          const items = new Map((more || action === "preserve" ? current : []).map((part) => [part.id, part]))
-          for (const part of page.items)
-            items.set(part.id, action === "preserve" ? (current.find((item) => item.id === part.id) ?? part) : part)
-          batch(() => {
-            setStore(
-              "partSummary",
-              messageID,
-              reconcile(
-                [...items.values()].sort((a, b) => a.id.localeCompare(b.id)),
-                { key: "id" },
-              ),
-            )
-            setStore("partPage", messageID, {
-              nextCursor: more && options?.older ? (previous?.nextCursor ?? page.nextCursor) : page.nextCursor,
-              hasMore: more && options?.older ? (previous?.hasMore ?? page.hasMore) : page.hasMore,
-              previousCursor: more && !options?.older ? (previous?.previousCursor ?? null) : page.previousCursor,
-              hasEarlier: more && !options?.older ? (previous?.hasEarlier ?? false) : page.hasEarlier,
-            })
-          })
-          return
-        }
-        throw new Error("Conversation summary changed while loading")
-      })().finally(() => partPages.delete(messageID))
-      partPages.set(messageID, request)
-      return request
-    }
+      options?: { partID?: string; older?: boolean; version?: string; signal?: AbortSignal },
+    ): Promise<void> =>
+      partPages.load(
+        {
+          sessionID,
+          messageID,
+          more,
+          force,
+          partID: options?.partID,
+          older: options?.older,
+          version: options?.version,
+        },
+        options?.signal ?? contentLifetime.signal,
+      )
     const absolute = (path: string) => (store.path.directory + "/" + path).replace("//", "/")
     const chunk = 200
 
