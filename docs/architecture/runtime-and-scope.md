@@ -33,6 +33,8 @@ The same runtime can be launched through several ownership surfaces:
 
 Owned storage follows prepare, migrate, validate, activate and admission ordering. Borrowed storage retains the caller's close responsibility and cannot be attached to a second live Runtime. Opening failure or cancellation releases resources already acquired. Closing is idempotent: close admission, cancel execution, drain owned tasks and child streams, dispose Scope and composition services, flush telemetry, close owned storage, then release Home ownership. Callback work cannot outlive the instance that owns it.
 
+The HTTP health check owns its provider-wait deadline and clears it whenever the wait settles. A fast provider response or rejection must not leave a referenced deadline timer after the health response. A timed-out build retains the existing settled-state fallback.
+
 Registration is sealed per instance. Identical contributions may be repeated where the owning registry permits it; conflicts and new contributions after opening fail explicitly. A later Runtime starts with a fresh registry. Tests can compose core and product instances together in one process and close either independently. Offline migration fixtures use an explicit unsealed context and isolated storage.
 
 The migration tracking upgrade moves only IDs recognized by registered owners out of the old combined log. Unregistered IDs remain in that log so a later process with the owning capability can recover its history. `registerLibrary()` and `registerNote()` assemble each domain's migrations, tools, and lifecycle contributions before runtime startup; they do not require the full product manifest or plugin delivery to be installed.
