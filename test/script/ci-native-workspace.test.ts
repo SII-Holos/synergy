@@ -7,11 +7,12 @@ import path from "node:path"
 import { stat } from "node:fs/promises"
 import { nativeWorkspaceBatches } from "../../script/native-workspace-coverage"
 
-test("affected frontend plans retain the complete Local Runtime coverage contributors", async () => {
+test("affected native plans retain the complete Local Runtime coverage contributors", async () => {
   const tasks = await catalog()
   const workspaces = [
     { name: "web", directory: "apps/web", dependencies: [], testDependencies: [] },
     { name: "desktop", directory: "apps/desktop", dependencies: [], testDependencies: ["web"] },
+    { name: "runtime", directory: "packages/local-runtime", dependencies: [], testDependencies: [] },
   ]
   const plan = createPlan({
     base: "base",
@@ -19,7 +20,7 @@ test("affected frontend plans retain the complete Local Runtime coverage contrib
     sha: "tested",
     run: "fixture",
     mode: "affected",
-    changed: ["apps/web/src/components/session/welcome/stage.tsx"],
+    changed: ["packages/local-runtime/src/process/native-pty.ts"],
     baseWorkspaces: workspaces,
     headWorkspaces: workspaces,
     tasks,
