@@ -1239,10 +1239,6 @@
           "reason": "Solid wrapper behavior is verified in test/components/sidebar/sidebar-collections.dom.test.tsx and test/components/toolbar-selector.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
         },
         {
-          "glob": "src/components/top-bar/workspace-location-button.tsx",
-          "reason": "Solid wrapper behavior is verified in test/components/toolbar-selector.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
-        },
-        {
           "glob": "src/components/workspace/browser/page-dialog.tsx",
           "reason": "Solid wrapper behavior is verified in test/components/workspace/browser/browser-interaction.dom.test.tsx; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
         },
