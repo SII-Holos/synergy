@@ -182,11 +182,11 @@ Core binary builds also default to that pinned fixture. Test build behavior thro
 
 For embedded Runtime lifecycle changes, repeat real open/task/close cycles in one process and verify resource release as well as port reuse. Native HTTP handlers can retain their creation context after the server stops; release handler references outside the Runtime after requests and sockets drain. Check per-instance database maintenance timers at closure. Use a focused reachability regression for a demonstrated retention defect; RSS alone includes allocator caches and cannot prove ownership release.
 
-For timeout races, verify that both fast success and rejection release the losing deadline. Use a child process with a deliberately long fixture deadline to prove natural exit after the result settles; keep the production timeout and existing reachability budget unchanged. A cleared deadline and successful process exit do not alone establish that every closed Runtime reference is collectible.
-
 Cold-cache tests construct a fresh Runtime and an unseeded isolated home. Module imports and the test preloader do not populate another instance’s caches. Use a subprocess when process startup, native callbacks, signals, installed artifacts or worker protocols are the contract. Never remove the positive test-home isolation marker.
 
 Compile standalone Bun artifacts in a fresh `bun build --compile` subprocess, drain both output streams, and assert its exit code before exercising the executable. In-process compilation after plugin builds can reuse invalid compiler state on Linux; retain the artifact behavior assertions and run the combined suites under coverage. See the [standalone compilation decision](../../../docs/decisions/implemented/testing/2026-09-23-isolate-standalone-plugin-kit-compilation.md).
+
+For timeout races, verify that both fast success and rejection release the losing deadline. Use a child process with a deliberately long fixture deadline to prove natural exit after the result settles; keep the production timeout and existing reachability budget unchanged. A cleared deadline and successful process exit do not alone establish that every closed Runtime reference is collectible.
 
 Exercise opt-in and platform-specific entrypoints with the same explicit ownership. A developer's PATH can hide an unowned executable lookup, and an undefined build-time digest can hide import-time Home access. Test isolated PATH/Home lookup and compiled constants without an active Runtime. Coverage failure summaries must retain the owning test file for unnamed setup/teardown failures so CI truncation does not discard their identity.
 
