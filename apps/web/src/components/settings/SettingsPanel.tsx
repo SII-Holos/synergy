@@ -101,6 +101,7 @@ import {
 import { GeneralPanel } from "./panels/GeneralPanel"
 import { ModelsPanel } from "./panels/ModelsPanel"
 import { ProvidersPanel } from "./panels/ProvidersPanel"
+import { createProviderSetupDrafts } from "@/components/provider/provider-setup-drafts"
 import { isSelectableModel } from "@/components/provider/model-catalog"
 import { AccountPanel } from "./panels/AccountPanel"
 import { PersonalizePanel } from "./panels/PersonalizePanel"
@@ -285,6 +286,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const locale = useLocale()
+  const providerSetupDrafts = createProviderSetupDrafts()
+  onCleanup(() => providerSetupDrafts.clear())
   const input = useInput()
   const platform = usePlatform()
   const productUpdate = useProductUpdate()
@@ -841,6 +844,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   }
 
   function discardChanges() {
+    providerSetupDrafts.clear()
     pluginDrafts.discard()
     personalizeController.discard()
     voiceController.discard()
@@ -1257,6 +1261,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         summaries={providerSummaries()}
         authMethods={globalSync.data.provider_auth}
         providerFocusID={providerFocusID()}
+        drafts={providerSetupDrafts}
       />
     ),
     github: () => (

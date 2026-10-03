@@ -50,6 +50,8 @@ For resource configuration flows, test list search across all visible resource g
 
 Pass reactive local collections to the shared `List` as arrays, such as `items={models()}`. Function-valued `items` are filter-driven loaders; passing a memo as a loader does not subscribe the list to later catalog updates. Hold catalog publication until the initial rows are visible, then verify new models appear and their quick-switch preferences can change without search input or remounting.
 
+For credential recovery, remount the connection form through a Settings section change after a successful write and failed refresh. Automatic method selection must honor the retained receipt, preserve the refresh action and avoid replaying API-key writes or credential imports.
+
 ## Library and statistics recovery
 
 Verify experience states through the persisted reward status and generated DTO, including a failed stub with no intent and an evaluated zero reward. Test detail failure, duplicate reads, local retry and disposal independently of encoding. Unified search keeps result ownership by query and content group. Test a pending group under the real Suspense owner: independent fetches alone do not prevent the parent fallback from hiding ready results. Do not infer timestamps absent from a public summary. For sparse daily statistics, cover skipped dates, month/year and leap-day boundaries, snapshot-relative ranges and local date labels; a successful refresh must publish one response without a second compute request.
@@ -83,6 +85,8 @@ Solid JSX may evaluate to a function. Never distinguish a rendered trigger from 
 Global command-palette navigation must work while an editor or terminal owns focus. Test a native key-consuming target, verify that the palette opens without sending the shortcut into the control, and confirm provider disposal removes the capture listener. Keep ordinary local bindings at their existing propagation boundary.
 
 For user decisions and recoverable queue operations, retain state by request identity, keep structured errors, and reconcile uncertain transport results before retrying. A public preview is not a restoration payload: restore through the domain's original input and idempotent receipt. Verify delayed replies after a request switch, lost replies after server success, failed restoration, and stopped progress motion separately from pending state.
+
+For immediate Settings connection commands, keep setup inputs under the dialog owner without registering them as preference changes. Reuse a stable creation ID, recover a lost response through the canonical connection snapshot, and retry reads after a known write without repeating it. Abort disposed authentication waits and prevent late responses from completing a different view. Present catalog source and verification time independently of authentication health; inspect structured failure fields even when the transport succeeds. Cover these boundaries with the actual connection components.
 
 Logical conversation disclosures must be independent of message boundaries and virtual render chunks. Verify cross-message reasoning/tools, public-prose separators, terminal marker ordering, final Markdown identity, focused/selected content and bounded mounted bodies with real virtual-list components. Exit animations may retain only mounted rows and must release their content leases after settling.
 
