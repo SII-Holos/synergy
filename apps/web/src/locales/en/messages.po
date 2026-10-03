@@ -16350,6 +16350,26 @@ msgid "session.cmd.undoDesc"
 msgstr "Undo the last message turn"
 
 #. js-lingui-explicit-id
+msgid "session.content.loadFailed"
+msgstr "Couldn’t load this content"
+
+#. js-lingui-explicit-id
+msgid "session.content.retry"
+msgstr "Retry loading content"
+
+#. js-lingui-explicit-id
+msgid "session.content.retrying"
+msgstr "Retrying…"
+
+#. js-lingui-explicit-id
+msgid "session.content.syncFailed"
+msgstr "Couldn’t sync this content"
+
+#. js-lingui-explicit-id
+msgid "session.content.syncHint"
+msgstr "This content is still updating. Try again in a moment."
+
+#. js-lingui-explicit-id
 msgid "session.conversation.guide"
 msgstr "Guide"
 
