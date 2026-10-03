@@ -1,15 +1,16 @@
 import { resolveSessionReference } from "@/utils/session-reference"
-import { type Accessor, Setter } from "solid-js"
+import { type Accessor, Setter, onCleanup } from "solid-js"
 import { produce, reconcile, type SetStoreFunction } from "solid-js/store"
 import { useNavigate, useParams } from "@solidjs/router"
 import { createSynergyClient, type Message, type Part } from "@ericsanchezok/synergy-sdk/client"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
-import { base64Encode, base64EncodeStandard } from "@ericsanchezok/synergy-util/encode"
+import { base64Decode, base64Encode, base64EncodeStandard } from "@ericsanchezok/synergy-util/encode"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useLocal } from "@/context/local"
 import { thinkingSelection } from "@/context/prompt/model-selection"
 import { useSDK } from "@/context/sdk"
+import { useServer } from "@/context/server"
 import { useSync } from "@/context/sync"
 import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
@@ -75,6 +76,7 @@ import { reconcileMessage, removeMessageFromWindow, type MessageWindowState } fr
 import { clearConversationContent } from "@/context/conversation-content-state"
 import { nextMessageWindowTotal, nextMessageWindowTotalAfterRemoval } from "@/context/session-message-total"
 import { promptSubmitFailure } from "./submit-failure"
+import type { WorkspaceRecoveryRequest } from "../dialog/workspace-dialog-model"
 import { recoverSessionInputReceipt } from "./input-receipt"
 import { runComposerPreflight } from "./composer-preflight"
 import { createOptimisticUserMessage } from "./optimistic-user-message"
@@ -119,7 +121,7 @@ type PromptSubmitInput = {
   abort: () => void
   editor: () => HTMLDivElement | undefined
   queueScroll: () => void
-  onWorkspaceUnavailable: (workspaceID: string) => void
+  onWorkspaceUnavailable: (request: WorkspaceRecoveryRequest) => void
   onWorktreeUnavailable: () => void
   beforeSubmit: () => Promise<void>
   onAccepted?: (unchanged: boolean) => void
@@ -128,6 +130,7 @@ type PromptSubmitInput = {
 export function usePromptSubmit(input: PromptSubmitInput) {
   const navigate = useNavigate()
   const sdk = useSDK()
+  const server = useServer()
   const sync = useSync()
   const globalSync = useGlobalSync()
   const platform = usePlatform()
@@ -136,6 +139,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
   const sessionTransition = useSessionTransition()
   const params = useParams()
   const { i18n } = useLocale()
+  let disposed = false
+  onCleanup(() => (disposed = true))
 
   return async (event: Event) => {
     event.preventDefault()
@@ -469,12 +474,14 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       }
       const sessionScopeKey = currentScopeKey
       const client = sdk.client
+      const connection = sdk.url
+      const currentLocation = () =>
+        server.url === connection && !!params.dir && base64Decode(params.dir) === sessionScopeKey
 
       let createdSessionForSubmit = false
-      const persistCreatedSessionFailure = (sessionID: string, title: string, message: string) => {
-        if (!createdSessionForSubmit || !newSessionRecovery) return false
-        const actions = createNewSessionRecoveryActions({
-          recovery: newSessionRecovery,
+      const newSessionFailureActions = (sessionID: string, recovery: NewSessionRecovery) =>
+        createNewSessionRecoveryActions({
+          recovery,
           setRecovery: (recovery) => sessionTransition.setRecovery(currentScopeKey, recovery),
           deleteSession: async () => {
             await client.session.delete({ sessionID }).catch(() => undefined)
@@ -482,6 +489,9 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           clearTransition: () => publishNewSessionTransition(sessionID, null),
           navigateToComposer: () => navigate(`/${base64Encode(currentScopeKey)}/session`, { replace: true }),
         })
+      const persistCreatedSessionFailure = (sessionID: string, title: string, message: string) => {
+        if (!createdSessionForSubmit || !newSessionRecovery) return false
+        const actions = newSessionFailureActions(sessionID, newSessionRecovery)
         const progress = worktreeWorkspaceSelection
           ? createNewSessionWorkspaceErrorProgress({ title, message })
           : createNewSessionTransitionErrorProgress({ title, message })
@@ -507,7 +517,14 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           .then((x) => x.data ?? undefined)
           .catch((err) => {
             const failure = promptSubmitFailure(err)
-            if (failure.kind === "workspace-unavailable") input.onWorkspaceUnavailable(failure.workspaceID)
+            const isCurrent = () => currentLocation() && !disposed && binding.isCurrent()
+            if (failure.kind === "workspace-unavailable" && isCurrent())
+              input.onWorkspaceUnavailable({
+                kind: "draft",
+                workspaceID: failure.workspaceID,
+                reason: failure.reason,
+                isCurrent,
+              })
             showToast({
               type: "error",
               title: i18n._(PI.submitFailedStart),
@@ -1313,7 +1330,27 @@ export function usePromptSubmit(input: PromptSubmitInput) {
               focus: !directoryUnavailable,
             })
             if (failure.kind === "workspace-unavailable") {
-              input.onWorkspaceUnavailable(failure.workspaceID)
+              const isCurrent = () =>
+                currentLocation() && (params.id === activeSession.id || (!disposed && binding.isCurrent()))
+              if (isCurrent())
+                input.onWorkspaceUnavailable({
+                  kind: "session",
+                  sessionID: activeSession.id,
+                  workspaceID: failure.workspaceID,
+                  reason: failure.reason,
+                  isCurrent,
+                  onRecovered:
+                    createdSessionForSubmit && newSessionRecovery
+                      ? async (selection) => {
+                          if (!isCurrent() || params.id !== activeSession.id) return
+                          await newSessionFailureActions(activeSession.id, {
+                            ...newSessionRecovery,
+                            workspaceSelection: selection,
+                            autoSubmit: false,
+                          }).dismiss()
+                        }
+                      : undefined,
+                })
               return
             }
             if (worktreeUnavailable) {

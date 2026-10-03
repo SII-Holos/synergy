@@ -25749,6 +25749,10 @@ msgid "workspace.dialog.applyBinding"
 msgstr "Rebind Workspace"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.back"
+msgstr "Back to directories"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.busy"
 msgstr "Switching requires an idle session. Active file operations may also prevent rebinding or changing sharing."
 
@@ -25757,8 +25761,16 @@ msgid "workspace.dialog.cancel"
 msgstr "Cancel"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.changed"
+msgstr "The directory changed. Select it again."
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.choose"
-msgstr "Use Workspace"
+msgstr "Use this directory"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.close"
+msgstr "Close"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.create"
@@ -25767,6 +25779,10 @@ msgstr "Create Workspace"
 #. js-lingui-explicit-id
 msgid "workspace.dialog.createStored"
 msgstr "Create stored Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.current"
+msgstr "Currently used"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.description"
@@ -25778,7 +25794,7 @@ msgstr "Local directory"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.empty"
-msgstr "No matching Workspaces. Add a directory or create a stored Workspace."
+msgstr "No matching directories."
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.failed"
@@ -25786,7 +25802,15 @@ msgstr "The Workspace could not be updated. Reload to review its current state."
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.loading"
-msgstr "Loading Workspaces…"
+msgstr "Loading directories…"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.main"
+msgstr "Main directory"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.manage"
+msgstr "Manage"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.name"
@@ -25822,7 +25846,7 @@ msgstr "Recover saved copy"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.recovery"
-msgstr "This directory could not be verified. Confirm its location and rebind it to continue. Your conversation and draft are preserved."
+msgstr "The previous directory is unavailable. Choose a directory."
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.register"
@@ -25838,7 +25862,7 @@ msgstr "Save sharing"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.search"
-msgstr "Find a Workspace"
+msgstr "Search directories"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.sharing"
@@ -25858,11 +25882,19 @@ msgstr "Storage profile"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.title"
-msgstr "Choose Workspace"
+msgstr "Choose a working directory"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.unavailable"
-msgstr "Workspace unavailable"
+msgstr "Unavailable"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.useNone"
+msgstr "Use no project files"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.useObjects"
+msgstr "Use this file collection"
 
 #. js-lingui-explicit-id
 msgid "workspace.document.newTab"

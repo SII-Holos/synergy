@@ -88,6 +88,12 @@ mock.module("../../../src/context/locale", () => ({
   useLocale: () => ({ controller: { activeLocale: () => "en" }, i18n, fmt: { relative: () => "now" } }),
 }))
 
+mock.module("../../../src/context/server", () => ({
+  useServer: () => ({ url: "http://127.0.0.1:0" }),
+  serverDisplayName: (url: string) => url,
+  normalizeServerUrl: (url: string) => url,
+}))
+
 mock.module("@solidjs/router", () => ({
   useParams: () => ({ dir: "home", id: "ses_prompt" }),
   useNavigate: () => () => {},

@@ -164,7 +164,7 @@ function TaskResources(props: { sessionID: string; active: boolean; close: () =>
             type="button"
             onClick={() => {
               props.close()
-              dialog.show(() => <DialogWorkspace sessionID={props.sessionID} mode="manage" />)
+              dialog.show(() => <DialogWorkspace target={{ kind: "session", sessionID: props.sessionID }} />)
             }}
           >
             {_(workspaceCopy.title)}

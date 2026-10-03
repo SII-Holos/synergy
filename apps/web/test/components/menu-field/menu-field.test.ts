@@ -306,6 +306,8 @@ describe("MenuField interaction contract", () => {
     await trigger.press("ArrowDown")
     const long = page.getByRole("option", { name: /^A complete project name/ })
     await long.waitFor()
+    await page.waitForFunction((element) => element === document.activeElement, await long.elementHandle())
+    await page.waitForFunction(() => document.querySelector(".menu-field-surface")!.scrollTop > 0)
     const geometry = await page.locator(".menu-field-surface").evaluate((surface) => {
       const bounds = surface.getBoundingClientRect()
       const label = surface.querySelector('[aria-selected="true"] .menu-field-item-label')!
