@@ -288,7 +288,9 @@ test("discovery cards contain installation state at desktop and phone widths and
   installedFailure = false
   await page.goto(url)
   const search = page.getByRole("textbox", { name: "Search plugins" })
+  const response = page.waitForResponse((response) => new URL(response.url()).searchParams.get("q") === "Test")
   await search.fill("Test")
+  await response
   const card = page.getByRole("button", { name: /Test plugin/ })
   await card.waitFor()
   for (const width of [1280, 375]) {
@@ -307,6 +309,59 @@ test("discovery cards contain installation state at desktop and phone widths and
   await card.and(page.locator(":focus")).waitFor()
   expect(await card.evaluate((el) => el === document.activeElement)).toBe(true)
 })
+
+for (const ready of [false, true])
+  test(`reading returns to the ${ready ? "replacement row" : "section entry"} after a query change`, async () => {
+    installedFailure = false
+    await page.goto(url)
+    const card = page.locator('.plugin-marketplace-row[data-panel-item="fixture"]')
+    await card.waitFor()
+    let release: () => void = () => {}
+    holdSearch = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    try {
+      const request = page.waitForRequest((request) => new URL(request.url()).searchParams.get("q") === "old")
+      await card.evaluate((entry) => {
+        const search = document.querySelector<HTMLInputElement>('input[aria-label="Search plugins"]')!
+        search.value = "old"
+        search.dispatchEvent(new Event("input", { bubbles: true }))
+        ;(entry as HTMLButtonElement).focus()
+        ;(entry as HTMLButtonElement).click()
+      })
+      await page.getByRole("dialog").waitFor()
+      await request
+      await card.waitFor({ state: "detached" })
+      if (ready) {
+        const response = page.waitForResponse((response) => new URL(response.url()).searchParams.get("q") === "old")
+        release()
+        await response
+        await card.waitFor()
+      }
+      await page.keyboard.press("Escape")
+      await page.getByRole("dialog").waitFor({ state: "detached" })
+      const target = ready ? card : page.getByRole("tab", { name: "Discover", exact: true })
+      await target.and(page.locator(":focus")).waitFor()
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve())), 0),
+          ),
+      )
+      expect(await target.evaluate((element) => element === document.activeElement)).toBe(true)
+      expect(await page.getByRole("textbox", { name: "Search plugins" }).inputValue()).toBe("old")
+      if (!ready) {
+        const response = page.waitForResponse((response) => new URL(response.url()).searchParams.get("q") === "old")
+        release()
+        await response
+        await card.waitFor()
+        expect(await target.evaluate((element) => element === document.activeElement)).toBe(true)
+      }
+    } finally {
+      release()
+      holdSearch = undefined
+    }
+  })
 
 test("a delayed previous search cannot replace the current empty result", async () => {
   await page.goto(url)

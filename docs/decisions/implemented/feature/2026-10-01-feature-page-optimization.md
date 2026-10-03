@@ -20,6 +20,8 @@ Rendered typography uses feature-owned roles, preserving global legacy utility m
 
 Detail overlays retain their parent context through approvals and editing. Removed triggers recover focus to a stable surviving item or page entry. Async failures remain local to their data group, and retry cannot leave focus outside a modal. Unknown prices, authors, timestamps, browser measurements and trace metadata must not be manufactured from missing fields. Compact usage rankings preserve cost precision and accounting provenance; month calendars and board layouts preserve selection and user preferences across size changes.
 
+Retained-query focus regressions wait for the selected debounced query to finish before opening a detail. Controlled pending-query cases separately verify recovery to the section entry when no result is ready, or to the replacement row when it is ready; later results must not steal the recovered focus.
+
 Diagnosis polling belongs to the current analysis operation and session. Starting, cancelling or disposing an analysis invalidates earlier reads, so a delayed running response or polling failure cannot replace a confirmed cancellation or revive its timer.
 
 Plugin reading presents declared capability counts before optional full definitions, with permissions visible before installation. Known host-generated feature and access descriptions use the application locale; author-supplied copy remains verbatim. Diagnostic values keep units adjacent and place sampling source and coverage in a separate supporting line. Resting Kanban Scope context does not become an activity status.
