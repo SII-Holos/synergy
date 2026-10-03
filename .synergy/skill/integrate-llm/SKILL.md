@@ -38,6 +38,8 @@ Control Plane operations that consume non-streaming results use `RolloutCall.exe
 
 A sessionless call does not create session history, Cortex progress, completion notices, or Experience lineage. Do not imply those properties in UI or events.
 
+For optional model-backed prompt preparation, choose a domain-owned interactive deadline through the context contribution contract. Share prerequisite results across parallel consumers, propagate cancellation, and do not retry the same failed prerequisite independently in each branch. Verify that timeout preserves required non-model context and does not change explicit tool execution budgets.
+
 ## Session and Cortex Calls
 
 Use `SessionInvoke` when the caller already owns the target session: direct user/API input, Channel or Agenda execution, workflow continuation, or an in-place loop operation such as compaction.

@@ -6,6 +6,9 @@ import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
+import { ToolResolver } from "@ericsanchezok/synergy-harness/test/support/internals"
+import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
+import { ModelsDev } from "@ericsanchezok/synergy-harness/provider/models-schemas"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -34,6 +37,48 @@ const ctx = {
 }
 
 describe("tool.agent_config", () => {
+  test("the production tool catalog admits transformed input schemas and runtime validation still rejects invalid actions", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const agent = (await Agent.get(PrimaryAgentIdentity.names.coding))!
+          const model = Provider.fromModelsDevProvider(
+            ModelsDev.Provider.parse({
+              id: "test",
+              name: "Test",
+              npm: "@ai-sdk/openai",
+              env: [],
+              models: {
+                test: {
+                  id: "test",
+                  name: "Test",
+                  release_date: "2026-01-01",
+                  attachment: false,
+                  reasoning: false,
+                  tool_call: true,
+                  limit: { context: 64000, output: 4096 },
+                },
+              },
+            }),
+          ).models.test
+          const available = await ToolResolver.availability({
+            agent,
+            model,
+            sessionID: ctx.sessionID,
+            includeMCP: false,
+            userTools: { agent_config: true },
+          })
+          expect(available.diagnostics.get("agent_config")).toBeUndefined()
+          const tool = await AgentConfigTool.init()
+          expect(ToolResolver.registryInputSchema(tool).type).toBe("object")
+          expect(
+            tool.parameters.safeParse({ input: { action: "create", name: "bad", temperature: "hot" } }).success,
+          ).toBe(false)
+        },
+      })
+    }))
   test("create writes a markdown agent and the agent resolves", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir()

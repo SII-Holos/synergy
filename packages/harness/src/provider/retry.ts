@@ -18,6 +18,7 @@ const TRANSIENT_CODES = new Set([
 const TERMINAL_CODES = new Set([
   "insufficient_quota",
   "billing_hard_limit_reached",
+  "personal-team-blocked:spending-limit",
   "invalid_api_key",
   "authentication_error",
   "permission_error",
@@ -54,6 +55,12 @@ export function providerRetryable(error: unknown): boolean | undefined {
     .filter((value): value is string => typeof value === "string")
     .map((value) => value.toLowerCase())
   if (codes.some((code) => TERMINAL_CODES.has(code))) return false
+  if (
+    [message, source?.responseBody].some(
+      (value) => typeof value === "string" && /\bpersonal-team-blocked:spending-limit\b/i.test(value),
+    )
+  )
+    return false
   const status = source?.statusCode
   if (typeof status === "number" && status >= 400) {
     if (isRetryableHttpStatus(status)) return true

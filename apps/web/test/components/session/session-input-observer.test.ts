@@ -1,6 +1,31 @@
 import { expect, test } from "bun:test"
 import { observeSessionInput } from "../../../src/components/session/session-input-observer"
 
+test("authoritative missing receipt terminates polling after a temporary failure", async () => {
+  const settled = Promise.withResolvers<void>()
+  let reads = 0
+  const stop = observeSessionInput({
+    intervalMs: 1,
+    read: async () => {
+      if (++reads === 1) throw new Error("temporarily unavailable")
+      return { kind: "missing" as const }
+    },
+    update: (result) => {
+      expect(result.kind).toBe("missing")
+      settled.resolve()
+      return false
+    },
+    unavailable: () => {},
+  })
+  try {
+    await settled.promise
+    await Bun.sleep(10)
+    expect(reads).toBe(2)
+  } finally {
+    stop()
+  }
+})
+
 test("disconnects stay recoverable and polling returns the authoritative state", async () => {
   const completed = Promise.withResolvers<void>()
   let reads = 0

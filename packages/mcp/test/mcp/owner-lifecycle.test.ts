@@ -8,6 +8,138 @@ import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 
+test("persistent connection failures back off and still recover automatically", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    const server = path.join(tmp.path, "recover.cjs")
+    const attempts = path.join(tmp.path, "attempts.jsonl")
+    await Bun.write(
+      server,
+      `const fs = require("node:fs");
+fs.appendFileSync(process.argv[2], Date.now() + "\\n");
+if (fs.readFileSync(process.argv[2], "utf8").trim().split("\\n").length < 4) process.exit(1);
+require("node:readline").createInterface({ input: process.stdin }).on("line", line => {
+  const m = JSON.parse(line); if (m.id === undefined) return;
+  const result = m.method === "initialize"
+    ? { protocolVersion: m.params.protocolVersion, serverInfo: { name: "recovered", version: "1" }, capabilities: { tools: {} } }
+    : { tools: [] };
+  console.log(JSON.stringify({ jsonrpc: "2.0", id: m.id, result }));
+});`,
+    )
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const supervisor = McpSupervisor()
+        const name = `recover-${crypto.randomUUID()}`
+        try {
+          supervisor.add(name, {
+            type: "local",
+            command: [process.execPath, server, attempts],
+            startup: "eager",
+            retry: { maxAttempts: 1, cooldownMs: 80 },
+          })
+          const deadline = Date.now() + 4000
+          while (supervisor.test(name)?.status !== "connected" && Date.now() < deadline) await Bun.sleep(10)
+          expect(supervisor.test(name)).toEqual({ status: "connected" })
+          const times = (await Bun.file(attempts).text()).trim().split("\n").map(Number)
+          expect(times).toHaveLength(4)
+          expect(times[2]! - times[1]!).toBeGreaterThanOrEqual(150)
+          expect(times[3]! - times[2]!).toBeGreaterThanOrEqual(310)
+        } finally {
+          await supervisor.remove(name)
+        }
+      },
+    })
+  }))
+
+test("tools-only servers never receive optional discovery requests during connect or refresh", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    const server = path.join(tmp.path, "tools-only.cjs")
+    const requests = path.join(tmp.path, "requests.jsonl")
+    await Bun.write(
+      server,
+      `const fs = require("node:fs");
+require("node:readline").createInterface({ input: process.stdin }).on("line", line => {
+  const m = JSON.parse(line); if (m.id === undefined) return;
+  fs.appendFileSync(process.argv[2], JSON.stringify(m.method) + "\\n");
+  const result = m.method === "initialize"
+    ? { protocolVersion: m.params.protocolVersion, serverInfo: { name: "tools-only", version: "1" }, capabilities: { tools: {} } }
+    : m.method === "tools/list" ? { tools: [] } : undefined;
+  console.log(JSON.stringify({ jsonrpc: "2.0", id: m.id, ...(result ? { result } : { error: { code: -32601, message: "not supported" } }) }));
+});`,
+    )
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const supervisor = McpSupervisor()
+        const name = `tools-only-${crypto.randomUUID()}`
+        try {
+          const handle = supervisor.getOrCreate(name, {
+            type: "local",
+            command: [process.execPath, server, requests],
+            startup: "manual",
+          })
+          await supervisor.connect(name, handle.identity)
+          await supervisor.refresh(name)
+          expect(supervisor.test(name)).toEqual({ status: "connected" })
+          const methods = (await Bun.file(requests).text())
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line))
+          expect(methods).not.toContain("prompts/list")
+          expect(methods).not.toContain("resources/list")
+        } finally {
+          await supervisor.remove(name)
+        }
+      },
+    })
+  }))
+
+test("advertised but unsupported discovery is reported once per connection", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    const server = path.join(tmp.path, "tools-only.cjs")
+    const requests = path.join(tmp.path, "requests.jsonl")
+    await Bun.write(
+      server,
+      `const fs = require("node:fs");
+require("node:readline").createInterface({ input: process.stdin }).on("line", line => {
+  const m = JSON.parse(line); if (m.id === undefined) return;
+  fs.appendFileSync(process.argv[2], JSON.stringify(m.method) + "\\n");
+  const result = m.method === "initialize"
+    ? { protocolVersion: m.params.protocolVersion, serverInfo: { name: "tools-only", version: "1" }, capabilities: { tools: {}, prompts: {}, resources: {} } }
+    : m.method === "tools/list" ? { tools: [] } : undefined;
+  console.log(JSON.stringify({ jsonrpc: "2.0", id: m.id, ...(result ? { result } : { error: { code: -32601, message: "not supported" } }) }));
+});`,
+    )
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const supervisor = McpSupervisor()
+        const name = `tools-only-${crypto.randomUUID()}`
+        try {
+          const handle = supervisor.getOrCreate(name, {
+            type: "local",
+            command: [process.execPath, server, requests],
+            startup: "manual",
+          })
+          await supervisor.connect(name, handle.identity)
+          await supervisor.refresh(name)
+          expect(supervisor.test(name)).toEqual({ status: "connected" })
+          const methods = (await Bun.file(requests).text())
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line))
+          expect(methods.filter((method) => method === "prompts/list")).toHaveLength(1)
+          expect(methods.filter((method) => method === "resources/list")).toHaveLength(1)
+        } finally {
+          await supervisor.remove(name)
+        }
+      },
+    })
+  }))
+
 test("MCP manual owner connects real stdio capabilities, reads resources and releases its client", () =>
   runtime.run(async () => {
     await using tmp = await tmpdir()

@@ -1189,6 +1189,14 @@ export function SessionTurn(
   }
 
   const projectAssistantMessage = (item: AssistantMessage): SessionTurnAssistantDisplayItem[] => {
+    if (props.segment && isCompactionAssistant(item)) {
+      const ownsRecovery = segmentParts()[item.id]?.some((part) => part.type === "compaction_recovery")
+      const placeholder =
+        props.segment.footer &&
+        isProjectedCompactionAttempt(item) &&
+        !view.partsFor(item.id).some((part) => part.type === "compaction_recovery")
+      if (!ownsRecovery && !placeholder) return []
+    }
     const sourceItems = collectSessionTurnTimelineItems([item], segmentParts(), true)
     return projectAssistantActivityItems({
       message: item,

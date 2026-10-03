@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import {
@@ -67,6 +67,31 @@ describe("desktop skin", () => {
     expect(desktopThemeBackground(light)).toBe("#123456")
     expect(desktopThemeBackground(dark)).toBe("#654321")
     expect(dark.themeId).toBe("acme:violet")
+  })
+
+  test("concurrent theme saves settle in order without sharing an active temporary file", async () => {
+    await withTempUserData(async (dir) => {
+      const states = Array.from({ length: 16 }, (_, index) => ({
+        ...defaultDesktopSkinState(),
+        themeId: `theme-${index}`,
+      }))
+      const results = await Promise.allSettled(states.map((state) => saveDesktopSkinState(dir, state)))
+      expect(results.every((result) => result.status === "fulfilled")).toBe(true)
+      expect(await loadDesktopSkinState(dir)).toEqual(states.at(-1)!)
+      expect(await readdir(dir)).toEqual(["desktop-theme.json"])
+    })
+  })
+
+  test("a failed theme replacement cleans up and does not poison the next save", async () => {
+    await withTempUserData(async (dir) => {
+      await mkdir(desktopThemeFilePath(dir))
+      await expect(saveDesktopSkinState(dir, defaultDesktopSkinState())).rejects.toThrow()
+      expect(await readdir(dir)).toEqual(["desktop-theme.json"])
+      await rm(desktopThemeFilePath(dir), { recursive: true })
+      const state = defaultDesktopSkinState("dark")
+      await saveDesktopSkinState(dir, state)
+      expect(await loadDesktopSkinState(dir)).toEqual(state)
+    })
   })
 
   test("strictly rejects malformed full-skin IPC input", () => {

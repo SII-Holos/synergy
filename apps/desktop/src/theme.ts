@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
 import z from "zod"
 import { DEFAULT_DESKTOP_SHELL_SKIN } from "./default-shell-skin.generated.js"
@@ -58,6 +58,7 @@ type DesktopThemeWindow = {
 
 const DESKTOP_THEME_FILE = "desktop-theme.json"
 const LegacyDesktopTheme = z.object({ source: DesktopThemeSource }).strict()
+const pendingThemeWrites = new Map<string, Promise<void>>()
 
 export function desktopThemeFilePath(userDataDir: string): string {
   return path.join(userDataDir, DESKTOP_THEME_FILE)
@@ -98,11 +99,25 @@ export async function loadDesktopSkinState(userDataDir: string): Promise<Desktop
 
 export async function saveDesktopSkinState(userDataDir: string, state: DesktopSkinStateV2): Promise<void> {
   const parsed = DesktopSkinStateV2.parse(state)
-  await mkdir(userDataDir, { recursive: true })
-  const target = desktopThemeFilePath(userDataDir)
-  const temporary = `${target}.${process.pid}.tmp`
-  await writeFile(temporary, `${JSON.stringify(parsed, null, 2)}\n`, "utf8")
-  await rename(temporary, target)
+  const target = path.resolve(desktopThemeFilePath(userDataDir))
+  const write = (pendingThemeWrites.get(target) ?? Promise.resolve())
+    .catch(() => {})
+    .then(async () => {
+      await mkdir(path.dirname(target), { recursive: true })
+      const temporary = `${target}.${process.pid}.tmp`
+      try {
+        await writeFile(temporary, `${JSON.stringify(parsed, null, 2)}\n`, "utf8")
+        await rename(temporary, target)
+      } finally {
+        await rm(temporary, { force: true }).catch(() => {})
+      }
+    })
+  pendingThemeWrites.set(target, write)
+  try {
+    await write
+  } finally {
+    if (pendingThemeWrites.get(target) === write) pendingThemeWrites.delete(target)
+  }
 }
 
 export function resolveDesktopThemeEffective(

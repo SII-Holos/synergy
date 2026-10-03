@@ -63,6 +63,7 @@ export namespace ObservabilityBrowserMetrics {
         "timeout",
         "session:params",
         "session:data-ready",
+        "session:interactive",
         "session:first-turn-mounted",
         "storage:prompt-ready",
         "storage:terminal-ready",
@@ -73,7 +74,22 @@ export namespace ObservabilityBrowserMetrics {
     ["tokenphase", new Set(["receive", "apply", "paint"])],
     ["parttype", new Set(["text", "tool-call", "tool-result", "reasoning", "file", "unknown"])],
     ["reason", new Set(["complete", "timeout", "navigation", "manual", "route", "unknown"])],
-    ["trigger", new Set(["route", "user", "history", "sync", "unknown"])],
+    [
+      "trigger",
+      new Set([
+        "route",
+        "user",
+        "history",
+        "sync",
+        "unknown",
+        "sidebar",
+        "sidebar-flyout",
+        "session-link",
+        "alt+arrowdown",
+        "alt+arrowup",
+        "key",
+      ]),
+    ],
     ["rating", new Set(["good", "needs-improvement", "poor"])],
     ["navigationtype", new Set(["navigate", "reload", "back_forward", "prerender", "unknown"])],
   ])
@@ -98,7 +114,7 @@ export namespace ObservabilityBrowserMetrics {
           unit: metric.unit,
           module: "frontend",
           source: "browser",
-          labels: { ...labels, ...pageLabels(page) },
+          labels: { ...pageLabels(page), ...labels },
           sessionID: context.sessionID,
           scopeID: context.scopeID,
           correlationId: context.correlationId,
@@ -287,9 +303,9 @@ export namespace ObservabilityBrowserMetrics {
     labels: Record<string, string | number | boolean | null>,
   ) {
     return {
-      sessionID: page.sessionID ?? stringLabel(labels.sessionID),
-      scopeID: page.scopeID ?? stringLabel(labels.scopeID),
-      correlationId: page.correlationId ?? stringLabel(labels.correlationId),
+      sessionID: stringLabel(labels.sessionID) ?? page.sessionID,
+      scopeID: stringLabel(labels.scopeID) ?? page.scopeID,
+      correlationId: stringLabel(labels.correlationId) ?? page.correlationId,
     }
   }
 

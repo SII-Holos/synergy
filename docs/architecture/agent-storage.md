@@ -2,6 +2,8 @@
 
 ## Authority and ownership
 
+Ordered record queries accept an optional logical `prefix`. It includes that exact key and its descendants, comparing complete serialized segments case-sensitively. Prefix filtering occurs in SQL before the page limit and combines with indexed kind/owner filters, timestamp bounds and the existing composite cursor; it does not create a separate physical prefix index.
+
 `Storage.Handle` binds one `TransactionalStore` namespace and one artifact directory. Logical keys do not resolve through the current project directory. The Runtime owns the Handle, runs migrations and recovery before admission, drains outstanding writes during shutdown, and closes only Handles it opened. An embedding caller can supply a Handle and retain responsibility for its lifetime. Scope and Session identify logical ownership; Workspace files and execution environments do not own Agent records.
 
 SQLite is the default backend. PostgreSQL is an explicit deployment choice using the same transaction, revision, pagination, receipt and outbox contract. One Runtime owns a namespace. PostgreSQL advisory ownership and a namespace owner identity fence stale writers; ordinary transactions are serialized inside that owner. Multiple sessions can run concurrently, but automatic Runtime failover and simultaneous replicas writing one namespace are not supported.
@@ -33,6 +35,8 @@ Large content remains in artifact storage. Writers flush bytes before publishing
 Rollout's application journal is distinct from the database WAL. One transaction writes the allocated sequence, its event evidence, the projection and the committed head, so a committed head always matches the persisted event set and a projection never becomes visible without its evidence. Recovery still projects evidence left uncommitted by an interrupted historical two-transaction write, without repeating the tool or provider request. Historical missing sequences remain explicit gaps. Database rollback does not erase previously committed observations.
 
 Committed journal replay captures a fixed revision and reads bounded batches. It validates every event and sequence in order; a missing committed event remains an integrity failure. Batching must not skip evidence validation or turn recovery into execution replay.
+
+Daily execution presentation uses a discardable version-1 owner checkpoint produced by validated fixed-revision replay. A retained boundary event revision permits tail-only replay; missing, unsupported or replaced checkpoints rebuild from the journal. Publication checks the captured head revision inside a short transaction, so deletion or concurrent append cannot publish stale state. Checkpoints live inside the owner tree and survive process restarts; no authoritative record is migrated or discarded. Recovery, archives and explicit historical reads continue to validate the complete journal. A presentation checkpoint is not an integrity audit.
 
 Inbox recovery discovers indexed keys independently of body decoding, then reads bounded batches. It logs unreadable inbox or candidate Session bodies and continues discovery beyond them; storage availability and index/query failures still propagate. This domain-specific isolation does not weaken ordinary typed reads or journal validation.
 
@@ -89,3 +93,5 @@ After server admission, format reclamation waits for the first 60-second idle in
 Bulk record removal uses the namespace key encoding and reclaims emptied traversal nodes in the same transaction while retaining revision tombstones. Admission covers the complete key set before bounded updates begin; rollback restores records and nodes together.
 
 Desktop reserves offline maintenance with `/global/maintenance/prepare`. The synchronous admission check refuses active sessions, pending wakes, background loop jobs and already-admitted mutations before closing new mutations and session execution. A matching token releases the reservation; an unused lease expires after 30 seconds. Desktop then stops its owned server and the maintenance CLI acquires exclusive storage ownership. Cancelling prune rolls back the current owner while previously committed owners remain removed; it does not restore discarded evidence.
+
+Explicit `execution: session` migrations prepare derived history on demand, independently of the deferred-import cohort ledger. Startup registers them; history access runs dependency-ordered owner callbacks and stores per-owner completion receipts. Metadata-only access does not prepare full history. Shared snapshot-store ownership inventory remains a startup migration. See [demand-driven history upgrades](../decisions/implemented/bug-fix/2026-10-03-demand-driven-history-upgrades.md).

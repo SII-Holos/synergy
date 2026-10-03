@@ -73,6 +73,7 @@ import type {
 } from "@ericsanchezok/synergy-sdk/client"
 import { useSDK } from "@/context/sdk"
 import { observeSessionInput } from "@/components/session/session-input-observer"
+import { recoverSessionInputReceipt } from "@/components/prompt-input/input-receipt"
 import { usePrompt } from "@/context/prompt"
 import { extractPromptDraft } from "@/utils/prompt"
 import { inlineLength } from "@/components/prompt-input/content"
@@ -250,6 +251,12 @@ function SessionPageContent() {
     if (!id) return
     if (!hasMessageWindowSnapshot(dataView().messagesFor(id), sync.data.messageWindow[id])) return
     navMark({ dir: params.dir, to: id, name: "session:data-ready" })
+    if (!prompt.ready()) return
+    const dir = params.dir
+    const frame = requestAnimationFrame(() => {
+      if (params.id === id && params.dir === dir) navMark({ dir, to: id, name: "session:interactive" })
+    })
+    onCleanup(() => cancelAnimationFrame(frame))
   })
 
   const isDesktop = () => layout.isDesktop()
@@ -768,8 +775,13 @@ function SessionPageContent() {
       if (!attempt) return
       const sessionID = params.id!
       const handoff = visibleSessionTransitionEntry()!.handoff!
+      let unconfirmed = handoff.unconfirmed
       const update = async (status: SessionInputProgress) => {
         if (handoffAttempt() !== attempt) return
+        if (unconfirmed && status.durable) {
+          sessionTransition.confirmHandoff(sessionID, handoff.messageID)
+          unconfirmed = undefined
+        }
         if (status.canonical) {
           await sync.session.refresh(sessionID)
           return
@@ -802,15 +814,23 @@ function SessionPageContent() {
         setSessionTransition(sessionID, { ...accepted, description }, undefined, handoff)
       }
       const stop = observeSessionInput({
-        read: async (signal) =>
-          (
-            await sdk.client.session.inputStatus(
-              { sessionID, messageID: handoff.messageID },
-              { signal, throwOnError: true },
+        read: (signal) => recoverSessionInputReceipt(sdk.client, { sessionID, messageID: handoff.messageID }, signal),
+        update: async (receipt) => {
+          if (handoffAttempt() !== attempt) return false
+          if (receipt.kind === "accepted") await update(receipt.progress)
+          else if (receipt.kind === "missing") {
+            if (unconfirmed) unconfirmed.missing()
+            else showStalledHandoff(sessionID, handoff)
+            return false
+          } else {
+            const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
+            setSessionTransition(
+              sessionID,
+              { ...accepted, description: S.transitionDescReconnecting },
+              undefined,
+              handoff,
             )
-          ).data,
-        update: async (status) => {
-          if (status) await update(status)
+          }
         },
         unavailable: () => {
           if (handoffAttempt() !== attempt) return

@@ -175,10 +175,10 @@ export function createScopeBootstrapRoute(contributions: BootstrapContributions 
         for (const session of sessions.data)
           if (session.modelSelection?.selected?.model) keys.push(session.modelSelection.selected.model)
         const provider = await measure("core_provider", () => ProviderDirectory.selection(keys))
-        const workspaces = await measure("core_workspaces", () => WorkspaceCatalog.list(scope.id))
         const visible = new Set(sessions.data.flatMap((session) => (session.workspaceID ? [session.workspaceID] : [])))
         const path = ScopePath.current()
         if (path.workspace?.id) visible.add(path.workspace.id)
+        const workspaces = await measure("core_workspaces", () => WorkspaceCatalog.readMany([...visible]))
         const response = ScopeBootstrapCore.parse({
           scopeID: scope.id,
           provider,
@@ -187,7 +187,9 @@ export function createScopeBootstrapRoute(contributions: BootstrapContributions 
           path,
           sessions: { ...sessions, offset: 0, limit: 20 },
           sessionStatus,
-          workspaces: workspaces.filter((workspace) => visible.has(workspace.id)),
+          workspaces: workspaces.filter(
+            (workspace): workspace is WorkspaceCatalog.Info => workspace?.scopeID === scope.id,
+          ),
           workspacesComplete: false,
         })
         c.header("server-timing", [...timings, `core;dur=${(performance.now() - started).toFixed(1)}`].join(", "))

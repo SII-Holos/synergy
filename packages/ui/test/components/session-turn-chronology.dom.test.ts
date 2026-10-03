@@ -8,6 +8,7 @@ let harness: {
   setMode: (mode: "balanced" | "full" | "minimal") => void
   setPreview: (preview: boolean) => void
   setSegmented: (value: boolean) => void
+  addCompaction: (state?: "committed" | "running" | "failed") => void
   reset: () => void
 }
 
@@ -187,3 +188,28 @@ test("a virtual process header does not announce provider waiting after narrativ
   expect(trigger().textContent).not.toContain("Awaiting response")
   expect(trigger().textContent).toContain("Working")
 })
+
+test("segmented completed compaction renders once in its owning body without phantom running footer cards", async () => {
+  harness.addCompaction()
+  harness.setSegmented(true)
+  await waitForUpdate()
+  expect(document.querySelectorAll('[data-component="compaction-card"]')).toHaveLength(1)
+  expect(document.querySelectorAll('[data-component="compaction-card"][data-status="running"]')).toHaveLength(0)
+  const card = document.querySelector('[data-component="compaction-card"]')!
+  expect(card.getAttribute("data-status")).toBe("complete")
+  ;(card.querySelector("button") as HTMLButtonElement).click()
+  await waitForUpdate()
+  expect(card.textContent).toContain("Durable summary")
+})
+
+test.each(["running", "failed"] as const)(
+  "segmented %s compaction without recovery has one lifecycle card",
+  async (state) => {
+    harness.addCompaction(state)
+    harness.setSegmented(true)
+    await waitForUpdate()
+    const cards = document.querySelectorAll('[data-component="compaction-card"]')
+    expect(cards).toHaveLength(1)
+    expect(cards[0].getAttribute("data-status")).toBe(state)
+  },
+)

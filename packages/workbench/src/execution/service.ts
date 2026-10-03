@@ -15,6 +15,7 @@ import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { ObservabilitySpans } from "@ericsanchezok/synergy-harness/observability/spans"
 import { ExecutionSchema } from "./schema"
 import { ExecutionActivity } from "./activity"
 import { ExecutionPresentation } from "./presentation"
@@ -274,14 +275,16 @@ export namespace ExecutionService {
         sessions.push(child)
       }
     }
-    const snapshots = await Promise.all(
-      sessions.map((session) =>
-        RolloutSnapshot.read({
-          kind: "session",
-          scopeID: session.scope.id,
-          sessionID: session.id,
-        }),
-      ),
+    const snapshots = await ObservabilitySpans.measure(
+      { name: "execution.snapshot", module: "session", kind: "session" },
+      () =>
+        RolloutSnapshot.currentAll(
+          sessions.map((session) => ({
+            kind: "session",
+            scopeID: session.scope.id,
+            sessionID: session.id,
+          })),
+        ),
     )
     const nodes: ExecutionSchema.Node[] = []
     const evidence = new Map<string, Evidence>()
@@ -293,7 +296,9 @@ export namespace ExecutionService {
       nodes.push(...projected.nodes)
       for (const [key, value] of projected.evidence) evidence.set(key, value)
       const raw: MessageV2.WithParts[] = []
-      for await (const message of MessageV2.stream({ sessionID: session.id })) raw.push(message)
+      await ObservabilitySpans.measure({ name: "execution.messages", module: "session", kind: "session" }, async () => {
+        for await (const message of MessageV2.stream({ sessionID: session.id })) raw.push(message)
+      })
       for (const message of MessageV2.deriveSemantics(raw.toReversed())) {
         rememberContext(contexts, message.info)
         for (const part of message.parts) {
@@ -326,12 +331,11 @@ export namespace ExecutionService {
     }
     nodes.sort((a, b) => a.started - b.started || a.id.localeCompare(b.id))
     const usage = new Map<string, UsageSchema.Record>()
-    let cursor: string | undefined
-    do {
-      const page = await Usage.records({ sessionID: root.id, includeDescendants: true }, { cursor, limit: 500 })
-      for (const record of page.items) usage.set(record.id, record)
-      cursor = page.nextCursor ?? undefined
-    } while (cursor)
+    for (const record of await ObservabilitySpans.measure(
+      { name: "execution.usage", module: "session", kind: "session" },
+      () => Usage.collect({ scopeID: root.scope.id, sessionID: root.id, includeDescendants: true }),
+    ))
+      usage.set(record.id, record)
     const revision = ++state().sequence
     const data = {
       root,

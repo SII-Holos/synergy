@@ -99,6 +99,30 @@ function success() {
 }
 
 test(
+  "the SDK does not retry a provider spending-limit refusal",
+  runtime.bind(async () => {
+    for (const responseBody of [
+      JSON.stringify({ error: { code: "personal-team-blocked:spending-limit" } }),
+      "personal-team-blocked:spending-limit",
+    ]) {
+      let calls = 0
+      await run(async () => {
+        calls++
+        throw new APICallError({
+          message: "Request refused",
+          url: "https://provider.invalid",
+          requestBodyValues: {},
+          responseBody,
+          statusCode: 429,
+          isRetryable: true,
+        })
+      }, 1)
+      expect(calls).toBe(1)
+    }
+  }),
+)
+
+test(
   "the real SDK retries raw DNS failures inside the caller's retry budget",
   runtime.bind(async () => {
     let calls = 0

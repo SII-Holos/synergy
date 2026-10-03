@@ -26,6 +26,7 @@ export class DesktopStartupOverlay {
   private view: WebContentsView | null = null
   private attached = false
   private dismissed = false
+  private statusScript: string | undefined
 
   constructor(private readonly options: DesktopStartupOverlayOptions) {
     this.view = new WebContentsView({
@@ -42,6 +43,7 @@ export class DesktopStartupOverlay {
   async load(): Promise<void> {
     const view = this.view
     if (!view || this.dismissed) return
+    this.statusScript = undefined
     await view.webContents.loadURL(
       desktopStartupPage({
         chrome: this.options.chrome,
@@ -66,7 +68,12 @@ export class DesktopStartupOverlay {
   async setStatus(status: DesktopStartupStatus): Promise<void> {
     const view = this.view
     if (!view || this.dismissed || view.webContents.isDestroyed()) return
-    await view.webContents.executeJavaScript(startupStatusScript(status)).catch(() => {})
+    const script = startupStatusScript(status)
+    if (script === this.statusScript) return
+    this.statusScript = script
+    await view.webContents.executeJavaScript(script).catch(() => {
+      if (this.statusScript === script) this.statusScript = undefined
+    })
   }
 
   setTheme(theme: DesktopThemeSnapshot): void {
