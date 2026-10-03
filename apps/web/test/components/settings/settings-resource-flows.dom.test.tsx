@@ -32,6 +32,10 @@ beforeAll(async () => {
     const writes = []; const creations = []; const authenticated = new Set(["deepseek"])
     window.__resourceCalls = { writes, creations }
     window.__useImport = () => setData("provider_auth", "test-service", [{ type: "import", label: "Import credentials" }])
+    window.__publishModelCatalog = () => setData("provider", "all", 0, "models", {
+      chat: model,
+      "new-model": { ...model, id: "new-model", name: "Test New Model" },
+    })
     export const summaries = () => data.provider.all.map(provider => ({ ...provider, connected: data.provider.connected.includes(provider.id) }))
     export function useGlobalSync() { return { data, refreshProviders: async () => { if (window.__failRead) { window.__failRead = false; throw new Error("Refresh failed") } setData("provider", "connected", [...authenticated]) } } }
     export function useGlobalSDK() { return { client: {
@@ -236,6 +240,23 @@ test("quick model switches include model names and leave the session and role un
   expect(
     await page.evaluate(() => (window as unknown as { __sessionChanged?: boolean }).__sessionChanged),
   ).toBeUndefined()
+})
+test("quick model management updates when the full catalog arrives without search input", async () => {
+  await page.getByRole("button", { name: "Models page", exact: true }).click()
+  await page.getByRole("switch", { name: "Include Test Chat in quick switcher", exact: true }).waitFor()
+  const search = page.getByRole("textbox", { name: "Search models", exact: true })
+  expect(await search.inputValue()).toBe("")
+
+  await page.evaluate(() => (window as unknown as { __publishModelCatalog(): void }).__publishModelCatalog())
+
+  const added = page.getByRole("switch", { name: "Include Test New Model in quick switcher", exact: true })
+  await added.waitFor()
+  expect(await search.inputValue()).toBe("")
+  await added.press("Space")
+  const models = JSON.parse((await page.getByTestId("models").textContent())!)
+  expect(models.model).toBe("deepseek/chat")
+  expect(models.quick_switcher).toEqual([{ providerID: "deepseek", modelID: "new-model", state: "add" }])
+  expect(errors).toEqual([])
 })
 test("unavailable selections are preserved with a service repair entry", async () => {
   await page.getByRole("button", { name: "Models page", exact: true }).click()

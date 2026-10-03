@@ -30,7 +30,7 @@ export function WelcomeStage(props: {
     setPaused(false)
     setEditing(false)
   }
-  const active = () => !paused() && !editing() && visible() && intersecting() && !expanded() && !props.blocked
+  const gameActive = () => !paused() && !editing() && visible() && intersecting() && !expanded() && !props.blocked
   createEffect(() => {
     if (reducedMotion()) setPaused(true)
   })
@@ -100,12 +100,12 @@ export function WelcomeStage(props: {
       class="welcome-stage"
       data-welcome-scene={props.definition.id}
       data-prevent-autofocus
-      data-active={active() ? "" : undefined}
+      data-active={gameActive() ? "" : undefined}
     >
       <Show when={pane()}>
         {(target) => (
           <Portal mount={target()}>
-            <AmbientField seed={props.seed} active={active} reducedMotion={reducedMotion} />
+            <AmbientField seed={props.seed} active={visible} reducedMotion={reducedMotion} />
           </Portal>
         )}
       </Show>
@@ -153,7 +153,7 @@ export function WelcomeStage(props: {
               <Dynamic
                 component={loaded().default}
                 seed={props.seed}
-                active={active}
+                active={gameActive}
                 reducedMotion={reducedMotion}
                 memory={props.memory}
                 interact={interact}

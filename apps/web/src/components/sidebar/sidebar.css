@@ -1490,9 +1490,9 @@
   opacity: 0;
   visibility: hidden;
   transition:
-    grid-template-rows 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    grid-template-rows var(--motion-duration-base) var(--motion-ease-emphasized),
     opacity var(--motion-duration-fast) ease-out,
-    visibility 0s linear 200ms;
+    visibility 0s linear var(--motion-duration-base);
 }
 
 .sb-disclosure-open {
@@ -1500,7 +1500,7 @@
   opacity: 1;
   visibility: visible;
   transition:
-    grid-template-rows 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    grid-template-rows var(--motion-duration-base) var(--motion-ease-emphasized),
     opacity var(--motion-duration-fast) ease-out,
     visibility 0s linear 0s;
 }

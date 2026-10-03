@@ -167,6 +167,8 @@ Install Rust with Cargo for the native PTY and Linux process ownership library, 
 bun dev prepare
 ```
 
+See the [development reference](docs/reference/development.md#requirements-and-preparation) for preparation requirements and macOS Desktop native-driver build status.
+
 Common development flows:
 
 ```bash

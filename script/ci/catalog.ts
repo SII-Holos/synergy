@@ -455,6 +455,10 @@ export async function catalog(root = ROOT): Promise<Task[]> {
     }
   }
   for (const entry of tasks) {
+    if (entry.kind === "suite" && entry.package === "packages/local-runtime")
+      entry.needs = tasks
+        .filter((task) => task.kind === "suite" && ["packages/cli", "packages/presets"].includes(task.package ?? ""))
+        .map((task) => task.id)
     if (entry.kind === "native-workspace" || (entry.kind === "windows" && entry.variant === "native"))
       entry.needs = tasks
         .filter((task) => task.kind === "suite" && task.package === entry.package)
