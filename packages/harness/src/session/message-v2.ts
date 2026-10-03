@@ -1715,7 +1715,10 @@ export namespace MessageV2 {
         batch.length === 1
           ? [
               await Storage.read<Info>(StoragePath.messageInfo(input.scopeID, input.sessionID, batch[0])).catch(
-                () => undefined,
+                (error) => {
+                  if (error instanceof Storage.NotFoundError) return undefined
+                  throw error
+                },
               ),
             ]
           : await Storage.readMany<Info>(
