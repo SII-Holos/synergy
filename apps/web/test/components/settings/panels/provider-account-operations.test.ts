@@ -65,6 +65,35 @@ describe("provider account operations", () => {
     expect(canAddProviderAccount(connection({ canCreateSibling: false }))).toBe(false)
   })
 
+  test("recovers a connection whose creation response was lost instead of creating another one", async () => {
+    let writes = 0
+    const command = createProviderAccountCommand(
+      async () => {
+        writes++
+        throw new Error("response lost")
+      },
+      async () => {},
+      async () => connection(),
+    )
+    expect((await command.run()).id).toBe("deepseek-work")
+    expect((await command.run()).id).toBe("deepseek-work")
+    expect(writes).toBe(1)
+  })
+
+  test("preserves the caller's stable account identity when retrying creation", async () => {
+    const { client, calls } = mockClient()
+    await saveProviderAccount(client, {
+      mode: "create",
+      id: "account-stable",
+      profileID: "deepseek",
+      name: "Work",
+      enabled: true,
+    })
+    expect(calls[0].input).toEqual({
+      providerConnectionCreateInput: { id: "account-stable", profileID: "deepseek", name: "Work", enabled: true },
+    })
+  })
+
   test("creates a named account with its own endpoint and enabled state", async () => {
     const { client, calls } = mockClient()
     const result = await saveProviderAccount(client, {
