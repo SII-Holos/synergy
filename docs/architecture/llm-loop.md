@@ -156,7 +156,7 @@ Top-level sessions build memory and experience context in parallel from the curr
 - experiences are retrieved within the current Scope.
 - child sessions receive lightweight always-only memory context.
 
-Recall has a bounded timeout and a loop-level cache. The context remains available across steps and compaction boundaries. The root message records which memory or experience context was injected so the durable task can be inspected later.
+Recall has a bounded timeout and a loop-level cache. Each task root collects context at its first model preparation, even when a pre-model job has already compacted the history. The context remains available to root and child sessions across steps and compaction boundaries; a newly materialized Inbox root replaces the previous task's cached context. The root message records which memory or experience context was injected so the durable task can be inspected later.
 
 ## Tool Resolution and Execution
 
