@@ -25853,6 +25853,10 @@ msgid "workspace.dialog.applyBinding"
 msgstr "⟦Rebind Workspace⟧"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.back"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.busy"
 msgstr "⟦Switching requires an idle session. Active file operations may also prevent rebinding or changing sharing.⟧"
 
@@ -25861,8 +25865,16 @@ msgid "workspace.dialog.cancel"
 msgstr "⟦Cancel⟧"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.changed"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.choose"
 msgstr "⟦Use Workspace⟧"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.close"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.create"
@@ -25871,6 +25883,10 @@ msgstr "⟦Create Workspace⟧"
 #. js-lingui-explicit-id
 msgid "workspace.dialog.createStored"
 msgstr "⟦Create stored Workspace⟧"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.current"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.description"
@@ -25891,6 +25907,14 @@ msgstr "⟦The Workspace could not be updated. Reload to review its current stat
 #. js-lingui-explicit-id
 msgid "workspace.dialog.loading"
 msgstr "⟦Loading Workspaces…⟧"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.main"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.manage"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.name"
@@ -25967,6 +25991,14 @@ msgstr "⟦Choose Workspace⟧"
 #. js-lingui-explicit-id
 msgid "workspace.dialog.unavailable"
 msgstr "⟦Workspace unavailable⟧"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.useNone"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.useObjects"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "workspace.document.newTab"

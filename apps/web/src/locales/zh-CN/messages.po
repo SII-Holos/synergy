@@ -25853,6 +25853,10 @@ msgid "workspace.dialog.applyBinding"
 msgstr "重新绑定 Workspace"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.back"
+msgstr "返回目录列表"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.busy"
 msgstr "会话空闲时才能切换 Workspace。正在进行的文件操作也可能阻止重新绑定或修改共享权限。"
 
@@ -25861,8 +25865,16 @@ msgid "workspace.dialog.cancel"
 msgstr "取消"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.changed"
+msgstr "目录已变更，请重新选择。"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.choose"
-msgstr "使用此 Workspace"
+msgstr "使用此目录"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.close"
+msgstr "关闭"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.create"
@@ -25871,6 +25883,10 @@ msgstr "创建 Workspace"
 #. js-lingui-explicit-id
 msgid "workspace.dialog.createStored"
 msgstr "创建存储型 Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.current"
+msgstr "当前使用"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.description"
@@ -25882,7 +25898,7 @@ msgstr "本地目录"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.empty"
-msgstr "没有匹配的 Workspace。可添加目录或创建存储型 Workspace。"
+msgstr "没有匹配的目录。"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.failed"
@@ -25890,7 +25906,15 @@ msgstr "无法更新 Workspace。请重新加载以查看当前状态。"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.loading"
-msgstr "正在加载 Workspace…"
+msgstr "正在加载目录…"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.main"
+msgstr "主目录"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.manage"
+msgstr "管理"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.name"
@@ -25926,7 +25950,7 @@ msgstr "恢复已保存副本"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.recovery"
-msgstr "无法确认此目录的身份。请确认位置并重新绑定，继续使用。对话和草稿已保留。"
+msgstr "原目录不可用，请选择目录。"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.register"
@@ -25942,7 +25966,7 @@ msgstr "保存共享权限"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.search"
-msgstr "查找 Workspace"
+msgstr "搜索目录"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.sharing"
@@ -25962,11 +25986,19 @@ msgstr "存储配置"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.title"
-msgstr "选择 Workspace"
+msgstr "选择工作目录"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.unavailable"
-msgstr "Workspace 不可用"
+msgstr "不可用"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.useNone"
+msgstr "不使用项目文件"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.useObjects"
+msgstr "使用此文件集合"
 
 #. js-lingui-explicit-id
 msgid "workspace.document.newTab"

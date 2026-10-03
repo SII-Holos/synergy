@@ -42,7 +42,7 @@ beforeAll(async () => {
     export const useNavigate=()=>()=>{}
     export const useSDK=()=>({get isHome(){return state.home},get scopeID(){return state.home?"home":state.scopeID},get scopeKey(){return state.home?"home":state.scopeID},client})
     export const useGlobalSDK=()=>({get url(){return state.url},capabilities:{has:()=>true}})
-    export const useSync=()=>({scope,data:{get workspaces(){return [record("main")]},path:{workspace:{path:"/projects/main-folder"}}},session:{get:()=>state.empty?undefined:{id:state.id,status:state.status,workspaceID:"main",workspace:{path:"/projects/main-folder",type:"git"}},sync:async()=>{}}})
+    export const useSync=()=>({scope,data:{get workspaces(){return [record("main"),{id:"other",scopeID:state.scopeID,type:"git_worktree",binding:{path:"/projects/worktrees/selected",generation:2,state:"bound"},metadata:{name:"Selected copy",branch:"feature/selected"}}]},path:{workspace:{path:"/projects/main-folder"}}},session:{get:()=>state.empty?undefined:{id:state.id,status:state.status,workspaceID:"main",workspace:{path:"/projects/main-folder",type:"git"}},sync:async()=>{}}})
     export const useLayout=()=>({scopes:{list:()=>[scope]}})
     export const useGlobalSync=()=>({refreshScopes:async()=>{}})
     export const useServer=()=>({url:"http://${computer}",list:["http://offline.example:4322"],setActive:()=>{},scopes:{open:()=>{}}})
@@ -154,6 +154,20 @@ async function open() {
 }
 
 const patch = (value: Record<string, unknown>) => page.evaluate(`window.fixture.patch(${JSON.stringify(value)})`)
+
+test("explicit directory selections show their actual location and clear it for no project files", async () => {
+  await open()
+  await patch({ selection: { mode: "workspace", workspaceID: "other", workspaceGeneration: 2 } })
+  const trigger = page.locator("[data-worktree-task-selector]")
+  expect(await trigger.getAttribute("aria-label")).toContain("feature/selected")
+  expect(await trigger.getAttribute("aria-label")).toContain("/projects/worktrees/selected")
+  await patch({ git: false })
+  expect(await trigger.isVisible()).toBe(true)
+  await patch({ selection: { mode: "none" } })
+  expect(await trigger.getAttribute("aria-label")).toBe("No project files")
+  await patch({ selection: { mode: "workspace", workspaceID: "missing", workspaceGeneration: 1 } })
+  expect(await trigger.getAttribute("aria-label")).not.toContain("/projects/main-folder")
+}, 20_000)
 
 test("a session identity removes setup through running, pause, completion, switching and reconnect", async () => {
   await open()

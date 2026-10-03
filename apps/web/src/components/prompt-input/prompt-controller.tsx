@@ -17,6 +17,7 @@ import {
   Match,
   createMemo,
   createSignal,
+  createUniqueId,
   createResource,
   untrack,
   lazy,
@@ -208,6 +209,10 @@ export function createPromptInputController(props: PromptInputProps) {
   const sdk = useSDK()
   const { capabilities } = useGlobalSDK()
   const workflowDialog = useDialog()
+  let workspaceRecoveryDialogID: string | undefined
+  onCleanup(() => {
+    if (workspaceRecoveryDialogID) workflowDialog.close(workspaceRecoveryDialogID)
+  })
   const confirm = useConfirm()
   const globalSync = useGlobalSync()
   const fullAccessAck = useFullAccessAcknowledgement()
@@ -592,7 +597,6 @@ export function createPromptInputController(props: PromptInputProps) {
     return !canSubmit()
   })
   const controlLabel = createMemo(() => {
-    if (props.sessionTransitionError) return i18n._(PI.recoveryRequired)
     if (abandonPending()) return i18n._(PI.abandoning)
     if (continuePending() && !working()) return i18n._(PI.startingSession)
     switch (controlState()) {
@@ -620,7 +624,6 @@ export function createPromptInputController(props: PromptInputProps) {
     }
   })
   const controlHint = createMemo(() => {
-    if (props.sessionTransitionError) return i18n._(PI.recoveryRequired)
     switch (controlState()) {
       case "pause":
         return i18n._(PI.pauseControlHint)
@@ -629,9 +632,12 @@ export function createPromptInputController(props: PromptInputProps) {
       case "disabled":
         return i18n._(PI.disabledControlHint)
       default:
-        return i18n._(activity() === "paused" ? PI.steerHint : working() ? PI.queueMessage : PI.sendAction)
+        return activity() === "paused" ? i18n._(PI.steerHint) : undefined
     }
   })
+  const recoveryHintID = createUniqueId()
+  const controlTitle = () =>
+    abortStopping() ? i18n._(PI.stopping) : submitPending() ? i18n._(PI.startingSession) : controlLabel()
   /** Pause and Continue are not submits, so they intercept the click; Send lets
    *  the form's submit path run unchanged. */
   const handleControlClick = (event: MouseEvent) => {
@@ -1225,14 +1231,19 @@ export function createPromptInputController(props: PromptInputProps) {
             description: i18n._(workspaceCopy.description),
             icon: getSemanticIcon("workspace.main"),
             selected: workspaceSelection.mode === "workspace" || workspaceSelection.mode === "none",
+            disabled: !props.onNewSessionWorkspaceSelectionChange,
             onSelect: () =>
               workflowDialog.show(() => (
                 <DialogWorkspace
                   environmentProfile={props.newSessionEnvironmentProfile}
                   environmentID={props.newSessionEnvironmentID}
                   mode="select"
-                  selection={workspaceSelection}
-                  onSelect={props.onNewSessionWorkspaceSelectionChange}
+                  mainWorkspaceID={props.projectDirectories?.mainWorkspaceID}
+                  target={{
+                    kind: "draft",
+                    selection: workspaceSelection,
+                    onSelect: props.onNewSessionWorkspaceSelectionChange!,
+                  }}
                 />
               )),
           },
@@ -1257,6 +1268,7 @@ export function createPromptInputController(props: PromptInputProps) {
             id: "workspace.existing",
             label: i18n._(locationCopy.continueCopy),
             icon: getSemanticIcon("workspace.worktree"),
+            disabled: !props.onNewSessionWorkspaceSelectionChange,
             selected:
               workspaceSelection.mode === "existing" ||
               (workspaceSelection.mode === "workspace" &&
@@ -1270,8 +1282,12 @@ export function createPromptInputController(props: PromptInputProps) {
                   environmentID={props.newSessionEnvironmentID}
                   mode="select"
                   copiesOnly
-                  selection={workspaceSelection}
-                  onSelect={props.onNewSessionWorkspaceSelectionChange}
+                  mainWorkspaceID={props.projectDirectories?.mainWorkspaceID}
+                  target={{
+                    kind: "draft",
+                    selection: workspaceSelection,
+                    onSelect: props.onNewSessionWorkspaceSelectionChange!,
+                  }}
                 />
               )),
           },
@@ -2053,8 +2069,34 @@ export function createPromptInputController(props: PromptInputProps) {
     abort,
     editor: editorElement,
     queueScroll,
-    onWorkspaceUnavailable: (workspaceID) =>
-      workflowDialog.show(() => <DialogWorkspace sessionID={params.id} mode="manage" recoveryID={workspaceID} />),
+    onWorkspaceUnavailable: (request) => {
+      const onSelect = props.onNewSessionWorkspaceSelectionChange
+      if (request.kind === "session") {
+        if (params.id && params.id !== request.sessionID) return
+        workspaceRecoveryDialogID = workflowDialog.show(() => (
+          <DialogWorkspace
+            mode="recover"
+            recovery={request}
+            target={{ kind: "session", sessionID: request.sessionID, onApplied: request.onRecovered }}
+          />
+        ))
+      } else if (onSelect) {
+        workspaceRecoveryDialogID = workflowDialog.show(() => (
+          <DialogWorkspace
+            mode="recover"
+            recovery={request}
+            environmentProfile={props.newSessionEnvironmentProfile}
+            environmentID={props.newSessionEnvironmentID}
+            mainWorkspaceID={props.projectDirectories?.mainWorkspaceID}
+            target={{ kind: "draft", selection: props.newSessionWorkspaceSelection, onSelect }}
+          />
+        ))
+      } else {
+        workspaceRecoveryDialogID = workflowDialog.show(() => (
+          <DialogWorkspace mode="manage" initialID={request.workspaceID} />
+        ))
+      }
+    },
     onWorktreeUnavailable: () => workflowDialog.show(() => <WorktreeUnavailableDialog />),
     beforeSubmit: async () => {
       await props.onValidateLocation?.()
@@ -2440,25 +2482,20 @@ export function createPromptInputController(props: PromptInputProps) {
             </Show>
             <div class="relative flex items-center gap-2">
               <Show when={props.sessionTransitionError}>
-                <span class="max-w-40 text-12-regular text-text-weak" role="status">
+                <span id={recoveryHintID} class="max-w-40 text-12-regular text-text-weak" role="status">
                   {i18n._(PI.recoveryRequired)}
                 </span>
               </Show>
               <Tooltip
                 placement="top"
+                inactive={!!props.sessionTransitionError}
                 open={abandonProgress() > 0 || abandonPending() ? false : undefined}
                 value={
                   <div class="flex max-w-72 flex-col gap-1">
-                    <span>
-                      {abortStopping()
-                        ? i18n._(PI.stopping)
-                        : props.sessionTransitionError
-                          ? i18n._(PI.recoveryRequired)
-                          : submitPending()
-                            ? i18n._(PI.startingSession)
-                            : controlLabel()}
-                    </span>
-                    <span class="text-10-regular text-text-weak">{controlHint()}</span>
+                    <span>{controlTitle()}</span>
+                    <Show when={controlHint() && controlHint() !== controlTitle()}>
+                      <span class="text-10-regular text-text-weak">{controlHint()}</span>
+                    </Show>
                     <Show when={canAbandon()}>
                       <span class="text-10-regular text-text-weak">{i18n._(PI.abandonHint)}</span>
                     </Show>
@@ -2468,6 +2505,7 @@ export function createPromptInputController(props: PromptInputProps) {
                 <IconButton
                   type="submit"
                   aria-label={controlLabel()}
+                  aria-describedby={props.sessionTransitionError ? recoveryHintID : undefined}
                   disabled={controlDisabled()}
                   icon={controlIcon()}
                   variant="primary"

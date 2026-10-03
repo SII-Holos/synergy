@@ -29,6 +29,8 @@ import { DialogWorkingLocation } from "../dialog/dialog-working-location"
 import { DialogProjectDirectoryRecovery } from "../dialog/dialog-project-directory-recovery"
 import { sameProjectDirectories } from "../dialog/project-directory-recovery"
 import { projectEntryCopy as copy } from "../dialog/project-entry-copy"
+import { workspaceBranch, workspaceLabel } from "../dialog/workspace-dialog-model"
+import { locationCopy } from "../dialog/task-location-copy"
 
 type WorkContextProps = {
   onWorkspaceTransition?: (request: SessionWorkspaceTransitionRequest) => void
@@ -133,6 +135,12 @@ function WorkContextContent(props: WorkContextProps) {
   const selectedTree = () =>
     props.workspaceSelection?.mode === "existing" ? props.workspaceSelection.target : undefined
   const selectedWorkspace = () => treeItems().find((tree) => tree.id === selectedTree() || tree.path === selectedTree())
+  const selectedDirectory = () => {
+    const selection = props.workspaceSelection
+    return selection?.mode === "workspace"
+      ? sync.data.workspaces.find((item) => item.id === selection.workspaceID)
+      : undefined
+  }
   const mainSelected = () =>
     params.id
       ? session()?.workspaceID === main()?.workspaceID
@@ -147,18 +155,35 @@ function WorkContextContent(props: WorkContextProps) {
             ? _(copy.originalMain)
             : _(copy.unavailable)
     if (props.workspaceSelection?.mode === "create") return _(copy.newWorktree)
+    if (props.workspaceSelection?.mode === "none") return _(locationCopy.noFiles)
+    if (props.workspaceSelection?.mode === "workspace") {
+      const selected = selectedDirectory()
+      return mainSelected()
+        ? _(copy.main)
+        : selected
+          ? (workspaceBranch(selected) ?? workspaceLabel(selected))
+          : _(copy.unavailable)
+    }
     return selectedWorkspace()?.branch ?? (selectedTree() ? getFilename(selectedTree()!) : _(copy.main))
   }
   const location = () =>
     [
       label(),
       props.workspaceSelection?.mode === "create" ? _(copy.onSend) : undefined,
-      actual()?.path ?? (selectedTree() ? selectedWorkspace()?.path : main()?.path),
+      actual()?.path ??
+        (props.workspaceSelection?.mode === "none"
+          ? undefined
+          : props.workspaceSelection?.mode === "workspace"
+            ? (selectedDirectory()?.binding.path ?? (mainSelected() ? main()?.path : undefined))
+            : selectedTree()
+              ? selectedWorkspace()?.path
+              : main()?.path),
     ]
       .filter(Boolean)
       .join("\n")
   const worktreeSelected = () =>
     actual()?.type === "git_worktree" ||
+    selectedDirectory()?.type === "git_worktree" ||
     props.workspaceSelection?.mode === "create" ||
     props.workspaceSelection?.mode === "existing"
   async function select(selection: SessionWorkspaceSelection) {
@@ -244,9 +269,12 @@ function WorkContextContent(props: WorkContextProps) {
         summary={_(copy.unsupported)}
         nativeFiles={!!actual()?.path || !!main()}
         profile={props.environmentProfile}
+        environmentID={props.environmentID}
+        mainWorkspaceID={props.directories?.mainWorkspaceID}
         onProfileChange={props.onEnvironmentProfileChange}
         onEnvironmentChange={props.onEnvironmentChange}
         selection={props.workspaceSelection}
+        onWorkspaceSelect={props.onSelect}
         groups={props.startOptions}
       />
     ))
@@ -366,7 +394,14 @@ function WorkContextContent(props: WorkContextProps) {
                     </small>
                   </span>
                   <span class="project-flow-check">
-                    <Show when={actual()?.path === tree.path || selectedTree() === tree.id}>
+                    <Show
+                      when={
+                        actual()?.path === tree.path ||
+                        selectedTree() === tree.id ||
+                        selectedDirectory()?.id === tree.id ||
+                        selectedDirectory()?.binding.path === tree.path
+                      }
+                    >
                       <Icon name={getSemanticIcon("state.success")} size="small" />
                     </Show>
                   </span>
