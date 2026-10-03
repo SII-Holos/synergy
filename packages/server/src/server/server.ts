@@ -117,16 +117,21 @@ export namespace Server {
     waitMs?: number
     onError?: (error: unknown) => void
   }): Promise<boolean> {
-    const providers = await Promise.race([
-      input.list().catch((error) => {
-        input.onError?.(error)
-        return undefined as Record<string, Provider.Info> | undefined
-      }),
-      new Promise<Record<string, Provider.Info> | undefined>((resolve) => {
-        setTimeout(() => resolve(undefined), input.waitMs ?? HEALTH_PROVIDER_WAIT_MS)
-      }),
-    ])
-    return Object.keys(providers ?? input.listSettled()).length > 0
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    try {
+      const providers = await Promise.race([
+        input.list().catch((error) => {
+          input.onError?.(error)
+          return undefined as Record<string, Provider.Info> | undefined
+        }),
+        new Promise<Record<string, Provider.Info> | undefined>((resolve) => {
+          timeout = setTimeout(() => resolve(undefined), input.waitMs ?? HEALTH_PROVIDER_WAIT_MS)
+        }),
+      ])
+      return Object.keys(providers ?? input.listSettled()).length > 0
+    } finally {
+      clearTimeout(timeout)
+    }
   }
 
   // Baseline Content-Security-Policy for SPA responses.
