@@ -541,6 +541,8 @@ Latest main-task context and cumulative accounting have separate provenance. Cat
 
 Layout version 2 persists resource references, tab order, activity, open/fullscreen preference, preferred dimensions and finite output visibility through the existing layout migration entry. Notes use Runtime, Scope and note identity; files retain Workspace and binding generation; browser tabs use Runtime, canonical server ownerKey and page identity. Shell visibility does not own resource lifetime. Domain controllers retain document baselines, save queues, drafts and reading/selection positions. Late requests and close callbacks validate the captured resource before applying to a reused tab.
 
+Workbench commits tab collections, active identity and open state in one Solid batch after resource creation or accepted closure. Restoration observes only the completed transition, so removal cannot allocate an intermediate resource or native page. Close guards retain the captured Session and resource identity while awaiting domain protection and reject duplicate in-flight closes.
+
 One Browser catalog and WebSocket per Runtime and Scope are reused across Sessions; Session catalogs are retained for historical/local-file pages. Catalog reads allocate no native page and background activity cannot change human selection. On a Session switch, the same catalog reconciles that Session’s stored tabs, including closures that arrived while it was inactive. Notes retain editor state across tab/view unmounts and keep dirty, mounted or undoable controllers during clean-cache eviction. Draft backup failure remains visible and protects unload until saved or durably backed up.
 
 ## File change settlement

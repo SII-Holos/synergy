@@ -183,7 +183,6 @@ function WorkbenchSortableTab(props: {
         "workbench-surface-tab--dragging": sortable.isActiveDraggable,
         "workbench-surface-tab--context": props.menuOpen,
       }}
-      title={props.title}
       onAuxClick={(event) => {
         if (event.button !== 1) return
         event.preventDefault()
@@ -201,6 +200,7 @@ function WorkbenchSortableTab(props: {
         class="workbench-surface-tab-main"
         aria-selected={props.active}
         aria-label={props.title}
+        title={props.title}
         tabIndex={props.active ? 0 : -1}
         onClick={props.onActivate}
         onKeyDown={(event) => {
@@ -229,6 +229,7 @@ function WorkbenchSortableTab(props: {
           message: W.closeTab.message,
           values: { title: props.title },
         })}
+        on:pointerdown={(event) => event.stopPropagation()}
         onClick={(event) => {
           event.stopPropagation()
           props.onClose()
