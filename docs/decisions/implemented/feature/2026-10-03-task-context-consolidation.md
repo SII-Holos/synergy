@@ -23,3 +23,5 @@ Sidebar rows retain the primary runtime status and add an independent worktree m
 ## Consequences
 
 Task entry stays quiet while contextual information remains reachable. The overlay owns navigation and focus; domain components retain their operation state. Longer paths wrap locally and never widen the chat. Mobile model labels and their tooltip wrappers shrink together, preserving separate hit targets for navigation and Task details at narrow widths. Related contracts remain in the [Web product specification](../../../../apps/web/PRODUCT.md).
+
+The workbench layout regression mounts the actual Task details overlay and checks Inbox bounds and return focus at desktop, tablet and phone widths. Toolbar fixtures supply workspace and inbox data through the current services instead of retaining the removed composer anchor. Packed plugin presentation acceptance expands the turn history and its activity group separately before checking contributed content.

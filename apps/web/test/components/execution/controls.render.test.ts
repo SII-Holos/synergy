@@ -27,10 +27,36 @@ await plugin({
 const i18n = setupI18n({ locale: "en", messages: { en: {} } })
 mock.module("@lingui/solid", () => ({ useLingui: () => ({ _: i18n._.bind(i18n), i18n: () => i18n }) }))
 mock.module("@ericsanchezok/synergy-ui/context/dialog", () => ({ useDialog: () => ({ show: () => {} }) }))
+mock.module("../../../src/context/locale", () => ({ useLocale: () => ({ i18n }) }))
+mock.module("../../../src/components/dialog/dialog-workspace", () => ({ DialogWorkspace: () => null }))
+mock.module("../../../src/components/dialog/dialog-environment", () => ({ DialogEnvironment: () => null }))
 
 const [sessionID, setSessionID] = createSignal("root")
 const [enabled, setEnabled] = createSignal(true)
 const [connected, setConnected] = createSignal(true)
+const initialResource = {
+  id: "root",
+  scope: { id: "project", type: "project", name: "Fixture project", local: { vcs: "git", directory: "/workspace" } },
+  workspace: { type: "git_worktree", path: "/workspace", bindingState: "bound", lifecycle: "active" },
+  environmentID: "env-a",
+}
+const [resource, setResource] = createSignal(initialResource)
+const resources: Array<{
+  kind: "environment" | "branch"
+  signal?: AbortSignal
+  resolve: (data: unknown) => void
+}> = []
+const deferResource = (kind: "environment" | "branch", signal?: AbortSignal) =>
+  new Promise((resolve) => resources.push({ kind, signal, resolve: (data) => resolve({ data }) }))
+mock.module("../../../src/context/sync", () => ({
+  useSync: () => ({
+    data: { workspaces: [], inbox: {}, session: [], message: {}, part: {} },
+    session: { get: resource },
+  }),
+}))
+mock.module("../../../src/context/session-data-view", () => ({
+  useSessionDataView: () => () => ({ inboxFor: () => [], messagesFor: () => [] }),
+}))
 const pending: Array<{
   sessionID: string
   signal?: AbortSignal
@@ -48,7 +74,7 @@ mock.module("@solidjs/router", () => ({
   }),
 }))
 mock.module("../../../src/context/global-sdk", () => ({
-  useGlobalSDK: () => ({ capabilities: { has: () => enabled() } }),
+  useGlobalSDK: () => ({ capabilities: { has: (capability: string) => capability !== "workflows" && enabled() } }),
 }))
 mock.module("../../../src/context/workbench", () => ({
   useWorkbenchPanels: () => ({ openPanel: (id: string, options: unknown) => opened.push({ id, options }) }),
@@ -63,7 +89,14 @@ mock.module("../../../src/context/sdk", () => ({
       },
     },
     client: {
+      environment: {
+        get: (_input: unknown, options: { signal?: AbortSignal }) => deferResource("environment", options.signal),
+      },
+      worktree: {
+        list: (_input: unknown, options: { signal?: AbortSignal }) => deferResource("branch", options.signal),
+      },
       session: {
+        inboxRemoved: async () => ({ data: [] }),
         executionSummary: (input: { sessionID: string }, options: { signal?: AbortSignal }) =>
           new Promise<{ data: ExecutionSummary }>((resolve, reject) => {
             pending.push({ ...input, signal: options.signal, resolve: (data) => resolve({ data }), reject })
@@ -75,6 +108,7 @@ mock.module("../../../src/context/sdk", () => ({
 
 const { ExecutionProvider, useExecution } = await import("../../../src/context/execution")
 const { TaskDetailsPopover } = await import("../../../src/components/execution/popover")
+const { SessionTaskDetails } = await import("../../../src/components/execution/session-task-details")
 const { EvidenceBlock } = await import("../../../src/components/execution/block")
 const { configureClipboard } = await import("@ericsanchezok/synergy-ui/clipboard")
 
@@ -188,6 +222,8 @@ afterEach(() => {
   setSessionID("root")
   setEnabled(true)
   setConnected(true)
+  setResource(initialResource)
+  resources.length = 0
 })
 
 test("snapshots cannot overwrite newer events, and reconnect cancels the previous request", async () => {
@@ -354,4 +390,49 @@ test("task details retain inbox ownership while navigating and survive summary f
   await flush()
   entry.click()
   expect(document.querySelector(".execution-inbox p")).toBe(content)
+})
+
+test("session task details load actual resources on demand and reject superseded workspace results", async () => {
+  setEnabled(false)
+  mount(() => createComponent(SessionTaskDetails, {}))
+  expect(resources).toHaveLength(0)
+  document.querySelector<HTMLButtonElement>(".execution-trigger")!.click()
+  await flush()
+  expect(resources.map((request) => request.kind).sort()).toEqual(["branch", "environment"])
+  expect(document.querySelector(".execution-location-path")?.textContent).toBe("/workspace")
+
+  setResource({
+    ...initialResource,
+    workspace: { ...initialResource.workspace, path: "/next" },
+    environmentID: "env-b",
+  })
+  await flush()
+  expect(resources).toHaveLength(4)
+  expect(resources.slice(0, 2).every((request) => request.signal?.aborted)).toBe(true)
+  for (const request of resources.slice(2))
+    request.resolve(
+      request.kind === "environment"
+        ? { provider: "Current runtime", state: "ready" }
+        : [{ path: "/next", branch: "current-branch" }],
+    )
+  await flush()
+  for (const request of resources.slice(0, 2))
+    request.resolve(
+      request.kind === "environment"
+        ? { provider: "Stale runtime", state: "ready" }
+        : [{ path: "/workspace", branch: "stale-branch" }],
+    )
+  await flush()
+  const overlay = document.querySelector(".execution-popover")!
+  expect(overlay.textContent).toContain("Fixture project")
+  expect(overlay.textContent).toContain("Current runtime")
+  expect(overlay.textContent).not.toContain("Stale runtime")
+  expect(document.querySelector(".execution-location-branch")?.textContent).toBe("current-branch")
+  expect(document.querySelector(".execution-location-path")?.textContent).toBe("/next")
+
+  document.querySelector<HTMLButtonElement>(".execution-inbox-entry")!.click()
+  await flush()
+  expect(document.querySelector(".session-inbox-panel")).not.toBeNull()
+  disposals.splice(0).forEach((dispose) => dispose())
+  expect(resources.every((request) => request.signal?.aborted)).toBe(true)
 })

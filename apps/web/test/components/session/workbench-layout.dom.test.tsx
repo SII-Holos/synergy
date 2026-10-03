@@ -5,6 +5,7 @@ import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solid from "vite-plugin-solid"
 import tailwind from "@tailwindcss/vite"
+import { lingui } from "@lingui/vite-plugin"
 
 let browser: Browser
 let page: Page
@@ -26,10 +27,18 @@ beforeAll(async () => {
   )
   await Bun.write(path.join(directory, "decision.tsx"), "export const SessionDecisionOutlet = () => null")
   await Bun.write(
+    path.join(directory, "execution.ts"),
+    `export const useExecution = () => ({ available: () => false, state: {} });
+     export const useParams = () => ({ id: "fixture" })`,
+  )
+  await Bun.write(
     path.join(directory, "main.tsx"),
     `
     import { createSignal, Show } from "solid-js"
     import { render } from "solid-js/web"
+    import { I18nProvider } from "@lingui/solid"
+    import { setupI18n } from "@lingui/core"
+    import { TaskDetailsPopover } from ${JSON.stringify(`/@fs/${source}/components/execution/popover.tsx`)}
     import { SidebarNavigation } from  ${JSON.stringify(`/@fs/${source}/components/sidebar/sidebar-navigation.tsx`)}
     import  ${JSON.stringify(`/@fs/${source}/components/sidebar/sidebar.css`)}
     import { DefaultShell } from ${JSON.stringify(`/@fs/${source}/plugin/default-shell.tsx`)}
@@ -57,11 +66,11 @@ beforeAll(async () => {
       const composer = { input: () => input, mount: dock.mount, ready: () => true, isNewSession: fresh,
         readOnly: () => false, isGlobal: () => true, pendingText: () => "", scopeName: () => "Home",
         branch: () => undefined, lastModified: () => undefined, links: () => [],
-        render: part => part === "status" ? <button data-status>Connection details</button> : part === "inbox" && !fresh() ? <div class="session-inbox-anchor"><button data-inbox style="width:36px;height:36px">Inbox</button></div> : null }
+        render: part => part === "status" ? <button data-status>Connection details</button> : null }
       return <div style="height:100dvh"><DefaultSession context={{layout: {
         minimumWidth: () => undefined, promptHeight: height,
         render: part => part === "composer" ? <PromptDock context={composer} /> : part === "conversation" ?
-          <div class="flex-1 min-h-0"><Show when={fresh()} fallback={<div class="session-conversation-content session-content-column" data-message>Reply</div>}>
+          <div class="flex-1 min-h-0"><Show when={!fresh()}><header class="stb-root" style="justify-content:flex-end"><div class="stb-right"><TaskDetailsPopover inboxCount={1} inbox={() => <div class="session-inbox-list"><div class="session-inbox-row" data-inbox>Queued follow-up</div></div>} /></div></header></Show><Show when={fresh()} fallback={<div class="session-conversation-content session-content-column" data-message>Reply</div>}>
             <div class="session-empty-view"><div class="session-content-column">{greeting()}</div></div>
           </Show></div> : null,
       }}} /></div>
@@ -79,24 +88,36 @@ beforeAll(async () => {
         <button data-shell-switch onClick={() => setCustom(true)} style="position:fixed;bottom:0;right:0">Switch Shell</button>
       </div>
     }
-    render(() => new URLSearchParams(location.search).has("chrome") ? <ChromeFixture /> : <App />, document.getElementById("root"))
+    const i18n = setupI18n({ locale: "en", messages: { en: {} } })
+    render(() => <I18nProvider i18n={i18n}>{new URLSearchParams(location.search).has("chrome") ? <ChromeFixture /> : <App />}</I18nProvider>, document.getElementById("root"))
   `,
   )
   server = await createServer({
     configFile: false,
     root: directory,
     cacheDir: path.join(directory, ".vite"),
-    plugins: [solid(), tailwind()],
+    plugins: [solid(), tailwind(), ...lingui()],
     resolve: {
       alias: [
         { find: /^\.\/decision-surface$/, replacement: path.join(directory, "decision.tsx") },
         { find: "@/context/platform", replacement: path.join(directory, "platform.ts") },
+        { find: "@/context/execution", replacement: path.join(directory, "execution.ts") },
+        { find: "@solidjs/router", replacement: path.join(directory, "execution.ts") },
         { find: "@", replacement: source },
       ],
     },
     optimizeDeps: {
       noDiscovery: true,
-      include: ["solid-js", "solid-js/web", "solid-js/jsx-runtime", "@solid-primitives/resize-observer", "zod"],
+      include: [
+        "solid-js",
+        "solid-js/web",
+        "solid-js/jsx-runtime",
+        "@solid-primitives/resize-observer",
+        "@lingui/core",
+        "@lingui/solid",
+        "fuzzysort",
+        "zod",
+      ],
     },
     server: { host: "127.0.0.1", port: 0, fs: { allow: [path.resolve(source, "../../..")] } },
   })
@@ -105,6 +126,8 @@ beforeAll(async () => {
   url = server.resolvedUrls!.local[0]!
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  page.setDefaultTimeout(5000)
+  page.setDefaultNavigationTimeout(30000)
   page.on("pageerror", (error) => errors.push(error.message))
 }, 60_000)
 
@@ -118,7 +141,15 @@ async function open(width = 1440, height = 900) {
   errors.length = 0
   await page.setViewportSize({ width, height })
   await page.goto(url)
-  await page.locator("[data-send]").waitFor()
+  await page
+    .locator("[data-send]")
+    .waitFor({ timeout: 5000 })
+    .catch((error) => {
+      throw new AggregateError(
+        [error, ...errors.map((message) => new Error(message))],
+        "Workbench fixture did not mount",
+      )
+    })
   expect(errors).toEqual([])
 }
 
@@ -136,7 +167,7 @@ test("new and existing tasks keep input actions without a reserved status footer
   const dock = await bounds(".session-prompt-dock-content")
   const input = await bounds(".prompt-input-shell")
   expect(Math.abs(dock.bottom - input.bottom)).toBeLessThanOrEqual(1)
-})
+}, 30_000)
 
 test("first send keeps the composer anchored and the editor mounted", async () => {
   await open()
@@ -156,13 +187,25 @@ test("first send keeps the composer anchored and the editor mounted", async () =
   expect(await page.locator('[role="textbox"]').count()).toBe(1)
 }, 20_000)
 
-test("inbox remains within a narrow chat pane and touch actions retain their hit area", async () => {
+test("task details contain the inbox on narrow panes and touch actions retain their hit area", async () => {
   for (const width of [1440, 768, 375]) {
     await open(width, 812)
     await page.locator("[data-send]").click()
+    await page.getByRole("button", { name: "Task details", exact: true }).click()
+    await page.locator(".execution-inbox-entry").click()
+    await page.locator("[data-inbox]").waitFor()
+    const popover = await bounds(".execution-popover")
     const inbox = await bounds("[data-inbox]")
-    expect(inbox.left).toBeGreaterThanOrEqual(0)
-    expect(inbox.right).toBeLessThanOrEqual(width)
+    expect(popover.left).toBeGreaterThanOrEqual(0)
+    expect(popover.right).toBeLessThanOrEqual(width)
+    expect(inbox.left).toBeGreaterThanOrEqual(popover.left)
+    expect(inbox.right).toBeLessThanOrEqual(popover.right)
+    await page.locator(".execution-inbox-back").click()
+    expect(await page.locator(".execution-inbox-entry").evaluate((element) => element === document.activeElement)).toBe(
+      true,
+    )
+    await page.keyboard.press("Escape")
+    await page.waitForFunction(() => document.activeElement?.classList.contains("execution-trigger"))
     if (width === 375) {
       const send = await bounds("[data-send]")
       expect(send.width).toBeGreaterThanOrEqual(44)

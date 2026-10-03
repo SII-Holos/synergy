@@ -125,5 +125,6 @@ render(
 globalThis.__projectionMemoizationHarness = {
   setStreamText: (text) => setStore("part", streamID, 0, "text", text),
   setSessionStatus: (status) => setRuntimeState("status", sessionID, status),
+  completeStream: () => setStore("message", sessionID, 2, "time", "completed", 5),
   getToolLookups: () => toolLookups,
 }

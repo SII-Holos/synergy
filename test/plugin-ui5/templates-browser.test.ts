@@ -45,6 +45,7 @@ test("all eight packed templates register and their contributed presentations mo
     await page.goto(conversation.url)
     await page.locator('[data-plugin-ui="sample-slot"]').waitFor()
     await page.locator('[data-slot="turn-process-trigger"]').click()
+    await page.locator('[data-slot="activity-batch-trigger"]').click()
     await page.locator('[data-plugin-ui="sample-tool-ui"]').waitFor()
     await page.getByRole("button", { name: /open side workspace/i }).click()
     await page.getByRole("button", { name: /sample-workbench-panel/ }).click()

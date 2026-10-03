@@ -64,7 +64,7 @@ export function TaskDetailsPopover(props: {
             aria-expanded={open()}
             data-state={execution.state.summary?.status}
           >
-            <Icon name={getSemanticIcon("session.taskDetails")} size="normal" />
+            <Icon name={getSemanticIcon("session.taskDetails")} size="small" />
             <Show when={props.inboxCount}>
               <span class="execution-trigger-count">{props.inboxCount}</span>
             </Show>
@@ -101,7 +101,7 @@ export function TaskDetailsPopover(props: {
               <span>{_(S.inboxTitle)}</span>
               <span>
                 {props.inboxCount || ""}
-                <Icon name="chevron-right" size="small" />
+                <Icon name={getSemanticIcon("navigation.expand")} size="small" />
               </span>
             </button>
           </Show>
