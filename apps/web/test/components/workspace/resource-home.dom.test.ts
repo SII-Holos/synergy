@@ -30,6 +30,11 @@ interface ResourceHomeWindow extends Window {
     tabs(): WorkbenchPanelTab[]
     open(panelId: string): Promise<void>
     close(tabId: string): Promise<void>
+    active(): string | undefined
+    opened(): boolean
+    protect(tabId: string): void
+    settleClose(allow: boolean): void
+    closing: string[]
     created: string[]
     loaded: string[]
   }
@@ -39,7 +44,7 @@ beforeAll(async () => {
   directory = await mkdtemp(path.join(import.meta.dir, ".resource-home-fixture-"))
   await Bun.write(
     path.join(directory, "index.html"),
-    '<div id="root" class="synergy-workbench-canvas"></div><script type="module" src="/main.tsx"></script>',
+    '<!doctype html><div id="root" class="synergy-workbench-canvas"></div><script type="module" src="/main.tsx"></script>',
   )
   await Bun.write(
     path.join(directory, "services.ts"),
@@ -106,9 +111,15 @@ beforeAll(async () => {
     function Fixture() {
       const workbench = useWorkbenchPanels()
       const navigate = useNavigate()
+      const closing = []
+      let settleClose
       window.fixture = { register, remove: id => disposers.get(id)?.(), created, loaded,
         session: present => navigate("/home/session" + (present ? "/task" : "")),
         tabs: () => workbench.surface("side").tabs(),
+        active: () => workbench.surface("side").active(),
+        opened: () => workbench.surface("side").opened(),
+        closing, protect: tabId => workbench.beforeClose(tabId, () => { closing.push(tabId); return new Promise(resolve => { settleClose = resolve }) }),
+        settleClose: allow => settleClose?.(allow),
         open: async panelId => { await workbench.openPanel(panelId, { forceNew: true }) },
         close: async tabId => { await workbench.closeTab(tabId) } }
       return <div style="height:100dvh;position:relative"><WorkbenchSurface surface="side" /></div>
@@ -265,6 +276,162 @@ test("choosing a registered card fills the captured empty tab and singleton choi
   await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.close("empty"))
   expect(await cards().allTextContents()).toEqual(labels)
 })
+
+test("closing the final resource removes it and collapses without creating a replacement tab", async () => {
+  await cards().getByText("Context", { exact: true }).click()
+  await page.getByText("Context content", { exact: true }).waitFor()
+  await page.getByRole("button", { name: "Close Context", exact: true }).click()
+  await page.waitForFunction(() => !(window as unknown as ResourceHomeWindow).fixture.opened())
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.tabs())).toEqual([])
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.active())).toBeUndefined()
+  expect(await page.getByRole("tab").count()).toBe(0)
+})
+
+test("closing an active resource selects its surviving neighbor without adding a new tab", async () => {
+  await cards().getByText("Context", { exact: true }).click()
+  await page.getByText("Context content", { exact: true }).waitFor()
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.open("file"))
+  await page.getByText("Files content", { exact: true }).waitFor()
+  await page.getByRole("button", { name: "Close Files", exact: true }).click()
+  await page.getByText("Context content", { exact: true }).waitFor()
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.tabs())).toMatchObject([
+    { id: "empty", panelId: "context" },
+  ])
+  expect(await page.getByRole("tab", { name: "New tab", exact: true }).count()).toBe(0)
+  expect(await page.getByRole("tab", { name: "Context", exact: true }).getAttribute("aria-selected")).toBe("true")
+})
+
+test("a held pointer on the close button stays a close interaction rather than a tab drag", async () => {
+  await cards().getByText("Context", { exact: true }).click()
+  await page.getByText("Context content", { exact: true }).waitFor()
+  const close = page.getByRole("button", { name: "Close Context", exact: true })
+  const box = (await close.boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.waitForTimeout(300)
+  expect(await page.locator(".workbench-surface-tab--dragging").count()).toBe(0)
+  await page.mouse.up()
+  await page.waitForFunction(() => !(window as unknown as ResourceHomeWindow).fixture.opened())
+})
+
+test("a protected close stays pending once and leaves other resource choices intact", async () => {
+  await cards().getByText("Context", { exact: true }).click()
+  await page.getByText("Context content", { exact: true }).waitFor()
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.protect("empty"))
+  const close = page.getByRole("button", { name: "Close Context", exact: true })
+  await close.click()
+  await close.click()
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.closing)).toEqual(["empty"])
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.open("file"))
+  await page.getByText("Files content", { exact: true }).waitFor()
+  const active = await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.active())
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.settleClose(true))
+  await close.waitFor({ state: "detached" })
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.tabs())).toMatchObject([
+    { panelId: "file" },
+  ])
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.active())).toBe(active)
+  expect(await page.getByRole("tab", { name: "New tab", exact: true }).count()).toBe(0)
+})
+
+test("cancelling close preserves the resource and a later accepted retry removes it once", async () => {
+  await cards().getByText("Context", { exact: true }).click()
+  await page.getByText("Context content", { exact: true }).waitFor()
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.protect("empty"))
+  const close = page.getByRole("button", { name: "Close Context", exact: true })
+  await close.click()
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.settleClose(false))
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.tabs())).toMatchObject([
+    { id: "empty", panelId: "context" },
+  ])
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.opened())).toBe(true)
+  await close.click()
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.closing)).toEqual([
+    "empty",
+    "empty",
+  ])
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.settleClose(true))
+  await page.waitForFunction(() => !(window as unknown as ResourceHomeWindow).fixture.opened())
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.tabs())).toEqual([])
+})
+
+test("inactive close and concurrent closes preserve exactly the surviving active resource", async () => {
+  await cards().getByText("Context", { exact: true }).click()
+  await page.getByText("Context content", { exact: true }).waitFor()
+  await page.evaluate(async () => {
+    const fixture = (window as unknown as ResourceHomeWindow).fixture
+    await fixture.open("file")
+    await fixture.open("notes")
+  })
+  await page.getByText("Notes content", { exact: true }).waitFor()
+  const active = await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.active())
+  await page.getByRole("tab", { name: "Context", exact: true }).hover()
+  await page.getByRole("button", { name: "Close Context", exact: true }).click()
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.active())).toBe(active)
+  expect(await page.getByRole("tab").allTextContents()).toEqual(["Files", "Notes"])
+  await page.evaluate(async () => {
+    const fixture = (window as unknown as ResourceHomeWindow).fixture
+    await Promise.all(fixture.tabs().map((tab) => fixture.close(tab.id)))
+  })
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.tabs())).toEqual([])
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.opened())).toBe(false)
+})
+
+test("a deferred close remains bound to its original session after navigation", async () => {
+  await cards().getByText("Context", { exact: true }).click()
+  await page.getByText("Context content", { exact: true }).waitFor()
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.protect("empty"))
+  await page.getByRole("button", { name: "Close Context", exact: true }).click()
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.session(false))
+  await page.getByRole("heading", { name: "New tab", exact: true }).waitFor()
+  const current = await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.tabs())
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.settleClose(true))
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.tabs())).toEqual(current)
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.opened())).toBe(true)
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.session(true))
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.tabs())).toEqual([])
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.opened())).toBe(false)
+})
+
+test("the tab body still supports drag reordering while its close button does not", async () => {
+  await cards().getByText("Context", { exact: true }).click()
+  await page.getByText("Context content", { exact: true }).waitFor()
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.open("file"))
+  await page.getByText("Files content", { exact: true }).waitFor()
+  const first = (await page.getByRole("tab", { name: "Context", exact: true }).boundingBox())!
+  const second = (await page.getByRole("tab", { name: "Files", exact: true }).boundingBox())!
+  await page.mouse.move(first.x + 16, first.y + first.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(second.x + second.width / 2, second.y + second.height / 2, { steps: 10 })
+  expect(await page.locator(".workbench-surface-tab--dragging").count()).toBe(1)
+  await page.mouse.up()
+  expect(
+    await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.tabs().map((tab) => tab.panelId)),
+  ).toEqual(["file", "context"])
+  expect(await page.getByRole("tab", { name: "Files", exact: true }).getAttribute("aria-selected")).toBe("true")
+})
+
+for (const colorScheme of ["light", "dark"] as const) {
+  test(`close buttons retain a distinct ${colorScheme} hover surface and stable hit area`, async () => {
+    await page.emulateMedia({ colorScheme })
+    await cards().getByText("Context", { exact: true }).click()
+    await page.getByText("Context content", { exact: true }).waitFor()
+    const tab = page.locator(".workbench-surface-tab").first()
+    const close = tab.getByRole("button", { name: "Close Context", exact: true })
+    const original = await close.boundingBox()
+    await tab.getByRole("tab").hover()
+    await close.hover()
+    const paint = await close.evaluate((element) => ({
+      close: getComputedStyle(element).backgroundColor,
+      tab: getComputedStyle(element.parentElement!).backgroundColor,
+    }))
+    expect(paint.close).not.toBe(paint.tab)
+    expect(paint.close).not.toBe("rgba(0, 0, 0, 0)")
+    expect(await close.boundingBox()).toEqual(original)
+    expect(original!.width).toBe(24)
+    expect(original!.height).toBe(24)
+  })
+}
 
 for (const colorScheme of ["light", "dark"] as const) {
   test(`many resource cards stay reachable in narrow and short ${colorScheme} layouts`, async () => {

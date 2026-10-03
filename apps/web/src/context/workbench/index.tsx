@@ -4,7 +4,7 @@ import { useLocale } from "@/context/locale"
 import { createWorkspaceRevealPolicy } from "./reveal-policy"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import { createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { batch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useLayout } from "../layout"
@@ -215,11 +215,13 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         active: replacement?.id ?? target.active(),
       })
 
-      target.setTabs(next.tabs)
-      if (options.activate !== false) {
-        target.setActive(next.active)
-        target.open()
-      } else if (!target.active()) target.setActive(next.active)
+      batch(() => {
+        target.setTabs(next.tabs)
+        if (options.activate !== false) {
+          target.setActive(next.active)
+          target.open()
+        } else if (!target.active()) target.setActive(next.active)
+      })
       return next.tabs.find((tab) => tab.id === next.active)
     }
 
@@ -238,9 +240,11 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         if ((await getWorkbenchPanel(tab.panelId)?.onCloseTab?.(tab)) === false) return false
         if (!stillCurrent()) return false
         const next = closeWorkbenchPanelTab(target.tabs(), target.active(), tabId)
-        target.setTabs(next.tabs)
-        target.setActive(next.active)
-        if (!next.tabs.length) target.close()
+        batch(() => {
+          target.setTabs(next.tabs)
+          target.setActive(next.active)
+          if (!next.tabs.length) target.close()
+        })
         return true
       } finally {
         closeGuard.end(guardKey)
