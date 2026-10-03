@@ -202,7 +202,7 @@ export const ConnectedModelManager: Component<{
       search={{ placeholder: _(searchModelsPlaceholder), autofocus: props.searchAutofocus }}
       emptyMessage={_(noConnectedLabel)}
       key={(x) => `${x.provider.id}:${x.id}`}
-      items={models}
+      items={models()}
       current={currentModel()}
       interactive={selectable()}
       filterKeys={["provider.name", "name", "id"]}
