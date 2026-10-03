@@ -8,7 +8,7 @@ The newest-first message reader uses individual reads before switching to bounde
 
 ## Decision
 
-Only `Storage.NotFoundError` is skipped during individual message reads. Other failures propagate with their original identity. A reader may skip a message deleted after it captured the chronology index; storage availability and integrity failures cannot certify a complete result.
+Only `Storage.NotFoundError` is skipped during individual message-info reads. Other failures, including part hydration failures, propagate with their original identity. A reader may skip a message deleted after it captured the chronology index; storage availability and integrity failures cannot certify a complete result. Missing parts after a concurrent deletion naturally produce an empty part list without concealing failed reads.
 
 ## Alternatives considered
 
@@ -18,4 +18,4 @@ Only `Storage.NotFoundError` is skipped during individual message reads. Other f
 
 ## Consequences
 
-History consumers can observe and handle storage failures instead of receiving an apparently successful incomplete history. Message formats, index ownership and missing-record behavior remain unchanged; no migration is required. SQLite and PostgreSQL regressions verify first, later individual and batch failures, actual deletion during iteration, chronological streaming and cursor pagination.
+History consumers can observe and handle storage failures instead of receiving an apparently successful incomplete history. Message formats, index ownership and missing-record behavior remain unchanged; no migration is required. SQLite and PostgreSQL regressions verify first, later individual and batch failures, part hydration failures, actual deletion during iteration, chronological streaming and cursor pagination.

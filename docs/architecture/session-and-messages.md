@@ -210,6 +210,8 @@ The LLM loop uses a compaction-aware read boundary instead of materializing the 
 
 Part hydration is bounded on every read path. Full-history model loading resolves its selected set first, then hydrates parts through the same declared concurrency window pagination uses, so hydration cost is independent of how many messages a session holds. This matters because the authoritative storage queue rejects rather than waits once its depth is reached, and it is shared process-wide: an unbounded fan-out on one large session would otherwise fail that session's own turns and starve every other session's reads.
 
+Newest-first streaming propagates message-info and part hydration failures. Only a missing message-info record after the chronology snapshot may be skipped; an unavailable or corrupt record cannot be presented as a successfully loaded history with evidence omitted.
+
 Downstream loop, compaction, history, and frontend code read canonical fields. They must not recreate the retired metadata heuristics.
 
 When a paginated result contains a non-root message whose root lies outside the page, session history loading adds the missing root record so consumers do not lose task identity.

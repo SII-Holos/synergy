@@ -118,6 +118,47 @@ for (const backend of storageTestBackends()) {
       )
     }
 
+    for (const offset of [0, 4]) {
+      test(
+        `preserves part hydration failures at message ${offset + 1}`,
+        () =>
+          withMessages(backend, async ({ scopeID, sessionID, newestIDs }) => {
+            const fault =
+              offset === 0
+                ? new StorageUnavailableError("Synthetic part read failure")
+                : new StorageIntegrityError("Synthetic part integrity failure")
+            const records = Storage.records
+            let hits = 0
+            using partRead = spyOn(Storage, "records").mockImplementation(async function* <T>(input) {
+              for await (const record of records<T>(input)) {
+                if (input?.kind === "part" && input.messageID === newestIDs[offset]) {
+                  hits++
+                  throw fault
+                }
+                yield record
+              }
+            })
+            const stream = MessageV2.stream({ scopeID, sessionID })
+            try {
+              for (let index = 0; index < offset; index++) {
+                expect((await stream.next()).value?.info.id).toBe(newestIDs[index])
+              }
+              const result = await stream.next().then(
+                (value) => ({ value, error: undefined }),
+                (error: unknown) => ({ value: undefined, error }),
+              )
+              expect(hits).toBe(1)
+              expect(result.error).toBe(fault)
+              expect(result.value).toBeUndefined()
+              expect((await stream.next()).done).toBe(true)
+            } finally {
+              await stream.return()
+            }
+          }),
+        30_000,
+      )
+    }
+
     test(
       "skips messages deleted after the order snapshot in single and batch reads",
       () =>
