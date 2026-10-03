@@ -18,6 +18,8 @@ Preparation installs dependencies, generates OpenAPI/SDK artifacts, builds the p
 
 Linux preparation also requires Docker to build the pinned Parcel watcher with its EINTR fix. After updating a Linux source checkout, run `bun dev prepare` before starting the new runtime; an old unpatched watcher binding is rejected. The same verified binding builder supplies release assets for glibc and musl.
 
+macOS Desktop builds prepare the native Computer driver through `desktop:prepare-computer`. This reports build-input and cache checks, source download and validation, patching, toolchain preparation, each architecture build, universal-driver validation and publication. Each phase appears before its work begins and reports elapsed time every five seconds while pending. Download status includes received MiB and the latest interval's transfer rate; a percentage appears only when a reliable response size is available. Verified driver and source caches report reuse, and a driver rebuild reports its cache rejection reason. Status uses newline-terminated stderr messages so direct execution, `bun dev` forwarding and CI capture the same output alongside native compiler logs. Waiting messages indicate that an operation has not settled; they do not prove forward progress or extend existing timeouts. Successful preparation reports total elapsed time after saving the executable and build receipt. Ordinary `bun dev prepare` does not prepare this Desktop-only driver.
+
 ## Development Modes
 
 ```bash
