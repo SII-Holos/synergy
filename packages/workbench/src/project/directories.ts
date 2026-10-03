@@ -29,6 +29,7 @@ export namespace ProjectDirectories {
       path: z.string(),
       available: z.boolean(),
       git: z.boolean(),
+      unavailable: WorkspaceCatalog.Unavailable.Schema.optional(),
     })
     .meta({ ref: "ProjectFolder" })
   export const Result = Record.extend({ folders: z.array(Folder) }).meta({ ref: "ProjectDirectories" })
@@ -234,11 +235,29 @@ export namespace ProjectDirectories {
     const records = await WorkspaceCatalog.readMany(ids)
     const folders = await Promise.all(
       records.map(async (item, index) => {
-        if (!item) return { workspaceID: ids[index]!, generation: 1, path: "", available: false, git: false }
+        if (!item)
+          return {
+            workspaceID: ids[index]!,
+            generation: 1,
+            path: "",
+            available: false,
+            git: false,
+            unavailable: new WorkspaceCatalog.Unavailable({
+              workspaceID: ids[index]!,
+              message: "The project folder binding is unavailable",
+              reason: "binding_unavailable",
+            }).toObject(),
+          }
         const directory = item.binding.path ?? ""
+        let unavailable: z.infer<typeof WorkspaceCatalog.Unavailable.Schema> | undefined
         const available = await WorkspaceBinding.validate(item.id, record.scopeID).then(
           () => true,
-          () => false,
+          (error: unknown) => {
+            const parsed = WorkspaceCatalog.Unavailable.Schema.safeParse(error)
+            if (!parsed.success) throw error
+            unavailable = parsed.data
+            return false
+          },
         )
         return {
           workspaceID: item.id,
@@ -246,6 +265,7 @@ export namespace ProjectDirectories {
           path: directory,
           available,
           git: available && (await isGit(directory)),
+          ...(unavailable ? { unavailable } : {}),
         }
       }),
     )
