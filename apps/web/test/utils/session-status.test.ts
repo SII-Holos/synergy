@@ -1,11 +1,24 @@
 import { describe, expect, test } from "bun:test"
 import type { SessionStatus } from "@ericsanchezok/synergy-sdk"
-import { classifySessionActivity, isPausedStatus, isWorkingStatus } from "../../src/utils/session-status"
+import {
+  classifySessionActivity,
+  isPausedStatus,
+  isWorkingStatus,
+  resolveSessionStatus,
+  sessionStatusFromWorking,
+} from "../../src/utils/session-status"
 
 const idle: SessionStatus = { type: "idle" }
 const busy: SessionStatus = { type: "busy" }
 const retry: SessionStatus = { type: "retry", attempt: 1, message: "rate limited", next: 100 }
 const paused: SessionStatus = { type: "paused", reason: "interrupted", since: 1 }
+
+test("a working snapshot preserves current activity through status projection and reload", () => {
+  const activity = { phase: "responding" as const, startedAt: 100, rootID: "root" }
+  const working = { status: "busy" as const, activity }
+  expect(sessionStatusFromWorking(working)).toEqual({ type: "busy", activity })
+  expect(resolveSessionStatus({ runtimeStatus: idle, working })).toEqual({ type: "busy", activity })
+})
 
 describe("isWorkingStatus", () => {
   test("counts only busy and retry as working", () => {

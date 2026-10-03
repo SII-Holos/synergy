@@ -30,6 +30,9 @@ const layouts = new WeakMap<
 >()
 
 type ProcessControls = {
+  submissionFor?: (
+    rootID: string,
+  ) => { activity?: import("@ericsanchezok/synergy-sdk").SessionActivity; failed: boolean } | undefined
   executionFor?: (rootID: string) => TurnExecutionState | undefined
   onRestoreChanges?: (messageID: string) => void
 }
@@ -70,10 +73,13 @@ export function VirtualConversationRows(
         .turnProjection()
         .turnMessagesFor(root)
         .findLast((message) => message.role === "assistant")
-      const working = state
-        ? ["preparing", "running", "approval"].includes(state.status) ||
-          (state.status === "completed" && !!last?.working && final?.time.completed == null)
-        : root.id === props.lastUserMessage()?.id && props.isWorking()
+      const submission = input.submissionFor?.(root.id)
+      const working = submission
+        ? !submission.failed
+        : state
+          ? ["preparing", "running", "approval"].includes(state.status) ||
+            (state.status === "completed" && !!last?.working && final?.time.completed == null)
+          : root.id === props.lastUserMessage()?.id && props.isWorking()
       const reading =
         props.scrolledUp() ||
         interactionRoots().includes(root.id) ||
@@ -364,6 +370,7 @@ export function VirtualConversationRows(
                   row={row}
                   onExit={finishExit}
                   activityView={activityView}
+                  submissionFor={input.submissionFor}
                   executionFor={input.executionFor}
                   onRestoreChanges={input.onRestoreChanges}
                   onReading={(key, reading) =>
@@ -677,6 +684,7 @@ function ConversationDisplayRow(
                     compactionParentIDs={props.turnProjection().compactionParentIDs}
                     activityDisplay={props.activityDisplay()}
                     activityView={input.activityView}
+                    submission={input.submissionFor?.(row().root.id)}
                     executionState={input.executionFor?.(row().root.id)}
                     following={!props.scrolledUp()}
                     lastUserMessageID={props.lastUserMessage()?.id}
@@ -740,6 +748,7 @@ function ConversationDisplayRow(
                 row={row}
                 activityView={input.activityView}
                 onReading={input.onReading}
+                submissionFor={input.submissionFor}
                 executionFor={input.executionFor}
                 onRestoreChanges={input.onRestoreChanges}
               />
@@ -947,6 +956,7 @@ function ConversationActivityBody(
                 row={row}
                 activityView={input.activityView}
                 onExit={() => {}}
+                submissionFor={input.submissionFor}
                 executionFor={input.executionFor}
                 onRestoreChanges={input.onRestoreChanges}
               />

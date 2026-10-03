@@ -181,13 +181,13 @@ test("segmented turns share a single process entrance and preserve the answer wh
   expect(document.contains(answer)).toBe(true)
 })
 
-test("a virtual process header does not announce provider waiting after narrative content arrives", async () => {
+test("a virtual process header without phase evidence uses neutral activity after narrative content arrives", async () => {
   harness.move(3)
   harness.setSegmented(true)
   await waitForUpdate()
   expect(trigger().textContent).not.toContain("Waiting for response")
   expect(trigger().textContent).not.toContain("Awaiting response")
-  expect(trigger().textContent).toContain("Working")
+  expect(trigger().textContent).toContain("Processing task")
 })
 
 test("segmented completed compaction renders once in its owning body without phantom running footer cards", async () => {

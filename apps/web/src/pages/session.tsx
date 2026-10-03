@@ -19,7 +19,7 @@ import {
 } from "@/components/session/prompt-dock-model"
 import { S } from "@/components/session/session-i18n"
 import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
-import { SessionTransitionCard } from "@/components/session/session-transition-card"
+import { SessionSubmissionStatus } from "@/components/session/session-submission-status"
 import { SessionSubmissionPreview } from "@/components/session/session-submission-preview"
 import { HostView } from "@/plugin/host-view"
 import type { PluginSessionService, PluginSessionLayoutService } from "@ericsanchezok/synergy-plugin"
@@ -695,7 +695,6 @@ function SessionPageContent() {
       sessionID,
       createSessionTransitionHandoffErrorProgress({
         kind: accepted.kind,
-        steps: accepted.steps,
         error,
       }),
       {
@@ -795,7 +794,7 @@ function SessionPageContent() {
           setSessionTransition(
             sessionID,
             {
-              ...createSessionTransitionHandoffErrorProgress({ kind: accepted.kind, steps: accepted.steps }),
+              ...createSessionTransitionHandoffErrorProgress({ kind: accepted.kind }),
               description: S.transitionDescCancelled,
             },
             { dismiss: () => dismissSessionTransitionHandoff(sessionID, handoff.messageID) },
@@ -803,15 +802,18 @@ function SessionPageContent() {
           )
           return
         }
-        const description =
+        const phase =
           status.state === "queued_storage"
-            ? S.transitionDescStorage
+            ? "queued_storage"
             : status.state === "retrying"
-              ? S.transitionDescRetrying
-              : Date.now() - (handoff.acceptedAt ?? Date.now()) >= SESSION_TRANSITION_HANDOFF_TIMEOUT_MS
-                ? S.transitionDescDelayed
-                : S.transitionDescInitializing
-        setSessionTransition(sessionID, { ...accepted, description }, undefined, handoff)
+              ? "retrying_input"
+              : "materializing_input"
+        setSessionTransition(
+          sessionID,
+          { ...accepted, activity: { phase, startedAt: accepted.activity?.startedAt ?? Date.now() } },
+          undefined,
+          handoff,
+        )
       }
       const stop = observeSessionInput({
         read: (signal) => recoverSessionInputReceipt(sdk.client, { sessionID, messageID: handoff.messageID }, signal),
@@ -826,7 +828,7 @@ function SessionPageContent() {
             const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
             setSessionTransition(
               sessionID,
-              { ...accepted, description: S.transitionDescReconnecting },
+              { ...accepted, activity: { phase: "reconnecting", startedAt: Date.now() } },
               undefined,
               handoff,
             )
@@ -837,7 +839,7 @@ function SessionPageContent() {
           const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
           setSessionTransition(
             sessionID,
-            { ...accepted, description: S.transitionDescReconnecting },
+            { ...accepted, activity: { phase: "reconnecting", startedAt: Date.now() } },
             undefined,
             handoff,
           )
@@ -1965,16 +1967,24 @@ function SessionPageContent() {
     onFirstTurnMounted: () => navMark({ dir: params.dir!, to: params.id!, name: "session:first-turn-mounted" }),
     canRewind: messageAllowsCanonicalActions,
     transition: () => (
-      <Show when={visibleSessionTransition()}>
-        {(progress) => (
-          <div class="w-full min-w-0 px-3 md:px-1">
-            <SessionTransitionCard
-              progress={progress()}
-              onRetry={visibleSessionTransitionActions()?.retry}
-              onDismiss={visibleSessionTransitionActions()?.dismiss}
-            />
-          </div>
-        )}
+      <Show when={visibleSessionTransitionEntry()}>
+        {(entry) => {
+          const rootID = () => entry().handoff?.messageID ?? entry().draft?.messageID
+          return (
+            <div class="w-full min-w-0 px-3 md:px-1">
+              <SessionSubmissionStatus
+                entry={entry()}
+                hideLoading={rootMessages().some((root) => root.id === rootID())}
+                hideError={messages().some(
+                  (message) =>
+                    message.role === "assistant" &&
+                    (message.rootID ?? message.parentID) === rootID() &&
+                    !!message.error,
+                )}
+              />
+            </div>
+          )
+        }}
       </Show>
     ),
   }
@@ -2090,7 +2100,7 @@ function SessionPageContent() {
             <Match
               when={
                 visibleSessionTransitionEntry()?.draft &&
-                visibleSessionTransition()?.phase === "loading" &&
+                visibleSessionTransition()?.phase !== "success" &&
                 messages().length === 0 &&
                 pendingTimeline().length === 0
               }
