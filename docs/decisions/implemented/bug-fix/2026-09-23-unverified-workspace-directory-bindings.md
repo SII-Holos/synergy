@@ -12,7 +12,7 @@ A legacy directory can be absent when its Workspace reference is migrated. The c
 
 The Workspace chooser applies the same verified-identity requirement to selection and sharing. A retained `bound` path without a physical identity remains visible for explicit rebinding; successful rebinding enables selection with the new generation.
 
-Implicit Scope context resolves an existing default Workspace through the host-qualified location index. It describes the saved binding without registering the directory again. Missing registrations retain the ordinary initial migration path. Explicit registration, selection and native validation remain separate operations, so opening history cannot replace the stored physical identity or binding generation.
+Implicit Scope context resolves an existing default Workspace through the host-qualified location index. It describes the saved binding without registering the directory again. When the saved path is an alias absent from the index, host inspection supplies its canonical path for a second lookup; the inspected physical identity does not update the saved binding. Missing registrations retain the ordinary initial migration path. Explicit registration, selection and native validation remain separate operations, so opening history cannot replace the stored physical identity or binding generation.
 
 ## Alternatives considered
 
@@ -28,4 +28,4 @@ Implicit Scope context resolves an existing default Workspace through the host-q
 
 Users explicitly rebind locations that could not be verified during migration. Existing verified bindings and no-Workspace Sessions retain their behavior. No persisted schema rewrite or opportunistic backfill is needed: admission checks protect already persisted unresolved records. The [incident record](../../../postmortem/0028-unverified-workspace-directory-access.md) and the native route regression cover absent paths, repeated registration, explicit rebind, stale generations and replacement after verification.
 
-The [history-read incident](../../../postmortem/0036-directory-replacement-blocked-history.md) adds mounted HTTP coverage for historical messages, bootstrap and path metadata while preserving file-access refusal.
+The [history-read incident](../../../postmortem/0036-directory-replacement-blocked-history.md) adds mounted HTTP coverage for historical messages, bootstrap and path metadata through direct and symbolic-link project paths while preserving file-access refusal.

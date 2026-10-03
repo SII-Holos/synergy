@@ -301,7 +301,7 @@ Use [Development reference](../../../docs/reference/development.md) and [Open-so
 
 Directory-identity changes require a real OverlayFS copy-up check as well as ordinary temporary-directory tests. A newly created temporary directory already lives in the upper layer and cannot reproduce first-write metadata changes in an image's lower-layer directory. Keep catalog and coordinator identity checks on the same native primitive.
 
-When testing unavailable or replaced project directories, exercise historical Session reads, Scope bootstrap and path metadata through the mounted HTTP middleware as well as file-access refusal. Verify that metadata reads preserve the saved physical identity and generation; successful migrations and direct domain reads do not establish that the application can reopen history.
+When testing unavailable or replaced project directories, exercise historical Session reads, Scope bootstrap and path metadata through the mounted HTTP middleware as well as file-access refusal. Include projects opened through a symbolic link or directory junction: Scope paths and canonical catalog locations can differ. Verify that metadata reads preserve the saved physical identity and generation; successful migrations and direct domain reads do not establish that the application can reopen history.
 
 ## Handoff
 

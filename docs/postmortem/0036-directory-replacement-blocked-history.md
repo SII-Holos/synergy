@@ -14,12 +14,12 @@ On 2026-10-03, isolated upgrade acceptance detected the history failures after s
 
 ## Root cause
 
-Implicit Scope context shared the adoption path used for initial Workspace registration. Re-entering a project Scope therefore compared its current physical directory with the saved binding. Existing route tests verified rejection of replacement file access but did not check metadata reads through the full request middleware after the default directory changed.
+Implicit Scope context shared the adoption path used for initial Workspace registration. Re-entering a project Scope therefore compared its current physical directory with the saved binding. Existing route tests verified rejection of replacement file access but did not check metadata reads through the full request middleware after the default directory changed. A Scope opened through a symbolic link can retain that alias while registration indexes the canonical path; lookup must account for that difference without adopting the replacement identity.
 
 ## Guardrails added
 
 - [Catalog description](../decisions/implemented/bug-fix/2026-09-23-unverified-workspace-directory-bindings.md) preserves saved identity during implicit Scope setup.
-- [Mounted HTTP regression](../../packages/server/test/server/workspace-selection.test.ts) checks historical text, bootstrap, path metadata, snapshot headers, foreign Scope refusal and replacement-file rejection.
+- [Mounted HTTP regression](../../packages/server/test/server/workspace-selection.test.ts) checks historical text, bootstrap, path metadata, snapshot headers, foreign Scope refusal and replacement-file rejection through direct and symbolic-link project paths.
 - [Testing guidance](../../.synergy/skill/testing-guide/SKILL.md) requires historical-read checks alongside unavailable-directory admission checks.
 
 ## Lessons

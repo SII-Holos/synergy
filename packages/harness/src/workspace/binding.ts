@@ -57,12 +57,18 @@ export namespace WorkspaceBinding {
     const workspace = ScopeContext.defaultWorkspace(scope)
     const source = RuntimeContext.current().host.workspaceLocation
     if (workspace && source) {
-      const existing = await WorkspaceCatalog.findByLocation({
+      const location = {
         scopeID: scope.id,
         hostID: await source.hostID(),
         path: path.resolve(workspace.path),
-      })
+      }
+      const existing = await WorkspaceCatalog.findByLocation(location)
       if (existing) return WorkspaceCatalog.projection(existing)
+      const canonical = await source.identify(location.path, true)
+      if (canonical.path !== location.path) {
+        const aliased = await WorkspaceCatalog.findByLocation({ ...location, path: canonical.path })
+        if (aliased) return WorkspaceCatalog.projection(aliased)
+      }
     }
     return migrate(workspace, scope.id)
   }
