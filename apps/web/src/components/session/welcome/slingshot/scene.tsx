@@ -33,6 +33,7 @@ const guardian = [
   "0033333333300",
   "0033000330000",
 ]
+const ratingStar = ["0001000", "0011100", "1111111", "0111110", "0011100", "0110110", "1100011"]
 export default function SlingshotScene(props: WelcomeSceneProps) {
   const { i18n } = useLocale()
   const game = createSlingshot(
@@ -53,6 +54,8 @@ export default function SlingshotScene(props: WelcomeSceneProps) {
   const sync = () => setState(game.snapshot())
   createEffect(() => props.memory.write(state()))
   useSceneClock(props.active, (dt) => {
+    canvas.advanceTransition(dt)
+    if (terminal() && state().ending === 1) return
     game.advance(dt)
     sync()
   })
@@ -71,13 +74,17 @@ export default function SlingshotScene(props: WelcomeSceneProps) {
   const terminal = () => state().phase === "won" || state().phase === "lost"
   const act = () => {
     props.interact()
-    if (state().phase === "won") game.next()
-    else if (state().phase === "lost") game.retry()
+    if (state().phase === "won") {
+      canvas.transition()
+      game.next()
+      setArmed(false)
+    } else if (state().phase === "lost") reset()
     else setArmed(true)
     sync()
   }
   const reset = () => {
     cancel()
+    canvas.transition()
     game.retry()
     setArmed(false)
     setGeneration((n) => n + 1)
@@ -108,6 +115,7 @@ export default function SlingshotScene(props: WelcomeSceneProps) {
   const canvas = usePixelCanvas(
     (ctx, ink) => {
       const s = state()
+      const ending = terminal() ? (props.reducedMotion() ? 1 : s.ending) : 0
       ctx.fillStyle = ink.strong
       ctx.globalAlpha = 0.15
       ctx.fillRect(28, 320, 664, 2)
@@ -196,10 +204,38 @@ export default function SlingshotScene(props: WelcomeSceneProps) {
           }
         }
       ctx.globalAlpha = 1
+      if (s.phase === "won") {
+        const structure = s.bodies.filter((b) => b.kind !== "bird")
+        const center = structure.length ? structure.reduce((sum, b) => sum + b.x, 0) / structure.length : 520
+        const x = Math.max(360, Math.min(620, center))
+        const y = Math.max(28, Math.min(200, ...structure.map((b) => b.y - b.height / 2)) - 42)
+        for (let i = 0; i < 3; i++) {
+          const appear = Math.max(0, Math.min(1, (ending - i * 0.14) / 0.26))
+          const rise = props.reducedMotion() ? 0 : Math.round((1 - appear) ** 3 * 12)
+          ctx.globalAlpha = appear * (i < s.stars ? 1 : 0.2)
+          sprite(ctx, ratingStar, x - 39 + i * 30, y + rise, 3, i < s.stars ? ink.second : ink.soft)
+        }
+        ctx.globalAlpha = 1
+      } else if (s.phase === "lost") {
+        const appear = Math.max(0, Math.min(1, (ending - 0.25) / 0.5))
+        ctx.globalAlpha = appear * 0.4
+        sprite(
+          ctx,
+          courier,
+          slingAnchor.x - 13,
+          slingAnchor.y - 11 + (props.reducedMotion() ? 0 : Math.round((1 - appear) * 6)),
+          2,
+          ink.accent,
+          ink.paper,
+          ink.strong,
+        )
+        ctx.globalAlpha = 1
+      }
     },
     720,
     360,
     "end",
+    props.reducedMotion,
   )
   function cancel() {
     const previous = drag()
@@ -240,6 +276,7 @@ export default function SlingshotScene(props: WelcomeSceneProps) {
           if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " ", "Enter"].includes(e.key)) return
           e.preventDefault()
           e.stopPropagation()
+          if (e.repeat && (terminal() || e.key === " " || e.key === "Enter")) return
           props.interact()
           if (terminal()) {
             act()

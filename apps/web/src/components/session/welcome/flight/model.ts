@@ -6,6 +6,7 @@ export type PickupKind = "fire" | "shield" | "repair"
 export type Flight = {
   seed: number
   phase: "ready" | "playing" | "over"
+  ending: number
   ship: Point
   enemies: (Point & { id: number; origin: number; age: number; kind: number; hp: number; flash: number })[]
   bullets: (Point & { vx: number })[]
@@ -30,6 +31,7 @@ export function createFlight(seed: number): Flight {
   return {
     seed,
     phase: "ready",
+    ending: 0,
     ship: { x: 360, y: 330 },
     enemies: [],
     bullets: [],
@@ -60,7 +62,20 @@ export function startFlight(state: Flight): Flight {
 function tick(state: Flight, dt: number, direction: Point): Flight {
   const bursts = state.bursts.map((b) => ({ ...b, age: b.age + dt })).filter((b) => b.age < 0.6)
   let notice = state.notice && state.notice.age + dt < 1.4 ? { ...state.notice, age: state.notice.age + dt } : undefined
-  if (state.phase === "over") return { ...state, bursts, notice, muzzle: 0 }
+  if (state.phase === "over") {
+    const ending = Math.min(1, state.ending + dt)
+    const coast = (Math.exp(-4 * state.ending) - Math.exp(-4 * ending)) / 4
+    return {
+      ...state,
+      ending,
+      enemies: ending === 1 ? [] : state.enemies.map((e) => ({ ...e, y: e.y + 90 * coast, flash: 0 })),
+      bullets: ending === 1 ? [] : state.bullets.map((b) => ({ ...b, x: b.x + b.vx * coast, y: b.y - 440 * coast })),
+      pickups: ending === 1 ? [] : state.pickups.map((p) => ({ ...p, y: p.y + 42 * coast })),
+      bursts,
+      notice: undefined,
+      muzzle: 0,
+    }
+  }
   const ship = aimFlight(state, state.ship.x + direction.x * 290 * dt, state.ship.y + direction.y * 290 * dt).ship
   const time = state.time + dt
   let score = state.score,
@@ -192,6 +207,6 @@ function tick(state: Flight, dt: number, direction: Point): Flight {
   }
 }
 export function advanceFlight(state: Flight, seconds: number, direction: Point = { x: 0, y: 0 }): Flight {
-  if (state.phase === "ready") return state
+  if (state.phase === "ready" || (state.phase === "over" && state.ending === 1)) return state
   return advanceFixed(state, seconds, (s, dt) => tick(s, dt, direction))
 }

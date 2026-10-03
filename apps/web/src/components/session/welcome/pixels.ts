@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup, onMount } from "solid-js"
+import { createEffect, createSignal, onCleanup, onMount, type Accessor } from "solid-js"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 
 export type Ink = { strong: string; soft: string; paper: string; accent: string; second: string; colors: string[] }
@@ -58,6 +58,7 @@ export function usePixelCanvas(
   width: number,
   height: number,
   align: "center" | "end" = "center",
+  reducedMotion?: Accessor<boolean>,
 ) {
   const theme = useTheme()
   const [size, setSize] = createSignal({ width: 0, height: 0, dpr: 1 })
@@ -65,6 +66,8 @@ export function usePixelCanvas(
   const buffer = document.createElement("canvas")
   buffer.width = width
   buffer.height = height
+  const [transition, setTransition] = createSignal(1)
+  let previous: { canvas: HTMLCanvasElement; tokens: ReturnType<typeof theme.tokens> } | undefined
   onMount(() => {
     const measure = () =>
       setSize({
@@ -94,8 +97,12 @@ export function usePixelCanvas(
     const scale = Math.min(bounds.width / width, bounds.height / height)
     const pixels = buffer.getContext("2d")
     if (!pixels) return
+    if (reducedMotion?.() || previous?.tokens !== tokens) previous = undefined
+    const progress = previous ? transition() : 1
+    const appear = 1 - (1 - progress) ** 3
     pixels.clearRect(0, 0, width, height)
     pixels.save()
+    pixels.translate(0, Math.round((1 - appear) * 8))
     draw(pixels, {
       strong: tokens["text-strong"],
       soft: tokens["text-weak"],
@@ -113,6 +120,16 @@ export function usePixelCanvas(
       ],
     })
     pixels.restore()
+    if (previous && progress < 1) {
+      pixels.save()
+      pixels.globalCompositeOperation = "destination-in"
+      pixels.globalAlpha = appear
+      pixels.fillRect(0, 0, width, height)
+      pixels.globalCompositeOperation = "destination-over"
+      pixels.globalAlpha = 1 - appear
+      pixels.drawImage(previous.canvas, 0, -Math.round(progress * progress * 8))
+      pixels.restore()
+    }
     ctx.imageSmoothingEnabled = false
     ctx.drawImage(
       buffer,
@@ -123,6 +140,21 @@ export function usePixelCanvas(
     )
   })
   return {
+    transition: () => {
+      if (reducedMotion?.()) return
+      const snapshot = document.createElement("canvas")
+      snapshot.width = width
+      snapshot.height = height
+      snapshot.getContext("2d")?.drawImage(buffer, 0, 0)
+      previous = { canvas: snapshot, tokens: theme.tokens() }
+      setTransition(0)
+    },
+    advanceTransition: (seconds: number) => {
+      if (!previous) return
+      const next = Math.min(1, transition() + seconds / 0.24)
+      if (next === 1) previous = undefined
+      setTransition(next)
+    },
     ref: (element: HTMLCanvasElement) => {
       canvas = element
     },

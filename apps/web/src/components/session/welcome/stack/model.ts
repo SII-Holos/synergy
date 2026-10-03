@@ -5,6 +5,7 @@ type Cut = { x: number; width: number; level: number; direction: number; age: nu
 export type Stack = {
   seed: number
   phase: "ready" | "playing" | "missed"
+  ending: number
   blocks: Block[]
   height: number
   camera: number
@@ -32,6 +33,7 @@ export function createStack(seed: number): Stack {
   return {
     seed,
     phase: "ready",
+    ending: 0,
     blocks: [{ x: 250, width: 220, perfect: false, level: 0 }],
     height: 0,
     camera: 0,
@@ -88,7 +90,7 @@ function tick(state: Stack, dt: number): Stack {
       moving: { x: direction > 0 ? 80 : 640 - block.width, width: block.width, direction },
     }
   }
-  if (state.phase === "missed") return { ...state, cut, camera }
+  if (state.phase === "missed") return { ...state, cut, camera, ending: Math.min(1, state.ending + dt) }
   const cooldown = Math.max(0, state.cooldown - dt)
   if (state.cooldown > 0) return { ...state, cut, camera, cooldown }
   const speed = 125 + 475 * (1 - Math.exp(-state.height / 36))
@@ -97,5 +99,6 @@ function tick(state: Stack, dt: number): Stack {
   return { ...state, cooldown, cut, camera, moving: { ...state.moving, x, direction } }
 }
 export function advanceStack(state: Stack, seconds: number): Stack {
+  if (state.phase === "missed" && state.ending === 1) return state
   return advanceFixed(state, seconds, tick)
 }

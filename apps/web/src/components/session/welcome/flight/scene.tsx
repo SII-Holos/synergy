@@ -76,14 +76,18 @@ export default function FlightScene(props: WelcomeSceneProps) {
   })
   const reset = () => {
     keys.clear()
+    cancelPointer()
+    canvas.transition()
     setState(createFlight(props.seed))
   }
   const start = () => {
     props.interact()
-    setState((s) => startFlight(s.phase === "over" ? createFlight(props.seed) : s))
+    if (state().phase === "over") reset()
+    setState(startFlight)
   }
   useSceneClock(props.active, (dt) => {
-    if (!props.reducedMotion()) setIdle((t) => t + dt)
+    canvas.advanceTransition(dt)
+    if (!props.reducedMotion() && state().phase !== "over") setIdle((t) => t + dt)
     setState((s) =>
       advanceFlight(s, dt, {
         x: (keys.has("ArrowRight") ? 1 : 0) - (keys.has("ArrowLeft") ? 1 : 0),
@@ -139,6 +143,9 @@ export default function FlightScene(props: WelcomeSceneProps) {
     (ctx, ink) => {
       const s = state(),
         time = idle()
+      const over = s.phase === "over"
+      const ending = over ? (props.reducedMotion() ? 1 : s.ending) : 0
+      ctx.globalAlpha = (1 - ending) ** 2
       s.bullets.forEach((b) => {
         ctx.fillStyle = ink.strong
         ctx.fillRect(Math.round(b.x), Math.round(b.y), 2, 9)
@@ -152,7 +159,7 @@ export default function FlightScene(props: WelcomeSceneProps) {
           ctx.fillStyle = ink.accent
           for (let n = 0; n < e.hp; n++) ctx.fillRect(Math.round(e.x) - e.hp * 3 + n * 6, Math.round(e.y) + 11, 4, 2)
         }
-        if (e.flash > 0 && !props.reducedMotion()) {
+        if (!over && e.flash > 0 && !props.reducedMotion()) {
           ctx.globalAlpha = (e.flash / 0.09) * 0.65
           ctx.fillStyle = ink.paper
           ctx.fillRect(Math.round(e.x) - 5, Math.round(e.y) - 3, 10, 6)
@@ -163,7 +170,7 @@ export default function FlightScene(props: WelcomeSceneProps) {
         const offset = props.reducedMotion() ? 0 : Math.sin(s.time * 3 + p.id) * 2
         const color = p.kind === "fire" ? ink.second : p.kind === "shield" ? ink.accent : ink.colors[2]!
         sprite(ctx, powerSprites[p.kind], p.x - 13, p.y - 12 + offset, 2, color, ink.paper, ink.strong)
-        if (Math.hypot(p.x - s.ship.x, p.y - s.ship.y) < 130) {
+        if (!over && Math.hypot(p.x - s.ship.x, p.y - s.ship.y) < 130) {
           ctx.fillStyle = ink.strong
           ctx.font = "10px sans-serif"
           ctx.textAlign = "center"
@@ -176,6 +183,42 @@ export default function FlightScene(props: WelcomeSceneProps) {
           )
         }
       })
+      ctx.globalAlpha = 1
+      if (over) {
+        if (!props.reducedMotion() && ending < 0.8) {
+          const t = ending / 0.8
+          ctx.globalAlpha = (1 - t) ** 2
+          for (let i = 0; i < 16; i++) {
+            const a = (i * Math.PI) / 8
+            const distance = (1 - (1 - t) ** 3) * (22 + (i % 3) * 12)
+            ctx.fillStyle = i % 3 ? ink.strong : ink.second
+            ctx.fillRect(
+              Math.round(s.ship.x + Math.cos(a) * distance),
+              Math.round(s.ship.y + Math.sin(a) * distance + 30 * t * t),
+              i % 2 ? 3 : 5,
+              i % 2 ? 5 : 3,
+            )
+          }
+          if (ending < 0.35) {
+            ctx.fillStyle = ink.second
+            const radius = 8 + 55 * (1 - (1 - ending / 0.35) ** 3)
+            for (let i = 0; i < 24; i++) {
+              const angle = (i * Math.PI) / 12
+              ctx.fillRect(
+                Math.round((s.ship.x + Math.cos(angle) * radius) / 2) * 2,
+                Math.round((s.ship.y + Math.sin(angle) * radius) / 2) * 2,
+                2,
+                2,
+              )
+            }
+          }
+        }
+        const ready = Math.max(0, Math.min(1, (ending - 0.45) / 0.55))
+        ctx.globalAlpha = ready * 0.35
+        sprite(ctx, sprites.ship, 349, 319 + Math.round(8 * (1 - ready) ** 3), 2, ink.strong, ink.paper)
+        ctx.globalAlpha = 1
+        return
+      }
       if (!props.reducedMotion())
         s.bursts.forEach((b) => {
           ctx.fillStyle =
@@ -239,6 +282,8 @@ export default function FlightScene(props: WelcomeSceneProps) {
     },
     720,
     400,
+    "center",
+    props.reducedMotion,
   )
   function cancelPointer(event?: PointerEvent) {
     if (event && event.pointerId !== pointer) return
@@ -286,6 +331,7 @@ export default function FlightScene(props: WelcomeSceneProps) {
           if (e.key === " " || e.key === "Enter") {
             e.preventDefault()
             e.stopPropagation()
+            if (e.repeat) return
             start()
           }
         }}

@@ -15,6 +15,7 @@ export type SlingSnapshot = {
   shots: number
   stars: number
   phase: "aiming" | "flying" | "won" | "lost"
+  ending: number
   angle: number
   power: number
   elapsed: number
@@ -36,6 +37,7 @@ const initial = (seed: number, level: number, banked = 0): SlingSnapshot => ({
   shots: 3,
   stars: 0,
   phase: "aiming",
+  ending: 0,
   angle: -35,
   power: 600,
   elapsed: 0,
@@ -122,7 +124,8 @@ export function createSlingshot(seed: number, restored?: SlingSnapshot, level = 
   function tick(current: SlingSnapshot, dt: number): SlingSnapshot {
     state = current
     const bursts = state.bursts.map((b) => ({ ...b, age: b.age + dt })).filter((b) => b.age < 0.55)
-    if (state.phase === "won" || state.phase === "lost") return { ...state, bursts }
+    if (state.phase === "won" || state.phase === "lost")
+      return { ...state, bursts, ending: Math.min(1, state.ending + dt) }
     Engine.update(engine, dt * 1000)
     let score = state.score
     for (const [id, { body, shape }] of bodies) {
@@ -184,7 +187,7 @@ export function createSlingshot(seed: number, restored?: SlingSnapshot, level = 
       }
     },
     advance(seconds: number) {
-      if (disposed) return
+      if (disposed || ((state.phase === "won" || state.phase === "lost") && state.ending === 1)) return
       state = advanceFixed(state, seconds, tick)
     },
     predict(): Point[] {
