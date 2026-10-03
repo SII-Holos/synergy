@@ -13,9 +13,48 @@ import type { TaskResult } from "../../script/ci/evidence"
 import { mkdtemp, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { suiteSeconds } from "../../script/ci/suites"
 
 const profile = timingProfile("linux", "x64", "1.4.2")
 const empty = (): Timings => ({ version: 1, profiles: {} })
+
+test.each([
+  [
+    "apps/web",
+    [
+      "test/components/workspace/workbench-surface.dom.test.ts",
+      "test/components/session/decision-surface.dom.test.tsx",
+    ],
+  ],
+  [
+    "packages/ui",
+    [
+      "test/components/message-readers.render.test.ts",
+      "test/components/execution-completion.dom.test.ts",
+      "test/components/tool/computer-tool-renders.test.tsx",
+      "test/components/basic-tool-lifecycle.dom.test.ts",
+      "test/components/countdown-anchor.dom.test.ts",
+      "test/components/message-part-error-boundary.test.ts",
+    ],
+  ],
+] as const)("%s estimates the actual isolated frontend batches", async (owner, files) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ci-frontend-batches-"))
+  try {
+    const timings = empty()
+    for (const [index, file] of files.entries()) {
+      await Bun.write(path.join(root, file), 'import { chromium } from "playwright"')
+      recordTiming(timings, profile, batchKey(owner, [file]), {
+        owner,
+        kind: "browser",
+        files: [file],
+        sample: { id: file, completed: new Date(0).toISOString(), seconds: index ? 90 : 1 },
+      })
+    }
+    expect(suiteSeconds([...files], root, timings, owner)).toBe(1 + (files.length - 1) * 90)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
 
 test("timing collection stays available on dependency-free verification workers", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ci-timing-no-dependencies-"))

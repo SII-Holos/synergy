@@ -234,8 +234,12 @@ test("the execution CLI can start on Docker workers without node_modules", async
         recursive: true,
         filter: (file) => !["node_modules", ".artifacts", ".turbo", "coverage"].includes(path.basename(file)),
       })
-    const backendFixture = "packages/harness/test/support/storage-backends.ts"
-    await Bun.write(path.join(root, backendFixture), Bun.file(path.join(repository, backendFixture)))
+    for (const file of [
+      "packages/harness/test/support/storage-backends.ts",
+      "apps/web/script/test-options.ts",
+      "packages/ui/script/test-options.ts",
+    ])
+      await Bun.write(path.join(root, file), Bun.file(path.join(repository, file)))
     const child = Bun.spawn([process.execPath, "--no-install", "script/ci.ts", "--help"], {
       cwd: root,
       env: { ...process.env, HOME: root, XDG_CONFIG_HOME: path.join(root, "config") },
