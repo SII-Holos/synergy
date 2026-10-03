@@ -1,7 +1,6 @@
 import Matter from "matter-js"
 import { advanceFixed, sceneStep } from "../timing"
-import { slingshotLevels, type Shape } from "./levels"
-export { slingshotLevels } from "./levels"
+import { createSlingLevel, type Shape } from "./levels"
 
 const { Bodies, Body, Composite, Engine, Events, Query, Sleeping } = Matter
 export const slingAnchor = { x: 98, y: 224 }
@@ -16,6 +15,7 @@ export type SlingSnapshot = {
   shots: number
   stars: number
   phase: "aiming" | "flying" | "won" | "lost"
+  ending: number
   angle: number
   power: number
   elapsed: number
@@ -37,13 +37,14 @@ const initial = (seed: number, level: number, banked = 0): SlingSnapshot => ({
   shots: 3,
   stars: 0,
   phase: "aiming",
+  ending: 0,
   angle: -35,
   power: 600,
   elapsed: 0,
   settled: 0,
   remainder: 0,
   sequence: 100,
-  bodies: slingshotLevels[level % 6]!.map((shape, id) => ({
+  bodies: createSlingLevel(seed, level).map((shape, id) => ({
     ...shape,
     id,
     angle: 0,
@@ -123,7 +124,8 @@ export function createSlingshot(seed: number, restored?: SlingSnapshot, level = 
   function tick(current: SlingSnapshot, dt: number): SlingSnapshot {
     state = current
     const bursts = state.bursts.map((b) => ({ ...b, age: b.age + dt })).filter((b) => b.age < 0.55)
-    if (state.phase === "won" || state.phase === "lost") return { ...state, bursts }
+    if (state.phase === "won" || state.phase === "lost")
+      return { ...state, bursts, ending: Math.min(1, state.ending + dt) }
     Engine.update(engine, dt * 1000)
     let score = state.score
     for (const [id, { body, shape }] of bodies) {
@@ -134,6 +136,7 @@ export function createSlingshot(seed: number, restored?: SlingSnapshot, level = 
       Composite.remove(engine.world, body)
       bodies.delete(id)
     }
+    if (removed.size) for (const { body } of bodies.values()) Sleeping.set(body, false)
     removed.clear()
     const snapshot = readBodies()
     const elapsed = state.phase === "flying" ? state.elapsed + dt : state.elapsed
@@ -184,7 +187,7 @@ export function createSlingshot(seed: number, restored?: SlingSnapshot, level = 
       }
     },
     advance(seconds: number) {
-      if (disposed) return
+      if (disposed || ((state.phase === "won" || state.phase === "lost") && state.ending === 1)) return
       state = advanceFixed(state, seconds, tick)
     },
     predict(): Point[] {

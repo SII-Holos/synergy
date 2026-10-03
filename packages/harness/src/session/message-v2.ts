@@ -1745,21 +1745,13 @@ export namespace MessageV2 {
       const sessionID = input.sessionID as Identifier.SessionID
 
       for await (const info of readNewestInfos({ scopeID, sessionID })) {
-        try {
-          yield {
-            info,
-            parts: await parts({
-              scopeID,
-              sessionID: input.sessionID,
-              messageID: info.id,
-            }),
-          }
-        } catch (error) {
-          log.warn("skipping unreadable message", {
+        yield {
+          info,
+          parts: await parts({
+            scopeID,
             sessionID: input.sessionID,
             messageID: info.id,
-            error: String(error),
-          })
+          }),
         }
       }
     },

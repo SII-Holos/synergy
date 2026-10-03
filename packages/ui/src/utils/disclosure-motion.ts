@@ -1,6 +1,6 @@
 import { createEffect, createSignal, onCleanup, untrack } from "solid-js"
 
-export function createDisclosureMotion(element: HTMLElement, content = false) {
+export function createDisclosureMotion(element: HTMLElement, content = false, onHidden?: () => void) {
   const window = element.ownerDocument.defaultView
   const reduced = window?.matchMedia?.("(prefers-reduced-motion: reduce)")
   let animation: Animation | undefined
@@ -17,6 +17,7 @@ export function createDisclosureMotion(element: HTMLElement, content = false) {
     element.inert = !visible
     element.removeAttribute("data-motion-changing")
     element.removeAttribute("data-motion-exiting")
+    if (!visible) onHidden?.()
   }
   const changedPreference = () => {
     if (reduced?.matches) settle()
@@ -78,12 +79,13 @@ export function createDisclosureMotionRef(options: {
   animate: () => boolean
   appear?: () => boolean
   content?: boolean
+  onHidden?: () => void
 }) {
   const [element, setElement] = createSignal<HTMLElement>()
   createEffect(() => {
     const target = element()
     if (!target) return
-    const motion = createDisclosureMotion(target, options.content)
+    const motion = createDisclosureMotion(target, options.content, options.onHidden)
     createEffect(() => motion.setVisible(options.visible(), options.animate(), options.appear?.()))
     onCleanup(() => motion.dispose())
   })

@@ -119,6 +119,7 @@ type PromptSubmitInput = {
   abort: () => void
   editor: () => HTMLDivElement | undefined
   queueScroll: () => void
+  onWorkspaceUnavailable: (workspaceID: string) => void
   onWorktreeUnavailable: () => void
   beforeSubmit: () => Promise<void>
   onAccepted?: (unchanged: boolean) => void
@@ -505,6 +506,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           })
           .then((x) => x.data ?? undefined)
           .catch((err) => {
+            const failure = promptSubmitFailure(err)
+            if (failure.kind === "workspace-unavailable") input.onWorkspaceUnavailable(failure.workspaceID)
             showToast({
               type: "error",
               title: i18n._(PI.submitFailedStart),
@@ -1287,6 +1290,9 @@ export function usePromptSubmit(input: PromptSubmitInput) {
             }
           })
           .catch(async (err) => {
+            const failure = promptSubmitFailure(err)
+            const directoryUnavailable =
+              failure.kind === "worktree-unavailable" || failure.kind === "workspace-unavailable"
             if (messageID) {
               const receipt = await recoverSessionInputReceipt(client, { sessionID: activeSession.id, messageID })
               if (receipt.kind !== "missing") {
@@ -1295,18 +1301,21 @@ export function usePromptSubmit(input: PromptSubmitInput) {
                 handoffNewSessionMessage({ messageID, itemID: progress?.itemID, acceptedAt: Date.now() }, !!progress)
                 return
               }
-              if (promptSubmitFailure(err).kind !== "worktree-unavailable") {
+              if (!directoryUnavailable) {
                 recoverUnacceptedInput()
                 return
               }
             }
-            const failure = promptSubmitFailure(err)
             await rollbackLightLoopForSubmit()
             if (optimisticAdded) removeOptimisticMessage()
             const worktreeUnavailable = failure.kind === "worktree-unavailable"
             failActiveSessionSubmit(i18n._(PI.submitFailedSend), failure.message, {
-              focus: !worktreeUnavailable,
+              focus: !directoryUnavailable,
             })
+            if (failure.kind === "workspace-unavailable") {
+              input.onWorkspaceUnavailable(failure.workspaceID)
+              return
+            }
             if (worktreeUnavailable) {
               input.onWorktreeUnavailable()
               return

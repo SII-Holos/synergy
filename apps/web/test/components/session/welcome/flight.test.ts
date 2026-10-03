@@ -102,6 +102,18 @@ test("missed enemies break a combo without costing a life", () => {
   expect(state.enemies).toHaveLength(0)
 })
 
+test("pickup feedback identifies the received benefit and expires on the simulation clock", () => {
+  const initial = startFlight(createFlight(4))
+  const powered = pickup(initial, "fire")
+  expect(powered.notice).toEqual({ kind: "fire", points: 0, age: 0 })
+  expect(run(powered, 0.8).notice?.kind).toBe("fire")
+  expect(pickup(powered, "shield").notice?.kind).toBe("shield")
+  expect(pickup({ ...initial, lives: 2 }, "repair").notice?.points).toBe(0)
+  expect(pickup(initial, "repair").notice?.points).toBe(150)
+  expect(run(powered, 1.5).notice).toBeUndefined()
+  expect(run(powered, 0.8, 30).notice).toEqual(run(powered, 0.8, 120).notice)
+})
+
 test("render rates preserve gameplay and held steering, with bounded long-running collections", () => {
   const simulate = (fps: number) => {
     let state = { ...startFlight(createFlight(42)), invulnerable: 1000 }

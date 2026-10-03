@@ -136,3 +136,93 @@ test("prepending a process page retains existing batch identities and Part membe
     original.map((row) => [row.key, row.parts.map((part) => part.id)]),
   )
 })
+
+test("closing and reopening a prepended activity preserves its identity, content and bounded rows", () => {
+  const input = {
+    timeline: [root],
+    messagesFor: () => [reply],
+    summaries: (id: string) => (id === reply.id ? parts.slice(6, 24) : []),
+    page: () => ({ hasMore: false }),
+    process: () => ({ open: true, working: false }),
+  }
+  const initial = buildConversationRows(input)
+  const loaded = { ...input, summaries: (id: string) => (id === reply.id ? parts.slice(1, 24) : []) }
+  const prepended = buildConversationRows({ ...loaded, previous: initial })
+  const closed = buildConversationRows({ ...loaded, previous: prepended, activity: () => false })
+  expect(closed.some((row) => row.kind === "body")).toBe(false)
+  const reopened = buildConversationRows({ ...loaded, previous: closed, activity: () => true })
+  expect(reopened.filter((row) => row.kind === "activity").map((row) => row.key)).toEqual(
+    prepended.filter((row) => row.kind === "activity").map((row) => row.key),
+  )
+  const rows = reopened.filter((row) => row.kind === "body")
+  expect(rows.flatMap((row) => row.parts.map((part) => part.id))).toEqual(parts.slice(1, 24).map((part) => part.id))
+  expect(Math.max(...rows.map((row) => row.parts.length))).toBeLessThanOrEqual(6)
+})
+
+function processFixture() {
+  const work = { ...reply, id: "work", finish: "tool-calls" } as Message
+  const more = { ...reply, id: "more", finish: "tool-calls" } as Message
+  const final = { ...reply, id: "final", finish: "stop" } as Message
+  const part = (messageID: string, id: string, type: string) =>
+    ({
+      ...parts[0],
+      messageID,
+      id,
+      type,
+      status: "completed",
+      content: { bytes: 1 },
+    }) as SessionPartSummary
+  const table: Record<string, SessionPartSummary[]> = {
+    work: [part("work", "think-first", "reasoning"), part("work", "progress", "text"), part("work", "run-1", "tool")],
+    more: [part("more", "think-again", "reasoning"), part("more", "run-2", "tool")],
+    final: [part("final", "answer", "text")],
+  }
+  return {
+    timeline: [root],
+    messagesFor: () => [work, more, final],
+    summaries: (id: string) => table[id] ?? [],
+    page: () => ({ hasMore: false }),
+    process: () => ({ open: true, working: false }),
+  }
+}
+
+test("reasoning and tools share one logical disclosure across messages, bounded by prose", () => {
+  const rows = buildConversationRows({ ...processFixture(), activity: () => false })
+  const visible = rows.filter((row) => row.kind === "activity" || row.kind === "body")
+  expect(visible.map((row) => (row.kind === "body" ? row.parts[0].id : row.activity?.tools))).toEqual([
+    0,
+    "progress",
+    2,
+    "answer",
+  ])
+  expect(rows.filter((row) => row.kind === "activity").map((row) => row.activity?.reasoning)).toEqual([1, 1])
+})
+
+test("the current execution block stays open until new process prose or confirmed turn completion", () => {
+  const fixture = processFixture()
+  const rows = buildConversationRows({
+    ...fixture,
+    process: () => ({ open: true, working: true }),
+    activity: (block) => block.active,
+  })
+  expect(rows.filter((row) => row.kind === "body").flatMap((row) => row.parts.map((part) => part.id))).toEqual([
+    "progress",
+    "run-1",
+    "think-again",
+    "run-2",
+    "answer",
+  ])
+  const collapsed = buildConversationRows({
+    ...fixture,
+    process: () => ({ open: false, working: false }),
+    activity: () => true,
+  })
+  expect(collapsed.filter((row) => row.kind === "activity")).toHaveLength(0)
+  expect(collapsed.filter((row) => row.kind === "body").map((row) => row.parts[0].id)).toEqual(["answer"])
+})
+
+test("unloaded spans cannot claim a continuous execution group", () => {
+  const fixture = processFixture()
+  const rows = buildConversationRows({ ...fixture, page: (id) => ({ hasMore: id === "work" }), activity: () => false })
+  expect(rows.filter((row) => row.kind === "activity")).toHaveLength(3)
+})

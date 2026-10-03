@@ -7,6 +7,7 @@ import { WorkspaceMounts } from "./mount"
 import { EnvironmentExecution } from "../environment/execution"
 import { WorkspaceOperations } from "./operations"
 import { WorkspaceCatalog } from "./catalog"
+import { RuntimeContext } from "../lifecycle/context"
 
 export const workspaceMigrations: Migration[] = [
   {
@@ -62,6 +63,47 @@ export const workspaceMigrations: Migration[] = [
           if (workspace) await WorkspaceCheckpoints.migrate(workspace, info.id)
         }
         progress(++done, executions.length + operations.length)
+      }
+    },
+  },
+  {
+    id: "20261003-persistent-volume-identity",
+    description: "Upgrade verified local directory identities without changing Workspace generations",
+    scope: "global",
+    execution: "startup",
+    async up(progress) {
+      const source = RuntimeContext.current().host.workspaceLocation
+      if (!source) return
+      const hostID = await source.hostID()
+      const keys = await Storage.list(["workspace"])
+      for (let offset = 0; offset < keys.length; offset += 128) {
+        const records = await Storage.readMany<unknown>(keys.slice(offset, offset + 128))
+        for (const raw of records) {
+          if (!raw) continue
+          const record = WorkspaceCatalog.Info.parse(raw)
+          const binding = record.binding
+          if (
+            record.lifecycle !== "active" ||
+            binding.state !== "bound" ||
+            binding.hostID !== hostID ||
+            !binding.path ||
+            !binding.physicalID ||
+            binding.physicalID.startsWith("volume-v1:")
+          )
+            continue
+          const actual = await source.identify(binding.path, true).catch((error: NodeJS.ErrnoException) => {
+            if (["ENOENT", "ENOTDIR", "EACCES", "EPERM"].includes(error.code ?? "")) return undefined
+            throw error
+          })
+          if (
+            actual?.path !== binding.path ||
+            !actual.physicalID?.startsWith("volume-v1:") ||
+            actual.legacyPhysicalID !== binding.physicalID
+          )
+            continue
+          await WorkspaceCatalog.upgradePhysicalIdentity(record, actual.physicalID)
+        }
+        progress(Math.min(offset + 128, keys.length), keys.length)
       }
     },
   },

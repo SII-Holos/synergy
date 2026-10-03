@@ -78,7 +78,7 @@ For snapshot lease changes, test metadata-gate contention separately from active
 
 ## Verify
 
-For indexed history reads, seed real SQL records and inject a targeted read failure at the first record, a later individual record and a batch. Assert that injection was reached and the original error propagated; separately delete records after the reader captures its index snapshot and verify that only missing records are skipped. Register the regression in the PostgreSQL test inventory and run both engines.
+For indexed history reads, seed real SQL records and inject a targeted read failure at the first record, a later individual record, a batch and nested part hydration. Assert that injection was reached and the original error propagated; separately delete records after the reader captures its index snapshot and verify that only missing records are skipped. Register the regression in the PostgreSQL test inventory and run both engines.
 
 When adding a migration domain, update the complete-product registry contract in `packages/presets/test/migration/registry.test.ts` and run the Presets migration suite alongside the owning domain's upgrade tests.
 
@@ -173,6 +173,8 @@ Owner migration callbacks must read canonical records using the owner identities
 Keep segment checkpoint capture and settlement in Session, immutable trees in Snapshot and version-checked file publication in Local Runtime. Test baseline failure without recapture, net cancellation, parallel read-only tools, late background writes, partial capture, historical reads, migration, fork/export retention and restore receipt replay. A turn Diff describes all writers in its captured interval; do not add author attribution or scan the full workspace for every tool. File previews may truncate text, but comparison statistics and restoration must use complete retained evidence.
 
 Evaluate net coverage from its first baseline and latest endpoint, keeping each endpoint's omissions separate. Test recovery after an intermediate capture failure without clearing that historical failure or fabricating an unavailable first baseline.
+
+When changing filesystem identity formats, inventory the catalog, indexes and native receipts before implementation. Upgrade only exact verified legacy identities, preserve unknown owner data and binding generations, and test volume changes separately from object replacement. Live cross-version coordination claims require a separate lifetime analysis.
 
 For selected-owner reporting, seed unrelated corrupt counters as well as valid descendant Sessions and operations. Verify the query never reads foreign counters and that paginated merging matches global canonical order. Keep owner-local history preparation separate from metadata-only admission, test interrupted step receipts and concurrent requests, and never classify shared store inventory as a Session projection.
 

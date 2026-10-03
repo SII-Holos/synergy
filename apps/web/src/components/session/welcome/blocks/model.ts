@@ -10,6 +10,7 @@ export type Blocks = {
   queue: number[]
   piece: Piece
   phase: "ready" | "playing" | "clearing" | "over"
+  ending: number
   score: number
   lines: number
   elapsed: number
@@ -100,6 +101,7 @@ export function createBlocks(seed: number): Blocks {
     queue: queue.slice(1),
     piece: { kind: queue[0]!, rotation: 0, x: 3, y: 0 },
     phase: "ready",
+    ending: 0,
     score: 0,
     lines: 0,
     elapsed: 0,
@@ -208,7 +210,7 @@ function tick(state: Blocks, dt: number): Blocks {
     ...state,
     trail: state.trail && state.trail.time > dt ? { ...state.trail, time: state.trail.time - dt } : undefined,
   }
-  if (next.phase === "over") return next
+  if (next.phase === "over") return { ...next, ending: Math.min(1, next.ending + dt) }
   if (next.phase === "clearing") {
     next.flash = Math.max(0, next.flash - dt)
     if (next.flash > 1e-9) return next
@@ -246,5 +248,7 @@ function tick(state: Blocks, dt: number): Blocks {
   return contact && (next.lockTime + 1e-9 >= 0.25 || next.groundAge + 1e-9 >= 2) ? lock(next) : next
 }
 export function advanceBlocks(state: Blocks, seconds: number): Blocks {
-  return state.phase === "ready" ? state : advanceFixed(state, seconds, tick)
+  return state.phase === "ready" || (state.phase === "over" && state.ending === 1)
+    ? state
+    : advanceFixed(state, seconds, tick)
 }

@@ -2065,6 +2065,8 @@ function SessionPageContent() {
     conversation: () => (
       <div data-ui-part="conversation" class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
         <SessionTopBar
+          hasCanonicalRoot={rootMessages().length > 0}
+          inboxFrozen={rollbackActive()}
           onWorkspaceTransition={startWorkspaceTransition}
           sessionTransitionPending={sessionTransitionPending}
         />

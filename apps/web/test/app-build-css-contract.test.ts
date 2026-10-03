@@ -425,7 +425,7 @@ async function expectPromptDockKeepsReadableWidth(css: string) {
   }
 }
 
-async function expectSessionInboxBadgePreservesIconCenter(css: string) {
+async function expectTaskDetailsBadgePreservesIconCenter(css: string) {
   const browserType = process.env.SYNERGY_APP_LAYOUT_BROWSER === "webkit" ? webkit : chromium
   const browser = await browserType.launch({ headless: true })
   try {
@@ -434,16 +434,16 @@ async function expectSessionInboxBadgePreservesIconCenter(css: string) {
       <style>${css}</style>
       <button
         data-trigger="empty"
-        class="session-inbox-trigger statusbar-glass relative flex size-9 items-center justify-center rounded-full"
+        class="stb-icon-btn execution-trigger"
       >
         <span data-icon></span>
       </button>
       <button
         data-trigger="active"
-        class="session-inbox-trigger statusbar-glass relative flex size-9 items-center justify-center rounded-full"
+        class="stb-icon-btn execution-trigger"
       >
         <span data-icon></span>
-        <span data-badge class="session-inbox-badge">1</span>
+        <span data-badge class="execution-trigger-count">1</span>
       </button>
       <style>[data-icon] { display: block; width: 16px; height: 16px; }</style>
     `)
@@ -475,7 +475,7 @@ async function expectSessionInboxBadgePreservesIconCenter(css: string) {
     expect(Math.abs(layout.emptyIconOffset)).toBeLessThanOrEqual(0.5)
     expect(Math.abs(layout.activeIconOffset)).toBeLessThanOrEqual(0.5)
     expect(layout.badgePosition).toBe("absolute")
-    expect(layout.badgeColor).toBe("rgb(255, 255, 255)")
+    expect(layout.badgeColor).not.toBe("rgba(0, 0, 0, 0)")
   } finally {
     await browser.close()
   }
@@ -923,7 +923,7 @@ describe("app production build contract", () => {
       expect(markdownChunk).toBeDefined()
       expect(assets.some((asset) => asset.startsWith("pdf.worker.min-") && asset.endsWith(".mjs"))).toBe(true)
       await expectSessionWorkbenchPaneTracksBottomSurface(css)
-      await expectSessionInboxBadgePreservesIconCenter(css)
+      await expectTaskDetailsBadgePreservesIconCenter(css)
       await expectPromptDockKeepsReadableWidth(css)
       await expectPromptDockAndMobileFloatFlow(css)
       await expectStatusbarSubsessionContentFillsBody(css)

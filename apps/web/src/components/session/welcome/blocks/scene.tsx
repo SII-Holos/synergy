@@ -29,15 +29,20 @@ export default function BlocksScene(props: WelcomeSceneProps) {
   let touch: { id: number; x: number; y: number; lastX: number; moved: boolean } | undefined
   const keys = new Set<string>()
   createEffect(() => props.memory.write(state()))
-  useSceneClock(props.active, (dt) => setState((s) => advanceBlocks(s, dt)))
+  useSceneClock(props.active, (dt) => {
+    canvas.advanceTransition(dt)
+    setState((s) => advanceBlocks(s, dt))
+  })
   const reset = () => {
     cancel()
     keys.clear()
+    canvas.transition()
     setState(createBlocks(props.seed))
   }
   const start = () => {
     props.interact()
-    setState((s) => startBlocks(s.phase === "over" ? createBlocks(props.seed) : s))
+    if (state().phase === "over") reset()
+    setState(startBlocks)
   }
   const status = () =>
     state().phase === "over"
@@ -57,17 +62,22 @@ export default function BlocksScene(props: WelcomeSceneProps) {
         size = blockSize,
         left = boardLeft,
         top = 16
+      const over = s.phase === "over"
+      const ending = over ? (props.reducedMotion() ? 1 : s.ending) : 0
       const cell = (x: number, y: number, kind: number, alpha = 1) => {
         if (y < 0) return
+        const settle = over ? Math.max(0, Math.min(1, (ending - y * 0.03) / 0.28)) : 0
+        alpha *= 1 - settle * 0.75
+        const offset = props.reducedMotion() ? 0 : Math.round(settle * settle * 6)
         ctx.globalAlpha = alpha
         ctx.fillStyle = ink.colors[kind % ink.colors.length]!
-        ctx.fillRect(left + x * size + 1, top + y * size + 1, size - 2, size - 2)
+        ctx.fillRect(left + x * size + 1, top + y * size + 1 + offset, size - 2, size - 2)
         ctx.fillStyle = ink.paper
         ctx.globalAlpha = alpha * 0.5
-        ctx.fillRect(left + x * size + 3, top + y * size + 3, size - 6, 2)
+        ctx.fillRect(left + x * size + 3, top + y * size + 3 + offset, size - 6, 2)
         ctx.fillStyle = ink.strong
         ctx.globalAlpha = alpha * 0.18
-        ctx.fillRect(left + x * size + 3, top + y * size + size - 4, size - 6, 2)
+        ctx.fillRect(left + x * size + 3, top + y * size + size - 4 + offset, size - 6, 2)
         ctx.globalAlpha = 1
       }
       ctx.fillStyle = ink.strong
@@ -78,11 +88,11 @@ export default function BlocksScene(props: WelcomeSceneProps) {
       s.board.forEach((kind, index) => {
         if (kind) cell(index % 10, Math.floor(index / 10), kind - 1)
       })
-      if (s.phase !== "clearing") {
+      if (!over && s.phase !== "clearing") {
         occupiedCells(landingPiece(s)).forEach((c) => cell(c.x, c.y, s.piece.kind, 0.22))
         occupiedCells(s.piece).forEach((c) => cell(c.x, c.y, s.piece.kind))
       }
-      if (s.trail && !props.reducedMotion()) {
+      if (!over && s.trail && !props.reducedMotion()) {
         const trail = s.trail
         ctx.fillStyle = ink.colors[trail.piece.kind % ink.colors.length]!
         ctx.globalAlpha = (0.16 * trail.time) / 0.09
@@ -115,6 +125,8 @@ export default function BlocksScene(props: WelcomeSceneProps) {
     },
     520,
     440,
+    "center",
+    props.reducedMotion,
   )
   const cancel = () => {
     keys.clear()
@@ -155,11 +167,11 @@ export default function BlocksScene(props: WelcomeSceneProps) {
           e.preventDefault()
           e.stopPropagation()
           props.interact()
+          if (e.repeat) return
           if (state().phase === "over") {
             start()
             return
           }
-          if (e.repeat) return
           setState(startBlocks)
           keys.add(e.key)
           if (e.key === "ArrowLeft" || e.key === "ArrowRight")

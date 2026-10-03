@@ -2,6 +2,34 @@ import { describe, expect, test } from "bun:test"
 import { promptSubmitFailure } from "../../../src/components/prompt-input/submit-failure"
 
 describe("prompt submit failure presentation", () => {
+  test("directory identity conflicts retain a targeted repair action", () => {
+    expect(
+      promptSubmitFailure({
+        name: "WorkspaceUnavailable",
+        data: {
+          message: "Directory identity changed",
+          workspaceID: "workspace-1",
+          reason: "identity_changed",
+        },
+      }),
+    ).toEqual({
+      kind: "workspace-unavailable",
+      message: "Directory identity changed",
+      workspaceID: "workspace-1",
+      reason: "identity_changed",
+    })
+  })
+  test("unwraps an identity conflict without losing the recovery target", () => {
+    const data = { message: "Verify the directory", workspaceID: "workspace-1", reason: "identity_changed" }
+    const error = Object.assign(new Error("Conflict"), {
+      name: "APIError",
+      data: {
+        statusCode: 409,
+        responseBody: JSON.stringify({ name: "WorkspaceUnavailable", data }),
+      },
+    })
+    expect(promptSubmitFailure(error)).toEqual({ kind: "workspace-unavailable", ...data })
+  })
   test("routes a missing session worktree to the blocking workspace reminder", () => {
     expect(
       promptSubmitFailure({

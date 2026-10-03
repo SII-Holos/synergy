@@ -59,8 +59,10 @@ beforeAll(async () => {
   await Bun.write(
     path.join(directory, "topbar-services.ts"),
     `
-    export const useGlobalSDK = () => ({ client: {} })
-    export const useSDK = () => ({ connected: () => true })
+    import { useLingui } from "@lingui/solid"
+    export const useLocale = () => ({ i18n: useLingui().i18n() })
+    export const useGlobalSDK = () => ({ client: {}, capabilities: { has: () => false } })
+    export const useSDK = () => ({ connected: () => true, client: {} })
     export const useExecution = () => ({ available: () => false, state: {} })
     export const useLocal = () => ({ agent: { current: () => ({}) }, model: {
       current: () => ({ name: "Fixture model" }),
@@ -68,8 +70,8 @@ beforeAll(async () => {
       selection: { saving: () => false, state: () => undefined, error: () => undefined, retry() {} }
     } })
     export const useCommand = () => ({ options: [], keybind: () => undefined, trigger() {} })
-    export const useSync = () => ({ session: { get: () => ({ id: "fixture", title: "Toolbar fixture", scope: { id: "home" }, tags: [] }) } })
-    export const useSessionDataView = () => () => ({ statusFor: () => ({ type: "idle" }), messagesFor: () => [] })
+    export const useSync = () => ({ data: { workspaces: [], inbox: {}, session: [], message: {}, part: {} }, session: { get: () => ({ id: "fixture", title: "Toolbar fixture", scope: { id: "home" }, tags: [] }) } })
+    export const useSessionDataView = () => () => ({ statusFor: () => ({ type: "idle" }), messagesFor: () => [], inboxFor: () => [] })
     `,
   )
   await Bun.write(
@@ -184,7 +186,7 @@ beforeAll(async () => {
       alias: [
         { find: /^@\/context\/(workbench|layout)$/, replacement: path.join(directory, "state.tsx") },
         {
-          find: /^@\/context\/(global-sdk|sdk|execution|local|command|sync|session-data-view)$/,
+          find: /^@\/context\/(global-sdk|sdk|execution|local|command|sync|session-data-view|locale)$/,
           replacement: path.join(directory, "topbar-services.ts"),
         },
         { find: /^@\/components\/dialog$/, replacement: path.join(directory, "topbar-dialogs.tsx") },

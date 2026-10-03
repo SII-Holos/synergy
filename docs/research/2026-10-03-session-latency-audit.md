@@ -180,7 +180,7 @@ HTTP 数字 status 与 span 字符串 status 分离；导航从用户动作到�
 
 Web 初次两项失败分别是新增 phase 未纳入白名单，以及测试期间插件构建重写导出文件；前者修复，后者完成构建后重跑。完整 Web 命令本身没有被改写为“首次全绿”。quality 的一次失败来自临时 DOM fixture 删除与格式扫描重叠；最终静态检查与构建／浏览器测试串行执行。修正文档预算后，追加修复过程中的完整 `quality:quick` 命令取得 18 项全部通过；最终追加的 UI 修复已通过全量 UI 套件。随后静态检查仅发现报告段落换行问题，修正后最终 `quality:quick` 18 项全部通过。生产 Web 最终构建通过，并已在主窗口刷新加载。最终原生 UI 验收确认：历史页脚不再显示两个虚假运行摘要；R 的工具详情关闭后可再次展开，输出和退出码正确；新建入口打开空白可输入的 composer。
 
-本轮未改 HTTP schema；Scope bootstrap 查询实现变更后仍执行了标准生成流程，生成契约无差异。发布前补测浏览器 crypto contract 通过，生产构建的私有 HTTP 烟测完成：非安全上下文可正常渲染，页面错误为零，测试服务器已自动清理。临时 fixture server、provider 与故障代理已停止，保留私有证据；主实例保持健康运行。收尾健康检查 HTTP 200，model/reader/writer 均 ready，活动 Session 与后台任务均为 0。最终启动日志未再出现 WorkspaceRequired、owner preparation deferred、admission 或额度拒绝；最终主题保存竞态未再出现。较早一轮另有一次 Desktop Browser 页面不可用异常，来源是原生页面生命周期检查，尚未复现其触发条件，不将其算作已修复的 Session 故障。本次修复、报告、长期文档、四个已实施决策和[复盘](../postmortem/0036-session-interactions-amplified-global-work.md)一并保留。
+本轮未改 HTTP schema；Scope bootstrap 查询实现变更后仍执行了标准生成流程，生成契约无差异。发布前补测浏览器 crypto contract 通过，生产构建的私有 HTTP 烟测完成：非安全上下文可正常渲染，页面错误为零，测试服务器已自动清理。临时 fixture server、provider 与故障代理已停止，保留私有证据；主实例保持健康运行。收尾健康检查 HTTP 200，model/reader/writer 均 ready，活动 Session 与后台任务均为 0。最终启动日志未再出现 WorkspaceRequired、owner preparation deferred、admission 或额度拒绝；最终主题保存竞态未再出现。较早一轮另有一次 Desktop Browser 页面不可用异常，来源是原生页面生命周期检查，尚未复现其触发条件，不将其算作已修复的 Session 故障。本次修复、报告、长期文档、四个已实施决策和[复盘](../postmortem/0038-session-interactions-amplified-global-work.md)一并保留。
 
 ## 剩余问题与方案比较
 

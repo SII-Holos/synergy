@@ -12102,6 +12102,18 @@ msgid "execution.cancelRead"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "execution.changes.diagnostics"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.changes.incomplete"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.changes.incompleteDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "execution.chartEvents"
 msgstr ""
 
@@ -15879,6 +15891,14 @@ msgstr "⟦output⟧"
 msgid "session-turn.token-reasoning"
 msgstr "⟦reasoning⟧"
 
+#. js-lingui-explicit-id
+msgid "session.activity.operations"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.agenda.retry"
+msgstr ""
+
 #. Runtime translation descriptors for all wake-indicator UI strings.
  *  Each is a base MessageDescriptor with `id` + English `message`.
  *  Call sites spread in `values` when the message contains ICU placeholders.
@@ -17467,10 +17487,6 @@ msgstr "⟦Waiting for you⟧"
 #. js-lingui-explicit-id
 msgid "session.state.worktree"
 msgstr "⟦Worktree session⟧"
-
-#. js-lingui-explicit-id
-msgid "session.state.worktree.unread"
-msgstr "⟦Worktree session; response ready⟧"
 
 #. js-lingui-explicit-id
 msgid "session.subagent.ariaLabel"
@@ -25573,6 +25589,14 @@ msgid "welcome.common.unavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.flight.effect.fire"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.effect.shield"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.flight.field"
 msgstr ""
 
@@ -25589,11 +25613,39 @@ msgid "welcome.flight.over"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.flight.pickup.fire"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.pickup.repair"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.pickup.shield"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.flight.position"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.ready"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.bonus"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.fire"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.repair"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.shield"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -25769,6 +25821,10 @@ msgid "workspace.dialog.recoverSaved"
 msgstr "⟦Recover saved copy⟧"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.recovery"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.register"
 msgstr "⟦Add directory⟧"
 
@@ -25829,32 +25885,12 @@ msgid "workspace.home.unavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "workspace.location.directory"
-msgstr "⟦Local directory⟧"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.explanation"
-msgstr "⟦Files belong to this Workspace. Commands run in the selected Environment. Open files keep their original Workspace.⟧"
-
-#. js-lingui-explicit-id
 msgid "workspace.location.isolated"
 msgstr "⟦Isolated worktree⟧"
 
 #. js-lingui-explicit-id
-msgid "workspace.location.open"
-msgstr "⟦Working location: {project}, {state}⟧"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.planned"
-msgstr "⟦Worktree pending⟧"
-
-#. js-lingui-explicit-id
 msgid "workspace.location.stored"
 msgstr "⟦Stored Workspace⟧"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.unavailable"
-msgstr "⟦Workspace unavailable⟧"
 
 #. js-lingui-explicit-id
 msgid "workspace.navigation.close"

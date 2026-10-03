@@ -112,7 +112,7 @@ export function officePreviewDocument(html: string, css: string, scale = 1, sear
       node.replaceWith(fragment)
     }
   }
-  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${officeCsp}"><style>${safeCss(css)}\nhtml{color-scheme:light}body{margin:0; padding:16px; box-sizing:border-box; overflow:auto;} .office-paper{zoom:${Math.max(0.1, Math.min(4, scale))};width:max-content;margin:auto;} mark{background:Highlight;color:HighlightText;} .office-search-match{fill:Highlight;}</style></head><body><div class="office-paper">${template.innerHTML}</div></body></html>`
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${officeCsp}"><style>${safeCss(css)}\nhtml{color-scheme:light}body{margin:0; padding:16px; box-sizing:border-box; overflow:auto;} .office-paper{zoom:${Math.max(0.1, Math.min(4, scale))};width:max-content;margin:auto;background:Canvas;color:CanvasText;} mark{background:Highlight;color:HighlightText;} .office-search-match{fill:Highlight;}</style></head><body><div class="office-paper">${template.innerHTML}</div></body></html>`
 }
 
 export function OfficeDocumentFrame(props: {

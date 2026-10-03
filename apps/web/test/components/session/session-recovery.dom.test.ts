@@ -98,7 +98,6 @@ interface RecoveryWindow extends Window {
 
 test("failed removal retains the message and restoration is visible and retryable", async () => {
   await page.goto(url)
-  await page.getByRole("button", { name: "Session inbox", exact: true }).click()
   await page.evaluate(() => ((window as unknown as RecoveryWindow).failRemove = true))
   await page.getByRole("button", { name: "Queued message actions", exact: true }).click()
   await page.getByRole("button", { name: "Delete", exact: true }).click()
@@ -121,7 +120,6 @@ test("failed removal retains the message and restoration is visible and retryabl
 
 test("lost restore response is checked before another restore request", async () => {
   await page.goto(url)
-  await page.getByRole("button", { name: "Session inbox", exact: true }).click()
   await page.getByRole("button", { name: "Queued message actions", exact: true }).click()
   await page.getByRole("button", { name: "Delete", exact: true }).click()
   await page.getByRole("heading", { name: "Removed messages" }).waitFor()

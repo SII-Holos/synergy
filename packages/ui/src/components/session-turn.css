@@ -456,3 +456,36 @@
 [data-component="session-turn"] [data-slot="session-turn-timeline-item"]::after {
   content: none;
 }
+
+[data-component="session-turn"][data-segment-footer] {
+  [data-slot="session-turn-timeline"] {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+  }
+  [data-slot="session-turn-timeline"]
+    > [data-slot="session-turn-timeline-item"]:is([data-kind="execution-completion"], [data-kind="copy-markdown"]) {
+    width: auto;
+    margin-block: 0;
+  }
+}
+[data-component="session-turn"][data-activity-body]
+  [data-slot="session-turn-timeline-item"]
+  + [data-slot="session-turn-timeline-item"] {
+  margin-block-start: 4px;
+}
+[data-component="session-turn"] [data-component="markdown"] {
+  font-size: 1rem;
+  line-height: 1.5;
+}
+[data-component="session-turn"] :is([data-slot="assistant-message-copy"], [data-slot="assistant-message-fork"]) {
+  width: 28px;
+  height: 28px;
+}
+@media (pointer: coarse) {
+  [data-component="session-turn"] :is([data-slot="assistant-message-copy"], [data-slot="assistant-message-fork"]) {
+    width: 44px;
+    height: 44px;
+  }
+}

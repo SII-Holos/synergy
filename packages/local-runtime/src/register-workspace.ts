@@ -13,6 +13,7 @@ import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Worktree } from "./workspace/worktree"
 import { WorkspaceFileImport } from "@ericsanchezok/synergy-harness/workspace/file-import"
 import { WorkspaceFileService } from "./workspace-file/service"
+import { registerWorkspaceIdentityMigrations } from "./workspace/identity-migration"
 
 const log = Log.create({ service: "runtime.workspace" })
 
@@ -33,6 +34,7 @@ const workspaceServices: SessionWorkspaceRuntime.Provider = {
 }
 
 export function registerWorkspace(coordinator = new WorkspaceCoordinator()) {
+  registerWorkspaceIdentityMigrations()
   SnapshotLink.register({ type: (filename) => FileLink.type(filename) })
   SnapshotRestore.register(WorkspaceFileRestore)
   WorkspaceFileImport.register(WorkspaceFileService)

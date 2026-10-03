@@ -12102,6 +12102,18 @@ msgid "execution.cancelRead"
 msgstr "取消读取"
 
 #. js-lingui-explicit-id
+msgid "execution.changes.diagnostics"
+msgstr "查看记录详情"
+
+#. js-lingui-explicit-id
+msgid "execution.changes.incomplete"
+msgstr "更改记录不完整"
+
+#. js-lingui-explicit-id
+msgid "execution.changes.incompleteDescription"
+msgstr "部分文件更改未能记录，这不代表任务执行失败。"
+
+#. js-lingui-explicit-id
 msgid "execution.chartEvents"
 msgstr "{count} 个事件 · {start}–{end}"
 
@@ -15879,6 +15891,14 @@ msgstr "输出"
 msgid "session-turn.token-reasoning"
 msgstr "推理"
 
+#. js-lingui-explicit-id
+msgid "session.activity.operations"
+msgstr "执行了 {count} 项操作"
+
+#. js-lingui-explicit-id
+msgid "session.agenda.retry"
+msgstr "未能加载定时任务，重试"
+
 #. Runtime translation descriptors for all wake-indicator UI strings.
  *  Each is a base MessageDescriptor with `id` + English `message`.
  *  Call sites spread in `values` when the message contains ICU placeholders.
@@ -17467,10 +17487,6 @@ msgstr "等待你回复"
 #. js-lingui-explicit-id
 msgid "session.state.worktree"
 msgstr "隔离工作区会话"
-
-#. js-lingui-explicit-id
-msgid "session.state.worktree.unread"
-msgstr "隔离工作区会话；回复已生成"
 
 #. js-lingui-explicit-id
 msgid "session.subagent.ariaLabel"
@@ -25458,7 +25474,7 @@ msgstr "正在生成"
 
 #. js-lingui-explicit-id
 msgid "ui.session.awaitingResponse"
-msgstr "等待回复……"
+msgstr "Synergy 正在思考…"
 
 #. js-lingui-explicit-id
 msgid "ui.sessionReview.loadingFile"
@@ -25573,12 +25589,20 @@ msgid "welcome.common.unavailable"
 msgstr "暂时无法加载这个示例，你仍可以在下方开始任务。"
 
 #. js-lingui-explicit-id
+msgid "welcome.flight.effect.fire"
+msgstr "火力 {seconds} 秒"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.effect.shield"
+msgstr "护罩 {seconds} 秒"
+
+#. js-lingui-explicit-id
 msgid "welcome.flight.field"
 msgstr "飞机大战游戏区域"
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.help"
-msgstr "移动指针或使用方向键操控，点击或按空格开始自动射击。躲避碰撞；漏掉敌人会中断连击。拾取箭头获得十秒火力、护盾抵挡一次碰撞、十字恢复生命。"
+msgstr "移动指针或使用方向键操控，点击或按空格开始自动射击。躲避碰撞；漏掉敌人会中断连击。拾取弹药获得十秒三向火力，气泡护罩抵挡一次碰撞，爱心补给箱恢复生命。"
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.name"
@@ -25589,12 +25613,40 @@ msgid "welcome.flight.over"
 msgstr "{score} 分 · 再飞一次"
 
 #. js-lingui-explicit-id
+msgid "welcome.flight.pickup.fire"
+msgstr "三连弹"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.pickup.repair"
+msgstr "修复箱"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.pickup.shield"
+msgstr "防护罩"
+
+#. js-lingui-explicit-id
 msgid "welcome.flight.position"
 msgstr "飞机位置 {x}，{y}"
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.ready"
 msgstr "移动操控 · 点击起飞"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.bonus"
+msgstr "生命已满 · +{points} 分"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.fire"
+msgstr "三向火力 · 10 秒"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.repair"
+msgstr "生命 +1"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.shield"
+msgstr "抵挡一次碰撞 · 8 秒"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.aim"
@@ -25606,7 +25658,7 @@ msgstr "弹弓游戏区域"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.help"
-msgstr "向后拉小鸟，松手击倒目标。左右键调整角度，上下键调整力度，空格发射，Esc 取消拉弓。"
+msgstr "向后拉小精灵，松手击倒守卫。击碎支撑，让结构倒塌。左右键调整角度，上下键调整力度，空格发射，Esc 取消拉弓。"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.lost"
@@ -25618,7 +25670,7 @@ msgstr "像素弹弓"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.ready"
-msgstr "向后拉，松开发射 · {shots} 发"
+msgstr "第 {level} 关 · 向后拉，松开发射 · {shots} 发"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.score"
@@ -25769,6 +25821,10 @@ msgid "workspace.dialog.recoverSaved"
 msgstr "恢复已保存副本"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.recovery"
+msgstr "无法确认此目录的身份。请确认位置并重新绑定，继续使用。对话和草稿已保留。"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.register"
 msgstr "添加目录"
 
@@ -25829,32 +25885,12 @@ msgid "workspace.home.unavailable"
 msgstr "此项目暂无可用资源。"
 
 #. js-lingui-explicit-id
-msgid "workspace.location.directory"
-msgstr "本地目录"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.explanation"
-msgstr "文件归属于此 Workspace，命令在所选 Environment 中运行。已打开的文件仍保留原 Workspace 归属。"
-
-#. js-lingui-explicit-id
 msgid "workspace.location.isolated"
 msgstr "独立工作区"
 
 #. js-lingui-explicit-id
-msgid "workspace.location.open"
-msgstr "工作位置：{project}，{state}"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.planned"
-msgstr "待准备独立工作区"
-
-#. js-lingui-explicit-id
 msgid "workspace.location.stored"
 msgstr "存储型 Workspace"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.unavailable"
-msgstr "Workspace 不可用"
 
 #. js-lingui-explicit-id
 msgid "workspace.navigation.close"

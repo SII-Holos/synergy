@@ -24,6 +24,7 @@ import "./project-flow.css"
 import { workspaceCopy as copy } from "./workspace-dialog-copy"
 
 export function DialogWorkspace(props: {
+  recoveryID?: string
   mode?: "select" | "manage"
   copiesOnly?: boolean
   environmentProfile?: string | null
@@ -43,13 +44,14 @@ export function DialogWorkspace(props: {
   const controller = new AbortController()
   const [records, setRecords] = createStore<{ data: WorkspaceInfo[] }>({ data: [] })
   const initial =
-    props.selection?.mode === "workspace"
+    props.recoveryID ??
+    (props.selection?.mode === "workspace"
       ? props.selection.workspaceID
       : props.selection?.mode === "none"
         ? null
         : props.sessionID
           ? sync.session.get(props.sessionID)?.workspaceID
-          : sync.data.path.workspace?.id
+          : sync.data.path.workspace?.id)
   const [directoryBrowsing, setDirectoryBrowsing] = createSignal(props.mode === "manage")
   const [sessions, setSessions] = createSignal<Session[]>([])
   const [sessionsLoaded, setSessionsLoaded] = createSignal(false)
@@ -304,7 +306,15 @@ export function DialogWorkspace(props: {
             ? locationCopy.continueCopy
             : locationCopy.chooseFiles,
       )}
-      description={_(locationCopy.fileDescription)}
+      description={
+        props.recoveryID
+          ? _({
+              id: "workspace.dialog.recovery",
+              message:
+                "This directory could not be verified. Confirm its location and rebind it to continue. Your conversation and draft are preserved.",
+            })
+          : _(locationCopy.fileDescription)
+      }
       footer={
         <div data-slot="dialog-actions">
           <Button variant="ghost" onClick={() => void close()} disabled={pending()}>

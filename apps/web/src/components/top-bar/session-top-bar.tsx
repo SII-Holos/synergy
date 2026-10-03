@@ -38,7 +38,7 @@ import "./session-top-bar.css"
 import { SlotOutlet } from "@/plugin/slot-outlet"
 import { SessionTagMenu } from "@/components/session/session-tag-menu"
 import { ModelVariantPicker } from "@/components/provider/model-thinking-picker"
-import { TaskDetailsPopover } from "@/components/execution/popover"
+import { SessionTaskDetails } from "@/components/execution/session-task-details"
 
 const selectionSaving = { id: "session.modelSelection.saving", message: "Saving…" }
 const selectionPending = { id: "session.modelSelection.pending", message: "Applies to the next request" }
@@ -192,6 +192,8 @@ function SessionActionMenu(props: {
 }
 
 export function SessionTopBar(props: {
+  hasCanonicalRoot?: boolean
+  inboxFrozen?: boolean
   onWorkspaceTransition?: (request: SessionWorkspaceTransitionRequest) => void
   sessionTransitionPending?: Accessor<boolean>
 }) {
@@ -449,7 +451,7 @@ export function SessionTopBar(props: {
             <ModelSelectorButton />
           </div>
           <div class="flex items-center gap-1">
-            <TaskDetailsPopover />
+            <SessionTaskDetails hasCanonicalRoot={props.hasCanonicalRoot} inboxFrozen={props.inboxFrozen} />
             <button
               type="button"
               class="stb-icon-btn"
@@ -502,7 +504,7 @@ export function SessionTopBar(props: {
           </div>
           <div class="stb-drag-region" aria-hidden="true" />
           <div class="stb-right">
-            <TaskDetailsPopover />
+            <SessionTaskDetails hasCanonicalRoot={props.hasCanonicalRoot} inboxFrozen={props.inboxFrozen} />
             <Show when={actionVisibility().menu || compact()}>
               <SessionActionMenu
                 tools={

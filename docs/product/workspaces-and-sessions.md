@@ -39,7 +39,7 @@ A session belongs to a Scope and references a stable Workspace identity, or has 
 
 Sessions can share a Workspace. Explicitly changing its local binding updates every referencing Session and requires idle file resources. Imported history remains unavailable for local execution until deliberately rebound. Open file tabs retain the directory version they were opened against, so rebinding cannot silently redirect a pending edit.
 
-If a directory was missing during an upgrade, its history keeps the original location. Recreating that path does not activate the historical Workspace; explicitly rebind it to confirm which files the Session may use.
+If a directory was missing during an upgrade, its history keeps the original location. Saved conversations remain readable when the directory is missing or replaced. Recreating that path does not activate the historical Workspace; explicitly rebind it to confirm which files the Session may use.
 
 This distinction lets configuration and project ownership remain stable while execution files move to an isolated checkout. Worktree sessions can inspect ordinary files from the original checkout, but writes and command execution outside the active worktree remain protected unless explicitly authorized.
 

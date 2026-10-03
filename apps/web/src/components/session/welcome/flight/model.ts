@@ -6,11 +6,13 @@ export type PickupKind = "fire" | "shield" | "repair"
 export type Flight = {
   seed: number
   phase: "ready" | "playing" | "over"
+  ending: number
   ship: Point
   enemies: (Point & { id: number; origin: number; age: number; kind: number; hp: number; flash: number })[]
   bullets: (Point & { vx: number })[]
   pickups: (Point & { id: number; kind: PickupKind })[]
   bursts: (Point & { age: number; kind: "hit" | "destroy" | "hurt" | "pickup" | "shield"; points: number })[]
+  notice?: { kind: PickupKind; points: number; age: number }
   lives: number
   score: number
   kills: number
@@ -29,6 +31,7 @@ export function createFlight(seed: number): Flight {
   return {
     seed,
     phase: "ready",
+    ending: 0,
     ship: { x: 360, y: 330 },
     enemies: [],
     bullets: [],
@@ -58,7 +61,21 @@ export function startFlight(state: Flight): Flight {
 }
 function tick(state: Flight, dt: number, direction: Point): Flight {
   const bursts = state.bursts.map((b) => ({ ...b, age: b.age + dt })).filter((b) => b.age < 0.6)
-  if (state.phase === "over") return { ...state, bursts, muzzle: 0 }
+  let notice = state.notice && state.notice.age + dt < 1.4 ? { ...state.notice, age: state.notice.age + dt } : undefined
+  if (state.phase === "over") {
+    const ending = Math.min(1, state.ending + dt)
+    const coast = (Math.exp(-4 * state.ending) - Math.exp(-4 * ending)) / 4
+    return {
+      ...state,
+      ending,
+      enemies: ending === 1 ? [] : state.enemies.map((e) => ({ ...e, y: e.y + 90 * coast, flash: 0 })),
+      bullets: ending === 1 ? [] : state.bullets.map((b) => ({ ...b, x: b.x + b.vx * coast, y: b.y - 440 * coast })),
+      pickups: ending === 1 ? [] : state.pickups.map((p) => ({ ...p, y: p.y + 42 * coast })),
+      bursts,
+      notice: undefined,
+      muzzle: 0,
+    }
+  }
   const ship = aimFlight(state, state.ship.x + direction.x * 290 * dt, state.ship.y + direction.y * 290 * dt).ship
   const time = state.time + dt
   let score = state.score,
@@ -89,11 +106,13 @@ function tick(state: Flight, dt: number, direction: Point): Flight {
   let pickups = state.pickups.map((p) => ({ ...p, y: p.y + 42 * dt })).filter((p) => p.y < 420)
   pickups = pickups.filter((p) => {
     if (Math.hypot(p.x - ship.x, p.y - ship.y) > 27) return true
+    const points = p.kind === "repair" && lives === 3 ? 150 : 0
     if (p.kind === "fire") fire = 10
     else if (p.kind === "shield") shield = 8
     else if (lives < 3) lives++
     else score += 150
     bursts.push({ ...p, age: 0, kind: "pickup", points: 0 })
+    notice = { kind: p.kind, points, age: 0 }
     return false
   })
   if (spawn <= 0) {
@@ -173,6 +192,7 @@ function tick(state: Flight, dt: number, direction: Point): Flight {
     bullets: bullets.slice(-64),
     pickups: pickups.slice(-8),
     bursts: bursts.slice(-32),
+    notice,
     score,
     kills,
     combo,
@@ -187,6 +207,6 @@ function tick(state: Flight, dt: number, direction: Point): Flight {
   }
 }
 export function advanceFlight(state: Flight, seconds: number, direction: Point = { x: 0, y: 0 }): Flight {
-  if (state.phase === "ready") return state
+  if (state.phase === "ready" || (state.phase === "over" && state.ending === 1)) return state
   return advanceFixed(state, seconds, (s, dt) => tick(s, dt, direction))
 }

@@ -1,9 +1,20 @@
 import type { Message, SessionPartSummary } from "@ericsanchezok/synergy-sdk"
 
+export type ConversationActivity = {
+  key: string
+  parts: string[]
+  tools: number
+  reasoning: number
+  active: boolean
+  open: boolean
+}
+
 export type ConversationRow = {
   key: string
   root: Message
   message: Message
+  activity?: ConversationActivity
+  exiting?: boolean
   process?: { open: boolean; working: boolean; hasContent: boolean; hasTurnContent: boolean }
 } & (
   | {
@@ -15,6 +26,7 @@ export type ConversationRow = {
       beforeReasoning: boolean
       processBody?: boolean
     }
+  | { kind: "activity"; activity: ConversationActivity }
   | { kind: "process" }
   | { kind: "footer" }
   | { kind: "load"; more: boolean; older?: boolean }
@@ -26,6 +38,7 @@ export function buildConversationRows(input: {
   messagesFor: (root: Message) => readonly Message[]
   summaries: (messageID: string) => readonly SessionPartSummary[]
   page: (messageID: string) => { hasMore: boolean; hasEarlier?: boolean } | undefined
+  activity?: (block: ConversationActivity) => boolean
   process?: (root: Message) => { open: boolean; working: boolean }
 }): ConversationRow[] {
   const rows: ConversationRow[] = []
@@ -103,5 +116,55 @@ export function buildConversationRows(input: {
     if (process && !header) rows.push({ key: `${root.id}:process`, root, message: root, kind: "process", process })
     rows.push({ key: `${root.id}:footer`, root, message: root, kind: "footer", process })
   }
-  return rows
+  return groupActivities(rows, input.activity)
+}
+
+function groupActivities(
+  rows: ConversationRow[],
+  expanded?: (block: ConversationActivity) => boolean,
+): ConversationRow[] {
+  const result: ConversationRow[] = []
+  const blocks: ConversationActivity[] = []
+  let block: ConversationActivity | undefined
+  for (const row of rows) {
+    if (
+      row.process &&
+      row.kind === "body" &&
+      row.message.role === "assistant" &&
+      row.parts.every((part) => part.type === "tool" || part.type === "reasoning")
+    ) {
+      if (!block) {
+        block = {
+          key: `${row.root.id}:activity:${row.parts[0].id}`,
+          parts: [],
+          tools: 0,
+          reasoning: 0,
+          active: row.process.working,
+          open: true,
+        }
+        blocks.push(block)
+        result.push({
+          key: block.key,
+          root: row.root,
+          message: row.message,
+          kind: "activity",
+          process: row.process,
+          activity: block,
+        })
+      }
+      for (const part of row.parts) {
+        block.parts.push(part.id)
+        if (part.type === "tool") block.tools++
+        else block.reasoning++
+      }
+      row.activity = block
+    } else if (row.kind !== "process") {
+      if (block && (row.kind === "load" || (row.kind === "body" && (row.processBody || row.message.role === "user"))))
+        block.active = false
+      block = undefined
+    }
+    result.push(row)
+  }
+  for (const block of blocks) block.open = expanded?.(block) ?? true
+  return result.filter((row) => row.kind !== "body" || !row.activity || row.activity.open)
 }

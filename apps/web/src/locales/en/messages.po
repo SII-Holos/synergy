@@ -12102,6 +12102,18 @@ msgid "execution.cancelRead"
 msgstr "Cancel reading"
 
 #. js-lingui-explicit-id
+msgid "execution.changes.diagnostics"
+msgstr "View recording details"
+
+#. js-lingui-explicit-id
+msgid "execution.changes.incomplete"
+msgstr "Change recording incomplete"
+
+#. js-lingui-explicit-id
+msgid "execution.changes.incompleteDescription"
+msgstr "Some file changes could not be recorded. This does not indicate a task failure."
+
+#. js-lingui-explicit-id
 msgid "execution.chartEvents"
 msgstr "{count} events · {start}–{end}"
 
@@ -15879,6 +15891,14 @@ msgstr "output"
 msgid "session-turn.token-reasoning"
 msgstr "reasoning"
 
+#. js-lingui-explicit-id
+msgid "session.activity.operations"
+msgstr "{count, plural, one {# action} other {# actions}}"
+
+#. js-lingui-explicit-id
+msgid "session.agenda.retry"
+msgstr "Could not load scheduled activity. Retry"
+
 #. Runtime translation descriptors for all wake-indicator UI strings.
  *  Each is a base MessageDescriptor with `id` + English `message`.
  *  Call sites spread in `values` when the message contains ICU placeholders.
@@ -17467,10 +17487,6 @@ msgstr "Waiting for you"
 #. js-lingui-explicit-id
 msgid "session.state.worktree"
 msgstr "Worktree session"
-
-#. js-lingui-explicit-id
-msgid "session.state.worktree.unread"
-msgstr "Worktree session; response ready"
 
 #. js-lingui-explicit-id
 msgid "session.subagent.ariaLabel"
@@ -25458,7 +25474,7 @@ msgstr "Generating media"
 
 #. js-lingui-explicit-id
 msgid "ui.session.awaitingResponse"
-msgstr "Awaiting response…"
+msgstr "Synergy is thinking…"
 
 #. js-lingui-explicit-id
 msgid "ui.sessionReview.loadingFile"
@@ -25573,12 +25589,20 @@ msgid "welcome.common.unavailable"
 msgstr "This example could not load. You can still start a task below."
 
 #. js-lingui-explicit-id
+msgid "welcome.flight.effect.fire"
+msgstr "Firepower {seconds}s"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.effect.shield"
+msgstr "Shield {seconds}s"
+
+#. js-lingui-explicit-id
 msgid "welcome.flight.field"
 msgstr "Aircraft playfield"
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.help"
-msgstr "Move the pointer or use arrow keys to steer. Click or press Space to start automatic fire. Avoid collisions; missed enemies break your combo. Collect arrows for ten seconds of firepower, a shield for one protected hit, or a cross to repair."
+msgstr "Move the pointer or use arrow keys to steer. Click or press Space to start automatic fire. Avoid collisions; missed enemies break your combo. Collect ammunition for ten seconds of triple fire, a bubble for one protected hit, or a heart supply box to repair."
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.name"
@@ -25589,12 +25613,40 @@ msgid "welcome.flight.over"
 msgstr "{score} points · Fly again"
 
 #. js-lingui-explicit-id
+msgid "welcome.flight.pickup.fire"
+msgstr "Triple shot"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.pickup.repair"
+msgstr "Repair"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.pickup.shield"
+msgstr "Barrier"
+
+#. js-lingui-explicit-id
 msgid "welcome.flight.position"
 msgstr "Aircraft at {x}, {y}"
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.ready"
 msgstr "Move to steer · Click to fly"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.bonus"
+msgstr "Full health · +{points}"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.fire"
+msgstr "Triple fire · 10 seconds"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.repair"
+msgstr "Health +1"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.shield"
+msgstr "One-hit protection · 8 seconds"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.aim"
@@ -25606,7 +25658,7 @@ msgstr "Slingshot playfield"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.help"
-msgstr "Pull the bird back and release to topple the targets. Left and right aim, up and down set power, Space launches. Escape cancels the pull."
+msgstr "Pull the courier back and release to topple the guards. Break supports to bring down the structure. Left and right aim, up and down set power, Space launches. Escape cancels the pull."
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.lost"
@@ -25618,7 +25670,7 @@ msgstr "Pixel slingshot"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.ready"
-msgstr "Pull back and release · {shots} shots"
+msgstr "Level {level} · Pull back and release · {shots} shots"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.score"
@@ -25769,6 +25821,10 @@ msgid "workspace.dialog.recoverSaved"
 msgstr "Recover saved copy"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.recovery"
+msgstr "This directory could not be verified. Confirm its location and rebind it to continue. Your conversation and draft are preserved."
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.register"
 msgstr "Add directory"
 
@@ -25829,32 +25885,12 @@ msgid "workspace.home.unavailable"
 msgstr "No resources are available in this project."
 
 #. js-lingui-explicit-id
-msgid "workspace.location.directory"
-msgstr "Local directory"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.explanation"
-msgstr "Files belong to this Workspace. Commands run in the selected Environment. Open files keep their original Workspace."
-
-#. js-lingui-explicit-id
 msgid "workspace.location.isolated"
 msgstr "Isolated worktree"
 
 #. js-lingui-explicit-id
-msgid "workspace.location.open"
-msgstr "Working location: {project}, {state}"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.planned"
-msgstr "Worktree pending"
-
-#. js-lingui-explicit-id
 msgid "workspace.location.stored"
 msgstr "Stored Workspace"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.unavailable"
-msgstr "Workspace unavailable"
 
 #. js-lingui-explicit-id
 msgid "workspace.navigation.close"

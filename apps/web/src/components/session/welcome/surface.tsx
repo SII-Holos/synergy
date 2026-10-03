@@ -57,6 +57,8 @@ export function GameSurface(props: {
           }
           if (event.key.toLowerCase() === "r") {
             event.preventDefault()
+            event.stopPropagation()
+            if (event.repeat) return
             props.scene.interact()
             props.onReset()
             return

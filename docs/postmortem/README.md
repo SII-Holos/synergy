@@ -1,10 +1,10 @@
 # Postmortems
 
-Postmortems explain failures, causes and guardrails.
+Postmortems document failures, causes and guardrails.
 
 ## When to write one
 
-Write a postmortem only when **all three** criteria hold:
+Write a postmortem when all criteria hold:
 
 - **Subtle** — the mechanism is non-obvious, and a careful engineer would re-derive it the hard way.
 - **Systemic** — the bug escaped because of a gap in tests, tooling, or conventions, not a one-off typo.
@@ -21,7 +21,7 @@ Otherwise, write a bug fix with tests.
 
 Name files `NNNN-kebab-case-title.md` using the next available number. Use these sections:
 
-- **Executive summary** — one short paragraph a busy reader can absorb in thirty seconds: what broke, the root cause in plain terms, why it escaped, and the durable lesson.
+- **Executive summary** — one paragraph: what broke, its cause, why it escaped, and the durable lesson.
 - **Summary** — the full detail of the failure.
 - **Timeline** — what was observed and when.
 - **Root cause** — the mechanism, and why every safety net missed it.
@@ -30,10 +30,9 @@ Name files `NNNN-kebab-case-title.md` using the next available number. Use these
 
 ## Index
 
-Qualifying incidents:
-
-- [0036: Session latency](0036-session-interactions-amplified-global-work.md)
+- [0038: Session latency](0038-session-interactions-amplified-global-work.md)
 - [0035: Titlebar controls](0035-native-titlebar-swallowed-controls.md)
+- [0036: Directory replacement blocked history](0036-directory-replacement-blocked-history.md)
 
 | Number | Title                                                                      | Status      | Date       |
 | ------ | -------------------------------------------------------------------------- | ----------- | ---------- |
@@ -96,6 +95,8 @@ Qualifying incidents:
 | 0033 | [Completed terminal blocked Runtime shutdown](0033-completed-terminal-blocked-runtime-shutdown.md) | implemented | 2026-09-28 |
 
 | 0034 | [Composer uploads suppressed attachment content](0034-composer-upload-suppressed-content.md) | implemented | 2026-09-28 |
+
+- [0037: Mount identity](0037-mount-number-invalidated-directory.md)
 
 ## History rules
 

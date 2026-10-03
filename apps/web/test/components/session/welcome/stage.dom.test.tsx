@@ -27,7 +27,7 @@ beforeAll(async () => {
     import { WelcomeProvider, useWelcome, useNewTaskNavigation } from "${source}/components/session/welcome/context"
     import { WelcomeStage } from "${source}/components/session/welcome/stage"
     import { createWelcomeMemory } from "${source}/components/session/welcome/types"
-    import { createStack, dropBlock } from "${source}/components/session/welcome/stack/model"
+    import { createStack, dropBlock, advanceStack } from "${source}/components/session/welcome/stack/model"
     import { createSlingshot } from "${source}/components/session/welcome/slingshot/model"
     import { createBlocks } from "${source}/components/session/welcome/blocks/model"
     import { createFlight, startFlight } from "${source}/components/session/welcome/flight/model"
@@ -56,6 +56,10 @@ beforeAll(async () => {
       const [definition, setDefinition] = createSignal(welcomeScenes.find(s => s.id === new URLSearchParams(location.search).get("scene")) ?? welcomeScenes[0])
       const initialMemory = createWelcomeMemory()
       const fixture = new URLSearchParams(location.search).get("fixture")
+      if (fixture === "flight-pickups") {
+        const flight = createFlight(8)
+        initialMemory.write({...flight,pickups:[{id:90,x:280,y:220,kind:"fire"},{id:91,x:360,y:220,kind:"shield"},{id:92,x:440,y:220,kind:"repair"}]})
+      }
       if (fixture === "flight-power") {
         const flight = startFlight(createFlight(8))
         initialMemory.write({...flight, spawn:99, pickups:[{id:90,...flight.ship,kind:"fire"},{id:91,...flight.ship,kind:"shield"}]})
@@ -77,6 +81,22 @@ beforeAll(async () => {
       if (fixture === "stack-miss") {
         const stack = createStack(8)
         initialMemory.write(dropBlock({...stack,moving:{...stack.moving,x:0}}))
+      }
+      if (fixture === "stack-result") {
+        let stack = createStack(8)
+        for(let n=0;n<8;n++) {
+          stack=dropBlock({...stack,moving:{...stack.moving,x:stack.blocks.at(-1).x}})
+          for(let step=0;step<30;step++) stack=advanceStack(stack,1/120)
+        }
+        initialMemory.write(dropBlock({...stack,moving:{...stack.moving,x:0}}))
+      }
+      if (fixture === "sling-result") {
+        const sling = createSlingshot(8)
+        sling.aim(-20,500)
+        sling.launch()
+        for(let step=0;step<1440 && sling.snapshot().phase === "flying";step++) sling.advance(1/120)
+        initialMemory.write(sling.snapshot())
+        sling.dispose()
       }
       if (fixture === "sling-last") {
         const sling = createSlingshot(8)
@@ -268,7 +288,7 @@ test("each scene supports light, dark, and doubled scale", async () => {
     for (const colorScheme of ["light", "dark"] as const) {
       await page.setViewportSize({ width: 1100, height: 920 })
       await page.emulateMedia({ colorScheme, reducedMotion: "reduce" })
-      await open(scene)
+      await open(scene === "flight" ? "flight&fixture=flight-pickups" : scene)
       if (captures)
         await page
           .locator(".session-workbench-pane")
@@ -426,6 +446,9 @@ test("flight pickups show timed effects, freeze outside the game, and a loss res
   await open("flight&fixture=flight-power")
   await page.waitForFunction(() => document.querySelector(".welcome-flight")?.getAttribute("data-fire") === "true")
   expect(await page.locator(".welcome-flight").getAttribute("data-shield")).toBe("true")
+  expect(await page.locator(".welcome-game-status").textContent()).toContain("Firepower")
+  expect(await page.locator(".welcome-game-status").textContent()).toContain("Shield")
+  expect(await page.getByRole("status").textContent()).toContain("One-hit protection")
   await page.getByRole("textbox").click()
   const canvas = page.locator(".welcome-game-canvas")
   const paused = await canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
@@ -438,6 +461,98 @@ test("flight pickups show timed effects, freeze outside the game, and a loss res
   expect(await page.locator(".welcome-flight").getAttribute("data-lives")).toBe("3")
   expect(await page.getByRole("textbox").inputValue()).toBe("")
 })
+
+test("round endings keep moving, pause with the composer and allow immediate retry", async () => {
+  await page.setViewportSize({ width: 960, height: 920 })
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await open("flight&fixture=flight-over")
+  await page.waitForFunction(() => document.querySelector(".welcome-flight")?.getAttribute("data-phase") === "over")
+  const canvas = page.locator(".welcome-game-canvas")
+  const frame = () => canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
+  const first = await frame()
+  await page.waitForTimeout(100)
+  expect(await frame()).not.toBe(first)
+  await page.getByRole("textbox").click()
+  const paused = await frame()
+  await page.waitForTimeout(180)
+  expect(await frame()).toBe(paused)
+  await canvas.click()
+  expect(await page.locator(".welcome-flight").getAttribute("data-phase")).toBe("playing")
+  expect(await page.locator(".welcome-flight").getAttribute("data-lives")).toBe("3")
+})
+
+test("retry blends into a fresh board, is interruptible and respects reduced motion", async () => {
+  for (const motion of ["no-preference", "reduce"] as const) {
+    await page.emulateMedia({ reducedMotion: motion })
+    await open("blocks&fixture=blocks-over")
+    const canvas = page.locator(".welcome-game-canvas")
+    const frame = () => canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
+    await canvas.press("Space")
+    expect(await page.locator(".welcome-blocks").getAttribute("data-phase")).toBe("over")
+    await canvas.press("r")
+    const first = await frame()
+    await page.waitForTimeout(320)
+    const fresh = await frame()
+    if (motion === "reduce") expect(fresh).toBe(first)
+    else expect(fresh).not.toBe(first)
+    expect(await page.locator(".welcome-blocks").getAttribute("data-phase")).toBe("ready")
+    expect(await page.locator(".welcome-blocks").getAttribute("data-locked")).toBe("0")
+    await canvas.press("r")
+    await canvas.press("r")
+    await canvas.press("Escape")
+    const frozen = await frame()
+    await page.waitForTimeout(180)
+    expect(await frame()).toBe(frozen)
+    expect(await page.getByRole("textbox").inputValue()).toBe("")
+    expect(errors).toEqual([])
+  }
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+})
+
+test("completed feedback settles to a stable result and remount retains it", async () => {
+  await page.setViewportSize({ width: 1100, height: 920 })
+  await page.emulateMedia({ reducedMotion: "no-preference", colorScheme: "light" })
+  const captures = process.env.WELCOME_CAPTURE_DIR
+  if (captures) await mkdir(captures, { recursive: true })
+  for (const [scene, fixture, phase] of [
+    ["flight", "flight-over", "over"],
+    ["stack", "stack-result", "missed"],
+    ["blocks", "blocks-over", "over"],
+    ["slingshot", "sling-result", "won"],
+  ]) {
+    await open(`${scene}&fixture=${fixture}`)
+    const canvas = page.locator(".welcome-game-canvas")
+    if (scene === "blocks") await canvas.press("Space")
+    await page.waitForFunction(
+      ({ scene, phase }) => document.querySelector(`.welcome-${scene}`)?.getAttribute("data-phase") === phase,
+      { scene, phase },
+    )
+    await page.waitForTimeout(1100)
+    const frame = () => canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
+    const completed = await frame()
+    await page.waitForTimeout(100)
+    expect(await frame()).toBe(completed)
+    await canvas.dispatchEvent("keydown", { key: "r", repeat: true, bubbles: true })
+    expect(await page.locator(`.welcome-${scene}`).getAttribute("data-phase")).toBe(phase)
+    await page.getByRole("button", { name: "Mount", exact: true }).click()
+    await page.getByRole("button", { name: "Mount", exact: true }).click()
+    await canvas.waitFor()
+    expect(await page.locator(`.welcome-${scene}`).getAttribute("data-phase")).toBe(phase)
+    expect(await frame()).toBe(completed)
+    if (captures) {
+      await page.waitForFunction(() => getComputedStyle(document.querySelector(".welcome-stage")!).opacity === "1")
+      for (const colorScheme of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme })
+        await page
+          .locator(".session-workbench-pane")
+          .screenshot({ path: path.join(captures, `${scene}-ending-${colorScheme}.png`) })
+      }
+      await page.emulateMedia({ colorScheme: "light" })
+    }
+    expect(await page.getByRole("textbox").inputValue()).toBe("")
+    expect(errors).toEqual([])
+  }
+}, 20000)
 
 test("blocks hold repeat, continuous touch movement, row clear and restart preserve the draft", async () => {
   await page.setViewportSize({ width: 960, height: 920 })
