@@ -21,7 +21,7 @@ Otherwise, write a bug fix with tests.
 
 Name files `NNNN-kebab-case-title.md` using the next available number. Use these sections:
 
-- **Executive summary** — one short paragraph a busy reader can absorb in thirty seconds: what broke, the root cause in plain terms, why it escaped, and the durable lesson.
+- **Executive summary** — one paragraph: what broke, its cause, why it escaped, and the durable lesson.
 - **Summary** — the full detail of the failure.
 - **Timeline** — what was observed and when.
 - **Root cause** — the mechanism, and why every safety net missed it.
