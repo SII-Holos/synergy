@@ -129,7 +129,9 @@ for (const backend of storageTestBackends()) {
                 : new StorageIntegrityError("Synthetic part integrity failure")
             const records = Storage.records
             let hits = 0
-            using partRead = spyOn(Storage, "records").mockImplementation(async function* <T>(input) {
+            using partRead = spyOn(Storage, "records").mockImplementation(async function* <T>(
+              input: Parameters<typeof Storage.records>[0],
+            ) {
               for await (const record of records<T>(input)) {
                 if (input?.kind === "part" && input.messageID === newestIDs[offset]) {
                   hits++
