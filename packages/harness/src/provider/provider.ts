@@ -593,7 +593,7 @@ export namespace Provider {
       family: model.family,
       api: {
         id: model.id,
-        url: provider.api!,
+        url: provider.api ?? "",
         npm: model.provider?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible",
       },
       status: model.status ?? "active",
@@ -1200,7 +1200,7 @@ export namespace Provider {
       options["includeUsage"] = true
     }
 
-    if (!options["baseURL"]) options["baseURL"] = model.api.url
+    if (!options["baseURL"] && model.api.url) options["baseURL"] = model.api.url
     if (options["apiKey"] === undefined && provider.key) options["apiKey"] = provider.key
     if (model.headers)
       options["headers"] = {
@@ -1330,7 +1330,7 @@ export namespace Provider {
         options["includeUsage"] = true
       }
 
-      if (!options["baseURL"]) options["baseURL"] = model.api.url
+      if (!options["baseURL"] && model.api.url) options["baseURL"] = model.api.url
       if (options["apiKey"] === undefined && provider.key) options["apiKey"] = provider.key
       if (model.headers)
         options["headers"] = {

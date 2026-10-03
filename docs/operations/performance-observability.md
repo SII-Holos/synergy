@@ -2,6 +2,8 @@
 
 Synergy includes a first-class Performance settings panel for local runtime, frontend, network, and resource performance. Performance is the user-facing read model over Synergy's indexed observability store. Observability owns the canonical telemetry foundation: context propagation, redaction, events, metrics, spans, issues, resource samples, migrations, and diagnostics. Diagnostics is a support API and package capability backed by the same indexed data plus redacted logs and runtime inspection.
 
+Buffered browser metrics retain each sample’s validated Session, Scope and navigation attribution. Batch page context supplies missing attribution only; navigating before the next flush must not reassign earlier samples. Known navigation triggers pass a finite allowlist, while free-text and secret-like labels remain rejected.
+
 Scope bootstrap responses include per-field `Server-Timing` durations. Inspect these alongside request duration to distinguish provider, session status, command and product contribution loading during cold navigation.
 
 ## What the Performance panel shows

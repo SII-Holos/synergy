@@ -75,9 +75,19 @@ export function createSessionTransitionState() {
     })
   }
 
+  const confirmHandoff = (sessionID: string, messageID: string) => {
+    const handoff = entries[sessionID]?.handoff
+    if (handoff?.messageID !== messageID || !handoff.unconfirmed) return false
+    const accepted = handoff.unconfirmed.accepted
+    setEntries(sessionID, "handoff", "unconfirmed", undefined)
+    accepted()
+    return true
+  }
+
   const completeHandoff = (sessionID: string, messageID: string) => {
     const handoff = entries[sessionID]?.handoff
     if (handoff?.messageID !== messageID) return false
+    confirmHandoff(sessionID, messageID)
     set(sessionID, handoff.success, {
       dismiss: () => dismissHandoff(sessionID, messageID),
     })
@@ -122,6 +132,7 @@ export function createSessionTransitionState() {
     clear,
     dismissHandoff,
     completeHandoff,
+    confirmHandoff,
     isHandoffDismissed,
     getRecovery: (scopeKey: string) => recoveries.get(scopeKey),
     setRecovery,

@@ -47,7 +47,7 @@ describe("session transition state", () => {
       state.set("session-1", progress)
 
       const readAfterRouteRemount = () => state.get("session-1")
-      expect(readAfterRouteRemount()?.progress).toBe(progress)
+      expect(readAfterRouteRemount()?.progress).toEqual(progress)
       dispose()
     })
   })
@@ -101,6 +101,54 @@ describe("session transition state", () => {
     })
   })
 
+  test("canonical completion confirms a lost receipt once and cannot confirm a newer input", () => {
+    createRoot((dispose) => {
+      const state = createSessionTransitionState()
+      let accepted = 0
+      const handoff = {
+        messageID: "msg_first",
+        success: createNewSessionTransitionSuccessProgress(),
+        unconfirmed: {
+          missing() {},
+          accepted() {
+            accepted++
+          },
+        },
+      } satisfies SessionTransitionHandoff
+      state.set("session-1", createNewSessionTransitionProgress(), undefined, handoff)
+      expect(state.completeHandoff("session-1", "stale")).toBe(false)
+      expect(accepted).toBe(0)
+      expect(state.completeHandoff("session-1", "msg_first")).toBe(true)
+      expect(accepted).toBe(1)
+      expect(state.completeHandoff("session-1", "msg_first")).toBe(false)
+      expect(accepted).toBe(1)
+      dispose()
+    })
+  })
+
+  test("durable confirmation and canonical completion share one acceptance callback", () => {
+    createRoot((dispose) => {
+      const state = createSessionTransitionState()
+      let accepted = 0
+      state.set("session-1", createNewSessionTransitionProgress(), undefined, {
+        messageID: "msg_first",
+        success: createNewSessionTransitionSuccessProgress(),
+        unconfirmed: {
+          missing() {},
+          accepted() {
+            accepted++
+          },
+        },
+      })
+      expect(state.confirmHandoff("session-1", "stale")).toBe(false)
+      expect(state.confirmHandoff("session-1", "msg_first")).toBe(true)
+      expect(state.confirmHandoff("session-1", "msg_first")).toBe(false)
+      expect(state.completeHandoff("session-1", "msg_first")).toBe(true)
+      expect(accepted).toBe(1)
+      dispose()
+    })
+  })
+
   test("does not complete a newer handoff from a stale message result", () => {
     createRoot((dispose) => {
       const state = createSessionTransitionState()
@@ -112,7 +160,7 @@ describe("session transition state", () => {
       state.set("session-1", loading, undefined, handoff)
 
       expect(state.completeHandoff("session-1", "msg_first")).toBe(false)
-      expect(state.get("session-1")?.progress).toBe(loading)
+      expect(state.get("session-1")?.progress).toEqual(loading)
       expect(state.get("session-1")?.handoff?.messageID).toBe("msg_second")
       dispose()
     })
@@ -131,7 +179,7 @@ describe("session transition state", () => {
       state.set("session-1", loading)
       staleDismiss?.()
 
-      expect(state.get("session-1")?.progress).toBe(loading)
+      expect(state.get("session-1")?.progress).toEqual(loading)
       dispose()
     })
   })

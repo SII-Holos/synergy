@@ -205,6 +205,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       let restoreRevision = prompt.revision()
       const restoreInput = (options?: { focus?: boolean }) => {
         if (!prompt.restoreIfUnchanged(restoreRevision, failureRestoreSnapshot)) return
+        restoreRevision = prompt.revision()
         if (!binding.isCurrent()) return
         input.setStore("mode", mode)
         input.setStore("popover", null)
@@ -697,6 +698,14 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         input.setLocalArmedLoop(null)
       }
 
+      const acknowledgeInput = () => {
+        clearInput()
+        input.onAccepted?.(
+          prompt.revision() === restoreRevision && (binding.isCurrent() || params.id === activeSession.id),
+        )
+        if (armedLightLoop) input.clearPendingLightLoop()
+      }
+
       const failActiveSessionSubmit = (title: string, message: string, options?: { focus?: boolean }) => {
         const persisted = persistCreatedSessionFailure(activeSession.id, title, message)
         if (!persisted) restoreInput(options)
@@ -743,6 +752,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           accepted,
           workspaceSelection,
           success,
+          ...(!confirmed ? { unconfirmed: { missing: recoverUnacceptedInput, accepted: acknowledgeInput } } : {}),
         })
       }
 
@@ -1137,6 +1147,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         if (!messageID) return
         const messages = syncStore.message[activeSession.id]
         if (!messages) return
+        const currentMessage = messages.find((message) => message.id === messageID)
+        if (currentMessage && !isOptimisticMessagePending(currentMessage)) return
         const metadata = syncStore.messageWindow[activeSession.id]
         const current: MessageWindowState<Message> = {
           messages,
@@ -1173,115 +1185,152 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         optimisticAdded = true
       }
 
-      const wsConnected = sdk.connected()
-      const inboxRequest = globalSync.captureResourceRequest(sessionScopeKey, activeSession.id, "inbox")
-
-      await client.session
-        .input(
+      let inputInFlight = false
+      const recoverUnacceptedInput = () => {
+        removeOptimisticMessage()
+        restoreInput({ focus: false })
+        publishNewSessionTransition(
+          activeSession.id,
+          createNewSessionTransitionErrorProgress({
+            title: i18n._(PI.submitFailedSend),
+            message: i18n._(PI.submitSessionNotStarted),
+          }),
           {
-            sessionID: activeSession.id,
-            agent,
-            ...(messageID ? { messageID } : {}),
-            parts: requestParts,
-            metadata: {
-              promptDraft: draftSnapshot,
-              ...(createdSessionForSubmit ? { sessionTransition: { workspaceSelection } } : {}),
+            retry: () => {
+              if (inputInFlight) return
+              publishNewSessionTransition(activeSession.id, createNewSessionTransitionProgress())
+              addOptimisticMessage()
+              optimisticAdded = true
+              void sendInput()
+            },
+            dismiss: () => {
+              publishNewSessionTransition(activeSession.id, null)
+              void rollbackLightLoopForSubmit()
+              if (!newSessionRecovery) return
+              sessionTransition.setRecovery(currentScopeKey, { ...newSessionRecovery, autoSubmit: false })
+              navigate(`/${base64Encode(currentScopeKey)}/session`)
             },
           },
-          { throwOnError: true },
         )
-        .then((result) => {
-          const accepted = result.data
-          if (!accepted) throw new Error("Session input returned no acceptance result")
-          clearInput()
-          input.onAccepted?.(
-            prompt.revision() === restoreRevision && (binding.isCurrent() || params.id === activeSession.id),
+      }
+      const sendInput = async () => {
+        if (inputInFlight) return
+        inputInFlight = true
+        const wsConnected = sdk.connected()
+        const inboxRequest = globalSync.captureResourceRequest(sessionScopeKey, activeSession.id, "inbox")
+        return client.session
+          .input(
+            {
+              sessionID: activeSession.id,
+              agent,
+              ...(messageID ? { messageID } : {}),
+              parts: requestParts,
+              metadata: {
+                promptDraft: draftSnapshot,
+                ...(createdSessionForSubmit ? { sessionTransition: { workspaceSelection } } : {}),
+              },
+            },
+            { throwOnError: true },
           )
-          if (accepted.status === "queued") {
-            const item = accepted.item
-            // Guard the mutation upsert: the backend may have already consumed
-            // this item (and materialized its message) before the acceptance
-            // response lands, e.g. when the session went idle between enqueue
-            // and response. Re-inserting would resurrect a ghost inbox row.
-            // History-mode windows track unseen canonical arrivals in
-            // pendingLatestIds rather than the messages array, so both count.
-            if (
-              !isInboxItemMaterialized(
-                syncStore.message[activeSession.id],
-                item,
-                isOptimisticMessagePending,
-                syncStore.messageWindow[activeSession.id]?.pendingLatestIds,
-              )
-            ) {
-              globalSync.applyResourceMutationResponse(
-                sessionScopeKey,
-                activeSession.id,
-                "inbox",
-                inboxRequest,
-                result.response?.headers,
-                () => {
-                  setSyncStore(
-                    "inbox",
-                    activeSession.id,
-                    reconcile(upsertSessionInboxItem(syncStore.inbox[activeSession.id], item), { key: "id" }),
-                  )
-                },
-              )
+          .then((result) => {
+            const accepted = result.data
+            if (!accepted) throw new Error("Session input returned no acceptance result")
+            acknowledgeInput()
+            if (accepted.status === "queued") {
+              const item = accepted.item
+              // Guard the mutation upsert: the backend may have already consumed
+              // this item (and materialized its message) before the acceptance
+              // response lands, e.g. when the session went idle between enqueue
+              // and response. Re-inserting would resurrect a ghost inbox row.
+              // History-mode windows track unseen canonical arrivals in
+              // pendingLatestIds rather than the messages array, so both count.
+              if (
+                !isInboxItemMaterialized(
+                  syncStore.message[activeSession.id],
+                  item,
+                  isOptimisticMessagePending,
+                  syncStore.messageWindow[activeSession.id]?.pendingLatestIds,
+                )
+              ) {
+                globalSync.applyResourceMutationResponse(
+                  sessionScopeKey,
+                  activeSession.id,
+                  "inbox",
+                  inboxRequest,
+                  result.response?.headers,
+                  () => {
+                    setSyncStore(
+                      "inbox",
+                      activeSession.id,
+                      reconcile(upsertSessionInboxItem(syncStore.inbox[activeSession.id], item), { key: "id" }),
+                    )
+                  },
+                )
+              }
             }
-          }
-          if (armedLightLoop) input.clearPendingLightLoop()
-          if (accepted.status === "queued" && optimisticAdded) {
-            handoffAcceptedOptimisticMessage(accepted.item.messageID)
-            optimisticAdded = false
-          }
-          handoffNewSessionMessage(
-            accepted.status === "queued"
-              ? {
-                  messageID: accepted.item.messageID,
-                  itemID: accepted.item.id,
-                  acceptedAt: accepted.item.time.created,
-                }
-              : { messageID: accepted.messageID, acceptedAt: Date.now() },
-          )
-          if (!wsConnected) {
-            showToast({
-              type: "warning",
-              title: i18n._(PI.submitQueued),
-              description: i18n._(PI.submitSentDesc),
+            if (accepted.status === "queued" && optimisticAdded) {
+              handoffAcceptedOptimisticMessage(accepted.item.messageID)
+              optimisticAdded = false
+            }
+            handoffNewSessionMessage(
+              accepted.status === "queued"
+                ? {
+                    messageID: accepted.item.messageID,
+                    itemID: accepted.item.id,
+                    acceptedAt: accepted.item.time.created,
+                  }
+                : { messageID: accepted.messageID, acceptedAt: Date.now() },
+            )
+            if (!wsConnected) {
+              showToast({
+                type: "warning",
+                title: i18n._(PI.submitQueued),
+                description: i18n._(PI.submitSentDesc),
+              })
+            }
+          })
+          .catch(async (err) => {
+            const failure = promptSubmitFailure(err)
+            const directoryUnavailable =
+              failure.kind === "worktree-unavailable" || failure.kind === "workspace-unavailable"
+            if (messageID) {
+              const receipt = await recoverSessionInputReceipt(client, { sessionID: activeSession.id, messageID })
+              if (receipt.kind !== "missing") {
+                const progress = receipt.kind === "accepted" ? receipt.progress : undefined
+                if (progress) acknowledgeInput()
+                handoffNewSessionMessage({ messageID, itemID: progress?.itemID, acceptedAt: Date.now() }, !!progress)
+                return
+              }
+              if (!directoryUnavailable) {
+                recoverUnacceptedInput()
+                return
+              }
+            }
+            await rollbackLightLoopForSubmit()
+            if (optimisticAdded) removeOptimisticMessage()
+            const worktreeUnavailable = failure.kind === "worktree-unavailable"
+            failActiveSessionSubmit(i18n._(PI.submitFailedSend), failure.message, {
+              focus: !directoryUnavailable,
             })
-          }
-        })
-        .catch(async (err) => {
-          if (messageID) {
-            const receipt = await recoverSessionInputReceipt(client, { sessionID: activeSession.id, messageID })
-            if (receipt.kind !== "missing") {
-              const progress = receipt.kind === "accepted" ? receipt.progress : undefined
-              if (progress && armedLightLoop) input.clearPendingLightLoop()
-              handoffNewSessionMessage({ messageID, itemID: progress?.itemID, acceptedAt: Date.now() }, !!progress)
+            if (failure.kind === "workspace-unavailable") {
+              input.onWorkspaceUnavailable(failure.workspaceID)
               return
             }
-          }
-          const failure = promptSubmitFailure(err)
-          await rollbackLightLoopForSubmit()
-          if (optimisticAdded) removeOptimisticMessage()
-          const worktreeUnavailable = failure.kind === "worktree-unavailable"
-          failActiveSessionSubmit(i18n._(PI.submitFailedSend), failure.message, {
-            focus: !worktreeUnavailable,
+            if (worktreeUnavailable) {
+              input.onWorktreeUnavailable()
+              return
+            }
+            showToast({
+              type: "error",
+              title: i18n._(PI.submitFailedSend),
+              description: sessionStartFailureMessage(failure.message),
+            })
           })
-          if (failure.kind === "workspace-unavailable") {
-            input.onWorkspaceUnavailable(failure.workspaceID)
-            return
-          }
-          if (worktreeUnavailable) {
-            input.onWorktreeUnavailable()
-            return
-          }
-          showToast({
-            type: "error",
-            title: i18n._(PI.submitFailedSend),
-            description: sessionStartFailureMessage(failure.message),
+          .finally(() => {
+            inputInFlight = false
           })
-        })
+      }
+      await sendInput()
     } finally {
       preparation?.clear()
       releaseSubmit?.()

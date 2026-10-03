@@ -200,6 +200,8 @@ describe("desktop startup overlay", () => {
 
     await overlay.load()
     await overlay.setStatus({ title: "Loading workspace", detail: "Connecting" })
+    await overlay.setStatus({ title: "Loading workspace", detail: "Connecting" })
+    await overlay.setStatus({ title: "Loading workspace", detail: "Connecting" })
     overlay.setTheme(theme("dark"))
     await Bun.sleep(0)
 

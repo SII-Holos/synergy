@@ -57,6 +57,7 @@ export interface PruneLimits {
 export type PruneDeferral = "records" | "nodes" | "artifacts" | "active" | "recent"
 export interface RecordQuery {
   kind?: string
+  prefix?: string[]
   scopeID?: string
   sessionID?: string
   messageID?: string
@@ -136,6 +137,8 @@ function recordBody(value: SqlValue): RecordBody {
 }
 
 function metadata(key: string[]) {
+  if (key[0] === "usage_parent")
+    return { kind: key[0], scope: key[1] ?? "", session: key[2] ?? "", message: key[3] ?? "", order: key.at(-1)! }
   if (["usage_time", "usage_link"].includes(key[0]))
     return {
       kind: key[0],
@@ -973,6 +976,12 @@ export class StoreTransaction {
     // an equality on the column alone does not imply `message_id <> ''`, and
     // without this the message-keyed page would fall back to a full scan.
     if (this.keys === "bytes" && input.messageID !== undefined) conditions.push("message_id <> ''")
+    if (input.prefix?.length) {
+      const key = JSON.stringify(input.prefix)
+      const descendants = key.slice(0, -1) + ","
+      conditions.push("(key_text = ? OR substr(key_text, 1, length(?)) = ?)")
+      values.push(key, descendants, descendants)
+    }
     if (input.after !== undefined) {
       const comparison = input.descending ? "<" : ">"
       // Row-value bounds let SQLite seek past the cursor instead of filtering the index prefix.
@@ -1666,14 +1675,11 @@ export class TransactionalStore {
         return
       }
       try {
-        const progress = await withStorageQueueOptions(
-          { priority: "background", deadline: performance.now() + 100 },
-          async () => {
-            const owners = await this.prepareEvidenceOwners()
-            const text = await this.transaction((tx) => tx.collectTextProjection(), { priority: "background" })
-            return { ready: owners.ready && text.ready }
-          },
-        )
+        const progress = await withStorageQueueOptions({ priority: "background" }, async () => {
+          const owners = await this.prepareEvidenceOwners()
+          const text = await this.transaction((tx) => tx.collectTextProjection(), { priority: "background" })
+          return { ready: owners.ready && text.ready }
+        })
         if (!this.closing) this.scheduleEvidencePreparation(progress.ready ? 5_000 : 25)
       } catch (error) {
         if (this.closing || this.unavailable) return

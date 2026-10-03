@@ -11,11 +11,13 @@ import type { SnapshotStore } from "./snapshot-store"
 import { WorkspaceTree } from "../workspace/tree"
 import type { BlobStore } from "../workspace/content"
 import type { SnapshotSchema } from "./snapshot-schema"
+import { ObservabilityMetrics } from "../observability/metrics"
 
 export namespace SnapshotCapture {
   const MAX_FILE_BYTES = 2 * 1024 * 1024
   const MAX_ENTRIES = 100_000
   const MAX_DEPTH = 256
+  const CAPTURE_CONCURRENCY = 16
   const EXCLUDED_DIRS = new Set([
     ".git",
     ".synergy",
@@ -59,6 +61,7 @@ export namespace SnapshotCapture {
     ".lock",
   ])
   type Entry = { mode: string; hash: string }
+  type Captured = { name: string; mode: string; bytes: Uint8Array }
   type Rule = { prefix: string; matcher: Ignore }
 
   function same(left: Stats, right: Stats) {
@@ -200,8 +203,10 @@ export namespace SnapshotCapture {
     const pending = new Map<string, string>()
     let pendingBytes = 0
     let count = 0
+    const timing = { read: 0, objects: 0 }
     const flush = async () => {
       if (!pending.size) return
+      const started = performance.now()
       // Provenance: https://git-scm.com/docs/git-hash-object (--no-filters).
       // Immutable native bytes bypass attributes, clean filters and timestamp
       // shortcuts; no Git command enters the user's working directory.
@@ -211,23 +216,30 @@ export namespace SnapshotCapture {
       )
       if (result.exitCode !== 0 || result.text.trim() !== [...pending.keys()].join("\n"))
         throw new Error(`Snapshot object write failed: ${result.stderr}`)
-      for (const [hash, filename] of pending) {
-        available.add(hash)
-        await fs.unlink(filename)
-      }
+      for (const hash of pending.keys()) available.add(hash)
+      await Promise.all([...pending.values()].map((filename) => fs.unlink(filename)))
       pending.clear()
       pendingBytes = 0
+      timing.objects += performance.now() - started
     }
-    const retain = async (name: string, mode: string, bytes: Uint8Array) => {
-      const hash = createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex")
-      current.set(name, { mode, hash })
-      if (available.has(hash) || pending.has(hash)) return
-      const filename = path.join(directory, hash)
-      await fs.writeFile(filename, bytes, { flag: "wx", mode: 0o600 })
-      pending.set(hash, filename)
-      pendingBytes += bytes.length
-      if (pending.size >= 128 || pendingBytes >= 16 * 1024 * 1024) await flush()
+    const retainMany = async (entries: Captured[]) => {
+      const started = performance.now()
+      const writes: Promise<void>[] = []
+      for (const { name, mode, bytes } of entries) {
+        const hash = createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex")
+        current.set(name, { mode, hash })
+        if (available.has(hash) || pending.has(hash)) continue
+        const filename = path.join(directory, hash)
+        pending.set(hash, filename)
+        pendingBytes += bytes.length
+        writes.push(fs.writeFile(filename, bytes, { flag: "wx", mode: 0o600 }))
+      }
+      const settled = await Promise.allSettled(writes)
+      for (const result of settled) if (result.status === "rejected") throw result.reason
+      timing.objects += performance.now() - started
+      if (pending.size >= 512 || pendingBytes >= 16 * 1024 * 1024) await flush()
     }
+    const retain = (name: string, mode: string, bytes: Uint8Array) => retainMany([{ name, mode, bytes }])
     const visit = async (relative: string, inherited: Rule[], ignoredParent: boolean, depth: number): Promise<void> => {
       abort.throwIfAborted()
       if (depth > MAX_DEPTH) throw new Error("Snapshot directory depth exceeds limit")
@@ -251,44 +263,75 @@ export namespace SnapshotCapture {
         })
       }
       const entries = await fs.opendir(absolute)
-      for await (const entry of entries) {
-        abort.throwIfAborted()
-        if (++count > MAX_ENTRIES) throw new Error("Snapshot entry count exceeds limit")
-        if (EXCLUDED_DIRS.has(entry.name) || EXCLUDED_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue
-        const name = relative ? relative + "/" + entry.name : entry.name
-        const filename = path.join(root, name)
-        const stat = await fs.lstat(filename)
-        let ignored = ignoredParent
-        if (!ignoredParent)
-          for (const rule of rules) {
-            const match = rule.matcher.test(name.slice(rule.prefix.length) + (stat.isDirectory() ? "/" : ""))
-            if (match.ignored) ignored = true
-            else if (match.unignored) ignored = false
-          }
-        if (stat.isDirectory()) {
-          if (!ignored || parents.has(name)) await visit(name, rules, ignored, depth + 1)
-          continue
+      let captures: Array<Promise<PromiseSettledResult<Captured | undefined>>> = []
+      let started = 0
+      const finishBatch = async () => {
+        const batch = captures
+        captures = []
+        if (!batch.length) return
+        const settled = await Promise.all(batch)
+        timing.read += performance.now() - started
+        const retained: Captured[] = []
+        for (const result of settled) {
+          if (result.status === "rejected") throw result.reason
+          if (result.value) retained.push(result.value)
         }
-        if (ignored && !previous.has(name)) continue
-        if (stat.isSymbolicLink()) {
-          const bytes = SnapshotLink.capture(filename, await fs.readlink(filename))
-          if (!same(stat, await fs.lstat(filename))) throw new Error("Snapshot symbolic link changed while reading")
-          await retain(name, "120000", bytes)
-        } else if (stat.isFile()) {
-          try {
-            const bytes = await read(filename, stat, abort)
-            if (bytes) await retain(name, stat.mode & 0o111 ? "100755" : "100644", bytes)
-            else if (onOmissions) omit(name, "size_limit")
-            else if (previous.has(name)) throw new Error("A recorded file exceeds the snapshot size limit")
-          } catch (error) {
-            abort.throwIfAborted()
-            if (!onOmissions) throw error
-            omit(name, "read_failed")
-          }
-        }
+        await retainMany(retained)
       }
-      if (path.relative(root, await fs.realpath(absolute)) !== relative.split("/").join(path.sep))
-        throw new Error("Snapshot directory changed while reading")
+      try {
+        for await (const entry of entries) {
+          abort.throwIfAborted()
+          if (++count > MAX_ENTRIES) throw new Error("Snapshot entry count exceeds limit")
+          if (EXCLUDED_DIRS.has(entry.name) || EXCLUDED_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue
+          const name = relative ? relative + "/" + entry.name : entry.name
+          const filename = path.join(root, name)
+          const stat = await fs.lstat(filename)
+          let ignored = ignoredParent
+          if (!ignoredParent)
+            for (const rule of rules) {
+              const match = rule.matcher.test(name.slice(rule.prefix.length) + (stat.isDirectory() ? "/" : ""))
+              if (match.ignored) ignored = true
+              else if (match.unignored) ignored = false
+            }
+          if (stat.isDirectory()) {
+            await finishBatch()
+            if (!ignored || parents.has(name)) await visit(name, rules, ignored, depth + 1)
+            continue
+          }
+          if (ignored && !previous.has(name)) continue
+          if (!captures.length) started = performance.now()
+          captures.push(
+            (async (): Promise<Captured | undefined> => {
+              if (stat.isSymbolicLink()) {
+                const bytes = SnapshotLink.capture(filename, await fs.readlink(filename))
+                if (!same(stat, await fs.lstat(filename)))
+                  throw new Error("Snapshot symbolic link changed while reading")
+                return { name, mode: "120000", bytes }
+              } else if (stat.isFile()) {
+                try {
+                  const bytes = await read(filename, stat, abort)
+                  if (bytes) return { name, mode: stat.mode & 0o111 ? "100755" : "100644", bytes }
+                  else if (onOmissions) omit(name, "size_limit")
+                  else if (previous.has(name)) throw new Error("A recorded file exceeds the snapshot size limit")
+                } catch (error) {
+                  abort.throwIfAborted()
+                  if (!onOmissions) throw error
+                  omit(name, "read_failed")
+                }
+              }
+            })().then(
+              (value) => ({ status: "fulfilled" as const, value }),
+              (reason: unknown) => ({ status: "rejected" as const, reason }),
+            ),
+          )
+          if (captures.length >= CAPTURE_CONCURRENCY) await finishBatch()
+        }
+        await finishBatch()
+        if (path.relative(root, await fs.realpath(absolute)) !== relative.split("/").join(path.sep))
+          throw new Error("Snapshot directory changed while reading")
+      } finally {
+        await Promise.allSettled(captures)
+      }
     }
     const readContent = async (entry: WorkspaceTree.Entry) => {
       if (entry.kind !== "file" || entry.size > MAX_FILE_BYTES) return undefined
@@ -375,6 +418,14 @@ export namespace SnapshotCapture {
       if (result.exitCode !== 0) throw new Error(`Snapshot index write failed: ${result.stderr}`)
       return true
     } finally {
+      for (const [phase, value] of Object.entries(timing))
+        ObservabilityMetrics.record({
+          name: `snapshot.capture.${phase}.duration`,
+          value,
+          unit: "ms",
+          module: "storage",
+          labels: { files: current.size, visited: count, concurrency: CAPTURE_CONCURRENCY },
+        })
       await fs.rm(directory, { recursive: true, force: true })
     }
   }

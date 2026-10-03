@@ -1,6 +1,6 @@
 export function observeSessionInput<T>(options: {
   read(signal: AbortSignal): Promise<T>
-  update(value: T): void | Promise<void>
+  update(value: T): void | false | Promise<void | false>
   unavailable(): void
   intervalMs?: number
 }): () => void {
@@ -10,7 +10,7 @@ export function observeSessionInput<T>(options: {
   const poll = async () => {
     try {
       const value = await options.read(controller.signal)
-      if (active) await options.update(value)
+      if (active && (await options.update(value)) === false) active = false
     } catch {
       if (active) options.unavailable()
     } finally {

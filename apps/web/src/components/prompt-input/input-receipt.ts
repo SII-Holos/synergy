@@ -3,8 +3,9 @@ import type { SessionInputProgress, SynergyClient } from "@ericsanchezok/synergy
 export async function recoverSessionInputReceipt(
   client: SynergyClient,
   target: { sessionID: string; messageID: string },
+  signal?: AbortSignal,
 ): Promise<{ kind: "accepted"; progress: SessionInputProgress } | { kind: "missing" } | { kind: "uncertain" }> {
-  const result = await client.session.inputStatus(target, { throwOnError: false }).catch(() => undefined)
+  const result = await client.session.inputStatus(target, { signal, throwOnError: false }).catch(() => undefined)
   if (result?.response?.status === 404) return { kind: "missing" }
   const progress = result?.data
   if (progress?.durable && progress.sessionID === target.sessionID && progress.messageID === target.messageID)

@@ -150,6 +150,14 @@ export namespace StoragePath {
   export const usageSuppressed = (id: string) => ["usage_suppressed", id]
   export const usageTime = (scopeID: string, owner: string, order: string) => ["usage_time", scopeID, owner, order]
   export const usageOwnerCheckpoint = (scopeID: string, owner: string) => ["usage_owner", scopeID, owner]
+  export const usageParent = (
+    scopeID: string,
+    parent: string,
+    parentRunID: string,
+    childScopeID: string,
+    owner: string,
+    runID: string,
+  ) => ["usage_parent", scopeID, parent, parentRunID, childScopeID, owner, runID]
   export const usageLink = (scopeID: string, owner: string, runID: string) => ["usage_link", scopeID, owner, runID]
 
   export const scopeRoot = () => ["projects"]

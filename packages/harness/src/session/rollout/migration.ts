@@ -62,12 +62,13 @@ export namespace RolloutMigration {
             if (kind === "session") await pricing({ kind: "session", scopeID: row.key[1], sessionID: row.key[2] })
             else if (row.key.slice(3).join("/") === "rollout/journal/head")
               await pricing({ kind: "operation", scopeID: row.key[1], operationID: row.key[2] })
-            progress(++completed, completed)
+            progress(++completed, 0)
           }
           if (rows.length < 64) break
           after = rows.at(-1)!.key
         }
       }
+      progress(completed, completed)
     },
   }
   // Archived session metadata is historical evidence; validate only the settlement fields this migration owns.

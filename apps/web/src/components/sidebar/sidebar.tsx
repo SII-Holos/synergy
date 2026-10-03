@@ -1,5 +1,6 @@
 import { runtimeFeatureAvailable } from "../runtime-features"
 import { useNewTaskNavigation } from "../session/welcome/context"
+import { navStart } from "@/utils/perf"
 import { SidebarNavigation } from "./sidebar-navigation"
 import { SidebarSectionButton } from "./sidebar-section-button"
 import { useExtensionOutlet } from "@ericsanchezok/synergy-ui/context/extension-outlet"
@@ -415,6 +416,7 @@ export function Sidebar(props: SidebarProps) {
   const handleAddProject = () => command.trigger("project.create")
 
   const handleSessionClick = (scope: LocalScope, entry: NavEntry) => {
+    navStart({ dir: base64Encode(scope.id), to: entry.id, scopeID: scope.id, trigger: "sidebar" })
     navigate(`/${base64Encode(scope.id)}/session/${entry.id}`)
   }
 
@@ -426,10 +428,17 @@ export function Sidebar(props: SidebarProps) {
   }
 
   const handleNavEntryClick = (entry: NavEntry) => {
+    navStart({
+      dir: base64Encode(resolveEntryRouteDirectory(entry)),
+      to: entry.id,
+      scopeID: entry.scopeID,
+      trigger: "sidebar",
+    })
     navigate(`/${base64Encode(resolveEntryRouteDirectory(entry))}/session/${entry.id}`)
   }
 
   const handleFlyoutSessionClick = (entry: NavEntry, worktree: string) => {
+    navStart({ dir: base64Encode(worktree), to: entry.id, scopeID: entry.scopeID, trigger: "sidebar-flyout" })
     setProjectsFlyoutOpen(false)
     navigate(`/${base64Encode(worktree === "home" ? "home" : worktree)}/session/${entry.id}`)
   }

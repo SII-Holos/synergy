@@ -13,6 +13,66 @@ const originalTTY = Object.getOwnPropertyDescriptor(process.stderr, "isTTY")
 const originalTerm = process.env.TERM
 const originalNoColor = process.env.NO_COLOR
 const writes: string[] = []
+
+test("a new scan phase resets progress admission without replaying stale phase counts", () =>
+  runtime.run(async () => {
+    using clock = spyOn(Date, "now").mockReturnValue(1000)
+    const events: string[] = []
+    MigrationRegistry.register(domain, [
+      {
+        id: "phase-progress",
+        description: "Scan",
+        async up(progress) {
+          progress(4000, 4000)
+          progress(0, 0, 1)
+          progress(1, 2, 1)
+          progress(9999, 9999, 0)
+          progress(2, 2, 1)
+        },
+      },
+    ])
+    await runMigrations({
+      targetDomain: domain,
+      output: "silent",
+      reporter: {
+        summary() {},
+        started() {
+          events.push("start")
+        },
+        progress({ current, total }) {
+          events.push(`${current}/${total}`)
+        },
+      },
+    })
+    expect(events).toEqual(["start", "4000/4000", "start", "0/0", "2/2"])
+  }))
+
+test("unknown and repeated terminal counts are bounded and the last count is flushed", () =>
+  runtime.run(async () => {
+    using clock = spyOn(Date, "now").mockReturnValue(1000)
+    const points: Array<[number, number]> = []
+    MigrationRegistry.register(domain, [
+      {
+        id: "bounded-progress",
+        description: "Scan",
+        async up(progress) {
+          for (let current = 1; current <= 1000; current++) progress(current, 0)
+          progress(1000, 1000)
+          for (let current = 1001; current <= 2000; current++) progress(current, current)
+        },
+      },
+    ])
+    await runMigrations({
+      targetDomain: domain,
+      output: "silent",
+      reporter: {
+        summary() {},
+        progress: ({ current, total }) => points.push([current, total]),
+      },
+    })
+    expect(points.length).toBeLessThanOrEqual(3)
+    expect(points.at(-1)).toEqual([2000, 2000])
+  }))
 let stderr: ReturnType<typeof spyOn<typeof process.stderr, "write">> | undefined
 let stdout: ReturnType<typeof spyOn<typeof process.stdout, "write">> | undefined
 

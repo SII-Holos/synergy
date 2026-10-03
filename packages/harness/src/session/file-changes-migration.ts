@@ -9,19 +9,15 @@ export async function migrateTurnFileCheckpoints(owner: { scopeID: string; sessi
   const scopeID = Identifier.asScopeID(owner.scopeID)
   const sessionID = Identifier.asSessionID(owner.sessionID)
   const messages: MessageV2.WithParts[] = []
-  for (const id of await Storage.scan(StoragePath.sessionMessagesRoot(scopeID, sessionID))) {
-    const messageID = Identifier.asMessageID(id)
-    const info = await Storage.read<MessageV2.Info>(StoragePath.messageInfo(scopeID, sessionID, messageID))
-    const parts: MessageV2.Part[] = []
-    for (const partID of await Storage.scan(StoragePath.messageParts(scopeID, sessionID, messageID))) {
-      parts.push(
-        await Storage.read<MessageV2.Part>(
-          StoragePath.messagePart(scopeID, sessionID, messageID, Identifier.asPartID(partID)),
-        ),
-      )
-    }
-    messages.push({ info, parts })
+  const byID = new Map<string, MessageV2.WithParts>()
+  for await (const { value: info } of Storage.records<MessageV2.Info>({ kind: "message", scopeID, sessionID })) {
+    const message = { info, parts: [] as MessageV2.Part[] }
+    messages.push(message)
+    byID.set(info.id, message)
   }
+  for await (const { value: part } of Storage.records<MessageV2.Part>({ kind: "part", scopeID, sessionID }))
+    byID.get(part.messageID)?.parts.push(part)
+  for (const message of messages) message.parts.sort((a, b) => a.id.localeCompare(b.id))
   messages.sort((a, b) => a.info.id.localeCompare(b.info.id))
   const canonical = MessageV2.deriveSemantics(messages)
   const roots = canonical.filter((message) => message.info.role === "user" && message.info.isRoot)

@@ -22,6 +22,7 @@ import { SnapshotRestore } from "./snapshot-restore"
 import { SnapshotRanges } from "./snapshot-ranges"
 import { SessionFileRestore } from "./file-restore"
 import type { Info } from "./types"
+import { prepareSessionMigrations } from "../migration"
 
 const log = Log.create({ service: "session.history" })
 const PAGE_HYDRATION_CONCURRENCY = 16
@@ -41,6 +42,7 @@ export namespace SessionHistory {
   }
 
   async function prepareSessionDisplay(session: Info, progress?: (current: number, total: number) => void) {
+    await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
     return prepareDisplayOwner({ scopeID: session.scope.id, sessionID: session.id }, progress)
   }
 

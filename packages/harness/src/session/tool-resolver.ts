@@ -233,7 +233,7 @@ export namespace ToolResolver {
     parameters: z.ZodType
     inputSchema?: Record<string, unknown>
   }): JSONSchema7 {
-    return (item.inputSchema ?? z.toJSONSchema(item.parameters)) as JSONSchema7
+    return (item.inputSchema ?? z.toJSONSchema(item.parameters, { io: "input" })) as JSONSchema7
   }
 
   export interface Availability {
