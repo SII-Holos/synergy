@@ -2,9 +2,9 @@ import { afterEach, expect, mock, test } from "bun:test"
 import { plugin } from "bun"
 import { transformAsync } from "@babel/core"
 import { setupI18n } from "@lingui/core"
-import { createComponent, createSignal, onCleanup, type JSX } from "solid-js"
+import { createComponent, createSignal, onCleanup, Suspense, type JSX } from "solid-js"
 import { render } from "solid-js/web"
-import type { ExecutionSummary } from "@ericsanchezok/synergy-sdk/client"
+import type { EventAgendaItemDeleted, EventExecutionUpdated, ExecutionSummary } from "@ericsanchezok/synergy-sdk/client"
 
 await plugin({
   name: "execution-controls-render",
@@ -33,6 +33,7 @@ mock.module("../../../src/components/dialog/dialog-environment", () => ({ Dialog
 
 const [sessionID, setSessionID] = createSignal("root")
 const [enabled, setEnabled] = createSignal(true)
+const [workflows, setWorkflows] = createSignal(false)
 const [connected, setConnected] = createSignal(true)
 const initialResource = {
   id: "root",
@@ -40,14 +41,19 @@ const initialResource = {
   workspace: { type: "git_worktree", path: "/workspace", bindingState: "bound", lifecycle: "active" },
   environmentID: "env-a",
 }
-const [resource, setResource] = createSignal(initialResource)
+type ResourceFixture = Omit<typeof initialResource, "workspace" | "environmentID"> & {
+  workspace: typeof initialResource.workspace | null
+  environmentID: string | null
+}
+const [resource, setResource] = createSignal<ResourceFixture>(initialResource)
 const resources: Array<{
-  kind: "environment" | "branch"
+  kind: "environment" | "branch" | "agenda" | "inbox"
   signal?: AbortSignal
   resolve: (data: unknown) => void
+  reject: (error: Error) => void
 }> = []
-const deferResource = (kind: "environment" | "branch", signal?: AbortSignal) =>
-  new Promise((resolve) => resources.push({ kind, signal, resolve: (data) => resolve({ data }) }))
+const deferResource = (kind: "environment" | "branch" | "agenda" | "inbox", signal?: AbortSignal) =>
+  new Promise((resolve, reject) => resources.push({ kind, signal, resolve: (data) => resolve({ data }), reject }))
 mock.module("../../../src/context/sync", () => ({
   useSync: () => ({
     data: { workspaces: [], inbox: {}, session: [], message: {}, part: {} },
@@ -63,8 +69,13 @@ const pending: Array<{
   resolve: (summary: ExecutionSummary) => void
   reject: (error: Error) => void
 }> = []
-type Notice = { properties: { sessionID: string; revision: number; summary: ExecutionSummary } }
-const listeners = new Set<(notice: Notice) => void>()
+type Notice =
+  | {
+      type: EventExecutionUpdated["type"]
+      properties: Pick<EventExecutionUpdated["properties"], "sessionID" | "revision" | "summary">
+    }
+  | EventAgendaItemDeleted
+const listeners = new Map<string, Set<(notice: Notice) => void>>()
 const opened: Array<{ id: string; options: unknown }> = []
 mock.module("@solidjs/router", () => ({
   useParams: () => ({
@@ -74,7 +85,9 @@ mock.module("@solidjs/router", () => ({
   }),
 }))
 mock.module("../../../src/context/global-sdk", () => ({
-  useGlobalSDK: () => ({ capabilities: { has: (capability: string) => capability !== "workflows" && enabled() } }),
+  useGlobalSDK: () => ({
+    capabilities: { has: (capability: string) => (capability === "workflows" ? workflows() : enabled()) },
+  }),
 }))
 mock.module("../../../src/context/workbench", () => ({
   useWorkbenchPanels: () => ({ openPanel: (id: string, options: unknown) => opened.push({ id, options }) }),
@@ -83,9 +96,14 @@ mock.module("../../../src/context/sdk", () => ({
   useSDK: () => ({
     connected,
     event: {
-      on: (_type: string, listener: (notice: Notice) => void) => {
-        listeners.add(listener)
-        return () => listeners.delete(listener)
+      on: (type: string, listener: (notice: Notice) => void) => {
+        const group = listeners.get(type) ?? new Set<(notice: Notice) => void>()
+        listeners.set(type, group)
+        group.add(listener)
+        return () => {
+          group.delete(listener)
+          if (!group.size) listeners.delete(type)
+        }
       },
     },
     client: {
@@ -96,7 +114,8 @@ mock.module("../../../src/context/sdk", () => ({
         list: (_input: unknown, options: { signal?: AbortSignal }) => deferResource("branch", options.signal),
       },
       session: {
-        inboxRemoved: async () => ({ data: [] }),
+        agenda: (_input: unknown, options: { signal?: AbortSignal }) => deferResource("agenda", options.signal),
+        inboxRemoved: (_input: unknown, options: { signal?: AbortSignal }) => deferResource("inbox", options.signal),
         executionSummary: (input: { sessionID: string }, options: { signal?: AbortSignal }) =>
           new Promise<{ data: ExecutionSummary }>((resolve, reject) => {
             pending.push({ ...input, signal: options.signal, resolve: (data) => resolve({ data }), reject })
@@ -211,8 +230,11 @@ const flush = async () => {
   await Promise.resolve()
 }
 const emit = (value: ExecutionSummary) => {
-  for (const listener of listeners)
-    listener({ properties: { sessionID: value.sessionID, revision: value.revision, summary: value } })
+  for (const listener of listeners.get("execution.updated") ?? [])
+    listener({
+      type: "execution.updated",
+      properties: { sessionID: value.sessionID, revision: value.revision, summary: value },
+    })
 }
 afterEach(() => {
   for (const dispose of disposals.splice(0)) dispose()
@@ -221,6 +243,7 @@ afterEach(() => {
   opened.length = 0
   setSessionID("root")
   setEnabled(true)
+  setWorkflows(false)
   setConnected(true)
   setResource(initialResource)
   resources.length = 0
@@ -430,9 +453,243 @@ test("session task details load actual resources on demand and reject superseded
   expect(document.querySelector(".execution-location-branch")?.textContent).toBe("current-branch")
   expect(document.querySelector(".execution-location-path")?.textContent).toBe("/next")
 
+  setResource({
+    ...initialResource,
+    scope: { ...initialResource.scope, id: "another-project" },
+    workspace: { ...initialResource.workspace, path: "/next" },
+    environmentID: "env-b",
+  })
+  await flush()
+  expect(document.querySelector(".execution-location-branch")).toBeNull()
+
   document.querySelector<HTMLButtonElement>(".execution-inbox-entry")!.click()
   await flush()
   expect(document.querySelector(".session-inbox-panel")).not.toBeNull()
   disposals.splice(0).forEach((dispose) => dispose())
   expect(resources.every((request) => request.signal?.aborted)).toBe(true)
+})
+
+test.each([false, true])(
+  "task detail opening and dismissal keep the conversation visible with workflows=%s",
+  async (scheduled) => {
+    setEnabled(false)
+    setWorkflows(scheduled)
+    const conversation = document.createElement("article")
+    conversation.textContent = "Retained conversation"
+    const composer = document.createElement("textarea")
+    composer.value = "Unsent draft"
+    const fallback = document.createElement("div")
+    fallback.textContent = "Page loading"
+    let fallbackMounts = 0
+    const root = mount(() =>
+      createComponent(Suspense, {
+        get fallback() {
+          fallbackMounts++
+          return fallback
+        },
+        get children() {
+          return [conversation, composer, createComponent(SessionTaskDetails, {})]
+        },
+      }),
+    )
+    const retained = () => {
+      expect(root.contains(fallback)).toBe(false)
+      expect(root.contains(conversation)).toBe(true)
+      expect(root.contains(composer)).toBe(true)
+      expect(composer.value).toBe("Unsent draft")
+      expect(fallbackMounts).toBe(0)
+    }
+    const trigger = root.querySelector<HTMLButtonElement>(".execution-trigger")!
+    retained()
+    trigger.click()
+    await flush()
+    expect(resources).toHaveLength(scheduled ? 3 : 2)
+    retained()
+    trigger.click()
+    await flush()
+    retained()
+    expect(resources.every((request) => request.signal?.aborted)).toBe(true)
+    for (const request of resources)
+      request.resolve(
+        request.kind === "environment"
+          ? { provider: "Local runtime", state: "ready" }
+          : request.kind === "agenda"
+            ? { hasActiveAgenda: false, items: [] }
+            : [],
+      )
+    await flush()
+    retained()
+    trigger.click()
+    await flush()
+    retained()
+    document.querySelector<HTMLButtonElement>(".execution-inbox-entry")!.click()
+    await flush()
+    retained()
+    expect(resources.at(-1)?.kind).toBe("inbox")
+    document.querySelector<HTMLButtonElement>(".execution-inbox-back")!.click()
+    await flush()
+    retained()
+    document.querySelector<HTMLButtonElement>("[data-slot=popover-close-button]")!.click()
+    await flush()
+    retained()
+    expect(resources.every((request) => request.signal?.aborted)).toBe(true)
+    const count = resources.length
+    trigger.click()
+    await flush()
+    for (const request of resources.slice(count)) request.reject(new Error("Resource unavailable"))
+    await flush()
+    retained()
+    const retry = document.querySelector<HTMLButtonElement>(".execution-location-state button")!
+    expect(retry).not.toBeNull()
+    retry.click()
+    await flush()
+    retained()
+    resources.at(-1)!.resolve({ provider: "Recovered runtime", state: "ready" })
+    await flush()
+    retained()
+    expect(document.querySelector(".execution-popover")?.textContent).toContain("Recovered runtime")
+  },
+)
+
+test("task details cancel cleared resource targets and reject their late results", async () => {
+  setEnabled(false)
+  mount(() => createComponent(SessionTaskDetails, {}))
+  document.querySelector<HTMLButtonElement>(".execution-trigger")!.click()
+  await flush()
+  const abandoned = [...resources]
+  expect(abandoned).toHaveLength(2)
+  setResource({ ...initialResource, workspace: null, environmentID: null })
+  await flush()
+  expect(abandoned.every((request) => request.signal?.aborted)).toBe(true)
+  expect(document.querySelector(".execution-location-branch")).toBeNull()
+  setResource(initialResource)
+  await flush()
+  const current = resources.slice(abandoned.length)
+  expect(current).toHaveLength(2)
+  for (const request of abandoned)
+    request.resolve(
+      request.kind === "environment"
+        ? { provider: "Abandoned runtime", state: "ready" }
+        : [{ path: "/workspace", branch: "abandoned-branch" }],
+    )
+  await flush()
+  expect(document.querySelector(".execution-popover")?.textContent).not.toContain("Abandoned runtime")
+  expect(document.querySelector(".execution-location-branch")).toBeNull()
+  for (const request of current)
+    request.resolve(
+      request.kind === "environment"
+        ? { provider: "Current runtime", state: "ready" }
+        : [{ path: "/workspace", branch: "current-branch" }],
+    )
+  await flush()
+  expect(document.querySelector(".execution-popover")?.textContent).toContain("Current runtime")
+  expect(document.querySelector(".execution-location-branch")?.textContent).toBe("current-branch")
+})
+
+test.each([false, true])("session navigation releases pending task detail reads with inbox=%s", async (inbox) => {
+  setEnabled(false)
+  setWorkflows(true)
+  const conversation = document.createElement("article")
+  conversation.textContent = "Retained conversation"
+  const fallback = document.createElement("div")
+  fallback.textContent = "Page loading"
+  const root = mount(() =>
+    createComponent(Suspense, {
+      fallback,
+      get children() {
+        return [conversation, createComponent(SessionTaskDetails, {})]
+      },
+    }),
+  )
+  root.querySelector<HTMLButtonElement>(".execution-trigger")!.click()
+  await flush()
+  if (inbox) {
+    document.querySelector<HTMLButtonElement>(".execution-inbox-entry")!.click()
+    await flush()
+  }
+  const abandoned = [...resources]
+  expect(abandoned).toHaveLength(inbox ? 4 : 3)
+  setSessionID("next")
+  await flush()
+  expect(abandoned.every((request) => request.signal?.aborted)).toBe(true)
+  expect(document.querySelector(".execution-popover")).toBeNull()
+  expect(root.querySelector(".execution-trigger")?.getAttribute("aria-expanded")).toBe("false")
+  root.querySelector<HTMLButtonElement>(".execution-trigger")!.click()
+  await flush()
+  const current = resources.slice(abandoned.length)
+  expect(current).toHaveLength(3)
+  for (const request of abandoned)
+    request.resolve(
+      request.kind === "environment"
+        ? { provider: "Previous session runtime", state: "ready" }
+        : request.kind === "branch"
+          ? [{ path: "/workspace", branch: "previous-session-branch" }]
+          : request.kind === "agenda"
+            ? { hasActiveAgenda: false, items: [] }
+            : [],
+    )
+  await flush()
+  expect(document.querySelector(".execution-popover")?.textContent).not.toContain("Previous session runtime")
+  expect(document.querySelector(".execution-location-branch")).toBeNull()
+  for (const request of current)
+    request.resolve(
+      request.kind === "environment"
+        ? { provider: "Current session runtime", state: "ready" }
+        : request.kind === "branch"
+          ? [{ path: "/workspace", branch: "current-session-branch" }]
+          : { hasActiveAgenda: false, items: [] },
+    )
+  await flush()
+  expect(document.querySelector(".execution-popover")?.textContent).toContain("Current session runtime")
+  expect(document.querySelector(".execution-location-branch")?.textContent).toBe("current-session-branch")
+  expect(root.contains(conversation)).toBe(true)
+  expect(root.contains(fallback)).toBe(false)
+})
+
+test("scheduled activity event refresh stays local and stops while task details are closed", async () => {
+  setEnabled(false)
+  setWorkflows(true)
+  const conversation = document.createElement("article")
+  const fallback = document.createElement("div")
+  const root = mount(() =>
+    createComponent(Suspense, {
+      fallback,
+      get children() {
+        return [conversation, createComponent(SessionTaskDetails, {})]
+      },
+    }),
+  )
+  const trigger = root.querySelector<HTMLButtonElement>(".execution-trigger")!
+  trigger.click()
+  await flush()
+  for (const request of resources)
+    request.resolve(
+      request.kind === "environment"
+        ? { provider: "Runtime", state: "ready" }
+        : request.kind === "agenda"
+          ? { hasActiveAgenda: false, items: [] }
+          : [],
+    )
+  await flush()
+  const deleted = () => {
+    for (const listener of listeners.get("agenda.item.deleted") ?? [])
+      listener({ type: "agenda.item.deleted", properties: { id: "scheduled-item", scopeID: "project" } })
+  }
+  deleted()
+  await flush()
+  expect(resources).toHaveLength(4)
+  const refresh = resources.at(-1)!
+  expect(refresh.kind).toBe("agenda")
+  expect(root.contains(conversation)).toBe(true)
+  expect(root.contains(fallback)).toBe(false)
+  trigger.click()
+  await flush()
+  expect(refresh.signal?.aborted).toBe(true)
+  deleted()
+  await flush()
+  expect(resources).toHaveLength(4)
+  refresh.resolve({ hasActiveAgenda: false, items: [] })
+  await flush()
+  expect(root.contains(conversation)).toBe(true)
+  expect(root.contains(fallback)).toBe(false)
 })

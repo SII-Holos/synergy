@@ -17,7 +17,7 @@ beforeAll(async () => {
   const components = path.resolve(import.meta.dir, "../../src/components")
   await Bun.write(
     path.join(fixture, "index.html"),
-    '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+    '<!doctype html><div id="root"></div><script type="module" src="/main.tsx"></script>',
   )
   await Bun.write(
     path.join(fixture, "main.tsx"),
@@ -245,6 +245,50 @@ test("public plugin component triggers retain pointer and focus behavior", async
   expect(await trigger.evaluate((element) => element === document.activeElement)).toBe(true)
   expect(errors).toEqual([])
 })
+
+test.each(["Native actions", "Choose project"])(
+  "deferred closing focus cannot override a reopened %s popup",
+  async (name) => {
+    const trigger = page.getByRole("button", { name, exact: true })
+    const action =
+      name === "Native actions"
+        ? page.getByRole("button", { name: "Export session", exact: true })
+        : page.getByRole("textbox", { name: "Search projects" })
+    await trigger.click()
+    await action.waitFor()
+    await page.waitForFunction(() =>
+      document.querySelector('[data-component="popover-content"]')?.contains(document.activeElement),
+    )
+    await page.evaluate(
+      (opener) =>
+        new Promise<void>((resolve) => {
+          const popup = document.querySelector('[data-component="popover-content"]')!
+          const observer = new MutationObserver(() => {
+            if (popup.isConnected) return
+            observer.disconnect()
+            ;(opener as HTMLElement).click()
+            resolve()
+          })
+          observer.observe(document.body, { childList: true, subtree: true })
+          popup.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+        }),
+      await trigger.elementHandle(),
+    )
+    await action.waitFor()
+    await action.evaluate(async (element) => {
+      await Promise.allSettled(
+        element
+          .closest('[data-component="popover-content"]')!
+          .getAnimations()
+          .map((animation) => animation.finished),
+      )
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    })
+    expect(await trigger.getAttribute("aria-expanded")).toBe("true")
+    expect(await action.evaluate((element) => element === document.activeElement)).toBe(true)
+    expect(errors).toEqual([])
+  },
+)
 
 test("suppressing a focused trigger tooltip preserves Escape and trigger identity", async () => {
   const trigger = page.getByRole("button", { name: "Choose project", exact: true })

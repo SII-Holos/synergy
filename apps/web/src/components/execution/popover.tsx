@@ -30,8 +30,10 @@ export function TaskDetailsPopover(props: {
   const [now, setNow] = createSignal(Date.now())
   let timer: ReturnType<typeof setInterval> | undefined
   const toggle = (value: boolean) => {
+    const retained = value && inboxEntry?.isConnected
+    if (value) setInboxOpen(false)
     setOpen(value)
-    if (!value) setInboxOpen(false)
+    if (retained) inboxEntry?.focus({ preventScroll: true })
     if (timer) clearInterval(timer)
     if (value) {
       setNow(Date.now())

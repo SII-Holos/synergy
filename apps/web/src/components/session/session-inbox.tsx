@@ -1,4 +1,4 @@
-import { createMemo, createResource, createSignal, For, Match, Show, Switch } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
@@ -215,10 +215,21 @@ function SessionInboxContent(props: SessionInboxProps) {
   const [operations, setOperations] = createSignal<
     Record<string, { kind: "remove" | "restore"; item: SessionInboxItem; pending: boolean; error?: unknown }>
   >({})
+  let removedRequest: AbortController | undefined
   const [removed, { refetch }] = createResource(
     () => props.active !== false,
-    async () => (await client.session.inboxRemoved({ sessionID }, { throwOnError: true })).data,
+    async () => {
+      removedRequest?.abort()
+      removedRequest = new AbortController()
+      return (await client.session.inboxRemoved({ sessionID }, { signal: removedRequest.signal, throwOnError: true }))
+        .data
+    },
+    { initialValue: [] },
   )
+  createEffect(() => {
+    if (props.active === false) removedRequest?.abort()
+  })
+  onCleanup(() => removedRequest?.abort())
   const change = async (item: SessionInboxItem, kind: "remove" | "restore") => {
     if (operations()[item.id]?.pending) return
     const previous = operations()[item.id]
@@ -379,7 +390,7 @@ function SessionInboxContent(props: SessionInboxProps) {
           (operation) =>
             operation.error &&
             !items().some((item) => item.id === operation.item.id) &&
-            (removed.error || !removed()?.some((item) => item.id === operation.item.id)),
+            (removed.error || !removed.latest?.some((item) => item.id === operation.item.id)),
         )}
       >
         {(operation) => (
@@ -400,10 +411,10 @@ function SessionInboxContent(props: SessionInboxProps) {
           </Button>
         </div>
       </Show>
-      <Show when={!removed.error && removed()?.length}>
+      <Show when={!removed.error && removed.latest?.length}>
         <div class="session-inbox-removed-list">
           <h3>{_(S.inboxRemovedHeading)}</h3>
-          <For each={removed()}>
+          <For each={removed.latest}>
             {(item) => (
               <div class="session-inbox-removed-item">
                 <details>

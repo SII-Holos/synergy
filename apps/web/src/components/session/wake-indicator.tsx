@@ -1,4 +1,4 @@
-import { createResource, For, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createResource, For, onCleanup, Show } from "solid-js"
 import { useSDK } from "@/context/sdk"
 import { useLocale } from "@/context/locale"
 import { W, formatWakeTime, statusLabel, triggerLabel, itemTargetsSession } from "./wake-indicator-model"
@@ -13,10 +13,22 @@ export function SessionAgendaWakeIndicator(props: { sessionID: string; active: b
     async ({ sessionID, client }) => {
       controller?.abort()
       controller = new AbortController()
-      return (await client.session.agenda({ sessionID, limit: 6 }, { signal: controller.signal, throwOnError: true }))
-        .data
+      const result = await client.session.agenda(
+        { sessionID, limit: 6 },
+        { signal: controller.signal, throwOnError: true },
+      )
+      return { sessionID, client, value: result.data }
     },
+    { initialValue: undefined },
   )
+  createEffect(() => {
+    if (!props.active) controller?.abort()
+  })
+  const current = createMemo(() => {
+    if (response.error) return undefined
+    const result = response.latest
+    return result?.sessionID === props.sessionID && result.client === sdk.client ? result.value : undefined
+  })
   const refresh = () => {
     if (props.active) void refetch()
   }
@@ -34,14 +46,14 @@ export function SessionAgendaWakeIndicator(props: { sessionID: string; active: b
     deleted()
   })
   return (
-    <Show when={response.error || response()?.hasActiveAgenda}>
+    <Show when={response.error || current()?.hasActiveAgenda}>
       <details class="execution-secondary">
         <summary>{i18n._(W.panelTitle)}</summary>
         <Show
           when={response.error}
           fallback={
             <div class="session-agenda-wake-list">
-              <For each={response()?.items}>
+              <For each={current()?.items}>
                 {(item) => (
                   <div class="session-agenda-wake-row">
                     <div class="session-agenda-wake-row-main">

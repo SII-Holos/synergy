@@ -1,4 +1,4 @@
-import { createMemo, createResource, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createResource, onCleanup, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { useParams } from "@solidjs/router"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -81,11 +81,25 @@ function TaskResources(props: { sessionID: string; active: boolean; close: () =>
   }
   let environmentRequest: AbortController | undefined
   let branchRequest: AbortController | undefined
+  const environmentTarget = createMemo(() => {
+    const id = session()?.environmentID
+    return props.active && id ? { id, client: sdk.client } : false
+  })
+  const branchTarget = createMemo(() => {
+    const scope = session()?.scope
+    const path = location().path
+    if (
+      !props.active ||
+      !path ||
+      location().state !== "bound" ||
+      scope?.type !== "project" ||
+      scope.local?.vcs !== "git"
+    )
+      return false
+    return { path, scopeID: scope.id, client: sdk.client }
+  })
   const [environment, { refetch }] = createResource(
-    () => {
-      const id = session()?.environmentID
-      return props.active && id ? { id, client: sdk.client } : false
-    },
+    environmentTarget,
     async ({ id, client }) => {
       environmentRequest?.abort()
       environmentRequest = new AbortController()
@@ -95,41 +109,40 @@ function TaskResources(props: { sessionID: string; active: boolean; close: () =>
       )
       return { id, client, value: result.data }
     },
+    { initialValue: undefined },
   )
   const [branch] = createResource(
-    () => {
-      const scope = session()?.scope
-      const path = location().path
-      if (
-        !props.active ||
-        !path ||
-        location().state !== "bound" ||
-        scope?.type !== "project" ||
-        scope.local?.vcs !== "git"
-      )
-        return false
-      return { path, scopeID: scope.id, client: sdk.client }
-    },
+    branchTarget,
     async ({ path, scopeID, client }) => {
       branchRequest?.abort()
       branchRequest = new AbortController()
       const result = await client.worktree.list({ scopeID }, { signal: branchRequest.signal, throwOnError: true })
-      return { path, client, value: result.data.find((entry) => entry.path === path)?.branch }
+      return { path, scopeID, client, value: result.data.find((entry) => entry.path === path)?.branch }
     },
+    { initialValue: undefined },
   )
+  createEffect(() => {
+    if (!environmentTarget()) environmentRequest?.abort()
+    if (!branchTarget()) branchRequest?.abort()
+  })
   onCleanup(() => {
     environmentRequest?.abort()
     branchRequest?.abort()
   })
   const currentEnvironment = createMemo(() => {
     if (environment.error) return undefined
-    const result = environment()
+    const result = environment.latest
     return result?.id === session()?.environmentID && result?.client === sdk.client ? result.value : undefined
   })
   const currentBranch = createMemo(() => {
     if (branch.error) return undefined
-    const result = branch()
-    return result?.path === location().path && result?.client === sdk.client ? result.value : undefined
+    const result = branch.latest
+    return result &&
+      result.path === location().path &&
+      result.scopeID === session()?.scope?.id &&
+      result.client === sdk.client
+      ? result.value
+      : undefined
   })
   const incomplete = createMemo(() =>
     view()

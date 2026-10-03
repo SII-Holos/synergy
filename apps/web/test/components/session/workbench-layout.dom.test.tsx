@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, test } from "bun:test"
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
@@ -19,7 +19,7 @@ beforeAll(async () => {
   directory = await mkdtemp(path.join(import.meta.dir, ".workbench-layout-"))
   await Bun.write(
     path.join(directory, "index.html"),
-    '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+    '<!doctype html><div id="root"></div><script type="module" src="/main.tsx"></script>',
   )
   await Bun.write(
     path.join(directory, "platform.ts"),
@@ -125,11 +125,19 @@ beforeAll(async () => {
   await server.warmupRequest("/main.tsx")
   url = server.resolvedUrls!.local[0]!
   browser = await chromium.launch({ headless: true })
+}, 60_000)
+
+beforeEach(async () => {
+  errors.length = 0
   page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
   page.setDefaultTimeout(5000)
   page.setDefaultNavigationTimeout(30000)
   page.on("pageerror", (error) => errors.push(error.message))
-}, 60_000)
+})
+
+afterEach(async () => {
+  await page?.close()
+})
 
 afterAll(async () => {
   await browser?.close()
@@ -212,6 +220,132 @@ test("task details contain the inbox on narrow panes and touch actions retain th
       expect(send.height).toBeGreaterThanOrEqual(44)
     }
   }
+}, 20_000)
+
+test("task details preserve the inbox throughout animated dismissal and return focus", async () => {
+  type DismissalWindow = Window & {
+    dismissalDone: boolean
+    dismissalFrames: Array<{ closed: boolean; title: string | null; inboxHidden: boolean }>
+  }
+  await open()
+  await page.locator("[data-send]").click()
+  const trigger = page.locator(".execution-trigger")
+  for (const action of ["close", "escape", "outside", "trigger"]) {
+    await trigger.click()
+    await page.locator(".execution-inbox-entry").click()
+    await page.locator("[data-inbox]").waitFor()
+    await page
+      .locator(".execution-popover")
+      .evaluate((element) => Promise.allSettled(element.getAnimations().map((animation) => animation.finished)))
+    await page.evaluate(() => {
+      const state = window as unknown as DismissalWindow
+      const popup = document.querySelector(".execution-popover")!
+      state.dismissalFrames = []
+      state.dismissalDone = false
+      const sample = () => {
+        if (!popup.isConnected) {
+          state.dismissalDone = true
+          return
+        }
+        state.dismissalFrames.push({
+          closed: popup.hasAttribute("data-closed"),
+          title: popup.querySelector('[data-slot="popover-title"]')!.textContent,
+          inboxHidden: popup.querySelector<HTMLElement>(".execution-inbox")!.hidden,
+        })
+        requestAnimationFrame(sample)
+      }
+      requestAnimationFrame(sample)
+    })
+    if (action === "close") await page.locator('[data-slot="popover-close-button"]').click()
+    if (action === "escape") await page.keyboard.press("Escape")
+    if (action === "outside") await page.locator('[role="textbox"]').click()
+    if (action === "trigger") await trigger.click()
+    await page.locator(".execution-popover").waitFor({ state: "hidden" })
+    await page.waitForFunction(() => (window as unknown as DismissalWindow).dismissalDone)
+    const frames = await page.evaluate(() =>
+      (window as unknown as DismissalWindow).dismissalFrames.filter((frame) => frame.closed),
+    )
+    expect(frames.length).toBeGreaterThan(0)
+    expect(frames.every((frame) => frame.title === "Inbox" && !frame.inboxHidden)).toBe(true)
+    await page.waitForFunction(
+      (outside) => document.activeElement?.matches(outside ? '[role="textbox"]' : ".execution-trigger"),
+      action === "outside",
+    )
+    await trigger.click()
+    await page.locator(".execution-inbox-entry").waitFor()
+    expect(await page.locator('[data-slot="popover-title"]').textContent()).toBe("Task details")
+    await page.waitForFunction(() => document.querySelector(".execution-popover")?.contains(document.activeElement))
+    await page.keyboard.press("Escape")
+    await page.locator(".execution-popover").waitFor({ state: "hidden" })
+    await page.waitForFunction(() => document.activeElement?.classList.contains("execution-trigger"))
+    expect(errors).toEqual([])
+  }
+}, 30_000)
+
+test("reopening task details during dismissal resets navigation without moving focus out of the popup", async () => {
+  await open()
+  await page.locator("[data-send]").click()
+  await page.locator('[role="textbox"]').fill("Retained unsent draft")
+  await page.locator(".execution-trigger").click()
+  for (let cycle = 0; cycle < 4; cycle++) {
+    await page.locator(".execution-inbox-entry").click()
+    await page.locator("[data-inbox]").waitFor()
+    await page
+      .locator(".execution-popover")
+      .evaluate((element) => Promise.allSettled(element.getAnimations().map((animation) => animation.finished)))
+    await page.evaluate(() => {
+      document.querySelector<HTMLButtonElement>('[data-slot="popover-close-button"]')!.click()
+      document.querySelector<HTMLButtonElement>(".execution-trigger")!.click()
+    })
+    await page.waitForFunction(() => {
+      const popup = document.querySelector(".execution-popover")
+      return popup && !popup.hasAttribute("data-closed")
+    })
+    await page.locator(".execution-popover").evaluate(async (element) => {
+      await Promise.allSettled(element.getAnimations().map((animation) => animation.finished))
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    })
+    expect(await page.locator('[data-slot="popover-title"]').textContent()).toBe("Task details")
+    expect(await page.locator(".execution-inbox-entry").evaluate((element) => element === document.activeElement)).toBe(
+      true,
+    )
+    expect(await page.locator(".execution-inbox").evaluate((element) => (element as HTMLElement).hidden)).toBe(true)
+    expect(await page.locator('[role="textbox"]').textContent()).toBe("Retained unsent draft")
+    expect(await page.locator("[data-message]").isVisible()).toBe(true)
+  }
+  expect(errors).toEqual([])
+}, 20_000)
+
+test("completed task detail dismissal cannot move focus out of a newly opened popup", async () => {
+  await open()
+  await page.locator("[data-send]").click()
+  await page.locator(".execution-trigger").click()
+  await page.locator(".execution-inbox-entry").click()
+  await page.locator("[data-inbox]").waitFor()
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const popup = document.querySelector(".execution-popover")!
+        const trigger = document.querySelector<HTMLButtonElement>(".execution-trigger")!
+        const observer = new MutationObserver(() => {
+          if (popup.isConnected) return
+          observer.disconnect()
+          trigger.click()
+          resolve()
+        })
+        observer.observe(document.body, { childList: true, subtree: true })
+        document.querySelector<HTMLButtonElement>('[data-slot="popover-close-button"]')!.click()
+      }),
+  )
+  await page.locator(".execution-popover").evaluate(async (element) => {
+    await Promise.allSettled(element.getAnimations().map((animation) => animation.finished))
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+  })
+  expect(await page.locator('[data-slot="popover-title"]').textContent()).toBe("Task details")
+  expect(await page.locator(".execution-popover").evaluate((element) => element.contains(document.activeElement))).toBe(
+    true,
+  )
+  expect(errors).toEqual([])
 }, 20_000)
 
 test("long input grows upward and keeps actions in a short or narrow viewport", async () => {
