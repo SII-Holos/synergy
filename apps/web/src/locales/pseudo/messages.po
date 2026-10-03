@@ -82,10 +82,6 @@ msgid "activity.history.range"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "activity.phase.prepare"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "activity.trace.actions"
 msgstr "⟦{count, plural, one {# action} other {# actions}}⟧"
 
@@ -15948,7 +15944,103 @@ msgid "session-turn.token-reasoning"
 msgstr "⟦reasoning⟧"
 
 #. js-lingui-explicit-id
+msgid "session.activity.approval"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.checkingReceipt"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.checkingSubmission"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.finalizing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.materializingInput"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.activity.operations"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.parallelTools"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.preparingContext"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.preparingFiles"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.preparingSession"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.preparingWorkspace"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.processing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.question"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.queuedAgent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.queuedStorage"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.queuedTools"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.reconnecting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.responding"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.runningTools"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.stopping"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.submittingInput"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.tool"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.waitingBackground"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.waitingModel"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17065,15 +17157,7 @@ msgid "session.permissionDock.sessionScope"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "session.process.approval"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "session.process.completed"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.process.executing"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17097,10 +17181,6 @@ msgid "session.process.priorStop"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "session.process.reading"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "session.process.stopped"
 msgstr ""
 
@@ -17114,10 +17194,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.process.workedDuration"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.process.working"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -25575,10 +25651,6 @@ msgstr "⟦From {source}⟧"
 #. js-lingui-explicit-id
 msgid "ui.mediaGeneration.generating"
 msgstr "⟦Generating media⟧"
-
-#. js-lingui-explicit-id
-msgid "ui.session.awaitingResponse"
-msgstr "⟦Awaiting response…⟧"
 
 #. js-lingui-explicit-id
 msgid "ui.sessionReview.loadingFile"

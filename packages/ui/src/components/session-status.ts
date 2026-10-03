@@ -1,5 +1,6 @@
 import type { I18n, MessageDescriptor } from "@lingui/core"
-import type { Part as PartType, ToolPart } from "@ericsanchezok/synergy-sdk/client"
+import type { Part as PartType, ToolPart, SessionStatus, SessionActivity } from "@ericsanchezok/synergy-sdk/client"
+import { TOOL_TITLE_DESC } from "./tool-title-descriptors"
 
 // ── Descriptor helpers ──────────────────────────────────────────────
 
@@ -261,4 +262,56 @@ export function computeLatestStatusFromParts(parts: readonly PartType[], i18n?: 
     if (status) return status
   }
   return undefined
+}
+
+const ACTIVITY_DESC = {
+  checking_submission: defineDescriptor("session.activity.checkingSubmission", "Checking submission"),
+  preparing_session: defineDescriptor("session.activity.preparingSession", "Preparing session"),
+  preparing_workspace: defineDescriptor("session.activity.preparingWorkspace", "Preparing workspace"),
+  submitting_input: defineDescriptor("session.activity.submittingInput", "Submitting message"),
+  checking_receipt: defineDescriptor("session.activity.checkingReceipt", "Confirming message receipt"),
+  reconnecting: defineDescriptor("session.activity.reconnecting", "Reconnecting"),
+  queued_storage: defineDescriptor("session.activity.queuedStorage", "Waiting to save message"),
+  materializing_input: defineDescriptor("session.activity.materializingInput", "Preparing execution"),
+  preparing_files: defineDescriptor("session.activity.preparingFiles", "Preparing project files"),
+  preparing_context: defineDescriptor("session.activity.preparingContext", "Preparing context"),
+  queued_agent: defineDescriptor("session.activity.queuedAgent", "Waiting for execution resources"),
+  waiting_model: defineDescriptor("session.activity.waitingModel", "Waiting for model response"),
+  responding: defineDescriptor("session.activity.responding", "Generating response"),
+  queued_tools: defineDescriptor("session.activity.queuedTools", "Waiting for tool execution"),
+  running_tools: defineDescriptor("session.activity.runningTools", "Calling tools"),
+  waiting_background: defineDescriptor("session.activity.waitingBackground", "Waiting for background tasks"),
+  finalizing: defineDescriptor("session.activity.finalizing", "Finalizing results"),
+  stopping: defineDescriptor("session.activity.stopping", "Stopping"),
+} satisfies Record<SessionActivity["phase"], MessageDescriptor>
+
+export function sessionActivityLabel(
+  status: SessionStatus | undefined,
+  i18n?: I18n,
+  context?: { rootID?: string; approval?: boolean; question?: boolean },
+): string {
+  const activity = status?.type === "busy" ? status.activity : undefined
+  const current = !context?.rootID || !activity?.rootID || activity.rootID === context.rootID
+  if (current && activity?.phase === "stopping") return resolveMsg(i18n, ACTIVITY_DESC.stopping)
+  if (context?.approval)
+    return resolveMsg(i18n, defineDescriptor("session.activity.approval", "Waiting for your approval"))
+  if (context?.question)
+    return resolveMsg(i18n, defineDescriptor("session.activity.question", "Waiting for your answer"))
+  if (status?.type === "retry")
+    return resolveMsg(i18n, defineDescriptor("session.activity.retry", "Waiting to retry · attempt {attempt}"), {
+      attempt: status.attempt,
+    })
+  if (!current || !activity) return resolveMsg(i18n, defineDescriptor("session.activity.processing", "Processing task"))
+  if (activity.phase === "running_tools") {
+    if (activity.tool && activity.tool.count > 1)
+      return resolveMsg(i18n, defineDescriptor("session.activity.parallelTools", "Calling tools · {count} active"), {
+        count: activity.tool.count,
+      })
+    const tool = activity.tool?.id && TOOL_TITLE_DESC[activity.tool.id]
+    if (tool)
+      return resolveMsg(i18n, defineDescriptor("session.activity.tool", "Calling tool · {action}"), {
+        action: resolveMsg(i18n, tool),
+      })
+  }
+  return resolveMsg(i18n, ACTIVITY_DESC[activity.phase])
 }

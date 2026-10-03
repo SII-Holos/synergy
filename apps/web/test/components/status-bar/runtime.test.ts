@@ -30,7 +30,7 @@ describe("status bar runtime state", () => {
 
     const state = resolveRuntimeIconState(status, false, i18n)
 
-    expect(runtimeLabel(status, false, i18n)).toBe("retry 3")
+    expect(runtimeLabel(status, false, i18n)).toBe("Waiting to retry · attempt 3")
     expect(state.icon).toBe(getSemanticIcon("session.retry"))
     expect(state.tone).toBe("danger")
     expect(state.pulse).toBe(true)
@@ -59,8 +59,8 @@ describe("status bar runtime state", () => {
     const i18n = mockI18n()
     expect(resolveRuntimeIconState({ type: "busy", description: "running tool" }, false, i18n)).toMatchObject({
       icon: getSemanticIcon("session.running"),
-      label: "running tool",
-      tooltip: "Runtime: running tool",
+      label: "Processing task",
+      tooltip: "Runtime: Processing task",
       tone: "base",
       pulse: true,
     })

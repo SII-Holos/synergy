@@ -286,6 +286,34 @@ export type Info = z.infer<typeof Info>
 
 export const PersistedInfo = BaseInfo.in.pipe(BaseInfo.out.omit({ workflow: true }).passthrough())
 export type PersistedInfo = z.infer<typeof PersistedInfo>
+export const Activity = z
+  .object({
+    phase: z.enum([
+      "checking_submission",
+      "preparing_session",
+      "preparing_workspace",
+      "submitting_input",
+      "checking_receipt",
+      "reconnecting",
+      "queued_storage",
+      "materializing_input",
+      "preparing_files",
+      "preparing_context",
+      "queued_agent",
+      "waiting_model",
+      "responding",
+      "queued_tools",
+      "running_tools",
+      "waiting_background",
+      "finalizing",
+      "stopping",
+    ]),
+    startedAt: z.number(),
+    rootID: z.string().optional(),
+    tool: z.object({ id: z.string().optional(), count: z.number().int().positive() }).optional(),
+  })
+  .meta({ ref: "SessionActivity" })
+export type Activity = z.infer<typeof Activity>
 export const StatusInfo = z
   .union([
     z.object({
@@ -300,6 +328,7 @@ export const StatusInfo = z
     z.object({
       type: z.literal("busy"),
       description: z.string().optional(),
+      activity: Activity.optional(),
     }),
     z.object({
       type: z.literal("paused"),

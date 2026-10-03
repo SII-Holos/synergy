@@ -3139,6 +3139,34 @@ export type MaintenanceAdmissionLease = {
   expiresAt: number
 }
 
+export type SessionActivity = {
+  phase:
+    | "checking_submission"
+    | "preparing_session"
+    | "preparing_workspace"
+    | "submitting_input"
+    | "checking_receipt"
+    | "reconnecting"
+    | "queued_storage"
+    | "materializing_input"
+    | "preparing_files"
+    | "preparing_context"
+    | "queued_agent"
+    | "waiting_model"
+    | "responding"
+    | "queued_tools"
+    | "running_tools"
+    | "waiting_background"
+    | "finalizing"
+    | "stopping"
+  startedAt: number
+  rootID?: string
+  tool?: {
+    id?: string
+    count: number
+  }
+}
+
 export type SessionPausedReason = "aborted" | "failed" | "interrupted" | "workflow"
 
 export type SessionStatus =
@@ -3154,6 +3182,7 @@ export type SessionStatus =
   | {
       type: "busy"
       description?: string
+      activity?: SessionActivity
     }
   | {
       type: "paused"

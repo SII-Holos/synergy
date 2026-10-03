@@ -1,3 +1,4 @@
+import { sessionActivityLabel } from "../../src/components/session-status"
 import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, mock, test } from "bun:test"
 import type {
@@ -89,7 +90,6 @@ const {
   formatTurnCost,
   formatTurnTokenCount,
   providerPreludeElapsedLabel,
-  providerPreludeText,
   resolveSessionTurnError,
   resolveTurnWorking,
   shouldShowProviderPrelude,
@@ -787,14 +787,16 @@ describe("session turn timeline", () => {
     ).toBe(false)
   })
 
-  test("keeps backend provider prelude status text verbatim", () => {
+  test("uses canonical activity labels while waiting for provider content", () => {
     const status = {
       type: "busy",
       description: "Awaiting response…",
     } satisfies SessionStatus
 
-    expect(providerPreludeText(status)).toBe("Awaiting response…")
-    expect(providerPreludeText({ type: "busy" })).toBe("Synergy is thinking…")
+    expect(sessionActivityLabel(status)).toBe("Processing task")
+    expect(sessionActivityLabel({ type: "busy", activity: { phase: "waiting_model", startedAt: 1 } })).toBe(
+      "Waiting for model response",
+    )
   })
 
   test("formats provider prelude elapsed time as a quiet timer label", () => {

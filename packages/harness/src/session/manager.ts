@@ -17,7 +17,7 @@ import { BusyError, PausedTurnAbort } from "./error"
 import { SessionEvent } from "./event"
 import type { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
-import { Info, type StatusInfo } from "./types"
+import { Info, type StatusInfo, type Activity } from "./types"
 import { SessionEndpoint } from "./endpoint"
 import { SessionMemoryPressure } from "./memory-pressure"
 import { SessionInbox } from "./inbox"
@@ -520,7 +520,7 @@ export namespace SessionManager {
     runtime.owner = { lease, controller, phase: "starting" }
     runtimeState().leaseReleases.set(lease, Promise.withResolvers<void>())
     transitionExecutionPhase(runtime, "queued_agent")
-    runtime.status = { type: "busy" }
+    runtime.status = { type: "busy", activity: { phase: "materializing_input", startedAt: Date.now() } }
     return lease
   }
 
@@ -569,6 +569,7 @@ export namespace SessionManager {
       owner.fenceQueuedBefore ??= options.fenceQueuedBefore
     }
     if (owner.phase === "stopping") return "already_stopping"
+    setActivity(sessionID, { phase: "stopping" }, { generation: owner.lease.generation, rootID: owner.rootID })
     owner.phase = "stopping"
     transitionExecutionPhase(runtime, "stopping")
     owner.controller.abort(options?.pauseTurn ? new PausedTurnAbort() : undefined)
@@ -741,6 +742,36 @@ export namespace SessionManager {
     if (!runtime) return
     runtime.status = status
     emitStatus(runtime, status)
+  }
+
+  export function setActivity(
+    sessionID: string,
+    activity: Pick<Activity, "phase" | "tool">,
+    expected: { generation: number; rootID?: string },
+  ): boolean {
+    const runtime = getRuntime(sessionID)
+    const owner = runtime?.owner
+    if (!runtime || !owner || owner.lease.generation !== expected.generation) return false
+    if (expected.rootID !== undefined && owner.rootID !== expected.rootID) return false
+    if (owner.phase === "stopping" || owner.lease.signal.aborted || runtime.status.type === "paused") return false
+    const previous = runtime.status.type === "busy" ? runtime.status.activity : undefined
+    if (
+      previous?.phase === activity.phase &&
+      previous.rootID === owner.rootID &&
+      previous.tool?.id === activity.tool?.id &&
+      previous.tool?.count === activity.tool?.count
+    )
+      return true
+    setStatus(sessionID, {
+      type: "busy",
+      activity: {
+        ...activity,
+        rootID: owner.rootID,
+        startedAt:
+          previous?.phase === activity.phase && previous.rootID === owner.rootID ? previous.startedAt : Date.now(),
+      },
+    })
+    return true
   }
 
   export function setExecutionPhase(sessionID: string, phase: ExecutionPhase): void {

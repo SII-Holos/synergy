@@ -1,4 +1,5 @@
 import { useLingui } from "@lingui/solid"
+import { sessionActivityLabel } from "./session-status"
 import { SESSION_TURN_DESC, MAILBOX_DESC, TOOL_LABEL_DESC } from "./tool-title-descriptors"
 
 import type {
@@ -495,16 +496,6 @@ export function resolveTurnWorking(input: {
 
   if (lastAssistant?.time.completed == null) return !!input.sessionStatus && input.sessionStatus.type !== "idle"
   return !!input.sessionStatus && input.sessionStatus.type !== "idle"
-}
-
-const awaitingResponse = { id: "ui.session.awaitingResponse", message: "Synergy is thinking…" }
-
-export function providerPreludeText(status: SessionStatus | undefined, fallback = awaitingResponse.message): string {
-  if (status?.type === "busy") {
-    const description = status.description?.trim()
-    if (description) return description
-  }
-  return fallback
 }
 
 export function shouldShowProviderPrelude(input: {
@@ -1485,21 +1476,12 @@ export function SessionTurn(
     const end = execution?.endedAt ?? lastAssistantMessage()?.time.completed
     return start !== undefined && end !== undefined ? Math.max(0, Math.round((end - start) / 1000)) : undefined
   }
-  const activeAction = () => {
-    if (props.executionState?.status === "approval")
-      return _({ id: "session.process.approval", message: "Waiting for approval" })
-    if (props.executionState?.status === "preparing")
-      return _({ id: "activity.phase.prepare", message: "Preparing an action" })
-    const batch = timelineItems().findLast((item) => item.kind === "activity-batch" && item.state === "running")
-    const step = batch?.kind === "activity-batch" ? batch.steps.findLast((step) => step.state === "running") : undefined
-    if (!step)
-      return reasoningRunning()
-        ? _({ id: "session.process.thinking", message: "Thinking" })
-        : _({ id: "session.process.working", message: "Working" })
-    if (step.family === "inspect-local") return _({ id: "session.process.reading", message: "Reading files" })
-    if (step.family === "execute") return _({ id: "session.process.executing", message: "Running a command" })
-    return _({ id: "session.process.working", message: "Working" })
-  }
+  const activeAction = () =>
+    sessionActivityLabel(sessionStatus(), i18n(), {
+      rootID: props.messageID,
+      approval: props.executionState?.status === "approval" || (isLastUserMessage() && permissionCount() > 0),
+      question: isLastUserMessage() && view.questionsFor(props.sessionID).length > 0,
+    })
   const processLabel = () =>
     working()
       ? activeAction()
@@ -1639,11 +1621,7 @@ export function SessionTurn(
                                 >
                                   <span data-slot="activity-live-indicator" aria-hidden="true" />
                                 </Show>
-                                <span>
-                                  {showProviderPrelude()
-                                    ? providerPreludeText(sessionStatus(), _(awaitingResponse))
-                                    : processLabel()}
-                                </span>
+                                <span>{processLabel()}</span>
                                 <Show when={props.executionState?.stoppedAt.length && !stopped()}>
                                   <span data-slot="turn-prior-stop">
                                     {_({ id: "session.process.priorStop", message: "Previously stopped" })}
