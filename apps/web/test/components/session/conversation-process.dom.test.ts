@@ -50,6 +50,7 @@ beforeAll(async () => {
     server: { host: "127.0.0.1", port: 0, fs: { allow: [path.resolve(app, "../.."), directory] } },
   })
   await server.listen()
+  await server.warmupRequest("/main.tsx")
   url = server.resolvedUrls!.local[0]!
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage()
@@ -58,7 +59,9 @@ beforeAll(async () => {
     errors.push(e.message)
     console.error(e.stack)
   })
-}, 30000)
+  await page.goto(url, { timeout: 60000 })
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+}, 90000)
 afterAll(async () => {
   await browser?.close()
   await server?.close()
