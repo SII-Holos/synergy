@@ -607,6 +607,10 @@
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
+          "glob": "src/components/settings/panels/ProviderAdditionalAccountSetup.tsx",
+          "reason": "test/components/settings/settings-resource-flows.dom.test.tsx mounts the actual component in Chromium and verifies explicit connection creation, stable retry identity, sibling authentication, retained drafts and cancellation. Vite/browser execution is outside Bun source LCOV; the account command and draft controller remain measured by unit tests."
+        },
+        {
           "glob": "src/components/settings/panels/ProvidersPanel.tsx",
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
