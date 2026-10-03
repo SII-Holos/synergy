@@ -12,7 +12,7 @@ The Scope Part materializer owns recovery and retains one current read per Part 
 
 The Part summary loader serializes message page requests and coalesces queued recovery requests. A forced refresh follows an older request; a page that already advanced another target satisfies that target's recovery. Anchored refreshes reconcile summaries without replacing retained history or its cursors. Recovery uses the body lease's cancellation signal so releasing one Sync provider cannot cancel another provider's shared content cache.
 
-Conversation rows keep failures per Part and lease. Successful content clears its own failure; obsolete callbacks cannot update the row. Real errors retain string diagnostics under a localized wrapper and a separate retry button. Exhausted conflicts describe content synchronization rather than a failed tool or execution. The public Plugin conversation content interface and server version guard stay unchanged.
+Conversation rows keep failures per Part and lease. Successful content clears its own failure; obsolete callbacks cannot update the row. Real errors retain string diagnostics under a localized wrapper and a separate retry button. Exhausted conflicts describe content synchronization rather than a failed tool or execution. A removed retry control returns keyboard focus to its retained message row; another control keeps focus if the reader moves there during recovery. The public Plugin conversation content interface and server version guard stay unchanged.
 
 ## Alternatives considered
 

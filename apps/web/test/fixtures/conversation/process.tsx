@@ -293,6 +293,9 @@ render(
                     scrollRef={scroll()}
                     executionFor={() => ({ rootID: "root", status: status(), startedAt: 1, stoppedAt: [] })}
                   />
+                  <button type="button" data-outside-control>
+                    Outside conversation
+                  </button>
                 </div>
               </DataProvider>
             </DiffComponentProvider>

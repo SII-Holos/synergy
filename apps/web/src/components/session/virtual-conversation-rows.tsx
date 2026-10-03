@@ -355,6 +355,8 @@ function ConversationDisplayRow(
   const [retry, setRetry] = createSignal(0)
   let loadGeneration = 0
   let hadPage = false
+  let rowElement: HTMLDivElement | undefined
+  let retryFocus: HTMLButtonElement | undefined
   const failure = () => {
     if (loadFailure()) return loadFailure()
     const current = row()
@@ -372,6 +374,13 @@ function ConversationDisplayRow(
   }
   const load = async () => {
     if (loading()) return
+    const focused = document.activeElement
+    if (
+      focused instanceof HTMLButtonElement &&
+      focused.closest("[data-content-error]") &&
+      rowElement?.contains(focused)
+    )
+      retryFocus = focused
     const current = row()
     if (current.kind === "body" && !loadFailure()) {
       for (const part of current.parts) {
@@ -465,6 +474,16 @@ function ConversationDisplayRow(
         setPartStates(key, undefined)
       }
   })
+  createEffect(() => {
+    const currentFailure = failure()
+    const busy = !!currentFailure && retrying()
+    if (busy || !retryFocus) return
+    const previous = retryFocus
+    retryFocus = undefined
+    if (document.activeElement !== document.body && document.activeElement !== previous) return
+    if (currentFailure && previous.isConnected) previous.focus({ preventScroll: true })
+    else rowElement?.focus({ preventScroll: true })
+  })
   const standalone = () => row().root.role === "assistant"
   const segment = () => {
     const current = row()
@@ -492,7 +511,11 @@ function ConversationDisplayRow(
   }
   return (
     <div
-      ref={exitMotion}
+      ref={(element) => {
+        rowElement = element
+        exitMotion(element)
+      }}
+      tabIndex={-1}
       data-display-row={row().key}
       data-row-kind={row().kind}
       data-activity-block={row().activity?.key}
