@@ -3,7 +3,8 @@ import os from "node:os"
 import type { RuntimeHost } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import type { RuntimeStorage } from "@ericsanchezok/synergy-harness/lifecycle"
 import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstrap"
-import { identifyDirectory, readOrCreateIdentityFile } from "@ericsanchezok/synergy-util/filesystem-identity"
+import { readOrCreateIdentityFile } from "@ericsanchezok/synergy-util/filesystem-identity"
+import { identifyDirectory } from "./workspace/identity"
 
 export function createLocalHost(
   options: { home?: string; root?: string; env?: Record<string, string | undefined> } = {},

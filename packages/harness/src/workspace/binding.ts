@@ -177,14 +177,20 @@ export namespace WorkspaceBinding {
       throw new WorkspaceCatalog.Unavailable({
         message: "The Workspace directory identity is unverified; explicitly rebind it before executing",
         workspaceID,
+        reason: "identity_unverified",
       })
     const actual = await source.identify(info.binding.path).catch(() => {
-      throw new WorkspaceCatalog.Unavailable({ message: "The Workspace directory is unavailable", workspaceID })
+      throw new WorkspaceCatalog.Unavailable({
+        message: "The Workspace directory is unavailable",
+        workspaceID,
+        reason: "directory_unavailable",
+      })
     })
     if (actual.physicalID !== info.binding.physicalID)
       throw new WorkspaceCatalog.Unavailable({
         message: "The Workspace directory was replaced; rebind it before executing",
         workspaceID,
+        reason: "identity_changed",
       })
     return WorkspaceCatalog.projection(info)
   }

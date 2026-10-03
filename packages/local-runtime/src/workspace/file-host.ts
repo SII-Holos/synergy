@@ -4,7 +4,7 @@ import path from "node:path"
 import { createHash, randomUUID } from "node:crypto"
 import { z } from "zod"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
-import { identifyFilesystemObject } from "@ericsanchezok/synergy-util/filesystem-identity"
+import { identifyFilesystemObject } from "./identity"
 import { WorkspaceProtocol, type WorkspaceFileHost } from "@ericsanchezok/synergy-harness/workspace/protocol"
 import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
 import { WorkspaceErrors } from "@ericsanchezok/synergy-harness/workspace/errors"
@@ -25,7 +25,7 @@ import { FileWatcherEvents } from "../file/watcher-events"
 const observationGate = FileWatcherEvents.createSerialQueue()
 let observationCapacityTripped = false
 
-const MountReceipt = z.object({
+export const MountReceipt = z.object({
   input: WorkspaceProtocol.MountInput,
   digest: z.string(),
   mount: WorkspaceProtocol.Mount.optional(),
