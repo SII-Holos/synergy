@@ -25573,6 +25573,14 @@ msgid "welcome.common.unavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.flight.effect.fire"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.effect.shield"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.flight.field"
 msgstr ""
 
@@ -25589,11 +25597,39 @@ msgid "welcome.flight.over"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.flight.pickup.fire"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.pickup.repair"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.pickup.shield"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.flight.position"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.ready"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.bonus"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.fire"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.repair"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.shield"
 msgstr ""
 
 #. js-lingui-explicit-id

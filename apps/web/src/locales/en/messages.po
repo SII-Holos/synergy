@@ -25573,12 +25573,20 @@ msgid "welcome.common.unavailable"
 msgstr "This example could not load. You can still start a task below."
 
 #. js-lingui-explicit-id
+msgid "welcome.flight.effect.fire"
+msgstr "Firepower {seconds}s"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.effect.shield"
+msgstr "Shield {seconds}s"
+
+#. js-lingui-explicit-id
 msgid "welcome.flight.field"
 msgstr "Aircraft playfield"
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.help"
-msgstr "Move the pointer or use arrow keys to steer. Click or press Space to start automatic fire. Avoid collisions; missed enemies break your combo. Collect arrows for ten seconds of firepower, a shield for one protected hit, or a cross to repair."
+msgstr "Move the pointer or use arrow keys to steer. Click or press Space to start automatic fire. Avoid collisions; missed enemies break your combo. Collect ammunition for ten seconds of triple fire, a bubble for one protected hit, or a heart supply box to repair."
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.name"
@@ -25589,12 +25597,40 @@ msgid "welcome.flight.over"
 msgstr "{score} points · Fly again"
 
 #. js-lingui-explicit-id
+msgid "welcome.flight.pickup.fire"
+msgstr "Triple shot"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.pickup.repair"
+msgstr "Repair"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.pickup.shield"
+msgstr "Barrier"
+
+#. js-lingui-explicit-id
 msgid "welcome.flight.position"
 msgstr "Aircraft at {x}, {y}"
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.ready"
 msgstr "Move to steer · Click to fly"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.bonus"
+msgstr "Full health · +{points}"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.fire"
+msgstr "Triple fire · 10 seconds"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.repair"
+msgstr "Health +1"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.shield"
+msgstr "One-hit protection · 8 seconds"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.aim"

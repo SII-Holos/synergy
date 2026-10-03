@@ -11,6 +11,7 @@ export type Flight = {
   bullets: (Point & { vx: number })[]
   pickups: (Point & { id: number; kind: PickupKind })[]
   bursts: (Point & { age: number; kind: "hit" | "destroy" | "hurt" | "pickup" | "shield"; points: number })[]
+  notice?: { kind: PickupKind; points: number; age: number }
   lives: number
   score: number
   kills: number
@@ -58,7 +59,8 @@ export function startFlight(state: Flight): Flight {
 }
 function tick(state: Flight, dt: number, direction: Point): Flight {
   const bursts = state.bursts.map((b) => ({ ...b, age: b.age + dt })).filter((b) => b.age < 0.6)
-  if (state.phase === "over") return { ...state, bursts, muzzle: 0 }
+  let notice = state.notice && state.notice.age + dt < 1.4 ? { ...state.notice, age: state.notice.age + dt } : undefined
+  if (state.phase === "over") return { ...state, bursts, notice, muzzle: 0 }
   const ship = aimFlight(state, state.ship.x + direction.x * 290 * dt, state.ship.y + direction.y * 290 * dt).ship
   const time = state.time + dt
   let score = state.score,
@@ -89,11 +91,13 @@ function tick(state: Flight, dt: number, direction: Point): Flight {
   let pickups = state.pickups.map((p) => ({ ...p, y: p.y + 42 * dt })).filter((p) => p.y < 420)
   pickups = pickups.filter((p) => {
     if (Math.hypot(p.x - ship.x, p.y - ship.y) > 27) return true
+    const points = p.kind === "repair" && lives === 3 ? 150 : 0
     if (p.kind === "fire") fire = 10
     else if (p.kind === "shield") shield = 8
     else if (lives < 3) lives++
     else score += 150
     bursts.push({ ...p, age: 0, kind: "pickup", points: 0 })
+    notice = { kind: p.kind, points, age: 0 }
     return false
   })
   if (spawn <= 0) {
@@ -173,6 +177,7 @@ function tick(state: Flight, dt: number, direction: Point): Flight {
     bullets: bullets.slice(-64),
     pickups: pickups.slice(-8),
     bursts: bursts.slice(-32),
+    notice,
     score,
     kills,
     combo,

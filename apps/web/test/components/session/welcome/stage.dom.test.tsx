@@ -56,6 +56,10 @@ beforeAll(async () => {
       const [definition, setDefinition] = createSignal(welcomeScenes.find(s => s.id === new URLSearchParams(location.search).get("scene")) ?? welcomeScenes[0])
       const initialMemory = createWelcomeMemory()
       const fixture = new URLSearchParams(location.search).get("fixture")
+      if (fixture === "flight-pickups") {
+        const flight = createFlight(8)
+        initialMemory.write({...flight,pickups:[{id:90,x:280,y:220,kind:"fire"},{id:91,x:360,y:220,kind:"shield"},{id:92,x:440,y:220,kind:"repair"}]})
+      }
       if (fixture === "flight-power") {
         const flight = startFlight(createFlight(8))
         initialMemory.write({...flight, spawn:99, pickups:[{id:90,...flight.ship,kind:"fire"},{id:91,...flight.ship,kind:"shield"}]})
@@ -268,7 +272,7 @@ test("each scene supports light, dark, and doubled scale", async () => {
     for (const colorScheme of ["light", "dark"] as const) {
       await page.setViewportSize({ width: 1100, height: 920 })
       await page.emulateMedia({ colorScheme, reducedMotion: "reduce" })
-      await open(scene)
+      await open(scene === "flight" ? "flight&fixture=flight-pickups" : scene)
       if (captures)
         await page
           .locator(".session-workbench-pane")
@@ -426,6 +430,9 @@ test("flight pickups show timed effects, freeze outside the game, and a loss res
   await open("flight&fixture=flight-power")
   await page.waitForFunction(() => document.querySelector(".welcome-flight")?.getAttribute("data-fire") === "true")
   expect(await page.locator(".welcome-flight").getAttribute("data-shield")).toBe("true")
+  expect(await page.locator(".welcome-game-status").textContent()).toContain("Firepower")
+  expect(await page.locator(".welcome-game-status").textContent()).toContain("Shield")
+  expect(await page.getByRole("status").textContent()).toContain("One-hit protection")
   await page.getByRole("textbox").click()
   const canvas = page.locator(".welcome-game-canvas")
   const paused = await canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())

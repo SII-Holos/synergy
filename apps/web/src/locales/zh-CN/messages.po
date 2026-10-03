@@ -25573,12 +25573,20 @@ msgid "welcome.common.unavailable"
 msgstr "暂时无法加载这个示例，你仍可以在下方开始任务。"
 
 #. js-lingui-explicit-id
+msgid "welcome.flight.effect.fire"
+msgstr "火力 {seconds} 秒"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.effect.shield"
+msgstr "护罩 {seconds} 秒"
+
+#. js-lingui-explicit-id
 msgid "welcome.flight.field"
 msgstr "飞机大战游戏区域"
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.help"
-msgstr "移动指针或使用方向键操控，点击或按空格开始自动射击。躲避碰撞；漏掉敌人会中断连击。拾取箭头获得十秒火力、护盾抵挡一次碰撞、十字恢复生命。"
+msgstr "移动指针或使用方向键操控，点击或按空格开始自动射击。躲避碰撞；漏掉敌人会中断连击。拾取弹药获得十秒三向火力，气泡护罩抵挡一次碰撞，爱心补给箱恢复生命。"
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.name"
@@ -25589,12 +25597,40 @@ msgid "welcome.flight.over"
 msgstr "{score} 分 · 再飞一次"
 
 #. js-lingui-explicit-id
+msgid "welcome.flight.pickup.fire"
+msgstr "三连弹"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.pickup.repair"
+msgstr "修复箱"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.pickup.shield"
+msgstr "防护罩"
+
+#. js-lingui-explicit-id
 msgid "welcome.flight.position"
 msgstr "飞机位置 {x}，{y}"
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.ready"
 msgstr "移动操控 · 点击起飞"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.bonus"
+msgstr "生命已满 · +{points} 分"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.fire"
+msgstr "三向火力 · 10 秒"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.repair"
+msgstr "生命 +1"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.received.shield"
+msgstr "抵挡一次碰撞 · 8 秒"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.aim"
