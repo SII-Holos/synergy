@@ -24,6 +24,8 @@ CI explicitly selects the collector's `preparation` family so dependency failure
 
 [Result reporting](../../../../benchmark/src/synergy_bench/report.py) preserves all attempts and separates primary native reward from auxiliary verifier metrics. Missing wire evidence yields unknown byte coverage. Missing experiment conditions prevent paired comparisons. Historical oracle records can be imported through a read-only report without repeating grading or rewriting the original records.
 
+Cache inspection tolerates a run reference being retired after directory enumeration and before its read. Only `FileNotFoundError` at that read is ignored; malformed or unreadable live references remain errors. Surviving references continue to protect their artifacts and images, and collection retains its existing activity exclusion. The deterministic cache regression covers retirement during inspection, live-input protection and malformed-reference rejection.
+
 ## Alternatives considered
 
 **Use a fixed worker count for every task.** Mixed small tasks and 8 GiB tasks can exceed Docker memory even when CPU utilization is low.

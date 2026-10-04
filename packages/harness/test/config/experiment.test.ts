@@ -107,12 +107,13 @@ test("historical executor settings remain evidence while live execution stays cu
         runtime: { execution: { toolExecutorConcurrency: { arbitrary_executor: 3 } } },
       }).success,
     ).toBe(false)
-    expect(
-      Experiment.Snapshot.safeParse({
-        ...historical,
-        runtime: { execution: { toolExecutorConcurrency: { link: 0 } } },
-      }).success,
-    ).toBe(false)
+    for (const value of [0, -1, 1.5, 513, "3"])
+      expect(
+        Experiment.Snapshot.safeParse({
+          ...historical,
+          runtime: { execution: { toolExecutorConcurrency: { link: value } } },
+        }).success,
+      ).toBe(false)
   }))
 
 test("explicit model overrides win and fingerprints are stable across capture time and key order", () =>

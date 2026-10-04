@@ -1,3 +1,4 @@
+import { sessionActivityLabel } from "@ericsanchezok/synergy-ui/session-status"
 import type { I18n } from "@lingui/core"
 import type { SessionPausedReason, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import type { IconName } from "@ericsanchezok/synergy-ui/icon"
@@ -42,9 +43,7 @@ export function runtimeLabel(status: SessionStatus | undefined, waiting: boolean
     case "paused":
       return isPausedSessionStatus(status) ? pausedDetail(status, i18n) : i18n._(copy.runtimePaused)
     case "working": {
-      if (status?.type === "retry") return i18n._({ ...copy.retryAttempt, values: { attempt: status.attempt } })
-      const description = status?.type === "busy" ? status.description : undefined
-      return description || i18n._(copy.runtimeRunning)
+      return sessionActivityLabel(status, i18n)
     }
     case "idle":
       return i18n._(copy.runtimeIdle)

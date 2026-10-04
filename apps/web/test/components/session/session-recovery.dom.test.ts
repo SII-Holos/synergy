@@ -20,7 +20,7 @@ beforeAll(async () => {
   directory = await mkdtemp(path.join(import.meta.dir, ".session-recovery-"))
   await Bun.write(
     path.join(directory, "index.html"),
-    '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+    '<!doctype html><div id="root"></div><script type="module" src="/main.tsx"></script>',
   )
   await Bun.write(
     path.join(directory, "locale.ts"),
@@ -30,6 +30,7 @@ beforeAll(async () => {
     path.join(directory, "main.tsx"),
     `
     import { render } from "solid-js/web"
+    import { createSignal } from "solid-js"
     import { createStore } from "solid-js/store"
     import { I18nProvider } from "@lingui/solid"
     import { MarkedProvider } from "@ericsanchezok/synergy-ui/context/marked"
@@ -47,17 +48,43 @@ beforeAll(async () => {
     window.activeItems = [item]
     window.removeCalls = 0
     window.restoreCalls = 0
+    window.abortedReads = 0
+    window.removedReadPending = false
+    window.restorePending = false
+    const [active, setActive] = createSignal(true)
+    window.setInboxActive = setActive
     const client = { session: {
-      inboxRemoved: async () => ({data:window.removedItems}),
+      inboxRemoved: async (_input, options) => {
+        if (window.holdRemoved && options?.signal) {
+          window.removedReadPending = true
+          await new Promise((resolve, reject) => options.signal.addEventListener("abort", () => {
+            window.abortedReads++
+            window.removedReadPending = false
+            reject(new DOMException("Read cancelled", "AbortError"))
+          }, {once:true}))
+        }
+        return {data:window.removedItems}
+      },
       inboxRemove: async () => { window.removeCalls++; if (window.failRemove) throw {data:{message:"Removal offline"}}; window.removedItems = [item]; window.activeItems = []; },
-      inboxRestore: async () => { window.restoreCalls++; if (window.failRestore) throw {data:{message:"Restore offline"}}; window.removedItems = []; window.activeItems = [item]; if (window.lostRestore) throw new Error("Lost response"); },
+      inboxRestore: async () => {
+        window.restoreCalls++
+        if (window.failRestore) throw {data:{message:"Restore offline"}}
+        if (window.holdRestore) {
+          window.restorePending = true
+          await new Promise(resolve => window.finishRestore = resolve)
+          window.restorePending = false
+        }
+        window.removedItems = []
+        window.activeItems = [item]
+        if (window.lostRestore) throw new Error("Lost response")
+      },
     } }
     const sync = { data, session: { refresh: async () => setData("inbox", "s1", window.activeItems) } }
     const accepted = createNewSessionTransitionAcceptedProgress()
-    const failed = createSessionTransitionHandoffErrorProgress({ kind:accepted.kind,steps:accepted.steps,error:{code:"ProviderUnavailable",message:"Diagnostic preserved"} })
+    const failed = createSessionTransitionHandoffErrorProgress({ kind:accepted.kind,error:{code:"ProviderUnavailable",message:"Diagnostic preserved"} })
     const mode = new URLSearchParams(location.search).get("mode")
     render(() => <I18nProvider i18n={i18n}><MarkedProvider><DialogProvider>
-      {mode === "pending" ? <PendingTimelineItem item={{...item,mode:"task",status:"failed",failReason:"Attachment invalid"}} rollbackActive={false} hasCanonicalRoot={false} onRemove={async () => {window.removeCalls++; await new Promise(resolve => setTimeout(resolve, 150)); if (window.failRemove) throw new Error("Removal offline")}} /> : mode === "transition" ? <SessionSubmissionPreview entry={{ progress: failed, draft: {intent: 1, text: "Original draft **preserved**"}, actions: {retry: () => {window.retryCount = (window.retryCount ?? 0)+1}} }} /> : <SessionInbox sessionID="s1" sdk={{client}} sync={sync} />}
+      {mode === "pending" ? <PendingTimelineItem item={{...item,mode:"task",status:"failed",failReason:"Attachment invalid"}} rollbackActive={false} hasCanonicalRoot={false} onRemove={async () => {window.removeCalls++; await new Promise(resolve => setTimeout(resolve, 150)); if (window.failRemove) throw new Error("Removal offline")}} /> : mode === "transition" ? <SessionSubmissionPreview entry={{ progress: failed, draft: {intent: 1, text: "Original draft **preserved**"}, actions: {retry: () => {window.retryCount = (window.retryCount ?? 0)+1}} }} /> : <SessionInbox sessionID="s1" sdk={{client}} sync={sync} active={active()} />}
     </DialogProvider></MarkedProvider></I18nProvider>, document.querySelector("#root"))
   `,
   )
@@ -94,6 +121,13 @@ interface RecoveryWindow extends Window {
   removeCalls: number
   restoreCalls: number
   retryCount: number
+  holdRemoved: boolean
+  removedReadPending: boolean
+  abortedReads: number
+  holdRestore: boolean
+  restorePending: boolean
+  finishRestore: () => void
+  setInboxActive: (active: boolean) => void
 }
 
 test("failed removal retains the message and restoration is visible and retryable", async () => {
@@ -131,16 +165,46 @@ test("lost restore response is checked before another restore request", async ()
   expect(errors).toEqual([])
 })
 
+test("inbox dismissal cancels reads while retaining successful and pending operations", async () => {
+  await page.goto(url)
+  await page.getByRole("button", { name: "Queued message actions", exact: true }).waitFor()
+  await page.evaluate(() => ((window as unknown as RecoveryWindow).holdRemoved = true))
+  await page.getByRole("button", { name: "Queued message actions", exact: true }).click()
+  await page.getByRole("button", { name: "Delete", exact: true }).click()
+  await page.waitForFunction(() => (window as unknown as RecoveryWindow).removedReadPending)
+  await page.evaluate(() => (window as unknown as RecoveryWindow).setInboxActive(false))
+  await page.getByRole("button", { name: /Preserve my direction/ }).waitFor({ state: "hidden" })
+  expect(await page.evaluate(() => (window as unknown as RecoveryWindow).abortedReads)).toBe(1)
+  expect(await page.evaluate(() => (window as unknown as RecoveryWindow).removeCalls)).toBe(1)
+  expect(await page.getByRole("alert").count()).toBe(0)
+  await page.evaluate(() => {
+    const state = window as unknown as RecoveryWindow
+    state.holdRemoved = false
+    state.holdRestore = true
+    state.setInboxActive(true)
+  })
+  await page.getByRole("button", { name: "Restore", exact: true }).click()
+  await page.waitForFunction(() => (window as unknown as RecoveryWindow).restorePending)
+  await page.evaluate(() => (window as unknown as RecoveryWindow).setInboxActive(false))
+  await page.evaluate(() => (window as unknown as RecoveryWindow).finishRestore())
+  await page.getByRole("button", { name: /Preserve my direction/ }).waitFor()
+  await page.evaluate(() => (window as unknown as RecoveryWindow).setInboxActive(true))
+  await page.getByRole("heading", { name: "Removed messages" }).waitFor({ state: "hidden" })
+  expect(await page.evaluate(() => (window as unknown as RecoveryWindow).restoreCalls)).toBe(1)
+  expect(await page.getByRole("alert").count()).toBe(0)
+  expect(errors).toEqual([])
+})
+
 test("failed initialization stops spinners and exposes one recovery action with diagnostics at 375px", async () => {
   await page.setViewportSize({ width: 375, height: 812 })
   await page.goto(`${url}?mode=transition`)
   expect(await page.locator(".session-submission-prompt").textContent()).toBe("Original draft **preserved**")
   await page.getByRole("alert").waitFor()
-  expect(await page.locator(".session-transition-step-spinner").count()).toBe(0)
-  expect(await page.getByText("Failed", { exact: true }).count()).toBe(1)
-  await page.getByText("Error details", { exact: true }).click()
+  expect(await page.getByRole("status").count()).toBe(0)
+  expect(await page.locator('[data-component="error-card"]').count()).toBe(1)
+  await page.getByRole("button", { name: "Unable to start execution" }).click()
   await page.getByText("ProviderUnavailable: Diagnostic preserved").waitFor()
-  await page.getByRole("button", { name: "Retry initialization" }).click()
+  await page.getByRole("button", { name: "Retry", exact: true }).click()
   expect(await page.evaluate(() => (window as unknown as RecoveryWindow).retryCount)).toBe(1)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   expect(errors).toEqual([])

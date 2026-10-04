@@ -11,7 +11,7 @@ import {
   type BrowserDataState,
 } from "@ericsanchezok/synergy-browser-core"
 import { browser as B } from "@/locales/messages"
-import { BrowserImportDialog } from "./browser-import-dialog"
+import { BrowserImportDialog } from "./browser-import-entry"
 
 const M = {
   data: { id: "browser.data.title", message: "Browser data" },

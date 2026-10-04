@@ -66,7 +66,6 @@ import { getAgentVisual } from "@/components/agent-visual"
 import type { Message } from "@ericsanchezok/synergy-sdk/client"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { isHomeScope } from "@/utils/scope"
-import { computeWorkingPhrase, titlecaseStatusLabel } from "@ericsanchezok/synergy-ui/session-status"
 import { FILE_INPUT_ACCEPT } from "@/components/prompt-input/files"
 import { permissionModeVisual } from "@/components/prompt-input/permission-modes"
 import type {
@@ -1352,35 +1351,6 @@ export function createPromptInputController(props: PromptInputProps) {
     return permissionModeVisual(configured).id
   })
   const activePermissionMode = createMemo(() => permissionModeVisual(selectedControlProfile()))
-  const assistantMessages = createMemo(() => {
-    if (!params.id) return [] as Message[]
-    return view()
-      .messagesFor(params.id)
-      .filter((message) => message.role === "assistant") as Message[]
-  })
-  const cortexRunning = createMemo(() => {
-    const id = params.id
-    if (!id) return 0
-    return view()
-      .cortexTasks()
-      .filter((task) => task.parentSessionID === id && task.status === "running").length
-  })
-  const agentName = createMemo(() => {
-    const latestAssistant = assistantMessages().at(-1)
-    return titlecaseStatusLabel(
-      latestAssistant?.agent ?? local.agent.current()?.name ?? translateDescriptor(getAgentVisual().label, i18n),
-    )
-  })
-  const fallbackWorkingPhrase = createMemo(() =>
-    computeWorkingPhrase(
-      {
-        agentName: agentName(),
-        cortexRunning: cortexRunning(),
-        seed: params.id ?? sessionKey(),
-      },
-      i18n,
-    ),
-  )
 
   async function updateControlProfile(profile: ControlProfileId, close?: () => void) {
     if (store.switchingProfile) return
@@ -2120,8 +2090,7 @@ export function createPromptInputController(props: PromptInputProps) {
     const autoSubmit = restoreNewSessionRecovery({
       recovery,
       setDraft: (draft) => {
-        prompt.set(draft.prompt, inlineLength(draft.prompt))
-        prompt.context.set(draft.context)
+        prompt.recoverDraft(draft, recovery.autoSubmit)
       },
       setMode(mode) {
         requireEditable()

@@ -1,3 +1,6 @@
+import type { I18n } from "@lingui/core"
+import type { ProgressIslandSnapshot } from "./session-progress-summary"
+
 export const S = {
   historyCopyTitle: { id: "session.history.copyTitle", message: "Copy conversation text" },
   historyCopyDescription: {
@@ -239,6 +242,53 @@ export const S = {
   forkConfirmFailed: { id: "session.fork.confirm.failed", message: "Fork failed" },
   forkConfirmRequestFailed: { id: "session.fork.confirm.requestFailed", message: "Request failed" },
 
+  // session-progress summary labels
+  progressEnded: { id: "session.progress.ended", message: "Ended" },
+  progressCancelled: { id: "session.progress.cancelled", message: "{count} cancelled" },
+  progressDone: { id: "session.progress.done", message: "Done · {count, plural, one {# task} other {# tasks}}" },
+  progressNeedsAttention: {
+    id: "session.progress.needsAttention",
+    message: "Needs attention · {count, plural, one {# failed} other {# failed}}",
+  },
+  progressNeedsAttentionBlocked: {
+    id: "session.progress.needsAttentionBlocked",
+    message: "Needs attention · {count, plural, one {# blocked} other {# blocked}}",
+  },
+  progressReady: { id: "session.progress.ready", message: "Ready · {fraction}" },
+  progressWorkingLabel: {
+    id: "session.progress.workingLabel",
+    message: "Working {count, plural, one {# task} other {# tasks}}",
+  },
+  progressWorking: { id: "session.progress.working", message: "Working" },
+
+  // session-progress-island
+  progressSessionLabel: { id: "session.progress.sessionLabel", message: "Session progress" },
+  progressCompleteAria: {
+    id: "session.progress.completeAria",
+    message: "Session progress complete, {count, plural, one {# task} other {# tasks}} done",
+  },
+  progressAttentionAria: {
+    id: "session.progress.attentionAria",
+    message: "Session progress needs attention, {count} failed",
+  },
+  progressBlockedAria: {
+    id: "session.progress.blockedAria",
+    message: "Session progress needs attention, {count} blocked",
+  },
+  progressActiveAria: {
+    id: "session.progress.activeAria",
+    message: "Session progress, {completed} of {total} tasks complete",
+  },
+  progressDagTab: { id: "session.progress.dagTab", message: "DAG" },
+  progressTodoTab: { id: "session.progress.todoTab", message: "To-do" },
+  progressCurrentWork: { id: "session.progress.currentWork", message: "Current work" },
+  progressCompleteFraction: { id: "session.progress.completeFraction", message: "{completed}/{total} complete" },
+  progressViewLabel: { id: "session.progress.viewLabel", message: "Progress view" },
+  progressExpand: { id: "session.progress.expand", message: "Expand" },
+  progressCollapse: { id: "session.progress.collapse", message: "Collapse" },
+  progressClose: { id: "session.progress.close", message: "Close progress" },
+  progressNoActivePlan: { id: "session.progress.noActivePlan", message: "No active plan" },
+
   // session-inbox
   inboxQueued: { id: "session.inbox.queued", message: "Queued by you" },
   inboxGuiding: { id: "session.inbox.guiding", message: "Guiding current run" },
@@ -298,6 +348,7 @@ export const S = {
   inboxGuideAllFailed: { id: "session.inbox.guideAllFailed", message: "Failed to send queued messages now" },
   inboxRequestFailed: { id: "session.inbox.requestFailed", message: "Request failed" },
   inboxDelete: { id: "session.inbox.delete", message: "Delete" },
+  inboxRemove: { id: "session.inbox.remove", message: "Remove message" },
   inboxOperationPending: { id: "session.inbox.operationPending", message: "Updating message…" },
   inboxRemoveFailed: {
     id: "session.inbox.removeFailed",
@@ -343,6 +394,8 @@ export const S = {
   scopesNewActivity: { id: "scopes.newActivity", message: "New activity" },
 
   // subagent-dock.tsx
+  subagentDockLabel: { id: "session.subagent.dockLabel", message: "Active agents" },
+  subagentCancelFailed: { id: "session.subagent.cancelFailed", message: "Could not cancel agent" },
   subagentToolsCount: { id: "session.subagent.toolsCount", message: "{count} tools" },
   subagentRetry: { id: "session.subagent.retry", message: "Retry #{attempt}" },
   subagentQueuedWait: { id: "session.subagent.queuedWait", message: "Queued \u2014 waiting for slot" },
@@ -364,75 +417,20 @@ export const S = {
   subagentFooterParent: { id: "session.subagent.footer.parent", message: "Parent" },
   subagentFooterRetry: { id: "session.subagent.footer.retry", message: "Retry #{attempt}" },
 
-  // worktree-progress-components.tsx
-  worktreeStepActive: { id: "session.worktree.step.active", message: "In progress" },
-  worktreeStepComplete: { id: "session.worktree.step.complete", message: "Done" },
-  worktreeStepPending: { id: "session.worktree.step.pending", message: "Pending" },
-
-  // worktree-transition-card.tsx
-  worktreeCardMainCheckout: { id: "session.worktree.card.mainCheckout", message: "Main folder" },
-  worktreeCardSessionWorktree: { id: "session.worktree.card.sessionWorktree", message: "Worktree" },
-  worktreeCardWorktreeSession: { id: "session.worktree.card.worktreeSession", message: "Worktree session" },
-  worktreeCardDismissAria: { id: "session.worktree.card.dismissAria", message: "Dismiss copy status" },
-  worktreeCardDismissTitle: { id: "session.worktree.card.dismissTitle", message: "Dismiss" },
-  worktreeCardRetry: { id: "session.worktree.card.retry", message: "Retry" },
-
-  // session-transition-card.tsx — generic transition card
-  transitionCardDismissAria: { id: "session.transition.card.dismissAria", message: "Dismiss session progress" },
-  transitionCardDismissTitle: { id: "session.transition.card.dismissTitle", message: "Dismiss" },
-  transitionStepInitialize: { id: "session.transition.step.initialize", message: "Initialize execution" },
-  transitionStepFailed: { id: "session.transition.step.failed", message: "Failed" },
-  transitionRetryInitialization: { id: "session.transition.retryInitialization", message: "Retry initialization" },
+  submissionDismiss: { id: "session.submission.dismiss", message: "Dismiss" },
+  submissionRestoreDraft: { id: "session.submission.restoreDraft", message: "Restore draft" },
   transitionContinue: { id: "session.transition.continue", message: "Continue task" },
   transitionErrorDetails: { id: "session.transition.errorDetails", message: "Error details" },
   transitionRecoveryFailed: {
     id: "session.transition.recoveryFailed",
     message: "Recovery could not be confirmed. Check the connection and retry.",
   },
-  transitionCardRetry: { id: "session.transition.card.retry", message: "Retry" },
+  submissionRetry: { id: "session.submission.retryAction", message: "Retry" },
 
-  // session-transition-progress.ts — general session startup factory
-  transitionStepPrepareSession: { id: "session.transition.step.prepareSession", message: "Prepare session" },
-  transitionStepSubmitMessage: { id: "session.transition.step.submitMessage", message: "Submit message" },
-  transitionTitleStarting: { id: "session.transition.title.starting", message: "Starting session" },
-  transitionDescSubmitting: { id: "session.transition.desc.submitting", message: "Submitting your first message." },
-  transitionDetailMessageQueued: { id: "session.transition.detail.messageQueued", message: "First message queued." },
-  transitionTitleAccepted: { id: "session.transition.title.accepted", message: "Session request accepted" },
-  transitionDescInitializing: {
-    id: "session.transition.desc.initializing",
-    message: "Your first message is saved. Initializing the conversation.",
-  },
-  transitionDescQueued: {
-    id: "session.transition.desc.queued",
-    message: "Your first message is queued for processing.",
-  },
-  transitionTitleStalled: { id: "session.transition.title.stalled", message: "Conversation setup needs attention" },
-  transitionDescDelayed: {
-    id: "session.transition.desc.delayed",
-    message: "Your message is saved. Preparation is taking longer than usual; processing will continue automatically.",
-  },
-  transitionDescStorage: {
-    id: "session.transition.desc.storage",
-    message: "Your message is saved and waiting for storage to become available.",
-  },
-  transitionDescRetrying: {
-    id: "session.transition.desc.retrying",
-    message: "Your message is saved. Retrying preparation automatically.",
-  },
-  transitionDescReconnecting: {
-    id: "session.transition.desc.reconnecting",
-    message: "Your message was saved. Reconnecting to check its progress.",
-  },
   transitionDescCancelled: {
     id: "session.transition.desc.cancelled",
     message: "This message was cancelled. You can dismiss this notice.",
   },
-  transitionDescStalled: {
-    id: "session.transition.desc.stalled",
-    message: "Your first message is still saved, but initialization did not finish. Retry to resume processing.",
-  },
-
-  // worktree-transition-dialog.tsx
   worktreeDialogTitle: { id: "session.worktree.dialog.title", message: "Move session to worktree?" },
   worktreeDialogDesc: {
     id: "session.worktree.dialog.desc",
@@ -443,87 +441,6 @@ export const S = {
   worktreeDialogCancel: { id: "session.worktree.dialog.cancel", message: "Cancel" },
   worktreeDialogCreate: { id: "session.worktree.dialog.create", message: "Create worktree" },
 
-  // worktree-session.ts — factory step labels
-  worktreeStepCreateCheckout: { id: "session.worktree.step.createCheckout", message: "Create Worktree" },
-  worktreeStepBindWorktree: { id: "session.worktree.step.bindWorktree", message: "Use existing copy" },
-  worktreeStepPrepareSession: { id: "session.worktree.step.prepareSession", message: "Prepare session" },
-  worktreeStepSendPrompt: { id: "session.worktree.step.sendPrompt", message: "Send prompt" },
-  worktreeStepReturnCheckout: { id: "session.worktree.step.returnCheckout", message: "Return to project files" },
-  worktreeStepCreateBind: { id: "session.worktree.step.createBind", message: "Create and use copy" },
-  worktreeStepRefreshStatus: { id: "session.worktree.step.refreshStatus", message: "Refresh file location" },
-
-  // worktree-session.ts — factory detail strings
-  worktreeDetailPreparingWorktree: {
-    id: "session.worktree.detail.preparingWorktree",
-    message: "Preparing a Worktree of the project files.",
-  },
-  worktreeDetailUsingCheckout: { id: "session.worktree.detail.usingCheckout", message: "Using the selected copy." },
-  worktreeDetailUpdatingWorkspace: {
-    id: "session.worktree.detail.updatingWorkspace",
-    message: "Updating the files used by this task.",
-  },
-  worktreeDetailPreparingWorktreeBind: {
-    id: "session.worktree.detail.preparingWorktreeBind",
-    message: "Preparing the copy for this task.",
-  },
-  worktreeDetailWorkspaceUpdated: {
-    id: "session.worktree.detail.workspaceUpdated",
-    message: "The task’s file location has been updated.",
-  },
-  worktreeDetailRefreshingStatus: {
-    id: "session.worktree.detail.refreshingStatus",
-    message: "Loading the task’s updated file location.",
-  },
-  worktreeDetailCreatingConversation: {
-    id: "session.worktree.detail.creatingConversation",
-    message: "Creating the conversation state.",
-  },
-  worktreeDetailDispatchingPrompt: {
-    id: "session.worktree.detail.dispatchingPrompt",
-    message: "Dispatching your first message.",
-  },
-  worktreeDetailConversationReady: {
-    id: "session.worktree.detail.conversationReady",
-    message: "Conversation state is ready.",
-  },
-  worktreeDetailWorkspaceSetupComplete: {
-    id: "session.worktree.detail.workspaceSetupComplete",
-    message: "Worktree is ready.",
-  },
-  worktreeDetailPromptDispatched: {
-    id: "session.worktree.detail.promptDispatched",
-    message: "First prompt dispatched.",
-  },
-
-  // worktree-session.ts — factory title/description strings
-  worktreeTitleLeaving: { id: "session.worktree.title.leaving", message: "Returning to project files" },
-  worktreeDescLeaving: {
-    id: "session.worktree.desc.leaving",
-    message: "Returning this task to the project files.",
-  },
-  worktreeTitleMoving: { id: "session.worktree.title.moving", message: "Preparing a Worktree" },
-  worktreeDescMoving: {
-    id: "session.worktree.desc.moving",
-    message: "Creating a Worktree for this task.",
-  },
-  worktreeTitleMainActive: { id: "session.worktree.title.mainActive", message: "Using project files" },
-  worktreeDescMainActive: {
-    id: "session.worktree.desc.mainActive",
-    message: "This task now uses the project files. The Worktree remains available.",
-  },
-  worktreeTitleWorktreeActive: { id: "session.worktree.title.worktreeActive", message: "Using a Worktree" },
-  worktreeDescWorktreeActive: {
-    id: "session.worktree.desc.worktreeActive",
-    message: "This task now uses the Worktree.",
-  },
-  worktreeTitleRefreshing: {
-    id: "session.worktree.title.refreshing",
-    message: "Refreshing file location",
-  },
-  worktreeDescRefreshing: {
-    id: "session.worktree.desc.refreshing",
-    message: "The file location changed. Updating the task status.",
-  },
   worktreeTitleRefreshFailed: {
     id: "session.worktree.title.refreshFailed",
     message: "Could not refresh file location",
@@ -534,22 +451,43 @@ export const S = {
   },
   worktreeTitleLeaveFailed: { id: "session.worktree.title.leaveFailed", message: "Could not return to project files" },
   worktreeTitleMoveFailed: { id: "session.worktree.title.moveFailed", message: "Could not use the Worktree" },
-  worktreeTitleSetupFailed: { id: "session.worktree.title.setupFailed", message: "Worktree setup failed" },
   worktreeSetupCommandFailed: {
     id: "session.worktree.setupCommandFailed",
     message: "The Worktree setup command failed.",
   },
-  worktreeTitleStarting: { id: "session.worktree.title.starting", message: "Starting task in a Worktree" },
-  worktreeDescStarting: {
-    id: "session.worktree.desc.starting",
-    message: "Preparing the Worktree and sending your first message.",
-  },
-  worktreeTitleStarted: { id: "session.worktree.title.started", message: "Worktree task accepted" },
-  worktreeDescStarted: {
-    id: "session.worktree.desc.started",
-    message: "The Worktree is ready and your first message is queued.",
-  },
   scopesNewSession: { id: "scopes.newSession", message: "New session" },
   scopesTasksRunning: { id: "scopes.tasksRunning", message: "{running}/{count} tasks running" },
   scopesTasksCount: { id: "scopes.tasksCount", message: "{count} tasks" },
+}
+
+export function describeProgress(snapshot: ProgressIslandSnapshot, i18n: I18n): string {
+  if (snapshot.status === "hidden") return i18n._(S.progressSessionLabel)
+  if (snapshot.status === "complete") return i18n._({ ...S.progressCompleteAria, values: { count: snapshot.total } })
+  if (snapshot.tone === "failed") return i18n._({ ...S.progressAttentionAria, values: { count: snapshot.failed } })
+  if (snapshot.tone === "blocked") return i18n._({ ...S.progressBlockedAria, values: { count: snapshot.blocked } })
+  return i18n._({ ...S.progressActiveAria, values: { completed: snapshot.completed, total: snapshot.total } })
+}
+
+export function progressExpandCollapse(expanded: boolean, i18n: I18n): string {
+  return expanded ? i18n._(S.progressCollapse) : i18n._(S.progressExpand)
+}
+
+export function formatProgressLabel(
+  snapshot: ProgressIslandSnapshot,
+  activeLabel: string | undefined,
+  i18n: I18n,
+): string {
+  if (snapshot.status === "hidden") return ""
+  if (snapshot.status === "complete" && snapshot.total === 0) return i18n._(S.progressEnded)
+  if (snapshot.status === "complete") return i18n._({ ...S.progressDone, values: { count: snapshot.total } })
+  if (snapshot.tone === "failed") return i18n._({ ...S.progressNeedsAttention, values: { count: snapshot.failed } })
+  if (snapshot.tone === "blocked")
+    return i18n._({ ...S.progressNeedsAttentionBlocked, values: { count: snapshot.blocked } })
+  const fraction = `${snapshot.completed}/${snapshot.total}`
+  const label = activeLabel?.trim()
+  if (label) return `${label} · ${fraction}`
+  if (snapshot.tone === "ready") return i18n._({ ...S.progressReady, values: { fraction } })
+  if (snapshot.active > 1)
+    return `${i18n._({ ...S.progressWorkingLabel, values: { count: snapshot.active } })} · ${fraction}`
+  return `${i18n._(S.progressWorking)} · ${fraction}`
 }

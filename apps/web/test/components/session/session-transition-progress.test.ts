@@ -1,180 +1,57 @@
 import { describe, expect, test } from "bun:test"
 import { setupI18n } from "@lingui/core"
-import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { translateDescriptor } from "@/locales/translate"
-import { S } from "../../../src/components/session/session-i18n"
 import {
   createNewSessionTransitionAcceptedProgress,
   createNewSessionTransitionErrorProgress,
   createNewSessionTransitionProgress,
   createNewSessionTransitionSuccessProgress,
+  createSessionPreparationProgress,
   createSessionTransitionHandoffErrorProgress,
-  createSessionStartupSteps,
   isSessionTransitionBlocking,
-  sessionTransitionPresentation,
   translateSessionTransitionCopy,
-  type SessionTransitionKind,
-  type SessionTransitionProgress,
 } from "../../../src/components/session/session-transition-progress"
 
-function progress(kind: SessionTransitionKind, phase: SessionTransitionProgress["phase"]): SessionTransitionProgress {
-  return {
-    kind,
-    phase,
-    title: "Title",
-    description: "Description",
-    steps: [],
-  }
-}
-
-function englishI18n() {
-  const i18n = setupI18n({ locale: "en" })
-  i18n.loadAndActivate({
-    locale: "en",
-    messages: Object.fromEntries(Object.values(S).map((descriptor) => [descriptor.id, descriptor.message])),
+describe("session submission progress", () => {
+  test("reports the current preparation, submission and execution stage", () => {
+    expect(createSessionPreparationProgress().activity?.phase).toBe("checking_submission")
+    const submitting = createNewSessionTransitionProgress()
+    expect(submitting).toMatchObject({ kind: "new-session", phase: "loading", activity: { phase: "submitting_input" } })
+    expect(submitting.activity?.startedAt).toBeGreaterThan(0)
+    expect(createNewSessionTransitionAcceptedProgress().activity?.phase).toBe("materializing_input")
+    expect(isSessionTransitionBlocking(submitting)).toBe(true)
+    expect(isSessionTransitionBlocking(createNewSessionTransitionSuccessProgress())).toBe(false)
   })
-  return i18n
-}
 
-describe("session transition progress model", () => {
-  test("models ordinary new-session acceptance and persistent errors", () => {
-    const i18n = englishI18n()
-    const loading = createNewSessionTransitionProgress()
-    expect(loading).toMatchObject({ kind: "new-session", phase: "loading" })
-    expect(translateSessionTransitionCopy(loading.title, i18n)).toBe("Starting session")
-    expect(translateSessionTransitionCopy(loading.description, i18n)).toBe("Submitting your first message.")
-    expect(loading.steps.map((step) => [step.id, translateDescriptor(step.label, i18n), step.state])).toEqual([
-      ["session", "Prepare session", "complete"],
-      ["message", "Submit message", "active"],
-    ])
-
-    const accepted = createNewSessionTransitionAcceptedProgress()
-    expect(accepted).toMatchObject({ kind: "new-session", phase: "loading" })
-    expect(translateSessionTransitionCopy(accepted.description, i18n)).toBe(
-      "Your first message is saved. Initializing the conversation.",
-    )
-    expect(accepted.steps.map((step) => [step.id, step.state])).toEqual([
-      ["session", "complete"],
-      ["message", "complete"],
-      ["initialization", "active"],
-    ])
-
-    const success = createNewSessionTransitionSuccessProgress()
-    expect(success).toMatchObject({ kind: "new-session", phase: "success" })
-    expect(translateSessionTransitionCopy(success.title, i18n)).toBe("Session request accepted")
-    expect(translateSessionTransitionCopy(success.description, i18n)).toBe(
-      "Your first message is queued for processing.",
-    )
-    expect(success.steps.map((step) => [step.id, translateDescriptor(step.label, i18n), step.state])).toEqual([
-      ["session", "Prepare session", "complete"],
-      ["message", "Submit message", "complete"],
-      ["initialization", "Initialize execution", "complete"],
-    ])
-
-    const error = createNewSessionTransitionErrorProgress({
-      title: "Failed to send prompt",
-      message: "Connection closed.",
-    })
-    expect(error).toEqual({
+  test("keeps recoverable failures and structured diagnostics", () => {
+    const failed = createSessionTransitionHandoffErrorProgress({
       kind: "new-session",
-      phase: "error",
-      title: "Failed to send prompt",
-      description: "Connection closed.",
-      steps: [],
+      error: { code: "ModelUnavailable", message: "Select a configured model" },
     })
-    expect(isSessionTransitionBlocking(loading)).toBe(true)
-    expect(isSessionTransitionBlocking(error)).toBe(true)
-    expect(isSessionTransitionBlocking(success)).toBe(false)
-
-    const stalled = createSessionTransitionHandoffErrorProgress({
-      kind: accepted.kind,
-      steps: accepted.steps,
-    })
-    expect(stalled).toMatchObject({ kind: "new-session", phase: "error" })
-    expect(translateSessionTransitionCopy(stalled.title, i18n)).toBe("Conversation setup needs attention")
-    expect(translateSessionTransitionCopy(stalled.description, i18n)).toBe(
-      "Your first message is still saved, but initialization did not finish. Retry to resume processing.",
-    )
+    expect(failed.phase).toBe("error")
+    expect(failed.activity).toBeUndefined()
+    expect(failed.error).toEqual({ code: "ModelUnavailable", message: "Select a configured model" })
+    expect(isSessionTransitionBlocking(failed)).toBe(true)
+    expect(failed.retryLabel).toBeDefined()
   })
 
-  test("shares startup step ordering across ordinary and worktree sessions", () => {
-    const workspace = {
-      label: { id: "test.session.workspace.label", message: "Create checkout" },
-      activeDetail: { id: "test.session.workspace.active", message: "Preparing a new git worktree." },
-      completeDetail: { id: "test.session.workspace.complete", message: "Workspace setup complete." },
-    }
-
-    expect(createSessionStartupSteps({ stage: "workspace", workspace }).map((step) => [step.id, step.state])).toEqual([
-      ["session", "complete"],
-      ["workspace", "active"],
-      ["message", "pending"],
-    ])
-    expect(createSessionStartupSteps({ stage: "message", workspace }).map((step) => [step.id, step.state])).toEqual([
-      ["session", "complete"],
-      ["workspace", "complete"],
-      ["message", "active"],
-    ])
-    expect(createSessionStartupSteps({ stage: "accepted", workspace }).map((step) => [step.id, step.state])).toEqual([
-      ["session", "complete"],
-      ["workspace", "complete"],
-      ["message", "complete"],
-      ["initialization", "active"],
-    ])
-    expect(createSessionStartupSteps({ stage: "complete", workspace }).map((step) => [step.id, step.state])).toEqual([
-      ["session", "complete"],
-      ["workspace", "complete"],
-      ["message", "complete"],
-      ["initialization", "complete"],
-    ])
-  })
-
-  test("maps every transition kind and terminal phase to semantic presentation", () => {
-    const i18n = englishI18n()
-    const expected = [
-      ["new-session", "session.new", "New session"],
-      ["new-worktree-session", "workspace.worktree", "Worktree session"],
-      ["enter-worktree", "workspace.enterWorktree", "Worktree"],
-      ["leave-worktree", "workspace.leaveWorktree", "Main folder"],
-    ] as const
-
-    for (const [kind, icon, kicker] of expected) {
-      const presentation = sessionTransitionPresentation(progress(kind, "loading"))
-      expect(presentation.icon).toBe(getSemanticIcon(icon))
-      expect(translateDescriptor(presentation.kicker, i18n)).toBe(kicker)
-      expect(sessionTransitionPresentation(progress(kind, "success")).icon).toBe(getSemanticIcon("state.success"))
-      expect(sessionTransitionPresentation(progress(kind, "error")).icon).toBe(getSemanticIcon("state.error"))
-    }
-  })
-
-  test("re-resolves stored descriptors after the active locale changes", () => {
-    const progress = createNewSessionTransitionProgress()
-    const i18n = englishI18n()
-    expect(translateSessionTransitionCopy(progress.title, i18n)).toBe("Starting session")
-
-    i18n.loadAndActivate({
-      locale: "zh-CN",
+  test("translates failure copy reactively and preserves raw diagnostics", () => {
+    const failed = createSessionTransitionHandoffErrorProgress({ kind: "new-session" })
+    const i18n = setupI18n({
+      locale: "en",
       messages: {
-        [S.transitionTitleStarting.id]: "正在启动会话",
-        [S.transitionStepSubmitMessage.id]: "提交消息",
+        en: {},
+        "zh-CN": {
+          "session.submission.startFailed": "无法开始执行",
+          "session.submission.savedFailure": "消息已保存，请重试。",
+        },
       },
     })
-
-    expect(translateSessionTransitionCopy(progress.title, i18n)).toBe("正在启动会话")
-    expect(translateDescriptor(progress.steps[1]!.label, i18n)).toBe("提交消息")
+    expect(translateSessionTransitionCopy(failed.title, i18n)).toBe("Unable to start execution")
+    i18n.activate("zh-CN")
+    expect(translateSessionTransitionCopy(failed.title, i18n)).toBe("无法开始执行")
+    expect(translateSessionTransitionCopy(failed.description, i18n)).toBe("消息已保存，请重试。")
     const raw = createNewSessionTransitionErrorProgress({ title: "Provider failed", message: "Connection closed." })
     expect(translateSessionTransitionCopy(raw.title, i18n)).toBe("Provider failed")
+    expect(translateSessionTransitionCopy(raw.description, i18n)).toBe("Connection closed.")
   })
-})
-
-test("handoff failures stop active steps and retain structured diagnostics", () => {
-  const accepted = createNewSessionTransitionAcceptedProgress()
-  const failed = createSessionTransitionHandoffErrorProgress({
-    kind: accepted.kind,
-    steps: accepted.steps,
-    error: { code: "ModelUnavailable", message: "Select a configured model" },
-  })
-  expect(failed.steps.some((step) => step.state === "active")).toBe(false)
-  expect(failed.steps.at(-1)?.state).toBe("error")
-  expect(failed.error).toEqual({ code: "ModelUnavailable", message: "Select a configured model" })
-  expect(accepted.steps.at(-1)?.state).toBe("active")
 })

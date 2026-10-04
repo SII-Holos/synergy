@@ -74,18 +74,6 @@ describe("desktop startup page", () => {
     expect(error).toContain("--error-panel-bg: #21153A")
   })
 
-  test("centers an animated icon splash instead of mirroring app layout", () => {
-    const html = decodeDesktopHtml(desktopStartupPage({ chrome: "custom", theme: desktopTheme("light") }))
-
-    expect(html).toContain("place-items: center;")
-    expect(html).toContain("width: 96px;")
-    expect(html).toContain("width: 72px;")
-    expect(html).toContain("animation: startup-breathe")
-    expect(html).toContain("@media (prefers-reduced-motion: reduce)")
-    expect(html).not.toContain("startup-orbit")
-    expect(html).not.toContain("startup-prompt-line")
-  })
-
   test("renders the native titlebar spacer for macOS windows", () => {
     const html = decodeDesktopHtml(desktopStartupPage({ chrome: "native", theme: desktopTheme("dark") }))
 

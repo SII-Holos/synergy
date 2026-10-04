@@ -313,6 +313,14 @@ test("the confirmation remains visible with long paths and a long list in narrow
       "const row=window.fixture.rows[1];for(let n=0;n<30;n++)window.fixture.emit({...row,id:'long_'+n,metadata:{name:'A very long directory name that must remain readable'},binding:{...row.binding,path:'/projects/a-very-long-parent-directory-with-no-spaces-to-wrap/working-directory-'+n}})",
     )
     const confirmation = page.getByRole("button", { name: "Use this directory", exact: true })
+    await page.getByRole("dialog").evaluate((element) =>
+      Promise.allSettled(
+        element
+          .getAnimations({ subtree: true })
+          .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
+          .map((animation) => animation.finished),
+      ),
+    )
     const before = await confirmation.boundingBox()
     expect(before).not.toBeNull()
     expect(before!.x).toBeGreaterThanOrEqual(0)

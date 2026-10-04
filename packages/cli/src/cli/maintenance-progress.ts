@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks"
 import {
   runtimeStartupLine,
   RuntimeStartupProgress,
+  type MigrationStartupTask,
   type StorageMaintenanceEvent,
 } from "@ericsanchezok/synergy-util/runtime-startup"
 import type { MigrationReporter } from "@ericsanchezok/synergy-harness/migration/types"
@@ -22,18 +23,45 @@ export function createManagedMigrationReporter(
   },
 ): MigrationReporter {
   let step = 0
+  let task: MigrationStartupTask | undefined
   return {
-    started() {
-      write(runtimeStartupLine({ phase: "migration", step: ++step, current: 0, total: 0 }))
+    started({ domain, migration }) {
+      task = migrationStartupTask(domain, migration.id)
+      write(runtimeStartupLine({ phase: "migration", step: ++step, current: 0, total: 0, ...(task && { task }) }))
     },
     progress({ current, total }) {
       if (!RuntimeStartupProgress.safeParse({ phase: "migration", step, current, total }).success) return
-      write(runtimeStartupLine({ phase: "migration", step, current, total }))
+      write(runtimeStartupLine({ phase: "migration", step, current, total, ...(task && { task }) }))
     },
     summary() {
       write(runtimeStartupLine({ phase: "starting" }))
     },
   }
+}
+
+const migrationTasks = new Map<string, MigrationStartupTask>([
+  ["agenda", "scheduled-work"],
+  ["blueprint_loop", "blueprints"],
+  ["browser", "browser"],
+  ["channel", "connections"],
+  ["config", "settings"],
+  ["note", "notes"],
+  ["session", "conversations"],
+  ["storage", "storage"],
+  ["usage", "usage"],
+  ["workflows-session", "workflows"],
+  ["scope", "scopes"],
+  ["workspace", "workspaces"],
+  ["local-workspace", "workspaces"],
+])
+
+function migrationStartupTask(domain: string, id: string): MigrationStartupTask | undefined {
+  if (domain.startsWith("tool-input-")) return "tool-history"
+  if (domain === "session") {
+    if (id === "20261001-rollout-attempt-price-evidence") return "request-prices"
+    if (id === "20261003-session-turn-file-checkpoints") return "file-history"
+  }
+  return migrationTasks.get(domain)
 }
 
 const context = new AsyncLocalStorage<{ signal: AbortSignal; reporter?: MigrationReporter }>()

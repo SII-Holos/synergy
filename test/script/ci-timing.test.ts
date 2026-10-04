@@ -44,7 +44,7 @@ test.each([
     const timings = empty()
     for (const [index, file] of files.entries()) {
       await Bun.write(path.join(root, file), 'import { chromium } from "playwright"')
-      recordTiming(timings, profile, batchKey(owner, [file]), {
+      recordTiming(timings, timingProfile("linux", "x64"), batchKey(owner, [file]), {
         owner,
         kind: "browser",
         files: [file],

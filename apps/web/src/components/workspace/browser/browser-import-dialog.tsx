@@ -1,27 +1,26 @@
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
-import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { Checkbox } from "@ericsanchezok/synergy-ui/checkbox"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import {
-  BROWSER_PROTOCOL_VERSION,
   type BrowserDataAction,
   type BrowserDataResult,
   type BrowserImportSource,
   type BrowserImportKind,
   type BrowserImportResult,
 } from "@ericsanchezok/synergy-browser-core"
-import { usePlatform } from "@/context/platform"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { browser as B } from "@/locales/messages"
 import { createBrowserCommandId } from "./browser-command"
 import "./browser-import-dialog.css"
+import { importPreparing, importTargetClosed } from "./browser-import-entry"
+import type { BrowserImportTarget, BrowserImportTargetResolver } from "./browser-import-target"
+import { normalizeBrowserError } from "./browser-error"
 
 const M = {
-  hint: { id: "browser.import.hint", message: "Bring your saved passwords and website logins into Synergy." },
   source: { id: "browser.import.source", message: "From" },
   file: { id: "browser.import.file", message: "Exported file" },
   passwords: { id: "browser.import.passwords", message: "Passwords" },
@@ -88,9 +87,8 @@ const M = {
 }
 const names = { chrome: "Google Chrome", edge: "Microsoft Edge", brave: "Brave", safari: "Safari" }
 
-export function BrowserImportDialog(props: { ownerKey: string; pageId: string }) {
-  const platform = usePlatform(),
-    dialog = useDialog(),
+export function BrowserImportForm(props: { resolveTarget: BrowserImportTargetResolver; signal: AbortSignal }) {
+  const dialog = useDialog(),
     confirm = useConfirm(),
     { _ } = useLingui()
   const [sources, setSources] = createSignal<BrowserImportSource[]>([])
@@ -98,6 +96,8 @@ export function BrowserImportDialog(props: { ownerKey: string; pageId: string })
   const [kinds, setKinds] = createSignal<BrowserImportKind[]>(["passwords", "cookies"])
   const [passwordStorage, setPasswordStorage] = createSignal(false)
   const [loading, setLoading] = createSignal(true)
+  const [preparing, setPreparing] = createSignal(true)
+  const [prepareError, setPrepareError] = createSignal("")
   const [error, setError] = createSignal(false)
   const [overwrite, setOverwrite] = createSignal(false)
   const [job, setJob] = createSignal<string>()
@@ -114,34 +114,89 @@ export function BrowserImportDialog(props: { ownerKey: string; pageId: string })
   const available = (kind: BrowserImportKind) =>
     Boolean(source()?.kinds.includes(kind) && (kind !== "passwords" || passwordStorage()))
   const selected = () => kinds().filter(available)
-  const action = (action: BrowserDataAction) =>
-    platform.browserNative!.dataAction!({
-      protocolVersion: BROWSER_PROTOCOL_VERSION,
-      ownerKey: props.ownerKey,
-      pageId: props.pageId,
-      action,
-    })
+  const [target, setTarget] = createSignal<BrowserImportTarget>()
+  let loadRevision = 0
+  const action = (action: BrowserDataAction) => {
+    const destination = target()
+    if (!destination) return Promise.reject(new Error(_(importTargetClosed)))
+    return destination.action(action)
+  }
   const label = (source: BrowserImportSource) =>
     source.browser === "file" ? _(M.file) : [names[source.browser], source.profile].filter(Boolean).join(" · ")
   const load = async () => {
+    const revision = ++loadRevision
     setLoading(true)
+    setPreparing(true)
+    setPrepareError("")
     setError(false)
+    setSources([])
+    setTarget(undefined)
+    const controller = new AbortController()
+    const signal = AbortSignal.any([props.signal, controller.signal])
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let abort: (() => void) | undefined
     try {
-      const [catalog, state] = await Promise.all([action({ type: "importSources" }), action({ type: "state" })])
+      const [catalog, state] = await Promise.race([
+        (async () => {
+          const destination = await props.resolveTarget(signal)
+          signal.throwIfAborted()
+          if (revision !== loadRevision) throw new Error(_(importTargetClosed))
+          setTarget(destination)
+          setPreparing(false)
+          return Promise.all([action({ type: "importSources" }), action({ type: "state" })])
+        })(),
+        new Promise<never>((_resolve, reject) => {
+          abort = () => reject(signal.reason)
+          signal.addEventListener("abort", abort, { once: true })
+          timer = setTimeout(
+            () =>
+              controller.abort(
+                new Error(
+                  _({
+                    id: "browser.prepare.timeout",
+                    message: "Browser preparation timed out. Retry to check the same page.",
+                  }),
+                ),
+              ),
+            15_000,
+          )
+        }),
+      ])
+      if (props.signal.aborted || revision !== loadRevision) return
       if (catalog.type !== "sources" || state.type !== "state") throw new Error("Unavailable")
       setSources(catalog.sources)
       setPasswordStorage(state.passwordStorage)
       setSourceId(catalog.sources.find((source) => source.mode === "direct")?.id ?? "file")
-    } catch {
+    } catch (failure) {
+      if (props.signal.aborted || revision !== loadRevision) return
+      if (preparing() || controller.signal.aborted) setPrepareError(normalizeBrowserError(failure, _(M.error)).message)
       setError(true)
     } finally {
-      setLoading(false)
+      clearTimeout(timer)
+      if (abort) signal.removeEventListener("abort", abort)
+      if (!props.signal.aborted && revision === loadRevision) {
+        setLoading(false)
+        setPreparing(false)
+      }
     }
   }
   onMount(() => void load())
   onCleanup(() => {
+    loadRevision++
     const requestId = job()
     if (requestId) void action({ type: "cancelImport", requestId }).catch(() => undefined)
+  })
+  createEffect(() => {
+    const destination = target()
+    if (props.resolveTarget.current() && (!destination || destination.current())) return
+    loadRevision++
+    const requestId = job()
+    if (requestId && destination) void destination.action({ type: "cancelImport", requestId }).catch(() => undefined)
+    setLoading(false)
+    setPreparing(false)
+    setSources([])
+    setPrepareError(_(importTargetClosed))
+    setError(true)
   })
   createEffect(() => {
     const requestId = job()
@@ -160,7 +215,8 @@ export function BrowserImportDialog(props: { ownerKey: string; pageId: string })
     if (requestId) void action({ type: "cancelImport", requestId }).catch(() => setError(true))
   }
   async function start() {
-    if (busy() || !selected().length) return
+    const destination = target()
+    if (!destination?.current() || busy() || !selected().length) return
     setConfirming(true)
     try {
       if (
@@ -173,21 +229,22 @@ export function BrowserImportDialog(props: { ownerKey: string; pageId: string })
         }))
       )
         return
+      if (props.signal.aborted || !destination.current()) return
       const requestId = createBrowserCommandId()
       setJob(requestId)
       setResult(undefined)
       setError(false)
       setProgress({ type: "progress", phase: "reading", processed: 0, total: 0 })
-      const value = await action({
+      const value = await destination.action({
         type: "import",
         sourceId: sourceId(),
         kinds: selected(),
         overwrite: overwrite(),
         requestId,
       })
-      if (value.type === "import") setResult(value)
+      if (!props.signal.aborted && destination.current() && value.type === "import") setResult(value)
     } catch {
-      setError(true)
+      if (!props.signal.aborted) setError(true)
     } finally {
       setJob(undefined)
       setConfirming(false)
@@ -201,14 +258,14 @@ export function BrowserImportDialog(props: { ownerKey: string; pageId: string })
     return _(M.locked)
   }
   return (
-    <Dialog title={_(B.importData)} description={_(M.hint)} size="form" class="browser-import-dialog">
+    <>
       <div class="browser-import-body">
         <Show when={loading()}>
-          <p role="status">{_(M.loading)}</p>
+          <p role="status">{_(preparing() ? importPreparing : M.loading)}</p>
         </Show>
         <Show when={error()}>
           <div role="alert" class="browser-import-error">
-            <p>{_(M.error)}</p>
+            <p>{prepareError() || _(M.error)}</p>
             <Button size="small" variant="ghost" disabled={busy()} onClick={() => void load()}>
               {_(B.retry)}
             </Button>
@@ -312,6 +369,6 @@ export function BrowserImportDialog(props: { ownerKey: string; pageId: string })
           {_(job() ? M.importing : source()?.mode === "file" ? M.choose : M.start)}
         </Button>
       </div>
-    </Dialog>
+    </>
   )
 }

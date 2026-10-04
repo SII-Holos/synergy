@@ -3,6 +3,8 @@ import { RolloutAccounting, RolloutEvidence, RolloutSchema } from "@ericsanchezo
 import { Usage } from "@ericsanchezok/synergy-harness/usage"
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { SessionInteraction } from "@ericsanchezok/synergy-harness/session/interaction"
+import { CortexTypes } from "@ericsanchezok/synergy-harness/cortex/types"
 import { ExecutionPresentation } from "./presentation"
 
 export namespace ExecutionSchema {
@@ -100,6 +102,15 @@ export namespace ExecutionSchema {
       elapsedActive: z.boolean(),
       tokens: RolloutAccounting.Metric,
       runs: z.array(z.string()),
+      interaction: SessionInteraction.Info.optional(),
+      cortex: z
+        .object({
+          taskID: CortexTypes.Task.shape.id,
+          agent: CortexTypes.Task.shape.agent,
+          status: CortexTypes.TaskStatus,
+          visibility: CortexTypes.Task.shape.visibility,
+        })
+        .optional(),
     })
     .meta({ ref: "ExecutionTask" })
   export const Summary = z

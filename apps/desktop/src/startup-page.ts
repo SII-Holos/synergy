@@ -1,4 +1,5 @@
 import type { DesktopThemeSnapshot } from "./theme.js"
+import type { DesktopWindowState } from "./window-chrome.js"
 
 export interface DesktopStartupPageOptions {
   chrome: "custom" | "native"
@@ -9,8 +10,12 @@ export interface DesktopStartupPageOptions {
 export interface DesktopStartupStatus {
   title: string
   detail: string
+  phase?: "starting" | "storage" | "migration" | "recovery"
+  step?: number
   progress?: { current: number; total: number }
   elapsedMs?: number
+  totalElapsedMs?: number
+  idleMs?: number
 }
 
 export function desktopStartupPage(options: DesktopStartupPageOptions): string {
@@ -51,6 +56,8 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       color-scheme: ${effective};
       --startup-bg: ${colors.background};
       --startup-text: ${colors.text};
+      --startup-muted-text: ${colors.mutedText};
+      --startup-border: ${colors.border};
       --startup-mark-bg: ${colors.markBackground};
       --startup-mark-text: ${colors.markText};
       --startup-control-color: ${colors.control};
@@ -69,7 +76,7 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
     body {
       margin: 0;
       min-height: 100vh;
-      overflow: hidden;
+      overflow: auto;
       background: var(--startup-bg);
       color: var(--startup-text);
     }
@@ -82,6 +89,7 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       position: relative;
       display: grid;
       min-height: 100vh;
+      padding: 64px 24px 48px;
       place-items: center;
       background: var(--startup-bg);
     }
@@ -211,27 +219,30 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
     }
 
     .startup-center {
-      display: grid;
-      place-items: center;
-      width: min(360px, calc(100vw - 48px));
-      text-align: center;
+      width: min(440px, 100%);
+    }
+
+    .startup-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+      font-size: 14px;
+      font-weight: 600;
     }
 
     .startup-mark {
-      position: relative;
       display: grid;
-      width: 96px;
-      height: 96px;
+      width: 32px;
+      height: 32px;
       place-items: center;
-      animation: startup-breathe 1600ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
     }
 
     .startup-mark__icon,
     .startup-mark__fallback {
-      position: relative;
-      width: 72px;
-      height: 72px;
-      border-radius: 14px;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
     }
 
     .startup-mark__fallback {
@@ -239,40 +250,122 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       place-items: center;
       color: var(--startup-mark-text);
       background: var(--startup-mark-bg);
-      font-size: 32px;
+      font-size: 16px;
       font-weight: 650;
     }
 
     .startup-status {
-      margin-top: 20px;
-      font-size: 16px;
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.3;
+      font-weight: 600;
+      letter-spacing: -0.025em;
+    }
+
+    .startup-intro {
+      margin: 10px 0 28px;
+      color: var(--startup-muted-text);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .startup-stages {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin: 0 0 28px;
+      padding: 0;
+      list-style: none;
+    }
+
+    .startup-stage {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+      color: var(--startup-muted-text);
+      font-size: 12px;
+      line-height: 20px;
+    }
+
+    .startup-stage__mark {
+      display: grid;
+      flex: 0 0 20px;
+      height: 20px;
+      place-items: center;
+      border: 1px solid var(--startup-border);
+      border-radius: 50%;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .startup-stage[data-state="active"] {
+      color: var(--startup-text);
       font-weight: 600;
     }
 
+    .startup-stage[data-state="active"] .startup-stage__mark {
+      border-color: currentColor;
+    }
+
+    .startup-stage[data-state="complete"] .startup-stage__mark {
+      color: var(--startup-text);
+      background: var(--startup-control-hover-bg);
+      border-color: transparent;
+    }
+
+    .startup-work {
+      border-top: 1px solid var(--startup-border);
+      padding-top: 22px;
+    }
+
+    .startup-work__heading,
+    .startup-timing {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .startup-detail {
+      margin: 0;
+      min-width: 0;
+      font-size: 14px;
+      line-height: 1.6;
+      overflow-wrap: anywhere;
+    }
+
+    .startup-step {
+      flex-shrink: 0;
+      color: var(--startup-muted-text);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
     .startup-elapsed,
-    .startup-detail,
-    .startup-count {
-      margin-top: 10px;
-      font-size: 13px;
+    .startup-total,
+    .startup-activity,
+    .startup-hint {
+      color: var(--startup-muted-text);
+      font-size: 12px;
       line-height: 1.5;
-      opacity: 0.7;
+      font-variant-numeric: tabular-nums;
     }
 
     .startup-progress {
       width: 100%;
-      height: 4px;
-      margin-top: 24px;
+      height: 5px;
+      margin-top: 16px;
       overflow: hidden;
       border-radius: 4px;
-      background: var(--startup-control-hover-bg);
+      background: var(--startup-border);
     }
 
     .startup-progress__fill {
       width: 35%;
       height: 100%;
       border-radius: inherit;
-      background: var(--startup-focus-ring);
-      animation: startup-progress 1600ms ease-in-out infinite;
+      background: var(--startup-text);
     }
 
     .startup-progress[aria-valuenow] .startup-progress__fill {
@@ -280,49 +373,86 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       transition: width 180ms ease-out;
     }
 
+    .startup-progress-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 4px 12px;
+      margin: 12px 0 16px;
+    }
+
     .startup-count {
       min-height: 20px;
+      font-size: 13px;
+      line-height: 20px;
       font-variant-numeric: tabular-nums;
     }
 
-    @keyframes startup-progress {
-      from { transform: translateX(-100%); }
-      to { transform: translateX(290%); }
+    .startup-progress-note {
+      color: var(--startup-muted-text);
+      font-size: 12px;
+      line-height: 20px;
     }
 
-    @keyframes startup-breathe {
-      0%,
-      100% {
-        opacity: 0.72;
-        transform: scale(0.96);
-      }
-      50% {
-        opacity: 1;
-        transform: scale(1);
+    .startup-activity {
+      margin-top: 8px;
+    }
+
+    .startup-hint {
+      margin: 8px 0 0;
+    }
+
+    @keyframes startup-progress {
+      from { transform: translateX(0%); }
+      to { transform: translateX(185%); }
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      .startup-progress:not([aria-valuenow]) .startup-progress__fill {
+        animation: startup-progress 1600ms ease-in-out infinite alternate;
       }
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .startup-mark,
-      .startup-progress__fill {
-        animation: none;
-      }
       .startup-progress[aria-valuenow] .startup-progress__fill { transition: none; }
+    }
+
+    .startup-progress[data-quiet="true"] .startup-progress__fill {
+      animation-play-state: paused;
+    }
+
+    @media (max-width: 380px) {
+      .startup-stages { gap: 8px; }
+      .startup-stage { flex-direction: column; align-items: flex-start; gap: 4px; }
     }
   </style>
 </head>
 <body>
   <div class="startup-page">
     ${customChrome}
-    <main class="startup-center" aria-busy="true">
-      <div class="startup-mark" aria-hidden="true">${icon}</div>
-      <div class="startup-status" data-startup-status role="status">Opening Synergy</div>
-      <div class="startup-detail" data-startup-detail></div>
-      <div class="startup-elapsed" data-startup-elapsed></div>
-      <div class="startup-progress" role="progressbar" aria-label="Startup progress" aria-valuemin="0" aria-valuemax="100" aria-describedby="startup-count">
-        <div class="startup-progress__fill"></div>
-      </div>
-      <div class="startup-count" id="startup-count"></div>
+    <main class="startup-center">
+      <div class="startup-brand"><div class="startup-mark" aria-hidden="true">${icon}</div><span>Synergy</span></div>
+      <h1 class="startup-status" data-startup-status aria-live="polite" aria-atomic="true">Opening Synergy</h1>
+      <p class="startup-intro">Getting your workspace ready.</p>
+      <ol class="startup-stages" aria-label="Startup stages">
+        <li class="startup-stage" data-stage="storage" data-state="active" aria-current="step"><span class="startup-stage__mark" aria-hidden="true">1</span><span>Prepare</span></li>
+        <li class="startup-stage" data-stage="migration"><span class="startup-stage__mark" aria-hidden="true">2</span><span>Update</span></li>
+        <li class="startup-stage" data-stage="recovery"><span class="startup-stage__mark" aria-hidden="true">3</span><span>Restore</span></li>
+        <li class="startup-stage" data-stage="starting"><span class="startup-stage__mark" aria-hidden="true">4</span><span>Open</span></li>
+      </ol>
+      <section class="startup-work" aria-label="Current startup task">
+        <div class="startup-work__heading" aria-live="polite" aria-atomic="true">
+          <p class="startup-detail" data-startup-detail id="startup-detail">Opening your workspace.</p>
+          <span class="startup-step" data-startup-step hidden></span>
+        </div>
+        <div class="startup-progress" role="progressbar" aria-labelledby="startup-detail" aria-valuemin="0" aria-valuemax="100" aria-describedby="startup-count" aria-valuetext="Waiting for progress updates.">
+          <div class="startup-progress__fill"></div>
+        </div>
+        <div class="startup-progress-meta"><span class="startup-count" id="startup-count">Waiting for progress updates</span><span class="startup-progress-note" data-startup-unknown-total hidden>Total not yet known</span></div>
+        <div class="startup-timing"><span class="startup-elapsed" data-startup-elapsed></span><span class="startup-total" data-startup-total></span></div>
+        <div class="startup-activity" data-startup-activity></div>
+        <p class="startup-hint" data-startup-hint hidden>Some steps take a while between updates.</p>
+      </section>
     </main>
   </div>
   <script>
@@ -333,23 +463,61 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
     const fill = document.querySelector(".startup-progress__fill")
     const count = document.querySelector(".startup-count")
     const maximize = document.querySelector('[data-window-action="maximize"]')
+    let windowStateRevision = 0
 
     const elapsed = document.querySelector("[data-startup-elapsed]")
-    let waitingSince
-    function renderElapsed() {
-      const seconds = waitingSince === undefined ? undefined : Math.floor((performance.now() - waitingSince) / 1000)
-      elapsed.textContent = seconds === undefined ? "" : "Waiting " + Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0")
+    const total = document.querySelector("[data-startup-total]")
+    const activity = document.querySelector("[data-startup-activity]")
+    const hint = document.querySelector("[data-startup-hint]")
+    const step = document.querySelector("[data-startup-step]")
+    const unknownTotal = document.querySelector("[data-startup-unknown-total]")
+    const stages = Array.from(document.querySelectorAll("[data-stage]"))
+    let waitingSince = performance.now()
+    let totalSince = waitingSince
+    let progressSince = waitingSince
+    let received = false
+    function duration(ms) {
+      const seconds = Math.max(0, Math.floor(ms / 1000))
+      return Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0")
     }
+    function renderElapsed() {
+      const now = performance.now()
+      elapsed.textContent = "Waiting " + duration(now - waitingSince)
+      total.textContent = "Total " + duration(now - totalSince)
+      const idle = now - progressSince
+      activity.textContent = !received ? "Waiting for the first update" : idle < 5000 ? "Progress received just now" : "Last progress " + duration(idle) + " ago"
+      hint.hidden = !received || idle < 30000
+      progress.dataset.quiet = String(idle >= 30000)
+    }
+    renderElapsed()
     setInterval(renderElapsed, 1000)
 
     function setStatus(next) {
       if (!next) return
-      if (typeof next.title === "string") status.textContent = next.title
-      if (typeof next.detail === "string") detail.textContent = next.detail
-      waitingSince = Number.isFinite(next.elapsedMs) ? performance.now() - Math.max(0, next.elapsedMs) : undefined
-      renderElapsed()
+      if (typeof next.title === "string" && status.textContent !== next.title) status.textContent = next.title
+      if (typeof next.detail === "string" && detail.textContent !== next.detail) detail.textContent = next.detail
+      const now = performance.now()
       const value = next.progress
-      if (Number.isSafeInteger(value?.current) && Number.isSafeInteger(value?.total) && value.total > 0 && value.current >= 0 && value.current <= value.total) {
+      const checked = Number.isSafeInteger(value?.current) && value.current >= 0 && Number.isSafeInteger(value?.total) && value.total >= 0 && (value.total === 0 || value.current <= value.total)
+      if (Number.isFinite(next.elapsedMs)) waitingSince = now - Math.max(0, next.elapsedMs)
+      if (Number.isFinite(next.totalElapsedMs)) totalSince = Math.min(totalSince, now - Math.max(0, next.totalElapsedMs))
+      if (Number.isFinite(next.idleMs) || checked || next.phase === "starting") {
+        progressSince = now - (Number.isFinite(next.idleMs) ? Math.max(0, next.idleMs) : 0)
+        received = true
+      }
+      step.hidden = !Number.isSafeInteger(next.step) || next.step <= 0
+      const stepText = step.hidden ? "" : "Step " + next.step
+      if (step.textContent !== stepText) step.textContent = stepText
+      const active = stages.findIndex(stage => stage.dataset.stage === next.phase)
+      if (active >= 0) stages.forEach((stage, index) => {
+        stage.dataset.state = index < active ? "complete" : index === active ? "active" : "pending"
+        stage.querySelector(".startup-stage__mark").textContent = index < active ? "✓" : String(index + 1)
+        if (index === active) stage.setAttribute("aria-current", "step")
+        else stage.removeAttribute("aria-current")
+      })
+      renderElapsed()
+      if (checked && value.total > 0) {
+        unknownTotal.hidden = true
         const percent = Math.floor(value.current / value.total * 100)
         const text = value.current.toLocaleString("en") + " / " + value.total.toLocaleString("en") + " · " + percent + "%"
         progress.setAttribute("aria-valuenow", String(percent))
@@ -358,9 +526,11 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
         count.textContent = text
       } else {
         progress.removeAttribute("aria-valuenow")
-        progress.removeAttribute("aria-valuetext")
         fill.style.removeProperty("width")
-        count.textContent = ""
+        const unknown = checked && value.total === 0
+        unknownTotal.hidden = !unknown
+        count.textContent = unknown ? value.current.toLocaleString("en") + (value.current === 1 ? " item checked" : " items checked") : "Waiting for progress updates"
+        progress.setAttribute("aria-valuetext", count.textContent + (unknown ? ". Total not yet known." : "."))
       }
     }
 
@@ -370,6 +540,8 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       const fields = {
         background: "--startup-bg",
         text: "--startup-text",
+        mutedText: "--startup-muted-text",
+        border: "--startup-border",
         markBackground: "--startup-mark-bg",
         markText: "--startup-mark-text",
         control: "--startup-control-color",
@@ -393,7 +565,10 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       desktopWindow?.minimize?.()
     })
     maximize?.addEventListener("click", () => {
-      desktopWindow?.toggleMaximize?.()
+      const revision = ++windowStateRevision
+      desktopWindow?.toggleMaximize?.().then(state => {
+        if (revision === windowStateRevision) updateMaximizeLabel(state)
+      }).catch(() => {})
     })
     document.querySelector('[data-window-action="close"]')?.addEventListener("click", () => {
       desktopWindow?.close?.()
@@ -406,9 +581,18 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       maximize.setAttribute("title", label)
     }
 
-    desktopWindow?.state?.().then(updateMaximizeLabel).catch(() => {})
+    function setWindowState(state) {
+      windowStateRevision++
+      updateMaximizeLabel(state)
+    }
+    window.synergySetStartupWindowState = setWindowState
+
+    const initialWindowStateRevision = windowStateRevision
+    desktopWindow?.state?.().then(state => {
+      if (initialWindowStateRevision === windowStateRevision) updateMaximizeLabel(state)
+    }).catch(() => {})
     desktopWindow?.onEvent?.((event) => {
-      if (event?.type === "state") updateMaximizeLabel(event.state)
+      if (event?.type === "state") setWindowState(event.state)
     })
   </script>
 </body>
@@ -423,6 +607,10 @@ export function startupStatusScript(status: DesktopStartupStatus): string {
 
 export function startupThemeScript(theme: DesktopThemeSnapshot): string {
   return `window.synergySetStartupTheme?.(${JSON.stringify(theme)})`
+}
+
+export function startupWindowStateScript(state: DesktopWindowState): string {
+  return `window.synergySetStartupWindowState?.(${JSON.stringify(state)})`
 }
 
 function escapeAttribute(value: string): string {

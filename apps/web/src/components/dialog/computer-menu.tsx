@@ -40,10 +40,12 @@ export function ComputerMenu(props: {
   const current = () => props.value ?? server.url
   const identity = (url: string) => [...new Set([label(url), serverDisplayName(url)])].join("\n")
   const urls = createMemo(() => [...new Set([props.value ?? server.url, server.url, ...server.list])])
+  const initialHealth: { urls: string[]; values: Record<string, boolean> } = { urls: [], values: {} }
   const [health] = createResource(
     () => (open() ? urls() : false),
-    async (values) =>
-      Object.fromEntries(
+    async (values) => ({
+      urls: values,
+      values: Object.fromEntries(
         await Promise.all(
           values.map(async (url) => {
             const client = createSynergyClient({
@@ -61,7 +63,13 @@ export function ComputerMenu(props: {
           }),
         ),
       ),
+    }),
+    { initialValue: initialHealth },
   )
+  const connected = (url: string) => {
+    const snapshot = health.latest
+    return snapshot.urls === urls() ? snapshot.values[url] : undefined
+  }
   return (
     <Popover
       variant="menu"
@@ -99,7 +107,7 @@ export function ComputerMenu(props: {
             title={identity(url)}
             aria-description={serverDisplayName(url)}
             aria-pressed={url === (props.value ?? server.url)}
-            disabled={health()?.[url] === false}
+            disabled={connected(url) === false}
             onClick={() => {
               setOpen(false)
               ;(props.onChange ?? server.setActive)(url)
@@ -110,7 +118,7 @@ export function ComputerMenu(props: {
               <strong>{label(url)}</strong>
               <small>
                 {serverDisplayName(url)} ·{" "}
-                {_(health()?.[url] === false ? copy.unavailable : health()?.[url] ? copy.connected : copy.loading)}
+                {_(connected(url) === false ? copy.unavailable : connected(url) ? copy.connected : copy.loading)}
               </small>
             </span>
             <span class="project-flow-check">

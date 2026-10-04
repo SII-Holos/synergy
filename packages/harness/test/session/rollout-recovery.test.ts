@@ -10,8 +10,8 @@ import { RolloutLedger } from "../../src/session/rollout/ledger"
 import { RolloutArtifact } from "../../src/session/rollout/artifact"
 import { RolloutSnapshot } from "../../src/session/rollout/snapshot"
 import { RolloutJournal } from "../../src/session/rollout/journal"
-import { Experiment } from "../../src/config/experiment"
 import { MessageV2 } from "../../src/session/message-v2"
+import { Experiment } from "../../src/config/experiment"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -35,6 +35,7 @@ test("recovery preserves historical runtime configuration and committed journal 
       configuration,
     })
     const head = (await RolloutJournal.head(owner)).committed
+    const recordedRevision = (await RolloutSnapshot.read(owner)).revision
     const evidence = []
     for await (const event of RolloutJournal.events(owner, head)) evidence.push(event)
 
@@ -42,6 +43,9 @@ test("recovery preserves historical runtime configuration and committed journal 
     const restored = await RolloutLedger.getRun(owner, run.id)
     expect(restored.status).toBe("interrupted")
     expect(restored.configuration).toEqual(configuration)
+    expect((await RolloutSnapshot.read(owner, { revision: recordedRevision })).runs[0].configuration).toEqual(
+      configuration,
+    )
     const original = []
     for await (const event of RolloutJournal.events(owner, head)) original.push(event)
     expect(original).toEqual(evidence)

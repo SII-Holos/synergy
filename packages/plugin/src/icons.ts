@@ -75,6 +75,12 @@ export const SemanticIconToken = {
   "session.archive": "message-square-more",
   "session.context": "chart-pie",
   "session.taskDetails": "file-clock",
+  "execution.elapsed": "timer-reset",
+  "execution.tokens": "binary",
+  "execution.cost": "circle-dollar-sign",
+  "inbox.task": "list-ordered",
+  "inbox.steer": "corner-up-right",
+  "inbox.context": "notebook-tabs",
 
   // Product domains
   "blueprint.main": "clipboard-list",

@@ -151,6 +151,8 @@ Use the [secret-detection package](../../../packages/secret-detection/README.md)
 
 ## CI preparation and timing
 
+Exercise shared-cache inspection while another run retires a reference after enumeration. Tolerate only a missing retired reference; malformed or unreadable live references must still stop inspection, and surviving references must continue to prevent collection. Keep the deterministic race regression separate from native Docker lifecycle controls.
+
 For deadline-accounting unit tests, advance one controlled clock for both the event loop and lifecycle measurements. Yield to the real timer callbacks before and after a pause, and assert nested queue, active and wall durations exactly. Keep real timeout and cancellation controls separately; do not make correctness depend on synchronous evidence writes finishing within a millisecond budget.
 
 Docker network recovery fixtures use a local admission clock and a separate exact-deadline rejection case. Keep real scheduling persistence and owned cleanup assertions; thread-pool or filesystem contention must not decide whether the scripted retry occurs. See the [clock decision](../../../docs/decisions/implemented/testing/2026-10-02-benchmark-network-admission-clock.md).

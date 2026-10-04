@@ -12,6 +12,18 @@ test("migration progress preserves advancing counts before a total is known", ()
   expect(RuntimeStartupProgress.safeParse({ ...progress, total: 255 }).success).toBe(false)
 })
 
+test("migration tasks name only bounded public work categories", () => {
+  const progress = { phase: "migration", step: 9, current: 128, total: 0, task: "file-history" } as const
+  expect(RuntimeStartupProgress.parse(progress)).toEqual(progress)
+  expect(runtimeStartupLine(progress).length).toBeLessThan(RUNTIME_STARTUP_MAX_LINE_LENGTH)
+  for (const value of [
+    { ...progress, task: "private migration description" },
+    { ...progress, description: "private" },
+    { ...progress, domain: "private" },
+  ])
+    expect(RuntimeStartupProgress.safeParse(value).success).toBe(false)
+})
+
 test("maintenance records carry bounded lifecycle facts without arbitrary payloads", () => {
   const begin = { phase: "maintenance", id: 1, operation: "vacuum", state: "started", timeoutMs: 690_000 } as const
   for (const value of [

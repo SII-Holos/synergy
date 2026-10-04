@@ -1,4 +1,6 @@
 import { expect, spyOn, test } from "bun:test"
+import path from "node:path"
+
 import { Hono } from "hono"
 import { generateSpecs } from "hono-openapi"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
@@ -78,6 +80,11 @@ test("unexpected directory validation failures remain request errors", async () 
     using failure = spyOn(WorkspaceBinding, "validate").mockRejectedValue(new Error("storage offline"))
     await expect(ProjectDirectories.get(created.scope.id)).rejects.toThrow("storage offline")
   })
+})
+
+test("Git folder detection tolerates a missing working directory", async () => {
+  await using directory = await tmpdir()
+  expect(await ProjectDirectories.isGit(path.join(directory.path, "missing"))).toBe(false)
 })
 
 test("project creation prepares file configuration outside the storage transaction", async () => {
