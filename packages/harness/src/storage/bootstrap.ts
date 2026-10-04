@@ -13,6 +13,7 @@ import { StorageIntegrityError } from "./errors"
 import { PackedLegacyImporter } from "./packed-import"
 import { StorageArtifactMigration } from "./artifact-migration"
 import { LegacyJsonImporter, legacyRecords, type ImportProgress } from "./legacy-import"
+import { isLegacyStartupResidue } from "./legacy-startup"
 import { StorageCompat } from "./compat"
 import { SegmentedBackup } from "./segmented-backup"
 import { TransactionalStore } from "./transactional-store"
@@ -80,12 +81,17 @@ async function optionalJson(filename: string): Promise<unknown | undefined> {
   }
 }
 
-async function rejectLegacyWriters(dataRoot: string, progress?: (progress: ImportProgress) => void) {
+async function rejectLegacyWriters(
+  dataRoot: string,
+  store: TransactionalStore,
+  progress?: (progress: ImportProgress) => void,
+) {
   let current = 0
   progress?.({ stage: "check", current, total: 0, bytes: 0 })
-  for await (const _record of legacyRecords(dataRoot, () => {
+  for await (const record of legacyRecords(dataRoot, () => {
     progress?.({ stage: "check", current: ++current, total: 0, bytes: 0 })
   })) {
+    if (await isLegacyStartupResidue(dataRoot, record, store)) continue
     throw new StorageIntegrityError(
       "Legacy JSON records appeared after database activation; preserve both datasets and resolve the old writer before starting",
     )
@@ -323,7 +329,7 @@ export namespace StorageBootstrap {
         await StorageArtifactMigration.run({ dataRoot: path.join(root, "data"), store, progress: options.progress })
         if (manifest.phase === "active") {
           if (manifest.compatBoundary) await StorageCompat.rejectForeignWriters(path.join(root, "data"), store)
-          else await rejectLegacyWriters(path.join(root, "data"), options.progress)
+          else await rejectLegacyWriters(path.join(root, "data"), store, options.progress)
         }
         const activate = async () => {
           if (manifest.phase === "active") return
@@ -338,7 +344,7 @@ export namespace StorageBootstrap {
           await persist()
           await importer.retire()
           if (manifest.compatBoundary) await StorageCompat.rejectForeignWriters(path.join(root, "data"), store)
-          else await rejectLegacyWriters(path.join(root, "data"), options.progress)
+          else await rejectLegacyWriters(path.join(root, "data"), store, options.progress)
           manifest.phase = "active"
           await persist()
         }

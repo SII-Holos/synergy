@@ -69,6 +69,11 @@ test("deferSessions leaves the session tree on disk while everything else keeps 
 
   await StorageCompat.rejectForeignWriters(f.dataRoot, f.store)
 
+  await f.store.write(["meta", "migration", "log-config"], { "retained-migration": 1 })
+  await f.write("meta/migration/log-config.json", { "retired-migration": 2 })
+  await StorageCompat.rejectForeignWriters(f.dataRoot, f.store)
+  expect(await f.store.read<unknown>(["meta", "migration", "log-config"])).toEqual({ "retained-migration": 1 })
+
   await fs.mkdir(path.join(f.dataRoot, "notes"), { recursive: true })
   await fs.writeFile(path.join(f.dataRoot, "notes/rogue.json"), JSON.stringify({ text: "rogue" }))
   await expect(StorageCompat.rejectForeignWriters(f.dataRoot, f.store)).rejects.toThrow("Legacy JSON records appeared")
