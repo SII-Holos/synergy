@@ -4,6 +4,7 @@ import ts from "typescript"
 import { revisionFiles } from "./catalog"
 import { imports } from "../workspace-dependencies"
 import type { Task, TaskInputs, WorkspaceInput } from "./plan"
+export { selectionInputs } from "./selection-inputs"
 
 export async function taskInputs(root: string, revision: string, tasks: Task[], workspaces: WorkspaceInput[]) {
   const files = execFileSync("git", ["ls-tree", "-r", "--name-only", revision], { cwd: root, encoding: "utf8" })
