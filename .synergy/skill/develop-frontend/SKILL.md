@@ -365,6 +365,8 @@ Use the shared turn projection in every density mode. Compose virtual rows with 
 
 ## Verify File Review and Restoration
 
+Use live browser locator actions when selecting lines after a virtualized layout change. A locator evaluation can retain a node that the viewer removes before activation; a synthetic click on that detached node does not exercise user input. Cover rapid layout changes, both diff sides and Shift ranges with native pointer and keyboard actions under browser CPU throttling.
+
 Treat compact diff rows as metadata: absent patches still require a captured-content read. Keep recording state separate from content loading and empty results, and show an explicit retry after terminal transport errors. Large comparisons need bounded concurrent reads, version-keyed projection caches and real viewer virtualization checks; display settings must never alter canonical patches or comment excerpts.
 
 Use backend turn/session net projections; do not sum tool patches or infer capture quality from tool status. Preserve card and open-file identity through pending/ready/partial updates. Historical expansion must use the generated history endpoint, never the current file reader. Load restoration dialogs before mounting them on the modal stack, then verify keyboard focus, Escape and return focus. Preview first, confirm the returned identity, retain partial outcomes and retry lost replies with the same identity. See [Sessions and messages](../../../docs/architecture/session-and-messages.md#turn-diffs).

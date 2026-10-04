@@ -61,6 +61,7 @@ beforeAll(async () => {
   url = server.resolvedUrls!.local[0]!
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage()
+  await (await page.context().newCDPSession(page)).send("Emulation.setCPUThrottlingRate", { rate: 6 })
   page.setDefaultNavigationTimeout(30_000)
   page.setDefaultTimeout(10_000)
   page.on("pageerror", (error) => errors.push(error.message))
@@ -112,13 +113,24 @@ test("continuous review bounds a full large file and reaches distant files witho
   const header = await last.locator("[data-review-header]").boundingBox()
   const firstLine = await last.getByRole("button", { name: "Select line 1 in after", exact: true }).boundingBox()
   expect(firstLine!.y).toBeGreaterThanOrEqual(header!.y + header!.height - 1)
-  await page.getByRole("button", { name: "Toggle layout", exact: true }).click()
-  await page
-    .locator("diffs-container")
-    .filter({ has: page.getByRole("button", { name: "file-119", exact: true }) })
+  const connected = await last
     .getByRole("button", { name: "Select line 1 in after", exact: true })
-    .evaluate((element) => (element as HTMLElement).click())
+    .evaluate((element) => {
+      const toggle = [...document.querySelectorAll("button")].find((button) => button.textContent === "Toggle layout")!
+      toggle.click()
+      ;(element as HTMLElement).click()
+      return element.isConnected
+    })
+  expect(connected).toBe(true)
   expect(await page.locator("output").textContent()).toContain('"start":1')
+  for (const side of ["before", "after", "before", "after"]) {
+    await page.getByRole("button", { name: "Toggle layout", exact: true }).click()
+    await last.getByRole("button", { name: `Select line 1 in ${side}`, exact: true }).click()
+    expect(JSON.parse((await page.locator("output").textContent())!)).toEqual({
+      id: "file-119",
+      range: { start: 1, end: 1, side: side === "before" ? "deletions" : "additions" },
+    })
+  }
   await page
     .locator("diffs-container")
     .filter({ has: page.getByRole("button", { name: "file-119", exact: true }) })
@@ -134,6 +146,11 @@ test("continuous review bounds a full large file and reaches distant files witho
   expect(await page.locator("output").textContent()).toContain('"start":6')
   await page.getByRole("button", { name: "Select line 7 in after", exact: true }).press("Enter")
   expect(await page.locator("output").textContent()).toContain('"start":7')
+  await page.getByRole("button", { name: "Select line 8 in after", exact: true }).click({ modifiers: ["Shift"] })
+  expect(JSON.parse((await page.locator("output").textContent())!)).toEqual({
+    id: "file-0",
+    range: { start: 7, end: 8, side: "additions" },
+  })
   await page.getByRole("button", { name: "Toggle folds", exact: true }).click()
   await page.getByRole("button", { name: "file-0", exact: true }).waitFor()
   await page.getByText("export const row5 = 500", { exact: true }).waitFor({ state: "hidden" })
