@@ -1,0 +1,106 @@
+.subagent-dock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 4px 12px 8px;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+  pointer-events: auto;
+  scrollbar-width: thin;
+}
+.subagent-dock-avatar {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border-weak-base);
+  border-radius: 50%;
+  background: var(--workbench-card-bg);
+  color: var(--text-base);
+  cursor: pointer;
+  touch-action: pan-x;
+  user-select: none;
+  transition:
+    background-color 120ms ease-out,
+    border-color 120ms ease-out;
+}
+.subagent-dock-avatar:hover {
+  background: var(--workbench-row-bg-hover);
+  border-color: var(--border-strong-base);
+}
+.subagent-dock-avatar:focus-visible {
+  outline: 2px solid var(--border-interactive-base);
+  outline-offset: 2px;
+}
+.subagent-dock-avatar[data-queued="true"] {
+  opacity: 0.6;
+  cursor: default;
+}
+.subagent-dock-avatar[aria-busy="true"] {
+  cursor: progress;
+}
+.subagent-dock-avatar[data-retrying="true"] {
+  border-color: var(--border-critical-base);
+}
+.subagent-dock-emoji {
+  font-size: 20px;
+  line-height: 1;
+}
+.subagent-hold-ring {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+.subagent-hold-ring-track {
+  stroke: var(--border-weak-base);
+  stroke-width: 2;
+}
+.subagent-hold-ring-progress {
+  stroke: var(--subagent-accent-color);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.subagent-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 260px;
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+.subagent-popover-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 500;
+}
+.subagent-popover-heading > :last-child,
+.subagent-popover-detail {
+  color: var(--text-weak);
+}
+.subagent-popover-retry {
+  display: flex;
+  align-items: start;
+  gap: 4px;
+  color: var(--text-on-critical-base);
+}
+.subagent-popover-hint {
+  color: var(--text-interactive-base);
+}
+@media (pointer: coarse) {
+  .subagent-dock-avatar {
+    width: 44px;
+    height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .subagent-dock-avatar {
+    transition: none;
+  }
+}

@@ -459,6 +459,22 @@
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
         {
+          "glob": "src/components/session/session-progress-dag.tsx",
+          "reason": "DAG navigation, inspector, retained viewport and lifecycle run in session-activity.dom.test.tsx through Vite and Chromium; Bun cannot instrument the browser bundle."
+        },
+        {
+          "glob": "src/components/session/session-progress-island.tsx",
+          "reason": "Progress expansion, adaptive dialog, keyboard focus and geometry run in session-activity.dom.test.tsx and decision-surface.dom.test.tsx through Vite and Chromium; Bun cannot instrument the browser bundle."
+        },
+        {
+          "glob": "src/components/session/session-progress-panel.tsx",
+          "reason": "Reactive progress lifecycle, child waits, disconnect and retained graph run in session-activity.dom.test.tsx through Vite and Chromium; pure summaries remain measured."
+        },
+        {
+          "glob": "src/components/session/session-progress-todo.tsx",
+          "reason": "Read-only Todo status and wrapping run in session-activity.dom.test.tsx through Vite and Chromium; pure summaries remain measured."
+        },
+        {
           "glob": "src/components/session/session-submission-status.tsx",
           "reason": "test/components/session/session-submission-status.dom.test.ts verifies current submission phases, locale changes, prompt retention, structured errors and keyboard retry in Chromium; Vite/browser execution is outside Bun source LCOV."
         },
@@ -469,6 +485,10 @@
         {
           "glob": "src/components/session/session-review-tab.tsx",
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/subagent-dock.tsx",
+          "reason": "Pointer and keyboard cancellation, navigation, interruption and retry run in session-activity.dom.test.tsx through Vite and Chromium; Bun cannot instrument the browser bundle."
         },
         {
           "glob": "src/components/session/subagent-session-footer.tsx",
