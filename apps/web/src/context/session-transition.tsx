@@ -1,6 +1,7 @@
 import { batch, createContext, useContext, type ParentProps } from "solid-js"
+import type { Prompt } from "@/context/prompt"
 import { createSessionPreparationProgress } from "@/components/session/session-transition-progress"
-import { createStore, produce } from "solid-js/store"
+import { createStore, produce, reconcile } from "solid-js/store"
 import type {
   SessionTransitionActions,
   SessionTransitionProgress,
@@ -12,7 +13,7 @@ export type SessionTransitionEntry = {
   progress: SessionTransitionProgress
   actions?: SessionTransitionActions
   handoff?: SessionTransitionHandoff
-  draft?: { intent: number; text?: string }
+  draft?: { intent: number; text?: string; messageID?: string; prompt?: Prompt }
 }
 
 export function draftTransitionKey(server: string, scope: string) {
@@ -25,7 +26,7 @@ type StoredSessionTransitionEntry = SessionTransitionEntry & {
 
 export function createSessionTransitionState() {
   const [entries, setEntries] = createStore<Record<string, StoredSessionTransitionEntry>>({})
-  const recoveries = new Map<string, NewSessionRecovery>()
+  const [recoveries, setRecoveries] = createStore<Record<string, NewSessionRecovery>>({})
   const dismissedHandoffs = new Map<string, string>()
   let revision = 0
 
@@ -50,6 +51,10 @@ export function createSessionTransitionState() {
     actions?: SessionTransitionActions,
     handoff?: SessionTransitionHandoff,
   ) => {
+    if (progress.phase === "success") {
+      clear(sessionID)
+      return
+    }
     const currentRevision = ++revision
     const guard = (action: (() => void) | undefined) =>
       action
@@ -71,7 +76,7 @@ export function createSessionTransitionState() {
       actions: guardedActions,
       handoff,
       revision: currentRevision,
-      draft: progress.phase === "loading" ? entries[sessionID]?.draft : undefined,
+      draft: entries[sessionID]?.draft,
     })
   }
 
@@ -88,18 +93,20 @@ export function createSessionTransitionState() {
     const handoff = entries[sessionID]?.handoff
     if (handoff?.messageID !== messageID) return false
     confirmHandoff(sessionID, messageID)
-    set(sessionID, handoff.success, {
-      dismiss: () => dismissHandoff(sessionID, messageID),
-    })
+    dismissHandoff(sessionID, messageID)
     return true
   }
 
   const clearRecovery = (scopeKey: string) => {
-    recoveries.delete(scopeKey)
+    setRecoveries(
+      produce((draft) => {
+        delete draft[scopeKey]
+      }),
+    )
   }
 
   const setRecovery = (scopeKey: string, recovery: NewSessionRecovery) => {
-    recoveries.set(scopeKey, recovery)
+    setRecoveries(scopeKey, reconcile(recovery))
   }
 
   return {
@@ -111,6 +118,16 @@ export function createSessionTransitionState() {
       return {
         setText(text: string) {
           if (current()) setEntries(key, "draft", "text", text)
+        },
+        submit(draft: { text: string; messageID: string; prompt: Prompt }) {
+          if (!current()) return false
+          setEntries(key, "draft", { intent, ...draft })
+          return true
+        },
+        progress(progress: SessionTransitionProgress, actions?: SessionTransitionActions) {
+          if (!current()) return false
+          set(key, progress, actions)
+          return true
         },
         handoff(sessionID: string, progress: SessionTransitionProgress) {
           if (!current()) return false
@@ -134,7 +151,7 @@ export function createSessionTransitionState() {
     completeHandoff,
     confirmHandoff,
     isHandoffDismissed,
-    getRecovery: (scopeKey: string) => recoveries.get(scopeKey),
+    getRecovery: (scopeKey: string) => recoveries[scopeKey],
     setRecovery,
     clearRecovery,
   }

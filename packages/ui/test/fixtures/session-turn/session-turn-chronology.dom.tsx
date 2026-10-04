@@ -113,7 +113,12 @@ const runtime = {
   questionsFor: () => NO_REQUESTS,
 }
 const openedTools = []
+const openedActivities = []
 const resourceController = {
+  openActivityDetail: (target) => {
+    openedActivities.push(target)
+    return true
+  },
   openToolActivity: (target) => {
     openedTools.push(target)
     return true
@@ -160,6 +165,12 @@ render(
                               after: true,
                               processHeader: segment === "header",
                               processBody: segment === "first" || segment === "second",
+                              contentMessageID:
+                                segment === "first"
+                                  ? assistantID
+                                  : segment === "second" || segment === "answer"
+                                    ? secondAssistantID
+                                    : undefined,
                               process: {
                                 hasContent: true,
                                 hasTurnContent: stage() > 0,
@@ -257,6 +268,7 @@ function move(next) {
 }
 move(0)
 globalThis.__chronologyHarness = {
+  selection: () => openedActivities.at(-1),
   move,
   setMode,
   setPreview,

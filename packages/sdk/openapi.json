@@ -47752,6 +47752,60 @@
         },
         "required": ["token", "expiresAt"]
       },
+      "SessionActivity": {
+        "type": "object",
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": [
+              "checking_submission",
+              "preparing_session",
+              "preparing_workspace",
+              "submitting_input",
+              "checking_receipt",
+              "reconnecting",
+              "queued_storage",
+              "retrying_input",
+              "materializing_input",
+              "preparing_files",
+              "preparing_context",
+              "queued_agent",
+              "waiting_model",
+              "responding",
+              "queued_tools",
+              "running_tools",
+              "waiting_background",
+              "finalizing",
+              "stopping"
+            ]
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "rootID": {
+            "type": "string"
+          },
+          "workspaceOperation": {
+            "type": "string",
+            "enum": ["create", "bind", "enter", "leave"]
+          },
+          "tool": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["count"]
+          }
+        },
+        "required": ["phase", "startedAt"]
+      },
       "SessionPausedReason": {
         "type": "string",
         "enum": ["aborted", "failed", "interrupted", "workflow"]
@@ -47796,6 +47850,9 @@
               },
               "description": {
                 "type": "string"
+              },
+              "activity": {
+                "$ref": "#/components/schemas/SessionActivity"
               }
             },
             "required": ["type"]
@@ -50307,6 +50364,9 @@
               },
               "description": {
                 "type": "string"
+              },
+              "activity": {
+                "$ref": "#/components/schemas/SessionActivity"
               }
             },
             "required": ["status"]
@@ -64054,6 +64114,10 @@
           },
           "sessionID": {
             "type": "string"
+          },
+          "taskID": {
+            "type": "string",
+            "pattern": "^ctx.*"
           },
           "pluginID": {
             "type": "string"

@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import { createRoot } from "solid-js"
 import {
   createNewSessionTransitionProgress,
+  createNewSessionTransitionErrorProgress,
   createNewSessionTransitionSuccessProgress,
 } from "@/components/session/session-transition-progress"
 import type { NewSessionRecovery } from "@/components/session/new-session-recovery"
@@ -83,7 +84,7 @@ describe("session transition state", () => {
     })
   })
 
-  test("dismisses a completed handoff after its loading entry is replaced", () => {
+  test("releases a canonical handoff immediately without a success card lifecycle", () => {
     createRoot((dispose) => {
       const state = createSessionTransitionState()
       const handoff = {
@@ -93,6 +94,7 @@ describe("session transition state", () => {
       state.set("session-1", createNewSessionTransitionProgress(), undefined, handoff)
 
       expect(state.completeHandoff("session-1", "msg_first")).toBe(true)
+      expect(state.get("session-1")).toBeUndefined()
       expect(() => state.get("session-1")?.actions?.dismiss?.()).not.toThrow()
       expect(state.get("session-1")).toBeUndefined()
       expect(state.isHandoffDismissed("session-1", "msg_first")).toBe(true)
@@ -169,8 +171,8 @@ describe("session transition state", () => {
   test("ignores a stale dismiss after a newer transition replaces the entry", () => {
     createRoot((dispose) => {
       const state = createSessionTransitionState()
-      const success = createNewSessionTransitionSuccessProgress()
-      state.set("session-1", success, {
+      const failure = createNewSessionTransitionErrorProgress({ title: "Failed", message: "Retry" })
+      state.set("session-1", failure, {
         dismiss: () => state.clear("session-1"),
       })
       const staleDismiss = state.get("session-1")?.actions?.dismiss
@@ -207,7 +209,7 @@ describe("session transition state", () => {
       }
 
       state.setRecovery("/repo", recovery)
-      expect(state.getRecovery("/repo")).toBe(recovery)
+      expect(state.getRecovery("/repo")).toEqual(recovery)
       state.clearRecovery("/repo")
       expect(state.getRecovery("/repo")).toBeUndefined()
       dispose()
@@ -219,7 +221,7 @@ describe("session transition state", () => {
       const state = createSessionTransitionState()
       let retries = 0
       let dismissals = 0
-      state.set("session-1", createNewSessionTransitionSuccessProgress(), {
+      state.set("session-1", createNewSessionTransitionErrorProgress({ title: "Failed", message: "Retry" }), {
         retry: () => retries++,
         dismiss: () => dismissals++,
       })

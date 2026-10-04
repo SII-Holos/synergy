@@ -459,19 +459,15 @@
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
         {
+          "glob": "src/components/session/session-submission-status.tsx",
+          "reason": "test/components/session/session-submission-status.dom.test.ts verifies current submission phases, locale changes, prompt retention, structured errors and keyboard retry in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
           "glob": "src/components/session/session-surface-focus.tsx",
           "reason": "Solid focus context is exercised in test/components/session/decision-surface.dom.test.tsx; Bun cannot instrument Vite/Chromium execution."
         },
         {
           "glob": "src/components/session/session-review-tab.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
-        },
-        {
-          "glob": "src/components/session/session-transition-card.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
-        },
-        {
-          "glob": "src/components/session/session-transition-progress-steps.tsx",
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
         {
@@ -1393,6 +1389,10 @@
         {
           "glob": "src/components/workspace/tool-execution-detail.tsx",
           "reason": "test/components/workspace/execution-detail.dom.test.ts exercises the real result viewer, historical identity, cancellation, copy, large output and retained reading state in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/workspace/process-event-detail.tsx",
+          "reason": "test/components/workspace/execution-detail.dom.test.ts verifies Agent result identity, summary loading, full copying, retry, cancellation and bounded previews in Chromium; Vite/browser execution is outside Bun source LCOV."
         }
       ]
     },

@@ -10,6 +10,75 @@ const parts = Array.from(
     ({ id: `p${index.toString().padStart(4, "0")}`, messageID: "reply", type: "tool" }) as SessionPartSummary,
 )
 
+test("a manual compaction request yields to its canonical attempt without a stale running row", () => {
+  const boundary = { ...root, metadata: { compactionBoundary: true } } as Message
+  const request = { ...parts[0], id: "request", messageID: root.id, type: "compaction" } as SessionPartSummary
+  const attempt = {
+    ...reply,
+    mode: "compaction",
+    agent: "compaction",
+    metadata: { compactionAttempt: { state: "committed" } },
+  } as Message
+  const input = {
+    timeline: [boundary],
+    summaries: (id: string) => (id === root.id ? [request] : []),
+    page: () => ({ hasMore: false }),
+    process: () => ({ open: true, working: true }),
+  }
+  const pending = buildConversationRows({ ...input, messagesFor: () => [] })
+  const unhydrated = buildConversationRows({ ...input, messagesFor: () => [], summaries: () => [] })
+  expect(unhydrated.filter((row) => row.kind === "body").map((row) => [row.message.id, row.event])).toEqual([
+    [root.id, "compaction"],
+  ])
+  expect(unhydrated.find((row) => row.kind === "activity")?.key).toBe(
+    pending.find((row) => row.kind === "activity")?.key,
+  )
+  expect(pending.filter((row) => row.kind === "body").map((row) => [row.message.id, row.event])).toEqual([
+    [root.id, "compaction"],
+  ])
+  for (const state of ["running", "committed", "failed", "empty"]) {
+    const message = { ...attempt, metadata: { compactionAttempt: { state } } } as Message
+    const completed = buildConversationRows({ ...input, previous: pending, messagesFor: () => [message] })
+    const bodies = completed.filter((row) => row.kind === "body")
+    expect(bodies.map((row) => row.message.id)).toEqual(state === "empty" ? [] : [reply.id])
+    expect(bodies.every((row) => row.event === "compaction")).toBe(true)
+  }
+})
+
+test("unhydrated system events form stable groups without requiring a first Part", () => {
+  const delivery = {
+    ...root,
+    id: "delivery",
+    isRoot: false,
+    origin: { type: "cortex", sessionID: "child" },
+  } as Message
+  const compaction = {
+    ...reply,
+    id: "compaction",
+    metadata: { compactionAttempt: { state: "running" } },
+  } as Message
+  for (const event of [delivery, compaction]) {
+    const input = {
+      timeline: [root],
+      messagesFor: () => [reply, event],
+      summaries: () => [] as SessionPartSummary[],
+      page: () => undefined,
+      process: () => ({ open: true, working: true }),
+    }
+    const initial = buildConversationRows(input)
+    const group = initial.find((row) => row.kind === "activity")!
+    expect(group.activity?.tools).toBe(0)
+    expect(group.activity?.entries.map((row) => row.message.id)).toEqual([event.id])
+    const hydrated = buildConversationRows({
+      ...input,
+      previous: initial,
+      summaries: (id) =>
+        id === event.id ? [{ ...parts[0], id: "loaded-event-part", messageID: id, type: "text" }] : [],
+    })
+    expect(hydrated.find((row) => row.kind === "activity")?.key).toBe(group.key)
+  }
+})
+
 test("root user content is a display row when the turn projection contains only its replies", () => {
   const rootPart = { ...parts[0], id: "root-part", messageID: root.id, type: "text" as const }
   const rows = buildConversationRows({

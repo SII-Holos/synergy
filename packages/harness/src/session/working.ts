@@ -22,7 +22,7 @@ export async function resolve(sessionID: string, stored?: Pick<Info, "paused">):
   if (SessionManager.isRunning(sessionID)) {
     const runtime = SessionManager.getRuntime(sessionID)
     const status = runtime?.status
-    if (status?.type === "busy") return { status: "busy", description: status.description }
+    if (status?.type === "busy") return { status: "busy", description: status.description, activity: status.activity }
     if (status?.type === "retry")
       return { status: "retry", attempt: status.attempt, message: status.message, next: status.next }
   }
@@ -41,7 +41,7 @@ export async function resolve(sessionID: string, stored?: Pick<Info, "paused">):
 export function toStatus(working: WorkingInfo): StatusInfo {
   switch (working.status) {
     case "busy":
-      return { type: "busy", description: working.description }
+      return { type: "busy", description: working.description, activity: working.activity }
     case "retry":
       return { type: "retry", attempt: working.attempt, message: working.message, next: working.next }
     case "paused":

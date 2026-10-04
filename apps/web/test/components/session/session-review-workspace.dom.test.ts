@@ -138,7 +138,7 @@ test("separate writes to the same bound file remain independently expandable", a
   expect(await rows.nth(1).textContent()).toContain("+last")
 }, 30_000)
 
-test("incomplete recording preserves confirmed files without notices in the card or Review", async () => {
+test("incomplete recording stays quiet in the card while Review explains the limits", async () => {
   await page.goto(base)
   await page.locator('[data-component="turn-change-summary-panel"]').waitFor()
   await page.evaluate(() => (window as unknown as { fixture: { incomplete(): void } }).fixture.incomplete())
@@ -148,10 +148,10 @@ test("incomplete recording preserves confirmed files without notices in the card
   expect(await card.getByRole("status").count()).toBe(0)
   expect(await page.locator('[data-slot="turn-change-summary-row"]').count()).toBe(2)
   const notice = page.locator('[data-slot="review-recording-notice"]')
-  expect(await notice.count()).toBe(0)
+  expect(await notice.textContent()).toContain("This does not mean no files changed")
   expect(await page.locator('[data-slot="session-review-view-button"]').count()).toBe(2)
   await page.evaluate(() => (window as unknown as { fixture: { empty(): void } }).fixture.empty())
-  expect(await notice.count()).toBe(0)
+  expect(await notice.textContent()).toContain("This does not mean no files changed")
   expect(await card.count()).toBe(0)
   expect(await page.locator('[data-slot="turn-change-summary-entry"]').count()).toBe(0)
   expect(errors).toEqual([])
@@ -174,7 +174,7 @@ test("settlement retains the file card, rows and actions without recording notic
     expect(await card.getAttribute("data-retained")).toBe("yes")
     expect(await card.getAttribute("aria-label")).toBe("Changed 2 files")
     expect(await card.getByRole("status").count()).toBe(0)
-    expect(await page.locator('[data-slot="review-recording-notice"]').count()).toBe(0)
+    expect(await card.locator('[data-slot="review-recording-notice"]').count()).toBe(0)
     expect(await card.getAttribute("aria-busy")).toBe(transition === "pending" ? "true" : null)
     expect(await card.getByRole("button", { name: "Undo", exact: true }).isEnabled()).toBe(transition !== "pending")
     expect(await page.locator('[data-slot="turn-change-summary-row"]').first().getAttribute("data-retained")).toBe(

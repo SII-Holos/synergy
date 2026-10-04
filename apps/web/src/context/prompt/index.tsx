@@ -176,6 +176,31 @@ function createPromptSession(dir: string, id: string | undefined, drafts: Return
   const dirty = createMemo(() => !isPromptEqual(current(), DEFAULT_PROMPT))
   let revision = 0
   let generation = 0
+  let pendingDraft: { prompt: Prompt; context: PromptContextSnapshot; cursor?: number } | undefined
+
+  const restoreDraft = (snapshot: { prompt: Prompt; context: PromptContextSnapshot; cursor?: number }) => {
+    const next = sanitizePromptContext(snapshot.context)
+    revision++
+    batch(() => {
+      setStore("prompt", sanitizePrompt(snapshot.prompt).map(clonePart))
+      setStore("context", { items: next.items.map((item) => ({ key: keyForContextItem(item), ...item })) })
+      setStore(
+        "cursor",
+        snapshot.cursor ??
+          snapshot.prompt.reduce((length, part) => length + ("content" in part ? part.content.length : 0), 0),
+      )
+    })
+  }
+  const resetDraft = () => {
+    revision++
+    generation++
+    batch(() => {
+      setStore("prompt", clonePrompt(DEFAULT_PROMPT))
+      setStore("cursor", 0)
+      setStore("context", { items: [] })
+      setStore("admission", undefined)
+    })
+  }
 
   createEffect(() => drafts.markDraftSession(id, dirty()))
   onCleanup(() => drafts.clearLocalDraftMark(id))
@@ -198,18 +223,39 @@ function createPromptSession(dir: string, id: string | undefined, drafts: Return
       snapshot: { prompt: Prompt; context: PromptContextSnapshot; cursor?: number },
     ) {
       if (revision !== expectedRevision) return false
-      const next = sanitizePromptContext(snapshot.context)
-      revision++
-      batch(() => {
-        setStore("prompt", sanitizePrompt(snapshot.prompt).map(clonePart))
-        setStore("context", { items: next.items.map((item) => ({ key: keyForContextItem(item), ...item })) })
-        setStore(
-          "cursor",
-          snapshot.cursor ??
-            snapshot.prompt.reduce((length, part) => length + ("content" in part ? part.content.length : 0), 0),
-        )
-      })
+      restoreDraft(snapshot)
       return true
+    },
+    recoverDraft(snapshot: { prompt: Prompt; context: PromptContextSnapshot }, submit: boolean) {
+      const currentDraft = {
+        prompt: clonePrompt(current()),
+        context: sanitizePromptContext(store.context),
+        cursor: store.cursor,
+      }
+      if (!submit) {
+        const restored = pendingDraft ? mergeProjectDrafts(currentDraft, pendingDraft) : currentDraft
+        pendingDraft = undefined
+        restoreDraft(mergeProjectDrafts(snapshot, restored))
+        return
+      }
+      if (
+        !isPromptEqual(currentDraft.prompt, snapshot.prompt) ||
+        JSON.stringify(currentDraft.context) !== JSON.stringify(snapshot.context)
+      ) {
+        if (dirty() || currentDraft.context.items.length)
+          pendingDraft = pendingDraft
+            ? { ...mergeProjectDrafts(pendingDraft, currentDraft), cursor: currentDraft.cursor }
+            : currentDraft
+      }
+      restoreDraft(snapshot)
+    },
+    clearForSubmission() {
+      const next = pendingDraft
+      pendingDraft = undefined
+      resetDraft()
+      const clearedRevision = revision
+      if (next) restoreDraft(next)
+      return clearedRevision
     },
     context: {
       items: createMemo(() => store.context.items),
@@ -254,14 +300,8 @@ function createPromptSession(dir: string, id: string | undefined, drafts: Return
       })
     },
     resetDraft() {
-      revision++
-      generation++
-      batch(() => {
-        setStore("prompt", clonePrompt(DEFAULT_PROMPT))
-        setStore("cursor", 0)
-        setStore("context", { items: [] })
-        setStore("admission", undefined)
-      })
+      pendingDraft = undefined
+      resetDraft()
     },
   }
 }
@@ -365,12 +405,39 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
       },
       capture() {
         const draft = session()
-        const generation = draft.generation()
+        let generation = draft.generation()
         retained.set(draft, (retained.get(draft) ?? 0) + 1)
         let released = false
         return {
           draft,
           isCurrent: () => session() === draft && draft.generation() === generation,
+          clearIfUnchanged(expectedRevision: number) {
+            if (session() !== draft || draft.generation() !== generation || draft.revision() !== expectedRevision)
+              return undefined
+            const clearedRevision = draft.clearForSubmission()
+            generation = draft.generation()
+            return clearedRevision
+          },
+          transferToSession(sessionID: string | undefined) {
+            if (session() !== draft || draft.generation() !== generation) return false
+            const target = load(params.dir!, sessionID)
+            if (!target.ready()) return false
+            if (target === draft) return true
+            const sourceRevision = draft.revision()
+            const targetRevision = target.revision()
+            const merged = mergeProjectDrafts(
+              { prompt: target.current(), context: { items: target.context.items() } },
+              { prompt: draft.current(), context: { items: draft.context.items() } },
+            )
+            return batch(() => {
+              if (!target.restoreIfUnchanged(targetRevision, { ...merged, cursor: draft.cursor() })) return false
+              if (draft.revision() === sourceRevision) {
+                draft.resetDraft()
+                generation = draft.generation()
+              }
+              return true
+            })
+          },
           release() {
             if (released) return
             released = true
@@ -395,6 +462,8 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
       set: (prompt: Prompt, cursorPosition?: number) => session().set(prompt, cursorPosition),
       reset: () => session().reset(),
       resetDraft: () => session().resetDraft(),
+      recoverDraft: (snapshot: { prompt: Prompt; context: PromptContextSnapshot }, submit: boolean) =>
+        session().recoverDraft(snapshot, submit),
     }
   },
 })

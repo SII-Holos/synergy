@@ -44,6 +44,8 @@ import { ToolScheduler } from "./tool-scheduler"
 import type { ToolResolver } from "./tool-resolver"
 import { SecretMask } from "../secrets/mask"
 import { PausedTurnAbort } from "./error"
+import type { Activity } from "./types"
+import { RuntimeContext } from "../lifecycle/context"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -207,6 +209,18 @@ export namespace SessionProcessor {
     generation?: number
     toolDisplay?: (toolName: string) => ToolDisplay | undefined
   }) {
+    const runtime = RuntimeContext.current()
+    const activity = (phase: Activity["phase"], tool?: Activity["tool"]) => {
+      if (input.generation === undefined) return
+      SessionManager.setActivity(
+        input.sessionID,
+        { phase, tool },
+        {
+          generation: input.generation,
+          rootID: input.assistantMessage.rootID ?? input.assistantMessage.parentID,
+        },
+      )
+    }
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
     const modelInputs = new Map<string, Record<string, unknown>>()
     const modelCalls = new Map<string, { owner: RolloutSchema.Owner; runID: string; callID: string }>()
@@ -1071,6 +1085,7 @@ export namespace SessionProcessor {
                 messageID: input.assistantMessage.id,
               })
               SessionManager.setExecutionPhase(input.sessionID, "queued_agent")
+              activity("preparing_context")
               const {
                 executionTools: _executionTools,
                 executorKinds: _executorKinds,
@@ -1091,6 +1106,7 @@ export namespace SessionProcessor {
                 ...agentTurnInput,
                 usageRole: streamInput.usageRole ?? "conversation",
                 retryIndex: attempt,
+                onPhase: runtime.bind((phase) => activity(phase)),
               })
               const rollout = stream.rollout
               const stepFinishes: MessageV2.StepFinishPart[] = []
@@ -1171,7 +1187,6 @@ export namespace SessionProcessor {
                   input.abort.throwIfAborted()
                   switch (value.type) {
                     case "start":
-                      SessionManager.setStatus(input.sessionID, { type: "busy" })
                       ObservabilityMetrics.record({
                         name: "llm.stream.start",
                         value: Date.now() - llmStartedAt,
@@ -1201,6 +1216,7 @@ export namespace SessionProcessor {
                       break
 
                     case "reasoning-delta":
+                      activity("responding")
                       if (!firstTokenSeen) {
                         firstTokenSeen = true
                         ObservabilityMetrics.record({
@@ -1250,6 +1266,7 @@ export namespace SessionProcessor {
                       break
 
                     case "tool-input-start": {
+                      activity("responding")
                       if (shouldIgnoreSettledStreamEvent(value.id, "tool-input-start", value.toolName)) break
                       const part = await Session.updatePart({
                         id: toolcalls[value.id]?.id ?? Identifier.ascending("part"),
@@ -1649,6 +1666,7 @@ export namespace SessionProcessor {
                       break
 
                     case "text-delta":
+                      activity("responding")
                       if (!firstTokenSeen) {
                         firstTokenSeen = true
                         ObservabilityMetrics.record({
@@ -1786,7 +1804,10 @@ export namespace SessionProcessor {
               }
               if (deferredToolCalls.length > 0) {
                 SessionManager.setExecutionPhase(input.sessionID, "queued_tools")
+                activity("queued_tools")
               }
+              const runningTools = new Map<string, string>()
+              const queuedTools = new Set(deferredToolCalls.map((call) => call.callID))
               await Promise.all(
                 deferredToolCalls.map(async (call) => {
                   if (!streamInput.executionTools) return
@@ -1828,6 +1849,17 @@ export namespace SessionProcessor {
                     signal: input.abort,
                     onState(state) {
                       if (state === "running") SessionManager.setExecutionPhase(input.sessionID, "running_tools")
+                      if (state === "running") {
+                        queuedTools.delete(call.callID)
+                        runningTools.set(call.callID, call.toolName)
+                      } else if (state !== "queued") {
+                        queuedTools.delete(call.callID)
+                        runningTools.delete(call.callID)
+                      }
+                      if (runningTools.size)
+                        activity("running_tools", { id: runningTools.values().next().value, count: runningTools.size })
+                      else if (queuedTools.size) activity("queued_tools")
+                      else activity("finalizing")
                     },
                   })
                   await settleTrackedExecution(call.callID)

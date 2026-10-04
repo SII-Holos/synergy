@@ -1,3 +1,5 @@
+import { useSessionTransition } from "@/context/session-transition"
+import { submissionForRoot } from "./session-submission-status"
 import { useFileRestore } from "./file-restore-dialog-loader"
 import { useSDK } from "@/context/sdk"
 import { useSessionDataView } from "@/context/session-data-view"
@@ -19,7 +21,9 @@ import { PendingTimelineItem } from "./pending-timeline-item"
 import { useExecution } from "@/context/execution"
 
 export function SessionConversation(input: PluginComponentProps<PluginConversationService>) {
+  const transitions = useSessionTransition()
   const props = input.context
+  const submissionFor = (rootID: string) => submissionForRoot(transitions.get(props.sessionID), rootID)
   const execution = useExecution()
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
@@ -245,6 +249,7 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
                     compactionParentIDs={turnProjection().compactionParentIDs}
                     activityDisplay={props.activityDisplay()}
                     activityView={props.activityView}
+                    submission={submissionFor(key)}
                     executionState={executionFor(key)}
                     following={!props.scrolledUp()}
                     onRestoreChanges={(messageID) => void restoreFiles({ messageID })}
@@ -271,6 +276,7 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
         <VirtualConversationRows
           context={props}
           scrollRef={scrollRef()}
+          submissionFor={submissionFor}
           executionFor={executionFor}
           onRestoreChanges={(messageID) => void restoreFiles({ messageID })}
         />
