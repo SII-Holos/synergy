@@ -168,11 +168,15 @@ test("a late child delivery has one chronological process row and opens the righ
 test("tools and reasoning share compact spacing across virtual chunks", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
-  await page.evaluate(() => window.__conversationProcess.grow(20))
+  await page.evaluate(() => {
+    window.__conversationProcess.mode("full")
+    window.__conversationProcess.grow(20)
+  })
   const viewport = page.locator('[data-component="process-viewport"]').last()
   await viewport.waitFor()
   const triggers = viewport.locator('[data-slot="activity-step-trigger"]')
   await triggers.first().waitFor()
+  await page.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
   const geometry = await triggers.evaluateAll((elements) =>
     elements.slice(0, 8).map((element) => {
       const rect = element.getBoundingClientRect()
