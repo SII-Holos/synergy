@@ -4,6 +4,104 @@ import { DesktopServerStartup } from "../src/server-startup.js"
 const line = (value: unknown) => `SYNERGY_STARTUP_V1 ${JSON.stringify(value)}\n`
 
 describe("managed startup progress", () => {
+  for (const phase of ["storage", "migration"] as const) {
+    test(`${phase} total discovery preserves counts and cannot turn stale work into progress`, () => {
+      let now = 0
+      const startup = new DesktopServerStartup({ now: () => now })
+      const progress = (current: number, total: number, bytes = 100) =>
+        phase === "storage"
+          ? { phase, step: 1, stage: "scan", current, total, bytes }
+          : { phase, step: 1, current, total }
+      startup.receive(line(progress(10, 0)))
+      now = 1_000
+      startup.receive(line(progress(5, 100, 101)))
+      expect(startup.status().progress).toEqual({ current: 10, total: 0 })
+      expect(startup.status().idleMs).toBe(1_000)
+      expect(startup.remainingMs()).toBe(299_000)
+      if (phase === "storage") {
+        startup.receive(line(progress(11, 100, 50)))
+        expect(startup.status().progress).toEqual({ current: 10, total: 0 })
+      }
+      now = 2_000
+      startup.receive(line(progress(10, 100)))
+      expect(startup.status().progress).toEqual({ current: 10, total: 100 })
+      expect(startup.status().idleMs).toBe(0)
+      expect(startup.remainingMs()).toBe(300_000)
+      now = 3_000
+      startup.receive(line(progress(10, 100)))
+      expect(startup.status().idleMs).toBe(1_000)
+      expect(startup.remainingMs()).toBe(299_000)
+    })
+  }
+
+  test("stale maintenance stages cannot restart activity or hide the migration step", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive(line({ phase: "migration", step: 4, current: 0, total: 0 }))
+    startup.receive(line({ phase: "maintenance", id: 1, operation: "vacuum", state: "started", timeoutMs: 900_000 }))
+    now = 1_000
+    startup.receive(line({ phase: "maintenance", id: 1, state: "stage", stage: "checkpoint-after" }))
+    now = 31_000
+    for (const stage of ["checkpoint-before", "rewrite", "checkpoint-after"]) {
+      startup.receive(line({ phase: "maintenance", id: 1, state: "stage", stage }))
+      expect(startup.status()).toMatchObject({ step: 4, detail: "Finishing the database journal.", idleMs: 30_000 })
+      expect(startup.remainingMs()).toBe(874_000)
+    }
+  })
+
+  test("keeps unknown-total work visible with a task, step and clocks without renewing idle work", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive(line({ phase: "migration", step: 16, current: 0, total: 0, task: "tool-history" }))
+    now = 2_000
+    startup.receive(line({ phase: "migration", step: 16, current: 128, total: 0, task: "tool-history" }))
+    now = 65_000
+    expect(startup.status()).toMatchObject({
+      phase: "migration",
+      step: 16,
+      detail: "Updating saved tool history.",
+      progress: { current: 128, total: 0 },
+      elapsedMs: 65_000,
+      totalElapsedMs: 65_000,
+      idleMs: 63_000,
+    })
+    expect(startup.remainingMs()).toBe(237_000)
+    startup.receive(line({ phase: "migration", step: 16, current: 128, total: 0, task: "tool-history" }))
+    expect(startup.status().idleMs).toBe(63_000)
+    expect(startup.remainingMs()).toBe(237_000)
+    startup.receive(line({ phase: "migration", step: 17, current: 0, total: 0, task: "notes" }))
+    expect(startup.status()).toMatchObject({ elapsedMs: 0, totalElapsedMs: 65_000, idleMs: 0, step: 17 })
+  })
+
+  test("shows counts and elapsed time for legacy migrations and recovery without an estimated percentage", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    now = 1_000
+    startup.receive(line({ phase: "migration", step: 1, current: 256, total: 0 }))
+    now = 6_000
+    expect(startup.status()).toMatchObject({
+      progress: { current: 256, total: 0 },
+      elapsedMs: 5_000,
+      totalElapsedMs: 6_000,
+      idleMs: 5_000,
+    })
+    startup.receive(line({ phase: "starting" }))
+    expect(startup.status().phase).toBe("migration")
+    startup.receive(line({ phase: "storage", step: 1, stage: "activate", current: 0, total: 0, bytes: 0 }))
+    expect(startup.status().phase).toBe("migration")
+    startup.receive(line({ phase: "recovery", current: 9_001 }))
+    now = 8_000
+    expect(startup.status()).toMatchObject({
+      phase: "recovery",
+      progress: { current: 9_001, total: 0 },
+      elapsedMs: 2_000,
+      totalElapsedMs: 8_000,
+      idleMs: 2_000,
+    })
+    startup.receive(line({ phase: "starting" }))
+    expect(startup.status().phase).toBe("starting")
+  })
+
   test("waits for maintenance inside a migration without renewing its fixed budget", () => {
     let now = 0
     const startup = new DesktopServerStartup({ now: () => now })
@@ -122,7 +220,7 @@ describe("managed startup progress", () => {
     startup.receive(line({ phase: "recovery", current: 10_000 }))
     expect(startup.remainingMs()).toBe(300_000)
     expect(startup.status().title).toBe("Restoring saved work")
-    expect(startup.status().detail).toContain("10000")
+    expect(startup.status().progress).toEqual({ current: 10_000, total: 0 })
     now = 360_000
     startup.receive(line({ phase: "recovery", current: 10_000 }))
     startup.receive(line({ phase: "recovery", current: 9_000 }))

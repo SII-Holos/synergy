@@ -394,6 +394,7 @@ async function createWindow() {
   await syncLocalComputerBroker()
   await setStartupStatus({
     title: currentAppURL ? "Loading workspace" : "Startup needs attention",
+    phase: currentAppURL ? "starting" : undefined,
     detail: currentAppURL
       ? "Connecting to the local app surface."
       : "Synergy could not start the local runtime. Opening diagnostics.",
@@ -1156,9 +1157,11 @@ function installWindowInputShortcuts(window: BrowserWindow, debug: boolean): voi
 function installDesktopWindowStateEvents(window: BrowserWindow): { emit: () => void; dispose: () => void } {
   const emit = () => {
     if (window.isDestroyed()) return
+    const state = desktopWindowState(window)
+    startupOverlay?.setWindowState(state)
     mainRendererDelivery?.sendLatest("desktop-window-state", "desktop-window:event", {
       type: "state",
-      state: desktopWindowState(window),
+      state,
     })
   }
   window.on("maximize", emit)
