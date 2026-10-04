@@ -5,7 +5,7 @@ import { createIsolatedTestEnv } from "../../packages/testing/src/env"
 import { loadManifest } from "../coverage-check"
 import { fileHash, filesIn } from "./artifacts"
 import { OUTPUT, ROOT } from "./catalog"
-import { validatePlan, type Plan, type Task } from "./plan"
+import { validatePlan, taskOrder, unitWorkers, type Plan, type Task } from "./plan"
 import { type Report, type TaskResult } from "./evidence"
 import { collectTests } from "../../packages/testing/script/batches"
 
@@ -432,6 +432,7 @@ export async function executeTask(
     exitCode: 1,
     started: new Date().toISOString(),
     completed: "",
+    runtime: { platform: process.platform, arch: process.arch, bun: Bun.version },
     reports: [],
     steps: [],
   }
@@ -456,6 +457,7 @@ export async function executeTask(
           ...isolated.env,
           SYNERGY_BENCH_TIMINGS: path.join(root, OUTPUT, "raw", task.id, "benchmark-timing.jsonl"),
           SYNERGY_CI_TIMING_OUTPUT: path.join(root, OUTPUT, "raw", task.id, "rollout-timing.jsonl"),
+          SYNERGY_TEST_INSTALL_CACHE: path.join(root, OUTPUT, "install-downloads"),
           ...command.env,
           ...(command.name.endsWith("-build") && task.kind === "artifacts"
             ? { SYNERGY_HOME: path.join(isolated.env.SYNERGY_TEST_ROOT!, "build-home") }
@@ -514,10 +516,10 @@ export async function executeUnit(
         !!plan.tasks.find((task) => task.id === a)!.profile ||
           plan.tasks.find((task) => task.id === a)!.needs.includes("benchmark-prepare"),
       ) -
-      Number(
-        !!plan.tasks.find((task) => task.id === b)!.profile ||
-          plan.tasks.find((task) => task.id === b)!.needs.includes("benchmark-prepare"),
-      ),
+        Number(
+          !!plan.tasks.find((task) => task.id === b)!.profile ||
+            plan.tasks.find((task) => task.id === b)!.needs.includes("benchmark-prepare"),
+        ) || taskOrder(plan.tasks.find((task) => task.id === a)!, plan.tasks.find((task) => task.id === b)!),
   )
   async function execute(taskID: string) {
     const task = plan.tasks.find((entry) => entry.id === taskID)!
@@ -540,12 +542,7 @@ export async function executeUnit(
   const workers = await Promise.allSettled(
     Array.from(
       {
-        length:
-          unit?.pool === "docker"
-            ? 2
-            : unit?.pool === "linux" && unit.id !== "linux-contracts" && plan.mode !== "diagnostic"
-              ? 2
-              : 1,
+        length: unit ? unitWorkers(unit.pool, plan.mode, unit.id === "linux-contracts") : 1,
       },
       async () => {
         while (cursor < ordered.length) await execute(ordered[cursor++]!)

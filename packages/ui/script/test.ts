@@ -2,58 +2,10 @@
 
 import path from "node:path"
 import { runBatchedTests } from "../../../script/shared/test-runner"
+import { testOptions } from "./test-options"
 import { prepareDOMFixtures } from "../test/support/dom-fixtures"
 
 const root = path.resolve(import.meta.dir, "..")
 
 await prepareDOMFixtures()
-await runBatchedTests({
-  root,
-  timeoutMs: 120000,
-  isolated: [
-    "test/components/message-readers.render.test.ts",
-    "test/components/execution-completion.dom.test.ts",
-    "test/components/tool/computer-tool-renders.test.tsx",
-    "test/components/basic-tool-lifecycle.dom.test.ts",
-    "test/components/countdown-anchor.dom.test.ts",
-    "test/components/message-part-error-boundary.test.ts",
-    "test/components/activity-trace.dom.test.ts",
-    "test/components/activity-process.dom.test.ts",
-    "test/components/diff-patch.dom.test.ts",
-    "test/components/activity-trace-layout.browser.test.ts",
-    "test/components/activity-trace-narrow.browser.test.ts",
-    "test/components/list-key-navigation.browser.test.ts",
-    "test/components/collection-key-navigation.browser.test.ts",
-    "test/components/code.dom.test.ts",
-    "test/components/compact-reasoning.dom.test.ts",
-    "test/components/compact-reasoning-settlement.dom.test.ts",
-    "test/components/compact-reasoning-transition.dom.test.ts",
-    "test/components/session-turn-attachments-collapse.dom.test.ts",
-    "test/components/session-turn-activity.test.ts",
-    "test/components/session-turn-activity-switch.dom.test.ts",
-    "test/components/session-turn-chronology.dom.test.ts",
-    "test/components/conversation-motion.browser.test.ts",
-    "test/markdown-terminal-transition.test.ts",
-    "test/components/session-turn-timeline.test.ts",
-    "test/components/session-turn-timeline-boundary.test.ts",
-    "test/components/session-turn-projection.test.ts",
-    "test/components/session-turn-projection-memoization.dom.test.ts",
-    "test/components/session-switch-stress.dom.test.ts",
-    "test/components/tool/renders/task.test.tsx",
-    "test/components/tool/task-subagent-detail.test.tsx",
-    "test/components/tool/renders/standard.test.tsx",
-    "test/components/tool/renders/file-ops.test.tsx",
-    "test/components/tool/search-tool-renders.test.tsx",
-    "test/components/tool/search-tool-bodies.test.tsx",
-    "test/components/tooltip.test.ts",
-    "test/components/popover.test.ts",
-    "test/components/tooltip-focus.test.ts",
-    "test/components/provider-icon.test.ts",
-  ],
-  browserOnly: [
-    "test/components/message-readers.render.test.ts",
-    "test/hooks/create-auto-scroll.test.ts",
-    "test/hooks/use-filtered-list.test.tsx",
-    "test/theme-provider-fallback.test.ts",
-  ],
-})
+await runBatchedTests({ ...testOptions, root })

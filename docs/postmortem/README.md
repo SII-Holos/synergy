@@ -1,6 +1,6 @@
 # Postmortems
 
-Postmortems document failures, causes and guardrails.
+Failures, causes and guardrails.
 
 ## When to write one
 
@@ -19,7 +19,7 @@ Otherwise, write a bug fix with tests.
 
 ## Format
 
-Name files `NNNN-kebab-case-title.md` using the next available number. Use these sections:
+Name files `NNNN-kebab-case-title.md` using the next number. Sections:
 
 - **Executive summary** — one paragraph: what broke, its cause, why it escaped, and the durable lesson.
 - **Summary** — the full detail of the failure.
@@ -30,6 +30,9 @@ Name files `NNNN-kebab-case-title.md` using the next available number. Use these
 
 ## Index
 
+- [0041: Lost completion signal](0041-cortex-progress-fixture-lost-release.md)
+- [0040: Vite ports](0040-vite-fixtures-shared-default-ports.md)
+- [0039: Process activation deadlock](0039-paused-output-blocked-process-activation.md)
 - [0038: Session latency](0038-session-interactions-amplified-global-work.md)
 - [0035: Titlebar controls](0035-native-titlebar-swallowed-controls.md)
 - [0036: Directory replacement blocked history](0036-directory-replacement-blocked-history.md)

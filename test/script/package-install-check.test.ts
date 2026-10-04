@@ -4,6 +4,81 @@ import os from "node:os"
 import path from "node:path"
 import { withInstalledPackages, type PackedArchive } from "../../script/package-install-check"
 
+test("shared download cache preserves fresh installations and current same-version archive bytes", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "synergy-install-cache-"))
+  const cache = path.join(root, "downloads")
+  const dependency = { name: `download-${crypto.randomUUID()}`, version: "1.0.0" }
+  const downloaded = Bun.gzipSync(await new Bun.Archive({ "package/package.json": JSON.stringify(dependency) }).bytes())
+  let requests = 0
+  using registry = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(request) {
+      if (new URL(request.url).pathname.endsWith(".tgz")) {
+        requests++
+        return new Response(downloaded)
+      }
+      return Response.json({
+        name: dependency.name,
+        "dist-tags": { latest: dependency.version },
+        versions: {
+          [dependency.version]: {
+            ...dependency,
+            dist: { tarball: new URL("dependency.tgz", request.url).toString() },
+          },
+        },
+      })
+    },
+  })
+  const manifest = {
+    name: `@ericsanchezok/synergy-cache-${crypto.randomUUID()}`,
+    version: "1.0.0",
+    dependencies: { [dependency.name]: dependency.version },
+  }
+  const archive = path.join(root, "package.tgz")
+  const directories: string[] = []
+  const caches: string[] = []
+  try {
+    for (const value of ["first", "first", "second"]) {
+      await Bun.write(
+        archive,
+        Bun.gzipSync(
+          await new Bun.Archive({
+            "package/package.json": JSON.stringify(manifest),
+            "package/value.txt": value,
+          }).bytes(),
+        ),
+      )
+      await withInstalledPackages(
+        [{ ...manifest, manifest, archive }],
+        [manifest.name],
+        async (directory, env) => {
+          expect(env.BUN_INSTALL_CACHE_DIR?.startsWith(cache + path.sep)).toBe(true)
+          caches.push(env.BUN_INSTALL_CACHE_DIR!)
+          if (caches.length === 2) expect(caches[1]).toBe(caches[0])
+          expect(directories).not.toContain(directory)
+          directories.push(directory)
+          expect(await Bun.file(path.join(directory, "home", "sentinel")).exists()).toBe(false)
+          const packageRoot = path.join(directory, "node_modules", manifest.name)
+          expect(await Bun.file(path.join(packageRoot, "value.txt")).text()).toBe(value)
+          expect(await Bun.file(path.join(directory, "node_modules", dependency.name, "package.json")).json()).toEqual(
+            dependency,
+          )
+          await Bun.write(path.join(directory, "home", "sentinel"), "previous Home")
+        },
+        { env: { SYNERGY_TEST_INSTALL_CACHE: cache, npm_config_registry: registry.url.toString() } },
+      )
+      expect(await Bun.file(path.join(directories.at(-1)!, "package.json")).exists()).toBe(false)
+      expect(Array.from(new Bun.Glob("**/*").scanSync({ cwd: cache })).length).toBeGreaterThan(0)
+      if (directories.length <= 2) expect(requests).toBe(1)
+    }
+    expect(caches[1]).toBe(caches[0])
+    expect(caches[2]).not.toBe(caches[0])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test("installed package fixtures retain their registry from a nested installer directory", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "synergy-registry-isolation-"))
   let ambientRequests = 0

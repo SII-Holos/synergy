@@ -131,6 +131,17 @@ def test_short_control_rejects_lost_or_changed_native_process_evidence(bun_jit):
         with pytest.raises(AssertionError, match="CLI JIT"):
             assert_native_control(changed, tool_turns=2, bun_jit=bun_jit, observations=False)
 
+    for record in records:
+        record["part"]["state"]["output"] += "BENCH_NATIVE_TASK_HOME_PRESERVED\n"
+    assert_native_control(records, tool_turns=2, bun_jit=bun_jit, observations=False, task_home=True)
+    for index in [0, 1]:
+        changed = copy.deepcopy(records)
+        changed[index]["part"]["state"]["output"] = changed[index]["part"]["state"]["output"].replace(
+            "BENCH_NATIVE_TASK_HOME_PRESERVED\n", ""
+        )
+        with pytest.raises(AssertionError, match="Task Home"):
+            assert_native_control(changed, tool_turns=2, bun_jit=bun_jit, observations=False, task_home=True)
+
 
 def test_native_control_rejects_wrong_identity_jit_and_early_completion():
     records = [

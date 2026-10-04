@@ -64,7 +64,7 @@ def assert_fixture_usage(usage, model, *, minimum_requests):
         }, f"Native {field} usage differs from the deterministic provider"
 
 
-def assert_native_control(records, *, tool_turns, bun_jit, observations):
+def assert_native_control(records, *, tool_turns, bun_jit, observations, task_home=False):
     completed = {
         event["part"]["callID"]: event["part"]
         for event in records
@@ -75,6 +75,10 @@ def assert_native_control(records, *, tool_turns, bun_jit, observations):
     for phase in ["start", "end"]:
         evidence = [output for output in outputs if f"BENCH_NATIVE_PHASE={phase}" in output]
         assert evidence, f"Missing {phase} native process evidence"
+        if task_home:
+            assert all("BENCH_NATIVE_TASK_HOME_PRESERVED" in output.splitlines() for output in evidence), (
+                f"Missing {phase} Task Home evidence"
+            )
         for kind in ["WRAPPER", "CLI"]:
             assert all(
                 set(re.findall(rf"^BENCH_SYNERGY_{kind}_BUN_JSC_useJIT=(\S+)$", output, re.MULTILINE))
@@ -411,12 +415,12 @@ async def test_synergy_native_semantics(tmp_path, monkeypatch, bun_jit, protocol
         tool_turns=2,
         bun_jit=bun_jit,
         observations=False,
+        task_home=bun_jit and protocol == "chat-completions",
         models=(model,),
     )
 
 
-@pytest.mark.parametrize("empty_stop", [False, True], ids=["tool-roundtrip", "empty-provider-stop"])
-async def test_synergy_preserves_task_home_and_native_stopping(tmp_path, monkeypatch, empty_stop):
+async def test_synergy_preserves_task_home_and_native_stopping(tmp_path, monkeypatch):
     if "synergy" not in os.environ.get("SYNERGY_BENCH_TEST_HARNESSES", "synergy").split(","):
         pytest.skip("Task-home and native-stop controls belong to the Synergy native matrix")
     await run_native_matrix(
@@ -427,7 +431,7 @@ async def test_synergy_preserves_task_home_and_native_stopping(tmp_path, monkeyp
         tool_turns=2,
         bun_jit=True,
         task_home=True,
-        empty_stop=empty_stop,
+        empty_stop=True,
         models=("fixture-one",),
     )
 
@@ -723,6 +727,7 @@ async def run_native_matrix(
                                 tool_turns=business_turns if business else tool_turns,
                                 bun_jit=bun_jit,
                                 observations=observations and not task_home,
+                                task_home=task_home,
                             )
                             assert result["wire_usage"]["attempts"] >= (business_turns if business else tool_turns) + 1
             assert identities == {(harness, model) for harness in harnesses for model in profiles}

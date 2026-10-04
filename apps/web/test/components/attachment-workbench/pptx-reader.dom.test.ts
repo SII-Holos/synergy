@@ -1,61 +1,25 @@
-import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
-import { afterAll, beforeAll, expect, test } from "bun:test"
-import path from "node:path"
-import { mkdtemp, rm } from "node:fs/promises"
-import { tmpdir } from "node:os"
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
 import { chromium, type Browser, type Page } from "playwright"
-import { createServer, type ViteDevServer } from "vite"
-import solidPlugin from "vite-plugin-solid"
+import { officeReaderFixture } from "../../support/office-fixture"
+import type { BrowserFixture } from "../../support/browser-fixture"
 
-let browser: Browser, page: Page, server: ViteDevServer
-let cache: string
+let browser: Browser, page: Page, server: BrowserFixture
 beforeAll(async () => {
-  cache = await mkdtemp(path.join(tmpdir(), "composer-reader-test-"))
-  server = await createServer({
-    cacheDir: cache,
-    configFile: false,
-    root: path.resolve(import.meta.dir, "../../fixtures/office"),
-    plugins: [
-      solidPlugin(),
-      {
-        name: "office-fixture",
-        configureServer(server) {
-          server.middlewares.use((req, res, next) => {
-            if (req.url !== "/") return next()
-            res.setHeader("Content-Type", "text/html")
-            res.end('<div id="root"></div><script type="module" src="/pptx.tsx"></script>')
-          })
-        },
-      },
-    ],
-    optimizeDeps: {
-      include: [
-        "@lingui/solid",
-        "@lingui/core",
-        "@office-kit/pptx",
-        "@office-kit/pptx-preview",
-        "fflate",
-        "saxes",
-        "dompurify",
-      ],
-    },
-    resolve: { alias: { "@": path.resolve(import.meta.dir, "../../../src") } },
-    server: {
-      host: "127.0.0.1",
-      port: await fixturePort(),
-      fs: { allow: [path.resolve(import.meta.dir, "../../../../..")] },
-    },
-  })
-  await server.listen()
+  server = await officeReaderFixture()
   browser = await chromium.launch({ headless: true })
-  page = await browser.newPage()
-  await page.goto(server.resolvedUrls!.local[0]!)
-  await page.frameLocator("iframe").getByText("中文幻灯片标题😀", { exact: true }).waitFor()
-}, 30_000)
+}, 60_000)
 afterAll(async () => {
   await browser?.close()
   await server?.close()
-  if (cache) await rm(cache, { recursive: true, force: true })
+})
+
+beforeEach(async () => {
+  page = await browser.newPage()
+  await page.goto(new URL("pptx.html", server.url).href)
+  await page.frameLocator("iframe").getByText("中文幻灯片标题😀", { exact: true }).waitFor()
+})
+afterEach(async () => {
+  await page?.close()
 })
 
 test("PPTX preserves Chinese slides, tables, common shapes and embedded images in an opaque frame", async () => {
