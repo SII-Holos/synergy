@@ -17121,6 +17121,94 @@ msgid "session.process.working"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.progress.activeAria"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.attentionAria"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.blockedAria"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.cancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.close"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.collapse"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.completeAria"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.completeFraction"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.currentWork"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.dagTab"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.done"
+msgstr ""
+
+#. session-progress summary labels
+msgid "session.progress.ended"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.expand"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.needsAttention"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.needsAttentionBlocked"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.noActivePlan"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.ready"
+msgstr ""
+
+#. session-progress-island
+msgid "session.progress.sessionLabel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.todoTab"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.viewLabel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.working"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.workingLabel"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.question.answerPlaceholder"
 msgstr ""
 
@@ -17553,6 +17641,14 @@ msgid "session.subagent.ariaQueued"
 msgstr "⟦{agent} queued⟧"
 
 #. js-lingui-explicit-id
+msgid "session.subagent.cancelFailed"
+msgstr ""
+
+#. subagent-dock.tsx
+msgid "session.subagent.dockLabel"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.subagent.footer.cancelled"
 msgstr "⟦Cancelled⟧"
 
@@ -17600,7 +17696,7 @@ msgstr "⟦{agent}: Retry #{attempt} — {message}⟧"
 msgid "session.subagent.tapToOpen"
 msgstr "⟦Tap to open · press and hold to cancel⟧"
 
-#. subagent-dock.tsx
+#. js-lingui-explicit-id
 msgid "session.subagent.toolsCount"
 msgstr "⟦{count} tools⟧"
 
@@ -17663,6 +17759,34 @@ msgstr "⟦Retry⟧"
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "session.tags.saveFailed"
 msgstr "⟦Could not save tags⟧"
+
+#. js-lingui-explicit-id
+msgid "session.todo.cancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.todo.completed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.todo.inProgress"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.todo.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.todo.priorityHigh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.todo.priorityLow"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.todo.unknown"
+msgstr ""
 
 #. session-transition-card.tsx — generic transition card
 msgid "session.transition.card.dismissAria"

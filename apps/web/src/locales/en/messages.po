@@ -17121,6 +17121,94 @@ msgid "session.process.working"
 msgstr "Working"
 
 #. js-lingui-explicit-id
+msgid "session.progress.activeAria"
+msgstr "Session progress, {completed} of {total} tasks complete"
+
+#. js-lingui-explicit-id
+msgid "session.progress.attentionAria"
+msgstr "Session progress needs attention, {count} failed"
+
+#. js-lingui-explicit-id
+msgid "session.progress.blockedAria"
+msgstr "Session progress needs attention, {count} blocked"
+
+#. js-lingui-explicit-id
+msgid "session.progress.cancelled"
+msgstr "{count} cancelled"
+
+#. js-lingui-explicit-id
+msgid "session.progress.close"
+msgstr "Close progress"
+
+#. js-lingui-explicit-id
+msgid "session.progress.collapse"
+msgstr "Collapse"
+
+#. js-lingui-explicit-id
+msgid "session.progress.completeAria"
+msgstr "Session progress complete, {count, plural, one {# task} other {# tasks}} done"
+
+#. js-lingui-explicit-id
+msgid "session.progress.completeFraction"
+msgstr "{completed}/{total} complete"
+
+#. js-lingui-explicit-id
+msgid "session.progress.currentWork"
+msgstr "Current work"
+
+#. js-lingui-explicit-id
+msgid "session.progress.dagTab"
+msgstr "DAG"
+
+#. js-lingui-explicit-id
+msgid "session.progress.done"
+msgstr "Done · {count, plural, one {# task} other {# tasks}}"
+
+#. session-progress summary labels
+msgid "session.progress.ended"
+msgstr "Ended"
+
+#. js-lingui-explicit-id
+msgid "session.progress.expand"
+msgstr "Expand"
+
+#. js-lingui-explicit-id
+msgid "session.progress.needsAttention"
+msgstr "Needs attention · {count, plural, one {# failed} other {# failed}}"
+
+#. js-lingui-explicit-id
+msgid "session.progress.needsAttentionBlocked"
+msgstr "Needs attention · {count, plural, one {# blocked} other {# blocked}}"
+
+#. js-lingui-explicit-id
+msgid "session.progress.noActivePlan"
+msgstr "No active plan"
+
+#. js-lingui-explicit-id
+msgid "session.progress.ready"
+msgstr "Ready · {fraction}"
+
+#. session-progress-island
+msgid "session.progress.sessionLabel"
+msgstr "Session progress"
+
+#. js-lingui-explicit-id
+msgid "session.progress.todoTab"
+msgstr "To-do"
+
+#. js-lingui-explicit-id
+msgid "session.progress.viewLabel"
+msgstr "Progress view"
+
+#. js-lingui-explicit-id
+msgid "session.progress.working"
+msgstr "Working"
+
+#. js-lingui-explicit-id
+msgid "session.progress.workingLabel"
+msgstr "Working {count, plural, one {# task} other {# tasks}}"
+
+#. js-lingui-explicit-id
 msgid "session.question.answerPlaceholder"
 msgstr "Write your answer…"
 
@@ -17553,6 +17641,14 @@ msgid "session.subagent.ariaQueued"
 msgstr "{agent} queued"
 
 #. js-lingui-explicit-id
+msgid "session.subagent.cancelFailed"
+msgstr "Could not cancel agent"
+
+#. subagent-dock.tsx
+msgid "session.subagent.dockLabel"
+msgstr "Active agents"
+
+#. js-lingui-explicit-id
 msgid "session.subagent.footer.cancelled"
 msgstr "Cancelled"
 
@@ -17600,7 +17696,7 @@ msgstr "{agent}: Retry #{attempt} — {message}"
 msgid "session.subagent.tapToOpen"
 msgstr "Tap to open · press and hold to cancel"
 
-#. subagent-dock.tsx
+#. js-lingui-explicit-id
 msgid "session.subagent.toolsCount"
 msgstr "{count} tools"
 
@@ -17663,6 +17759,34 @@ msgstr "Retry"
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "session.tags.saveFailed"
 msgstr "Could not save tags"
+
+#. js-lingui-explicit-id
+msgid "session.todo.cancelled"
+msgstr "Cancelled"
+
+#. js-lingui-explicit-id
+msgid "session.todo.completed"
+msgstr "Completed"
+
+#. js-lingui-explicit-id
+msgid "session.todo.inProgress"
+msgstr "In progress"
+
+#. js-lingui-explicit-id
+msgid "session.todo.pending"
+msgstr "Pending"
+
+#. js-lingui-explicit-id
+msgid "session.todo.priorityHigh"
+msgstr "High priority"
+
+#. js-lingui-explicit-id
+msgid "session.todo.priorityLow"
+msgstr "Low priority"
+
+#. js-lingui-explicit-id
+msgid "session.todo.unknown"
+msgstr "Unknown status"
 
 #. session-transition-card.tsx — generic transition card
 msgid "session.transition.card.dismissAria"

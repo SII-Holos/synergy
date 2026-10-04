@@ -5,6 +5,7 @@ import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solidPlugin from "vite-plugin-solid"
+import tailwind from "@tailwindcss/vite"
 
 let browser: Browser
 let page: Page
@@ -42,6 +43,7 @@ beforeAll(async () => {
       `
         export const SDKProvider = (props) => props.children
         export const useSDK = () => ({
+          connected: () => true,
           url: "http://fixture",
           scopeID: "scope-one",
           event: { on: () => () => {} },
@@ -71,7 +73,7 @@ beforeAll(async () => {
     Bun.write(
       path.join(fixtureDirectory, "main.tsx"),
       `
-        import { createComponent, createSignal } from "solid-js"
+        import { createComponent, createSignal, onCleanup } from "solid-js"
         import "@ericsanchezok/synergy-ui/styles"
         import "/@fs/${path.resolve(import.meta.dir, "../../../src/components/session/session-inbox.css")}"
         import { SessionDecisionProvider, createSessionDecisionState, useSessionDecision } from "@/context/session-decision"
@@ -86,6 +88,35 @@ beforeAll(async () => {
         import { MarkedProvider } from "@ericsanchezok/synergy-ui/context/marked"
         import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
         import { SessionDecisionHost, SessionDecisionOutlet } from ${JSON.stringify(`/@fs/${componentPath}`)}
+        import { PromptDockFloatLayer } from "@/components/session/prompt-dock-float-layer"
+        import { DefaultComposer } from "@/plugin/default-composer"
+        import { ComposerPresentation, bindComposerPresentation } from "@/components/prompt-input/composer-presentation"
+        import "/@fs/${path.resolve(import.meta.dir, "../../../src/index.css")}"
+
+        function ActivityDock() {
+          const state = new ComposerPresentation()
+          const input = {
+            current: () => ({ mode: "normal", revision: 1 }),
+            readOnly: () => false,
+            composing: () => false,
+            dragging: () => false,
+            className: () => "",
+            primaryAction: () => "send",
+            render: slot => slot === "toolbar" ? <div style={{padding:"8px"}}><button type="button" data-send style={{height:"40px"}}>Send</button></div> : null,
+            editor: {
+              label: () => "Composer",
+              mount: () => () => {},
+              placeholder: () => "",
+              completion: () => undefined,
+            },
+          }
+          onCleanup(bindComposerPresentation(input, { state, preview: () => ({text:"", references:[]}) }))
+          return <div class="session-workbench-pane" style={{height:"100dvh","container-type":"inline-size"}}><div data-ui-part="conversation"><div style={{height:"48px"}} /></div><div class="session-prompt-dock-content" style={{position:"fixed",bottom:0,width:"100%"}}>
+            <PromptDockFloatLayer sessionID="s1" />
+            <SessionDecisionOutlet />
+            <div><DefaultComposer context={{input}} /></div>
+          </div></div>
+        }
 
         const mode = new URLSearchParams(location.search).get("mode") ?? "question"
         if (new URLSearchParams(location.search).has("storageFailure")) {
@@ -149,6 +180,8 @@ beforeAll(async () => {
           session_diff: {},
           message: {},
           part: {},
+          todo: { s1: [{ id:"one", content:"Inspect bottom controls", status:"in_progress", priority:"high" }] },
+          dag: { s1: [{ id:"one",content:"Inspect bottom controls",status:"running",deps:[] }] },
         }
 
         // Session runtime state lives outside the Scope store, so the view
@@ -161,6 +194,7 @@ beforeAll(async () => {
         }
         const NO_REQUESTS = []
         globalThis.__DECISION_SURFACE_RUNTIME = {
+          cortexTasks: () => [{id:"t1",sessionID:"child",parentSessionID:"s1",agent:"developer",status:"running",startedAt:Date.now(),description:"Inspect bottom controls"}],
           statusFor: (id) => (id === "s1" ? { type: "idle" } : undefined),
           permissionsFor: (id) => permissions()[id] ?? NO_REQUESTS,
           questionsFor: (id) => questions()[id] ?? NO_REQUESTS,
@@ -240,6 +274,7 @@ beforeAll(async () => {
                             return createComponent(SessionDecisionHost, {
                               sessionId: "s1",
                               get children() {
+                                if (new URLSearchParams(location.search).has("activity")) return <ActivityDock />
                                 if (new URLSearchParams(location.search).has("dock")) return <div style={{"container-type":"inline-size"}}><div class="session-prompt-dock-content" style={{position:"fixed",bottom:0,width:"100%"}}>
                                   <div style={{height:"44px",flex:"none"}}>Progress</div>
                                   <SessionDecisionOutlet />
@@ -273,7 +308,7 @@ beforeAll(async () => {
     Bun.write(
       path.join(fixtureDirectory, "scope-sync-stub.ts"),
       `export const SyncProvider = (props) => props.children
-       export const useSync = () => ({ data: { ...globalThis.__DECISION_SURFACE_DATA, path: { directory: "/fixture" } }, session: { get: (id) => globalThis.__DECISION_SURFACE_DATA.session.find((session) => session.id === id) } })`,
+       export const useSync = () => ({ ready: true, data: { ...globalThis.__DECISION_SURFACE_DATA, path: { directory: "/fixture" } }, session: { get: (id) => globalThis.__DECISION_SURFACE_DATA.session.find((session) => session.id === id) } })`,
     ),
     Bun.write(
       path.join(fixtureDirectory, "layout-boundary-stub.ts"),
@@ -287,7 +322,7 @@ beforeAll(async () => {
   server = await createServer({
     configFile: false,
     root: fixtureDirectory,
-    plugins: [solidPlugin()],
+    plugins: [solidPlugin(), tailwind()],
     cacheDir: path.join(fixtureDirectory, ".vite"),
     optimizeDeps: {
       include: [
@@ -683,4 +718,58 @@ test("native radios use arrows without advancing and shortcuts respect editing a
   )
   expect(await page.getByText("Question 1/2", { exact: true }).count()).toBe(1)
   expect(await page.evaluate(() => (window as unknown as DecisionWindow).decisionCalls.length)).toBe(0)
+})
+
+test("bottom activity coexists with actual question and permission cards during editor resizing", async () => {
+  await page.setViewportSize({ width: 375, height: 430 })
+  await page.goto(`${baseUrl}?mode=both&activity`)
+  await page.locator(".subagent-dock-avatar").waitFor()
+  const controls = [".subagent-dock-avatar", ".session-progress-island-header", ".decision-footer", "[data-send]"]
+  for (const selector of controls) {
+    const box = (await page.locator(selector).boundingBox())!
+    expect(box.y).toBeGreaterThanOrEqual(0)
+    expect(box.y + box.height).toBeLessThanOrEqual(430)
+  }
+  const resize = page.getByRole("separator", { name: "Resize editor" })
+  await resize.press("ArrowUp")
+  await resize.press("ArrowUp")
+  const action = page.getByRole("button", { name: "Allow once", exact: true })
+  expect(
+    await action.evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      return document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.closest("button") === element
+    }),
+  ).toBe(true)
+  for (const selector of controls) {
+    const box = (await page.locator(selector).boundingBox())!
+    expect(box.y).toBeGreaterThanOrEqual(0)
+    expect(box.y + box.height).toBeLessThanOrEqual(430)
+  }
+  await page.locator(".session-progress-island-header").click()
+  await page.getByRole("dialog", { name: "Session progress", exact: true }).waitFor()
+  await page.waitForFunction(() => document.activeElement?.classList.contains("session-progress-island-close"))
+  const panel = (await page.locator(".session-progress-island-panel").boundingBox())!
+  expect(panel.y).toBeGreaterThanOrEqual(0)
+  expect(panel.height).toBeGreaterThan(100)
+  expect(panel.y + panel.height).toBeLessThanOrEqual(430)
+  await page.getByRole("button", { name: "Close progress", exact: true }).click()
+  await page.getByRole("textbox", { name: "Composer", exact: true }).fill("Preserved draft")
+  expect(await page.getByRole("textbox", { name: "Composer", exact: true }).textContent()).toBe("Preserved draft")
+  await page.getByRole("button", { name: "Expand editor", exact: true }).click()
+  await page.waitForFunction(() => {
+    const rect = document.querySelector("[data-send]")!.getBoundingClientRect()
+    return rect.bottom <= innerHeight
+  })
+  await page.getByRole("button", { name: "Collapse editor", exact: true }).click()
+  await action.waitFor()
+  expect(await page.getByRole("textbox", { name: "Composer", exact: true }).textContent()).toBe("Preserved draft")
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.getByRole("button", { name: "Collapse request", exact: true }).click()
+  await page.locator(".session-progress-island-header").click()
+  await page.getByRole("button", { name: "DAG", exact: true }).click()
+  await page.waitForFunction(() => {
+    const graph = document.querySelector('[data-component="dag-graph"]')!.getBoundingClientRect()
+    const body = document.querySelector(".session-progress-island-body")!.getBoundingClientRect()
+    return graph.height > 250 && graph.top >= body.top && graph.bottom <= body.bottom
+  })
 })

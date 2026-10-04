@@ -17121,6 +17121,94 @@ msgid "session.process.working"
 msgstr "工作中"
 
 #. js-lingui-explicit-id
+msgid "session.progress.activeAria"
+msgstr "会话进度，{total} 个任务中已完成 {completed} 个"
+
+#. js-lingui-explicit-id
+msgid "session.progress.attentionAria"
+msgstr "会话进度需要注意，{count} 个失败"
+
+#. js-lingui-explicit-id
+msgid "session.progress.blockedAria"
+msgstr "会话进度需要注意，{count} 个受阻"
+
+#. js-lingui-explicit-id
+msgid "session.progress.cancelled"
+msgstr "已取消 {count} 项"
+
+#. js-lingui-explicit-id
+msgid "session.progress.close"
+msgstr "关闭进度"
+
+#. js-lingui-explicit-id
+msgid "session.progress.collapse"
+msgstr "折叠"
+
+#. js-lingui-explicit-id
+msgid "session.progress.completeAria"
+msgstr "会话进度已完成，共完成 {count, plural, one {# 个任务} other {# 个任务}}"
+
+#. js-lingui-explicit-id
+msgid "session.progress.completeFraction"
+msgstr "已完成 {completed}/{total}"
+
+#. js-lingui-explicit-id
+msgid "session.progress.currentWork"
+msgstr "当前工作"
+
+#. js-lingui-explicit-id
+msgid "session.progress.dagTab"
+msgstr "DAG 标签页"
+
+#. js-lingui-explicit-id
+msgid "session.progress.done"
+msgstr "完成 · {count, plural, one {# 个任务} other {# 个任务}}"
+
+#. session-progress summary labels
+msgid "session.progress.ended"
+msgstr "已结束"
+
+#. js-lingui-explicit-id
+msgid "session.progress.expand"
+msgstr "展开"
+
+#. js-lingui-explicit-id
+msgid "session.progress.needsAttention"
+msgstr "需要处理 · {count, plural, one {# 个任务失败} other {# 个任务失败}}"
+
+#. js-lingui-explicit-id
+msgid "session.progress.needsAttentionBlocked"
+msgstr "需要处理 · {count, plural, one {# 个任务受阻} other {# 个任务受阻}}"
+
+#. js-lingui-explicit-id
+msgid "session.progress.noActivePlan"
+msgstr "无活动计划"
+
+#. js-lingui-explicit-id
+msgid "session.progress.ready"
+msgstr "就绪 · {fraction}"
+
+#. session-progress-island
+msgid "session.progress.sessionLabel"
+msgstr "会话进度"
+
+#. js-lingui-explicit-id
+msgid "session.progress.todoTab"
+msgstr "待办"
+
+#. js-lingui-explicit-id
+msgid "session.progress.viewLabel"
+msgstr "进度视图"
+
+#. js-lingui-explicit-id
+msgid "session.progress.working"
+msgstr "工作中"
+
+#. js-lingui-explicit-id
+msgid "session.progress.workingLabel"
+msgstr "正在处理 {count, plural, one {# 个任务} other {# 个任务}}"
+
+#. js-lingui-explicit-id
 msgid "session.question.answerPlaceholder"
 msgstr "填写你的回答…"
 
@@ -17553,6 +17641,14 @@ msgid "session.subagent.ariaQueued"
 msgstr "{agent} 已排队"
 
 #. js-lingui-explicit-id
+msgid "session.subagent.cancelFailed"
+msgstr "无法取消智能体"
+
+#. subagent-dock.tsx
+msgid "session.subagent.dockLabel"
+msgstr "运行中的智能体"
+
+#. js-lingui-explicit-id
 msgid "session.subagent.footer.cancelled"
 msgstr "已取消"
 
@@ -17600,7 +17696,7 @@ msgstr "{agent}：重试 #{attempt}，{message}"
 msgid "session.subagent.tapToOpen"
 msgstr "点按打开 · 长按取消"
 
-#. subagent-dock.tsx
+#. js-lingui-explicit-id
 msgid "session.subagent.toolsCount"
 msgstr "{count} 个工具"
 
@@ -17663,6 +17759,34 @@ msgstr "重试"
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "session.tags.saveFailed"
 msgstr "无法保存标签"
+
+#. js-lingui-explicit-id
+msgid "session.todo.cancelled"
+msgstr "已取消"
+
+#. js-lingui-explicit-id
+msgid "session.todo.completed"
+msgstr "已完成"
+
+#. js-lingui-explicit-id
+msgid "session.todo.inProgress"
+msgstr "进行中"
+
+#. js-lingui-explicit-id
+msgid "session.todo.pending"
+msgstr "待处理"
+
+#. js-lingui-explicit-id
+msgid "session.todo.priorityHigh"
+msgstr "高优先级"
+
+#. js-lingui-explicit-id
+msgid "session.todo.priorityLow"
+msgstr "低优先级"
+
+#. js-lingui-explicit-id
+msgid "session.todo.unknown"
+msgstr "状态未知"
 
 #. session-transition-card.tsx — generic transition card
 msgid "session.transition.card.dismissAria"
