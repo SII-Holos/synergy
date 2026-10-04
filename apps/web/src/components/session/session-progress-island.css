@@ -1,0 +1,277 @@
+.session-progress-island {
+  position: relative;
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  padding: 0 12px 6px;
+  pointer-events: auto;
+  color: var(--text-base);
+  animation: progress-enter 180ms ease-out both;
+}
+.session-progress-island-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  min-width: 0;
+  max-width: min(620px, 100%);
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-weak-base);
+  background: var(--workbench-card-bg);
+  color: var(--text-weak);
+  font-size: 14px;
+  line-height: 20px;
+  transition:
+    color 120ms ease-out,
+    background-color 120ms ease-out;
+}
+.session-progress-island-header:hover {
+  color: var(--text-base);
+  background: var(--workbench-row-bg-hover);
+}
+.session-progress-island-header:focus-visible,
+.session-progress-island-tab:focus-visible {
+  outline: 2px solid var(--border-interactive-base);
+  outline-offset: 2px;
+}
+.session-progress-island-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-progress-island-indicator {
+  display: inline-flex;
+  flex: none;
+  color: var(--text-interactive-base);
+}
+.session-progress-island[data-tone="complete"] .session-progress-island-indicator {
+  color: var(--text-on-success-base);
+}
+.session-progress-island[data-tone="failed"] .session-progress-island-indicator {
+  color: var(--text-on-critical-base);
+}
+.session-progress-island[data-tone="blocked"] .session-progress-island-indicator {
+  color: var(--text-on-warning-base);
+}
+.session-progress-island-chevron {
+  flex: none;
+  transition: transform 120ms ease-out;
+}
+.session-progress-island-chevron.is-expanded {
+  transform: rotate(180deg);
+}
+.session-progress-island-positioner {
+  pointer-events: none;
+}
+.session-progress-island-positioner[data-compact="true"] {
+  position: fixed;
+  top: var(--progress-viewport-top, 0);
+  left: var(--progress-viewport-left, 0);
+  width: var(--progress-viewport-width, 100vw);
+  height: var(--progress-viewport-height, 100dvh);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 60;
+  pointer-events: auto;
+}
+.session-progress-island-positioner[data-compact="true"] .session-progress-island-panel {
+  position: relative;
+  max-height: min(560px, calc(var(--progress-viewport-height, 100dvh) - 32px));
+  z-index: 1;
+}
+.session-progress-island-positioner[data-compact="true"] .session-progress-island-panel[data-view="dag"] {
+  height: min(560px, calc(var(--progress-viewport-height, 100dvh) - 32px));
+}
+.session-progress-island-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--surface-overlay);
+}
+.session-progress-island-close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  color: var(--text-weak);
+}
+.session-progress-island-close:hover {
+  background: var(--workbench-row-bg-hover);
+  color: var(--text-base);
+}
+.session-progress-island-close:focus-visible {
+  outline: 2px solid var(--border-interactive-base);
+  outline-offset: 2px;
+}
+.session-progress-island[data-expanded="true"] {
+  z-index: 50;
+}
+.session-progress-island[data-expanded="true"] .session-progress-island-positioner {
+  pointer-events: auto;
+}
+.session-progress-island-panel {
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 50rem);
+  max-height: min(52dvh, 560px, var(--kb-popper-content-available-height, 52dvh));
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-weak-base);
+  border-radius: 12px;
+  background: var(--workbench-card-bg);
+  box-shadow: var(--shadow-popover);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 180ms ease-out;
+}
+.session-progress-island[data-expanded="true"] .session-progress-island-panel,
+.session-progress-island-panel[data-expanded="true"] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+.session-progress-island-panel[data-view="dag"] {
+  height: min(52dvh, 560px, var(--kb-popper-content-available-height, 52dvh));
+}
+.session-progress-island-panel-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: none;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 18px;
+}
+.session-progress-island-positioner[data-compact="true"] .session-progress-island-count {
+  margin-left: auto;
+}
+.session-progress-island-count {
+  color: var(--text-weak);
+}
+.session-progress-island-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.session-progress-island-tab {
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 18px;
+  min-height: 40px;
+  color: var(--text-weak);
+}
+.session-progress-island-tab[aria-pressed="true"] {
+  background: var(--workbench-selected-bg);
+  color: var(--text-base);
+}
+.session-progress-island-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.session-progress-view[data-active="false"] {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.session-progress-dag-view {
+  height: 100%;
+  min-height: 0;
+}
+.session-progress-todo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px 12px;
+}
+.session-progress-todo-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  column-gap: 8px;
+  row-gap: 2px;
+  align-items: start;
+  padding: 10px 0;
+  border-top: 1px solid var(--border-weak-base);
+}
+.session-progress-todo-icon {
+  display: flex;
+  padding-top: 2px;
+  color: var(--text-weak);
+}
+.session-progress-todo-row[data-status="in_progress"] .session-progress-todo-icon {
+  color: var(--text-interactive-base);
+}
+.session-progress-todo-row[data-status="completed"] .session-progress-todo-icon {
+  color: var(--text-on-success-base);
+}
+.session-progress-todo-content {
+  font-size: 14px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.session-progress-todo-row[data-status="cancelled"] .session-progress-todo-content {
+  text-decoration: line-through;
+  color: var(--text-weak);
+}
+.session-progress-todo-priority {
+  grid-column: 2;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-weak);
+}
+.session-progress-island[data-exiting="true"] {
+  animation: progress-exit 180ms ease-in both;
+  pointer-events: none;
+}
+@keyframes progress-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes progress-exit {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@media (pointer: coarse) {
+  .session-progress-island-header,
+  .session-progress-island-tab,
+  .session-progress-island-close {
+    min-height: 44px;
+  }
+  .session-progress-island-close {
+    min-width: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .session-progress-island,
+  .session-progress-island[data-exiting="true"] {
+    animation: none;
+  }
+  .session-progress-island-panel,
+  .session-progress-island-header,
+  .session-progress-island-tab,
+  .session-progress-island-chevron {
+    transition: none;
+  }
+}

@@ -12,6 +12,10 @@ Research documents preserve investigations, measurements, experiments, and desig
 
 ## Preserved Research Summaries
 
+### Snapshot ingestion latency
+
+[Snapshot import performance](2026-10-04-snapshot-import-performance.md) records the loose-object synchronization bottleneck, repeated full-capture measurements, concurrent-import ownership and remaining directory pressure. The implementation contract lives in [Workspace and files](../architecture/workspace-and-files.md#snapshots-rollback-and-restore).
+
 ### Session 交互卡顿调查
 
 [2026-10-03 Session 卡顿与交互失效诊断](2026-10-03-session-latency-audit.md) 保存主实例与最新 dev 的版本对照、会话切换和首条消息复现、工具快照阶段测量、交接视图异常及可观测性缺陷，并区分已确认问题、既有改进和待验证项。

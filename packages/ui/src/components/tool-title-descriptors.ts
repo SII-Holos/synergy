@@ -336,9 +336,6 @@ export const BODY_PRIMITIVES_DESC = {
 export const TURN_CHANGE_DESC = {
   reviewChanges: d("turn-change.review-changes", "Review changes"),
   binary: d("turn-change.binary", "Binary"),
-  calculating: d("turn-change.calculating", "Calculating file changes…"),
-  calculationFailed: d("turn-change.calculation-failed", "Couldn’t calculate file changes"),
-  recordingIncomplete: d("turn-change.recording-incomplete", "File change recording is incomplete"),
 } as const
 
 // ── Session turn chrome ─────────────────────────────────────────────

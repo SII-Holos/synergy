@@ -28,6 +28,11 @@ test.skipIf(process.env.SYNERGY_DESKTOP_RUNTIME_TEST !== "1")(
       if (!preload.success) throw new AggregateError(preload.logs, "Recovery preload build failed")
       const electron: unknown = process.env.SYNERGY_DESKTOP_ELECTRON_BIN ?? createRequire(import.meta.url)("electron")
       if (typeof electron !== "string") throw new Error("Electron executable path is unavailable")
+      const env = { ...process.env }
+      delete env.GH_TOKEN
+      delete env.GITHUB_TOKEN
+      delete env.SYNERGY_TEST_FILES
+      env.SYNERGY_STARTUP_ICON ??= path.resolve(import.meta.dir, "../build/icon.png")
       const launched = Bun.spawn(
         [
           electron,
@@ -35,7 +40,7 @@ test.skipIf(process.env.SYNERGY_DESKTOP_RUNTIME_TEST !== "1")(
           ...(os.platform() === "linux" ? ["--no-sandbox"] : []),
           path.join(directory, "startup-progress.js"),
         ],
-        { stdout: "pipe", stderr: "pipe" },
+        { env, stdout: "pipe", stderr: "pipe" },
       )
       child = launched
       const stdout = new Response(launched.stdout).text()

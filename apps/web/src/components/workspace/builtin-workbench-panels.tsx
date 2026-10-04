@@ -24,13 +24,23 @@ import { createContextWorkbenchPanel } from "./context-panel-entry"
 import { createLatticeWorkbenchPanel } from "./lattice-panel-entry"
 import { createBossWorkbenchPanel } from "./boss-panel-entry"
 import { E } from "@/components/execution/i18n"
+import { BrowserPreparingPanel } from "./browser/browser-preparing"
+import type { WorkbenchPanelOpenContext, WorkbenchPanelTabInit } from "@/plugin/registries/workbench-panel-registry"
+import type { BrowserWorkbenchOpenSelection } from "./browser/browser-workbench-api"
 export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
   const { capabilities } = useGlobalSDK()
   const platform = usePlatform()
   const sdk = useSDK()
   const params = useParams()
   const workbench = useWorkbenchPanels()
-  let openingBrowser = false
+  type BrowserOpening = {
+    requestId: string
+    selection: BrowserWorkbenchOpenSelection
+    cancelled: boolean
+    pending?: Promise<WorkbenchPanelTabInit>
+  }
+  const browserOpenings = new WeakMap<WorkbenchPanelOpenContext, BrowserOpening>()
+  const nativePreparations = new Set<BrowserOpening>()
   onMount(() => {
     const key = (event: KeyboardEvent) => {
       if (
@@ -68,12 +78,12 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
   const catalog = useBrowserCatalog()
   const { controller, i18n } = useLocale()
   const disposers: VoidFunction[] = []
-  async function openNativePage(restore = false, url?: string) {
-    if (openingBrowser) return
-    openingBrowser = true
-    try {
-      const { openBrowserWorkbenchPage } = await import("./browser/browser-workbench-api")
-      const route =
+  async function openNativePage(restore = false, url?: string, context?: WorkbenchPanelOpenContext) {
+    const access = {
+      client: sdk.client,
+      serverUrl: sdk.url,
+      bridge: platform.browserNative,
+      route:
         url?.startsWith("file:") && params.id
           ? {
               mode: "session" as const,
@@ -82,23 +92,71 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
               path_directory: params.dir ?? sdk.scopeID,
               query_directory: sdk.directory,
             }
-          : browserRoute()
-      return await openBrowserWorkbenchPage({
-        client: sdk.client,
-        serverUrl: sdk.url,
-        bridge: platform.browserNative,
-        route,
+          : browserRoute(),
+    }
+    const previous = context && browserOpenings.get(context)
+    if (previous?.pending) return previous.pending
+    const operation: BrowserOpening = previous ?? {
+      requestId: context?.requestId ?? "",
+      selection: {},
+      cancelled: false,
+    }
+    if (context) browserOpenings.set(context, operation)
+    if (context && !previous)
+      context.onCancel(() => {
+        operation.cancelled = true
+      })
+    const pending = (async () => {
+      if (restore)
+        await Promise.allSettled([...nativePreparations].filter((item) => item.cancelled).map((item) => item.pending))
+      const { openBrowserWorkbenchPage, closeBrowserWorkbenchPage } = await import("./browser/browser-workbench-api")
+      const tab = await openBrowserWorkbenchPage({
+        ...access,
         restore,
         url,
+        requestId: operation.requestId || undefined,
+        selection: operation.selection,
+        onCreated: (created) =>
+          context?.onCancel(() =>
+            closeBrowserWorkbenchPage({
+              ...access,
+              route: browserWorkbenchRoute(created.state) ?? access.route,
+              pageId: created.resourceId!,
+            }),
+          ),
       })
+      if (sdk.url !== access.serverUrl)
+        throw new Error(
+          i18n._({
+            id: "browser.prepare.closed",
+            message: "The browser target changed or closed. Reopen the import dialog.",
+          }),
+        )
+      const owner = await catalog.get(browserWorkbenchRoute(tab.state) ?? access.route)
+      if (!owner.store.session.pages.some((page) => page.id === tab.resourceId)) await catalog.refresh(owner)
+      const page = owner.store.session.pages.find((page) => page.id === tab.resourceId)
+      if (!page || page.status !== "active")
+        throw new Error(i18n._({ id: "browser.prepare.failed", message: "Browser preparation failed. Retry." }))
+      return browserPageTab(page, owner.route)
+    })()
+    operation.pending = pending
+    nativePreparations.add(operation)
+    try {
+      return await pending
     } catch (error) {
+      operation.pending = undefined
+      if (context && normalizeBrowserError(error, "").code) {
+        const { createBrowserCommandId } = await import("./browser/browser-command")
+        operation.requestId = createBrowserCommandId()
+      }
+      if (context) throw error
       showToast({
         type: "error",
         title: i18n._(B.issue),
         description: normalizeBrowserError(error, "Page could not be opened. Retry.").message,
       })
     } finally {
-      openingBrowser = false
+      nativePreparations.delete(operation)
     }
   }
 
@@ -231,16 +289,17 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         pluginId: "builtin",
         order: 20,
         loader: async () => ({ default: (await import("./tool-browser")).BrowserWorkbenchContent }),
-        createTab: () => openNativePage(),
-        restoreTab: () => openNativePage(true),
-        async resolveTab(init) {
+        openingComponent: (props) => <BrowserPreparingPanel tab={props.tab} />,
+        createTab: (_init, context) => openNativePage(false, undefined, context),
+        restoreTab: (context) => openNativePage(true, undefined, context),
+        async resolveTab(init, context) {
           if (!init.resourceId) {
             const state = init.state
             const url =
               state && typeof state === "object" && "url" in state && typeof state.url === "string"
                 ? state.url
                 : undefined
-            return openNativePage(false, url)
+            return openNativePage(false, url, context)
           }
           const requested = browserWorkbenchRoute(init.state)
           const route = requested ?? browserRoute()
@@ -270,6 +329,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
               }
             }
           } catch (error) {
+            if (context) throw error
             showToast({
               type: "error",
               title: i18n._(B.issue),

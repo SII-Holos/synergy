@@ -1,3 +1,6 @@
+import type { I18n } from "@lingui/core"
+import type { ProgressIslandSnapshot } from "./session-progress-summary"
+
 export const S = {
   historyCopyTitle: { id: "session.history.copyTitle", message: "Copy conversation text" },
   historyCopyDescription: {
@@ -239,6 +242,53 @@ export const S = {
   forkConfirmFailed: { id: "session.fork.confirm.failed", message: "Fork failed" },
   forkConfirmRequestFailed: { id: "session.fork.confirm.requestFailed", message: "Request failed" },
 
+  // session-progress summary labels
+  progressEnded: { id: "session.progress.ended", message: "Ended" },
+  progressCancelled: { id: "session.progress.cancelled", message: "{count} cancelled" },
+  progressDone: { id: "session.progress.done", message: "Done · {count, plural, one {# task} other {# tasks}}" },
+  progressNeedsAttention: {
+    id: "session.progress.needsAttention",
+    message: "Needs attention · {count, plural, one {# failed} other {# failed}}",
+  },
+  progressNeedsAttentionBlocked: {
+    id: "session.progress.needsAttentionBlocked",
+    message: "Needs attention · {count, plural, one {# blocked} other {# blocked}}",
+  },
+  progressReady: { id: "session.progress.ready", message: "Ready · {fraction}" },
+  progressWorkingLabel: {
+    id: "session.progress.workingLabel",
+    message: "Working {count, plural, one {# task} other {# tasks}}",
+  },
+  progressWorking: { id: "session.progress.working", message: "Working" },
+
+  // session-progress-island
+  progressSessionLabel: { id: "session.progress.sessionLabel", message: "Session progress" },
+  progressCompleteAria: {
+    id: "session.progress.completeAria",
+    message: "Session progress complete, {count, plural, one {# task} other {# tasks}} done",
+  },
+  progressAttentionAria: {
+    id: "session.progress.attentionAria",
+    message: "Session progress needs attention, {count} failed",
+  },
+  progressBlockedAria: {
+    id: "session.progress.blockedAria",
+    message: "Session progress needs attention, {count} blocked",
+  },
+  progressActiveAria: {
+    id: "session.progress.activeAria",
+    message: "Session progress, {completed} of {total} tasks complete",
+  },
+  progressDagTab: { id: "session.progress.dagTab", message: "DAG" },
+  progressTodoTab: { id: "session.progress.todoTab", message: "To-do" },
+  progressCurrentWork: { id: "session.progress.currentWork", message: "Current work" },
+  progressCompleteFraction: { id: "session.progress.completeFraction", message: "{completed}/{total} complete" },
+  progressViewLabel: { id: "session.progress.viewLabel", message: "Progress view" },
+  progressExpand: { id: "session.progress.expand", message: "Expand" },
+  progressCollapse: { id: "session.progress.collapse", message: "Collapse" },
+  progressClose: { id: "session.progress.close", message: "Close progress" },
+  progressNoActivePlan: { id: "session.progress.noActivePlan", message: "No active plan" },
+
   // session-inbox
   inboxQueued: { id: "session.inbox.queued", message: "Queued by you" },
   inboxGuiding: { id: "session.inbox.guiding", message: "Guiding current run" },
@@ -298,6 +348,7 @@ export const S = {
   inboxGuideAllFailed: { id: "session.inbox.guideAllFailed", message: "Failed to send queued messages now" },
   inboxRequestFailed: { id: "session.inbox.requestFailed", message: "Request failed" },
   inboxDelete: { id: "session.inbox.delete", message: "Delete" },
+  inboxRemove: { id: "session.inbox.remove", message: "Remove message" },
   inboxOperationPending: { id: "session.inbox.operationPending", message: "Updating message…" },
   inboxRemoveFailed: {
     id: "session.inbox.removeFailed",
@@ -343,6 +394,8 @@ export const S = {
   scopesNewActivity: { id: "scopes.newActivity", message: "New activity" },
 
   // subagent-dock.tsx
+  subagentDockLabel: { id: "session.subagent.dockLabel", message: "Active agents" },
+  subagentCancelFailed: { id: "session.subagent.cancelFailed", message: "Could not cancel agent" },
   subagentToolsCount: { id: "session.subagent.toolsCount", message: "{count} tools" },
   subagentRetry: { id: "session.subagent.retry", message: "Retry #{attempt}" },
   subagentQueuedWait: { id: "session.subagent.queuedWait", message: "Queued \u2014 waiting for slot" },
@@ -405,4 +458,36 @@ export const S = {
   scopesNewSession: { id: "scopes.newSession", message: "New session" },
   scopesTasksRunning: { id: "scopes.tasksRunning", message: "{running}/{count} tasks running" },
   scopesTasksCount: { id: "scopes.tasksCount", message: "{count} tasks" },
+}
+
+export function describeProgress(snapshot: ProgressIslandSnapshot, i18n: I18n): string {
+  if (snapshot.status === "hidden") return i18n._(S.progressSessionLabel)
+  if (snapshot.status === "complete") return i18n._({ ...S.progressCompleteAria, values: { count: snapshot.total } })
+  if (snapshot.tone === "failed") return i18n._({ ...S.progressAttentionAria, values: { count: snapshot.failed } })
+  if (snapshot.tone === "blocked") return i18n._({ ...S.progressBlockedAria, values: { count: snapshot.blocked } })
+  return i18n._({ ...S.progressActiveAria, values: { completed: snapshot.completed, total: snapshot.total } })
+}
+
+export function progressExpandCollapse(expanded: boolean, i18n: I18n): string {
+  return expanded ? i18n._(S.progressCollapse) : i18n._(S.progressExpand)
+}
+
+export function formatProgressLabel(
+  snapshot: ProgressIslandSnapshot,
+  activeLabel: string | undefined,
+  i18n: I18n,
+): string {
+  if (snapshot.status === "hidden") return ""
+  if (snapshot.status === "complete" && snapshot.total === 0) return i18n._(S.progressEnded)
+  if (snapshot.status === "complete") return i18n._({ ...S.progressDone, values: { count: snapshot.total } })
+  if (snapshot.tone === "failed") return i18n._({ ...S.progressNeedsAttention, values: { count: snapshot.failed } })
+  if (snapshot.tone === "blocked")
+    return i18n._({ ...S.progressNeedsAttentionBlocked, values: { count: snapshot.blocked } })
+  const fraction = `${snapshot.completed}/${snapshot.total}`
+  const label = activeLabel?.trim()
+  if (label) return `${label} · ${fraction}`
+  if (snapshot.tone === "ready") return i18n._({ ...S.progressReady, values: { fraction } })
+  if (snapshot.active > 1)
+    return `${i18n._({ ...S.progressWorkingLabel, values: { count: snapshot.active } })} · ${fraction}`
+  return `${i18n._(S.progressWorking)} · ${fraction}`
 }

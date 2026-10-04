@@ -57,12 +57,15 @@ import {
 } from "@thisbeyond/solid-dnd"
 import { ConstrainDragYAxis } from "@/utils/solid-dnd"
 import { createWorkbenchPanelLoader } from "./workbench-panel-loader"
+import { Dynamic } from "solid-js/web"
 
 function WorkbenchPanelContent(props: {
   entry: WorkbenchPanelEntry
   tab: WorkbenchPanelTab
   onRequestClose: () => void
 }) {
+  const workbench = useWorkbenchPanels()
+  const opening = () => workbench.openingForTab(props.tab.id)
   const panel = createWorkbenchPanelLoader<Component<WorkbenchPanelContentProps>>(
     props.entry.loader,
     props.entry.component ?? null,
@@ -74,11 +77,26 @@ function WorkbenchPanelContent(props: {
 
   return (
     <Show
-      when={!panel.loading()}
+      when={!panel.loading() && !opening()}
       fallback={
-        <div class="workbench-surface-loading">
-          <Spinner class="size-5" />
-        </div>
+        <Show
+          when={props.entry.openingComponent}
+          fallback={
+            <div class="workbench-surface-loading">
+              <Spinner class="size-5" />
+            </div>
+          }
+        >
+          {(component) => (
+            <Dynamic
+              component={component()}
+              pluginId={props.entry.pluginId ?? "builtin"}
+              panelId={props.entry.id}
+              tab={props.tab}
+              onRequestClose={props.onRequestClose}
+            />
+          )}
+        </Show>
       }
     >
       <Show
