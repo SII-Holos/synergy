@@ -14,10 +14,6 @@ msgid "activity.approval.reject"
 msgstr "拒绝"
 
 #. js-lingui-explicit-id
-msgid "activity.batch.attempted"
-msgstr "尝试了 {count} 次操作"
-
-#. js-lingui-explicit-id
 msgid "activity.batch.browser"
 msgstr "执行了 {count} 次浏览器操作"
 
@@ -17245,12 +17241,16 @@ msgid "session.process.interrupted"
 msgstr "已中断"
 
 #. js-lingui-explicit-id
-msgid "session.process.latest"
-msgstr "回到最新"
-
-#. js-lingui-explicit-id
 msgid "session.process.loadFailed"
 msgstr "无法加载过程详情。"
+
+#. js-lingui-explicit-id
+msgid "session.process.more"
+msgstr "下方还有更多操作"
+
+#. js-lingui-explicit-id
+msgid "session.process.newActions"
+msgstr "有新操作"
 
 #. js-lingui-explicit-id
 msgid "session.process.openSource"
@@ -19466,7 +19466,7 @@ msgstr "平衡"
 
 #. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.description"
-msgstr "选择 Synergy 在界面中显示的活动详情程度"
+msgstr "均衡模式展开当前工具批次；完整模式展开全部过程；精简模式默认收起过程。每个批次均可独立展开。"
 
 #. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.full"

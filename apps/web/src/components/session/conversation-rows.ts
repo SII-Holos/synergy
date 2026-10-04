@@ -1,8 +1,19 @@
 import type { Message, SessionPartSummary } from "@ericsanchezok/synergy-sdk"
 
+import {
+  ACTIVITY_FAMILY_ORDER,
+  activityFamilyForTool,
+  semanticCategoryForKnownTool,
+  type ActivityFamily,
+} from "@ericsanchezok/synergy-util/activity"
+
 export type ConversationActivity = {
   key: string
   parts: string[]
+  facts: { family: ActivityFamily; count: number }[]
+  fileReadOperations: number
+  searchOperations: number
+  inspectionOperations: number
   tools: number
   reasoning: number
   active: boolean
@@ -15,8 +26,14 @@ export type ConversationRow = {
   root: Message
   message: Message
   activity?: ConversationActivity
+  activities?: ConversationActivity[]
   exiting?: boolean
-  process?: { open: boolean; working: boolean; hasContent: boolean; hasTurnContent: boolean }
+  process?: {
+    open: boolean
+    working: boolean
+    hasContent: boolean
+    hasTurnContent: boolean
+  }
 } & (
   | {
       kind: "body"
@@ -44,7 +61,15 @@ export function buildConversationRows(input: {
   process?: (root: Message) => { open: boolean; working: boolean }
 }): ConversationRow[] {
   const rows: ConversationRow[] = []
-  const boundaries = new Set(input.previous?.filter((row) => row.kind === "body").map((row) => row.key))
+  const previousBlocks =
+    input.previous?.flatMap((row) =>
+      row.kind === "process" ? (row.activities ?? []) : row.kind === "activity" ? [row.activity] : [],
+    ) ?? []
+  const boundaries = new Set(
+    [...previousBlocks.flatMap((block) => block.entries), ...(input.previous ?? [])]
+      .filter((row) => row.kind === "body")
+      .map((row) => row.key),
+  )
   for (const root of input.timeline) {
     const messages =
       root.role === "assistant"
@@ -107,21 +132,20 @@ export function buildConversationRows(input: {
           (message.metadata?.compactionAttempt as { state?: string } | undefined)?.state === "empty"
         )
           continue
-        if (!process || process.open)
-          rows.push({
-            key: `${message.id}:${event}`,
-            root,
-            message,
-            kind: "body",
-            parts,
-            before: true,
-            after: true,
-            beforeTool: false,
-            beforeReasoning: false,
-            process,
-            processBody: true,
-            event,
-          })
+        rows.push({
+          key: `${message.id}:${event}`,
+          root,
+          message,
+          kind: "body",
+          parts,
+          before: true,
+          after: true,
+          beforeTool: false,
+          beforeReasoning: false,
+          process,
+          processBody: true,
+          event,
+        })
         continue
       }
       if (page?.hasEarlier)
@@ -144,7 +168,6 @@ export function buildConversationRows(input: {
             offset++
           }
         }
-        if (process && processBody && !process.open) continue
         rows.push({
           key: `${message.id}:${parts[first].id}`,
           root,
@@ -164,12 +187,15 @@ export function buildConversationRows(input: {
     if (process && !header) rows.push({ key: `${root.id}:process`, root, message: root, kind: "process", process })
     rows.push({ key: `${root.id}:footer`, root, message: root, kind: "footer", process })
   }
-  return groupActivities(rows, input.activity)
+  return groupActivities(rows, input.activity, previousBlocks).filter(
+    (row) => !row.process || row.process.open || (row.kind !== "activity" && !(row.kind === "body" && row.processBody)),
+  )
 }
 
 function groupActivities(
   rows: ConversationRow[],
   expanded?: (block: ConversationActivity) => boolean,
+  previous: readonly ConversationActivity[] = [],
 ): ConversationRow[] {
   const result: ConversationRow[] = []
   const blocks: ConversationActivity[] = []
@@ -187,6 +213,10 @@ function groupActivities(
           key: `${row.root.id}:activity:${row.event ? row.key : row.parts[0].id}`,
           parts: [],
           tools: 0,
+          facts: [],
+          fileReadOperations: 0,
+          searchOperations: 0,
+          inspectionOperations: 0,
           reasoning: 0,
           active: row.process.working,
           open: true,
@@ -216,6 +246,39 @@ function groupActivities(
     }
     result.push(row)
   }
-  for (const block of blocks) block.open = expanded?.(block) ?? true
+  const priorKeys = new Map(previous.flatMap((block) => block.parts.map((id) => [id, block.key] as const)))
+  const used = new Set<string>()
+  for (const block of blocks) {
+    const key = block.parts.map((id) => priorKeys.get(id)).find((key) => key && !used.has(key))
+    if (key) block.key = key
+    used.add(block.key)
+    const counts = new Map<ActivityFamily, number>()
+    for (const row of block.entries) {
+      if (row.kind !== "body" || row.event) continue
+      for (const part of row.parts) {
+        if (part.type !== "tool") continue
+        if (row.process?.working && ["pending", "generating", "running"].includes(part.status ?? ""))
+          block.active = true
+        if (part.status !== "completed" || !part.tool) continue
+        const family = activityFamilyForTool(part.tool)
+        counts.set(family, (counts.get(family) ?? 0) + 1)
+        if (family !== "inspect-local") continue
+        const category = semanticCategoryForKnownTool(part.tool)
+        if (category === "file-read" && part.tool !== "list") block.fileReadOperations++
+        else if (category === "search") block.searchOperations++
+        else block.inspectionOperations++
+      }
+    }
+    block.facts = ACTIVITY_FAMILY_ORDER.flatMap((family) => {
+      const count = counts.get(family) ?? 0
+      return count ? [{ family, count }] : []
+    })
+    block.open = expanded?.(block) ?? true
+  }
+  for (const row of result) {
+    if (row.kind === "activity") row.key = row.activity.key
+    if (row.kind === "process" && row.process)
+      row.activities = blocks.filter((block) => block.entries[0]?.root.id === row.root.id)
+  }
   return result.filter((row) => row.kind !== "body" || !row.activity || row.activity.open)
 }

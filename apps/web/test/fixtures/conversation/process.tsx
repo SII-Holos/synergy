@@ -60,6 +60,7 @@ const part = (messageID: string, id: string, type: Part["type"], text = ""): Par
     ...(type === "tool"
       ? {
           tool: "bash",
+          workBrief: "Check the project directory",
           callID: id,
           state: {
             status: "completed",
@@ -233,7 +234,17 @@ const context: Partial<PluginConversationService> = {
     },
   },
 }
+let toolCaseSequence = 0
 window.__conversationProcess = {
+  toolCase(tool, input, metadata, status = "completed") {
+    const base = part("work", `case-${++toolCaseSequence}`, "tool")
+    if (base.type !== "tool") return
+    setData("part", "work", (parts) =>
+      parts.map((part, index) =>
+        index === 2 ? ({ ...base, tool, state: { ...base.state, status, input, metadata } } as Part) : part,
+      ),
+    )
+  },
   prepare() {
     setData("message", "session", [root])
     setStatus("preparing")
@@ -359,7 +370,10 @@ const runtime = {
   cortexTasks: () => [],
 }
 const resource = {
-  openToolActivity: () => true,
+  openToolActivity: (target: unknown) => {
+    window.__processSelection = target
+    return true
+  },
   openActivityDetail: (target: unknown) => {
     window.__processSelection = target
     return true

@@ -14,10 +14,6 @@ msgid "activity.approval.reject"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "activity.batch.attempted"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "activity.batch.browser"
 msgstr ""
 
@@ -17245,11 +17241,15 @@ msgid "session.process.interrupted"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "session.process.latest"
+msgid "session.process.loadFailed"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "session.process.loadFailed"
+msgid "session.process.more"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.process.newActions"
 msgstr ""
 
 #. js-lingui-explicit-id

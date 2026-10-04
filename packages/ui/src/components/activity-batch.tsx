@@ -54,6 +54,63 @@ const facts: Record<ActivityFamily, MessageDescriptor> = {
     message: "{count, plural, one {Performed # action} other {Performed # actions}}",
   },
 }
+export function ActivityBatchLabel(props: {
+  batch: Pick<
+    ActivityBatchItem,
+    "facts" | "fileReads" | "fileReadOperations" | "searchOperations" | "inspectionOperations"
+  >
+  total: number
+}) {
+  const { _ } = useLingui()
+  const countedFact = (descriptor: MessageDescriptor, count: number) => _({ ...descriptor, values: { count } })
+  const inspectionLabel = () => {
+    const labels: string[] = []
+    if (props.batch.fileReads !== undefined)
+      labels.push(
+        _({
+          id: "activity.batch.readFiles",
+          message: "{count, plural, one {Read # file} other {Read # files}}",
+          values: { count: props.batch.fileReads },
+        }),
+      )
+    else if (props.batch.fileReadOperations)
+      labels.push(
+        _({
+          id: "activity.batch.readOperations",
+          message: "{count, plural, one {Read files # time} other {Read files # times}}",
+          values: { count: props.batch.fileReadOperations },
+        }),
+      )
+    if (props.batch.searchOperations)
+      labels.push(
+        _({
+          id: "activity.batch.searched",
+          message: "{count, plural, one {Searched # time} other {Searched # times}}",
+          values: { count: props.batch.searchOperations },
+        }),
+      )
+    if (props.batch.inspectionOperations)
+      labels.push(countedFact(facts["inspect-local"], props.batch.inspectionOperations))
+    return labels
+  }
+  const label = createMemo(() => {
+    const labels = props.batch.facts
+      .filter((fact) => fact.count > 0)
+      .flatMap((fact) => {
+        const inspection = fact.family === "inspect-local" ? inspectionLabel() : []
+        return inspection.length ? inspection : [countedFact(facts[fact.family], fact.count)]
+      })
+    const total = countedFact(
+      { id: "session.activity.operations", message: "{count, plural, one {# action} other {# actions}}" },
+      props.total,
+    )
+    if (!labels.length) return total
+    const incomplete = props.batch.facts.reduce((sum, fact) => sum + fact.count, 0) < props.total
+    return [...labels.slice(0, 2), ...(labels.length > 2 || incomplete ? [total] : [])].join(" · ")
+  })
+  return <>{label()}</>
+}
+
 export function ActivityBatch(props: {
   batch: ActivityBatchItem
   serverUrl: string
@@ -65,7 +122,6 @@ export function ActivityBatch(props: {
   onInspect?: () => void
 }) {
   const { _ } = useLingui()
-  const countedFact = (descriptor: MessageDescriptor, count: number) => _({ ...descriptor, values: { count } })
   const [explicit, setExplicit] = createSignal<boolean>()
   const [retained, setRetained] = createSignal<string[]>([])
   const [focused, setFocused] = createSignal<string>()
@@ -104,51 +160,7 @@ export function ActivityBatch(props: {
     activityBatchWindow(props.batch, pageEnd(), [...pinned(), ...(reasoningAnchor() ? [reasoningAnchor()!] : [])]),
   )
   const visible = createMemo(() => new Set(open() ? window().steps.map((step) => step.part.id) : pinned()))
-  const inspectionLabel = () => {
-    const labels: string[] = []
-    if (props.batch.fileReads !== undefined)
-      labels.push(
-        _({
-          id: "activity.batch.readFiles",
-          message: "{count, plural, one {Read # file} other {Read # files}}",
-          values: { count: props.batch.fileReads },
-        }),
-      )
-    else if (props.batch.fileReadOperations)
-      labels.push(
-        _({
-          id: "activity.batch.readOperations",
-          message: "{count, plural, one {Read files # time} other {Read files # times}}",
-          values: { count: props.batch.fileReadOperations },
-        }),
-      )
-    if (props.batch.searchOperations)
-      labels.push(
-        _({
-          id: "activity.batch.searched",
-          message: "{count, plural, one {Searched # time} other {Searched # times}}",
-          values: { count: props.batch.searchOperations },
-        }),
-      )
-    if (props.batch.inspectionOperations)
-      labels.push(countedFact(facts["inspect-local"], props.batch.inspectionOperations))
-    return labels.join(" · ")
-  }
-  const label = createMemo(() =>
-    props.batch.facts.some((fact) => fact.count > 0)
-      ? props.batch.facts
-          .map((fact) =>
-            fact.family === "inspect-local"
-              ? inspectionLabel() || countedFact(facts[fact.family], fact.count)
-              : countedFact(facts[fact.family], fact.count),
-          )
-          .join(" · ")
-      : _({
-          id: "activity.batch.attempted",
-          message: "{count, plural, one {Attempted # action} other {Attempted # actions}}",
-          values: { count: props.batch.steps.length },
-        }),
-  )
+  const label = () => <ActivityBatchLabel batch={props.batch} total={props.batch.steps.length} />
   const group = createMemo(() => ({
     kind: "activity-group" as const,
     key: props.batch.key,
