@@ -144,7 +144,7 @@ test("Docker tasks overlap only isolated processes and retain every task result"
       head: "b",
       sha: "c",
       run: "fixture",
-      mode: "diagnostic",
+      mode: "full",
       changed: [],
       tasks,
       only: tasks.map((task) => task.id),

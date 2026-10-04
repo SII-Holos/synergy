@@ -53,6 +53,8 @@ Read [PRODUCT.md](PRODUCT.md) before changing interaction structure, visual hier
 
 Keep App tests under `test/`, mirroring the relevant `src/` or `script/` domain. Never colocate `*.test.*` or `*.spec.*` files with App implementation files.
 
+Keep browser conditions, isolation lists and batch timeouts in `script/test-options.ts`; the package runner and CI planner share that executable batch definition.
+
 Run the narrow UI/context test first, then:
 
 ```bash
