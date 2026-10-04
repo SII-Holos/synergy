@@ -464,6 +464,7 @@ export namespace SessionInvoke {
       throw error
     } finally {
       const errors: unknown[] = []
+      SessionManager.setActivity(sessionID, { phase: "waiting_background" }, { generation: lease.generation })
       try {
         await LoopJob.drain(sessionID)
       } catch (error) {
@@ -479,6 +480,11 @@ export namespace SessionInvoke {
             : undefined
       for (const segment of segments) {
         try {
+          SessionManager.setActivity(
+            sessionID,
+            { phase: "finalizing" },
+            { generation: lease.generation, rootID: segment.runID },
+          )
           await RolloutLifecycle.finishSegment(segment, paused ? "interrupted" : (outcome ?? "completed"))
         } catch (error) {
           errors.push(error)
@@ -599,7 +605,7 @@ export namespace SessionInvoke {
             let segment: RolloutSchema.ExecutionSegment | undefined
             let previousTerminalReplyID: string | undefined
             while (true) {
-              SessionManager.setStatus(sessionID, { type: "busy" })
+              SessionManager.setActivity(sessionID, { phase: "preparing_context" }, { generation: lease.generation })
               log.info("loop", { step, sessionID })
               if (abort.aborted) break
               session = await Session.get(sessionID)
@@ -668,10 +674,20 @@ export namespace SessionInvoke {
                 }
                 processedRootID = R.id
                 if (!segment) {
+                  SessionManager.setActivity(
+                    sessionID,
+                    { phase: "preparing_files" },
+                    { generation: lease.generation, rootID: R.id },
+                  )
                   segment = await RolloutLifecycle.start(session, R, RParts ?? [])
                   segments.push(segment)
                 }
               }
+              SessionManager.setActivity(
+                sessionID,
+                { phase: "preparing_context" },
+                { generation: lease.generation, rootID: R.id },
+              )
               previousTerminalReplyID = SessionProgress.findTerminalReply(msgs, R.id)?.info.id
               const modelSelection = await SessionModelSelection.capture(
                 sessionID,
@@ -1317,7 +1333,6 @@ export namespace SessionInvoke {
                 streamInput = undefined
               }
 
-              SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response…" })
               // Count LLM calls for registered workflow kinds in memory; flushed to
               // the durable domain state at turn boundaries / policy entry.
               const activeKind = WorkflowKindRegistry.effectiveKind(session?.workflow)

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test"
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
@@ -43,7 +44,8 @@ beforeAll(async () => {
     plugins: [solidPlugin()],
     server: {
       host: "127.0.0.1",
-      port: 0,
+      // Vite maps port 0 to its default: https://github.com/vitejs/vite/blob/v7.1.4/packages/vite/src/node/server/index.ts
+      port: await fixturePort(),
       strictPort: true,
       fs: { allow: [path.resolve(import.meta.dir, ".."), path.resolve(import.meta.dir, "../../../node_modules")] },
     },

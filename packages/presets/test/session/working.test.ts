@@ -657,7 +657,9 @@ describe("SessionWorking", () => {
 
             const lease = SessionManager.acquire(session.id)
             expect(lease).toBeDefined()
-            const statuses: Array<{ type: string }> = []
+            expect(SessionManager.bindRootTask(lease!, userMsg.id)).toBe(true)
+            expect(SessionManager.signalAbort(session.id)).toBe("signaled")
+            const statuses: Array<ReturnType<typeof SessionWorking.toStatus>> = []
             const unsubscribe = Bus.subscribe(SessionEvent.Status, (event) => {
               if (event.properties.sessionID === session.id) statuses.push(event.properties.status)
             })
@@ -668,7 +670,13 @@ describe("SessionWorking", () => {
               // the published status: it must follow the live runtime rather than
               // announce an idle session that is still stopping.
               expect(await SessionInvoke.repairAfterAbort(session.id)).toBe(false)
-              expect(statuses).toEqual([{ type: "busy" }])
+              expect(statuses).toEqual([
+                {
+                  type: "busy",
+                  description: undefined,
+                  activity: { phase: "stopping", rootID: userMsg.id, startedAt: expect.any(Number) },
+                },
+              ])
             } finally {
               unsubscribe()
               await SessionManager.release(lease!)

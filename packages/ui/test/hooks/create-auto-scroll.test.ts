@@ -99,6 +99,90 @@ function createScrollHarness() {
 }
 
 describe("createAutoScroll", () => {
+  test("an explicit latest intent survives delayed hydration and releases on reading input", async () => {
+    const harness = createScrollHarness()
+    let dispose = () => {}
+    try {
+      const element = harness.makeScroller()
+      let autoScroll!: ReturnType<typeof createAutoScroll>
+      createRoot((cleanup) => {
+        dispose = cleanup
+        autoScroll = createAutoScroll({ working: () => false, settleMs: 10 })
+        autoScroll.scrollRef(element)
+        autoScroll.contentRef(element)
+        autoScroll.forceScrollToBottom({ untilInteraction: true })
+      })
+      await Bun.sleep(30)
+      harness.flushFrames()
+      element.calls.length = 0
+      element.scrollHeight = 2200
+      harness.lastObserver()!.fire(element)
+      harness.flushFrames()
+      expect(element.calls).toEqual([{ top: 2200, behavior: "auto" }])
+      autoScroll.handleInteraction()
+      element.scrollTop = 300
+      element.calls.length = 0
+      element.scrollHeight = 3200
+      harness.lastObserver()!.fire(element)
+      harness.flushFrames()
+      expect(element.calls).toEqual([])
+      expect(autoScroll.userScrolled()).toBe(true)
+    } finally {
+      dispose()
+      harness.restore()
+    }
+  })
+
+  test("a latest intent cannot follow growth in a replacement viewport", async () => {
+    const harness = createScrollHarness()
+    let dispose = () => {}
+    try {
+      const first = harness.makeScroller()
+      const second = harness.makeScroller()
+      let autoScroll!: ReturnType<typeof createAutoScroll>
+      createRoot((cleanup) => {
+        dispose = cleanup
+        autoScroll = createAutoScroll({ working: () => false, settleMs: 10 })
+        autoScroll.scrollRef(first)
+        autoScroll.contentRef(first)
+      })
+      await harness.tick()
+      autoScroll.forceScrollToBottom({ untilInteraction: true })
+      harness.flushFrames()
+      autoScroll.scrollRef(second)
+      autoScroll.contentRef(second)
+      await Bun.sleep(30)
+      second.scrollHeight = 2200
+      harness.lastObserver()!.fire(second)
+      harness.flushFrames()
+      expect(second.calls).toEqual([])
+    } finally {
+      dispose()
+      harness.restore()
+    }
+  })
+
+  test("reading input cancels a queued latest jump", () => {
+    const harness = createScrollHarness()
+    let dispose = () => {}
+    try {
+      createRoot((cleanup) => {
+        dispose = cleanup
+        const element = harness.makeScroller()
+        const autoScroll = createAutoScroll({ working: () => false })
+        autoScroll.scrollRef(element)
+        autoScroll.forceScrollToBottom({ untilInteraction: true })
+        autoScroll.handleInteraction()
+        harness.flushFrames()
+        expect(element.calls).toEqual([])
+        expect(autoScroll.userScrolled()).toBe(true)
+      })
+    } finally {
+      dispose()
+      harness.restore()
+    }
+  })
+
   test("detached layout changes restore the captured reading position through repeated resizes", async () => {
     const harness = createScrollHarness()
     let dispose = () => {}

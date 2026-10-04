@@ -82,10 +82,6 @@ msgid "activity.history.range"
 msgstr "{first}–{last} of {total}"
 
 #. js-lingui-explicit-id
-msgid "activity.phase.prepare"
-msgstr "Preparing an action"
-
-#. js-lingui-explicit-id
 msgid "activity.trace.actions"
 msgstr "{count, plural, one {# action} other {# actions}}"
 
@@ -15796,50 +15792,6 @@ msgid "session-status.managing-tasks"
 msgstr "Managing tasks"
 
 #. js-lingui-explicit-id
-msgid "session-status.phrase.thinking.0"
-msgstr "{agentName} is cooking…"
-
-#. js-lingui-explicit-id
-msgid "session-status.phrase.thinking.1"
-msgstr "{agentName} putting it together…"
-
-#. js-lingui-explicit-id
-msgid "session-status.phrase.thinking.2"
-msgstr "{agentName} connecting the dots…"
-
-#. js-lingui-explicit-id
-msgid "session-status.phrase.thinking.3"
-msgstr "{agentName} on it…"
-
-#. js-lingui-explicit-id
-msgid "session-status.phrase.thinking.4"
-msgstr "{agentName} brewing something up…"
-
-#. js-lingui-explicit-id
-msgid "session-status.phrase.thinking.5"
-msgstr "{agentName} weaving things together…"
-
-#. ── Working-phrase descriptor IDs ───────────────────────────────────
-msgid "session-status.phrase.waiting.0"
-msgstr "{agentName} waiting on {count, plural, one {# background task} other {# background tasks}}…"
-
-#. ── Working-phrase descriptor IDs ───────────────────────────────────
-msgid "session-status.phrase.waiting.1"
-msgstr "{count, plural, one {# task} other {# tasks}} still cooking — {agentName} standing by…"
-
-#. ── Working-phrase descriptor IDs ───────────────────────────────────
-msgid "session-status.phrase.waiting.2"
-msgstr "{agentName} hanging tight — {count, plural, one {# task} other {# tasks}} in flight"
-
-#. ── Working-phrase descriptor IDs ───────────────────────────────────
-msgid "session-status.phrase.waiting.3"
-msgstr "{agentName} sitting tight — {count, plural, one {# task} other {# tasks}} running"
-
-#. ── Working-phrase descriptor IDs ───────────────────────────────────
-msgid "session-status.phrase.waiting.4"
-msgstr "{count, plural, one {# agent} other {# agents}} at work — {agentName} on standby…"
-
-#. js-lingui-explicit-id
 msgid "session-status.planning-next-steps"
 msgstr "Planning next steps"
 
@@ -15972,8 +15924,124 @@ msgid "session-turn.token-reasoning"
 msgstr "reasoning"
 
 #. js-lingui-explicit-id
+msgid "session.activity.approval"
+msgstr "Waiting for your approval"
+
+#. js-lingui-explicit-id
+msgid "session.activity.bindWorktree"
+msgstr "Preparing workspace · bind worktree"
+
+#. js-lingui-explicit-id
+msgid "session.activity.checkingReceipt"
+msgstr "Confirming message receipt"
+
+#. js-lingui-explicit-id
+msgid "session.activity.checkingSubmission"
+msgstr "Checking submission"
+
+#. js-lingui-explicit-id
+msgid "session.activity.createWorktree"
+msgstr "Preparing workspace · create worktree"
+
+#. js-lingui-explicit-id
+msgid "session.activity.enterWorktree"
+msgstr "Preparing workspace · enter worktree"
+
+#. js-lingui-explicit-id
+msgid "session.activity.finalizing"
+msgstr "Finalizing results"
+
+#. js-lingui-explicit-id
+msgid "session.activity.leaveWorktree"
+msgstr "Preparing workspace · return to project"
+
+#. js-lingui-explicit-id
+msgid "session.activity.materializingInput"
+msgstr "Preparing execution"
+
+#. js-lingui-explicit-id
 msgid "session.activity.operations"
 msgstr "{count, plural, one {# action} other {# actions}}"
+
+#. js-lingui-explicit-id
+msgid "session.activity.parallelTools"
+msgstr "Calling tools · {count} active"
+
+#. js-lingui-explicit-id
+msgid "session.activity.preparingContext"
+msgstr "Preparing context"
+
+#. js-lingui-explicit-id
+msgid "session.activity.preparingFiles"
+msgstr "Preparing project files"
+
+#. js-lingui-explicit-id
+msgid "session.activity.preparingSession"
+msgstr "Preparing session"
+
+#. js-lingui-explicit-id
+msgid "session.activity.preparingWorkspace"
+msgstr "Preparing workspace"
+
+#. js-lingui-explicit-id
+msgid "session.activity.processing"
+msgstr "Processing task"
+
+#. js-lingui-explicit-id
+msgid "session.activity.question"
+msgstr "Waiting for your answer"
+
+#. js-lingui-explicit-id
+msgid "session.activity.queuedAgent"
+msgstr "Waiting for execution resources"
+
+#. js-lingui-explicit-id
+msgid "session.activity.queuedStorage"
+msgstr "Waiting to save message"
+
+#. js-lingui-explicit-id
+msgid "session.activity.queuedTools"
+msgstr "Waiting for tool execution"
+
+#. js-lingui-explicit-id
+msgid "session.activity.reconnecting"
+msgstr "Reconnecting"
+
+#. js-lingui-explicit-id
+msgid "session.activity.responding"
+msgstr "Generating response"
+
+#. js-lingui-explicit-id
+msgid "session.activity.retry"
+msgstr "Waiting to retry · attempt {attempt}"
+
+#. js-lingui-explicit-id
+msgid "session.activity.retryingInput"
+msgstr "Waiting to retry preparation"
+
+#. js-lingui-explicit-id
+msgid "session.activity.runningTools"
+msgstr "Calling tools"
+
+#. js-lingui-explicit-id
+msgid "session.activity.stopping"
+msgstr "Stopping"
+
+#. js-lingui-explicit-id
+msgid "session.activity.submittingInput"
+msgstr "Submitting message"
+
+#. js-lingui-explicit-id
+msgid "session.activity.tool"
+msgstr "Calling tool · {action}"
+
+#. js-lingui-explicit-id
+msgid "session.activity.waitingBackground"
+msgstr "Waiting for background tasks"
+
+#. js-lingui-explicit-id
+msgid "session.activity.waitingModel"
+msgstr "Waiting for model response"
 
 #. js-lingui-explicit-id
 msgid "session.agenda.retry"
@@ -16372,6 +16440,26 @@ msgstr "Undo"
 #. js-lingui-explicit-id
 msgid "session.cmd.undoDesc"
 msgstr "Undo the last message turn"
+
+#. js-lingui-explicit-id
+msgid "session.content.loadFailed"
+msgstr "Couldn’t load this content"
+
+#. js-lingui-explicit-id
+msgid "session.content.retry"
+msgstr "Retry loading content"
+
+#. js-lingui-explicit-id
+msgid "session.content.retrying"
+msgstr "Retrying…"
+
+#. js-lingui-explicit-id
+msgid "session.content.syncFailed"
+msgstr "Couldn’t sync this content"
+
+#. js-lingui-explicit-id
+msgid "session.content.syncHint"
+msgstr "This content is still updating. Try again in a moment."
 
 #. js-lingui-explicit-id
 msgid "session.conversation.guide"
@@ -17089,16 +17177,28 @@ msgid "session.permissionDock.sessionScope"
 msgstr "For matching requests in this session; expires when the runtime is recreated or the server restarts"
 
 #. js-lingui-explicit-id
-msgid "session.process.approval"
-msgstr "Waiting for approval"
+msgid "session.process.agentDelivery"
+msgstr "Subagent returned"
+
+#. js-lingui-explicit-id
+msgid "session.process.agentDetail"
+msgstr "Agent result"
+
+#. js-lingui-explicit-id
+msgid "session.process.agentMessage"
+msgstr "Agent message"
+
+#. js-lingui-explicit-id
+msgid "session.process.compactionDetail"
+msgstr "Context compaction"
 
 #. js-lingui-explicit-id
 msgid "session.process.completed"
 msgstr "Work completed"
 
 #. js-lingui-explicit-id
-msgid "session.process.executing"
-msgstr "Running a command"
+msgid "session.process.copyResult"
+msgstr "Copy result"
 
 #. js-lingui-explicit-id
 msgid "session.process.failed"
@@ -17113,6 +17213,18 @@ msgid "session.process.interrupted"
 msgstr "Interrupted"
 
 #. js-lingui-explicit-id
+msgid "session.process.latest"
+msgstr "Back to latest"
+
+#. js-lingui-explicit-id
+msgid "session.process.loadFailed"
+msgstr "Unable to load process details."
+
+#. js-lingui-explicit-id
+msgid "session.process.openSource"
+msgstr "Open source session"
+
+#. js-lingui-explicit-id
 msgid "session.process.paused"
 msgstr "Paused"
 
@@ -17121,8 +17233,12 @@ msgid "session.process.priorStop"
 msgstr "Previously stopped"
 
 #. js-lingui-explicit-id
-msgid "session.process.reading"
-msgstr "Reading files"
+msgid "session.process.records"
+msgstr "Process history"
+
+#. js-lingui-explicit-id
+msgid "session.process.resultUnavailable"
+msgstr "The full task result is not available. The original notification is shown."
 
 #. js-lingui-explicit-id
 msgid "session.process.stopped"
@@ -17133,16 +17249,20 @@ msgid "session.process.thinking"
 msgstr "Thinking"
 
 #. js-lingui-explicit-id
+msgid "session.process.unavailable"
+msgstr "This process record is no longer available."
+
+#. js-lingui-explicit-id
+msgid "session.process.viewEvent"
+msgstr "View details: {title}"
+
+#. js-lingui-explicit-id
 msgid "session.process.viewReasoning"
 msgstr "View reasoning"
 
 #. js-lingui-explicit-id
 msgid "session.process.workedDuration"
 msgstr "Worked for {seconds} s"
-
-#. js-lingui-explicit-id
-msgid "session.process.working"
-msgstr "Working"
 
 #. js-lingui-explicit-id
 msgid "session.question.answerPlaceholder"
@@ -17633,24 +17753,36 @@ msgid "session.submission.check"
 msgstr "Check status"
 
 #. js-lingui-explicit-id
-msgid "session.submission.checkingReceipt"
-msgstr "Checking message receipt…"
-
-#. js-lingui-explicit-id
 msgid "session.submission.details"
 msgstr "Error details"
+
+#. js-lingui-explicit-id
+msgid "session.submission.dismiss"
+msgstr "Dismiss"
 
 #. js-lingui-explicit-id
 msgid "session.submission.failed"
 msgstr "Submission failed."
 
 #. js-lingui-explicit-id
-msgid "session.submission.preparing"
-msgstr "Preparing task"
+msgid "session.submission.restoreDraft"
+msgstr "Restore draft"
 
 #. js-lingui-explicit-id
 msgid "session.submission.retry"
 msgstr "Retry submission"
+
+#. js-lingui-explicit-id
+msgid "session.submission.retryAction"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "session.submission.savedFailure"
+msgstr "Your message is saved. Retry to resume processing."
+
+#. js-lingui-explicit-id
+msgid "session.submission.startFailed"
+msgstr "Unable to start execution"
 
 #. js-lingui-explicit-id
 msgid "session.submission.unknown"
@@ -17688,18 +17820,6 @@ msgstr "Retry"
 msgid "session.tags.saveFailed"
 msgstr "Could not save tags"
 
-#. session-transition-card.tsx — generic transition card
-msgid "session.transition.card.dismissAria"
-msgstr "Dismiss session progress"
-
-#. js-lingui-explicit-id
-msgid "session.transition.card.dismissTitle"
-msgstr "Dismiss"
-
-#. js-lingui-explicit-id
-msgid "session.transition.card.retry"
-msgstr "Retry"
-
 #. js-lingui-explicit-id
 msgid "session.transition.continue"
 msgstr "Continue task"
@@ -17707,42 +17827,6 @@ msgstr "Continue task"
 #. js-lingui-explicit-id
 msgid "session.transition.desc.cancelled"
 msgstr "This message was cancelled. You can dismiss this notice."
-
-#. js-lingui-explicit-id
-msgid "session.transition.desc.delayed"
-msgstr "Your message is saved. Preparation is taking longer than usual; processing will continue automatically."
-
-#. js-lingui-explicit-id
-msgid "session.transition.desc.initializing"
-msgstr "Your first message is saved. Initializing the conversation."
-
-#. js-lingui-explicit-id
-msgid "session.transition.desc.queued"
-msgstr "Your first message is queued for processing."
-
-#. js-lingui-explicit-id
-msgid "session.transition.desc.reconnecting"
-msgstr "Your message was saved. Reconnecting to check its progress."
-
-#. js-lingui-explicit-id
-msgid "session.transition.desc.retrying"
-msgstr "Your message is saved. Retrying preparation automatically."
-
-#. js-lingui-explicit-id
-msgid "session.transition.desc.stalled"
-msgstr "Your first message is still saved, but initialization did not finish. Retry to resume processing."
-
-#. js-lingui-explicit-id
-msgid "session.transition.desc.storage"
-msgstr "Your message is saved and waiting for storage to become available."
-
-#. js-lingui-explicit-id
-msgid "session.transition.desc.submitting"
-msgstr "Submitting your first message."
-
-#. js-lingui-explicit-id
-msgid "session.transition.detail.messageQueued"
-msgstr "First message queued."
 
 #. js-lingui-explicit-id
 msgid "session.transition.errorDetails"
@@ -17753,136 +17837,8 @@ msgid "session.transition.recoveryFailed"
 msgstr "Recovery could not be confirmed. Check the connection and retry."
 
 #. js-lingui-explicit-id
-msgid "session.transition.retryInitialization"
-msgstr "Retry initialization"
-
-#. js-lingui-explicit-id
-msgid "session.transition.step.failed"
-msgstr "Failed"
-
-#. js-lingui-explicit-id
-msgid "session.transition.step.initialize"
-msgstr "Initialize execution"
-
-#. session-transition-progress.ts — general session startup factory
-msgid "session.transition.step.prepareSession"
-msgstr "Prepare session"
-
-#. js-lingui-explicit-id
-msgid "session.transition.step.submitMessage"
-msgstr "Submit message"
-
-#. js-lingui-explicit-id
-msgid "session.transition.title.accepted"
-msgstr "Session request accepted"
-
-#. js-lingui-explicit-id
-msgid "session.transition.title.stalled"
-msgstr "Conversation setup needs attention"
-
-#. js-lingui-explicit-id
-msgid "session.transition.title.starting"
-msgstr "Starting session"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.card.dismissAria"
-msgstr "Dismiss copy status"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.card.dismissTitle"
-msgstr "Dismiss"
-
-#. worktree-transition-card.tsx
-msgid "session.worktree.card.mainCheckout"
-msgstr "Main folder"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.card.retry"
-msgstr "Retry"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.card.sessionWorktree"
-msgstr "Worktree"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.card.worktreeSession"
-msgstr "Worktree session"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.desc.leaving"
-msgstr "Returning this task to the project files."
-
-#. js-lingui-explicit-id
-msgid "session.worktree.desc.mainActive"
-msgstr "This task now uses the project files. The Worktree remains available."
-
-#. js-lingui-explicit-id
-msgid "session.worktree.desc.moving"
-msgstr "Creating a Worktree for this task."
-
-#. js-lingui-explicit-id
 msgid "session.worktree.desc.refreshFailed"
 msgstr "The file location changed, but the task status could not be refreshed. {message}"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.desc.refreshing"
-msgstr "The file location changed. Updating the task status."
-
-#. js-lingui-explicit-id
-msgid "session.worktree.desc.started"
-msgstr "The Worktree is ready and your first message is queued."
-
-#. js-lingui-explicit-id
-msgid "session.worktree.desc.starting"
-msgstr "Preparing the Worktree and sending your first message."
-
-#. js-lingui-explicit-id
-msgid "session.worktree.desc.worktreeActive"
-msgstr "This task now uses the Worktree."
-
-#. js-lingui-explicit-id
-msgid "session.worktree.detail.conversationReady"
-msgstr "Conversation state is ready."
-
-#. js-lingui-explicit-id
-msgid "session.worktree.detail.creatingConversation"
-msgstr "Creating the conversation state."
-
-#. js-lingui-explicit-id
-msgid "session.worktree.detail.dispatchingPrompt"
-msgstr "Dispatching your first message."
-
-#. worktree-session.ts — factory detail strings
-msgid "session.worktree.detail.preparingWorktree"
-msgstr "Preparing a Worktree of the project files."
-
-#. js-lingui-explicit-id
-msgid "session.worktree.detail.preparingWorktreeBind"
-msgstr "Preparing the copy for this task."
-
-#. js-lingui-explicit-id
-msgid "session.worktree.detail.promptDispatched"
-msgstr "First prompt dispatched."
-
-#. js-lingui-explicit-id
-msgid "session.worktree.detail.refreshingStatus"
-msgstr "Loading the task’s updated file location."
-
-#. js-lingui-explicit-id
-msgid "session.worktree.detail.updatingWorkspace"
-msgstr "Updating the files used by this task."
-
-#. js-lingui-explicit-id
-msgid "session.worktree.detail.usingCheckout"
-msgstr "Using the selected copy."
-
-#. js-lingui-explicit-id
-msgid "session.worktree.detail.workspaceSetupComplete"
-msgstr "Worktree is ready."
-
-#. js-lingui-explicit-id
-msgid "session.worktree.detail.workspaceUpdated"
-msgstr "The task’s file location has been updated."
 
 #. js-lingui-explicit-id
 msgid "session.worktree.dialog.cancel"
@@ -17904,7 +17860,7 @@ msgstr "Worktree name"
 msgid "session.worktree.dialog.namePlaceholder"
 msgstr "Auto-generated"
 
-#. worktree-transition-dialog.tsx
+#. js-lingui-explicit-id
 msgid "session.worktree.dialog.title"
 msgstr "Move session to worktree?"
 
@@ -17912,89 +17868,17 @@ msgstr "Move session to worktree?"
 msgid "session.worktree.setupCommandFailed"
 msgstr "The Worktree setup command failed."
 
-#. worktree-progress-components.tsx
-msgid "session.worktree.step.active"
-msgstr "In progress"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.step.bindWorktree"
-msgstr "Use existing copy"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.step.complete"
-msgstr "Done"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.step.createBind"
-msgstr "Create and use copy"
-
-#. worktree-session.ts — factory step labels
-msgid "session.worktree.step.createCheckout"
-msgstr "Create Worktree"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.step.pending"
-msgstr "Pending"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.step.prepareSession"
-msgstr "Prepare session"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.step.refreshStatus"
-msgstr "Refresh file location"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.step.returnCheckout"
-msgstr "Return to project files"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.step.sendPrompt"
-msgstr "Send prompt"
-
 #. js-lingui-explicit-id
 msgid "session.worktree.title.leaveFailed"
 msgstr "Could not return to project files"
-
-#. worktree-session.ts — factory title/description strings
-msgid "session.worktree.title.leaving"
-msgstr "Returning to project files"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.title.mainActive"
-msgstr "Using project files"
 
 #. js-lingui-explicit-id
 msgid "session.worktree.title.moveFailed"
 msgstr "Could not use the Worktree"
 
 #. js-lingui-explicit-id
-msgid "session.worktree.title.moving"
-msgstr "Preparing a Worktree"
-
-#. js-lingui-explicit-id
 msgid "session.worktree.title.refreshFailed"
 msgstr "Could not refresh file location"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.title.refreshing"
-msgstr "Refreshing file location"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.title.setupFailed"
-msgstr "Worktree setup failed"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.title.started"
-msgstr "Worktree task accepted"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.title.starting"
-msgstr "Starting task in a Worktree"
-
-#. js-lingui-explicit-id
-msgid "session.worktree.title.worktreeActive"
-msgstr "Using a Worktree"
 
 #. js-lingui-explicit-id
 msgid "settings.account.actions.create"
@@ -25413,22 +25297,6 @@ msgid "ui.compaction.complete"
 msgstr "Context compressed"
 
 #. js-lingui-explicit-id
-msgid "ui.compaction.copied"
-msgstr "Copied"
-
-#. js-lingui-explicit-id
-msgid "ui.compaction.copyDetails"
-msgstr "Copy details"
-
-#. js-lingui-explicit-id
-msgid "ui.compaction.copyFailure"
-msgstr "Unable to copy the compaction error details."
-
-#. js-lingui-explicit-id
-msgid "ui.compaction.errorDetails"
-msgstr "Error details"
-
-#. js-lingui-explicit-id
 msgid "ui.compaction.failed"
 msgstr "Compaction failed"
 
@@ -25599,10 +25467,6 @@ msgstr "From {source}"
 #. js-lingui-explicit-id
 msgid "ui.mediaGeneration.generating"
 msgstr "Generating media"
-
-#. js-lingui-explicit-id
-msgid "ui.session.awaitingResponse"
-msgstr "Synergy is thinking…"
 
 #. js-lingui-explicit-id
 msgid "ui.sessionReview.loadingFile"

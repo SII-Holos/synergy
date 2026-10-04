@@ -1,13 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { setupI18n as coreSetupI18n } from "@lingui/core"
 import type { Part as PartType } from "@ericsanchezok/synergy-sdk/client"
-import {
-  computeStatusFromPart,
-  computeWorkingPhrase,
-  computeLatestStatusFromParts,
-  pickStatusPhrase,
-  PHRASE_DEFAULTS,
-} from "../src/components/session-status"
+import { computeStatusFromPart, computeLatestStatusFromParts } from "../src/components/session-status"
 
 function reasoningPart(text: string): PartType {
   return {
@@ -111,36 +105,6 @@ describe("session-status i18n", () => {
     expect(computeStatusFromPart(toolPart("read"), undefined)).toBe("Gathering context")
     expect(computeStatusFromPart(toolPart("edit", "generating"), undefined)).toBe("Composing edits")
     expect(computeStatusFromPart(textPart(), undefined)).toBe("Gathering thoughts")
-  })
-
-  test("computeWorkingPhrase resolves i18n waiting phrase messages", () => {
-    // Seed "d" (charCode 100) → 100 % 5 = 0 → hits waiting index 0
-    const i18n = createI18n({
-      "session-status.phrase.waiting.0": "OVERRIDE waiting",
-    })
-    const phrase = computeWorkingPhrase({ agentName: "X", cortexRunning: 1, seed: "d" }, i18n)
-    expect(phrase).toBe("OVERRIDE waiting")
-  })
-
-  test("computeWorkingPhrase resolves i18n thinking phrase messages", () => {
-    // Seed "f" (charCode 102) → 102 % 6 = 0 → hits thinking index 0
-    const i18n = createI18n({
-      "session-status.phrase.thinking.0": "OVERRIDE thinking",
-    })
-    const phrase = computeWorkingPhrase({ agentName: "X", cortexRunning: 0, seed: "f" }, i18n)
-    expect(phrase).toBe("OVERRIDE thinking")
-  })
-
-  test("PHRASE_DEFAULTS contains expected catalog entries", () => {
-    expect(PHRASE_DEFAULTS["session-status.phrase.waiting.0"]).toContain("{agentName}")
-    expect(PHRASE_DEFAULTS["session-status.phrase.waiting.0"]).toContain("{count, plural")
-    expect(PHRASE_DEFAULTS["session-status.phrase.thinking.0"]).toContain("{agentName}")
-    expect(Object.keys(PHRASE_DEFAULTS)).toHaveLength(11)
-  })
-
-  test("pickStatusPhrase is deterministic across same seed", () => {
-    const ids = ["a", "b", "c"] as const
-    expect(pickStatusPhrase(ids, "abc")).toBe(pickStatusPhrase(ids, "abc"))
   })
 
   test("computeLatestStatusFromParts picks last non-undefined status", () => {
