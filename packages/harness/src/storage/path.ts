@@ -7,6 +7,7 @@ type PartID = Identifier.PartID
 type HistoryID = Identifier.HistoryID
 
 export namespace StoragePath {
+  export const sessionReview = (scopeID: string, sessionID: string) => ["sessions", scopeID, sessionID, "review_state"]
   export const sessionTextState = (scopeID: string, sessionID: string) => ["sessions", scopeID, sessionID, "text_state"]
   export const sessionTextDirty = (scopeID: string, sessionID: string, messageID: string, partID: string) => [
     "sessions",

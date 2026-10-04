@@ -45,6 +45,7 @@
   },
   "dependencies": {
     "@aarkue/tiptap-math-extension": "1.4.0",
+    "@babel/parser": "7.28.5",
     "@ericsanchezok/synergy-browser-core": "workspace:*",
     "@ericsanchezok/synergy-plugin": "workspace:*",
     "@ericsanchezok/synergy-sdk": "workspace:*",

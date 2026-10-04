@@ -1,6 +1,7 @@
 import {
   createContext,
   createEffect,
+  createMemo,
   createSignal,
   on,
   onCleanup,
@@ -39,12 +40,18 @@ export function ProcessViewport(
   const [following, setFollowing] = createSignal(saved?.following ?? true)
   const [overflow, setOverflow] = createSignal(false)
   const [unread, setUnread] = createSignal(false)
+  const [above, setAbove] = createSignal(false)
+  const [below, setBelow] = createSignal(false)
   let viewport!: HTMLDivElement, content!: HTMLDivElement
   let frame: number | undefined
   let resumeRequested = false
   let explicitFollow = false
   let previousOffset = 0
   let readingAnchor = saved?.anchor
+  const measureEdges = () => {
+    setAbove(viewport.scrollTop > 1)
+    setBelow(viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop > 2)
+  }
   const pause = () => {
     resumeRequested = false
     explicitFollow = false
@@ -68,9 +75,10 @@ export function ProcessViewport(
     props.onReading?.(false)
     follow(true)
   }
+  const revision = createMemo(() => props.revision)
   createEffect(
     on(
-      () => props.revision,
+      revision,
       () => {
         if (!untrack(following)) setUnread(true)
         else if (props.active || explicitFollow) follow(explicitFollow)
@@ -81,6 +89,7 @@ export function ProcessViewport(
   onMount(() => {
     const measure = () => {
       setOverflow(viewport.scrollHeight > viewport.clientHeight + 1)
+      measureEdges()
       if ((props.active || explicitFollow) && following()) follow(explicitFollow)
     }
     const observer = new ResizeObserver(measure)
@@ -119,15 +128,24 @@ export function ProcessViewport(
     if (frame !== undefined) cancelAnimationFrame(frame)
   })
   return (
-    <div data-component="process-window">
+    <div
+      data-component="process-window"
+      data-overflow={overflow() ? "" : undefined}
+      data-above={above() ? "" : undefined}
+      data-below={below() ? "" : undefined}
+    >
+      <Show when={overflow() && below() && !(unread() && !following())}>
+        <span data-slot="process-more">{_({ id: "session.process.more", message: "More actions below" })}</span>
+      </Show>
       <Show when={!following() && unread()}>
         <button
           type="button"
           data-slot="process-latest"
           onClick={latest}
-          aria-label={_({ id: "session.process.latest", message: "Back to latest" })}
-          title={_({ id: "session.process.latest", message: "Back to latest" })}
+          aria-label={_({ id: "session.process.newActions", message: "New actions" })}
+          title={_({ id: "session.process.newActions", message: "New actions" })}
         >
+          {_({ id: "session.process.newActions", message: "New actions" })}
           <Icon name={getSemanticIcon("navigation.latest")} size="small" />
         </button>
       </Show>
@@ -140,6 +158,9 @@ export function ProcessViewport(
         ref={(element) => {
           viewport = element
           props.ref?.(element)
+        }}
+        onFocusIn={(event) => {
+          if (event.target !== viewport) pause()
         }}
         onWheel={(event) => {
           if (event.deltaY < 0) pause()
@@ -166,6 +187,7 @@ export function ProcessViewport(
         }}
         onScroll={() => {
           if (!viewport.clientHeight) return
+          measureEdges()
           props.onScroll?.()
           readingAnchor = props.anchor?.()
           if (

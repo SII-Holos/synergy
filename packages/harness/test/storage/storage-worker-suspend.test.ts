@@ -227,16 +227,25 @@ describe("SQLite worker deadline across host suspension", () => {
       })
 
       let probes = 0
+      const responses: ReturnType<typeof setTimeout>[] = []
+      interceptions.push(() => responses.forEach(clearTimeout))
       interceptSend(driver, (message, deliver) => {
         // The statement outlives its budget while the worker itself stays alive.
-        clock.clock.current += message.action === "ping" ? 5_000 : 30_000
-        if (message.action !== "ping") return
+        if (message.action !== "ping") {
+          clock.clock.current += 30_000
+          return
+        }
         probes++
         // The worker is silent for its first `probeAttempts` probes and answers the
         // next one, which is the shape that must stay a busy signal: the store is
         // degraded and reports why, without being terminalised.
-        if (probes <= budgets.probeAttempts) return
-        deliver()
+        if (probes <= budgets.probeAttempts) {
+          clock.clock.current += 5_000
+          return
+        }
+        // A healthy IPC reply may outlast the compressed wall timer without
+        // consuming the simulated monotonic budget.
+        responses.push(setTimeout(deliver, 25))
       })
 
       // The caller learns why its request failed rather than waiting on a silence
@@ -247,6 +256,7 @@ describe("SQLite worker deadline across host suspension", () => {
       // probe failed survives past the point the probe settles.
       const timeouts = recorded.filter((entry) => entry.name === "storage.worker.probe.timeout")
       expect(timeouts).toHaveLength(budgets.probeAttempts)
+      expect(probes).toBe(budgets.probeAttempts + 1)
       expect(timeouts.every((entry) => entry.value === 1 && entry.module === "storage")).toBe(true)
       // Sustained silence reaches the log and issue surface an operator reads.
       expect(raised).toContain("STORAGE_WORKER_BUSY")
@@ -274,8 +284,9 @@ describe("SQLite worker deadline across host suspension", () => {
 
       await driver.close()
 
-      expect(worker.killed).toBe(true)
       expect(internals(driver).closed).toBe(true)
+      await worker.exited
+      expect(worker.killed).toBe(true)
     }))
 })
 

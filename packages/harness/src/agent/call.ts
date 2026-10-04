@@ -1,7 +1,7 @@
 import { SessionRetry } from "../session/retry"
 import { Experiment } from "../config/experiment"
 import { RolloutLedger } from "../session/rollout/ledger"
-import type { ModelMessage, JSONSchema7 } from "ai"
+import type { ModelMessage } from "ai"
 import { Agent } from "./agent"
 import { Provider } from "../provider/provider"
 import { AgentTurn } from "../session/agent-turn"
@@ -50,15 +50,12 @@ export namespace AgentCall {
     maxOutputChars: number
     small?: boolean
     maxOutputTokens?: number
-    /** A schema-only output Tool; this call has no domain Tool executor. */
-    outputTool?: { name: string; description: string; schema: JSONSchema7 }
   }
 
   export type TextOutput = {
     text: string
     model: Provider.Model
     usage?: Awaited<AgentTurn.Stream["usage"]>
-    toolCalls?: Array<{ name: string; input: unknown }>
   }
 
   function inputCharacters(messages: ModelMessage[]) {
@@ -203,16 +200,7 @@ export namespace AgentCall {
             retryIndex: attempt,
             agent,
             user,
-            toolDefinitions: input.outputTool
-              ? [
-                  {
-                    id: input.outputTool.name,
-                    description: input.outputTool.description,
-                    inputSchema: input.outputTool.schema,
-                  },
-                ]
-              : [],
-            toolChoice: input.outputTool ? { type: "tool", toolName: input.outputTool.name } : undefined,
+            toolDefinitions: [],
             model,
             small: input.small ?? true,
             messages: input.messages,
@@ -242,8 +230,6 @@ export namespace AgentCall {
           }
           try {
             let value = ""
-            const toolCalls: Array<{ name: string; input: unknown }> = []
-            let outputCharacters = 0
             const iterator = stream.fullStream[Symbol.asyncIterator]()
             while (true) {
               const next = await wait(iterator.next())
@@ -251,22 +237,9 @@ export namespace AgentCall {
               const part = next.value
               if (part.type === "error") throw part.error
               if (part.type === "abort") throw new Error("cancelled", `Agent ${input.agent} was cancelled`)
-              if (part.type === "tool-call" && input.outputTool) {
-                outputCharacters += (JSON.stringify(part.input) ?? "").length
-                if (outputCharacters > input.maxOutputChars) {
-                  output.abort(new DOMException("Agent output exceeded its bound", "AbortError"))
-                  throw new Error(
-                    "output_too_large",
-                    `Agent ${input.agent} output exceeded ${input.maxOutputChars} characters`,
-                  )
-                }
-                toolCalls.push({ name: part.toolName, input: part.input })
-                continue
-              }
               if (part.type !== "text-delta" || !part.text) continue
               value += part.text
-              outputCharacters += part.text.length
-              if (outputCharacters <= input.maxOutputChars) continue
+              if (value.length <= input.maxOutputChars) continue
               output.abort(new DOMException("Agent output exceeded its bound", "AbortError"))
               throw new Error(
                 "output_too_large",
@@ -275,7 +248,7 @@ export namespace AgentCall {
             }
             const usage = await wait(stream.usage)
             status = "completed"
-            return { text: value, model, usage, ...(input.outputTool ? { toolCalls } : {}) }
+            return { text: value, model, usage }
           } finally {
             await stream.dispose()
           }

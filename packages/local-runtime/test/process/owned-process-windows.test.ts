@@ -188,7 +188,7 @@ nativeTest(
     import { OwnedProcess } from ${JSON.stringify(path.resolve(import.meta.dir, "../../src/process/owned-process.ts"))};
     import { WorkspaceCoordinator } from ${JSON.stringify(path.resolve(import.meta.dir, "../../src/workspace/coordinator.ts"))};
     const lease=await new WorkspaceCoordinator({directory:${JSON.stringify(locks)}}).acquire({id:crypto.randomUUID(),owner:'crashing',ancestors:[],kind:'process',roots:[${JSON.stringify(directory.path)}]});
-    const owned=await OwnedProcess.prepare({command:process.execPath,args:['-e',${JSON.stringify(command)}],cwd:${JSON.stringify(directory.path)},env:process.env,lease});
+    const owned=await OwnedProcess.prepare({command:process.execPath,args:['-e',${JSON.stringify(command)}],cwd:${JSON.stringify(directory.path)},env:process.env,ownership:lease});
     owned.child.stdout.resume();owned.child.stderr.resume();await owned.activate();setInterval(()=>{},1000);
   `,
     )

@@ -835,6 +835,30 @@
           "reason": "Dynamic registry entries, capability and session availability, matching resource menus and narrow layouts are verified by test/components/workspace/resource-home.dom.test.ts in Chromium; Bun cannot instrument the Vite renderer's TSX source."
         },
         {
+          "glob": "src/components/workspace/review-copy.ts",
+          "reason": "Runtime Lingui descriptors consumed by browser-only Review views; catalog extraction, strict locale compilation and product-copy checks validate this data module, which contains no execution logic."
+        },
+        {
+          "glob": "src/components/workspace/review-data.ts",
+          "reason": "Solid resource ownership, initial comparison/notes failures, explicit retries and Session switches are exercised in Chromium by test/components/workspace/review-data.dom.test.ts. Actual ReviewPanel regressions also cover retained content through refresh failure and late responses. Vite browser execution does not contribute to Bun coverage; the read queue and diff projection remain measured by unit tests."
+        },
+        {
+          "glob": "src/components/workspace/review-file-tree.tsx",
+          "reason": "Interactive Solid navigation is exercised in Chromium by test/components/workspace/review-panel.dom.test.ts, including independent filtering, duplicate workspace paths, roving focus and directional folder navigation. Vite cannot contribute TSX execution to Bun coverage; canonical row identities remain measured by shared session-review unit tests."
+        },
+        {
+          "glob": "src/components/workspace/review-file-picker.tsx",
+          "reason": "The actual ReviewPanel Chromium fixture verifies independent quick-jump search, duplicate basename workspace labels, directional selection, Enter/Escape focus and bounded virtualized options across 5,000 files. Vite TSX and virtua DOM execution cannot contribute to Bun coverage."
+        },
+        {
+          "glob": "src/components/workspace/review-panel.tsx",
+          "reason": "Review composes live Scope, Session, SDK, restoration and dialog owners. test/components/workspace/review-panel.dom.test.ts runs the actual panel and production CSS in Chromium for navigation, sources, refresh/retry, focus, responsive touch controls, theme, scaling and large-file retention. Production Web acceptance covers model-backed review, comments, handoff, exports and restoration; queue/projection/export logic stays measured by unit tests."
+        },
+        {
+          "glob": "src/components/workspace/review-version-preview.tsx",
+          "reason": "Historical source, missing versions, Markdown and sandboxed HTML/SVG previews are verified in production Web acceptance. Browser iframe focus loading is covered by the shared iframe-focus browser regression; sanitization and Markdown parsing remain measured by their owning unit suites."
+        },
+        {
           "glob": "src/components/workspace/tool-context.tsx",
           "reason": "workspace/browser surfaces require a live runtime"
         },
@@ -2070,6 +2094,10 @@
         {
           "glob": "src/components/resize-handle.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/review-viewer.tsx",
+          "reason": "Pierre Shadow DOM rendering, bounded 20,000-line virtualization, distant-file navigation, header geometry, layout switches and pointer/keyboard/Shift selection are exercised by test/components/review-viewer.dom.test.ts in Chromium; Vite browser execution does not contribute to Bun coverage."
         },
         {
           "glob": "src/components/session-review.tsx",

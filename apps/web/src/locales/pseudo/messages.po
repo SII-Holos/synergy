@@ -14,10 +14,6 @@ msgid "activity.approval.reject"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "activity.batch.attempted"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "activity.batch.browser"
 msgstr ""
 
@@ -8581,10 +8577,6 @@ msgstr "⟦Raw messages⟧"
 msgid "app.review.toolUnavailable"
 msgstr "⟦This tool result is no longer available.⟧"
 
-#. js-lingui-explicit-id
-msgid "app.review.turnUnavailable"
-msgstr ""
-
 #. ── components/scopes/active-zone.tsx ────────────────────────────────
 msgid "app.scopes.activeZone.active"
 msgstr "⟦Active⟧"
@@ -15615,6 +15607,374 @@ msgstr "⟦Memories⟧"
 msgid "resonance.title"
 msgstr "⟦Resonance⟧"
 
+#. js-lingui-explicit-id
+msgid "review.file.binaryBytes"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.addComment"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.after"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.applyComparison"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.authorityUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.auto"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.before"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.binary"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.branch"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.collapse"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.comment"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.comments"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.comparisonUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.contentUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.copied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.copyApply"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.copyFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.copyPath"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.edit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.expand"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.export"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.exporting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.fileOptions"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.files"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.filter"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.filterEmpty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.foldedImports"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.from"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.full"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.handoff"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.hideFiles"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.historical"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.ignoreWhitespace"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.imports"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.jump"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.layout"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.layoutState"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.markViewed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.missing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.next"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.notesFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.noTurn"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.obsolete"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.open"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.options"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.oversized"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.partial"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.patchUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.preview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.previous"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.read"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.readOnly"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.refreshing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.remove"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.reopen"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.resolve"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.resolved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.save"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.selectionMixed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.selectLines"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.send"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.sendFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.sending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.sent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.session"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.sessionRequired"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.showFiles"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.source"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.sourceView"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.split"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.symlink"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.to"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.turn"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.turnUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.undo"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.undoFile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.unified"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.versions"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.viewed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.whitespace"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.words"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.workspaceRequired"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.worktree"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.wrap"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.wrapDisable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.wrapEnable"
+msgstr ""
+
 #. scopes
 msgid "scopes.active"
 msgstr "⟦Active⟧"
@@ -17245,11 +17605,15 @@ msgid "session.process.interrupted"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "session.process.latest"
+msgid "session.process.loadFailed"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "session.process.loadFailed"
+msgid "session.process.more"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.process.newActions"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -25469,6 +25833,10 @@ msgid "ui.dialog.close"
 msgstr "⟦Close dialog⟧"
 
 #. js-lingui-explicit-id
+msgid "ui.diff.noPreview"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "ui.errorCard.copied"
 msgstr "⟦Copied⟧"
 
@@ -25612,8 +25980,36 @@ msgstr "⟦From {source}⟧"
 msgid "ui.mediaGeneration.generating"
 msgstr "⟦Generating media⟧"
 
+#. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
+msgid "ui.review.after"
+msgstr ""
+
+#. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
+msgid "ui.review.before"
+msgstr ""
+
+#. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
+msgid "ui.review.expandAllContext"
+msgstr ""
+
+#. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
+msgid "ui.review.expandContext"
+msgstr ""
+
+#. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
+msgid "ui.review.selectLine"
+msgstr ""
+
+#. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
+msgid "ui.review.unchanged"
+msgstr ""
+
 #. js-lingui-explicit-id
 msgid "ui.sessionReview.loadingFile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.sessionReview.noChanges"
 msgstr ""
 
 #. js-lingui-explicit-id

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { Agent } from "../../src/agent/agent"
 import { AgentBuiltins } from "../../src/agent/builtins"
 import { Scope } from "../../src/scope"
@@ -43,6 +44,6 @@ test("default agent family selection is isolated between runtimes", async () => 
       ScopeContext.provide({ scope: Scope.home(), fn: async () => (await Agent.list()).map((agent) => agent.name) }),
     )
   expect(await names(selected)).toEqual([])
-  expect(await names(product)).toContain("synergy")
+  expect(await names(product)).toContain(PrimaryAgentIdentity.names.general)
   expect(await names(product)).toContain("compaction")
 })

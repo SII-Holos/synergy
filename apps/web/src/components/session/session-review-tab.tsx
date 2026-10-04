@@ -172,6 +172,7 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
       actions={props.actions}
       onRestoreFile={props.onRestoreFile}
       loadDiff={props.loadDiff}
+      recordingIncomplete={Boolean(recordingNotice())}
       notice={
         <Show when={recordingNotice()}>
           <div data-slot="review-recording-notice" role="status" class="px-6 py-3 text-13-regular text-text-weak">

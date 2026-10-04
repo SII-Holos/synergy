@@ -204,6 +204,14 @@ export const SemanticIconToken = {
   "command.audit": "microscope",
   "command.start": "zap",
 
+  "review.jump": "file-search",
+  "review.wrap": "wrap-text",
+  "review.fold": "fold-vertical",
+  "review.unfold": "unfold-vertical",
+  "review.layout": "columns-2",
+  "review.files": "folders",
+  "review.comments": "message-square-text",
+
   // Generic actions and state
   "action.expand": surfaceSizingIcons.expand,
   "action.collapse": surfaceSizingIcons.collapse,

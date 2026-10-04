@@ -2,6 +2,8 @@
 
 Product Projects, statistics and performance read models, activity presentation and notifications. Keep product read models out of core execution accounting. Session, rollout and retained usage evidence remain canonical in Harness. Statistics routes and compatibility projections consume the public usage service; keep accounting formulas in that owner. Read the root AGENTS.md and the owning architecture document before changes.
 
+File review Git comparisons and revisioned session notes belong in `src/review`. Keep comparisons read-only, fence workspace generations and content versions, and use retained Harness snapshots for historical versions. Verify `bun test test/review`, regenerate the SDK after schema changes, and follow [File review](../../docs/reference/file-review.md).
+
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - Own configuration schemas, normalization, reference checks and secret handling in `src/config-schema.ts`; consumers use its typed reader and the host composes its registration.
 - Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.

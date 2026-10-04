@@ -14,10 +14,6 @@ msgid "activity.approval.reject"
 msgstr "拒绝"
 
 #. js-lingui-explicit-id
-msgid "activity.batch.attempted"
-msgstr "尝试了 {count} 次操作"
-
-#. js-lingui-explicit-id
 msgid "activity.batch.browser"
 msgstr "执行了 {count} 次浏览器操作"
 
@@ -8581,10 +8577,6 @@ msgstr "原始消息"
 msgid "app.review.toolUnavailable"
 msgstr "此工具结果已不可用。"
 
-#. js-lingui-explicit-id
-msgid "app.review.turnUnavailable"
-msgstr "此轮对话已不可用。"
-
 #. ── components/scopes/active-zone.tsx ────────────────────────────────
 msgid "app.scopes.activeZone.active"
 msgstr "活跃"
@@ -15615,6 +15607,374 @@ msgstr "记忆"
 msgid "resonance.title"
 msgstr "Resonance"
 
+#. js-lingui-explicit-id
+msgid "review.file.binaryBytes"
+msgstr "二进制文件 · {bytes} 字节"
+
+#. js-lingui-explicit-id
+msgid "review.panel.addComment"
+msgstr "评论所选代码行"
+
+#. js-lingui-explicit-id
+msgid "review.panel.after"
+msgstr "修改后"
+
+#. js-lingui-explicit-id
+msgid "review.panel.applyComparison"
+msgstr "比较"
+
+#. js-lingui-explicit-id
+msgid "review.panel.authorityUnavailable"
+msgstr "此历史更改没有保留的工作区权限。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.auto"
+msgstr "自动"
+
+#. js-lingui-explicit-id
+msgid "review.panel.before"
+msgstr "修改前"
+
+#. js-lingui-explicit-id
+msgid "review.panel.binary"
+msgstr "二进制文件"
+
+#. js-lingui-explicit-id
+msgid "review.panel.branch"
+msgstr "分支"
+
+#. js-lingui-explicit-id
+msgid "review.panel.cancel"
+msgstr "取消"
+
+#. js-lingui-explicit-id
+msgid "review.panel.collapse"
+msgstr "全部折叠"
+
+#. js-lingui-explicit-id
+msgid "review.panel.comment"
+msgstr "评论"
+
+#. js-lingui-explicit-id
+msgid "review.panel.comments"
+msgstr "审阅评论"
+
+#. js-lingui-explicit-id
+msgid "review.panel.comparisonUnavailable"
+msgstr "比较未返回结果。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.contentUnavailable"
+msgstr "保留的文件内容不可用。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.copied"
+msgstr "已复制"
+
+#. js-lingui-explicit-id
+msgid "review.panel.copyApply"
+msgstr "复制 git apply 命令"
+
+#. js-lingui-explicit-id
+msgid "review.panel.copyFailed"
+msgstr "复制失败，请尝试导出补丁。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.copyPath"
+msgstr "复制路径"
+
+#. js-lingui-explicit-id
+msgid "review.panel.edit"
+msgstr "编辑评论"
+
+#. js-lingui-explicit-id
+msgid "review.panel.empty"
+msgstr "没有改动"
+
+#. js-lingui-explicit-id
+msgid "review.panel.expand"
+msgstr "全部展开"
+
+#. js-lingui-explicit-id
+msgid "review.panel.export"
+msgstr "导出补丁"
+
+#. js-lingui-explicit-id
+msgid "review.panel.exporting"
+msgstr "正在准备补丁… {done}/{total}"
+
+#. js-lingui-explicit-id
+msgid "review.panel.fileOptions"
+msgstr "文件选项"
+
+#. js-lingui-explicit-id
+msgid "review.panel.files"
+msgstr "文件"
+
+#. js-lingui-explicit-id
+msgid "review.panel.filter"
+msgstr "筛选文件…"
+
+#. js-lingui-explicit-id
+msgid "review.panel.filterEmpty"
+msgstr "没有匹配的文件。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.foldedImports"
+msgstr "已折叠 {count} 行导入内容"
+
+#. js-lingui-explicit-id
+msgid "review.panel.from"
+msgstr "基准引用"
+
+#. js-lingui-explicit-id
+msgid "review.panel.full"
+msgstr "显示完整文件"
+
+#. js-lingui-explicit-id
+msgid "review.panel.handoff"
+msgstr "发送所选评论"
+
+#. js-lingui-explicit-id
+msgid "review.panel.hideFiles"
+msgstr "隐藏文件"
+
+#. js-lingui-explicit-id
+msgid "review.panel.historical"
+msgstr "此版本属于另一个工作区绑定。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.ignoreWhitespace"
+msgstr "忽略空白差异"
+
+#. js-lingui-explicit-id
+msgid "review.panel.imports"
+msgstr "折叠导入内容"
+
+#. js-lingui-explicit-id
+msgid "review.panel.jump"
+msgstr "跳转到文件"
+
+#. js-lingui-explicit-id
+msgid "review.panel.layout"
+msgstr "差异布局"
+
+#. js-lingui-explicit-id
+msgid "review.panel.layoutState"
+msgstr "差异布局：{layout}"
+
+#. js-lingui-explicit-id
+msgid "review.panel.loading"
+msgstr "正在加载比较…"
+
+#. js-lingui-explicit-id
+msgid "review.panel.markViewed"
+msgstr "标记为已阅"
+
+#. js-lingui-explicit-id
+msgid "review.panel.missing"
+msgstr "此版本中不存在该文件。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.next"
+msgstr "下一个文件"
+
+#. js-lingui-explicit-id
+msgid "review.panel.notesFailed"
+msgstr "无法加载审阅记录。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.noTurn"
+msgstr "选择一个有文件改动记录的轮次。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.obsolete"
+msgstr "文件已发生变化，此评论保留了原始代码片段。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.open"
+msgstr "打开当前文件"
+
+#. js-lingui-explicit-id
+msgid "review.panel.options"
+msgstr "审阅选项"
+
+#. js-lingui-explicit-id
+msgid "review.panel.oversized"
+msgstr "此文件超过预览大小限制。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.partial"
+msgstr "改动记录不完整，下面显示已记录的改动。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.patchUnavailable"
+msgstr "此文件没有可应用的补丁。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.pending"
+msgstr "正在记录文件改动…"
+
+#. js-lingui-explicit-id
+msgid "review.panel.preview"
+msgstr "预览"
+
+#. js-lingui-explicit-id
+msgid "review.panel.previous"
+msgstr "上一个文件"
+
+#. js-lingui-explicit-id
+msgid "review.panel.read"
+msgstr "正在加载文件内容…"
+
+#. js-lingui-explicit-id
+msgid "review.panel.readOnly"
+msgstr "只读"
+
+#. js-lingui-explicit-id
+msgid "review.panel.refresh"
+msgstr "刷新比较"
+
+#. js-lingui-explicit-id
+msgid "review.panel.refreshing"
+msgstr "正在刷新…"
+
+#. js-lingui-explicit-id
+msgid "review.panel.remove"
+msgstr "删除评论"
+
+#. js-lingui-explicit-id
+msgid "review.panel.reopen"
+msgstr "重新打开评论"
+
+#. js-lingui-explicit-id
+msgid "review.panel.resolve"
+msgstr "解决评论"
+
+#. js-lingui-explicit-id
+msgid "review.panel.resolved"
+msgstr "已解决"
+
+#. js-lingui-explicit-id
+msgid "review.panel.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "review.panel.save"
+msgstr "保存评论"
+
+#. js-lingui-explicit-id
+msgid "review.panel.selectionMixed"
+msgstr "请在同一侧选择最多 200 行代码。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.selectLines"
+msgstr "在差异中选择行号以添加评论。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.send"
+msgstr "发送到当前会话"
+
+#. js-lingui-explicit-id
+msgid "review.panel.sendFailed"
+msgstr "会话未接收这些评论，请重试。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.sending"
+msgstr "正在发送…"
+
+#. js-lingui-explicit-id
+msgid "review.panel.sent"
+msgstr "会话已接收评论。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.session"
+msgstr "会话"
+
+#. js-lingui-explicit-id
+msgid "review.panel.sessionRequired"
+msgstr "打开一个会话以审阅更改。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.showFiles"
+msgstr "显示文件"
+
+#. js-lingui-explicit-id
+msgid "review.panel.source"
+msgstr "比较范围"
+
+#. js-lingui-explicit-id
+msgid "review.panel.sourceView"
+msgstr "源码"
+
+#. js-lingui-explicit-id
+msgid "review.panel.split"
+msgstr "双栏"
+
+#. js-lingui-explicit-id
+msgid "review.panel.symlink"
+msgstr "符号链接和子模块没有文本预览。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.to"
+msgstr "目标引用"
+
+#. js-lingui-explicit-id
+msgid "review.panel.turn"
+msgstr "本轮"
+
+#. js-lingui-explicit-id
+msgid "review.panel.turnUnavailable"
+msgstr "所选轮次不可用。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.undo"
+msgstr "撤销改动"
+
+#. js-lingui-explicit-id
+msgid "review.panel.undoFile"
+msgstr "撤销此文件改动"
+
+#. js-lingui-explicit-id
+msgid "review.panel.unified"
+msgstr "单栏"
+
+#. js-lingui-explicit-id
+msgid "review.panel.versions"
+msgstr "文件版本"
+
+#. js-lingui-explicit-id
+msgid "review.panel.viewed"
+msgstr "已阅"
+
+#. js-lingui-explicit-id
+msgid "review.panel.whitespace"
+msgstr "显示空白字符"
+
+#. js-lingui-explicit-id
+msgid "review.panel.words"
+msgstr "词级差异"
+
+#. js-lingui-explicit-id
+msgid "review.panel.workspaceRequired"
+msgstr "请选择工作区以比较文件。"
+
+#. js-lingui-explicit-id
+msgid "review.panel.worktree"
+msgstr "工作区改动"
+
+#. js-lingui-explicit-id
+msgid "review.panel.wrap"
+msgstr "自动换行"
+
+#. js-lingui-explicit-id
+msgid "review.panel.wrapDisable"
+msgstr "关闭自动换行"
+
+#. js-lingui-explicit-id
+msgid "review.panel.wrapEnable"
+msgstr "开启自动换行"
+
 #. scopes
 msgid "scopes.active"
 msgstr "活动"
@@ -17245,12 +17605,16 @@ msgid "session.process.interrupted"
 msgstr "已中断"
 
 #. js-lingui-explicit-id
-msgid "session.process.latest"
-msgstr "回到最新"
-
-#. js-lingui-explicit-id
 msgid "session.process.loadFailed"
 msgstr "无法加载过程详情。"
+
+#. js-lingui-explicit-id
+msgid "session.process.more"
+msgstr "下方还有更多操作"
+
+#. js-lingui-explicit-id
+msgid "session.process.newActions"
+msgstr "有新操作"
 
 #. js-lingui-explicit-id
 msgid "session.process.openSource"
@@ -19466,7 +19830,7 @@ msgstr "平衡"
 
 #. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.description"
-msgstr "选择 Synergy 在界面中显示的活动详情程度"
+msgstr "均衡模式展开当前工具批次；完整模式展开全部过程；精简模式默认收起过程。每个批次均可独立展开。"
 
 #. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.full"
@@ -25469,6 +25833,10 @@ msgid "ui.dialog.close"
 msgstr "关闭对话框"
 
 #. js-lingui-explicit-id
+msgid "ui.diff.noPreview"
+msgstr "没有可用的文本预览。"
+
+#. js-lingui-explicit-id
 msgid "ui.errorCard.copied"
 msgstr "已复制"
 
@@ -25612,9 +25980,37 @@ msgstr "来自 {source}"
 msgid "ui.mediaGeneration.generating"
 msgstr "正在生成"
 
+#. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
+msgid "ui.review.after"
+msgstr "更改后"
+
+#. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
+msgid "ui.review.before"
+msgstr "更改前"
+
+#. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
+msgid "ui.review.expandAllContext"
+msgstr "展开全部上下文"
+
+#. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
+msgid "ui.review.expandContext"
+msgstr "展开未改动的上下文"
+
+#. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
+msgid "ui.review.selectLine"
+msgstr "选择{side}的第 {line} 行"
+
+#. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
+msgid "ui.review.unchanged"
+msgstr "{count} 行未改动"
+
 #. js-lingui-explicit-id
 msgid "ui.sessionReview.loadingFile"
 msgstr "正在加载历史文件…"
+
+#. js-lingui-explicit-id
+msgid "ui.sessionReview.noChanges"
+msgstr "没有改动"
 
 #. js-lingui-explicit-id
 msgid "ui.sessionReview.retryFile"

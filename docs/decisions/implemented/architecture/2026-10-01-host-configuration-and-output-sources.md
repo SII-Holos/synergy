@@ -19,3 +19,5 @@ Register a Runtime-scoped ConfigSource before composition seals. Its schema-vali
 ## Consequences
 
 Default product behavior remains unchanged. Hosts own snapshot availability and output durability, and must reject unavailable storage. Public source tests cover isolation, sealed composition, activation validation, failure propagation, exact output bytes and tool origin; existing truncation tests retain native coverage.
+
+The unused output provider is retired by [the bounded extension decision](2026-10-05-bound-embedded-host-extension-surface.md); the configuration source remains active.

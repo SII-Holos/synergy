@@ -262,11 +262,7 @@ export namespace Tool {
           if (result.metadata.truncated !== undefined) {
             return result
           }
-          const truncated = await Truncate.output(result.output, {}, initCtx?.agent, {
-            sessionID: ctx.sessionID,
-            messageID: ctx.messageID,
-            callID: ctx.callID,
-          })
+          const truncated = await Truncate.output(result.output, {}, initCtx?.agent)
           return {
             ...result,
             output: truncated.content,

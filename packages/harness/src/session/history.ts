@@ -538,6 +538,9 @@ export namespace SessionHistory {
     file: z.string().min(1),
   })
   export const fileDiff = fn(FileDiffInput, async (input) => {
+    return fileDiffWithSignal(input)
+  })
+  async function fileRange(input: z.infer<typeof FileDiffInput>) {
     await requireRestoreSession(input.sessionID)
     const messages = await SessionHistory.rawMessages({ sessionID: input.sessionID })
     const selected = input.messageID
@@ -550,10 +553,30 @@ export namespace SessionHistory {
       throw new SnapshotRestore.Invalid({ message: "Historical file versions are unavailable" })
     if (range.omissions?.some((item) => item.file === input.file))
       throw new SnapshotRestore.Invalid({ message: "This file was not fully captured" })
-    const diff = await Snapshot.fileDiff(range.from, range.to, input.file, input.sessionID, AbortSignal.timeout(30000))
+    return range as typeof range & { from: string; to: string }
+  }
+  export async function fileDiffWithSignal(input: z.infer<typeof FileDiffInput>, signal?: AbortSignal) {
+    const range = await fileRange(FileDiffInput.parse(input))
+    const diff = await Snapshot.fileDiff(
+      range.from,
+      range.to,
+      input.file,
+      input.sessionID,
+      AbortSignal.any([AbortSignal.timeout(30000), ...(signal ? [signal] : [])]),
+    )
     if (!diff) throw new SnapshotRestore.Invalid({ message: "This file has no recorded difference" })
     return { ...diff, workspace: range.workspace }
-  })
+  }
+  export async function fileVersions(input: z.infer<typeof FileDiffInput>, signal?: AbortSignal) {
+    const range = await fileRange(FileDiffInput.parse(input))
+    return Snapshot.fileVersions(
+      range.from,
+      range.to,
+      input.file,
+      input.sessionID,
+      AbortSignal.any([AbortSignal.timeout(30000), ...(signal ? [signal] : [])]),
+    )
+  }
 
   const RestoreFilesInput = z.object({
     sessionID: Identifier.schema("session"),

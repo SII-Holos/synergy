@@ -133,6 +133,37 @@ test("native public conversation retains bounded history and reconciles updates 
     expect(await roots.count()).toBeLessThanOrEqual(30)
     await page.reload()
     await page.getByText("Answer 360 recovered after reconnect", { exact: true }).waitFor()
+    expect(diagnostics.errors.map((error) => error.message)).toEqual([])
+  } catch (error) {
+    throw new AggregateError([error, ...(diagnostics?.errors ?? [])], "Conversation real-host acceptance failed")
+  } finally {
+    diagnostics?.dispose()
+    await browser.close()
+    await preview?.close()
+    project.cleanup()
+  }
+}, 90000)
+
+test("conversation display and notification preferences survive a production-host reload", async () => {
+  const project = createFixtureProject("message-settings-host")
+  let preview: Awaited<ReturnType<typeof startPluginPreview>> | undefined
+  const browser = await chromium.launch({ headless: true })
+  let diagnostics: { errors: Error[]; dispose(): unknown } | undefined
+  try {
+    writeMinimalPlugin(project, minimalPluginSource("message-fixture"), "message-fixture")
+    expect(await buildPluginProject(project.root)).toBe(true)
+    preview = await startPluginPreview({
+      artifacts: [path.join(project.root, "dist")],
+      command: [process.execPath, path.resolve(import.meta.dir, "../../packages/presets/src/index.ts")],
+    })
+    await approvePreviewPlugins(preview)
+    const conversation = await importPreviewConversation(preview, { title: "Settings fixture" })
+    const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+    const page = await context.newPage()
+    page.setDefaultTimeout(20000)
+    diagnostics = await openPluginPreviewPage(preview, page)
+    await page.goto(conversation.url)
+    await page.getByText("Answer 1", { exact: true }).waitFor()
     async function settings() {
       await page.locator(".sidebar-account-trigger").click()
       await page.getByRole("menuitem", { name: "Settings", exact: true }).click()
@@ -165,7 +196,7 @@ test("native public conversation retains bounded history and reconciles updates 
     await dialog.getByRole("button", { name: "Save Changes", exact: true }).click()
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click()
     await page.reload()
-    await page.getByText("Answer 360 recovered after reconnect", { exact: true }).waitFor()
+    await page.getByText("Answer 1", { exact: true }).waitFor()
     dialog = await settings()
     expect(await dialog.getByRole("button", { name: "Minimal", exact: true }).getAttribute("aria-pressed")).toBe("true")
     expect(
@@ -179,7 +210,7 @@ test("native public conversation retains bounded history and reconciles updates 
     expect(await dialog.getByLabel("Mute Info", { exact: true }).isChecked()).toBe(!muted)
     expect(diagnostics.errors.map((error) => error.message)).toEqual([])
   } catch (error) {
-    throw new AggregateError([error, ...(diagnostics?.errors ?? [])], "Conversation real-host acceptance failed")
+    throw new AggregateError([error, ...(diagnostics?.errors ?? [])], "Settings real-host acceptance failed")
   } finally {
     diagnostics?.dispose()
     await browser.close()
