@@ -4,6 +4,12 @@
 import { registerIcon } from "./icon-registry"
 
 const builtinIconNames = [
+  "timer-reset",
+  "binary",
+  "circle-dollar-sign",
+  "list-ordered",
+  "corner-up-right",
+  "notebook-tabs",
   "file-chart-column",
   "list-end",
   "shield-half",

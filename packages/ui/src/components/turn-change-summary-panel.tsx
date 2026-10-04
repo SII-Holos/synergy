@@ -22,7 +22,6 @@ export type { TurnChangeSummaryDiff } from "./turn-change-summary-panel-model"
 export type TurnChangeSummaryPanelProps = {
   diffs: TurnChangeSummaryDiff[]
   state?: Exclude<TurnDiffPanelState, "hidden">
-  incomplete?: boolean
   animateReady?: boolean
   previewLimit?: number
   onUndoRequested?: () => void
@@ -42,42 +41,18 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
     turnChangeSummaryVisibleDiffs(files(), { expanded: store.expanded, previewLimit: previewLimit() }),
   )
   const title = createMemo(() => turnChangeSummaryTitle(files().length, i18n()))
-  const statusText = createMemo(() =>
-    state() === "pending"
-      ? _(TURN_CHANGE_DESC.calculating)
-      : props.incomplete
-        ? _(TURN_CHANGE_DESC.recordingIncomplete)
-        : _(TURN_CHANGE_DESC.calculationFailed),
-  )
-  const label = createMemo(() => (state() === "ready" ? title() : statusText()))
   const toggleLabel = createMemo(() =>
     turnChangeSummaryToggleLabel({ expanded: store.expanded, hiddenCount: hiddenCount() }, i18n()),
   )
 
   return (
-    <Show
-      when={files().length > 0}
-      fallback={
-        <button
-          type="button"
-          data-slot="turn-change-summary-entry"
-          data-diff-state={state()}
-          aria-label={`${_(TURN_CHANGE_DESC.reviewChanges)}: ${statusText()}`}
-          title={statusText()}
-          onClick={props.onReviewRequested}
-        >
-          <Icon name={getSemanticIcon(state() === "pending" ? "command.review" : "state.warning")} size="small" />
-          <span>{_(TURN_CHANGE_DESC.reviewChanges)}</span>
-        </button>
-      }
-    >
+    <Show when={files().length > 0}>
       <section
         data-component="turn-change-summary-panel"
         data-diff-state={state()}
         classList={{ "turn-change-summary-entering": entering }}
-        aria-label={label()}
+        aria-label={title()}
         aria-busy={state() === "pending" ? "true" : undefined}
-        aria-live={state() === "error" ? "polite" : undefined}
       >
         <div data-slot="turn-change-summary-header">
           <div data-slot="turn-change-summary-title-group">
@@ -86,9 +61,6 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
             </span>
             <div data-slot="turn-change-summary-title-copy">
               <div data-slot="turn-change-summary-title">{title()}</div>
-              <Show when={state() !== "ready"}>
-                <div role="status">{statusText()}</div>
-              </Show>
               <DiffChanges changes={files()} />
             </div>
           </div>

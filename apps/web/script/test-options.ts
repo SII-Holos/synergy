@@ -7,7 +7,9 @@ import type { TestRunnerOptions } from "../../../script/shared/test-runner"
 // These `mock.module`-heavy suites stub the same context modules under the same
 // specifiers; Bun's mocks are process-global, so each needs its own process.
 const playwrightIsolated = [
+  "test/components/session/session-activity.dom.test.tsx",
   "test/components/execution/controls.render.test.ts",
+  "test/components/execution/task-details.dom.test.tsx",
   "test/components/execution/reader.dom.test.tsx",
   "test/components/execution/delegation.dom.test.tsx",
   "test/components/execution/layout.test.ts",
@@ -29,6 +31,7 @@ const playwrightIsolated = [
   "test/components/library/library-interaction.dom.test.tsx",
   "test/components/workspace/browser/browser-interaction.dom.test.tsx",
   "test/components/workspace/browser/browser-panel-presentation.dom.test.tsx",
+  "test/components/workspace/browser/browser-opening.dom.test.tsx",
   "test/components/workspace/browser/browser-workbench-sync.dom.test.tsx",
   "test/components/session/session-recovery.dom.test.ts",
   "test/components/search/session-search-dialog.dom.test.ts",
@@ -117,6 +120,7 @@ export const testOptions = {
   isolated: playwrightIsolated,
   isolatedTimeoutMs: 120000,
   browserOnly: [
+    "test/components/workspace/browser/browser-import-target.test.ts",
     "test/components/execution/controls.render.test.ts",
     "test/components/execution/trajectory.test.ts",
     "test/components/session/workbench-navigation.render.test.ts",

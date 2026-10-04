@@ -2,6 +2,11 @@
   pointer-events: none;
 }
 
+.session-prompt-dock-content:has(.session-composer[data-expanded]) > .prompt-dock-float-layer,
+.session-prompt-dock-content:has(.session-composer[data-expanded]) > [data-session-decision-outlet] {
+  display: none;
+}
+
 .prompt-dock-control-slot {
   display: flex;
   width: 100%;

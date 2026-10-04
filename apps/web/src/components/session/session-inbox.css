@@ -359,3 +359,28 @@
   overflow-wrap: anywhere;
   cursor: pointer;
 }
+
+.execution-compact-section .session-inbox-list {
+  gap: 0;
+}
+.session-inbox-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 0 12px 8px;
+}
+.session-inbox-detail-actions .execution-icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--icon-weak-base);
+}
+.session-inbox-detail-actions .execution-icon-action:hover {
+  background: var(--surface-raised-base-hover);
+}

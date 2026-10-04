@@ -51,6 +51,10 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
+          "glob": "src/components/agenda/details.tsx",
+          "reason": "Schedule details, slow run history, pause/enable actions and origin dismissal are exercised by test/components/execution/task-details.dom.test.tsx and test/components/agenda/agenda-interaction.dom.test.tsx in Vite/Chromium; Bun cannot attribute that execution to the TSX source."
+        },
+        {
           "glob": "src/components/agenda/form.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
@@ -65,6 +69,10 @@
         {
           "glob": "src/components/agenda/panel.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/agenda/session-item-dialog.tsx",
+          "reason": "Captured-client dialog requests, slow history, stale responses and sequential actions after the task popover closes are exercised by test/components/execution/task-details.dom.test.tsx; Vite/Chromium execution is outside Bun source coverage."
         },
         {
           "glob": "src/components/agenda/shared.ts",
@@ -451,6 +459,22 @@
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
         {
+          "glob": "src/components/session/session-progress-dag.tsx",
+          "reason": "DAG navigation, inspector, retained viewport and lifecycle run in session-activity.dom.test.tsx through Vite and Chromium; Bun cannot instrument the browser bundle."
+        },
+        {
+          "glob": "src/components/session/session-progress-island.tsx",
+          "reason": "Progress expansion, adaptive dialog, keyboard focus and geometry run in session-activity.dom.test.tsx and decision-surface.dom.test.tsx through Vite and Chromium; Bun cannot instrument the browser bundle."
+        },
+        {
+          "glob": "src/components/session/session-progress-panel.tsx",
+          "reason": "Reactive progress lifecycle, child waits, disconnect and retained graph run in session-activity.dom.test.tsx through Vite and Chromium; pure summaries remain measured."
+        },
+        {
+          "glob": "src/components/session/session-progress-todo.tsx",
+          "reason": "Read-only Todo status and wrapping run in session-activity.dom.test.tsx through Vite and Chromium; pure summaries remain measured."
+        },
+        {
           "glob": "src/components/session/session-submission-status.tsx",
           "reason": "test/components/session/session-submission-status.dom.test.ts verifies current submission phases, locale changes, prompt retention, structured errors and keyboard retry in Chromium; Vite/browser execution is outside Bun source LCOV."
         },
@@ -461,6 +485,10 @@
         {
           "glob": "src/components/session/session-review-tab.tsx",
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/subagent-dock.tsx",
+          "reason": "Pointer and keyboard cancellation, navigation, interruption and retry run in session-activity.dom.test.tsx through Vite and Chromium; Bun cannot instrument the browser bundle."
         },
         {
           "glob": "src/components/session/subagent-session-footer.tsx",
@@ -731,6 +759,18 @@
           "reason": "Source selection, data switches, narrow layout and partial results are exercised by browser-interaction.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
         },
         {
+          "glob": "src/components/workspace/browser/browser-import-entry.tsx",
+          "reason": "Immediate dialog mounting, lazy form lifetime, unavailable native capability and retry are exercised by browser-opening.dom.test.tsx, browser-panel-presentation.dom.test.tsx and browser-interaction.dom.test.tsx in Chromium; Vite execution does not contribute Bun coverage. Target binding remains measured in browser-import-target.test.ts."
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-import.tsx",
+          "reason": "The Solid hook captures its initiating tab and Session and is exercised by browser-opening.dom.test.tsx for pending discovery, frame replacement and target closure in Chromium; Vite execution does not contribute Bun coverage. Target binding remains measured in browser-import-target.test.ts."
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-preparing.tsx",
+          "reason": "The lightweight frame, disabled navigation, first-frame presentation, visible preparation failures and Retry are exercised by browser-opening.dom.test.tsx and browser-panel-presentation.dom.test.tsx in Chromium; Vite execution does not contribute Bun coverage."
+        },
+        {
           "glob": "src/components/workspace/browser/browser-new-tab.tsx",
           "reason": "New-tab search composition/submission, footer styles and keyboard import/focus return are exercised by browser-interaction.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
         },
@@ -908,7 +948,7 @@
         },
         {
           "glob": "src/context/workbench/index.tsx",
-          "reason": "global context requires full app bootstrap"
+          "reason": "Rendered workbench lifecycle and selection are covered by browser-opening.dom.test.tsx, resource-home.dom.test.ts and workbench-surface.dom.test.ts in Chromium; Vite execution does not contribute Bun coverage. Close, reveal and resource policies remain directly measured under test/context/workbench."
         },
         {
           "glob": "src/custom-elements.d.ts",

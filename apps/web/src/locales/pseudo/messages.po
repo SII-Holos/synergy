@@ -10922,6 +10922,10 @@ msgid "browser.import.cookies"
 msgstr "⟦Cookies⟧"
 
 #. js-lingui-explicit-id
+msgid "browser.import.desktopUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "browser.import.done"
 msgstr "⟦Done⟧"
 
@@ -10980,6 +10984,10 @@ msgstr "⟦Saved accounts for signing in⟧"
 #. js-lingui-explicit-id
 msgid "browser.import.passwords"
 msgstr "⟦Passwords⟧"
+
+#. js-lingui-explicit-id
+msgid "browser.import.preparing"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "browser.import.progress"
@@ -11064,6 +11072,22 @@ msgstr "⟦unsettled⟧"
 #. js-lingui-explicit-id
 msgid "browser.page.back"
 msgstr "⟦Back to webpage⟧"
+
+#. js-lingui-explicit-id
+msgid "browser.prepare.cleanup"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.prepare.closed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.prepare.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.prepare.timeout"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "browser.settings.advanced"
@@ -12090,6 +12114,10 @@ msgid "execution.callsTruncated"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "execution.cancelFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "execution.cancelled"
 msgstr ""
 
@@ -12098,15 +12126,7 @@ msgid "execution.cancelRead"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "execution.changes.diagnostics"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "execution.changes.incomplete"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "execution.changes.incompleteDescription"
+msgid "execution.cancelTask"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12131,10 +12151,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.completed"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "execution.connected"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12206,10 +12222,6 @@ msgid "execution.diagnostics"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "execution.disconnected"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "execution.download"
 msgstr ""
 
@@ -12227,10 +12239,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.end"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "execution.environment"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12295,6 +12303,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.idle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.inboxHistory"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12486,6 +12498,10 @@ msgid "execution.purpose"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "execution.queued"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "execution.raw"
 msgstr ""
 
@@ -12659,6 +12675,18 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.view"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.workspace.copyPath"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.workspace.pathCopied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.workspace.worktree"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -16023,8 +16051,28 @@ msgstr ""
 msgid "session.activity.waitingModel"
 msgstr ""
 
-#. js-lingui-explicit-id
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.actionFailed"
+msgstr ""
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.more"
+msgstr ""
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
 msgid "session.agenda.retry"
+msgstr ""
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.tasks.title"
 msgstr ""
 
 #. Runtime translation descriptors for all wake-indicator UI strings.
@@ -16946,6 +16994,10 @@ msgid "session.inbox.queued"
 msgstr "⟦Queued by you⟧"
 
 #. js-lingui-explicit-id
+msgid "session.inbox.remove"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.inbox.removed"
 msgstr "⟦Removed queued message⟧"
 
@@ -17242,6 +17294,94 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.process.workedDuration"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.activeAria"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.attentionAria"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.blockedAria"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.cancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.close"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.collapse"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.completeAria"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.completeFraction"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.currentWork"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.dagTab"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.done"
+msgstr ""
+
+#. session-progress summary labels
+msgid "session.progress.ended"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.expand"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.needsAttention"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.needsAttentionBlocked"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.noActivePlan"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.ready"
+msgstr ""
+
+#. session-progress-island
+msgid "session.progress.sessionLabel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.todoTab"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.viewLabel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.working"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.workingLabel"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17677,6 +17817,14 @@ msgid "session.subagent.ariaQueued"
 msgstr "⟦{agent} queued⟧"
 
 #. js-lingui-explicit-id
+msgid "session.subagent.cancelFailed"
+msgstr ""
+
+#. subagent-dock.tsx
+msgid "session.subagent.dockLabel"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.subagent.footer.cancelled"
 msgstr "⟦Cancelled⟧"
 
@@ -17724,7 +17872,7 @@ msgstr "⟦{agent}: Retry #{attempt} — {message}⟧"
 msgid "session.subagent.tapToOpen"
 msgstr "⟦Tap to open · press and hold to cancel⟧"
 
-#. subagent-dock.tsx
+#. js-lingui-explicit-id
 msgid "session.subagent.toolsCount"
 msgstr "⟦{count} tools⟧"
 
@@ -17799,6 +17947,34 @@ msgstr "⟦Retry⟧"
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "session.tags.saveFailed"
 msgstr "⟦Could not save tags⟧"
+
+#. js-lingui-explicit-id
+msgid "session.todo.cancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.todo.completed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.todo.inProgress"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.todo.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.todo.priorityHigh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.todo.priorityLow"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.todo.unknown"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.transition.continue"
@@ -25097,18 +25273,6 @@ msgid "turn-change.binary"
 msgstr "⟦Binary⟧"
 
 #. ── Turn change summary chrome ──────────────────────────────────────
-msgid "turn-change.calculating"
-msgstr "⟦Calculating file changes…⟧"
-
-#. ── Turn change summary chrome ──────────────────────────────────────
-msgid "turn-change.calculation-failed"
-msgstr "⟦Couldn’t calculate file changes⟧"
-
-#. ── Turn change summary chrome ──────────────────────────────────────
-msgid "turn-change.recording-incomplete"
-msgstr "⟦File change recording is incomplete⟧"
-
-#. ── Turn change summary chrome ──────────────────────────────────────
 msgid "turn-change.review-changes"
 msgstr "⟦Review changes⟧"
 
@@ -25887,14 +26051,6 @@ msgstr ""
 #. js-lingui-explicit-id
 msgid "workspace.home.unavailable"
 msgstr ""
-
-#. js-lingui-explicit-id
-msgid "workspace.location.isolated"
-msgstr "⟦Isolated worktree⟧"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.stored"
-msgstr "⟦Stored Workspace⟧"
 
 #. js-lingui-explicit-id
 msgid "workspace.navigation.close"

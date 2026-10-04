@@ -10922,6 +10922,10 @@ msgid "browser.import.cookies"
 msgstr "Cookie"
 
 #. js-lingui-explicit-id
+msgid "browser.import.desktopUnavailable"
+msgstr "当前 Desktop 窗口无法导入浏览器数据，请重新打开后重试。"
+
+#. js-lingui-explicit-id
 msgid "browser.import.done"
 msgstr "完成"
 
@@ -10980,6 +10984,10 @@ msgstr "用于登录网站的已保存账号"
 #. js-lingui-explicit-id
 msgid "browser.import.passwords"
 msgstr "密码"
+
+#. js-lingui-explicit-id
+msgid "browser.import.preparing"
+msgstr "正在准备浏览器…"
 
 #. js-lingui-explicit-id
 msgid "browser.import.progress"
@@ -11064,6 +11072,22 @@ msgstr "未稳定"
 #. js-lingui-explicit-id
 msgid "browser.page.back"
 msgstr "返回网页"
+
+#. js-lingui-explicit-id
+msgid "browser.prepare.cleanup"
+msgstr "无法关闭浏览器页面"
+
+#. js-lingui-explicit-id
+msgid "browser.prepare.closed"
+msgstr "浏览器目标已变化或关闭，请重新打开导入窗口。"
+
+#. js-lingui-explicit-id
+msgid "browser.prepare.failed"
+msgstr "浏览器准备失败，请重试。"
+
+#. js-lingui-explicit-id
+msgid "browser.prepare.timeout"
+msgstr "浏览器准备超时，请重试以检查同一页面。"
 
 #. js-lingui-explicit-id
 msgid "browser.settings.advanced"
@@ -12090,6 +12114,10 @@ msgid "execution.callsTruncated"
 msgstr "显示 {shown} / {total} 次调用。完整记录可在轨迹中查看。"
 
 #. js-lingui-explicit-id
+msgid "execution.cancelFailed"
+msgstr "未能取消子任务，请重试。"
+
+#. js-lingui-explicit-id
 msgid "execution.cancelled"
 msgstr "已取消"
 
@@ -12098,16 +12126,8 @@ msgid "execution.cancelRead"
 msgstr "取消读取"
 
 #. js-lingui-explicit-id
-msgid "execution.changes.diagnostics"
-msgstr "查看记录详情"
-
-#. js-lingui-explicit-id
-msgid "execution.changes.incomplete"
-msgstr "更改记录不完整"
-
-#. js-lingui-explicit-id
-msgid "execution.changes.incompleteDescription"
-msgstr "部分文件更改未能记录，这不代表任务执行失败。"
+msgid "execution.cancelTask"
+msgstr "取消子任务"
 
 #. js-lingui-explicit-id
 msgid "execution.chartEvents"
@@ -12132,10 +12152,6 @@ msgstr "收起任务详情"
 #. js-lingui-explicit-id
 msgid "execution.completed"
 msgstr "已完成"
-
-#. js-lingui-explicit-id
-msgid "execution.connected"
-msgstr "已连接"
 
 #. js-lingui-explicit-id
 msgid "execution.contentActions"
@@ -12206,10 +12222,6 @@ msgid "execution.diagnostics"
 msgstr "参数与诊断"
 
 #. js-lingui-explicit-id
-msgid "execution.disconnected"
-msgstr "正在重新连接…"
-
-#. js-lingui-explicit-id
 msgid "execution.download"
 msgstr "下载完整内容"
 
@@ -12228,10 +12240,6 @@ msgstr "没有符合筛选条件的记录。"
 #. js-lingui-explicit-id
 msgid "execution.end"
 msgstr "结束时间"
-
-#. js-lingui-explicit-id
-msgid "execution.environment"
-msgstr "连接状态"
 
 #. js-lingui-explicit-id
 msgid "execution.error"
@@ -12296,6 +12304,10 @@ msgstr "{count} 次用户输入"
 #. js-lingui-explicit-id
 msgid "execution.idle"
 msgstr "{duration} 内无已记录活动"
+
+#. js-lingui-explicit-id
+msgid "execution.inboxHistory"
+msgstr "收件箱历史"
 
 #. js-lingui-explicit-id
 msgid "execution.input"
@@ -12486,6 +12498,10 @@ msgid "execution.purpose"
 msgstr "调用用途"
 
 #. js-lingui-explicit-id
+msgid "execution.queued"
+msgstr "排队中"
+
+#. js-lingui-explicit-id
 msgid "execution.raw"
 msgstr "原始结果"
 
@@ -12660,6 +12676,18 @@ msgstr "此内容版本已不可用，请读取最新版本。"
 #. js-lingui-explicit-id
 msgid "execution.view"
 msgstr "视图"
+
+#. js-lingui-explicit-id
+msgid "execution.workspace.copyPath"
+msgstr "复制工作区路径"
+
+#. js-lingui-explicit-id
+msgid "execution.workspace.pathCopied"
+msgstr "已复制工作区路径"
+
+#. js-lingui-explicit-id
+msgid "execution.workspace.worktree"
+msgstr "独立工作区"
 
 #. js-lingui-explicit-id
 msgid "execution.wrap"
@@ -16023,9 +16051,29 @@ msgstr "等待后台任务"
 msgid "session.activity.waitingModel"
 msgstr "等待模型回复"
 
-#. js-lingui-explicit-id
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.actionFailed"
+msgstr "未能更新定时任务，请重试。"
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.more"
+msgstr "加载更多定时任务"
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
 msgid "session.agenda.retry"
 msgstr "未能加载定时任务，重试"
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.tasks.title"
+msgstr "定时任务"
 
 #. Runtime translation descriptors for all wake-indicator UI strings.
  *  Each is a base MessageDescriptor with `id` + English `message`.
@@ -16946,6 +16994,10 @@ msgid "session.inbox.queued"
 msgstr "由你排队"
 
 #. js-lingui-explicit-id
+msgid "session.inbox.remove"
+msgstr "移除消息"
+
+#. js-lingui-explicit-id
 msgid "session.inbox.removed"
 msgstr "已移除排队消息"
 
@@ -17243,6 +17295,94 @@ msgstr "查看推理"
 #. js-lingui-explicit-id
 msgid "session.process.workedDuration"
 msgstr "工作了 {seconds} 秒"
+
+#. js-lingui-explicit-id
+msgid "session.progress.activeAria"
+msgstr "会话进度，{total} 个任务中已完成 {completed} 个"
+
+#. js-lingui-explicit-id
+msgid "session.progress.attentionAria"
+msgstr "会话进度需要注意，{count} 个失败"
+
+#. js-lingui-explicit-id
+msgid "session.progress.blockedAria"
+msgstr "会话进度需要注意，{count} 个受阻"
+
+#. js-lingui-explicit-id
+msgid "session.progress.cancelled"
+msgstr "已取消 {count} 项"
+
+#. js-lingui-explicit-id
+msgid "session.progress.close"
+msgstr "关闭进度"
+
+#. js-lingui-explicit-id
+msgid "session.progress.collapse"
+msgstr "折叠"
+
+#. js-lingui-explicit-id
+msgid "session.progress.completeAria"
+msgstr "会话进度已完成，共完成 {count, plural, one {# 个任务} other {# 个任务}}"
+
+#. js-lingui-explicit-id
+msgid "session.progress.completeFraction"
+msgstr "已完成 {completed}/{total}"
+
+#. js-lingui-explicit-id
+msgid "session.progress.currentWork"
+msgstr "当前工作"
+
+#. js-lingui-explicit-id
+msgid "session.progress.dagTab"
+msgstr "DAG"
+
+#. js-lingui-explicit-id
+msgid "session.progress.done"
+msgstr "完成 · {count, plural, one {# 个任务} other {# 个任务}}"
+
+#. session-progress summary labels
+msgid "session.progress.ended"
+msgstr "已结束"
+
+#. js-lingui-explicit-id
+msgid "session.progress.expand"
+msgstr "展开"
+
+#. js-lingui-explicit-id
+msgid "session.progress.needsAttention"
+msgstr "需要处理 · {count, plural, one {# 个任务失败} other {# 个任务失败}}"
+
+#. js-lingui-explicit-id
+msgid "session.progress.needsAttentionBlocked"
+msgstr "需要处理 · {count, plural, one {# 个任务受阻} other {# 个任务受阻}}"
+
+#. js-lingui-explicit-id
+msgid "session.progress.noActivePlan"
+msgstr "无活动计划"
+
+#. js-lingui-explicit-id
+msgid "session.progress.ready"
+msgstr "就绪 · {fraction}"
+
+#. session-progress-island
+msgid "session.progress.sessionLabel"
+msgstr "会话进度"
+
+#. js-lingui-explicit-id
+msgid "session.progress.todoTab"
+msgstr "待办"
+
+#. js-lingui-explicit-id
+msgid "session.progress.viewLabel"
+msgstr "进度视图"
+
+#. js-lingui-explicit-id
+msgid "session.progress.working"
+msgstr "工作中"
+
+#. js-lingui-explicit-id
+msgid "session.progress.workingLabel"
+msgstr "正在处理 {count, plural, one {# 个任务} other {# 个任务}}"
 
 #. js-lingui-explicit-id
 msgid "session.question.answerPlaceholder"
@@ -17677,6 +17817,14 @@ msgid "session.subagent.ariaQueued"
 msgstr "{agent} 已排队"
 
 #. js-lingui-explicit-id
+msgid "session.subagent.cancelFailed"
+msgstr "无法取消智能体"
+
+#. subagent-dock.tsx
+msgid "session.subagent.dockLabel"
+msgstr "运行中的智能体"
+
+#. js-lingui-explicit-id
 msgid "session.subagent.footer.cancelled"
 msgstr "已取消"
 
@@ -17724,7 +17872,7 @@ msgstr "{agent}：重试 #{attempt}，{message}"
 msgid "session.subagent.tapToOpen"
 msgstr "点按打开 · 长按取消"
 
-#. subagent-dock.tsx
+#. js-lingui-explicit-id
 msgid "session.subagent.toolsCount"
 msgstr "{count} 个工具"
 
@@ -17799,6 +17947,34 @@ msgstr "重试"
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "session.tags.saveFailed"
 msgstr "无法保存标签"
+
+#. js-lingui-explicit-id
+msgid "session.todo.cancelled"
+msgstr "已取消"
+
+#. js-lingui-explicit-id
+msgid "session.todo.completed"
+msgstr "已完成"
+
+#. js-lingui-explicit-id
+msgid "session.todo.inProgress"
+msgstr "进行中"
+
+#. js-lingui-explicit-id
+msgid "session.todo.pending"
+msgstr "待处理"
+
+#. js-lingui-explicit-id
+msgid "session.todo.priorityHigh"
+msgstr "高优先级"
+
+#. js-lingui-explicit-id
+msgid "session.todo.priorityLow"
+msgstr "低优先级"
+
+#. js-lingui-explicit-id
+msgid "session.todo.unknown"
+msgstr "状态未知"
 
 #. js-lingui-explicit-id
 msgid "session.transition.continue"
@@ -25097,18 +25273,6 @@ msgid "turn-change.binary"
 msgstr "二进制"
 
 #. ── Turn change summary chrome ──────────────────────────────────────
-msgid "turn-change.calculating"
-msgstr "正在计算文件更改…"
-
-#. ── Turn change summary chrome ──────────────────────────────────────
-msgid "turn-change.calculation-failed"
-msgstr "无法计算文件更改"
-
-#. ── Turn change summary chrome ──────────────────────────────────────
-msgid "turn-change.recording-incomplete"
-msgstr "文件改动记录尚不完整"
-
-#. ── Turn change summary chrome ──────────────────────────────────────
 msgid "turn-change.review-changes"
 msgstr "查看更改"
 
@@ -25887,14 +26051,6 @@ msgstr "新标签页"
 #. js-lingui-explicit-id
 msgid "workspace.home.unavailable"
 msgstr "此项目暂无可用资源。"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.isolated"
-msgstr "独立工作区"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.stored"
-msgstr "存储型 Workspace"
 
 #. js-lingui-explicit-id
 msgid "workspace.navigation.close"

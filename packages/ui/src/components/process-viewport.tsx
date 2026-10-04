@@ -44,11 +44,13 @@ export function ProcessViewport(
   let resumeRequested = false
   let explicitFollow = false
   let previousOffset = 0
+  let readingAnchor = saved?.anchor
   const pause = () => {
     resumeRequested = false
     explicitFollow = false
     if (!overflow()) return
     setFollowing(false)
+    readingAnchor = props.anchor?.()
     props.onReading?.(true)
   }
   const follow = (force = false) => {
@@ -103,7 +105,11 @@ export function ProcessViewport(
       observer.disconnect()
       document.removeEventListener("selectionchange", selection)
       positions.delete(props.identity)
-      positions.set(props.identity, { offset: viewport.scrollTop, following: following(), anchor: props.anchor?.() })
+      positions.set(props.identity, {
+        offset: viewport.clientHeight ? viewport.scrollTop : previousOffset,
+        following: following(),
+        anchor: viewport.clientHeight ? props.anchor?.() : readingAnchor,
+      })
       if (positions.size > 128) positions.delete(positions.keys().next().value!)
       props.onReading?.(false)
     })
@@ -159,7 +165,9 @@ export function ProcessViewport(
           }
         }}
         onScroll={() => {
+          if (!viewport.clientHeight) return
           props.onScroll?.()
+          readingAnchor = props.anchor?.()
           if (
             resumeRequested &&
             viewport.scrollTop > previousOffset &&

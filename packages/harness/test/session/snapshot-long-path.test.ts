@@ -22,6 +22,9 @@ test("snapshot indexes, retained refs and pack transfers work beyond Windows MAX
     const workspace = path.join(deep, "working-files")
     await fs.mkdir(workspace)
     await fs.writeFile(path.join(workspace, "content.txt"), "original bytes\r\n")
+    await Promise.all(
+      Array.from({ length: 65 }, (_, index) => fs.writeFile(path.join(workspace, `${index}.txt`), `packed ${index}`)),
+    )
     const args = ["git", "--git-dir", repo]
     expect(
       await SnapshotCapture.refresh({
@@ -34,6 +37,9 @@ test("snapshot indexes, retained refs and pack transfers work beyond Windows MAX
         temporary: path.dirname(index),
       }),
     ).toBe(true)
+    expect(
+      (await fs.readdir(path.join(repo, "objects", "pack"))).filter((name) => name.endsWith(".pack")),
+    ).toHaveLength(1)
     const tree = await SnapshotGit.run([...args, "write-tree"], workspace, { GIT_INDEX_FILE: index })
     expect(tree.exitCode).toBe(0)
     const hash = tree.text.trim()

@@ -14,6 +14,7 @@ import { SnapshotPath } from "./snapshot-path"
 import { SnapshotLease } from "./snapshot-lease"
 import { SnapshotProtection } from "./snapshot-protection"
 import { Log } from "../util/log"
+import { ObservabilityMetrics } from "../observability/metrics"
 
 export namespace SnapshotStore {
   const log = Log.create({ service: "snapshot-store" })
@@ -167,6 +168,7 @@ export namespace SnapshotStore {
       if (result.results.some((result) => result.status !== "migrated"))
         throw new StorageError("Protected historical snapshots are not ready")
     }
+    const lockStarted = performance.now()
     return SnapshotLease.use(
       scopeID,
       false,
@@ -175,6 +177,14 @@ export namespace SnapshotStore {
           { directory: SnapshotLease.directory(), key: `snapshot-session:${scopeID}:${sessionID}`, signal },
           async () => {
             signal?.throwIfAborted()
+            ObservabilityMetrics.record({
+              name: "snapshot.lock.wait.duration",
+              value: performance.now() - lockStarted,
+              unit: "ms",
+              module: "storage",
+              scopeID,
+              sessionID,
+            })
             const workspace = options?.historical ? undefined : ScopeContext.current.workspace
             const source =
               options?.source ??

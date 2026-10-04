@@ -7907,6 +7907,13 @@ export type ExecutionTask = {
     total: number | null
   }
   runs: Array<string>
+  interaction?: SessionInteraction
+  cortex?: {
+    taskID: string
+    agent: string
+    status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+    visibility?: "visible" | "hidden"
+  }
 }
 
 export type ExecutionTrajectoryNode = {

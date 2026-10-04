@@ -48,11 +48,13 @@ function SyncState(props: { catalog: BrowserCatalog; knownPageIds: ReadonlySet<s
         [
           workbench.sessionKey(),
           props.catalog.store.session.pages.map((page) => ({ id: page.id, title: page.title, url: page.url })),
+          workbench.surface("side").hasOpening(),
         ] as const,
-      ([sessionKey, pages]) => {
+      ([sessionKey, pages, hasOpening]) => {
         const surface = workbench.surface("side"),
-          tabs = surface.tabs(),
+          tabs = surface.savedTabs(),
           active = surface.active()
+        const activeOpening = active ? workbench.openingForTab(active) : undefined
         if (sessionKey !== previousSessionKey) {
           knownPageIds = new Set(
             tabs
@@ -68,14 +70,21 @@ function SyncState(props: { catalog: BrowserCatalog; knownPageIds: ReadonlySet<s
           )
           previousSessionKey = sessionKey
         }
-        const next = reconcileBrowserTabs({ tabs, active, pages, route: props.catalog.route, knownPageIds })
+        const visiblePages = hasOpening ? pages.filter((page) => tabs.some((tab) => tab.resourceId === page.id)) : pages
+        const next = reconcileBrowserTabs({
+          tabs,
+          active,
+          pages: visiblePages,
+          route: props.catalog.route,
+          knownPageIds,
+        })
         knownPageIds = new Set(pages.map((page) => page.id))
         if (next.tabs === tabs && next.active === active) return
         untrack(() =>
           batch(() => {
             surface.setTabs(next.tabs)
-            if (active !== undefined || surface.opened()) surface.setActive(next.active)
-            if (!next.tabs.length && surface.opened()) surface.close()
+            if (!activeOpening && (active !== undefined || surface.opened())) surface.setActive(next.active)
+            if (!surface.tabs().length && surface.opened()) surface.close()
           }),
         )
       },

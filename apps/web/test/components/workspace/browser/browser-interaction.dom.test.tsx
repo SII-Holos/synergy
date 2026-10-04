@@ -51,7 +51,7 @@ beforeAll(async () => {
     import { I18nProvider } from "@lingui/solid"
     import { setupI18n } from "@lingui/core"
     import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
-    import { BrowserImportDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-import-dialog.tsx`)}
+    import { BrowserImportDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-import-entry.tsx`)}
     import { BrowserDataDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-data-settings.tsx`)}
     import { BrowserResultDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-result-dialog.tsx`)}
     import { BrowserPageDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/page-dialog.tsx`)}

@@ -45,7 +45,7 @@ A mounted surface has one plugin generation, server, Scope, optional Session, co
 
 Import `Button`, `Input`, `Select`, `Tabs`, `Menu`, `Dialog`, `Popover`, `Tooltip`, `FormField`, `SettingRow`, `EmptyState`, `ErrorState`, `Loading`, `Icon` and `HostView` from `@ericsanchezok/synergy-plugin/components`. These resolve to the host's UI implementation and shared Solid runtime. Semantic icons are typed by `@ericsanchezok/synergy-plugin/icons`; locale-sensitive number/date/relative-time/byte formatting is available from `@ericsanchezok/synergy-plugin/format`.
 
-Use semantic tokens for their declared meaning. For example, `state.cancelled` denotes a cancelled task, while `action.close` denotes dismissing a control.
+Use `execution.elapsed`, `execution.tokens` and `execution.cost` for task metrics; `inbox.task`, `inbox.steer` and `inbox.context` distinguish queued input, steering and context updates. Use semantic tokens for their declared meaning. For example, `state.cancelled` denotes a cancelled task, while `action.close` denotes dismissing a control.
 
 Surface expansion and contraction use `action.expand` (`maximize-2`, two diagonal outward arrows) and `action.collapse` (`minimize-2`, two diagonal inward arrows). Editors, panels and fullscreen content views share this pair. The stable `composer.expand` and `composer.collapse` tokens retain the same sizing meanings; `window.restore` shares the contraction glyph. These are the only same-meaning glyph aliases. New sizing controls reuse the generic action tokens; disclosure controls retain their navigation semantics.
 
