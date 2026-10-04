@@ -194,6 +194,8 @@
   font-size: var(--font-size-small);
   line-height: 20px;
   min-width: 0;
+  height: 44px;
+  box-sizing: border-box;
 }
 .review-file-header[data-selected="true"] {
   background: var(--surface-base-hover);
@@ -203,7 +205,8 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  min-height: 40px;
+  height: 43px;
+  flex: none;
   padding: 4px 10px;
 }
 .review-file-toggle {
@@ -271,17 +274,26 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 12px 8px;
+  flex: none;
+  max-width: 120px;
   color: var(--text-weak);
   font-size: var(--font-size-x-small);
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .review-file-status.review-error {
   color: var(--text-error);
 }
 .review-import-fold {
   text-align: start;
-  padding: 4px 12px;
+  padding: 4px 6px;
+  flex: none;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: var(--radius-md);
   background: var(--surface-inset-base);
   color: var(--text-weak);
   border: 0;

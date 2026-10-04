@@ -458,6 +458,44 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
                   <span class="review-file-directory">{value().file.slice(0, value().file.lastIndexOf("/") + 1)}</span>
                 </span>
               </button>
+              <Show when={data.loading(id)}>
+                <span class="review-file-status" role="status">
+                  <span class="review-loading-icon">
+                    <Icon name={getSemanticIcon("action.refresh")} size="small" />
+                  </span>
+                  <span class="sr-only">{_(C.read)}</span>
+                </span>
+              </Show>
+              <Show when={data.fileError(id)}>
+                <span class="review-file-status review-error" role="alert">
+                  {icon("action.refresh", `${_(C.retry)}: ${data.fileError(id)}`, () => void data.load(value(), true))}
+                </span>
+              </Show>
+              <Show
+                when={
+                  value().binary ||
+                  data.content(id)?.after.kind === "oversized" ||
+                  data.content(id)?.after.kind === "symlink"
+                }
+              >
+                <span class="review-file-status">
+                  {_(
+                    data.content(id)?.after.kind === "oversized"
+                      ? C.oversized
+                      : data.content(id)?.after.kind === "symlink"
+                        ? C.symlink
+                        : C.binary,
+                  )}
+                </span>
+              </Show>
+              <Show when={imports() && (importRanges()?.get(id)?.before || importRanges()?.get(id)?.after)}>
+                <button type="button" class="review-import-fold" onClick={() => setImports(false)}>
+                  {_({
+                    ...C.newImports,
+                    values: { count: (importRanges()?.get(id)?.before ?? 0) + (importRanges()?.get(id)?.after ?? 0) },
+                  })}
+                </button>
+              </Show>
               <DiffChanges changes={value()} />
               <div class="review-file-actions">
                 {icon("action.view", _(C.versions), () => void preview(value()))}
@@ -516,44 +554,6 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
                 {_(C.markViewed)}
               </Checkbox>
             </div>
-            <Show when={data.loading(id)}>
-              <div class="review-file-status" role="status">
-                {_(C.read)}
-              </div>
-            </Show>
-            <Show when={data.fileError(id)}>
-              <div class="review-file-status review-error" role="alert">
-                <span>{data.fileError(id)}</span>
-                <Button variant="ghost" onClick={() => void data.load(value(), true)}>
-                  {_(C.retry)}
-                </Button>
-              </div>
-            </Show>
-            <Show
-              when={
-                value().binary ||
-                data.content(id)?.after.kind === "oversized" ||
-                data.content(id)?.after.kind === "symlink"
-              }
-            >
-              <div class="review-file-status">
-                {_(
-                  data.content(id)?.after.kind === "oversized"
-                    ? C.oversized
-                    : data.content(id)?.after.kind === "symlink"
-                      ? C.symlink
-                      : C.binary,
-                )}
-              </div>
-            </Show>
-            <Show when={imports() && (importRanges()?.get(id)?.before || importRanges()?.get(id)?.after)}>
-              <button type="button" class="review-import-fold" onClick={() => setImports(false)}>
-                {_({
-                  ...C.newImports,
-                  values: { count: (importRanges()?.get(id)?.before ?? 0) + (importRanges()?.get(id)?.after ?? 0) },
-                })}
-              </button>
-            </Show>
           </div>
         )}
       </Show>

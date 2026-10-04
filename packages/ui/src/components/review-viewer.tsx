@@ -41,6 +41,8 @@ export function ReviewViewer(props: ReviewViewerProps) {
       lineDiffType: props.words ? "word-alt" : "none",
       expandUnchanged: props.full,
       stickyHeaders: true,
+      itemMetrics: { lineHeight: 24, diffHeaderHeight: 44 },
+      layout: { gap: 0, paddingTop: 0, paddingBottom: 0 },
       enableLineSelection: true,
       tokenizeMaxLength: 32_000,
       onSelectedLinesChange: props.onSelection,
@@ -146,6 +148,7 @@ export function ReviewViewer(props: ReviewViewerProps) {
         if (!header) {
           const element = document.createElement("div")
           element.dataset.reviewHeader = id
+          element.style.height = "44px"
           const dispose = render(() => props.renderHeader(id), element, undefined, { owner })
           header = { element, dispose }
           headers.set(id, header)

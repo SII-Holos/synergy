@@ -27,7 +27,7 @@ beforeAll(async () => {
     const entries=Array.from({length:120},(_,index)=>({id:"file-"+index,type:"diff",version:1,fileDiff:parseDiffFromFile({name:"file"+index+".ts",contents:index===0?before:"old\\n"},{name:"file"+index+".ts",contents:index===0?before.replace("row5 = 5","row5 = 500"):"new"+index+"\\n"})}))
     const [selected,setSelected]=createSignal("file-0"),[items,setItems]=createSignal(entries),[full,setFull]=createSignal(true),[selection,setSelection]=createSignal(null),[style,setStyle]=createSignal("unified")
     const i18n=setupI18n({locale:"en",messages:{en:{}}})
-    render(()=><I18nProvider i18n={i18n}><><button onClick={()=>setSelected("file-119")}>Last file</button><button onClick={()=>setSelected("file-0")}>First file</button><button onClick={()=>setStyle(style()==="unified"?"split":"unified")}>Toggle layout</button><button onClick={()=>setFull(!full())}>Toggle full</button><button onClick={()=>setItems(items().map(item=>({...item,version:item.version+1,collapsed:!item.collapsed})))}>Toggle folds</button><output>{JSON.stringify(selection())}</output><div style={{height:"500px",width:"640px"}}><ReviewViewer items={items()} selected={selected()} style={style()} wrap words full={full()} whitespace={false} renderHeader={id=><button aria-label={id}>{id}</button>} onSelection={setSelection} onError={error=>{throw error}} /></div></></I18nProvider>,document.getElementById("root"))
+    render(()=><I18nProvider i18n={i18n}><><button onClick={()=>setSelected("file-119")}>Last file</button><button onClick={()=>setSelected("file-60")}>Middle file</button><button onClick={()=>setSelected("file-0")}>First file</button><button onClick={()=>setStyle(style()==="unified"?"split":"unified")}>Toggle layout</button><button onClick={()=>setFull(!full())}>Toggle full</button><button onClick={()=>setItems(items().map(item=>({...item,version:item.version+1,collapsed:!item.collapsed})))}>Toggle folds</button><output>{JSON.stringify(selection())}</output><div style={{height:"500px",width:"640px"}}><ReviewViewer items={items()} selected={selected()} style={style()} wrap words full={full()} whitespace={false} renderHeader={id=><button style={{height:"41px"}} aria-label={id}>{id}</button>} onSelection={setSelection} onError={error=>{throw error}} /></div></></I18nProvider>,document.getElementById("root"))
   `,
   )
   const reservation = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
@@ -96,8 +96,22 @@ test("continuous review bounds a full large file and reaches distant files witho
   expect(counts.lines).toBeGreaterThan(0)
   expect(counts.lines).toBeLessThan(200)
   expect(counts.nodes).toBeLessThan(3000)
+  await page.getByRole("button", { name: "Middle file", exact: true }).click()
+  await page.getByText("new60", { exact: true }).waitFor()
+  const middle = page
+    .locator("diffs-container")
+    .filter({ has: page.getByRole("button", { name: "file-60", exact: true }) })
+  const middleHeader = await middle.locator("[data-review-header]").boundingBox()
+  const middleLine = await middle.getByRole("button", { name: "Select line 1 in after", exact: true }).boundingBox()
+  expect(middleLine!.y).toBeGreaterThanOrEqual(middleHeader!.y + middleHeader!.height - 1)
   await page.getByRole("button", { name: "Last file", exact: true }).click()
   await page.getByText("new119", { exact: true }).waitFor()
+  const last = page
+    .locator("diffs-container")
+    .filter({ has: page.getByRole("button", { name: "file-119", exact: true }) })
+  const header = await last.locator("[data-review-header]").boundingBox()
+  const firstLine = await last.getByRole("button", { name: "Select line 1 in after", exact: true }).boundingBox()
+  expect(firstLine!.y).toBeGreaterThanOrEqual(header!.y + header!.height - 1)
   await page.getByRole("button", { name: "Toggle layout", exact: true }).click()
   await page
     .locator("diffs-container")
