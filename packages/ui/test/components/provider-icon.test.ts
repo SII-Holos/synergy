@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
@@ -47,7 +48,7 @@ beforeAll(async () => {
     plugins: [solidPlugin()],
     server: {
       host: "127.0.0.1",
-      port: 5201,
+      port: await fixturePort(),
       strictPort: true,
       fs: { allow: [path.resolve(import.meta.dir, "../../..")] },
     },
