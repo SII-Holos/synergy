@@ -22,6 +22,8 @@ Local scrolling pauses following independently from the outer conversation. New 
 
 History search retains its target by message and Part identity while preceding summaries and bodies hydrate. Layout changes resolve the current outer row and local process owner again instead of reusing a captured virtual index. Observe the virtual content itself as well as its parent and viewport: a fixed-height parent does not resize when child measurements change. Corrections respect conversation scroll padding and stop immediately on wheel, touch, pointer or keyboard input; disposal and superseding navigation invalidate pending location work.
 
+Opening the latest conversation or explicitly returning to its end establishes a viewport-owned follow intent. It survives delayed summary and body hydration until reading input or viewport replacement releases it. Ordinary component pins retain their bounded settling window. Reading input also cancels queued jumps, so a pending forced frame cannot undo the user's navigation. The public conversation viewport's existing latest action selects this intent without changing its plugin contract.
+
 The implementation is [virtual conversation rows](../../../../apps/web/src/components/session/virtual-conversation-rows.tsx), [process viewport](../../../../packages/ui/src/components/process-viewport.tsx), [event rows](../../../../packages/ui/src/components/process-event-row.tsx) and [event details](../../../../apps/web/src/components/workspace/process-event-detail.tsx). This extends the [bounded rendering decision](../architecture/2026-10-03-bounded-conversation-process-rendering.md).
 
 ## Alternatives considered

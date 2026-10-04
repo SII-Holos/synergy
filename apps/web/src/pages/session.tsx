@@ -1256,6 +1256,10 @@ function SessionPageContent() {
       setScrolledUp(distance > 100)
     },
   })
+  const conversationAutoScroll = {
+    ...autoScroll,
+    forceScrollToBottom: () => autoScroll.forceScrollToBottom({ untilInteraction: true }),
+  }
 
   let scrollSpyFrame: number | undefined
   let scrollSpyTarget: HTMLDivElement | undefined
@@ -1340,7 +1344,7 @@ function SessionPageContent() {
       afterHistoryLayoutSettles(() => {
         if (params.id !== id) return
         if (result === "latest") {
-          autoScroll.forceScrollToBottom()
+          autoScroll.forceScrollToBottom({ untilInteraction: true })
           return
         }
         restorePrependScrollAnchor(scrollAnchor)
@@ -1363,7 +1367,7 @@ function SessionPageContent() {
       setHistoryLocationPinned(false)
       setStore("turnStart", 0)
       afterHistoryLayoutSettles(() => {
-        if (params.id === id) autoScroll.forceScrollToBottom()
+        if (params.id === id) autoScroll.forceScrollToBottom({ untilInteraction: true })
       })
     } catch (error) {
       showToast({
@@ -1604,7 +1608,7 @@ function SessionPageContent() {
           if (!hash) {
             afterLayoutSettles(() => {
               initialScrollSettled = true
-              autoScroll.forceScrollToBottom()
+              autoScroll.forceScrollToBottom({ untilInteraction: true })
             })
             return
           }
@@ -1637,7 +1641,7 @@ function SessionPageContent() {
               }
             }
 
-            autoScroll.forceScrollToBottom()
+            autoScroll.forceScrollToBottom({ untilInteraction: true })
           })
         })
       },
@@ -1904,7 +1908,7 @@ function SessionPageContent() {
       return setScrolledUp
     },
     get autoScroll() {
-      return autoScroll
+      return conversationAutoScroll
     },
     get onClearHash() {
       return clearHash

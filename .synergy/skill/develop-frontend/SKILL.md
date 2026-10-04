@@ -46,6 +46,8 @@ Expanded logical process groups own a bounded scroll region and an inner virtual
 
 History location must follow message and Part identity through delayed preceding summary replacement and body measurement; a captured virtual index can acquire a different owner. Observe virtual content height as well as its parent and viewport, including a fixed-height parent under CPU throttling. Retain the target through hydration, respect scroll padding, and release corrections on explicit wheel, touch, pointer and keyboard input. Verify the target remains visible after the search dialog closes, then verify the user can scroll away. Superseding navigation and owner disposal invalidate pending work.
 
+Cold latest navigation and return-to-latest establish viewport-owned follow intent rather than extending a component settling timeout. Delay body reads beyond that timeout and verify the latest reply remains visible, then exercise reading input and viewport replacement. Cancel queued jumps when reading begins; a pending forced frame cannot restore following after the user navigates away.
+
 ## Settings recovery
 
 Theme and color-scheme selections apply immediately, while fonts, locale and other staged preferences use the footer Save/Cancel flow. Verify both boundaries rather than assuming every appearance setting shares one commit policy. Test same-mode theme changes on already-mounted content and portals. Exercise concurrent Desktop skin persistence with real temporary files: all accepted writes must settle in order, the final stored skin must match the latest request, and a failed replacement must clean up without blocking the next save.
