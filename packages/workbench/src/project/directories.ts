@@ -51,13 +51,12 @@ export namespace ProjectDirectories {
   export const Invalid = NamedError.create("ProjectDirectoriesInvalid", z.object({ message: z.string() }))
 
   export async function isGit(directory: string) {
-    const result = await $`git rev-parse --show-toplevel`
-      .cwd(directory)
-      .quiet()
-      .nothrow()
-      .catch(() => undefined)
-    if (!result || result.exitCode !== 0) return false
-    return path.resolve(result.text().trim()) === directory
+    try {
+      const result = await $`git rev-parse --show-toplevel`.cwd(directory).quiet().nothrow()
+      return result.exitCode === 0 && path.resolve(result.text().trim()) === directory
+    } catch {
+      return false
+    }
   }
 
   async function validate(input: z.infer<typeof Selection>) {
@@ -278,22 +277,15 @@ export namespace ProjectDirectories {
     const source = WorkspaceLocation.source()
     const hostID = await source.hostID()
     const paths = scope.local ? [...new Set([scope.local.worktree, ...scope.local.sandboxes])] : []
-    const git = scope.local
-      ? await $`git worktree list --porcelain -z`
-          .cwd(scope.local.worktree)
-          .quiet()
-          .nothrow()
-          .catch(() => undefined)
-      : undefined
-    const worktrees = new Set(
-      git?.exitCode === 0
-        ? git
-            .text()
-            .split("\0")
-            .filter((line) => line.startsWith("worktree "))
-            .map((line) => path.resolve(line.slice(9)))
-        : [],
-    )
+    const worktrees = new Set<string>()
+    if (scope.local) {
+      try {
+        const git = await $`git worktree list --porcelain -z`.cwd(scope.local.worktree).quiet().nothrow()
+        if (git.exitCode === 0)
+          for (const line of git.text().split("\0"))
+            if (line.startsWith("worktree ")) worktrees.add(path.resolve(line.slice(9)))
+      } catch {}
+    }
     if (scope.local) worktrees.delete(path.resolve(scope.local.worktree))
     const catalog = await WorkspaceCatalog.list(scope.id)
     for (const record of catalog)

@@ -19,13 +19,13 @@ Otherwise, write a bug fix with tests.
 
 ## Format
 
-Name files `NNNN-kebab-case-title.md` using the next number. Sections:
+Use the next `NNNN-kebab-case-title.md`. Sections:
 
 - **Executive summary** — one paragraph: what broke, its cause, why it escaped, and the durable lesson.
 - **Summary** — details of the failure.
 - **Timeline** — what was observed and when.
 - **Root cause** — the mechanism and missing safeguards.
-- **Guardrails added** — the concrete fixes, linked: tests, doc updates, gate changes.
+- **Guardrails added** — linked fixes: tests, doc updates, gate changes.
 - **Lessons** — the durable takeaways.
 
 ## Index
@@ -36,6 +36,7 @@ Name files `NNNN-kebab-case-title.md` using the next number. Sections:
 - [0039: Process activation deadlock](0039-paused-output-blocked-process-activation.md)
 - [0038: Session latency](0038-session-interactions-amplified-global-work.md)
 - [0035: Titlebar controls](0035-native-titlebar-swallowed-controls.md)
+- [0043: Historical data blocked startup](0043-historical-data-blocked-startup.md)
 - [0036: Directory replacement blocked history](0036-directory-replacement-blocked-history.md)
 
 | Number | Title                                                                      | Status      | Date       |
