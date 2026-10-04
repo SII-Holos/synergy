@@ -354,6 +354,7 @@
   gap: 6px;
   flex: 1;
   min-width: 0;
+  min-height: 32px;
   padding: 4px 0;
   border: 0;
   background: transparent;
@@ -625,6 +626,7 @@
   }
   .review-panel [data-component="icon-button"],
   .review-file-header [data-component="icon-button"],
+  .review-file-toggle,
   .review-file-tree button {
     min-height: 44px;
     min-width: 44px;
@@ -639,6 +641,11 @@
   }
   .review-popover [data-component="button"],
   .review-popover [data-component="checkbox"] {
+    min-height: 44px;
+  }
+  .review-popover [data-slot="checkbox-checkbox-label"] {
+    display: flex;
+    align-items: center;
     min-height: 44px;
   }
   .review-file-main > [data-component="checkbox"] {
