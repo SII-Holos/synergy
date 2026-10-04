@@ -496,6 +496,7 @@ export namespace MessageV2 {
     .object({
       type: z.enum(ORIGIN_TYPES).catch("system"),
       sessionID: z.string().optional(),
+      taskID: Identifier.schema("cortex").optional(),
       pluginID: z.string().optional(),
       label: z.string().optional(),
       detail: z.string().optional(),
@@ -934,7 +935,16 @@ export namespace MessageV2 {
     if (!metadata) return { type: "user" }
     const source = metadata.source
     const sessionID = typeof metadata.sourceSessionID === "string" ? metadata.sourceSessionID : undefined
-    if (source === "cortex") return { type: "cortex", sessionID }
+    if (source === "cortex") {
+      const taskID = Identifier.schema("cortex").safeParse(metadata.sourceTaskID)
+      const label = typeof metadata.sourceTitle === "string" ? metadata.sourceTitle : undefined
+      return {
+        type: "cortex",
+        sessionID,
+        ...(taskID.success ? { taskID: taskID.data } : {}),
+        ...(label ? { label } : {}),
+      }
+    }
     if (source === "mailbox" || source === "agenda") return { type: "agenda", sessionID }
     if (typeof source === "string" && source.startsWith("blueprint_loop_"))
       return { type: "blueprint", detail: source.replace(/^blueprint_loop_/, "") }
@@ -979,8 +989,8 @@ export namespace MessageV2 {
 
   /**
    * Populate canonical semantic fields for any message that predates them.
-   * Idempotent: messages already carrying the fields pass through untouched
-   * (only their running rootID is tracked so later assistants inherit it).
+   * Enrich historical Cortex origins from their stable Inbox delivery key.
+   * The projection is idempotent and leaves persisted input unchanged.
    */
   export function deriveSemantics(messages: WithParts[]): WithParts[] {
     let rootID: string | undefined
@@ -988,7 +998,15 @@ export namespace MessageV2 {
       const parts = deriveParts(msg.parts)
       if (msg.info.role === "user") {
         const user = msg.info as User
-        const origin = user.origin ?? originFromMetadata(user.metadata)
+        let origin = user.origin ?? originFromMetadata(user.metadata)
+        if (origin.type === "cortex" && !origin.taskID && typeof user.metadata?.inboxDeliveryKey === "string") {
+          const key = user.metadata.inboxDeliveryKey
+          const prefix = "cortex:taskNotification:"
+          const taskID = Identifier.schema("cortex").safeParse(
+            key.startsWith(prefix) ? key.slice(prefix.length) : undefined,
+          )
+          if (taskID.success) origin = { ...origin, taskID: taskID.data }
+        }
         const isRoot = user.isRoot ?? deriveIsRoot(user, origin, parts)
         const resolvedRoot = user.rootID ?? (isRoot ? user.id : (rootID ?? user.id))
         if (isRoot) rootID = resolvedRoot

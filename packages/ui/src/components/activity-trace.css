@@ -48,6 +48,7 @@
     width: 100%;
     min-width: 0;
     min-height: 28px;
+    box-sizing: border-box;
     gap: 8px;
     padding: 4px 0;
     border: 0;

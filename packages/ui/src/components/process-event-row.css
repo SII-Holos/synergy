@@ -1,0 +1,53 @@
+[data-slot="process-event-trigger"] {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  box-sizing: border-box;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-weak);
+  text-align: start;
+  font-family: var(--font-family-sans, system-ui);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+  cursor: pointer;
+}
+[data-slot="process-event-icon"] {
+  display: flex;
+  flex: 0 0 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  color: var(--icon-weak-base);
+}
+[data-slot="process-event-title"] {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+[data-slot="process-event-trigger"]:is(:hover, [aria-pressed="true"]) {
+  color: var(--text-base);
+}
+[data-slot="process-event-trigger"][aria-pressed="true"] {
+  font-weight: var(--font-weight-medium);
+}
+[data-slot="process-event-trigger"]:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+[data-slot="process-event-icon"][data-running] {
+  animation: process-event-spin 1s linear infinite;
+}
+@keyframes process-event-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="process-event-icon"][data-running] {
+    animation: none;
+  }
+}

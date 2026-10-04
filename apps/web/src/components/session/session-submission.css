@@ -1,0 +1,29 @@
+.session-submission-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding-block: 24px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.session-submission-prompt {
+  align-self: flex-end;
+  max-width: min(80%, 36rem);
+  padding: 10px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-inset-base);
+  color: var(--text-base);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.session-submission-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 1.5;
+}

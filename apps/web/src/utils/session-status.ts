@@ -66,7 +66,7 @@ export function classifySessionActivity(input: { status?: SessionStatusInput; wa
 export function sessionStatusFromWorking(working: SessionWorkingInfo): SessionStatus {
   switch (working.status) {
     case "busy":
-      return { type: "busy", description: working.description }
+      return { type: "busy", description: working.description, activity: working.activity }
     case "retry":
       return { type: "retry", attempt: working.attempt, message: working.message, next: working.next }
     case "paused":

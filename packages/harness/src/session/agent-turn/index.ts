@@ -85,7 +85,7 @@ export namespace AgentTurn {
     const instanceState = runtimeState()
 
     if (!instanceState.accepting || instanceState.stopPromise) throw new Error("Agent worker pool is stopping")
-    const { contextUsageProvenance, recording, usageRole, retryIndex, ...turnInput } = input
+    const { contextUsageProvenance, recording, usageRole, retryIndex, onPhase, ...turnInput } = input
     const attribution = recording ?? {
       owner: {
         kind: "session" as const,
@@ -135,10 +135,13 @@ export namespace AgentTurn {
           },
           async (archive) => {
             if (!instanceState.accepting || instanceState.stopPromise) throw new Error("Agent worker pool is stopping")
-            if (instanceState.inProcessStream)
+            if (instanceState.inProcessStream) {
+              onPhase?.("waiting_model")
               return RolloutTransport.provide(archive, () => instanceState.inProcessStream!(input))
+            }
             instanceState.pool ??= new AgentWorkerPool(instanceState.options)
-            const result = await instanceState.pool.run({ ...turnInput, prepared: prepared!, archive })
+            onPhase?.("queued_agent")
+            const result = await instanceState.pool.run({ ...turnInput, prepared: prepared!, archive, onPhase })
             const contextUsageDraft = startContextUsageDraft(input, prepared!.system, contextUsageProvenance)
             return { ...result, contextUsageDraft }
           },
