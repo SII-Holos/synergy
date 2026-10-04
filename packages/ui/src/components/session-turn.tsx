@@ -1281,10 +1281,6 @@ export function SessionTurn(
   )
   const [animateReadyDiffPanel, setAnimateReadyDiffPanel] = createSignal(false)
   const diffSettlementStatus = createMemo(() => message()?.summary?.diffState?.status)
-  const incompleteFileRecording = createMemo(() => {
-    const state = message()?.summary?.diffState
-    return state?.status === "partial" || (state?.status === "error" && state.code === "incomplete")
-  })
 
   createEffect(on(diffSettlementStatus, (status) => setAnimateReadyDiffPanel(status === "ready"), { defer: true }))
 
@@ -1834,7 +1830,6 @@ export function SessionTurn(
                               <TurnChangeSummaryPanel
                                 diffs={msg().summary?.diffs ?? []}
                                 state={state()}
-                                incomplete={incompleteFileRecording()}
                                 animateReady={animateReadyDiffPanel()}
                                 onUndoRequested={
                                   props.onRestoreChanges ? () => props.onRestoreChanges?.(msg().id) : undefined

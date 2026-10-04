@@ -25185,18 +25185,6 @@ msgid "turn-change.binary"
 msgstr "二进制"
 
 #. ── Turn change summary chrome ──────────────────────────────────────
-msgid "turn-change.calculating"
-msgstr "正在计算文件更改…"
-
-#. ── Turn change summary chrome ──────────────────────────────────────
-msgid "turn-change.calculation-failed"
-msgstr "无法计算文件更改"
-
-#. ── Turn change summary chrome ──────────────────────────────────────
-msgid "turn-change.recording-incomplete"
-msgstr "文件改动记录尚不完整"
-
-#. ── Turn change summary chrome ──────────────────────────────────────
 msgid "turn-change.review-changes"
 msgstr "查看更改"
 

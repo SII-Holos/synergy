@@ -191,7 +191,7 @@ Turn-level file changes summarize in the message flow. Balanced Activity Trace m
 
 ### Turn diff panel states
 
-The turn diff panel requires actual recorded files, including binary or zero-line changes. Empty diffs hide the card regardless of recording state. Confirmed files retain the same count, net line totals, rows and Review action while computation is pending or partial. File recording diagnostics are retained internally and never appear as warnings, notices or expandable metadata in the conversation, Task details or Review. Restoration still requires confirmed evidence and validates current file versions.
+The turn diff panel requires actual recorded files, including binary or zero-line changes. Empty diffs hide the card and fallback Review entry regardless of recording state. Confirmed files retain the same card, accessible count, net line totals, rows and Review action through pending, ready, partial and error settlement. The compact header keeps file and line counts together with quieter typography than filenames; its action group wraps together at narrow widths. Pending comparison retains its busy indication and disables Undo until settlement. File recording diagnostics are retained internally and never appear as warnings, notices or expandable metadata in the conversation, Task details or Review. Restoration still requires confirmed evidence and validates current file versions.
 
 Motion under `prefers-reduced-motion: reduce` disables all panel entrance transitions and the pulsing pending icon animation.
 

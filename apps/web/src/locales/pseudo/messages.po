@@ -25185,18 +25185,6 @@ msgid "turn-change.binary"
 msgstr "⟦Binary⟧"
 
 #. ── Turn change summary chrome ──────────────────────────────────────
-msgid "turn-change.calculating"
-msgstr "⟦Calculating file changes…⟧"
-
-#. ── Turn change summary chrome ──────────────────────────────────────
-msgid "turn-change.calculation-failed"
-msgstr "⟦Couldn’t calculate file changes⟧"
-
-#. ── Turn change summary chrome ──────────────────────────────────────
-msgid "turn-change.recording-incomplete"
-msgstr "⟦File change recording is incomplete⟧"
-
-#. ── Turn change summary chrome ──────────────────────────────────────
 msgid "turn-change.review-changes"
 msgstr "⟦Review changes⟧"
 
