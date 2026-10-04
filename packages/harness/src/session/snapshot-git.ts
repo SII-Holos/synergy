@@ -91,32 +91,72 @@ export namespace SnapshotGit {
 
   export type Blob = { hash: string; bytes: Uint8Array }
 
+  export async function publishPack(repo: string, staged: string, signal?: AbortSignal) {
+    const identity = path.basename(staged)
+    if (!/^pack-[0-9a-f]{40}$/.test(identity)) throw new Error("Invalid snapshot pack identity")
+    await SnapshotGit.checked(repo, ["verify-pack", staged + ".idx"], { signal })
+    const pack = path.join(repo, "objects", "pack", identity)
+    // Provenance: https://git-scm.com/docs/git-pack-objects
+    // Verified immutable files publish pack-first; the index admits readers.
+    for (const suffix of [".pack", ".idx"]) {
+      signal?.throwIfAborted()
+      await fs.chmod(staged + suffix, 0o600)
+      const file = await fs.open(staged + suffix, "r+")
+      try {
+        await file.sync()
+      } finally {
+        await file.close()
+      }
+      await fs.link(staged + suffix, pack + suffix).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "EEXIST") throw error
+      })
+    }
+    await SnapshotGit.checked(repo, ["verify-pack", pack + ".idx"], { signal })
+    if (process.platform !== "win32") {
+      const parent = await fs.open(path.dirname(pack), "r")
+      try {
+        await parent.sync()
+      } finally {
+        await parent.close()
+      }
+    }
+  }
+
   export async function blobWriter(repo: string, signal: AbortSignal) {
     signal.throwIfAborted()
+    const directory = await fs.mkdtemp(path.join(repo, "synergy-import-"))
+    let location: Awaited<ReturnType<typeof SnapshotPath.repository>>
     // Provenance: https://git-scm.com/docs/git-fast-import/2.52.0
     // Blob-only imports publish no refs; disabling unpack avoids a child process
     // whose lifetime could otherwise outlast capture cancellation.
-    const location = await SnapshotPath.repository([
-      "git",
-      "--git-dir",
-      repo,
-      "-c",
-      "fastimport.unpackLimit=0",
-      "-c",
-      "pack.compression=3",
-      "fast-import",
-      "--quiet",
-      "--done",
-      "--depth=0",
-      "--max-pack-size=64m",
-    ])
+    try {
+      await fs.mkdir(path.join(directory, "objects", "pack"), { recursive: true, mode: 0o700 })
+      location = await SnapshotPath.repository([
+        "git",
+        "--git-dir",
+        repo,
+        "-c",
+        "fastimport.unpackLimit=0",
+        "-c",
+        "pack.compression=3",
+        "fast-import",
+        "--quiet",
+        "--done",
+        "--depth=0",
+        "--max-pack-size=64m",
+      ])
+    } catch (error) {
+      await fs.rm(directory, { recursive: true, force: true })
+      throw error
+    }
+    const repository = location.args[location.args.indexOf("--git-dir") + 1]!
     let proc: Bun.Subprocess<"pipe", "pipe", "pipe">
     for (let attempt = 1; ; attempt++) {
       try {
         signal.throwIfAborted()
         proc = Bun.spawn(command(location.args), {
           cwd: startupDirectory(path.dirname(repo), location.args),
-          env: environment(),
+          env: environment({ GIT_OBJECT_DIRECTORY: path.join(repository, path.basename(directory), "objects") }),
           stdin: "pipe",
           stdout: "pipe",
           stderr: "pipe",
@@ -129,7 +169,7 @@ export namespace SnapshotGit {
           (await waitForGitSpawnRetry(attempt, signal))
         )
           continue
-        await location[Symbol.asyncDispose]()
+        await Promise.allSettled([location[Symbol.asyncDispose](), fs.rm(directory, { recursive: true, force: true })])
         throw error
       }
     }
@@ -224,13 +264,22 @@ export namespace SnapshotGit {
         if (failure) throw failure
         if (code !== 0)
           throw new Error(`Snapshot blob import failed: ${stderr.trim()}`, { cause: { exitCode: code, stderr } })
+        const packs = path.join(directory, "objects", "pack")
+        for (const name of await fs.readdir(packs)) {
+          if (!/^pack-[0-9a-f]{40}\.pack$/.test(name)) continue
+          await publishPack(repo, path.join(packs, name.slice(0, -5)), signal)
+        }
         finished = true
       },
       async [Symbol.asyncDispose]() {
         if (proc.exitCode === null) proc.kill()
         await Promise.allSettled([proc.exited, errors, output])
         signal.removeEventListener("abort", onAbort)
-        await location[Symbol.asyncDispose]()
+        try {
+          await fs.rm(directory, { recursive: true, force: true })
+        } finally {
+          await location[Symbol.asyncDispose]()
+        }
       },
     }
   }

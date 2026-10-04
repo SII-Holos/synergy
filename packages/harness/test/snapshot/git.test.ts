@@ -61,10 +61,51 @@ test("streamed imports retain timeout propagation between writes and drain cance
       await writer[Symbol.asyncDispose]()
     }
     expect(await SnapshotGit.checked(repo, ["for-each-ref"])).toBe("")
-    expect(
-      (await fs.readdir(path.join(repo, "objects", "pack"))).filter((name) => name.endsWith(".pack")),
-    ).toHaveLength(0)
+    expect(await fs.readdir(path.join(repo, "objects", "pack"))).toHaveLength(0)
+    expect((await fs.readdir(repo)).filter((name) => name.startsWith("synergy-import-"))).toHaveLength(0)
   }))
+
+test(
+  "split imports remain private until completion and cancelled staging can retry",
+  () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      const repo = path.join(tmp.path, "split.git")
+      await SnapshotStore.initializeBareRepository(repo)
+      const foreign = path.join(repo, "synergy-import-foreign")
+      await fs.mkdir(foreign)
+      await fs.writeFile(path.join(foreign, "evidence"), "preserved")
+      const blobs = Array.from({ length: 34 }, () => captured(randomBytes(2 * 1024 * 1024)))
+      const controller = new AbortController()
+      const writer = await SnapshotGit.blobWriter(repo, controller.signal)
+      try {
+        await writer.write(blobs)
+        expect(await fs.readdir(path.join(repo, "objects", "pack"))).toHaveLength(0)
+      } finally {
+        controller.abort()
+        await writer[Symbol.asyncDispose]()
+      }
+      expect((await fs.readdir(repo)).filter((name) => name.startsWith("synergy-import-"))).toEqual([
+        "synergy-import-foreign",
+      ])
+      {
+        await using retry = await SnapshotGit.blobWriter(repo, AbortSignal.timeout(30000))
+        await retry.write(blobs)
+        await retry.finish()
+      }
+      expect(
+        (await fs.readdir(path.join(repo, "objects", "pack"))).filter((name) => name.endsWith(".pack")),
+      ).toHaveLength(2)
+      expect((await fs.readdir(repo)).filter((name) => name.startsWith("synergy-import-"))).toEqual([
+        "synergy-import-foreign",
+      ])
+      expect(await fs.readFile(path.join(foreign, "evidence"), "utf8")).toBe("preserved")
+      const result = await SnapshotGit.run(["git", "--git-dir", repo, "cat-file", "blob", blobs[33]!.hash], tmp.path)
+      expect(result.exitCode).toBe(0)
+      expect(Buffer.from(result.bytes).equals(Buffer.from(blobs[33]!.bytes))).toBe(true)
+    }),
+  30000,
+)
 
 async function fixture() {
   const tmp = await tmpdir({ git: true })
