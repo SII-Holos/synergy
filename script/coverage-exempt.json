@@ -459,14 +459,6 @@
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
         {
-          "glob": "src/components/session/session-transition-card.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
-        },
-        {
-          "glob": "src/components/session/session-transition-progress-steps.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
-        },
-        {
           "glob": "src/components/session/subagent-session-footer.tsx",
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
