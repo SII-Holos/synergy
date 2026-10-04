@@ -41,7 +41,7 @@ export function ReviewViewer(props: ReviewViewerProps) {
       lineDiffType: props.words ? "word-alt" : "none",
       expandUnchanged: props.full,
       stickyHeaders: true,
-      itemMetrics: { lineHeight: 24, diffHeaderHeight: 44 },
+      itemMetrics: { lineHeight: 24, diffHeaderHeight: 44, spacing: 0 },
       layout: { gap: 0, paddingTop: 0, paddingBottom: 0 },
       enableLineSelection: true,
       tokenizeMaxLength: 32_000,
