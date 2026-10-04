@@ -1,15 +1,12 @@
-import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
-import { createServer, type ViteDevServer } from "vite"
-import solidPlugin from "vite-plugin-solid"
-import { lingui } from "@lingui/vite-plugin"
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 
 let browser: Browser
 let page: Page
-let server: ViteDevServer
+let server: BrowserFixture
 let fixture: string
 let url: string
 const errors: string[] = []
@@ -130,48 +127,21 @@ beforeAll(async () => {
     render(() => <I18nProvider i18n={i18n}><ThemeProvider><DialogProvider><Fixture /></DialogProvider></ThemeProvider></I18nProvider>, document.getElementById("root"))
   `,
   )
-  server = await createServer({
-    configFile: false,
+  server = await createBrowserFixture({
     root: fixture,
-    plugins: [solidPlugin(), ...lingui()],
-    cacheDir: path.join(fixture, ".vite"),
-    optimizeDeps: {
-      noDiscovery: true,
-      include: [
-        "@lingui/core",
-        "@lingui/solid",
-        "@solid-primitives/resize-observer",
-        "fuzzysort",
-        "remeda",
-        "solid-js",
-        "solid-js/store",
-        "solid-js/web",
-      ],
-    },
-    resolve: {
-      alias: [
-        ...["global-sdk", "global-sync", "local", "platform", "locale"].map((name) => ({
-          find: "@/context/" + name,
-          replacement: path.join(fixture, "api.ts"),
-        })),
-        { find: "@/hooks/use-providers", replacement: path.join(fixture, "api.ts") },
-        { find: "@ericsanchezok/synergy-ui/toast", replacement: path.join(fixture, "toast.ts") },
-        { find: "@/", replacement: app + "/" },
-      ],
-    },
-    server: {
-      host: "127.0.0.1",
-      port: await fixturePort(),
-      fs: { allow: [path.resolve(import.meta.dir, "../../../..")] },
-    },
+    localized: true,
+    aliases: [
+      ...["global-sdk", "global-sync", "local", "platform", "locale"].map((name) => ({
+        find: "@/context/" + name,
+        replacement: path.join(fixture, "api.ts"),
+      })),
+      { find: "@/hooks/use-providers", replacement: path.join(fixture, "api.ts") },
+      { find: "@ericsanchezok/synergy-ui/toast", replacement: path.join(fixture, "toast.ts") },
+      { find: "@/", replacement: app + "/" },
+    ],
   })
-  await server.listen()
-  url = server.resolvedUrls!.local[0]!
+  url = server.url
   browser = await chromium.launch({ headless: true })
-  const warmup = await browser.newPage()
-  await warmup.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 })
-  await warmup.getByRole("heading", { name: "Providers", exact: true }).waitFor({ timeout: 30000 })
-  await warmup.close()
 }, 100000)
 
 beforeEach(async () => {
@@ -195,7 +165,7 @@ afterAll(async () => {
   if (fixture) await rm(fixture, { recursive: true, force: true })
 })
 
-test("provider discovery is a separate view from connected accounts", async () => {
+test("provider discovery separates connected accounts and restores search and entry focus on return", async () => {
   expect(await page.locator(".providers-connected-account").count()).toBe(1)
   expect(await page.locator(".providers-directory").count()).toBe(0)
   await page.getByRole("button", { name: "Add model service", exact: true }).click()
@@ -205,13 +175,6 @@ test("provider discovery is a separate view from connected accounts", async () =
   await page.getByLabel("Test Service API key", { exact: true }).waitFor()
   expect(await page.locator(".providers-directory").count()).toBe(0)
   expect(await page.getByRole("button", { name: "Connect", exact: true }).count()).toBe(1)
-  expect(errors).toEqual([])
-})
-test("returning from a service preserves its directory search and restores the entry focus", async () => {
-  await page.getByRole("button", { name: "Add model service", exact: true }).click()
-  await page.getByRole("textbox", { name: "Search providers..." }).fill("Test Service")
-  await page.locator(".providers-row").click()
-  await page.getByLabel("Test Service API key", { exact: true }).waitFor()
   await page.getByRole("button", { name: "Back to services", exact: true }).click()
   expect(await page.getByRole("textbox", { name: "Search providers..." }).inputValue()).toBe("Test Service")
   await page.waitForFunction(() => document.activeElement?.classList.contains("providers-row"))

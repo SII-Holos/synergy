@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test"
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
@@ -47,7 +48,7 @@ beforeAll(async () => {
     cacheDir: path.join(directory, ".vite"),
     plugins: [solid()],
     resolve: { alias: [{ find: "@/context/execution", replacement: path.join(directory, "execution.ts") }] },
-    server: { host: "127.0.0.1", port: 0, fs: { allow: [path.resolve(app, "../.."), directory] } },
+    server: { host: "127.0.0.1", port: await fixturePort(), fs: { allow: [path.resolve(app, "../.."), directory] } },
   })
   await server.listen()
   await server.warmupRequest("/main.tsx")

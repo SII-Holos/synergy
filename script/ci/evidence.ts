@@ -24,6 +24,7 @@ export interface TaskResult {
   exitCode: number
   started: string
   completed: string
+  runtime?: { platform: string; arch: string; bun: string }
   reports: Report[]
   steps: Array<{ name: string; seconds: number; exitCode: number }>
 }
