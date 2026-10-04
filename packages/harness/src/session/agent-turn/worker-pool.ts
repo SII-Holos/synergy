@@ -18,6 +18,7 @@ export type AgentTurnStreamPart = AgentTurnProtocol.StreamEvent
 export type AgentTurnLane = "interactive" | "background"
 
 export interface AgentTurnInput extends Omit<LLM.StreamInput, "tools" | "memoryTurn" | "prepared"> {
+  onPhase?: (phase: "queued_agent" | "waiting_model") => void
   toolDefinitions: ToolCatalog.Definition[]
   contextUsageProvenance?: ContextUsage.Provenance
   recording?: { owner: RolloutSchema.Owner; runID: string; purpose: string }
@@ -28,7 +29,7 @@ export interface AgentTurnInput extends Omit<LLM.StreamInput, "tools" | "memoryT
 
 export type AgentTurnWorkerInput = Omit<
   AgentTurnInput,
-  "abort" | "user" | "agent" | "contextUsageProvenance" | "recording" | "usageRole" | "retryIndex" | "lane"
+  "abort" | "user" | "agent" | "contextUsageProvenance" | "recording" | "usageRole" | "retryIndex" | "lane" | "onPhase"
 > & {
   user: Pick<AgentTurnInput["user"], "id">
   agent: Pick<AgentTurnInput["agent"], "name">
@@ -98,6 +99,7 @@ const RELEASED_REQUEST_TTL_MS = 30_000
 const RELEASED_REQUEST_RING_CAPACITY = 2
 
 interface PoolTask {
+  onStart?(): void
   recordMetrics(rows: AgentTurnProtocol.MetricRow[], worker: PoolWorker): void
   archive?: RolloutTransportSchema.Sink
   archiveSequence: number
@@ -346,7 +348,7 @@ export class AgentWorkerPool {
     }
 
     const requestId = `agent_turn_${crypto.randomUUID()}`
-    const { abort: _abort, archive, lane: _lane, ...turnInput } = input
+    const { abort: _abort, archive, lane: _lane, onPhase, ...turnInput } = input
     const workerInput: AgentTurnWorkerInput = {
       ...turnInput,
       user: { id: input.user.id },
@@ -386,6 +388,7 @@ export class AgentWorkerPool {
       const sessionID = input.sessionID
       const messageID = input.user.id
       task = {
+        onStart: () => onPhase?.("waiting_model"),
         recordMetrics: ObservabilityContext.bind((rows, worker) => {
           for (const row of rows)
             ObservabilityMetrics.record({
@@ -1132,6 +1135,7 @@ export class AgentWorkerPool {
       worker.idleSince = undefined
       worker.activeMemoryPressureRequestId = undefined
       task.worker = worker
+      task.onStart?.()
       this.send(worker, {
         type: "run-start",
         requestId: task.requestId,

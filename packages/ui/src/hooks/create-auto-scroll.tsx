@@ -16,6 +16,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   let scroll: HTMLElement | undefined
   let settling = false
   let forcedSettling = false
+  let followingLatest = false
   let settleTimer: ReturnType<typeof setTimeout> | undefined
   let scrollFrame: number | undefined
   let measureFrame: number | undefined
@@ -30,7 +31,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     userScrolled: false,
   })
 
-  const active = () => options.working() || settling
+  const active = () => options.working() || settling || followingLatest
   const preserveReadingAnchor = () => {
     restoreReadingAnchor = options.captureReadingAnchor?.()
   }
@@ -99,6 +100,10 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
   const stop = () => {
     if (!active()) return
+    followingLatest = false
+    forceNextScroll = false
+    if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
+    scrollFrame = undefined
     if (store.userScrolled) return
 
     setStore("userScrolled", true)
@@ -118,6 +123,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
   const handlePointerDown = () => {
     anchoredScrollTop = undefined
+    if (followingLatest) stop()
     if (down) return
     down = true
     window.addEventListener("pointerup", handlePointerUp)
@@ -130,9 +136,16 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
   const handleTouchStart = () => {
     anchoredScrollTop = undefined
+    if (followingLatest) stop()
     if (down) return
     down = true
     window.addEventListener("touchend", handleTouchEnd)
+  }
+
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (!["ArrowUp", "PageUp", "Home"].includes(event.key)) return
+    if (event.target instanceof Element && event.target.closest("input, textarea, [contenteditable]")) return
+    stop()
   }
 
   const handleScroll = () => {
@@ -188,6 +201,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   )
 
   onCleanup(() => {
+    followingLatest = false
     restoreReadingAnchor = undefined
     anchoredScrollTop = undefined
     if (settleTimer) clearTimeout(settleTimer)
@@ -214,6 +228,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
         settleTimer = undefined
         settling = false
         forcedSettling = false
+        followingLatest = false
         if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
         if (measureFrame !== undefined) cancelAnimationFrame(measureFrame)
         scrollFrame = undefined
@@ -230,11 +245,13 @@ export function createAutoScroll(options: AutoScrollOptions) {
       el.addEventListener("wheel", handleWheel, { passive: true })
       el.addEventListener("pointerdown", handlePointerDown)
       el.addEventListener("touchstart", handleTouchStart, { passive: true })
+      el.addEventListener("keydown", handleKeyDown)
 
       cleanup = () => {
         el.removeEventListener("wheel", handleWheel)
         el.removeEventListener("pointerdown", handlePointerDown)
         el.removeEventListener("touchstart", handleTouchStart)
+        el.removeEventListener("keydown", handleKeyDown)
         window.removeEventListener("pointerup", handlePointerUp)
         window.removeEventListener("touchend", handleTouchEnd)
       }
@@ -247,7 +264,10 @@ export function createAutoScroll(options: AutoScrollOptions) {
     handleInteraction,
     preserveReadingAnchor,
     scrollToBottom: () => scrollToBottom(false),
-    forceScrollToBottom: () => scrollToBottom(true),
+    forceScrollToBottom: (input?: { untilInteraction?: boolean }) => {
+      if (scroll && input?.untilInteraction) followingLatest = true
+      scrollToBottom(true)
+    },
     userScrolled: () => store.userScrolled,
   }
 }

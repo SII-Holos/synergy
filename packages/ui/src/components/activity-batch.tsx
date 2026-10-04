@@ -16,6 +16,7 @@ import { ActivityReasoning } from "./process-reasoning"
 import { createDisclosureMotionRef } from "../utils/disclosure-motion"
 import { MAX_ACTIVITY_GROUP_STEPS } from "@ericsanchezok/synergy-util/activity"
 import "./activity-batch.css"
+import { ProcessViewport } from "./process-viewport"
 
 const facts: Record<ActivityFamily, MessageDescriptor> = {
   "inspect-local": {
@@ -213,60 +214,67 @@ export function ActivityBatch(props: {
           </button>
         </div>
       </Show>
-      <ActivityTrace
-        id={`${props.batch.key}:steps`}
-        group={group()}
-        serverUrl={props.serverUrl}
-        visibleSteps={visible()}
-        currentSteps={new Set(current())}
-        quiet
-        onStepFocus={setFocused}
-        motion={props.following}
-        afterStep={(partID) => (
-          <For each={(reasoningAfterStep().get(partID) ?? []).map((item) => item.key)}>
-            {(key) => {
-              const item = () =>
-                reasoningAfterStep()
-                  .get(partID)
-                  ?.find((item) => item.key === key)
-              return (
-                <Show when={item()}>
-                  {(reasoning) => {
-                    const reasoningRef = createDisclosureMotionRef({
-                      visible: () =>
-                        currentReasoning() === key ||
-                        (open() && visible().has(partID)) ||
-                        focused() === partID ||
-                        (pinned().has(partID) && !props.following),
-                      animate: () => props.following,
-                      appear: () => props.active && currentReasoning() === key,
-                    })
-                    return (
-                      <li
-                        data-slot="activity-reasoning"
-                        data-part-id={reasoning().partID}
-                        ref={reasoningRef}
-                        onFocusIn={() => setFocused(partID)}
-                        onFocusOut={(event) => {
-                          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(undefined)
-                        }}
-                      >
-                        <ActivityReasoning
-                          item={reasoning()}
-                          working={props.active}
-                          preview={props.reasoningPreview === true}
-                          view={props.view}
-                          onInspect={props.onInspect}
-                        />
-                      </li>
-                    )
-                  }}
-                </Show>
-              )
-            }}
-          </For>
-        )}
-      />
+      <ProcessViewport
+        identity={props.batch.key}
+        active={props.active}
+        following={props.following}
+        revision={props.batch.steps.map((step) => `${step.part.id}:${step.state}`).join(",")}
+      >
+        <ActivityTrace
+          id={`${props.batch.key}:steps`}
+          group={group()}
+          serverUrl={props.serverUrl}
+          visibleSteps={visible()}
+          currentSteps={new Set(current())}
+          quiet
+          onStepFocus={setFocused}
+          motion={props.following}
+          afterStep={(partID) => (
+            <For each={(reasoningAfterStep().get(partID) ?? []).map((item) => item.key)}>
+              {(key) => {
+                const item = () =>
+                  reasoningAfterStep()
+                    .get(partID)
+                    ?.find((item) => item.key === key)
+                return (
+                  <Show when={item()}>
+                    {(reasoning) => {
+                      const reasoningRef = createDisclosureMotionRef({
+                        visible: () =>
+                          currentReasoning() === key ||
+                          (open() && visible().has(partID)) ||
+                          focused() === partID ||
+                          (pinned().has(partID) && !props.following),
+                        animate: () => props.following,
+                        appear: () => props.active && currentReasoning() === key,
+                      })
+                      return (
+                        <li
+                          data-slot="activity-reasoning"
+                          data-part-id={reasoning().partID}
+                          ref={reasoningRef}
+                          onFocusIn={() => setFocused(partID)}
+                          onFocusOut={(event) => {
+                            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(undefined)
+                          }}
+                        >
+                          <ActivityReasoning
+                            item={reasoning()}
+                            working={props.active}
+                            preview={props.reasoningPreview === true}
+                            view={props.view}
+                            onInspect={props.onInspect}
+                          />
+                        </li>
+                      )
+                    }}
+                  </Show>
+                )
+              }}
+            </For>
+          )}
+        />
+      </ProcessViewport>
     </div>
   )
 }

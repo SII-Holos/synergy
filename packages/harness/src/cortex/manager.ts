@@ -1214,6 +1214,8 @@ export namespace Cortex {
         metadata: {
           source: "cortex",
           sourceSessionID: task.sessionID,
+          sourceTaskID: task.id,
+          sourceTitle: task.description,
           ...(replyToChannel ? { channelPush: true, channelReply: true, channelReplyToMessageId } : {}),
         },
         parts: [{ type: "text", text: notification }],

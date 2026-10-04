@@ -6,6 +6,7 @@ import { errorDetailsText, errorInputText, errorPreview } from "./error-card-con
 import { Icon } from "./icon"
 import "./error-card.css"
 import { getSemanticIcon } from "./semantic-icon"
+import type { JSX } from "solid-js"
 
 const errorDetailsLabelDescriptor = { id: "ui.errorCard.detailsTitle", message: "Error details" }
 const toolInputLabelDescriptor = { id: "ui.errorCard.toolInput", message: "Tool input" }
@@ -17,11 +18,15 @@ export interface ErrorCardProps {
   error: string
   defaultOpen?: boolean
   input?: Record<string, unknown>
+  summary?: string
+  description?: string
+  actions?: JSX.Element
+  role?: JSX.HTMLAttributes<HTMLDivElement>["role"]
 }
 
 export function ErrorCard(props: ErrorCardProps) {
   const { _ } = useLingui()
-  const [local] = splitProps(props, ["error", "input", "defaultOpen"])
+  const [local] = splitProps(props, ["error", "input", "defaultOpen", "summary", "description", "actions", "role"])
   const copy = createCopyController({
     text: () => errorDetailsText(local.error, local.input),
     get copyLabel() {
@@ -43,14 +48,14 @@ export function ErrorCard(props: ErrorCardProps) {
   )
 
   return (
-    <div data-component="error-card" data-expanded={open() ? "" : undefined}>
+    <div data-component="error-card" data-expanded={open() ? "" : undefined} role={local.role}>
       <Collapsible open={open()} onOpenChange={setOpen} variant="ghost">
         <Collapsible.Trigger data-slot="error-card-header" type="button">
           <span data-slot="error-card-leading" aria-hidden="true">
             <Icon name={getSemanticIcon("state.error")} size="small" />
           </span>
           <div data-slot="error-card-copy">
-            <span data-slot="error-card-message">{errorPreview(local.error)}</span>
+            <span data-slot="error-card-message">{local.summary ?? errorPreview(local.error)}</span>
           </div>
           <span data-slot="error-card-arrow" aria-hidden="true">
             <Icon name={expandIcon()} size="small" />
@@ -84,6 +89,16 @@ export function ErrorCard(props: ErrorCardProps) {
           </div>
         </Collapsible.Content>
       </Collapsible>
+      <Show when={local.description || local.actions}>
+        <div data-slot="error-card-recovery">
+          <Show when={local.description}>
+            <p>{local.description}</p>
+          </Show>
+          <Show when={local.actions}>
+            <div data-slot="error-card-recovery-actions">{local.actions}</div>
+          </Show>
+        </div>
+      </Show>
     </div>
   )
 }
