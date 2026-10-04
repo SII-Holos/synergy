@@ -43,6 +43,7 @@ export function VirtualConversationRows(
   const props = input.context
   const content = props.content!
   const [handle, setHandle] = createSignal<VirtualizerHandle>()
+  const [located, setLocated] = createSignal<{ messageID: string; partID?: string }>()
   const [margin, setMargin] = createSignal(0)
   const [retained, setRetained] = createSignal<string[]>([])
   const [interactionBlocks, setInteractionBlocks] = createSignal<string[]>([])
@@ -168,10 +169,21 @@ export function VirtualConversationRows(
     }
   })
   const byKey = createMemo(() => new Map(rows().map((row) => [row.key, row])))
+  const ownsLocation = (row: ConversationRow, location: { messageID: string; partID?: string }) =>
+    row.kind === "activity"
+      ? row.activity.entries.some(
+          (entry) =>
+            entry.message.id === location.messageID &&
+            (!location.partID || (entry.kind === "body" && entry.parts.some((part) => part.id === location.partID))),
+        )
+      : row.message.id === location.messageID &&
+        (!location.partID || (row.kind === "body" && row.parts.some((part) => part.id === location.partID)))
+  const locatedIndex = createMemo(() => {
+    const location = located()
+    return location ? rows().findIndex((row) => ownsLocation(row, location)) : -1
+  })
   const kept = createMemo(() =>
-    retained()
-      .map((key) => keys().indexOf(key))
-      .filter((index) => index >= 0),
+    [...new Set([...retained().map((key) => keys().indexOf(key)), locatedIndex()])].filter((index) => index >= 0),
   )
   const expansions = new Map<string, boolean>()
   const expansionState = {
@@ -185,6 +197,54 @@ export function VirtualConversationRows(
   let previous: string[] = []
   let anchor: { key: string; offset: number } | undefined
   let anchorFrame: number | undefined
+  let locationFrame: number | undefined
+  let locationGeneration = 0
+  let disposed = false
+  const releaseLocation = () => {
+    locationGeneration++
+    setLocated(undefined)
+    if (locationFrame !== undefined) cancelAnimationFrame(locationFrame)
+    locationFrame = undefined
+  }
+  const locationElement = (row: ConversationRow, partID?: string) =>
+    [...(container?.querySelectorAll<HTMLElement>(partID ? "[data-part-id]" : "[data-display-row]") ?? [])].find(
+      (element) => (partID ? element.dataset.partId === partID : element.dataset.displayRow === row.key),
+    )
+  const scheduleLocation = (behavior: ScrollBehavior = "auto") => {
+    if (!untrack(located) || locationFrame !== undefined) return
+    locationFrame = requestAnimationFrame(() => {
+      locationFrame = undefined
+      const location = located(),
+        virtual = handle(),
+        scroll = input.scrollRef
+      if (!location || !virtual || !scroll) return
+      const index = rows().findIndex((row) => ownsLocation(row, location))
+      if (index < 0) return
+      const row = rows()[index]
+      const element = locationElement(row, location.partID)
+      const owner = locationElement(row)
+      const offset =
+        row.kind !== "activity" && element && owner
+          ? element.getBoundingClientRect().top - owner.getBoundingClientRect().top
+          : 0
+      const top =
+        margin() + virtual.getItemOffset(index) + offset - (parseFloat(getComputedStyle(scroll).scrollPaddingTop) || 0)
+      if (Math.abs(scroll.scrollTop - Math.max(0, top)) > 0.5) scroll.scrollTo({ top, behavior })
+      if (row.kind === "activity")
+        container?.dispatchEvent(new CustomEvent("process-locate", { detail: { key: row.key, ...location } }))
+    })
+  }
+  createEffect(
+    on(
+      rows,
+      (next) => {
+        const location = untrack(located)
+        if (location && !next.some((row) => ownsLocation(row, location))) releaseLocation()
+        else scheduleLocation()
+      },
+      { defer: true },
+    ),
+  )
   const captureAnchor = () => {
     const virtual = handle()
     if (!virtual) return
@@ -198,7 +258,7 @@ export function VirtualConversationRows(
     const scroller = input.scrollRef
     const leading = previous[0]?.endsWith(":earlier") ? previous[1] : previous[0]
     const prepended = leading !== undefined && next.indexOf(leading) > previous.indexOf(leading)
-    if (virtual && prepended && scroller && props.scrolledUp()) {
+    if (virtual && prepended && scroller && props.scrolledUp() && !untrack(located)) {
       const saved = anchor
       const target = saved ? next.indexOf(saved.key) : -1
       if (saved && target >= 0 && target !== previous.indexOf(saved.key)) {
@@ -212,6 +272,8 @@ export function VirtualConversationRows(
     previous = next
   })
   onCleanup(() => {
+    disposed = true
+    releaseLocation()
     if (anchorFrame !== undefined) cancelAnimationFrame(anchorFrame)
   })
   const pinInteraction = () => {
@@ -256,6 +318,7 @@ export function VirtualConversationRows(
         container.style.setProperty("--process-viewport-limit", `${scroll.clientHeight * 0.45}px`)
       if (scroll && container)
         setMargin(container.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop)
+      scheduleLocation()
     }
     const observer = new ResizeObserver(measure)
     if (container?.parentElement) observer.observe(container.parentElement)
@@ -265,8 +328,15 @@ export function VirtualConversationRows(
     document.addEventListener("focusin", pinInteraction)
     document.addEventListener("focusout", pinInteraction)
     document.addEventListener("selectionchange", pinInteraction)
+    input.scrollRef?.addEventListener("wheel", releaseLocation, { passive: true })
+    input.scrollRef?.addEventListener("touchstart", releaseLocation, { passive: true })
+    input.scrollRef?.addEventListener("pointerdown", releaseLocation)
+    input.scrollRef?.addEventListener("keydown", releaseLocation)
     const release = props.registerMessageLocator?.(async (messageID, behavior, partID) => {
+      releaseLocation()
+      const generation = locationGeneration
       if (content.loadWindow && !(await content.loadWindow(messageID, partID))) return false
+      if (disposed || generation !== locationGeneration) return false
       const root = props.timeline().find(
         (root) =>
           root.id === messageID ||
@@ -289,56 +359,40 @@ export function VirtualConversationRows(
         )
         if (block?.activity) activityView.setExpanded(block.activity.key, true)
       }
-      const owns = (row: ConversationRow) =>
-        row.kind === "activity"
-          ? row.activity.entries.some(
-              (entry) =>
-                entry.message.id === messageID &&
-                (!partID || (entry.kind === "body" && entry.parts.some((part) => part.id === partID))),
-            )
-          : row.message.id === messageID &&
-            (!partID || (row.kind === "body" && row.parts.some((part) => part.id === partID)))
+      const location = { messageID, partID }
+      const owns = (row: ConversationRow) => ownsLocation(row, location)
       let index = rows().findIndex(owns)
       if (index < 0) return false
-      await content.load(messageID)
+      setLocated(location)
+      if (anchorFrame !== undefined) cancelAnimationFrame(anchorFrame)
+      anchorFrame = undefined
+      try {
+        await content.load(messageID)
+      } catch (error) {
+        if (generation === locationGeneration) releaseLocation()
+        throw error
+      }
+      if (disposed || generation !== locationGeneration) return false
       index = rows().findIndex(owns)
-      if (index < 0 || !handle()) return false
-      handle()!.scrollToIndex(index, { align: "start", smooth: behavior === "smooth" })
-      const group = rows()[index]
+      if (index < 0 || !handle()) {
+        releaseLocation()
+        return false
+      }
+      scheduleLocation(behavior)
       for (let attempt = 0; attempt < 24; attempt++) {
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-        if (group.kind !== "activity") break
-        container?.dispatchEvent(new CustomEvent("process-locate", { detail: { key: group.key, messageID, partID } }))
-        const mounted = [
-          ...(container?.querySelectorAll<HTMLElement>('[data-component="process-viewport"] [data-display-row]') ?? []),
-        ].some(
-          (element) =>
-            element.dataset.messageId === messageID &&
-            (!partID ||
-              [...element.querySelectorAll<HTMLElement>("[data-part-id]")].some(
-                (part) => part.dataset.partId === partID,
-              )),
-        )
-        if (mounted) break
+        if (disposed || generation !== locationGeneration) return false
+        const group = rows().find(owns)
+        if (!group) break
+        const element = locationElement(group, partID)
+        const scroll = element?.closest<HTMLElement>('[data-component="process-viewport"]') ?? input.scrollRef
+        const bounds = scroll?.getBoundingClientRect()
+        const item = element?.getBoundingClientRect()
+        if (bounds && item && item.height > 0 && item.bottom > bounds.top && item.top < bounds.bottom) return true
+        scheduleLocation()
       }
-      if (partID)
-        await new Promise<void>((resolve) =>
-          requestAnimationFrame(() => {
-            const part = [
-              ...container!.querySelectorAll<HTMLElement>(
-                group.kind === "activity" ? '[data-component="process-viewport"] [data-part-id]' : "[data-part-id]",
-              ),
-            ].find((element) => element.dataset.partId === partID)
-            const scroll = part?.closest<HTMLElement>('[data-component="process-viewport"]') ?? input.scrollRef
-            if (part && scroll)
-              scroll.scrollBy({
-                top: part.getBoundingClientRect().top - scroll.getBoundingClientRect().top,
-                behavior,
-              })
-            resolve()
-          }),
-        )
-      return true
+      releaseLocation()
+      return false
     })
     onCleanup(() => {
       observer.disconnect()
@@ -346,6 +400,10 @@ export function VirtualConversationRows(
       document.removeEventListener("focusin", pinInteraction)
       document.removeEventListener("focusout", pinInteraction)
       document.removeEventListener("selectionchange", pinInteraction)
+      input.scrollRef?.removeEventListener("wheel", releaseLocation)
+      input.scrollRef?.removeEventListener("touchstart", releaseLocation)
+      input.scrollRef?.removeEventListener("pointerdown", releaseLocation)
+      input.scrollRef?.removeEventListener("keydown", releaseLocation)
     })
   })
   return (

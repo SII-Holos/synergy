@@ -14,10 +14,13 @@ The message order in storage was correct. Segmented turn rendering let metadata 
 - Production Web acceptance reproduced simultaneous pending and completed compaction rows.
 - The same acceptance observed an idle session with a previous root's rollout still running after manual compaction.
 - Behavioral regressions reproduced request ownership and missing completion evidence, then passed with the corrected projections.
+- Full production-browser acceptance exposed a history search target that appeared briefly and disappeared when preceding summaries hydrated; an isolated reproduction and behavioral regression verified identity-based location and interaction release.
 
 ## Root cause
 
 Content ownership was inferred from each segment's available messages rather than the complete turn. Metadata-only segments could emit delivery content, and a request-only segment treated an existing compaction attempt as absent. Rollout completion used a model input optimization as execution authority; delayed settlement could run after that projection dropped earlier roots.
+
+History location captured a virtual row index before asynchronous summary replacement finished. Later row insertion and measurement changed that index's owner and displaced the requested Part. A successful initial jump did not establish a stable reading position.
 
 ## Guardrails added
 
@@ -26,6 +29,7 @@ Content ownership was inferred from each segment's available messages rather tha
 - [Rollout reconciliation](../../packages/harness/src/session/rollout/lifecycle.ts) uses effective transcript history with rollback events applied.
 - [Conversation tests](../../apps/web/test/components/session/conversation-process.dom.test.ts) verify a single completed event inside its process window; [rollout tests](../../packages/harness/test/session/rollout-continuation.test.ts) verify completion after model history has excluded the root.
 - The [testing workflow](../../.synergy/skill/testing-guide/SKILL.md) checks terminal execution evidence separately from session idle status. The [decision record](../decisions/implemented/feature/2026-10-04-bounded-process-windows-and-system-event-details.md) records the ownership rules.
+- History location retains the target row, resolves its identity after summary changes and releases correction on explicit reading input. The conversation regression covers delayed preceding hydration and subsequent wheel navigation.
 
 ## Lessons
 

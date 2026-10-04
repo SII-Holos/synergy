@@ -269,6 +269,14 @@ window.__conversationProcess = {
       Array.from({ length: count }, (_, i) => part("more", "many-" + i, "tool")),
     )
   },
+  hydrateBefore(count: number) {
+    setData("part", "root", [
+      part("root", "request", "text", "Describe the project"),
+      ...Array.from({ length: count }, (_, index) =>
+        part("root", `history-${index}`, "text", `Historical section ${index}`),
+      ),
+    ])
+  },
   prepend(count: number) {
     setData("part", "more", [
       ...Array.from({ length: count }, (_, i) => part("more", "older-" + i, "tool")),

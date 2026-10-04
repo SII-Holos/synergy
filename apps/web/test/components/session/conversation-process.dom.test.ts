@@ -19,6 +19,7 @@ type Fixture = {
   terminal(): void
   complete(): void
   grow(count: number): void
+  hydrateBefore(count: number): void
   prepend(count: number): void
   delivery(): void
   manualCompaction(): void
@@ -99,6 +100,44 @@ afterAll(async () => {
   await server?.close()
   if (directory) await rm(directory, { recursive: true, force: true })
 }, 30000)
+
+test("a history locator retains its Part through late preceding summaries and releases on wheel input", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.stream()
+    window.__conversationProcess.complete()
+  })
+  expect(await page.evaluate(() => window.__conversationProcess.locate("final", "answer"))).toBe(true)
+  await page.evaluate(() => window.__conversationProcess.hydrateBefore(60))
+  await page.waitForFunction(() => {
+    const part = document.querySelector('[data-part-id="answer"]')
+    const bounds = document.querySelector("[data-scroller]")!.getBoundingClientRect()
+    const item = part?.getBoundingClientRect()
+    return item && item.bottom > bounds.top && item.top < bounds.bottom
+  })
+  const scroller = page.locator("[data-scroller]")
+  await scroller.hover()
+  await page.mouse.wheel(0, -1000)
+  await page.waitForFunction(() => {
+    const part = document.querySelector('[data-part-id="answer"]')
+    const bounds = document.querySelector("[data-scroller]")!.getBoundingClientRect()
+    const item = part?.getBoundingClientRect()
+    return !item || item.top >= bounds.bottom || item.bottom <= bounds.top
+  })
+  expect(await page.locator("[data-display-row]").count()).toBeLessThan(80)
+  expect(await page.evaluate(() => window.__conversationProcess.locate("final", "answer"))).toBe(true)
+  await page.evaluate(() => window.__conversationProcess.prepare())
+  await frames()
+  await page.evaluate(() => {
+    document.querySelector("[data-scroller]")!.scrollTop = 0
+    window.__conversationProcess.stream()
+    window.__conversationProcess.complete()
+  })
+  await frames()
+  await page.getByText("Final answer stays mounted.", { exact: true }).waitFor({ state: "detached" })
+  expect(errors).toEqual([])
+})
 
 test("a late child delivery has one chronological process row and opens the right inspector", async () => {
   await page.goto(url)
