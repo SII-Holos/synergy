@@ -1,4 +1,4 @@
-import { createMemo, createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
@@ -309,11 +309,22 @@ function SessionInboxContent(props: SessionInboxProps) {
     Record<string, { kind: "remove" | "restore"; item: SessionInboxItem; pending: boolean; error?: unknown }>
   >({})
   const [controlPending, setControlPending] = createSignal<Set<string>>(new Set())
+  let removedRequest: AbortController | undefined
+  const removedActive = () => props.active !== false && !props.compact
   const [removed, { refetch }] = createResource(
-    () => props.active !== false && !props.compact,
-    async () => (await client.session.inboxRemoved({ sessionID }, { throwOnError: true })).data,
+    removedActive,
+    async () => {
+      removedRequest?.abort()
+      removedRequest = new AbortController()
+      return (await client.session.inboxRemoved({ sessionID }, { signal: removedRequest.signal, throwOnError: true }))
+        .data
+    },
     { initialValue: [] },
   )
+  createEffect(() => {
+    if (!removedActive()) removedRequest?.abort()
+  })
+  onCleanup(() => removedRequest?.abort())
   const change = async (item: SessionInboxItem, kind: "remove" | "restore") => {
     if (operations()[item.id]?.pending) return
     const previous = operations()[item.id]

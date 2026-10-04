@@ -1,4 +1,4 @@
-import { createMemo, createResource, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createResource, onCleanup, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { useParams } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -78,20 +78,21 @@ function TaskResources(props: { sessionID: string; active: boolean }) {
     },
   })
   let request: AbortController | undefined
+  const branchTarget = createMemo(() => {
+    const scope = session()?.scope
+    const path = location().path
+    if (
+      !props.active ||
+      !path ||
+      location().state !== "bound" ||
+      scope?.type !== "project" ||
+      scope.local?.vcs !== "git"
+    )
+      return false
+    return { path, scopeID: scope.id, client: sdk.client }
+  })
   const [branch] = createResource(
-    () => {
-      const scope = session()?.scope
-      const path = location().path
-      if (
-        !props.active ||
-        !path ||
-        location().state !== "bound" ||
-        scope?.type !== "project" ||
-        scope.local?.vcs !== "git"
-      )
-        return false
-      return { path, scopeID: scope.id, client: sdk.client }
-    },
+    branchTarget,
     async ({ path, scopeID, client }) => {
       request?.abort()
       request = new AbortController()
@@ -100,6 +101,9 @@ function TaskResources(props: { sessionID: string; active: boolean }) {
     },
     { initialValue: undefined },
   )
+  createEffect(() => {
+    if (!branchTarget()) request?.abort()
+  })
   onCleanup(() => request?.abort())
   const currentBranch = () => {
     if (branch.error) return

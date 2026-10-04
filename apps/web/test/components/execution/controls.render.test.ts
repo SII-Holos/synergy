@@ -2,7 +2,7 @@ import { afterEach, expect, mock, test } from "bun:test"
 import { plugin } from "bun"
 import { transformAsync } from "@babel/core"
 import { setupI18n } from "@lingui/core"
-import { createComponent, createSignal, onCleanup, type JSX } from "solid-js"
+import { createComponent, createSignal, onCleanup, Suspense, type JSX } from "solid-js"
 import { render } from "solid-js/web"
 import type { ExecutionSummary } from "@ericsanchezok/synergy-sdk/client"
 
@@ -40,7 +40,11 @@ const initialResource = {
   workspace: { type: "git_worktree", path: "/workspace", bindingState: "bound", lifecycle: "active" },
   environmentID: "env-a",
 }
-const [resource, setResource] = createSignal(initialResource)
+const [resource, setResource] = createSignal<
+  Omit<typeof initialResource, "workspace"> & {
+    workspace: typeof initialResource.workspace | null
+  }
+>(initialResource)
 const resources: Array<{
   kind: "environment" | "branch"
   signal?: AbortSignal
@@ -400,6 +404,56 @@ test("task details retain direct inbox ownership while navigating history and su
   trigger.click()
   await flush()
   expect(document.querySelector(".execution-popover")?.contains(content)).toBe(true)
+})
+
+test("pending workspace reads preserve the conversation and cancel on close, cleared targets and navigation", async () => {
+  setEnabled(false)
+  const conversation = document.createElement("article")
+  conversation.textContent = "Retained conversation"
+  const composer = document.createElement("textarea")
+  composer.value = "Unsent draft"
+  const fallback = document.createElement("div")
+  fallback.textContent = "Page loading"
+  const root = mount(() =>
+    createComponent(Suspense, {
+      fallback,
+      get children() {
+        return [conversation, composer, createComponent(SessionTaskDetails, {})]
+      },
+    }),
+  )
+  const retained = () => {
+    expect(root.contains(fallback)).toBe(false)
+    expect(root.contains(conversation)).toBe(true)
+    expect(root.contains(composer)).toBe(true)
+    expect(composer.value).toBe("Unsent draft")
+  }
+  const trigger = root.querySelector<HTMLButtonElement>(".execution-trigger")!
+  trigger.click()
+  await flush()
+  retained()
+  expect(resources).toHaveLength(1)
+  trigger.click()
+  await flush()
+  expect(resources[0].signal?.aborted).toBe(true)
+  retained()
+  trigger.click()
+  await flush()
+  expect(resources).toHaveLength(2)
+  setResource({ ...initialResource, workspace: null })
+  await flush()
+  expect(resources[1].signal?.aborted).toBe(true)
+  retained()
+  setResource(initialResource)
+  await flush()
+  expect(resources).toHaveLength(3)
+  setSessionID("next")
+  await flush()
+  expect(resources[2].signal?.aborted).toBe(true)
+  for (const request of resources) request.resolve([{ path: "/workspace", branch: "abandoned-branch" }])
+  await flush()
+  retained()
+  expect(document.querySelector(".execution-popover")).toBeNull()
 })
 
 test("workspace identity copies its current path, rejects stale branch reads and never queries runtime labels", async () => {

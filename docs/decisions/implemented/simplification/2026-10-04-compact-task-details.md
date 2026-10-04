@@ -14,6 +14,8 @@ Task summaries add optional canonical interaction and delegation metadata. Expli
 
 Conversation cards and Task details display confirmed files without recording notices. Review retains recording errors and incomplete-evidence notices, explaining restoration limits; unknown evidence does not become a measured zero. Restoration checks and backend evidence remain authoritative.
 
+The compact layout retains the loading and dismissal contract: closing or clearing a resource target cancels its reads without dropping pending operations, and the conversation never enters page-wide loading. Inbox history stays visible through the exit animation; reopening resets navigation and retains focus inside the new or surviving portal.
+
 ## Alternatives considered
 
 **Keep configuration and diagnostics in disclosures.** This preserves clutter and promotes internal recording state into ordinary task information; the compact surface omits those controls and keeps recording notices in Review.

@@ -46,11 +46,14 @@ export function TaskDetailsPopover(props: {
     return bounds.width > 0 && bounds.height > 0 && getComputedStyle(element).visibility === "visible"
   }
   const toggle = (value: boolean) => {
+    const retained = value && back?.isConnected
+    if (value) setHistory(false)
     setOpen(value)
-    if (!value) {
-      setHistory(false)
-      setMenuOpen(false)
-    }
+    if (!value) setMenuOpen(false)
+    if (retained)
+      queueMicrotask(() => {
+        if (open()) more?.focus({ preventScroll: true })
+      })
     if (timer) clearInterval(timer)
     if (value) {
       setNow(Date.now())

@@ -43,7 +43,7 @@ beforeAll(async () => {
       if(window.agendaDelay)await new Promise(r=>setTimeout(r,window.agendaDelay))
       const start=q.offset || 0
       return {data:{sessionID:q.sessionID,items:items.slice(start,start+q.limit),count:Math.min(q.limit,items.length-start),total:items.length,offset:start,limit:q.limit,hasMore:start+q.limit<items.length,hasActiveAgenda:true}}
-    },inboxRemoved:async()=>{window.removedReads=(window.removedReads||0)+1;if(window.removedDelay)await new Promise(r=>setTimeout(r,window.removedDelay));return {data:removed}},inboxGuide:async(q)=>{window.guided=q.itemID},inboxRetry:async(q)=>{window.retried=q.itemID},inboxRemove:async(q)=>{const item=data.inbox.root.find(i=>i.id===q.itemID);removed.push(item);setData("inbox","root",data.inbox.root.filter(i=>i.id!==q.itemID));return {data:item}},inboxRestore:async(q)=>{const i=removed.findIndex(i=>i.id===q.itemID);setData("inbox","root",[...data.inbox.root,removed.splice(i,1)[0]]);return {data:true}}},cortex:{cancel:async(q)=>{window.cancelledTask=q.taskID;return {data:true}}}}}
+    },inboxRemoved:async(q,options)=>{(window.removedRequests??=[]).push(options.signal);window.removedReads=(window.removedReads||0)+1;if(window.removedDelay)await new Promise(r=>setTimeout(r,window.removedDelay));return {data:removed}},inboxGuide:async(q)=>{window.guided=q.itemID},inboxRetry:async(q)=>{window.retried=q.itemID},inboxRemove:async(q)=>{const item=data.inbox.root.find(i=>i.id===q.itemID);removed.push(item);setData("inbox","root",data.inbox.root.filter(i=>i.id!==q.itemID));return {data:item}},inboxRestore:async(q)=>{const i=removed.findIndex(i=>i.id===q.itemID);setData("inbox","root",[...data.inbox.root,removed.splice(i,1)[0]]);return {data:true}}},cortex:{cancel:async(q)=>{window.cancelledTask=q.taskID;return {data:true}}}}}
     const [executionState,setExecutionState]=createStore({summary,error:undefined})
     export const useExecution=()=>({state:executionState,available:()=>!location.search.includes("minimal"),refresh:async()=>{window.refreshed=true},open:async(runID,nodeID)=>{window.openedNode=nodeID||"all"}})
     export const useParams=()=>({id:"root"})
@@ -368,6 +368,21 @@ test("loading inbox history preserves the task surface and does not suspend the 
   await page.getByRole("button", { name: "Inbox history", exact: true }).click()
   expect(await page.locator(".execution-inbox-back").isVisible()).toBe(true)
   expect(await page.getByText("App loading", { exact: true }).count()).toBe(0)
+  expect(errors).toEqual([])
+})
+
+test("leaving inbox history or closing task details cancels pending history reads", async () => {
+  await page.evaluate("window.removedDelay=1500")
+  for (const close of [false, true]) {
+    await page.locator(".execution-compact-identity").hover()
+    await page.locator(".execution-identity-action").click()
+    await page.getByRole("button", { name: "Inbox history", exact: true }).click()
+    expect(await page.evaluate("window.removedRequests.at(-1).aborted")).toBe(false)
+    if (close) await page.locator('[data-slot="popover-close-button"]').click()
+    else await page.locator(".execution-inbox-back").click()
+    expect(await page.evaluate("window.removedRequests.at(-1).aborted")).toBe(true)
+    expect(await page.getByText("App loading", { exact: true }).count()).toBe(0)
+  }
   expect(errors).toEqual([])
 })
 
