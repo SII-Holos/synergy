@@ -34,6 +34,10 @@ test("native public conversation retains bounded history and reconciles updates 
       await new Promise((resolve) => setTimeout(resolve, 200))
       await route.continue()
     })
+    await page.route("**/session/**/message/**/part/**", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1800))
+      await route.continue()
+    })
     await page.goto(conversation.url)
     await page.getByText("Answer 360", { exact: true }).waitFor()
     const roots = page.locator('.session-conversation-content [data-display-row][data-message-role="user"]')
@@ -43,6 +47,7 @@ test("native public conversation retains bounded history and reconciles updates 
       const scroller = document.querySelector(".session-conversation-content")?.closest(".overflow-y-auto")
       return scroller && scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop < 10
     })
+    await page.unroute("**/session/**/message/**/part/**")
     await roots.last().hover()
     await page.mouse.wheel(0, -1000)
     let oldestTime = conversation.messages.at(-1)!.info.time.created

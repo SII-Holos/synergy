@@ -1,3 +1,4 @@
+import { sessionActivityLabel } from "../../src/components/session-status"
 import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, mock, test } from "bun:test"
 import type {
@@ -89,10 +90,9 @@ const {
   formatTurnCost,
   formatTurnTokenCount,
   providerPreludeElapsedLabel,
-  providerPreludeText,
   resolveSessionTurnError,
   resolveTurnWorking,
-  shouldShowProviderPrelude,
+  shouldShowCurrentActivity,
   turnCompletionStats,
   timelineItemStableKey,
   timelineVisualKind,
@@ -705,96 +705,22 @@ describe("session turn timeline", () => {
       values: { availability: "none", availableVariants: "" },
     })
   })
-  test("shows provider prelude while the first assistant response has no visible part", () => {
-    expect(
-      shouldShowProviderPrelude({
-        working: true,
-        hasError: false,
-        latestAssistant: undefined,
-        latestAssistantTimelineItems: [],
-      }),
-    ).toBe(true)
+  test("keeps the current activity visible throughout active execution", () => {
+    expect(shouldShowCurrentActivity({ working: true, hasError: false })).toBe(true)
+    expect(shouldShowCurrentActivity({ working: false, hasError: false })).toBe(false)
+    expect(shouldShowCurrentActivity({ working: true, hasError: true })).toBe(false)
   })
 
-  test("does not insert another waiting row after visible work when the next model reply is empty", () => {
-    const previous = completedAssistant("assistant-a")
-    const latest = assistant("assistant-b")
-    const previousItems = collectSessionTurnTimelineItems(
-      [previous],
-      { [previous.id]: [ordinaryTool({ id: "tool-a", messageID: previous.id, status: "completed" })] },
-      true,
-    )
-    const latestItems = collectSessionTurnTimelineItems([latest], {}, true)
-
-    expect(previousItems).toHaveLength(1)
-    expect(latestItems).toHaveLength(0)
-    expect(
-      shouldShowProviderPrelude({
-        working: true,
-        hasError: false,
-        latestAssistant: latest,
-        latestAssistantTimelineItems: latestItems,
-        hasTurnContent: previousItems.length > 0,
-      }),
-    ).toBe(false)
-  })
-
-  test("hides provider prelude once the latest assistant response has a visible part", () => {
-    const latest = assistant("assistant-a")
-    const latestItems = collectSessionTurnTimelineItems(
-      [latest],
-      { [latest.id]: [textPart("text-a", latest.id)] },
-      true,
-    )
-
-    expect(latestItems).toHaveLength(1)
-    expect(
-      shouldShowProviderPrelude({
-        working: true,
-        hasError: false,
-        latestAssistant: latest,
-        latestAssistantTimelineItems: latestItems,
-      }),
-    ).toBe(false)
-  })
-
-  test("hides provider prelude when the turn is not actively waiting", () => {
-    const latest = assistant("assistant-a")
-
-    expect(
-      shouldShowProviderPrelude({
-        working: false,
-        hasError: false,
-        latestAssistant: latest,
-        latestAssistantTimelineItems: [],
-      }),
-    ).toBe(false)
-    expect(
-      shouldShowProviderPrelude({
-        working: true,
-        hasError: true,
-        latestAssistant: latest,
-        latestAssistantTimelineItems: [],
-      }),
-    ).toBe(false)
-    expect(
-      shouldShowProviderPrelude({
-        working: true,
-        hasError: false,
-        latestAssistant: completedAssistant("assistant-b"),
-        latestAssistantTimelineItems: [],
-      }),
-    ).toBe(false)
-  })
-
-  test("keeps backend provider prelude status text verbatim", () => {
+  test("uses canonical activity labels while waiting for provider content", () => {
     const status = {
       type: "busy",
       description: "Awaiting response…",
     } satisfies SessionStatus
 
-    expect(providerPreludeText(status)).toBe("Awaiting response…")
-    expect(providerPreludeText({ type: "busy" })).toBe("Synergy is thinking…")
+    expect(sessionActivityLabel(status)).toBe("Processing task")
+    expect(sessionActivityLabel({ type: "busy", activity: { phase: "waiting_model", startedAt: 1 } })).toBe(
+      "Waiting for model response",
+    )
   })
 
   test("formats provider prelude elapsed time as a quiet timer label", () => {

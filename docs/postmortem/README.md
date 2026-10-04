@@ -22,14 +22,15 @@ Otherwise, write a bug fix with tests.
 Use the next `NNNN-kebab-case-title.md`. Sections:
 
 - **Executive summary** — one paragraph: what broke, its cause, why it escaped, and the durable lesson.
-- **Summary** — Failure details.
+- **Summary** — details of the failure.
 - **Timeline** — what was observed and when.
-- **Root cause** — the mechanism, and why every safety net missed it.
+- **Root cause** — the mechanism and missing safeguards.
 - **Guardrails added** — linked fixes: tests, doc updates, gate changes.
 - **Lessons** — the durable takeaways.
 
 ## Index
 
+- [0042: Compaction completion](0042-process-event-ownership-and-compaction-completion.md)
 - [0041: Lost completion signal](0041-cortex-progress-fixture-lost-release.md)
 - [0040: Vite ports](0040-vite-fixtures-shared-default-ports.md)
 - [0039: Process activation deadlock](0039-paused-output-blocked-process-activation.md)

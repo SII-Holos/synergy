@@ -135,7 +135,7 @@ test("plain-text paste replaces the selection and participates in native undo an
 }, 20_000)
 
 test("project transfer checks both draft revisions and cancellation leaves both drafts intact", async () => {
-  await page.reload()
+  await page.goto(`${server.resolvedUrls!.local[0]}c2NvcGU/session/a`)
   await page.waitForSelector("#seed")
   await page.evaluate(`window.projectDraftFixture.navigate('/c2NvcGU/session')`)
   await page.click("#seed")
@@ -184,3 +184,49 @@ test("project transfer preserves the editing cursor when the destination draft i
   )
   expect(await page.evaluate<number>(`window.projectDraftFixture.prompt.cursor()`)).toBe(5)
 }, 20_000)
+
+test("optimistic submission clears the captured draft immediately and carries later typing into the new session", async () => {
+  await page.goto(`${server.resolvedUrls!.local[0]}c2NvcGU/session/a`)
+  await page.waitForSelector("#seed")
+  await page.evaluate(`window.projectDraftFixture.navigate('/c2NvcGU/session')`)
+  await page.click("#seed")
+  expect(
+    await page.evaluate<boolean>(
+      `window.sent = window.projectDraftFixture.prompt.capture(); window.sent.clearIfUnchanged(window.sent.draft.revision()) !== undefined`,
+    ),
+  ).toBe(true)
+  expect(await page.locator("#value").textContent()).toBe("")
+  expect(await page.evaluate<boolean>(`window.sent.isCurrent()`)).toBe(true)
+  await page.evaluate(`window.projectDraftFixture.prompt.set([{type:'text',content:'next message',start:0,end:12}],4)`)
+  expect(await page.evaluate<boolean>(`window.sent.transferToSession('new-session')`)).toBe(true)
+  await page.evaluate(`window.projectDraftFixture.navigate('/c2NvcGU/session/new-session')`)
+  expect(await page.locator("#value").textContent()).toBe("next message")
+  expect(await page.evaluate<number>(`window.projectDraftFixture.prompt.cursor()`)).toBe(4)
+  await page.evaluate(`window.projectDraftFixture.navigate('/c2NvcGU/session'); window.sent.release()`)
+  expect(await page.locator("#value").textContent()).toBe("")
+})
+
+test("retry sends the recovered draft while keeping the user's next draft and rejecting late restoration", async () => {
+  await page.goto(`${server.resolvedUrls!.local[0]}c2NvcGU/session/a`)
+  await page.waitForSelector("#seed")
+  await page.evaluate(
+    `window.projectDraftFixture.prompt.set([{type:'text',content:'keep my next draft',start:0,end:18}],5)`,
+  )
+  await page.evaluate(
+    `window.projectDraftFixture.prompt.recoverDraft({prompt:[{type:'text',content:'failed message',start:0,end:14}],context:{items:[]}},true)`,
+  )
+  expect(await page.locator("#value").textContent()).toBe("failed message")
+  expect(
+    await page.evaluate<boolean>(
+      `window.retry = window.projectDraftFixture.prompt.capture(); window.restoreRevision = window.retry.clearIfUnchanged(window.retry.draft.revision()); window.restoreRevision !== undefined`,
+    ),
+  ).toBe(true)
+  expect(await page.locator("#value").textContent()).toBe("keep my next draft")
+  expect(await page.evaluate<number>(`window.projectDraftFixture.prompt.cursor()`)).toBe(5)
+  expect(
+    await page.evaluate<boolean>(
+      `window.retry.draft.restoreIfUnchanged(window.restoreRevision,{prompt:[{type:'text',content:'failed message',start:0,end:14}],context:{items:[]}})`,
+    ),
+  ).toBe(false)
+  await page.evaluate(`window.retry.release()`)
+})
