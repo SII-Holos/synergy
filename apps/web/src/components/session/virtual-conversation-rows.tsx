@@ -28,6 +28,7 @@ const layouts = new WeakMap<
 >()
 
 type ProcessControls = {
+  takeUserArrival?: (messageID: string) => boolean
   submissionFor?: (
     rootID: string,
   ) => { activity?: import("@ericsanchezok/synergy-sdk").SessionActivity; failed: boolean } | undefined
@@ -397,6 +398,7 @@ export function VirtualConversationRows(
                   onExit={finishExit}
                   activityView={activityView}
                   submissionFor={input.submissionFor}
+                  takeUserArrival={input.takeUserArrival}
                   executionFor={input.executionFor}
                   onRestoreChanges={input.onRestoreChanges}
                   onReading={(key, reading) =>
@@ -697,6 +699,7 @@ function ConversationDisplayRow(
                 }
                 fallback={
                   <SessionTurn
+                    takeUserArrival={input.takeUserArrival}
                     sessionID={props.sessionID}
                     messageID={row().root.id}
                     rootMessage={row().root as UserMessage}

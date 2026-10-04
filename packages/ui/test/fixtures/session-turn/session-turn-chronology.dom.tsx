@@ -129,6 +129,9 @@ const resourceController = {
   openWorkspaceSource: () => false,
 }
 const EmptyDiff = () => null
+let userArrival = false
+const [mount, setMount] = createSignal(0)
+const [following, setFollowing] = createSignal(true)
 const [mode, setMode] = createSignal("balanced")
 const [segmented, setSegmented] = createSignal(false)
 const [preview, setPreview] = createSignal(false)
@@ -152,11 +155,11 @@ render(
           <MarkedProvider>
             <DiffComponentProvider component={EmptyDiff}>
               <DataProvider data={data} runtime={runtime} directory="/workspace" serverUrl="http://localhost">
-                <For each={segmented() ? ["header", "first", "second", "answer", "footer"] : ["whole"]}>
+                <For each={segmented() ? ["header", "first", "second", "answer", "footer"] : [`whole-${mount()}`]}>
                   {(segment) => (
                     <SessionTurn
                       segment={
-                        segment === "whole"
+                        segment.startsWith("whole")
                           ? undefined
                           : {
                               user: false,
@@ -195,7 +198,12 @@ render(
                       activityDisplay={mode()}
                       compactReasoning={preview()}
                       executionState={executionState()}
-                      following
+                      following={following()}
+                      takeUserArrival={() => {
+                        const arrival = userArrival
+                        userArrival = false
+                        return arrival
+                      }}
                       activityView={{
                         getExpanded: (key) => expanded[key],
                         setExpanded: (key, value) => setExpanded(key, value),
@@ -268,6 +276,17 @@ function move(next) {
 }
 move(0)
 globalThis.__chronologyHarness = {
+  send: () => {
+    userArrival = true
+    setMount((value) => value + 1)
+  },
+  remount: () => setMount((value) => value + 1),
+  setFollowing,
+  fastTool: () =>
+    setData("part", assistantID, (parts) => [
+      ...parts.map((part) => (part.type === "tool" ? { ...part, state: toolPart.state } : part)),
+      { ...toolPart, id: "tool-fast", tool: "bash", workBrief: "Inspect fast evidence" },
+    ]),
   selection: () => openedActivities.at(-1),
   move,
   setMode,

@@ -399,6 +399,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
 
       const projectDirectory = sdk.directory
       const currentScopeKey = sdk.scopeKey
+      const submissionServer = sdk.url
       // Capture (and disarm) workflow state armed on the new-session composer
       // before navigation can reset it; applied once the session exists.
       const armedPlan = isNewSession && input.pendingPlan()
@@ -1119,6 +1120,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         const existing = current.messages.some((message) => message.id === messageID)
         const result = reconcileMessage(current, optimisticMessage)
         const visible = result.window.messages.some((message) => message.id === messageID)
+        if (visible && !existing)
+          sessionTransition.messageArrival.add([submissionServer, sessionScopeKey, activeSession.id], messageID)
         globalSync.invalidateResource(sessionScopeKey, activeSession.id, "message")
         setSyncStore(
           produce((draft) => {
@@ -1160,6 +1163,11 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       const handoffAcceptedOptimisticMessage = (canonicalID: string) => {
         if (!messageID) return
         if (canonicalID === messageID) return
+        sessionTransition.messageArrival.handoff(
+          [submissionServer, sessionScopeKey, activeSession.id],
+          messageID,
+          canonicalID,
+        )
         const messages = syncStore.message[activeSession.id]
         if (!messages) return
         const metadata = syncStore.messageWindow[activeSession.id]
@@ -1196,6 +1204,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       }
 
       const removeOptimisticMessage = () => {
+        if (messageID)
+          sessionTransition.messageArrival.remove([submissionServer, sessionScopeKey, activeSession.id], messageID)
         if (!messageID) return
         const messages = syncStore.message[activeSession.id]
         if (!messages) return

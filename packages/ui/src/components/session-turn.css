@@ -445,3 +445,24 @@
     height: 44px;
   }
 }
+@keyframes user-message-arrival {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+[data-message-arrival] {
+  animation: user-message-arrival var(--motion-duration-base, 180ms)
+    var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-message-arrival] {
+    animation: none;
+  }
+}
