@@ -7,6 +7,12 @@ import { createServer, type ViteDevServer } from "vite"
 import solid from "vite-plugin-solid"
 
 type Fixture = {
+  toolCase(
+    tool: string,
+    input: Record<string, unknown>,
+    metadata: Record<string, unknown>,
+    status?: "completed" | "error",
+  ): void
   prepare(): void
   respond(): void
   phase(value: {
@@ -76,6 +82,7 @@ beforeAll(async () => {
     plugins: [solid()],
     resolve: { alias: [{ find: "@/context/execution", replacement: path.join(directory, "execution.ts") }] },
     server: {
+      hmr: false,
       host: "127.0.0.1",
       port: await fixturePort(),
       strictPort: true,
@@ -164,7 +171,7 @@ test("a late child delivery has one chronological process row and opens the righ
   expect(await page.getByText("Captured child result", { exact: true }).count()).toBe(0)
 })
 
-test("one process activation reveals actions without another disclosure", async () => {
+test("parent and batch disclosures preserve independent choices and tool inspection", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
   await page.evaluate(() => {
@@ -176,11 +183,32 @@ test("one process activation reveals actions without another disclosure", async 
   const trigger = page.locator('[data-slot="turn-process-trigger"]')
   await trigger.press("Enter")
   await frames()
-  expect(await page.locator('[data-component="conversation-activity"] > button').count()).toBe(0)
-  await page.locator('[data-slot="activity-step-trigger"]').last().waitFor()
-  expect(await page.locator('[data-component="process-viewport"]').count()).toBeGreaterThan(0)
+  const batches = page.locator('[data-component="conversation-activity"] > button')
+  expect(await batches.count()).toBe(2)
+  expect(await batches.last().getAttribute("aria-expanded")).toBe("false")
+  expect(await page.locator('[data-slot="activity-step-trigger"]').count()).toBe(0)
+  await batches.last().press("Enter")
+  const tool = page.locator('[data-slot="activity-step-trigger"]').first()
+  await tool.waitFor()
+  expect(await tool.textContent()).toContain("pwd")
+  expect(await tool.textContent()).not.toContain("Check the project directory")
+  await tool.click()
+  expect(await page.evaluate(() => window.__processSelection)).toMatchObject({
+    sessionID: "session",
+    messageID: "work",
+    partID: "command-0",
+    callID: "command-0",
+  })
+  expect(await page.getByRole("dialog").count()).toBe(0)
   await trigger.press("Enter")
   await page.waitForFunction(() => !document.querySelector('[data-row-kind="activity"]'))
+  await trigger.press("Enter")
+  await tool.waitFor()
+  expect(await batches.first().getAttribute("aria-expanded")).toBe("false")
+  expect(await batches.last().getAttribute("aria-expanded")).toBe("true")
+  await batches.last().press("Space")
+  await page.waitForFunction(() => !document.querySelector('[data-slot="activity-step-trigger"]'))
+  expect(await page.getByText("I will check the project first.", { exact: true }).count()).toBe(1)
 }, 30000)
 
 test("reasoning chevrons appear on hover and focus and remain visible on touch", async () => {
@@ -233,7 +261,7 @@ test("tools and reasoning share compact spacing across virtual chunks", async ()
   )
   expect(geometry.length).toBeGreaterThan(1)
   for (const [index, current] of geometry.entries()) {
-    expect(current.height).toBe(28)
+    expect(current.height).toBe(32)
     if (index) expect(current.top - geometry[index - 1].bottom).toBe(2)
   }
 })
@@ -250,12 +278,18 @@ test("a long logical block uses a bounded independent viewport", async () => {
   }))
   expect(geometry.height).toBeLessThanOrEqual(270)
   expect(geometry.overflow).toBe(true)
+  expect(await viewport.locator("..").getAttribute("data-overflow")).toBe("")
   await viewport.hover()
   await frames()
   const mainOffset = await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)
   await page.mouse.wheel(0, -300)
   await frames()
   expect(await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)).toBe(mainOffset)
+  await page.getByText("More actions below", { exact: true }).waitFor()
+  expect(await page.locator('[data-slot="process-latest"]').count()).toBe(0)
+  await viewport.focus()
+  await viewport.press("End")
+  await page.getByText("More actions below", { exact: true }).waitFor({ state: "detached" })
   expect(await page.evaluate(() => window.__conversationProcess.retained())).toBeLessThan(120)
 })
 
@@ -396,6 +430,7 @@ test("compaction has one compact lifecycle row and exposes running status while 
   })
   expect(await page.locator('[data-slot="turn-process-trigger"]').textContent()).toContain("Compressing context")
   await page.locator('[data-slot="turn-process-trigger"]').click()
+  await page.locator('[data-component="conversation-activity"] > button').last().click()
   const card = page.locator('[data-component="compaction-card"]')
   await card.waitFor()
   expect(await card.count()).toBe(1)
@@ -447,8 +482,8 @@ test("logical execution folds across messages, preserves prose and retains the f
       throw new Error(JSON.stringify({ url: page.url(), errors, html: await page.content() }), { cause: error })
     })
   expect(await page.locator('[data-row-kind="activity"]').count()).toBe(2)
-  expect(await page.locator('[data-component="conversation-activity"] > button').count()).toBe(0)
-  expect(await page.locator('[data-component="process-viewport"]').count()).toBe(2)
+  expect(await page.locator('[data-component="conversation-activity"] > button').count()).toBe(2)
+  expect(await page.locator('[data-component="process-viewport"]').count()).toBe(1)
   await page.evaluate(() => window.__conversationProcess.stream())
   await frames()
   await page.locator("[data-scroller]").evaluate((el) => (el.scrollTop = el.scrollHeight))
@@ -480,7 +515,8 @@ test("logical execution folds across messages, preserves prose and retains the f
     .catch(async (error) => {
       throw new Error(JSON.stringify({ errors, html: await page.locator("#root").innerHTML() }), { cause: error })
     })
-  expect(await page.locator('[data-component="conversation-activity"] > button').count()).toBe(0)
+  expect(await page.locator('[data-component="conversation-activity"] > button').count()).toBe(2)
+  await page.locator('[data-component="conversation-activity"] > button').last().click()
   await page.locator('[data-slot="activity-step"]').nth(1).waitFor()
   expect(errors).toEqual([])
 }, 60000)
@@ -678,4 +714,43 @@ test("streaming a text-only response keeps the current system status visible", a
   expect(await page.locator('[data-slot="turn-process-trigger"]').textContent()).toContain("Generating response")
   expect(await page.locator('[data-slot="turn-process-trigger"]').count()).toBe(1)
   expect(errors).toEqual([])
+}, 30000)
+
+test("tool objects retain paths and command prefixes without inventing modification evidence", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  const row = page.locator('[data-part-id^="case-"][data-slot="activity-step"]')
+  await page.evaluate(() =>
+    window.__conversationProcess.toolCase(
+      "edit",
+      { filePath: "/project/src/session/index.ts" },
+      { filediff: { additions: 18, deletions: 7 } },
+    ),
+  )
+  await row.getByText("index.ts", { exact: true }).waitFor()
+  expect(await row.locator('[data-slot="activity-step-object"]').textContent()).toBe("src/session/index.ts")
+  expect(await row.textContent()).not.toContain("Check the project directory")
+  expect(await row.locator('[data-component="diff-changes"]').textContent()).toContain("+18")
+  await page.evaluate(() =>
+    window.__conversationProcess.toolCase("edit", { filePath: "/project/src/other/index.ts" }, {}, "error"),
+  )
+  expect(await row.locator('[data-component="diff-changes"]').count()).toBe(0)
+  expect(await row.locator("button").getAttribute("aria-label")).toContain("Failed")
+  expect(await row.textContent()).toContain("src/other/")
+  await page.evaluate(() =>
+    window.__conversationProcess.toolCase(
+      "bash",
+      { command: "echo 'changed' > src/index.ts" },
+      { filediff: { additions: 18, deletions: 7 } },
+    ),
+  )
+  expect(await row.locator('[data-slot="activity-step-object"]').textContent()).toBe("echo 'changed' > src/index.ts")
+  expect(await row.locator('[data-component="diff-changes"]').count()).toBe(0)
+  await page.evaluate(() =>
+    window.__conversationProcess.toolCase("grep", { pattern: "ProcessViewport", path: "apps/web" }, {}),
+  )
+  expect(await row.textContent()).toContain("ProcessViewport · apps/web")
+  await page.evaluate(() => window.__conversationProcess.toolCase("custom_lookup", {}, {}))
+  expect(await row.textContent()).toContain("Check the project directory")
+  expect(await row.textContent()).not.toContain("undefined")
 }, 30000)

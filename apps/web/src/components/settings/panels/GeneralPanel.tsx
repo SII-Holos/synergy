@@ -98,7 +98,7 @@ const copy = {
   activityDisplayDescription: {
     id: "settings.general.activityDisplay.description",
     message:
-      "Balanced shows current calls and collects completed tools; Full expands tool history; Minimal keeps progress compact. You can expand the process in every mode.",
+      "Balanced opens the current tool batch; Full opens all process history; Minimal keeps the process closed. You can expand each batch independently.",
   },
   activityFull: { id: "settings.general.activityDisplay.full", message: "Full" },
   activityBalanced: { id: "settings.general.activityDisplay.balanced", message: "Balanced" },

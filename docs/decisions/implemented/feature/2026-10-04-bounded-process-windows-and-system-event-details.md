@@ -8,7 +8,7 @@ Long expanded execution groups consume the conversation height. Independent row 
 
 ## Decision
 
-Each continuous process group owns one bounded scrolling window. Its inner virtualizer retains the existing six-Part and body-byte chunk budgets, focus, selection and content leases. Public prose and final answers remain in the outer conversation. The window uses 320px and narrow-column 240px caps, further limited to 45% of the conversation viewport. Rows share 28px minimum height, 14px/20px text, 20px icon columns, 8px horizontal gaps and 2px vertical gaps.
+Each continuous process group owns one bounded scrolling window. Its inner virtualizer retains the existing six-Part and body-byte chunk budgets, focus, selection and content leases. Public prose and final answers remain in the outer conversation. The window uses 320px and narrow-column 240px caps, further limited to 45% of the conversation viewport. The original row geometry uses 28px minimum height, 14px/20px text, 20px icon columns, 8px horizontal gaps and 2px vertical gaps.
 
 Tools, reasoning, Agent deliveries and compaction join their canonical order within the same logical group. Only tool Parts contribute to its operation count. Metadata and footer segments cannot emit another segment's Agent delivery or compaction. Running compaction uses a compact status row; its animation respects reduced motion.
 
@@ -25,6 +25,8 @@ History search retains its target by message and Part identity while preceding s
 Opening the latest conversation or explicitly returning to its end establishes a viewport-owned follow intent. It survives delayed summary and body hydration until reading input or viewport replacement releases it. Ordinary component pins retain their bounded settling window. Reading input also cancels queued jumps, so a pending forced frame cannot undo the user's navigation. The public conversation viewport's existing latest action selects this intent without changing its plugin contract.
 
 The implementation is [virtual conversation rows](../../../../apps/web/src/components/session/virtual-conversation-rows.tsx), [process viewport](../../../../packages/ui/src/components/process-viewport.tsx), [event rows](../../../../packages/ui/src/components/process-event-row.tsx) and [event details](../../../../apps/web/src/components/workspace/process-event-detail.tsx). This extends the [bounded rendering decision](../architecture/2026-10-03-bounded-conversation-process-rendering.md).
+
+Tool-row geometry and semantic disclosure are subsequently refined by [semantic process disclosure](2026-10-04-semantic-process-disclosure.md); this record continues to own window bounds and system-event details.
 
 ## Alternatives considered
 
