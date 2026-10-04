@@ -452,7 +452,7 @@
         },
         {
           "glob": "src/components/session/session-submission-status.tsx",
-          "reason": "test/components/session/session-submission-status.dom.test.ts verifies canonical first-send phases, content retention, recovery and cancellation in Chromium; Vite/browser execution is outside Bun source LCOV."
+          "reason": "test/components/session/session-submission-status.dom.test.ts verifies current submission phases, locale changes, prompt retention, structured errors and keyboard retry in Chromium; Vite/browser execution is outside Bun source LCOV."
         },
         {
           "glob": "src/components/session/session-surface-focus.tsx",
