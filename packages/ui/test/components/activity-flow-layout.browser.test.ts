@@ -70,8 +70,8 @@ test("twenty tools and an object boundary use one compact reading rhythm", async
     }
   })
   expect(metrics.count).toBe(20)
-  expect(Math.max(...metrics.rowHeights)).toBeLessThanOrEqual(28)
-  expect(Math.min(...metrics.rowHeights)).toBeGreaterThanOrEqual(24)
+  expect(Math.max(...metrics.rowHeights)).toBe(32)
+  expect(Math.min(...metrics.rowHeights)).toBe(32)
   expect(metrics.toolGap).toBeLessThanOrEqual(8)
   expect(metrics.blockGap).toBeLessThanOrEqual(8)
   expect(metrics.reasoningOutsideMetadata).toBe(true)

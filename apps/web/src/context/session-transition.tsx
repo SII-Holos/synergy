@@ -8,6 +8,7 @@ import type {
 } from "@/components/session/session-transition-progress"
 import type { SessionTransitionHandoff } from "@/components/session/session-transition-handoff"
 import type { NewSessionRecovery } from "@/components/session/new-session-recovery"
+import { createMessageArrivalState } from "./message-arrival"
 
 export type SessionTransitionEntry = {
   progress: SessionTransitionProgress
@@ -110,6 +111,7 @@ export function createSessionTransitionState() {
   }
 
   return {
+    messageArrival: createMessageArrivalState(),
     prepareDraft(key: string) {
       set(key, createSessionPreparationProgress())
       const intent = revision

@@ -140,7 +140,8 @@ describe("SessionTurn activity display switching", () => {
     expect(process.textContent).not.toContain("failed")
     expect(batch.textContent).not.toContain("failed")
     const failed = document.querySelector('[data-slot="activity-step"][data-state="error"]')!
-    expect(failed.textContent).toContain("Inspect missing.json without changing files.")
+    expect(failed.textContent).toContain("cat missing.json")
+    expect(failed.querySelectorAll('[data-slot="activity-step-error"]')).toHaveLength(1)
     expect(failed.textContent).not.toContain("Failed")
     expect(failed.querySelector('[data-slot="activity-step-trigger"]')?.getAttribute("aria-label")).toContain("Failed")
   })

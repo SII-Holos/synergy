@@ -13,10 +13,9 @@
 .conversation-display-row[data-row-kind="activity"] {
   padding-block-end: 16px;
 }
-[data-slot="activity-batch-summary"] {
+[data-component="conversation-activity"] > [data-slot="activity-batch-trigger"] {
   margin-block-end: 4px;
   color: var(--text-weak);
-  font-size: 12px;
   line-height: 20px;
 }
 .conversation-display-row[data-row-kind="footer"] {
@@ -28,4 +27,8 @@
 }
 .conversation-display-row[hidden] {
   display: none;
+}
+
+[data-component="conversation-activity"] > [data-slot="activity-batch-content"] {
+  padding-inline-start: 8px;
 }

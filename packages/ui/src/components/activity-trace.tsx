@@ -13,6 +13,7 @@ import { Dialog as KobalteDialog } from "@kobalte/core/dialog"
 import { Dialog } from "./dialog"
 import { Collapsible } from "./collapsible"
 import { specializedActivityDetail } from "./activity-specialized-detail-model"
+import { DiffChanges } from "./diff-changes"
 import { Icon, type IconName } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import { Spinner } from "./spinner"
@@ -235,9 +236,17 @@ function ActivityStep(props: {
     }
   }
   const title = createMemo(() => localize(props.step.title, _))
+  // Provenance: docs/decisions/implemented/feature/2026-10-04-semantic-process-disclosure.md
+  // Local adaptation: registered targets lead; invocation identity still opens the existing result owner.
+  const target = () => props.step.subtitle?.trim()
+  const object = () => (target() && !title().includes(target()!) ? target() : undefined)
   const label = () =>
-    props.step.part.workBrief?.trim() ||
-    (props.step.subtitle && !title().includes(props.step.subtitle) ? `${title()} · ${props.step.subtitle}` : title())
+    object() ? `${title()} · ${object()}` : target() ? title() : props.step.part.workBrief?.trim() || title()
+  const pathParts = () => {
+    const value = object() ?? ""
+    const index = Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\")) + 1
+    return [value.slice(0, index), value.slice(index)]
+  }
   const stateLabel = createMemo(() => _(stateDescriptor(props.step.state)))
   const approval = createMemo(() => {
     const metadata = props.step.part.state.metadata
@@ -248,7 +257,7 @@ function ActivityStep(props: {
   const motionRef = createDisclosureMotionRef({
     visible: () => props.hidden !== true,
     animate: () => props.motion === true,
-    appear: () => props.current === true && props.step.state === "running",
+    appear: () => props.current === true,
   })
   return (
     <li
@@ -291,7 +300,7 @@ function ActivityStep(props: {
       <button
         data-slot="activity-step-trigger"
         type="button"
-        aria-label={props.step.state === "error" || props.quiet ? `${label()} · ${stateLabel()}` : undefined}
+        aria-label={`${label()} · ${stateLabel()}`}
         aria-pressed={
           resources?.isToolActivitySelected?.({
             sessionID: props.step.part.sessionID,
@@ -316,10 +325,24 @@ function ActivityStep(props: {
           <Icon name={props.step.icon} size="small" />
         </span>
         <span data-slot="activity-step-copy">
-          <span data-slot="activity-step-title" title={label()}>
-            {label()}
+          <span data-slot="activity-step-title" data-object={object() ? "" : undefined} title={label()}>
+            <Show when={object()} fallback={label()}>
+              <span data-slot="activity-step-action">{title()}</span>
+              <span data-slot="activity-step-object" data-kind={props.step.objectKind}>
+                <Show when={props.step.objectKind === "path"} fallback={object()}>
+                  <span data-slot="activity-step-directory">{pathParts()[0]}</span>
+                  <span data-slot="activity-step-filename">{pathParts()[1]}</span>
+                </Show>
+              </span>
+            </Show>
           </span>
         </span>
+        <Show when={props.step.changes}>{(changes) => <DiffChanges changes={changes()} />}</Show>
+        <Show when={props.step.state === "error" && !audit().icon}>
+          <span data-slot="activity-step-error" aria-hidden="true">
+            <Icon name={getSemanticIcon("state.error")} size="small" />
+          </span>
+        </Show>
         <Show when={(!props.quiet && props.step.state === "running") || props.step.state === "waiting-approval"}>
           <ActivityState state={props.step.state} label={stateLabel()} />
         </Show>

@@ -4,6 +4,7 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { build } from "vite"
 import solidPlugin from "vite-plugin-solid"
+import type { ContentSummaryProperties, createContentSubscriptions } from "../../src/context/content-subscriptions"
 
 type SnapshotVersion = { epoch: string; seq: number }
 type ScopeApi = ReturnType<typeof import("../../src/context/global-sync").useGlobalSync>
@@ -22,6 +23,8 @@ type Fixture = {
     flushRepairs(): void
     pages: Array<{ signal: AbortSignal; resolve(value: unknown): void }>
     completePage(index: number, messageID: string): void
+    content: ReturnType<typeof createContentSubscriptions>
+    emitContent(key: string, properties: ContentSummaryProperties, seq?: number): void
   }
 }
 
@@ -36,6 +39,12 @@ test("part repair preserves history, diffs, and compaction ownership", async () 
     stub,
     `
     import { createPartRepairScheduler as realScheduler } from "../../../src/context/part-repair-scheduler"
+    import { createContentSubscriptions, projectContentSummary } from "../../../src/context/content-subscriptions"
+    export const content = createContentSubscriptions(() => {})
+    export const emitContent = (key, properties, seq) => {
+      const projected = projectContentSummary(content, key, properties, seq)
+      if (projected) emit(key, seq, "message.part.summary", projected)
+    }
     const timers = new Set()
     export const flushRepairs = () => { const pending = [...timers]; timers.clear(); for (const fn of pending) fn() }
     export const createPartRepairScheduler = (options, repair) => realScheduler({ ...options, schedule: (fn, _delay) => { timers.add(fn); return () => timers.delete(fn) } }, repair)
@@ -77,13 +86,13 @@ test("part repair preserves history, diffs, and compaction ownership", async () 
     import { I18nProvider } from "@lingui/solid"
     import { setupI18n } from "@lingui/core"
     import { GlobalSyncProvider, useGlobalSync } from ${JSON.stringify(globalSync)}
-    import { requests, emit, pages, flushRepairs } from ${JSON.stringify(stub)}
+    import { requests, emit, pages, flushRepairs, content, emitContent } from ${JSON.stringify(stub)}
     export function mount(root) {
       let api, ready
       const started = new Promise(resolve=>ready=resolve)
       function Child(){api=useGlobalSync();ready();return <div>ready</div>}
       const dispose=render(()=><I18nProvider i18n={setupI18n({locale:'en',messages:{en:{}}})}><GlobalSyncProvider><Child/></GlobalSyncProvider></I18nProvider>,root)
-      return {started,dispose,emit,pages,flushRepairs,api:()=>api,
+      return {started,dispose,emit,pages,flushRepairs,content,emitContent,api:()=>api,
         completePage(index, messageID) { pages[index].resolve({data:{items:[{info:{id:messageID,sessionID:"fixture-session",role:"user",time:{created:2}},parts:[]}],referencedRoots:[],nextCursor:null,hasMore:false,total:1}}) },
         complete(key,data,version) {
           const request=requests.find(r=>!r.done&&r.key===key)
@@ -254,6 +263,44 @@ test("part repair preserves history, diffs, and compaction ownership", async () 
       expect(state.part["new"]?.[0]).toMatchObject({ text: "abcdef" })
       h.emit("repair", ++seq, "message.part.updated", { part: { ...textPart, text: "abc" } })
       expect(state.part["new"]?.[0]).toMatchObject({ text: "abc" })
+
+      const discovered = { id: "discovered", sessionID, messageID: "new", type: "text" as const, text: "Reply" }
+      const { text, ...identity } = discovered
+      const summary = { ...identity, preview: text, render: true, content: { version: "v1", bytes: 5 } }
+      setState("partPage", "new", { nextCursor: null, previousCursor: null, hasMore: false, hasEarlier: false })
+      h.content.active("repair", sessionID)
+      const generation = h.content.current().active!.generation
+      const checkpoint = {
+        summary,
+        subscription: generation,
+        content: { kind: "checkpoint" as const, part: discovered },
+      }
+      h.content.hidden(true)
+      h.content.hidden(false)
+      h.emitContent("repair", checkpoint)
+      expect(state.partSummary["new"]?.find((part) => part.id === discovered.id)).toEqual(summary)
+      expect(state.part["new"]?.some((part) => part.id === discovered.id)).toBe(false)
+
+      const release = h.content.retain("repair", summary)
+      const fresh = { ...summary, content: { version: "v2", bytes: 11 } }
+      const freshBody = { ...discovered, text: "Reply again" }
+      h.emitContent("repair", {
+        summary: fresh,
+        subscription: h.content.current().parts[0].generation,
+        content: { kind: "checkpoint", part: freshBody },
+      })
+      expect(state.partSummary["new"]?.find((part) => part.id === discovered.id)).toEqual(fresh)
+      expect(state.part["new"]?.find((part) => part.id === discovered.id)).toEqual(freshBody)
+      h.emitContent("repair", checkpoint)
+      expect(state.partSummary["new"]?.find((part) => part.id === discovered.id)).toEqual(fresh)
+      expect(state.part["new"]?.find((part) => part.id === discovered.id)).toEqual(freshBody)
+      release()
+      const terminal = { ...summary, content: { version: "terminal", bytes: 12 } }
+      h.emitContent("repair", { ...checkpoint, summary: terminal }, ++seq)
+      expect(state.partSummary["new"]?.find((part) => part.id === discovered.id)).toEqual(terminal)
+      h.emitContent("repair", checkpoint)
+      expect(state.partSummary["new"]?.find((part) => part.id === discovered.id)).toEqual(terminal)
+      expect(state.part["new"]?.find((part) => part.id === discovered.id)).toEqual(freshBody)
 
       seed("latest")
       dropped()

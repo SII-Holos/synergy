@@ -3,7 +3,7 @@ import { JSDOM } from "jsdom"
 import { createMarkdownStreamController } from "../src/components/markdown-stream"
 
 const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document")
-const dom = new JSDOM("<!doctype html><html><body></body></html>")
+const dom = new JSDOM("<!doctype html><html><body></body></html>", { pretendToBeVisual: true })
 
 beforeAll(() => {
   Object.defineProperty(globalThis, "document", {
@@ -24,6 +24,56 @@ function createRoot() {
 }
 
 describe("createMarkdownStreamController", () => {
+  test.each([
+    ["Hello 👩‍", "Hello 👩‍🔬 hello ", "👩‍🔬"],
+    ["Hello 🇨🇳", "Hello 🇨🇳 hello ", "🇨🇳"],
+    ["Hello é", "Hello é hello ", "é"],
+  ])("a grapheme split across stream chunks stays in one text run: %s", (first, next, grapheme) => {
+    const root = createRoot()
+    const original = dom.window.HTMLElement.prototype.animate
+    dom.window.HTMLElement.prototype.animate = () => ({ cancel() {}, onfinish: null }) as unknown as Animation
+    try {
+      const stream = createMarkdownStreamController(root)
+      stream.update(first)
+      stream.update(next)
+      expect(
+        [...root.querySelector("p")!.childNodes].some(
+          (node) => node.nodeType === 3 && node.textContent?.includes(grapheme),
+        ),
+      ).toBe(true)
+      stream.end()
+      expect(root.textContent).toBe(next)
+    } finally {
+      dom.window.HTMLElement.prototype.animate = original
+    }
+  })
+
+  test("fades only appended text and removes transient wrappers before terminal rendering", () => {
+    const root = createRoot()
+    const animated: HTMLElement[] = []
+    const original = dom.window.HTMLElement.prototype.animate
+    dom.window.HTMLElement.prototype.animate = function () {
+      animated.push(this)
+      return { cancel() {}, onfinish: null } as unknown as Animation
+    }
+    try {
+      const stream = createMarkdownStreamController(root)
+      stream.update("Existing paragraph.\n\n", "part")
+      const paragraph = root.firstElementChild
+      expect(animated).toHaveLength(0)
+      stream.update("Existing paragraph.\n\nNew **text** arrives. ", "part")
+      expect(animated.length).toBeGreaterThan(0)
+      expect(animated.every((node) => !node.contains(paragraph))).toBe(true)
+      expect(root.firstElementChild).toBe(paragraph)
+      stream.end()
+      expect(root.querySelector("span")).toBeNull()
+      expect(root.textContent).toBe("Existing paragraph.New text arrives. ")
+      expect(root.firstElementChild).toBe(paragraph)
+    } finally {
+      dom.window.HTMLElement.prototype.animate = original
+    }
+  })
+
   test("preserves existing DOM while appending a growing snapshot", () => {
     const root = createRoot()
     const stream = createMarkdownStreamController(root)
@@ -36,6 +86,43 @@ describe("createMarkdownStreamController", () => {
     expect(first).toBeTruthy()
     expect(root.firstElementChild).toBe(first)
     expect(root.textContent).toBe("Hello world")
+  })
+
+  test("bounds transient nodes under a burst and preserves selected text until it is released", () => {
+    const root = createRoot()
+    document.body.append(root)
+    const finish: (() => void)[] = []
+    const original = dom.window.HTMLElement.prototype.animate
+    dom.window.HTMLElement.prototype.animate = function () {
+      const animation = { cancel() {}, onfinish: null as (() => void) | null }
+      finish.push(() => animation.onfinish?.())
+      return animation as unknown as Animation
+    }
+    try {
+      const stream = createMarkdownStreamController(root)
+      let text = "Initial "
+      stream.update(text)
+      for (let index = 0; index < 200; index++) stream.update((text += `片段${index} `))
+      expect(root.querySelectorAll("[data-stream-arrival]").length).toBeGreaterThan(0)
+      expect(root.querySelectorAll("[data-stream-arrival]").length).toBeLessThanOrEqual(32)
+      const selected = root.querySelector("[data-stream-arrival]")!
+      const range = document.createRange()
+      range.selectNodeContents(selected)
+      const selection = document.getSelection()!
+      selection.addRange(range)
+      const before = selection.toString()
+      finish.forEach((callback) => callback())
+      expect(selection.toString()).toBe(before)
+      expect(selected.isConnected).toBe(true)
+      selection.removeAllRanges()
+      document.dispatchEvent(new dom.window.Event("selectionchange"))
+      expect(root.querySelector("[data-stream-arrival]")).toBeNull()
+      stream.end()
+      expect(root.textContent).toBe(text)
+    } finally {
+      dom.window.HTMLElement.prototype.animate = original
+      root.remove()
+    }
   })
 
   test("resets from the authoritative snapshot when the source shrinks", () => {

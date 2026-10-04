@@ -89,6 +89,7 @@ import { createStore, produce, reconcile, type SetStoreFunction } from "solid-js
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { retry } from "@ericsanchezok/synergy-util/retry"
 import { useGlobalSDK } from "./global-sdk"
+import type { ContentSummaryProperties } from "./content-subscriptions"
 import { mergeTextCheckpoint } from "./part-checkpoint-merge"
 import { createPartRepairScheduler } from "./part-repair-scheduler"
 import { FatalErrorPage } from "../pages/fatal-error"
@@ -2060,16 +2061,17 @@ function createGlobalSync() {
         break
       }
       case "message.part.summary": {
-        const { summary, content } = event.properties
+        const { summary, content, discovery } = event.properties as ContentSummaryProperties
         const loaded = store.message[summary.sessionID]?.some((message) => message.id === summary.messageID)
         if (!loaded) {
           if (store.messageWindow[summary.sessionID]?.mode === "latest")
             partRepairScheduler.request(scopeKey, summary.sessionID)
           break
         }
-        partSnapshotFreshness.touch(scopeKey, summary.sessionID, summary.messageID)
         const summaries = store.partSummary[summary.messageID] ?? []
         const index = summaries.findIndex((part) => part.id === summary.id)
+        if (discovery && index >= 0) break
+        partSnapshotFreshness.touch(scopeKey, summary.sessionID, summary.messageID)
         if (index >= 0) setStore("partSummary", summary.messageID, index, reconcile(summary))
         else
           setStore(

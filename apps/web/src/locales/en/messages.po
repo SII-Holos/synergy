@@ -14,10 +14,6 @@ msgid "activity.approval.reject"
 msgstr "Decline"
 
 #. js-lingui-explicit-id
-msgid "activity.batch.attempted"
-msgstr "{count, plural, one {Attempted # action} other {Attempted # actions}}"
-
-#. js-lingui-explicit-id
 msgid "activity.batch.browser"
 msgstr "{count, plural, one {Performed # browser action} other {Performed # browser actions}}"
 
@@ -17609,12 +17605,16 @@ msgid "session.process.interrupted"
 msgstr "Interrupted"
 
 #. js-lingui-explicit-id
-msgid "session.process.latest"
-msgstr "Back to latest"
-
-#. js-lingui-explicit-id
 msgid "session.process.loadFailed"
 msgstr "Unable to load process details."
+
+#. js-lingui-explicit-id
+msgid "session.process.more"
+msgstr "More actions below"
+
+#. js-lingui-explicit-id
+msgid "session.process.newActions"
+msgstr "New actions"
 
 #. js-lingui-explicit-id
 msgid "session.process.openSource"
@@ -19830,7 +19830,7 @@ msgstr "Balanced"
 
 #. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.description"
-msgstr "Balanced shows current calls and collects completed tools; Full expands tool history; Minimal keeps progress compact. You can expand the process in every mode."
+msgstr "Balanced opens the current tool batch; Full opens all process history; Minimal keeps the process closed. You can expand each batch independently."
 
 #. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.full"

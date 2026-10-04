@@ -28,6 +28,8 @@ export type ActivityStepProjection = {
   icon: IconName
   title: string | MessageDescriptor
   subtitle?: string
+  objectKind?: "path" | "command" | "query"
+  changes?: { additions: number; deletions: number }
   state: ActivityGroupState
 }
 
@@ -35,7 +37,7 @@ export type ActivityToolInfoResolver = (
   tool: string,
   input: Record<string, unknown>,
   metadata: Record<string, unknown>,
-) => Pick<ActivityStepProjection, "icon" | "title" | "subtitle">
+) => Pick<ActivityStepProjection, "icon" | "title" | "subtitle" | "objectKind">
 
 export type ActivityGroupItem = {
   kind: "activity-group"
@@ -236,14 +238,40 @@ function makeStep(
   } catch {
     info = { icon: getSemanticIcon("performance.tools"), title: part.tool, subtitle: scope.label }
   }
+  const rawPath =
+    info.objectKind === "path"
+      ? [input.filePath, metadata.path, metadata.filepath].find(
+          (value): value is string => typeof value === "string" && !!value,
+        )
+      : undefined
+  const target = rawPath ?? info.subtitle
+  const root = message.path.root?.replaceAll("\\", "/").replace(/\/$/, "")
+  const path = info.objectKind === "path" ? target?.replaceAll("\\", "/") : undefined
+  const subtitle = path && root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : target
   const permission = permissionForStep(message.id, part, permissions)
+  const diff = record(metadata.changeSummary ?? metadata.filediff)
+  const additions = diff.additions,
+    deletions = diff.deletions
+  const changes =
+    family === "modify-files" &&
+    part.state.status === "completed" &&
+    typeof additions === "number" &&
+    Number.isSafeInteger(additions) &&
+    additions >= 0 &&
+    typeof deletions === "number" &&
+    Number.isSafeInteger(deletions) &&
+    deletions >= 0
+      ? { additions, deletions }
+      : undefined
   return {
     part,
     family,
     scopeKey: scope.key,
     icon: info.icon,
     title: info.title,
-    subtitle: info.subtitle ?? scope.label,
+    subtitle: subtitle ?? scope.label,
+    objectKind: info.objectKind,
+    changes,
     state: stepState(part, permission),
   }
 }

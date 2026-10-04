@@ -29,10 +29,12 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  width: 28px;
+  gap: 4px;
+  padding-inline: 8px;
+  font-size: 12px;
   height: 28px;
   border: 1px solid var(--border-weaker-base);
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: var(--surface-base);
   color: var(--text-base);
   cursor: pointer;
@@ -55,4 +57,38 @@
   [data-slot="session-turn-timeline-item"]:not([hidden])
   ~ [data-slot="session-turn-timeline-item"]:not([hidden]) {
   margin-block-start: 2px;
+}
+
+[data-component="process-window"][data-overflow] {
+  border-inline-start: 1px solid var(--border-weak-base);
+  padding-inline-start: 8px;
+  padding-block: 8px 24px;
+}
+[data-component="process-viewport"][data-overflow] {
+  scrollbar-gutter: stable;
+}
+[data-slot="process-more"] {
+  position: absolute;
+  inset-block-end: 2px;
+  inset-inline-start: 8px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--text-weak);
+  pointer-events: none;
+}
+[data-component="process-window"][data-above]::before,
+[data-component="process-window"][data-below]::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  height: 8px;
+  pointer-events: none;
+}
+[data-component="process-window"][data-above]::before {
+  inset-block-start: 0;
+  background: linear-gradient(var(--surface-base), transparent);
+}
+[data-component="process-window"][data-below]::after {
+  inset-block-end: 16px;
+  background: linear-gradient(transparent, var(--surface-base));
 }

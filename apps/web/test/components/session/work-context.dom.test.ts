@@ -160,7 +160,10 @@ beforeAll(async () => {
   browser = await chromium.launch({ headless: true })
   const context = await browser.newContext({ viewport: { width: 1024, height: 768 } })
   context.setDefaultTimeout(4000)
+  context.setDefaultNavigationTimeout(15_000)
   page = await context.newPage()
+  await page.goto(base, { timeout: 60_000 })
+  await page.locator("[data-worktree-task-selector]").waitFor()
 }, 60_000)
 
 afterAll(async () => {

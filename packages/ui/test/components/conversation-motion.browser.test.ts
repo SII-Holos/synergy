@@ -4,7 +4,15 @@ import { fileURLToPath } from "node:url"
 import { chromium, type Browser, type Page } from "playwright"
 import { domFixture } from "../support/dom-fixtures"
 
-type Harness = { move: (stage: number) => void; reset: () => void; setProgress: (text: string) => void }
+type Harness = {
+  move: (stage: number) => void
+  reset: () => void
+  setProgress: (text: string) => void
+  send: () => void
+  remount: () => void
+  fastTool: () => void
+  setFollowing: (following: boolean) => void
+}
 let server: ReturnType<typeof Bun.serve>
 let browser: Browser
 let page: Page
@@ -137,9 +145,105 @@ test("a manual reveal can interrupt collection without stale hiding or repeated 
   expect(warnings).toEqual([])
 })
 
+test("a submitted bubble enters once and a remounted message stays settled", async () => {
+  await move(0)
+  const result = await page.evaluate(async () => {
+    const harness = (window as unknown as { __chronologyHarness: Harness }).__chronologyHarness
+    harness.send()
+    const bubble = document.querySelector<HTMLElement>('[data-slot="session-turn-rewind-wrapper"]')!
+    const animation = bubble.getAnimations()[0]
+    animation?.pause()
+    if (animation) animation.currentTime = 90
+    const opacity = Number(getComputedStyle(bubble).opacity)
+    const transform = getComputedStyle(bubble).transform
+    animation?.finish()
+    await new Promise(requestAnimationFrame)
+    harness.remount()
+    return {
+      opacity,
+      transform,
+      replay: document.querySelector('[data-slot="session-turn-rewind-wrapper"]')!.getAnimations().length,
+    }
+  })
+  expect(result.opacity).toBeGreaterThan(0)
+  expect(result.opacity).toBeLessThan(1)
+  expect(result.transform).not.toBe("none")
+  expect(result.replay).toBe(0)
+})
+
+test("new stream suffixes fade without changing preceding text or paragraph identity", async () => {
+  await move(2)
+  await settled()
+  const result = await page.evaluate(() => {
+    const harness = (window as unknown as { __chronologyHarness: Harness }).__chronologyHarness
+    const markdown = document.querySelector('[data-component="text-part"] [data-component="markdown"]')!
+    const paragraph = markdown.querySelector("p")!
+    const old = paragraph.firstChild
+    harness.setProgress("I will inspect the project evidence. 新增内容 **keeps formatting**. ")
+    const spans = [...markdown.querySelectorAll<HTMLElement>("[data-stream-arrival]")]
+    for (const span of spans)
+      for (const animation of span.getAnimations()) {
+        animation.pause()
+        animation.currentTime = 100
+      }
+    return {
+      same: markdown.querySelector("p") === paragraph && paragraph.firstChild === old,
+      opacity: getComputedStyle(paragraph).opacity,
+      arrivals: spans.map((span) => Number(getComputedStyle(span).opacity)),
+      text: markdown.textContent,
+    }
+  })
+  expect(result.same).toBe(true)
+  expect(result.opacity).toBe("1")
+  expect(result.arrivals.length).toBeGreaterThan(0)
+  expect(result.arrivals.every((opacity) => opacity > 0 && opacity < 1)).toBe(true)
+  expect(result.text).toContain("新增内容 keeps formatting")
+  await page.evaluate(() =>
+    document.getAnimations().forEach((animation) => {
+      if (animation.playState === "paused") animation.finish()
+    }),
+  )
+})
+
+test("a tool first received completed still enters while following", async () => {
+  await move(3)
+  await settled()
+  const result = await page.evaluate(() => {
+    const harness = (window as unknown as { __chronologyHarness: Harness }).__chronologyHarness
+    harness.fastTool()
+    const tool = document.querySelector<HTMLElement>('[data-part-id="tool-fast"]')!
+    const animation = tool.getAnimations()[0]
+    animation?.pause()
+    if (animation) animation.currentTime = 90
+    return {
+      animated: !!animation,
+      height: tool.getBoundingClientRect().height,
+      opacity: Number(getComputedStyle(tool).opacity),
+    }
+  })
+  expect(result.animated).toBe(true)
+  expect(result.height).toBeGreaterThan(0)
+  expect(result.opacity).toBeLessThan(1)
+})
+
 test("narrow and reduced-motion presentation stays readable and settles immediately", async () => {
   await page.setViewportSize({ width: 320, height: 600 })
+  await move(2)
+  await page.evaluate(() => {
+    const harness = (window as unknown as { __chronologyHarness: Harness }).__chronologyHarness
+    harness.setProgress("I will inspect the project evidence. Preference changes during streaming. ")
+    for (const span of document.querySelectorAll("[data-stream-arrival]"))
+      for (const animation of span.getAnimations()) animation.pause()
+  })
+  expect(await page.locator("[data-stream-arrival]").count()).toBeGreaterThan(0)
   await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.waitForFunction(() => !document.querySelector("[data-stream-arrival]"))
+  await page.evaluate(() => {
+    const harness = (window as unknown as { __chronologyHarness: Harness }).__chronologyHarness
+    harness.send()
+    harness.setProgress("I will inspect the project evidence. Reduced motion suffix. ")
+  })
+  expect(await page.locator("[data-message-arrival], [data-stream-arrival]").count()).toBe(0)
   await page.evaluate(() => (window as unknown as { __chronologyHarness: Harness }).__chronologyHarness.reset())
   await move(3)
   await move(6)
@@ -159,4 +263,22 @@ test("narrow and reduced-motion presentation stays readable and settles immediat
     ),
   ).toBe(0)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+})
+
+test("detached reading suppresses spatial arrivals and consumes a submitted entrance", async () => {
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  const result = await page.evaluate(() => {
+    const harness = (window as unknown as { __chronologyHarness: Harness }).__chronologyHarness
+    harness.setFollowing(false)
+    harness.send()
+    harness.move(3)
+    harness.fastTool()
+    const tool = document.querySelector('[data-part-id="tool-fast"]')!
+    const arrival = document.querySelector("[data-message-arrival]")
+    const animations = tool.getAnimations().length
+    harness.setFollowing(true)
+    harness.remount()
+    return { animations, arrival: !!arrival, replay: !!document.querySelector("[data-message-arrival]") }
+  })
+  expect(result).toEqual({ animations: 0, arrival: false, replay: false })
 })

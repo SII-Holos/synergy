@@ -199,6 +199,7 @@ test("prepending a process page retains existing batch identities and Part membe
     previous: initial,
     summaries: (id: string) => (id === reply.id ? parts.slice(1, 24) : []),
   })
+  expect(grown.find((row) => row.kind === "activity")?.key).toBe(initial.find((row) => row.kind === "activity")?.key)
   const original = initial.filter((row) => row.kind === "body")
   const kept = grown.filter((row) => row.kind === "body").filter((row) => original.some((old) => old.key === row.key))
   expect(kept.map((row) => [row.key, row.parts.map((part) => part.id)])).toEqual(
@@ -294,4 +295,25 @@ test("unloaded spans cannot claim a continuous execution group", () => {
   const fixture = processFixture()
   const rows = buildConversationRows({ ...fixture, page: (id) => ({ hasMore: id === "work" }), activity: () => false })
   expect(rows.filter((row) => row.kind === "activity")).toHaveLength(3)
+})
+
+test("a running parallel call keeps its earlier batch active and summaries count only confirmed success", () => {
+  const input = processFixture()
+  const original = input.summaries
+  const rows = buildConversationRows({
+    ...input,
+    messagesFor: () => input.messagesFor().slice(0, 2),
+    summaries: (id) => {
+      const items = original(id).map((part) =>
+        part.type === "tool" ? { ...part, tool: "bash", status: id === "work" ? "running" : "error" } : part,
+      )
+      return id === "more" ? [{ ...items[0], id: "boundary", type: "text" }, ...items] : items
+    },
+    process: () => ({ open: true, working: true }),
+  })
+  const blocks = rows.filter((row) => row.kind === "activity" && row.activity.tools)
+  expect(blocks.map((row) => [row.activity!.tools, row.activity!.active, row.activity!.facts])).toEqual([
+    [1, true, []],
+    [1, true, []],
+  ])
 })
