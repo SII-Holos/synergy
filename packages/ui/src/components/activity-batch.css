@@ -9,8 +9,7 @@
 
 [data-slot="turn-process-trigger"],
 [data-slot="activity-batch-trigger"],
-[data-slot="process-reasoning-trigger"],
-[data-slot="turn-change-summary-entry"] {
+[data-slot="process-reasoning-trigger"] {
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -33,8 +32,7 @@
 
 [data-slot="turn-process-trigger"]:enabled:hover,
 [data-slot="activity-batch-trigger"]:hover,
-[data-slot="process-reasoning-trigger"]:hover,
-[data-slot="turn-change-summary-entry"]:hover {
+[data-slot="process-reasoning-trigger"]:hover {
   color: var(--text-base);
 }
 
@@ -44,8 +42,7 @@
 
 [data-slot="turn-process-trigger"]:focus-visible,
 [data-slot="activity-batch-trigger"]:focus-visible,
-[data-slot="process-reasoning-trigger"]:focus-visible,
-[data-slot="turn-change-summary-entry"]:focus-visible {
+[data-slot="process-reasoning-trigger"]:focus-visible {
   outline: 2px solid var(--border-focus);
   outline-offset: 2px;
 }

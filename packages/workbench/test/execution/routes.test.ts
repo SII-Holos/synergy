@@ -18,6 +18,36 @@ const runtime = await testRuntime()
 afterAll(() => runtime.close())
 const app = new Hono().route("/session", ExecutionRoute())
 
+test("task summaries expose persisted origin and delegation controls without changing accounting", () =>
+  runtime.run(() =>
+    fixture(async ({ session, rootID, call }) => {
+      const interaction = { mode: "unattended" as const, source: "chronicler" }
+      await Session.create({ parentID: session.id, title: "Auxiliary", interaction })
+      const cortex = {
+        taskID: Identifier.ascending("cortex"),
+        parentSessionID: session.id,
+        parentMessageID: rootID,
+        description: "Workflow review",
+        agent: "reviewer",
+        status: "queued" as const,
+        visibility: "hidden" as const,
+        startedAt: Date.now(),
+      }
+      const child = await Session.create({ parentID: session.id, title: "Review", interaction, cortex })
+      await complete(call, { inputTokens: 20 })
+      const summary = await ExecutionService.summary(session.id)
+      expect(summary.tasks).toHaveLength(2)
+      expect(summary.tasks.every((task) => task.interaction?.source === "chronicler")).toBe(true)
+      expect(summary.tasks.find((task) => task.sessionID === child.id)?.cortex).toEqual({
+        taskID: cortex.taskID,
+        agent: cortex.agent,
+        status: cortex.status,
+        visibility: cortex.visibility,
+      })
+      expect(summary.accounting.tokens.total.known).toBe(520)
+    }),
+  ))
+
 test("an unopened cancelled run does not invent an execution interval", () =>
   runtime.run(() =>
     fixture(async () => {

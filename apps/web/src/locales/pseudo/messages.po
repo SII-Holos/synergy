@@ -12090,6 +12090,10 @@ msgid "execution.callsTruncated"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "execution.cancelFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "execution.cancelled"
 msgstr ""
 
@@ -12098,15 +12102,7 @@ msgid "execution.cancelRead"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "execution.changes.diagnostics"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "execution.changes.incomplete"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "execution.changes.incompleteDescription"
+msgid "execution.cancelTask"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12131,10 +12127,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.completed"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "execution.connected"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12206,10 +12198,6 @@ msgid "execution.diagnostics"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "execution.disconnected"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "execution.download"
 msgstr ""
 
@@ -12227,10 +12215,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.end"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "execution.environment"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12295,6 +12279,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.idle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.inboxHistory"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12486,6 +12474,10 @@ msgid "execution.purpose"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "execution.queued"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "execution.raw"
 msgstr ""
 
@@ -12659,6 +12651,18 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.view"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.workspace.copyPath"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.workspace.pathCopied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.workspace.worktree"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -16023,8 +16027,28 @@ msgstr ""
 msgid "session.activity.waitingModel"
 msgstr ""
 
-#. js-lingui-explicit-id
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.actionFailed"
+msgstr ""
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.more"
+msgstr ""
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
 msgid "session.agenda.retry"
+msgstr ""
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.tasks.title"
 msgstr ""
 
 #. Runtime translation descriptors for all wake-indicator UI strings.
@@ -16944,6 +16968,10 @@ msgstr "⟦Sends automatically after this turn⟧"
 #. session-inbox
 msgid "session.inbox.queued"
 msgstr "⟦Queued by you⟧"
+
+#. js-lingui-explicit-id
+msgid "session.inbox.remove"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.inbox.removed"
@@ -25097,18 +25125,6 @@ msgid "turn-change.binary"
 msgstr "⟦Binary⟧"
 
 #. ── Turn change summary chrome ──────────────────────────────────────
-msgid "turn-change.calculating"
-msgstr "⟦Calculating file changes…⟧"
-
-#. ── Turn change summary chrome ──────────────────────────────────────
-msgid "turn-change.calculation-failed"
-msgstr "⟦Couldn’t calculate file changes⟧"
-
-#. ── Turn change summary chrome ──────────────────────────────────────
-msgid "turn-change.recording-incomplete"
-msgstr "⟦File change recording is incomplete⟧"
-
-#. ── Turn change summary chrome ──────────────────────────────────────
 msgid "turn-change.review-changes"
 msgstr "⟦Review changes⟧"
 
@@ -25887,14 +25903,6 @@ msgstr ""
 #. js-lingui-explicit-id
 msgid "workspace.home.unavailable"
 msgstr ""
-
-#. js-lingui-explicit-id
-msgid "workspace.location.isolated"
-msgstr "⟦Isolated worktree⟧"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.stored"
-msgstr "⟦Stored Workspace⟧"
 
 #. js-lingui-explicit-id
 msgid "workspace.navigation.close"

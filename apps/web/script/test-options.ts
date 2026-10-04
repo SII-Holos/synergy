@@ -8,6 +8,7 @@ import type { TestRunnerOptions } from "../../../script/shared/test-runner"
 // specifiers; Bun's mocks are process-global, so each needs its own process.
 const playwrightIsolated = [
   "test/components/execution/controls.render.test.ts",
+  "test/components/execution/task-details.dom.test.tsx",
   "test/components/execution/reader.dom.test.tsx",
   "test/components/execution/delegation.dom.test.tsx",
   "test/components/execution/layout.test.ts",

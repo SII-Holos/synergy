@@ -285,12 +285,14 @@ test("task details remain reachable without execution support; supported summari
   await flush()
   expect(document.querySelector(".execution-popover")?.textContent).toContain("US$0.0076")
   expect(document.querySelector(".execution-task-row")?.textContent).toContain("Read project notes")
-  document.querySelector<HTMLButtonElement>(".execution-task-row")!.click()
+  document.querySelector<HTMLButtonElement>(".execution-task-row .execution-row-main")!.click()
   expect(opened).toEqual([{ id: "context", options: { init: { state: { runID: undefined, nodeID: "child-node" } } } }])
   expect(document.querySelector(".execution-trigger")?.getAttribute("aria-expanded")).toBe("false")
   document.querySelector<HTMLButtonElement>(".execution-trigger")!.click()
   await flush()
-  document.querySelector<HTMLButtonElement>(".execution-full-link")!.click()
+  document.querySelector<HTMLButtonElement>(".execution-identity-action")!.click()
+  await flush()
+  document.querySelector<HTMLButtonElement>(".execution-options .execution-menu-action")!.click()
   expect(opened.at(-1)).toEqual({ id: "context", options: undefined })
 })
 
@@ -344,7 +346,7 @@ test("evidence blocks copy complete current text and keep empty content explicit
   }
 })
 
-test("task details retain inbox ownership while navigating and survive summary failure", async () => {
+test("task details retain direct inbox ownership while navigating history and survive summary failure", async () => {
   const states: Array<() => boolean> = []
   let disposed = 0
   const content = document.createElement("p")
@@ -353,13 +355,13 @@ test("task details retain inbox ownership while navigating and survive summary f
     createComponent(TaskDetailsPopover, {
       inboxCount: 2,
       context: (active) => {
-        states.push(active)
+        states[0] = active
         const location = document.createElement("p")
         location.textContent = "Project workspace"
         return location
       },
       inbox: (active) => {
-        states.push(active)
+        states[1] = active
         onCleanup(() => disposed++)
         return content
       },
@@ -371,68 +373,74 @@ test("task details retain inbox ownership while navigating and survive summary f
   expect(trigger.querySelector(".execution-trigger-count")?.textContent).toBe("2")
   trigger.click()
   await flush()
-  expect(states.map((active) => active())).toEqual([true, false])
+  expect(states.map((active) => active())).toEqual([true, true])
   expect(document.querySelector(".execution-popover")?.textContent).toContain("Project workspace")
-  const entry = document.querySelector<HTMLButtonElement>(".execution-inbox-entry")!
-  entry.click()
+  expect(document.querySelector(".execution-popover p")?.textContent).toContain("Project workspace")
+  const openHistory = async () => {
+    document.querySelector<HTMLButtonElement>(".execution-identity-action")!.click()
+    await flush()
+    Array.from(document.querySelectorAll<HTMLButtonElement>(".execution-menu-action"))
+      .find((button) => button.textContent?.includes("Inbox history"))!
+      .click()
+    await flush()
+  }
+  await openHistory()
   expect(states.map((active) => active())).toEqual([false, true])
   const back = document.querySelector<HTMLButtonElement>(".execution-inbox-back")!
   expect(document.activeElement).toBe(back)
   back.click()
-  expect(document.activeElement).toBe(entry)
-  expect(states.map((active) => active())).toEqual([true, false])
-  entry.click()
+  await flush()
+  expect(document.activeElement).toBe(document.querySelector(".execution-identity-action"))
+  expect(states.map((active) => active())).toEqual([true, true])
+  await openHistory()
   trigger.click()
   await flush()
   expect(states.map((active) => active())).toEqual([false, false])
   expect(disposed).toBe(0)
   trigger.click()
   await flush()
-  entry.click()
-  expect(document.querySelector(".execution-inbox p")).toBe(content)
+  expect(document.querySelector(".execution-popover")?.contains(content)).toBe(true)
 })
 
-test("session task details load actual resources on demand and reject superseded workspace results", async () => {
+test("workspace identity copies its current path, rejects stale branch reads and never queries runtime labels", async () => {
   setEnabled(false)
-  mount(() => createComponent(SessionTaskDetails, {}))
-  expect(resources).toHaveLength(0)
-  document.querySelector<HTMLButtonElement>(".execution-trigger")!.click()
-  await flush()
-  expect(resources.map((request) => request.kind).sort()).toEqual(["branch", "environment"])
-  expect(document.querySelector(".execution-location-path")?.textContent).toBe("/workspace")
-
-  setResource({
-    ...initialResource,
-    workspace: { ...initialResource.workspace, path: "/next" },
-    environmentID: "env-b",
+  const copied: string[] = []
+  const restoreClipboard = configureClipboard({
+    writer: (text) => {
+      copied.push(text)
+    },
   })
-  await flush()
-  expect(resources).toHaveLength(4)
-  expect(resources.slice(0, 2).every((request) => request.signal?.aborted)).toBe(true)
-  for (const request of resources.slice(2))
-    request.resolve(
-      request.kind === "environment"
-        ? { provider: "Current runtime", state: "ready" }
-        : [{ path: "/next", branch: "current-branch" }],
-    )
-  await flush()
-  for (const request of resources.slice(0, 2))
-    request.resolve(
-      request.kind === "environment"
-        ? { provider: "Stale runtime", state: "ready" }
-        : [{ path: "/workspace", branch: "stale-branch" }],
-    )
-  await flush()
-  const overlay = document.querySelector(".execution-popover")!
-  expect(overlay.textContent).toContain("Fixture project")
-  expect(overlay.textContent).toContain("Current runtime")
-  expect(overlay.textContent).not.toContain("Stale runtime")
-  expect(document.querySelector(".execution-location-branch")?.textContent).toBe("current-branch")
-  expect(document.querySelector(".execution-location-path")?.textContent).toBe("/next")
-
-  document.querySelector<HTMLButtonElement>(".execution-inbox-entry")!.click()
-  await flush()
-  expect(document.querySelector(".session-inbox-panel")).not.toBeNull()
-  disposals.splice(0).forEach((dispose) => dispose())
-  expect(resources.every((request) => request.signal?.aborted)).toBe(true)
+  try {
+    mount(() => createComponent(SessionTaskDetails, {}))
+    expect(resources).toHaveLength(0)
+    document.querySelector<HTMLButtonElement>(".execution-trigger")!.click()
+    await flush()
+    expect(resources.map((request) => request.kind)).toEqual(["branch"])
+    expect(document.querySelector(".execution-popover")?.textContent).not.toContain("/workspace")
+    setResource({
+      ...initialResource,
+      workspace: { ...initialResource.workspace, path: "/next" },
+      environmentID: "env-b",
+    })
+    await flush()
+    expect(resources).toHaveLength(2)
+    expect(resources[0]!.signal?.aborted).toBe(true)
+    resources[1]!.resolve([{ path: "/next", branch: "current-branch" }])
+    await flush()
+    resources[0]!.resolve([{ path: "/workspace", branch: "stale-branch" }])
+    await flush()
+    const identity = document.querySelector<HTMLButtonElement>(".execution-location-heading")!
+    identity.focus()
+    await flush()
+    expect(document.querySelector('[data-component="tooltip"]')?.textContent).toContain("current-branch")
+    expect(document.querySelector('[data-component="tooltip"]')?.textContent).not.toContain("stale-branch")
+    identity.click()
+    await flush()
+    expect(copied).toEqual(["/next"])
+    expect(document.querySelector(".execution-popover")?.textContent).not.toContain("env-b")
+    disposals.splice(0).forEach((dispose) => dispose())
+    expect(resources.every((request) => request.signal?.aborted)).toBe(true)
+  } finally {
+    restoreClipboard()
+  }
 })

@@ -1,37 +1,56 @@
-import { createSignal, For, Show, onCleanup, type JSX } from "solid-js"
+import { createMemo, createSignal, For, Show, onCleanup, type JSX } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { useParams } from "@solidjs/router"
-import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { Popover, restorePopoverFocus } from "@ericsanchezok/synergy-ui/popover"
+import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useExecution } from "@/context/execution"
+import { useSDK } from "@/context/sdk"
 import { E } from "./i18n"
-import { S } from "@/components/session/session-i18n"
-import { ExecutionOverview, executionDuration } from "./overview"
+import { CompactExecutionOverview, TaskStatusIcon } from "./compact-overview"
+import {
+  compactTasks,
+  compactTokenText,
+  compactTaskStatus,
+  cancellableTask,
+  type TaskDetailsTask,
+} from "./task-details-model"
+import { executionDuration } from "./overview"
 import "./execution.css"
+import "./task-details.css"
 
 export function TaskDetailsPopover(props: {
-  context?: (active: () => boolean, close: () => void) => JSX.Element
-  inbox?: (active: () => boolean) => JSX.Element
+  context?: (active: () => boolean) => JSX.Element
+  agenda?: (active: () => boolean, close: () => void) => JSX.Element
+  inbox?: (active: () => boolean, history: () => boolean) => JSX.Element
   inboxCount?: number
 }) {
   const { _, i18n } = useLingui()
   const execution = useExecution()
+  const sdk = useSDK()
   const params = useParams()
   const [open, setOpen] = createSignal(false)
-  const [inboxOpen, setInboxOpen] = createSignal(false)
-  let inboxEntry: HTMLButtonElement | undefined
-  let inboxBack: HTMLButtonElement | undefined
-  const context = props.context?.(
-    () => open() && !inboxOpen(),
-    () => toggle(false),
-  )
-  const inbox = props.inbox?.(() => open() && inboxOpen())
+  const [history, setHistory] = createSignal(false)
+  const [menuOpen, setMenuOpen] = createSignal(false)
+  const [pending, setPending] = createSignal<Set<string>>(new Set())
   const [now, setNow] = createSignal(Date.now())
   let timer: ReturnType<typeof setInterval> | undefined
+  let disposed = false
+  let more: HTMLButtonElement | undefined
+  let back: HTMLButtonElement | undefined
+  let triggerElement: HTMLButtonElement | undefined
+  const visible = (element: HTMLElement) => {
+    const bounds = element.getBoundingClientRect()
+    return bounds.width > 0 && bounds.height > 0 && getComputedStyle(element).visibility === "visible"
+  }
   const toggle = (value: boolean) => {
     setOpen(value)
-    if (!value) setInboxOpen(false)
+    if (!value) {
+      setHistory(false)
+      setMenuOpen(false)
+    }
     if (timer) clearInterval(timer)
     if (value) {
       setNow(Date.now())
@@ -39,25 +58,67 @@ export function TaskDetailsPopover(props: {
       if (execution.available() && !execution.state.summary) void execution.refresh()
     }
   }
-  onCleanup(() => timer && clearInterval(timer))
-  const number = (value: number) =>
-    new Intl.NumberFormat(i18n().locale, { notation: "compact", maximumFractionDigits: 1 }).format(value)
-  const showFull = (runID?: string, nodeID?: string) => {
+  onCleanup(() => {
+    disposed = true
+    if (timer) clearInterval(timer)
+  })
+  const Context = () => props.context?.(() => open() && !history())
+  const Agenda = () =>
+    props.agenda?.(
+      () => open() && !history(),
+      () => toggle(false),
+    )
+  const Inbox = () => props.inbox?.(() => open(), history)
+  const tasks = createMemo(() => compactTasks(execution.state.summary?.tasks ?? []))
+  const showFull = (nodeID?: string) => {
     toggle(false)
-    void execution.open(runID, nodeID)
+    void execution.open(undefined, nodeID)
   }
+  const cancel = async (task: TaskDetailsTask) => {
+    if (!cancellableTask(task) || !task.cortex || pending().has(task.sessionID)) return
+    setPending((value) => new Set([...value, task.sessionID]))
+    try {
+      await sdk.client.cortex.cancel({ taskID: task.cortex.taskID }, { throwOnError: true })
+      if (!disposed) await execution.refresh()
+    } catch {
+      if (!disposed) showToast({ type: "error", title: _(E.cancelFailed) })
+    } finally {
+      if (!disposed) setPending((value) => new Set([...value].filter((id) => id !== task.sessionID)))
+    }
+  }
+  const taskHelp = (task: TaskDetailsTask) =>
+    [
+      task.title,
+      _(E[compactTaskStatus(task)]),
+      task.cortex?.agent,
+      compactTokenText(task.tokens, task.runs.length, i18n().locale),
+    ]
+      .filter(Boolean)
+      .join(" · ")
   return (
     <Show when={params.id}>
       <Popover
-        title={inboxOpen() ? _(S.inboxTitle) : _(E.title)}
+        title={history() ? _(E.inboxHistory) : _(E.title)}
         class="execution-popover"
         placement="bottom-end"
         gutter={8}
         open={open()}
         onOpenChange={toggle}
+        contentProps={{
+          onCloseAutoFocus: (event: Event) => {
+            if (!triggerElement || visible(triggerElement)) return
+            const replacement = Array.from(
+              triggerElement.closest(".stb-root")?.querySelectorAll<HTMLButtonElement>(".execution-trigger") ?? [],
+            ).find(visible)
+            if (!replacement) return
+            event.preventDefault()
+            void restorePopoverFocus(replacement, event.target instanceof HTMLElement ? event.target : undefined)
+          },
+        }}
         triggerAs={(trigger) => (
           <button
             {...trigger}
+            ref={triggerElement}
             type="button"
             class="stb-icon-btn execution-trigger"
             aria-label={_(E.title)}
@@ -71,46 +132,57 @@ export function TaskDetailsPopover(props: {
           </button>
         )}
       >
-        <div hidden={!inboxOpen()} class="execution-inbox">
-          <button
-            ref={inboxBack}
-            type="button"
-            class="execution-inbox-back"
-            onClick={() => {
-              setInboxOpen(false)
-              inboxEntry?.focus()
-            }}
-          >
-            <Icon name={getSemanticIcon("navigation.back")} size="small" />
-            {_(E.title)}
-          </button>
-          {inbox}
-        </div>
-        <div hidden={inboxOpen()}>
-          {context}
-          <Show when={props.inbox}>
-            <button
-              ref={inboxEntry}
-              type="button"
-              class="execution-full-link execution-inbox-entry"
-              onClick={() => {
-                setInboxOpen(true)
-                inboxBack?.focus()
-              }}
+        <Show when={!history()}>
+          <div class="execution-compact-identity">
+            <Context />
+            <Popover
+              title={_(E.more)}
+              variant="menu"
+              open={menuOpen()}
+              onOpenChange={setMenuOpen}
+              placement="bottom-end"
+              class="execution-options"
+              triggerAs={(trigger) => (
+                <button
+                  {...trigger}
+                  ref={more}
+                  type="button"
+                  class="execution-icon-action execution-identity-action"
+                  data-open={menuOpen()}
+                  aria-label={_(E.more)}
+                >
+                  <Icon name={getSemanticIcon("action.more")} size="small" />
+                </button>
+              )}
             >
-              <span>{_(S.inboxTitle)}</span>
-              <span>
-                {props.inboxCount || ""}
-                <Icon name={getSemanticIcon("navigation.expand")} size="small" />
-              </span>
-            </button>
-          </Show>
+              <Show when={execution.available()}>
+                <button type="button" class="execution-menu-action" onClick={() => showFull()}>
+                  <Icon name={getSemanticIcon("action.open")} size="small" />
+                  {_(E.full)}
+                </button>
+              </Show>
+              <Show when={props.inbox}>
+                <button
+                  type="button"
+                  class="execution-menu-action"
+                  onClick={() => {
+                    setMenuOpen(false)
+                    setHistory(true)
+                    queueMicrotask(() => back?.focus())
+                  }}
+                >
+                  <Icon name={getSemanticIcon("performance.timeline")} size="small" />
+                  {_(E.inboxHistory)}
+                </button>
+              </Show>
+            </Popover>
+          </div>
           <Show when={execution.available()}>
             <Show
               when={execution.state.summary}
               fallback={
-                <div class="execution-feedback">
-                  <p>{_(execution.state.error ? E.error : E.loading)}</p>
+                <div class="execution-feedback" role="status">
+                  <span>{_(execution.state.error ? E.error : E.loading)}</span>
                   <Show when={execution.state.error}>
                     <button type="button" onClick={() => void execution.refresh()}>
                       {_(E.retry)}
@@ -119,68 +191,73 @@ export function TaskDetailsPopover(props: {
                 </div>
               }
             >
-              {(summary) => (
-                <>
-                  <ExecutionOverview summary={summary()} now={now()} quick />
-                  <Show when={summary().tasks.length}>
-                    <div class="execution-task-list">
-                      <For each={summary().tasks.slice(0, 4)}>
-                        {(task) => (
+              {(summary) => <CompactExecutionOverview summary={summary()} now={now()} />}
+            </Show>
+          </Show>
+        </Show>
+        <Show when={history()}>
+          <button
+            ref={back}
+            type="button"
+            class="execution-inbox-back"
+            onClick={() => {
+              setHistory(false)
+              queueMicrotask(() => more?.focus())
+            }}
+          >
+            <Icon name={getSemanticIcon("navigation.back")} size="small" />
+            {_(E.title)}
+          </button>
+        </Show>
+        <Inbox />
+        <div hidden={history()}>
+          <Agenda />
+          <Show when={execution.available() && tasks().length}>
+            <section class="execution-compact-section" aria-label={_(E.tasks)}>
+              <h3>{_(E.tasks)}</h3>
+              <div class="execution-compact-list execution-task-list" tabindex="0" aria-label={_(E.tasks)}>
+                <For each={tasks()}>
+                  {(task) => (
+                    <div class="execution-compact-row execution-task-row" data-state={compactTaskStatus(task)}>
+                      <Tooltip value={taskHelp(task)} placement="top" hideWhenDetached>
+                        <button
+                          type="button"
+                          class="execution-row-main"
+                          onClick={() => showFull(task.nodeID ?? undefined)}
+                        >
+                          <TaskStatusIcon status={compactTaskStatus(task)} />
+                          <span class="execution-row-title">{task.title}</span>
+                          <span class="execution-row-meta">
+                            {task.elapsedMs == null
+                              ? ""
+                              : executionDuration(
+                                  task.elapsedMs +
+                                    (task.elapsedActive
+                                      ? Math.max(0, now() - (execution.state.summary?.computedAt ?? now()))
+                                      : 0),
+                                )}
+                          </span>
+                        </button>
+                      </Tooltip>
+                      <div class="execution-row-actions">
+                        <Show when={cancellableTask(task)}>
                           <button
                             type="button"
-                            class="execution-task-row"
-                            onClick={() => showFull(undefined, task.nodeID ?? undefined)}
+                            class="execution-icon-action"
+                            aria-label={_(E.cancelTask)}
+                            title={_(E.cancelTask)}
+                            disabled={pending().has(task.sessionID)}
+                            onClick={() => void cancel(task)}
                           >
-                            <span>
-                              <strong>{task.title}</strong>
-                              <small data-state={task.status}>{_(E[task.status])}</small>
-                            </span>
-                            <span>
-                              {task.elapsedMs != null
-                                ? executionDuration(
-                                    task.elapsedMs +
-                                      (task.elapsedActive ? Math.max(0, now() - summary().computedAt) : 0),
-                                  )
-                                : "—"}
-                              <small>
-                                {task.tokens.known || (task.tokens.total != null && task.runs.length)
-                                  ? (task.tokens.unknown ? "≥ " : "") + number(task.tokens.known)
-                                  : "—"}
-                              </small>
-                            </span>
+                            <Icon name={getSemanticIcon("action.stop")} size="small" />
                           </button>
-                        )}
-                      </For>
+                        </Show>
+                      </div>
                     </div>
-                  </Show>
-                  <details class="execution-secondary">
-                    <summary>{_(E.more)}</summary>
-                    <dl>
-                      <div>
-                        <dt>{_(E.own)}</dt>
-                        <dd>{number(summary().own.tokens.total.known)}</dd>
-                      </div>
-                      <div>
-                        <dt>{_(E.children)}</dt>
-                        <dd>{number(summary().descendants.tokens.total.known)}</dd>
-                      </div>
-                      <div>
-                        <dt>{_(E.input)}</dt>
-                        <dd>{number(summary().accounting.tokens.input.known)}</dd>
-                      </div>
-                      <div>
-                        <dt>{_(E.output)}</dt>
-                        <dd>{number(summary().accounting.tokens.output.known)}</dd>
-                      </div>
-                    </dl>
-                  </details>
-                </>
-              )}
-            </Show>
-            <button type="button" class="execution-full-link" onClick={() => showFull()}>
-              {_(E.full)}
-              <Icon name={getSemanticIcon("action.open")} size="small" />
-            </button>
+                  )}
+                </For>
+              </div>
+            </section>
           </Show>
         </div>
       </Popover>

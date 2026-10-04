@@ -12090,6 +12090,10 @@ msgid "execution.callsTruncated"
 msgstr "显示 {shown} / {total} 次调用。完整记录可在轨迹中查看。"
 
 #. js-lingui-explicit-id
+msgid "execution.cancelFailed"
+msgstr "未能取消子任务，请重试。"
+
+#. js-lingui-explicit-id
 msgid "execution.cancelled"
 msgstr "已取消"
 
@@ -12098,16 +12102,8 @@ msgid "execution.cancelRead"
 msgstr "取消读取"
 
 #. js-lingui-explicit-id
-msgid "execution.changes.diagnostics"
-msgstr "查看记录详情"
-
-#. js-lingui-explicit-id
-msgid "execution.changes.incomplete"
-msgstr "更改记录不完整"
-
-#. js-lingui-explicit-id
-msgid "execution.changes.incompleteDescription"
-msgstr "部分文件更改未能记录，这不代表任务执行失败。"
+msgid "execution.cancelTask"
+msgstr "取消子任务"
 
 #. js-lingui-explicit-id
 msgid "execution.chartEvents"
@@ -12132,10 +12128,6 @@ msgstr "收起任务详情"
 #. js-lingui-explicit-id
 msgid "execution.completed"
 msgstr "已完成"
-
-#. js-lingui-explicit-id
-msgid "execution.connected"
-msgstr "已连接"
 
 #. js-lingui-explicit-id
 msgid "execution.contentActions"
@@ -12206,10 +12198,6 @@ msgid "execution.diagnostics"
 msgstr "参数与诊断"
 
 #. js-lingui-explicit-id
-msgid "execution.disconnected"
-msgstr "正在重新连接…"
-
-#. js-lingui-explicit-id
 msgid "execution.download"
 msgstr "下载完整内容"
 
@@ -12228,10 +12216,6 @@ msgstr "没有符合筛选条件的记录。"
 #. js-lingui-explicit-id
 msgid "execution.end"
 msgstr "结束时间"
-
-#. js-lingui-explicit-id
-msgid "execution.environment"
-msgstr "连接状态"
 
 #. js-lingui-explicit-id
 msgid "execution.error"
@@ -12296,6 +12280,10 @@ msgstr "{count} 次用户输入"
 #. js-lingui-explicit-id
 msgid "execution.idle"
 msgstr "{duration} 内无已记录活动"
+
+#. js-lingui-explicit-id
+msgid "execution.inboxHistory"
+msgstr "收件箱历史"
 
 #. js-lingui-explicit-id
 msgid "execution.input"
@@ -12486,6 +12474,10 @@ msgid "execution.purpose"
 msgstr "调用用途"
 
 #. js-lingui-explicit-id
+msgid "execution.queued"
+msgstr "排队中"
+
+#. js-lingui-explicit-id
 msgid "execution.raw"
 msgstr "原始结果"
 
@@ -12660,6 +12652,18 @@ msgstr "此内容版本已不可用，请读取最新版本。"
 #. js-lingui-explicit-id
 msgid "execution.view"
 msgstr "视图"
+
+#. js-lingui-explicit-id
+msgid "execution.workspace.copyPath"
+msgstr "复制工作区路径"
+
+#. js-lingui-explicit-id
+msgid "execution.workspace.pathCopied"
+msgstr "已复制工作区路径"
+
+#. js-lingui-explicit-id
+msgid "execution.workspace.worktree"
+msgstr "独立工作区"
 
 #. js-lingui-explicit-id
 msgid "execution.wrap"
@@ -16023,9 +16027,29 @@ msgstr "等待后台任务"
 msgid "session.activity.waitingModel"
 msgstr "等待模型回复"
 
-#. js-lingui-explicit-id
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.actionFailed"
+msgstr "未能更新定时任务，请重试。"
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.more"
+msgstr "加载更多定时任务"
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
 msgid "session.agenda.retry"
 msgstr "未能加载定时任务，重试"
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.tasks.title"
+msgstr "定时任务"
 
 #. Runtime translation descriptors for all wake-indicator UI strings.
  *  Each is a base MessageDescriptor with `id` + English `message`.
@@ -16944,6 +16968,10 @@ msgstr "将在此回合后自动发送"
 #. session-inbox
 msgid "session.inbox.queued"
 msgstr "由你排队"
+
+#. js-lingui-explicit-id
+msgid "session.inbox.remove"
+msgstr "移除消息"
 
 #. js-lingui-explicit-id
 msgid "session.inbox.removed"
@@ -25097,18 +25125,6 @@ msgid "turn-change.binary"
 msgstr "二进制"
 
 #. ── Turn change summary chrome ──────────────────────────────────────
-msgid "turn-change.calculating"
-msgstr "正在计算文件更改…"
-
-#. ── Turn change summary chrome ──────────────────────────────────────
-msgid "turn-change.calculation-failed"
-msgstr "无法计算文件更改"
-
-#. ── Turn change summary chrome ──────────────────────────────────────
-msgid "turn-change.recording-incomplete"
-msgstr "文件改动记录尚不完整"
-
-#. ── Turn change summary chrome ──────────────────────────────────────
 msgid "turn-change.review-changes"
 msgstr "查看更改"
 
@@ -25887,14 +25903,6 @@ msgstr "新标签页"
 #. js-lingui-explicit-id
 msgid "workspace.home.unavailable"
 msgstr "此项目暂无可用资源。"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.isolated"
-msgstr "独立工作区"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.stored"
-msgstr "存储型 Workspace"
 
 #. js-lingui-explicit-id
 msgid "workspace.navigation.close"
