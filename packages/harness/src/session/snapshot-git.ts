@@ -89,6 +89,152 @@ export namespace SnapshotGit {
     }
   }
 
+  export type Blob = { hash: string; bytes: Uint8Array }
+
+  export async function blobWriter(repo: string, signal: AbortSignal) {
+    signal.throwIfAborted()
+    // Provenance: https://git-scm.com/docs/git-fast-import/2.52.0
+    // Blob-only imports publish no refs; disabling unpack avoids a child process
+    // whose lifetime could otherwise outlast capture cancellation.
+    const location = await SnapshotPath.repository([
+      "git",
+      "--git-dir",
+      repo,
+      "-c",
+      "fastimport.unpackLimit=0",
+      "-c",
+      "pack.compression=3",
+      "fast-import",
+      "--quiet",
+      "--done",
+      "--depth=0",
+      "--max-pack-size=64m",
+    ])
+    let proc: Bun.Subprocess<"pipe", "pipe", "pipe">
+    for (let attempt = 1; ; attempt++) {
+      try {
+        signal.throwIfAborted()
+        proc = Bun.spawn(command(location.args), {
+          cwd: startupDirectory(path.dirname(repo), location.args),
+          env: environment(),
+          stdin: "pipe",
+          stdout: "pipe",
+          stderr: "pipe",
+        })
+        break
+      } catch (error) {
+        if (
+          isTransientGitSpawnError(error) &&
+          attempt < GIT_SPAWN_MAX_ATTEMPTS &&
+          (await waitForGitSpawnRetry(attempt, signal))
+        )
+          continue
+        await location[Symbol.asyncDispose]()
+        throw error
+      }
+    }
+    const errors = tail(proc.stderr)
+    const waiting: Array<{ hash: string; resolve: () => void; reject: (error: unknown) => void }> = []
+    let failure: unknown
+    let mark = 0
+    let finished = false
+    const fail = (error: unknown) => {
+      failure ??= error
+      for (const item of waiting.splice(0)) item.reject(error)
+      if (proc.exitCode === null) {
+        try {
+          proc.kill()
+        } catch {}
+      }
+    }
+    const onAbort = () => fail(abortError(signal))
+    signal.addEventListener("abort", onAbort, { once: true })
+    if (signal.aborted) onAbort()
+    const output = (async () => {
+      const reader = proc.stdout.getReader()
+      const decoder = new TextDecoder()
+      let pending = ""
+      try {
+        for (;;) {
+          const chunk = await reader.read()
+          if (chunk.done) break
+          pending += decoder.decode(chunk.value, { stream: true })
+          let newline: number
+          while ((newline = pending.indexOf("\n")) !== -1) {
+            const hash = pending.slice(0, newline)
+            pending = pending.slice(newline + 1)
+            const item = waiting.shift()
+            if (!item) throw new Error("Unexpected snapshot blob acknowledgement")
+            if (hash !== item.hash) {
+              const error = new Error("Snapshot blob acknowledgement does not match captured bytes")
+              item.reject(error)
+              throw error
+            }
+            item.resolve()
+          }
+          if (pending.length > 40) throw new Error("Invalid snapshot blob acknowledgement")
+        }
+        if (pending || waiting.length) throw new Error("Snapshot blob import ended before acknowledgement")
+      } finally {
+        reader.releaseLock()
+      }
+    })().catch(fail)
+    const check = () => {
+      signal.throwIfAborted()
+      if (failure) throw failure
+      if (finished || proc.exitCode !== null) throw new Error("Snapshot blob writer is closed")
+    }
+    return {
+      async write(blobs: Blob[]) {
+        try {
+          check()
+          const acknowledged = blobs.map(({ hash }) => {
+            const promise = new Promise<void>((resolve, reject) => waiting.push({ hash, resolve, reject }))
+            promise.catch(() => {})
+            return promise
+          })
+          for (const blob of blobs) {
+            check()
+            const id = ++mark
+            proc.stdin.write(`blob\nmark :${id}\ndata ${blob.bytes.length}\n`)
+            for (let offset = 0; offset < blob.bytes.length; offset += 65_536) {
+              check()
+              proc.stdin.write(blob.bytes.subarray(offset, offset + 65_536))
+              await withAbort(Promise.resolve(proc.stdin.flush()), signal)
+            }
+            proc.stdin.write(`\nget-mark :${id}\n`)
+            await withAbort(Promise.resolve(proc.stdin.flush()), signal)
+          }
+          await withAbort(Promise.all(acknowledged), signal)
+          check()
+        } catch (error) {
+          fail(error)
+          const [stderr] = await Promise.all([errors, proc.exited, output])
+          throw new Error(
+            `Snapshot blob write failed: ${error instanceof Error ? error.message : String(error)}${stderr.trim() ? `: ${stderr.trim()}` : ""}`,
+            { cause: error },
+          )
+        }
+      },
+      async finish() {
+        check()
+        proc.stdin.write("done\n")
+        await withAbort(Promise.resolve(proc.stdin.end()), signal)
+        const [code, stderr] = await withAbort(Promise.all([proc.exited, errors, output]), signal)
+        if (failure) throw failure
+        if (code !== 0)
+          throw new Error(`Snapshot blob import failed: ${stderr.trim()}`, { cause: { exitCode: code, stderr } })
+        finished = true
+      },
+      async [Symbol.asyncDispose]() {
+        if (proc.exitCode === null) proc.kill()
+        await Promise.allSettled([proc.exited, errors, output])
+        signal.removeEventListener("abort", onAbort)
+        await location[Symbol.asyncDispose]()
+      },
+    }
+  }
+
   export async function importObjects(
     source: string,
     target: string,
