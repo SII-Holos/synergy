@@ -805,15 +805,16 @@ describe.serial("Cortex", () => {
                 if (task.progress?.lastTool === "bash") progressUpdates.push(task)
               }
             })
-            let releaseInvoke: (() => void) | undefined
+            const progressObserved = Promise.withResolvers<void>()
+            const invoke = Promise.withResolvers<void>()
             let taskID: string | undefined
             ;(SessionInvoke.invokeInternal as any) = mock(
               async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
                 await writeRunningToolProgress(input.sessionID)
                 await writeAssistantText(input.sessionID, "partial status")
-                await new Promise<void>((resolve) => {
-                  releaseInvoke = resolve
-                })
+                // Exercise progress visibility before the mock begins waiting for its release.
+                await progressObserved.promise
+                await invoke.promise
                 return writeAssistantText(input.sessionID, "done")
               },
             )
@@ -847,11 +848,13 @@ describe.serial("Cortex", () => {
               expect(progressTask?.progress?.lastToolStatus).toBe("running")
               expect(progressTask?.progress?.lastMessage).toBe("partial status")
 
-              releaseInvoke?.()
+              invoke.resolve()
+              progressObserved.resolve()
               const completed = await waitUntilTerminal(task.id)
               expect(completed?.status).toBe("completed")
             } finally {
-              releaseInvoke?.()
+              progressObserved.resolve()
+              invoke.resolve()
               if (taskID && Cortex.get(taskID)?.status === "running") await Cortex.cancel(taskID)
               unsubscribe()
               ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal

@@ -1,6 +1,25 @@
 import { expect, test } from "bun:test"
 import { summarize } from "../../script/ci/metrics"
 
+test("cancelled queue records with synthetic start timestamps consume no runner time", () => {
+  const value = summarize("2026-10-04T00:00:00Z", [
+    {
+      id: 10,
+      name: "queued",
+      status: "completed",
+      conclusion: "cancelled",
+      created_at: "2026-10-04T00:00:00Z",
+      started_at: "2026-10-04T00:10:00Z",
+      completed_at: "2026-10-04T00:15:00Z",
+      runner_name: "",
+      labels: [],
+    },
+  ])
+  expect(value.runnerSeconds).toBe(0)
+  expect(value.jobs[0]!.queueSeconds).toBe(900)
+  expect(value.endToEndSeconds).toBe(900)
+})
+
 test("queue and compute accounting ignore inherited attempts, duplicates and unstarted jobs", () => {
   const row = {
     id: 1,

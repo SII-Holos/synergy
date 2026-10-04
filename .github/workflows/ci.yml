@@ -135,14 +135,27 @@ jobs:
         with:
           path: .artifacts/ci/build
           key: ci-build-${{ steps.build-key.outputs.key }}
+      - name: Resolve native and workspace module identity
+        id: intermediate-key
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: bun script/ci.ts build-key --bundle intermediate
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: intermediate-cache
+        if: steps.cache.outputs.cache-hit != 'true' && github.event_name != 'schedule' && inputs.build_cache != 'disabled'
+        with:
+          path: .artifacts/ci/intermediate
+          key: ci-intermediate-${{ steps.intermediate-key.outputs.key }}
       - name: Build or validate cached outputs
         env:
           CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+          INTERMEDIATE_HIT: ${{ steps.intermediate-cache.outputs.cache-hit }}
         run: |
           if [ "$CACHE_HIT" = true ]; then
             bun script/ci.ts restore
           else
-            bun script/ci.ts prepare
+            args=(--intermediate-cache)
+            if [ "$INTERMEDIATE_HIT" = true ]; then args+=(--cached); fi
+            bun script/ci.ts prepare "${args[@]}"
           fi
           tar -I 'zstd -T2 -3' -cf .artifacts/ci/build.tar.zst -C .artifacts/ci build
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -554,6 +567,9 @@ jobs:
       - uses: ./.github/actions/ci-setup
         with:
           dependencies: "false"
+          benchmark-cache: "true"
+          build-cache: ${{ github.event_name != 'schedule' && inputs.build_cache != 'disabled' }}
+          cache-scope: ${{ matrix.id }}
           browser: ${{ matrix.browser }}
           desktop: ${{ matrix.desktop }}
           sandbox: ${{ matrix.sandbox }}
@@ -611,6 +627,9 @@ jobs:
       - uses: ./.github/actions/ci-setup
         with:
           dependencies: "false"
+          benchmark-cache: "true"
+          build-cache: ${{ github.event_name != 'schedule' && inputs.build_cache != 'disabled' }}
+          cache-scope: ${{ matrix.id }}
           browser: ${{ matrix.browser }}
           desktop: ${{ matrix.desktop }}
           sandbox: ${{ matrix.sandbox }}
@@ -843,7 +862,7 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-          CI_CACHE_STATE: ${{ github.event_name == 'schedule' && 'cold' || needs.prepare.outputs.cache_hit == 'true' && 'hit' || 'miss' }}
+          CI_CACHE_STATE: ${{ (github.event_name == 'schedule' || inputs.build_cache == 'disabled') && 'cold' || needs.prepare.outputs.cache_hit == 'true' && 'hit' || 'miss' }}
         run: bun script/ci/metrics.ts
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
@@ -859,5 +878,6 @@ jobs:
           path: |
             .artifacts/ci/summary.json
             .artifacts/ci/metrics.json
+            .artifacts/ci/timings.json
           include-hidden-files: true
           retention-days: 7

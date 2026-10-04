@@ -1,19 +1,15 @@
 import { renderedTextContrast } from "../../testing/rendered-text-contrast"
-import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
-import { afterAll, beforeAll, expect, test, setDefaultTimeout } from "bun:test"
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test, setDefaultTimeout } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
-import { createServer, type ViteDevServer } from "vite"
-import solidPlugin from "vite-plugin-solid"
-import tailwindcss from "@tailwindcss/vite"
-import { lingui } from "@lingui/vite-plugin"
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 
 setDefaultTimeout(30000)
 
 let browser: Browser
 let page: Page
-let server: ViteDevServer
+let server: BrowserFixture
 let directory: string
 let baseUrl: string
 const errors: string[] = []
@@ -114,27 +110,26 @@ beforeAll(async () => {
   `,
   )
   await Bun.write(path.join(directory, "mobile-close.ts"), "export const useWorkspaceMobileHeaderClose=()=>()=>{}")
-  server = await createServer({
-    configFile: false,
+  server = await createBrowserFixture({
     root: directory,
-    cacheDir: path.join(directory, "vite-cache"),
-    plugins: [solidPlugin(), tailwindcss(), ...lingui()],
-    resolve: {
-      alias: [
-        { find: "@/components/workspace/mobile-header-close", replacement: path.join(directory, "mobile-close.ts") },
-        { find: "@/context/global-sdk", replacement: path.join(directory, "sdk.ts") },
-        { find: "@/context/global-sync", replacement: path.join(directory, "sync.ts") },
-        { find: "@/context/locale", replacement: path.join(directory, "locale.ts") },
-        { find: "@", replacement: source },
-      ],
-    },
-    optimizeDeps: { noDiscovery: true, include: ["solid-js", "solid-js/web", "@lingui/core", "@lingui/solid"] },
-    server: { host: "127.0.0.1", port: await fixturePort(), fs: { allow: [path.resolve(source, "../../..")] } },
+    styled: true,
+    aliases: [
+      { find: "@/components/workspace/mobile-header-close", replacement: path.join(directory, "mobile-close.ts") },
+      { find: "@/context/global-sdk", replacement: path.join(directory, "sdk.ts") },
+      { find: "@/context/global-sync", replacement: path.join(directory, "sync.ts") },
+      { find: "@/context/locale", replacement: path.join(directory, "locale.ts") },
+      { find: "@", replacement: source },
+    ],
   })
-  await server.listen()
-  baseUrl = server.resolvedUrls!.local[0]!
-  await server.warmupRequest("/main.tsx")
+  baseUrl = server.url
   browser = await chromium.launch({ headless: true })
+}, 120000)
+
+beforeEach(async () => {
+  errors.length = 0
+  historyFailure = false
+  saveFailure = false
+  formRequest = undefined
   page = await browser.newPage({ viewport: { width: 375, height: 812 } })
   page.setDefaultTimeout(10000)
   page.on("pageerror", (error) => errors.push(error.message))
@@ -179,7 +174,11 @@ beforeAll(async () => {
       json: saveFailure ? { message: "Fixture save failed" } : { id: "created" },
     })
   })
-}, 120000)
+})
+afterEach(async () => {
+  await page?.close()
+  expect(errors).toEqual([])
+})
 
 afterAll(async () => {
   await browser?.close()
@@ -187,10 +186,20 @@ afterAll(async () => {
   if (directory) await rm(directory, { recursive: true, force: true })
 })
 
-test("task rules remain date-free and preserve manual, disabled and unknown execution states", async () => {
+test("task rules keep trigger and execution states, omit disabled next times, and recover filters", async () => {
   await page.goto(baseUrl)
   await page.getByRole("button", { name: "Frequent series Enabled", exact: true }).waitFor()
   expect(await page.getByRole("article").count()).toBe(3)
+  const row = page.locator("article").filter({ hasText: "Frequent series" })
+  expect(await row.getByText(/Every Monday at 09:00/).isVisible()).toBe(true)
+  expect(await row.getByText(/^Next:/).isVisible()).toBe(true)
+  expect(
+    await page
+      .locator("article")
+      .filter({ hasText: "Paused series" })
+      .getByText(/^Next:/)
+      .count(),
+  ).toBe(0)
   expect(await page.getByRole("button", { name: "Today", exact: true }).count()).toBe(0)
   await page.getByRole("button", { name: "Frequent series Enabled", exact: true }).press("Enter")
   expect(await page.getByRole("status").textContent()).toBe("frequent")
@@ -199,6 +208,8 @@ test("task rules remain date-free and preserve manual, disabled and unknown exec
   await page.getByRole("radio", { name: "Last run failed", exact: true }).press("Space")
   expect(await page.getByRole("article").count()).toBe(1)
   expect(await page.getByText("Timed out", { exact: true }).count()).toBe(1)
+  await page.getByRole("button", { name: "Clear filters", exact: true }).click()
+  expect(await page.locator("article").count()).toBe(3)
   await page.getByRole("radio", { name: "Not enabled", exact: true }).press("Space")
   expect(await page.getByRole("button", { name: "Pending item Not enabled", exact: true }).count()).toBe(1)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -387,24 +398,6 @@ test("schedule actions have clear names and phone targets while task content use
   expect((await addTime.boundingBox())!.height).toBeGreaterThanOrEqual(44)
 })
 
-test("tasks show trigger conditions and only enabled next times, with filter recovery", async () => {
-  await page.goto(baseUrl)
-  const row = page.locator("article").filter({ hasText: "Frequent series" })
-  expect(await row.getByText(/Every Monday at 09:00/).isVisible()).toBe(true)
-  expect(await row.getByText(/^Next:/).isVisible()).toBe(true)
-  expect(
-    await page
-      .locator("article")
-      .filter({ hasText: "Paused series" })
-      .getByText(/^Next:/)
-      .count(),
-  ).toBe(0)
-  await page.getByRole("radio", { name: "Last run failed", exact: true }).press("Space")
-  expect(await page.locator("article").count()).toBe(1)
-  await page.getByRole("button", { name: "Clear filters", exact: true }).click()
-  expect(await page.locator("article").count()).toBe(3)
-})
-
 test("secondary agenda actions dismiss before their owning detail dialog", async () => {
   await page.goto(`${baseUrl}?actions`)
   await page.getByRole("button", { name: "Open details", exact: true }).click()
@@ -523,6 +516,7 @@ test("the composed Agenda separates future occurrences from rule management and 
 })
 
 test("one selected date survives date-picker navigation, view changes, tabs and responsive transitions", async () => {
+  await page.clock.setFixedTime(new Date(2026, 8, 25, 0))
   await page.setViewportSize({ width: 375, height: 812 })
   await page.goto(baseUrl + "?panel")
   await page.locator(".agenda-range-button").press("Enter")

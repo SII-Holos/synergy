@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
 import { mkdtemp, rm } from "node:fs/promises"
+import { createReadStream } from "node:fs"
+import { createHash } from "node:crypto"
 import os from "node:os"
 import path from "node:path"
 
@@ -16,6 +18,25 @@ export async function withInstalledPackages<T>(
   verify: (directory: string, env: Record<string, string | undefined>) => Promise<T>,
   options: { target?: { os: string; arch: string }; env?: Record<string, string | undefined> } = {},
 ): Promise<T> {
+  const sharedCache = options.env?.SYNERGY_TEST_INSTALL_CACHE ?? process.env.SYNERGY_TEST_INSTALL_CACHE
+  const integrities = new Map(
+    await Promise.all(
+      archives.map(async (pkg) => {
+        const digest = createHash("sha512")
+        for await (const chunk of createReadStream(pkg.archive)) digest.update(chunk)
+        return [pkg.name, `sha512-${digest.digest("base64")}`] as const
+      }),
+    ),
+  )
+  const cacheIdentity = createHash("sha256")
+    .update(
+      JSON.stringify(
+        archives
+          .toSorted((left, right) => left.name.localeCompare(right.name))
+          .map((pkg) => ({ manifest: pkg.manifest, integrity: integrities.get(pkg.name) })),
+      ),
+    )
+    .digest("hex")
   const directory = await mkdtemp(path.join(os.tmpdir(), "synergy-package-install-"))
   const env = {
     ...process.env,
@@ -25,7 +46,7 @@ export async function withInstalledPackages<T>(
     XDG_CONFIG_HOME: path.join(directory, ".config"),
     NODE_PATH: undefined,
     NODE_OPTIONS: undefined,
-    BUN_INSTALL_CACHE_DIR: path.join(directory, "cache"),
+    BUN_INSTALL_CACHE_DIR: sharedCache ? path.resolve(sharedCache, cacheIdentity) : path.join(directory, "cache"),
   }
   const packages = new Map(archives.map((item) => [item.name, item]))
   const registry = Bun.serve({
@@ -46,7 +67,10 @@ export async function withInstalledPackages<T>(
             ...pkg.manifest,
             name,
             version: pkg.version,
-            dist: { tarball: `${url.origin}/archives/${path.basename(pkg.archive)}` },
+            dist: {
+              tarball: `${url.origin}/archives/${path.basename(pkg.archive)}`,
+              integrity: integrities.get(pkg.name),
+            },
           },
         },
       })
