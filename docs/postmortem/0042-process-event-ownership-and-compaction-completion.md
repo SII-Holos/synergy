@@ -20,7 +20,7 @@ The message order in storage was correct. Segmented turn rendering let metadata 
 
 Content ownership was inferred from each segment's available messages rather than the complete turn. Metadata-only segments could emit delivery content, and a request-only segment treated an existing compaction attempt as absent. Rollout completion used a model input optimization as execution authority; delayed settlement could run after that projection dropped earlier roots.
 
-History location captured a virtual row index before asynchronous summary replacement finished. Later row insertion and measurement changed that index's owner and displaced the requested Part. A successful initial jump did not establish a stable reading position.
+History location captured a virtual row index before asynchronous summary replacement finished. Later row insertion and measurement changed that index's owner and displaced the requested Part. A successful initial jump did not establish a stable reading position. Observing only the parent and viewport also missed later content measurements inside a fixed-height parent; CPU throttling reproduced this remaining race.
 
 ## Guardrails added
 

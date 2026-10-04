@@ -321,6 +321,7 @@ export function VirtualConversationRows(
       scheduleLocation()
     }
     const observer = new ResizeObserver(measure)
+    if (container) observer.observe(container)
     if (container?.parentElement) observer.observe(container.parentElement)
     if (input.scrollRef) observer.observe(input.scrollRef)
     measure()
