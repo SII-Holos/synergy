@@ -19,6 +19,7 @@
       "syntaxProperty": "#2563EB"
     },
     "overrides": {
+      "text-permission-full-access": "#C4481C",
       "background-base": "#F8F8F7",
       "background-weak": "#F0F0F0",
       "background-strong": "#F8F8F7",
@@ -133,6 +134,7 @@
       "syntaxProperty": "#60A5FA"
     },
     "overrides": {
+      "text-permission-full-access": "#FF8A50",
       "background-base": "#1B1B1B",
       "background-weak": "#202020",
       "background-strong": "#1B1B1B",
