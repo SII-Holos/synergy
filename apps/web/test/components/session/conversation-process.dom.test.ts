@@ -358,16 +358,14 @@ test("a process locator opens a closed group and finds an offscreen part in its 
     window.__conversationProcess.mode("minimal")
   })
   expect(await page.evaluate(() => window.__conversationProcess.locate("more", "many-400"))).toBe(true)
-  const part = page.locator('[data-part-id="many-400"]')
-  await part.waitFor()
-  expect(
-    await part.evaluate((el) => {
-      const viewport = el.closest('[data-component="process-viewport"]')!
-      const bounds = viewport.getBoundingClientRect(),
-        row = el.getBoundingClientRect()
-      return row.bottom > bounds.top && row.top < bounds.bottom
-    }),
-  ).toBe(true)
+  await page.waitForFunction(() => {
+    const part = document.querySelector('[data-part-id="many-400"]')
+    const viewport = part?.closest('[data-component="process-viewport"]')
+    if (!part || !viewport) return false
+    const bounds = viewport.getBoundingClientRect(),
+      row = part.getBoundingClientRect()
+    return row.height > 0 && row.bottom > bounds.top && row.top < bounds.bottom
+  })
 }, 30000)
 
 test("local reading survives new actions, history prepend and reopening without moving the outer stream", async () => {
