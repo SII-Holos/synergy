@@ -98,9 +98,14 @@ export class PostgresDriver implements SqlDriver {
     const transactional = !(options.readOnly && options.singleStatement)
     let committing = false
     try {
+      // Namespace ownership and the Store's write queue already serialize its mutations.
+      // SSI predicate locks span physical pages/tables shared by unrelated namespaces,
+      // so SERIALIZABLE can exhaust retries without any logical data conflict.
       if (transactional)
         await query(
-          options.readOnly ? "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY" : "BEGIN ISOLATION LEVEL SERIALIZABLE",
+          options.readOnly
+            ? "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"
+            : "BEGIN ISOLATION LEVEL REPEATABLE READ",
         )
       if (transactional && !options.readOnly) await query("SET LOCAL synchronous_commit = on")
       const result = await body({ query })

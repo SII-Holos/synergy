@@ -91,3 +91,49 @@ postgresTest("PostgreSQL exposes unavailability subscriptions without failing or
     }
   }),
 )
+
+postgresTest(
+  "independent PostgreSQL namespaces retain concurrent writes and node cleanup",
+  async () => {
+    const stores: TransactionalStore[] = []
+    const failures: unknown[] = []
+    try {
+      for (let owner = 0; owner < 8; owner++) {
+        const store = await TransactionalStore.open({
+          backend: "postgres",
+          namespace: crypto.randomUUID(),
+          url: process.env.SYNERGY_TEST_POSTGRES_URL!,
+          maxConnections: 3,
+        })
+        stores.push(store)
+        await store.write(["counter"], { owner, value: 0 })
+      }
+      await Promise.all(
+        stores.map(async (store, owner) => {
+          for (let step = 1; step <= 32; step++) {
+            try {
+              await store.transaction(async (tx) => {
+                const previous = await tx.read<{ owner: number; value: number }>(["counter"])
+                expect(previous?.owner).toBe(owner)
+                await tx.write(["counter"], { owner, value: previous!.value + 1 })
+                const key = ["pending", "delivery", String(step)]
+                await tx.write(key, { step })
+                await tx.remove(key)
+              })
+            } catch (error) {
+              failures.push(error)
+            }
+          }
+        }),
+      )
+      expect(failures).toEqual([])
+      for (const [owner, store] of stores.entries()) {
+        expect(await store.read<{ owner: number; value: number }>(["counter"])).toEqual({ owner, value: 32 })
+        expect(await store.list(["pending"])).toEqual([])
+      }
+    } finally {
+      await Promise.all(stores.map((store) => store.close()))
+    }
+  },
+  30_000,
+)
