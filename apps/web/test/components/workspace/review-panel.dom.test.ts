@@ -499,6 +499,27 @@ test("global commands dismiss their menu while advanced toggles remain available
   expect(errors).toEqual([])
 })
 
+test("file headers respond to native folding, version and menu actions", async () => {
+  await mount()
+  const toggle = page.getByRole("button", { name: "src/first.ts", exact: true })
+  const header = page.locator(".review-file-header").filter({ has: toggle })
+  await toggle.click()
+  expect(await toggle.getAttribute("aria-expanded")).toBe("false")
+  await toggle.click()
+  expect(await toggle.getAttribute("aria-expanded")).toBe("true")
+  await header.getByRole("button", { name: "File versions", exact: true }).click()
+  await page.getByRole("dialog", { name: "src/first.ts", exact: true }).waitFor()
+  await page.keyboard.press("Escape")
+  await page.getByRole("dialog", { name: "src/first.ts", exact: true }).waitFor({ state: "hidden" })
+  await header.getByRole("button", { name: "File options", exact: true }).click()
+  await page.getByRole("button", { name: "Copy path", exact: true }).waitFor()
+  await page.keyboard.press("Escape")
+  await header.locator('[data-slot="checkbox-checkbox-control"]').click()
+  await header.locator('[data-component="checkbox"][data-checked]').waitFor()
+  expect(await header.getByRole("checkbox", { name: "Mark as viewed", exact: true }).isChecked()).toBe(true)
+  expect(errors).toEqual([])
+}, 30_000)
+
 test("compact touch controls fit phone panes and keep refresh and fold reachable", async () => {
   const desktop = page
   page = await browser.newPage({ viewport: { width: 320, height: 850 }, hasTouch: true })
