@@ -17158,7 +17158,7 @@ msgstr "当前工作"
 
 #. js-lingui-explicit-id
 msgid "session.progress.dagTab"
-msgstr "DAG 标签页"
+msgstr "DAG"
 
 #. js-lingui-explicit-id
 msgid "session.progress.done"
