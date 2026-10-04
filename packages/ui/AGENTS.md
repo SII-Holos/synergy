@@ -22,6 +22,8 @@ Load `develop-frontend` for shared UI changes and `change-plugin-runtime` for pl
 
 Keep shared UI tests under `test/`, mirroring the relevant `src/` domain. Never colocate `*.test.*` or `*.spec.*` files with UI implementation files.
 
+Keep browser conditions, isolation lists and batch timeouts in `script/test-options.ts`; the package runner and CI planner share that executable batch definition.
+
 Run the narrow test, `bun test test/semantic-icon.test.ts` for icon changes, and `bun test test/theme.test.ts test/theme-generation.test.ts` for theme changes. Then run `bun run test` and `bun run typecheck`. Exercise affected components through the App when visual or interaction behavior changed, and finish with root `bun run quality:quick`.
 
 For Synergy-owned copy in shared UI, run the App-owned shared-catalog gates from the repository root:
