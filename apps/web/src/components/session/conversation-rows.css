@@ -1,14 +1,20 @@
 .conversation-display-row {
-  padding-block-end: 12px;
+  padding-block-end: 16px;
 }
 .conversation-display-row[data-row-kind="body"][data-message-role="user"] {
   padding-block-end: 28px;
 }
 .conversation-display-row[data-row-kind="body"][data-activity-block] {
-  padding-block-end: 4px;
+  padding-block-end: 2px;
+}
+.conversation-display-row[data-row-kind="body"][data-activity-block][data-message-role="user"] {
+  padding-block-end: 2px;
 }
 .conversation-display-row[data-row-kind="activity"] {
-  padding-block-end: 4px;
+  padding-block-end: 16px;
+}
+[data-component="conversation-activity"] > [data-slot="activity-batch-trigger"] {
+  margin-block-end: 4px;
 }
 .conversation-display-row[data-row-kind="footer"] {
   padding-block-end: 28px;

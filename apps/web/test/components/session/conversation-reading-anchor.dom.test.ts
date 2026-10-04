@@ -11,7 +11,15 @@ type Fixture = {
   fold(): void
   image(): void
   replaceOwner(): void
-  facts(): { offset: number; scroll: number; folded: number; imageHeight: number }
+  latest(): void
+  facts(): {
+    offset: number
+    scroll: number
+    folded: number
+    imageHeight: number
+    distance: number
+    userScrolled: boolean
+  }
 }
 let server: ViteDevServer
 let browser: Browser
@@ -39,15 +47,16 @@ beforeAll(async () => {
     import {createSignal} from "solid-js"
     import {createAutoScroll} from ${JSON.stringify(`/@fs/${path.resolve(appSrc, "../../../packages/ui/src/hooks/create-auto-scroll.tsx")}`)}
     import {captureConversationReadingAnchor} from ${JSON.stringify(`/@fs/${appSrc}/components/session/conversation-reading-anchor.ts`)}
-    const [width,setWidth]=createSignal(800),[folded,setFolded]=createSignal(false),[owner,setOwner]=createSignal(1),[image,setImage]=createSignal(2)
+    const [width,setWidth]=createSignal(800),[folded,setFolded]=createSignal(false),[owner,setOwner]=createSignal(1),[image,setImage]=createSignal(2),[working,setWorking]=createSignal(true)
     let viewport,marker,fold,img,auto
     const h=window.fixture={
       detach(){auto.handleInteraction();viewport.scrollTop=marker.offsetTop-viewport.offsetTop-50;auto.handleScroll()},
       resize(){setWidth(350)},fold(){setFolded(true)},image(){setImage(200)},replaceOwner(){setOwner(owner()+1)},
-      facts(){return {offset:marker.getBoundingClientRect().top-viewport.getBoundingClientRect().top,scroll:viewport.scrollTop,folded:fold.getBoundingClientRect().height,imageHeight:img.naturalHeight}}
+      latest(){setWorking(false);auto.forceScrollToBottom({untilInteraction:true})},
+      facts(){return {offset:marker.getBoundingClientRect().top-viewport.getBoundingClientRect().top,scroll:viewport.scrollTop,folded:fold.getBoundingClientRect().height,imageHeight:img.naturalHeight,distance:viewport.scrollHeight-viewport.clientHeight-viewport.scrollTop,userScrolled:auto.userScrolled()}}
     }
     const src=()=>"data:image/svg+xml,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="'+image()+'"></svg>')
-    render(()=>{auto=createAutoScroll({working:()=>true,captureReadingAnchor(){const current=owner();return captureConversationReadingAnchor(viewport,()=>owner()===current)}});return <div ref={el=>{viewport=el;auto.scrollRef(el)}} onScroll={auto.handleScroll} style={{width:width()+"px",height:"400px",overflow:"auto"}}><div ref={auto.contentRef}>
+    render(()=>{auto=createAutoScroll({working,captureReadingAnchor(){const current=owner();return captureConversationReadingAnchor(viewport,()=>owner()===current)}});return <div ref={el=>{viewport=el;auto.scrollRef(el)}} onScroll={auto.handleScroll} style={{width:width()+"px",height:"400px",overflow:"auto"}}><div ref={auto.contentRef}>
       <div data-scroll-anchor="intro"><p>{"Long introductory text causes earlier content to wrap during workspace resizing. ".repeat(45)}</p></div>
       <img ref={el=>img=el} src={src()} style="width:100px;display:block"/>
       <div data-component="session-turn"><button data-scroll-anchor="process">Process</button>
@@ -124,3 +133,33 @@ test("layout events from a released conversation cannot move the current viewpor
   expect((await facts()).scroll).toBe(original)
   expect(errors).toEqual([])
 }, 30_000)
+
+for (const input of ["wheel", "keyboard", "pointer", "touch"]) {
+  test(`latest intent follows idle reflow until ${input} reading input`, async () => {
+    await page.goto(base)
+    await page.getByText("Current reading paragraph", { exact: true }).waitFor()
+    await frames()
+    await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.latest())
+    await page.waitForTimeout(1100)
+    await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.resize())
+    await frames()
+    expect((await facts()).distance).toBeLessThan(2)
+    await page.evaluate((kind) => {
+      const process = document.querySelector<HTMLElement>('[data-scroll-anchor="process"]')!
+      const viewport = process.closest<HTMLElement>('[style*="overflow"]')!
+      if (kind === "wheel") viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -100, bubbles: true }))
+      if (kind === "keyboard") process.dispatchEvent(new KeyboardEvent("keydown", { key: "PageUp", bubbles: true }))
+      if (kind === "pointer") viewport.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }))
+      if (kind === "touch") viewport.dispatchEvent(new Event("touchstart", { bubbles: true }))
+      viewport.scrollTop = 300
+    }, input)
+    await frames()
+    expect((await facts()).userScrolled).toBe(true)
+    await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.image())
+    await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture.facts().imageHeight === 200)
+    await frames()
+    expect((await facts()).distance).toBeGreaterThan(10)
+    expect((await facts()).userScrolled).toBe(true)
+    expect(errors).toEqual([])
+  }, 30_000)
+}

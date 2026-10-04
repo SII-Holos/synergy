@@ -244,7 +244,7 @@ export namespace RolloutLifecycle {
     }
     if (!outcome && (await SessionWorkflowService.hasPendingExecution(session))) return run
     if (!outcome && (await SessionInbox.list(sessionID)).some((item) => item.mode === "steer")) return run
-    const messages = await SessionHistory.modelMessages({ sessionID })
+    const messages = await SessionHistory.messages({ sessionID })
     const terminal = SessionProgress.findTerminalReply(messages, runID)
     const latestRoot = messages.findLast((message) => message.info.role === "user" && message.info.isRoot)
     const answeredLater =

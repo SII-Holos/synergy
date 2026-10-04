@@ -3139,6 +3139,36 @@ export type MaintenanceAdmissionLease = {
   expiresAt: number
 }
 
+export type SessionActivity = {
+  phase:
+    | "checking_submission"
+    | "preparing_session"
+    | "preparing_workspace"
+    | "submitting_input"
+    | "checking_receipt"
+    | "reconnecting"
+    | "queued_storage"
+    | "retrying_input"
+    | "materializing_input"
+    | "preparing_files"
+    | "preparing_context"
+    | "queued_agent"
+    | "waiting_model"
+    | "responding"
+    | "queued_tools"
+    | "running_tools"
+    | "waiting_background"
+    | "finalizing"
+    | "stopping"
+  startedAt: number
+  rootID?: string
+  workspaceOperation?: "create" | "bind" | "enter" | "leave"
+  tool?: {
+    id?: string
+    count: number
+  }
+}
+
 export type SessionPausedReason = "aborted" | "failed" | "interrupted" | "workflow"
 
 export type SessionStatus =
@@ -3154,6 +3184,7 @@ export type SessionStatus =
   | {
       type: "busy"
       description?: string
+      activity?: SessionActivity
     }
   | {
       type: "paused"
@@ -3908,6 +3939,7 @@ export type SessionWorkingInfo =
   | {
       status: "busy"
       description?: string
+      activity?: SessionActivity
     }
   | {
       status: "retry"
@@ -9392,6 +9424,7 @@ export type SessionAbortResult = {
 export type OriginUser = {
   type: "user" | "cortex" | "agenda" | "blueprint" | "channel" | "compaction" | "agent" | "plugin" | "system"
   sessionID?: string
+  taskID?: string
   pluginID?: string
   label?: string
   detail?: string

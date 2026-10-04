@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
@@ -119,7 +120,7 @@ beforeAll(async () => {
         "zod",
       ],
     },
-    server: { host: "127.0.0.1", port: 0, fs: { allow: [path.resolve(source, "../../..")] } },
+    server: { host: "127.0.0.1", port: await fixturePort(), fs: { allow: [path.resolve(source, "../../..")] } },
   })
   await server.listen()
   await server.warmupRequest("/main.tsx")

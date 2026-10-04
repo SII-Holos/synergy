@@ -48,7 +48,8 @@ function aliasConfig(stubPath: string) {
     "@/context/sdk",
     "@/context/session-data-view",
     "@/context/session-optimistic-message",
-    "./session-transition-card",
+    "./session-submission-status",
+    "@/context/session-transition",
   ]
   return stubbed.map((find) => ({ find, replacement: stubPath }))
 }
@@ -127,7 +128,9 @@ beforeAll(async () => {
           event: { on: () => () => {} },
         })
         export const useSessionDataView = () => () => ({ statusFor: () => undefined })
-        export const SessionTransitionCard = () => null
+        export const SessionSubmissionStatus = () => null
+        export const useSessionTransition = () => ({ get: () => undefined })
+        export const submissionForRoot = () => undefined
         export const useExecution = () => ({
           available: executionAvailable,
           round: () => undefined,

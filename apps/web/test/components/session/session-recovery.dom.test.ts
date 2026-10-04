@@ -81,7 +81,7 @@ beforeAll(async () => {
     } }
     const sync = { data, session: { refresh: async () => setData("inbox", "s1", window.activeItems) } }
     const accepted = createNewSessionTransitionAcceptedProgress()
-    const failed = createSessionTransitionHandoffErrorProgress({ kind:accepted.kind,steps:accepted.steps,error:{code:"ProviderUnavailable",message:"Diagnostic preserved"} })
+    const failed = createSessionTransitionHandoffErrorProgress({ kind:accepted.kind,error:{code:"ProviderUnavailable",message:"Diagnostic preserved"} })
     const mode = new URLSearchParams(location.search).get("mode")
     render(() => <I18nProvider i18n={i18n}><MarkedProvider><DialogProvider>
       {mode === "pending" ? <PendingTimelineItem item={{...item,mode:"task",status:"failed",failReason:"Attachment invalid"}} rollbackActive={false} hasCanonicalRoot={false} onRemove={async () => {window.removeCalls++; await new Promise(resolve => setTimeout(resolve, 150)); if (window.failRemove) throw new Error("Removal offline")}} /> : mode === "transition" ? <SessionSubmissionPreview entry={{ progress: failed, draft: {intent: 1, text: "Original draft **preserved**"}, actions: {retry: () => {window.retryCount = (window.retryCount ?? 0)+1}} }} /> : <SessionInbox sessionID="s1" sdk={{client}} sync={sync} active={active()} />}
@@ -200,11 +200,11 @@ test("failed initialization stops spinners and exposes one recovery action with 
   await page.goto(`${url}?mode=transition`)
   expect(await page.locator(".session-submission-prompt").textContent()).toBe("Original draft **preserved**")
   await page.getByRole("alert").waitFor()
-  expect(await page.locator(".session-transition-step-spinner").count()).toBe(0)
-  expect(await page.getByText("Failed", { exact: true }).count()).toBe(1)
-  await page.getByText("Error details", { exact: true }).click()
+  expect(await page.getByRole("status").count()).toBe(0)
+  expect(await page.locator('[data-component="error-card"]').count()).toBe(1)
+  await page.getByRole("button", { name: "Unable to start execution" }).click()
   await page.getByText("ProviderUnavailable: Diagnostic preserved").waitFor()
-  await page.getByRole("button", { name: "Retry initialization" }).click()
+  await page.getByRole("button", { name: "Retry", exact: true }).click()
   expect(await page.evaluate(() => (window as unknown as RecoveryWindow).retryCount)).toBe(1)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   expect(errors).toEqual([])
