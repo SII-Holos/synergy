@@ -81,6 +81,9 @@ description: Change or validate the repository benchmark evaluator, native harne
    Deduplicate kernel OOM observations by container identity and nanosecond event time, independently of CLI/API serialization metadata. Keep live event consumption active through bounded historical collection and close it in `finally`, including cancellation. Docker events cannot prove completeness: retain observed OOM counts as lower bounds and leave the exact count unknown. Test closing with a real Unix HTTP stream and explicit barriers. For kernel OOM acceptance, verify a child receives SIGKILL, the cgroup OOM counter increases and the monitor receives the real event before releasing PID 1 for automatic removal; then verify the retained event. A manual exit code, sleep or lifecycle event is insufficient OOM evidence. Validate Docker cgroup working-set measurements and CPU deltas against a real container; do not substitute missing observations with zero. Preserve unknown metrics when inspection fails, and distinguish sampled peaks from kernel maxima.
 
 2. Reuse immutable artifacts and downloads. Verify frozen artifacts before use, protect explicit inputs before collection, and publish receipts atomically. Never claim pre-existing shared images or invoke global Docker prune.
+
+   Reference enumeration can race with an independent run retiring its own reference. Ignore only a reference removed before reading; preserve surviving protections and propagate malformed or unreadable live references. Test retirement between enumeration and file open with real temporary cache objects rather than serializing independent runs.
+
    Recovery and ownership-handoff containers must inherit the frozen experiment platform even when they reuse an exact image digest. Verify running and stopped container handoff on a host with a different native architecture; Docker's default platform can otherwise select unavailable image content before cleanup runs.
 
    A top-level npm version pin can still admit newer prerelease dependencies. Bind any validated dependency publication cutoff to its exact native package version, include it in cache identity and receipts, and test warm offline reuse plus cutoff invalidation. Other explicit versions must not inherit that condition. Verify the actual native Docker matrix after changing dependency resolution; successful installation alone does not establish compatibility.
@@ -118,6 +121,8 @@ description: Change or validate the repository benchmark evaluator, native harne
    Separate a verifier's native reward from executed assertions, synthetic missing-result placeholders and unique renumbered JUnit matches. A diagnostic task source changes the task digest; report its score separately and regrade retained work only when its final workspace provenance can be verified.
 5. Update this workflow, package documentation and an implemented decision record when their behavior changes. Run skill, documentation, decision, test-layout and workspace-boundary gates; follow `git-guide` for publication.
 
+Current Synergy fault observers and archive assertions select conversation calls by the native `usageRole`, not an agent's mutable name in `purpose`. Reuse encoding fixtures with synthetic identities and received auxiliary bytes to verify that auxiliary work cannot satisfy conversation progress.
+
 ## Diagnose retained trajectories
 
 1. Use the offline `synergy_bench.trajectory` module documented in [benchmark ownership](../../../benchmark/README.md#离线轨迹诊断). Keep derived files outside the evidence tree and preserve the original evaluator and scores.
@@ -146,7 +151,13 @@ Use the [secret-detection package](../../../packages/secret-detection/README.md)
 
 ## CI preparation and timing
 
+Exercise shared-cache inspection while another run retires a reference after enumeration. Tolerate only a missing retired reference; malformed or unreadable live references must still stop inspection, and surviving references must continue to prevent collection. Keep the deterministic race regression separate from native Docker lifecycle controls.
+
 For deadline-accounting unit tests, advance one controlled clock for both the event loop and lifecycle measurements. Yield to the real timer callbacks before and after a pause, and assert nested queue, active and wall durations exactly. Keep real timeout and cancellation controls separately; do not make correctness depend on synchronous evidence writes finishing within a millisecond budget.
+
+Docker network recovery fixtures use a local admission clock and a separate exact-deadline rejection case. Keep real scheduling persistence and owned cleanup assertions; thread-pool or filesystem contention must not decide whether the scripted retry occurs. See the [clock decision](../../../docs/decisions/implemented/testing/2026-10-02-benchmark-network-admission-clock.md).
+
+After Compose startup, wait for complete daemon memory observations at the sampler's one-second cadence within the fixture's existing pressure budget. A container can stop between listing and statistics collection. Preserve unknown memory and include other projects; verify both recovery and persistent-missing rejection through the Unix API fixture. See the [sampling decision](../../../docs/decisions/implemented/testing/2026-10-03-benchmark-docker-observation-readiness.md).
 
 The deterministic Docker fixtures reserve one CPU and the default 2 GiB for the host in CI. On a four-CPU runner this admits a two-CPU preparation request alongside an existing native trial working set; default two-CPU reservation caused `cpu_budget` waits through the trial's stopping deadline. Keep actual memory, disk, CPU pressure and native hard-limit checks active. Local research retains its declared resource defaults.
 
@@ -160,4 +171,6 @@ CI lifecycle selectors divide normal, failure and native scenarios into independ
 
 Required CI groups Docker scenarios into eight workers with at most two isolated task processes per worker. Share only verified preparation; retain separate task Homes, containers, JUnit and timing paths. Preserve same-SHA job rerun provenance when regrouping tasks.
 
-Separate Docker CI groups that need frozen preparation from groups without that dependency. Acquire prepared consumer runners after the preparation producer completes; keep unrelated native/Environment controls independent and count both groups within the eight-job ceiling. Independent task-home tool and empty-provider stopping scenarios use separate tasks; retain the real native retry policy and verify exact pytest collection when changing selectors. Rebalance with measured preparation and scenario time instead of serializing both controls in one task.
+Separate Docker CI groups that need frozen preparation from groups without that dependency. Acquire prepared consumer runners after the preparation producer completes; keep unrelated native/Environment controls independent and count both groups within the eight-job ceiling. Fold successful Task Home assertions into the existing JIT/chat-completions semantic control and retain first/last Home evidence across two real tool calls. Keep empty-provider stopping independent with the real native retry policy; verify every retained pytest scenario is collected exactly once. Fault lifecycle controls prepare only their actual experiment; retain owned cleanup, terminal evidence and the second resume check. Rebalance with measured preparation and scenario time.
+
+Cache only external engine objects and indexes across CI jobs, with byte and inventory verification on every reuse. Keep locks, preparation staging, task Homes and test results local to each execution; cold build runs bypass the external object cache as well as prepared bundles.

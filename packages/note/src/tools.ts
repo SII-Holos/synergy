@@ -1,3 +1,4 @@
+import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { registerToolGroup } from "./tool-group-note"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
@@ -16,7 +17,32 @@ const runtimeState = RuntimeContext.state(() => ({
   registered: false,
 }))
 
+/** Register owned history when a host supplies its own tool catalog. */
+export function registerNoteToolInputHistory(): void {
+  Tool.registerInputHistory("note", {
+    note_write: {
+      id: "noteId",
+      title: "noteTitle",
+      content: "noteContent",
+      description: "blueprintDescription",
+    },
+    note_read: {
+      ids: "noteIds",
+    },
+    note_edit: {
+      id: "noteId",
+    },
+    note_delete: {
+      id: "noteId",
+    },
+    note_archive: {
+      ids: "noteIds",
+    },
+  })
+}
+
 export function registerNoteTools(): void {
+  registerNoteToolInputHistory()
   const instanceState = runtimeState()
 
   registerToolGroup()

@@ -207,6 +207,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
               onChange={setInternalFilter}
               onKeyDown={handleKey}
               placeholder={searchProps().placeholder}
+              aria-label={searchProps().placeholder}
               spellcheck={false}
               autocorrect="off"
               autocomplete="off"
@@ -214,7 +215,12 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
             />
           </div>
           <Show when={internalFilter()}>
-            <IconButton icon="circle-x" variant="ghost" onClick={() => setInternalFilter("")} />
+            <IconButton
+              icon="circle-x"
+              variant="ghost"
+              aria-label={_({ id: "ui.list.clearSearch", message: "Clear search" })}
+              onClick={() => setInternalFilter("")}
+            />
           </Show>
         </div>
       </Show>

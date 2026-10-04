@@ -9,7 +9,7 @@ Desktop Browser backend state, page collections, persistent identities, authoriz
 
 Uploads pin the Workspace binding through dispatch, enforce actual bytes while reading, and revalidate open-handle and pathname identity. Keep shared protocol and native staging behavior aligned, including zero-byte files.
 
-Commands and idle suspension acquire the Session binding lease before the command queue. Session transitions and Workspace resource disposal close old pages before publishing new file authority, clear command replay results, and preserve owner presentation and history. Test selection, rebind, cancellation and failed Host closure with `test/workspace-lifecycle.test.ts`.
+Agent commands acquire the initiating Session binding lease before the page queue, retaining its Environment, Workspace generation and permissions. Ordinary Scope-owned pages have no filesystem binding and survive task cancellation, completion and Workspace transitions. Session-bound local and historical pages close before a binding change publishes file authority. Include the initiating Session in command identities and activity events; cancellation must not clear another task’s operation. Test selection, rebind, cancellation and failed Host closure with `test/workspace-lifecycle.test.ts`.
 
 Run bun run typecheck and the affected tests, then the root package and dependency checks.
 

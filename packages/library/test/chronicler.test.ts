@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import "../src/config-schema"
 import { afterEach, expect, spyOn, test } from "bun:test"
 import { Chronicler } from "../src/chronicler"
@@ -31,7 +32,7 @@ async function fixture(enabled: boolean, run: (ctx: LoopJob.Context, abort: Abor
         sessionID: session.id,
         role: "user",
         time: { created: Date.now() },
-        agent: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
         model: { providerID: "test", modelID: "test" },
       })
       if (lastUser.role !== "user") throw new Error("expected user")

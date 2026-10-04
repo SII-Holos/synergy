@@ -234,13 +234,14 @@ export namespace ToolResolver {
     parameters: z.ZodType
     inputSchema?: Record<string, unknown>
   }): JSONSchema7 {
-    return (item.inputSchema ?? z.toJSONSchema(item.parameters)) as JSONSchema7
+    return (item.inputSchema ?? z.toJSONSchema(item.parameters, { io: "input" })) as JSONSchema7
   }
 
   export interface Availability {
     visible: Definition[]
     diagnostics: Map<string, ToolDiagnosticInfo>
     autoExpandable: Set<string>
+    intentBindings?: ReadonlyMap<string, import("./tool-intent").ToolIntent.Binding>
   }
 
   export interface ResolvedTools {
@@ -249,6 +250,7 @@ export namespace ToolResolver {
     executorKinds: Record<string, ToolExecutorKind>
     activeToolIDs: string[]
     autoExpandable: Set<string>
+    intentBindings?: ReadonlyMap<string, import("./tool-intent").ToolIntent.Binding>
   }
 
   /** P9: plugin gate options are filled by the registered plugin source; an
@@ -1120,9 +1122,23 @@ export namespace ToolResolver {
         abort: sessionAbort,
         messageID: input.processor.message.id,
         callID: options.toolCallId,
+        workBrief: match?.workBrief,
         inputImages: () => input.processor.inputImages(options.toolCallId),
         captureResult: RolloutTool.capture,
         openProcessEvidence: RolloutTool.openProcess,
+        async recordActivity(evidence) {
+          const { RolloutArtifact } = await import("./rollout/artifact")
+          const { text, ...facts } = evidence
+          const masked = await SecretMask.transformResult({ output: text }, sessionAbort)
+          return {
+            ...facts,
+            content: await RolloutArtifact.writeText(
+              { kind: "session", scopeID: ScopeContext.current.scope.id, sessionID: input.sessionID },
+              String(masked.output),
+              evidence.mediaType,
+            ),
+          }
+        },
         extra: {
           model: input.model,
           lookAtAvailable: input.activeToolIDs?.includes("look_at") === true,
@@ -1257,6 +1273,10 @@ export namespace ToolResolver {
   }
 
   async function applyAvailability(defs: Definition[], input: Omit<Input, "processor">): Promise<Availability> {
+    const { ToolIntent } = await import("./tool-intent")
+    const intentBindings = new Map(
+      defs.map((definition) => [definition.id, ToolIntent.snapshot(definition.inputSchema)]),
+    )
     const visible: Definition[] = []
     const diagnostics = new Map<string, ToolDiagnosticInfo>()
     const autoExpandable = new Set<string>()
@@ -1374,7 +1394,7 @@ export namespace ToolResolver {
       )
     }
     for (const id of autoExpandable) if (!allowed.has(id)) autoExpandable.delete(id)
-    return { visible: visible.filter((item) => allowed.has(item.id)), diagnostics, autoExpandable }
+    return { visible: visible.filter((item) => allowed.has(item.id)), diagnostics, autoExpandable, intentBindings }
   }
 
   function diagnosticRuntimeTool(input: Input, diagnostic: ToolDiagnosticInfo): AITool {
@@ -1874,6 +1894,7 @@ export namespace ToolResolver {
                       ? { approval: approvalFromContext(ctx), ...(result.metadata ?? {}) }
                       : (result.metadata ?? {}),
                     attachments: result.attachments,
+                    activityEvidence: result.activityEvidence,
                     afterPersist: item.afterPersist ? () => item.afterPersist!(args, toolCtx, result) : undefined,
                   }),
                 )
@@ -2236,7 +2257,7 @@ export namespace ToolResolver {
       ...runtimeTool,
       execute(args, options) {
         return input.processor.executeOnce(options.toolCallId, () => {
-          const toolInput = SessionToolInput.normalize(args)
+          const toolInput = SessionToolInput.canonical(args)
           if (SessionBounds.toolInputByteLength(toolInput) > SessionBounds.TOOL_INPUT_MAX_BYTES) {
             const error = SessionBounds.toolInputExceededMessage()
             input.processor.beginExecution(options.toolCallId).fail({}, error)
@@ -2249,7 +2270,7 @@ export namespace ToolResolver {
               messageID: input.processor.message.id,
               toolCallID: options.toolCallId,
               tool: toolName,
-              args: JSON.parse(JSON.stringify(toolInput)),
+              args: JSON.parse(JSON.stringify(input.processor.modelInputFromToolCall(options.toolCallId) ?? toolInput)),
             },
             async () => {
               try {
@@ -2320,12 +2341,13 @@ export namespace ToolResolver {
       definitions: availabilityResult.visible.map(({ id, description, inputSchema }) => ({
         id,
         description,
-        inputSchema,
+        inputSchema: availabilityResult.intentBindings?.get(id)?.nativeSchema ?? inputSchema,
       })),
       executionTools,
       executorKinds,
       activeToolIDs,
       autoExpandable: availabilityResult.autoExpandable,
+      intentBindings: availabilityResult.intentBindings,
     }
   }
 

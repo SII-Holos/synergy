@@ -223,7 +223,8 @@ export namespace WorkspaceHomeTransfer {
         return {
           state: "bound",
           hostID: targetHost,
-          ...after,
+          path: after.path,
+          physicalID: after.physicalID,
           generation:
             before.generation + (after.path !== actual.path || after.physicalID !== actual.physicalID ? 1 : 0),
         }

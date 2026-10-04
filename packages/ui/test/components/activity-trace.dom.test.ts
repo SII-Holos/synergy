@@ -9,6 +9,9 @@ const TRANSITION_MS = 160
 const TRANSITION_SETTLE_MS = TRANSITION_MS + 80
 
 interface ActivityDomHarness {
+  setApproval: (enabled: boolean) => void
+  getPermissionCalls: () => unknown[]
+  finishPermission: (failed: boolean) => void
   resetCount: (identity: string, value: number) => void
   setCountValue: (value: number) => void
   setSummaryCompleted: (completed: boolean) => void
@@ -75,6 +78,11 @@ beforeAll(async () => {
     document: window.document,
     navigator: window.navigator,
     Node: window.Node,
+    NodeFilter: window.NodeFilter,
+    Event: window.Event,
+    CustomEvent: window.CustomEvent,
+    HTMLInputElement: window.HTMLInputElement,
+    HTMLTextAreaElement: window.HTMLTextAreaElement,
     Element: window.Element,
     HTMLElement: window.HTMLElement,
     HTMLHeadElement: window.HTMLHeadElement,
@@ -94,6 +102,10 @@ beforeAll(async () => {
 afterAll(async () => {
   dom?.window.close()
 })
+
+function closeResult() {
+  document.querySelector<HTMLButtonElement>('[role="dialog"] [data-slot="dialog-close-button"]')?.click()
+}
 
 describe("AnimatedActivityCount DOM behavior", () => {
   test("first mount snaps to the initial value without a transition", () => {
@@ -269,7 +281,7 @@ describe("ActivityTrace DOM behavior", () => {
     ])
     expect(
       Array.from(list?.querySelectorAll('[data-slot="activity-step-family"]') ?? []).map((item) => item.textContent),
-    ).toEqual(["Changed", "Researched"])
+    ).toEqual([])
     expect(list?.querySelector('[data-slot="activity-step-branch"]')).toBeNull()
   })
 
@@ -279,44 +291,19 @@ describe("ActivityTrace DOM behavior", () => {
     expect(title?.getAttribute("title")).toBe("Edit activity-trace")
   })
 
-  test("exposes the full step subtitle to hover when narrow layouts truncate it", () => {
-    const subtitle = document.querySelector('#error-host [data-slot="activity-step-subtitle"]')
-    expect(subtitle?.textContent).toBe("build.sh")
-    expect(subtitle?.getAttribute("title")).toBe("build.sh")
+  test("keeps the action and object together without repeating the object", () => {
+    const subtitle = document.querySelector('#error-host [data-slot="activity-step-title"]')
+    expect(subtitle?.textContent).toBe("Run build.sh")
+    expect(subtitle?.getAttribute("title")).toBe("Run build.sh")
   })
 
-  test("each child activity is a keyboard-accessible result toggle", async () => {
+  test("tool rows select a result without disclosure semantics", async () => {
     const triggers = stepTriggers()
     expect(triggers).toHaveLength(8)
     expect(triggers[0]?.tagName).toBe("BUTTON")
     expect(triggers[0]?.getAttribute("type")).toBe("button")
-    expect(triggers[0]?.getAttribute("aria-expanded")).toBe("false")
-
-    triggers[0]?.click()
-    await wait(0)
-    expect(triggers[0]?.getAttribute("aria-expanded")).toBe("true")
-
-    triggers[0]?.click()
-    await wait(0)
-    expect(triggers[0]?.getAttribute("aria-expanded")).toBe("false")
-  })
-
-  test("preserves an expanded child when streaming replaces activity projections", async () => {
-    const host = document.querySelector("#activity-main-host") as HTMLElement
-    let trigger = host.querySelector('[data-slot="activity-step-trigger"]') as HTMLButtonElement
-
-    trigger.click()
-    await wait(0)
-    expect(trigger.getAttribute("aria-expanded")).toBe("true")
-
-    harness.refreshActivityGroup()
-    await wait(0)
-
-    trigger = host.querySelector('[data-slot="activity-step-trigger"]') as HTMLButtonElement
-    expect(trigger.getAttribute("aria-expanded")).toBe("true")
-
-    trigger.click()
-    await wait(0)
+    expect(triggers[0]?.hasAttribute("aria-expanded")).toBe(false)
+    expect(triggers[0]?.closest('[data-component="collapsible"]')).toBeNull()
   })
 
   test("renders the waiting approval state once within its child activity", () => {
@@ -332,10 +319,10 @@ describe("ActivityTrace DOM behavior", () => {
     firstTrigger.click()
     await wait(0)
 
-    const fileStep = document.querySelector('#activity-main-host [data-slot="activity-step"]')
+    const fileStep = document.querySelector('[role="dialog"]')
     expect(fileStep?.querySelector('[data-component="diff-preview"], [data-component="diff-patch"]')).not.toBeNull()
 
-    firstTrigger.click()
+    closeResult()
     await wait(0)
   })
   test("updates flat tool state without rendering a progress rail or checkbox", async () => {
@@ -358,7 +345,7 @@ describe("ActivityTrace DOM behavior", () => {
       '[data-component="activity-trace"] [data-slot="activity-step"]',
     ) as HTMLElement
     expect(updatedStep.getAttribute("data-state")).toBe("done")
-    expect(updatedStep.textContent).toContain("Done")
+    expect(updatedStep.querySelector('[data-slot="activity-state"]')).toBeNull()
   })
 
   test("renders view_file through the Full-mode renderer body without a nested tool card", async () => {
@@ -367,27 +354,38 @@ describe("ActivityTrace DOM behavior", () => {
     viewTrigger.click()
     await wait(0)
 
-    expect(viewHost.querySelector('[data-component="tool-result-body"]')).not.toBeNull()
-    expect(viewHost.querySelector('[data-component="anchored-summary"]')).not.toBeNull()
-    expect(viewHost.querySelector('[data-component="tool-content-preview"]')).not.toBeNull()
-    expect(viewHost.querySelector('[data-component="code-fixture"]')).toBeNull()
-    expect(viewHost.querySelector('[data-component="tool-output-text"]')?.textContent).toBe("const parity = true")
-    expect(viewHost.querySelector('[data-component="collapsible"][data-variant="tool"]')).toBeNull()
+    const result = document.querySelector('[role="dialog"]')!
+    expect(result.querySelector('[data-component="tool-result-body"]')).not.toBeNull()
+    expect(result.querySelector('[data-component="anchored-summary"]')).not.toBeNull()
+    expect(result.querySelector('[data-component="tool-content-preview"]')).not.toBeNull()
+    expect(result.querySelector('[data-component="code-fixture"]')).toBeNull()
+    expect(result.querySelector('[data-component="tool-output-text"]')?.textContent).toBe("const parity = true")
+    expect(result.querySelector('[data-component="collapsible"][data-variant="tool"]')).toBeNull()
+    closeResult()
+    await wait(0)
   })
 
-  test("keeps a failed step collapsed by default and reveals the full error inline after one click", async () => {
+  test("keeps a failed tool as a selection and displays its error without parameter disclosure", async () => {
     const host = document.querySelector("#error-host") as HTMLElement
     const trigger = host.querySelector('[data-slot="activity-step-trigger"]') as HTMLButtonElement
-    expect(trigger.getAttribute("aria-expanded")).toBe("false")
+    expect(trigger.hasAttribute("aria-expanded")).toBe(false)
     expect(host.querySelector('[data-component="error-card"]')).toBeNull()
+    expect(trigger.querySelector('[data-slot="activity-state"]')).toBeNull()
+    expect(trigger.getAttribute("aria-label")).toContain("Failed")
 
     trigger.click()
     await wait(0)
 
-    expect(trigger.getAttribute("aria-expanded")).toBe("true")
-    expect(host.querySelector('[data-component="error-card"]')).not.toBeNull()
-    expect(host.textContent).toContain("command not found")
-    expect(host.textContent).toContain("exit code 127")
+    expect(trigger.hasAttribute("aria-expanded")).toBe(false)
+    const result = document.querySelector('[role="dialog"]')!
+    expect(result.querySelector('[data-component="error-card"]')).toBeNull()
+    expect(result.querySelector('[data-slot="tool-result-error"][role="status"]')).not.toBeNull()
+    expect(result.querySelector('[data-component="collapsible"]')).toBeNull()
+    expect(result.textContent).not.toContain("Tool input")
+    expect(result.textContent).toContain("command not found")
+    expect(result.textContent).toContain("exit code 127")
+    closeResult()
+    await wait(0)
   })
 
   test("renders the approval audit icon for an auto-allowed step", () => {
@@ -405,24 +403,25 @@ describe("Delegated subagent activity DOM behavior", () => {
     trigger.click()
     await wait(0)
 
-    expect(trigger.getAttribute("aria-expanded")).toBe("true")
+    expect(trigger.hasAttribute("aria-expanded")).toBe(false)
+    const result = document.querySelector('[role="dialog"]')!
     expect(
-      host.querySelector('[data-component="tool-output"] > [data-component="task-subagent-detail"]'),
+      result.querySelector('[data-component="tool-output"] > [data-component="task-subagent-detail"]'),
     ).not.toBeNull()
-    expect(host.querySelector('[data-slot="task-subagent-agent"]')?.textContent).toBe("explore")
-    expect(host.querySelector('[data-slot="task-subagent-description"]')?.textContent).toBe("Inspect the registry")
-    expect(host.querySelectorAll('[data-slot="task-tool-item"]')).toHaveLength(3)
+    expect(result.querySelector('[data-slot="task-subagent-agent"]')?.textContent).toBe("explore")
+    expect(result.querySelector('[data-slot="task-subagent-description"]')?.textContent).toBe("Inspect the registry")
+    expect(result.querySelectorAll('[data-slot="task-tool-item"]')).toHaveLength(3)
     expect(
-      host.querySelector('[data-slot="task-tool-item"][data-state="running"] [data-slot="task-tool-status"]'),
+      result.querySelector('[data-slot="task-tool-item"][data-state="running"] [data-slot="task-tool-status"]'),
     ).not.toBeNull()
 
-    const open = host.querySelector('[data-slot="task-subagent-open"]') as HTMLButtonElement
+    const open = result.querySelector('[data-slot="task-subagent-open"]') as HTMLButtonElement
     expect(open?.tagName).toBe("BUTTON")
     open?.click()
     await wait(0)
     expect(harness.getNavigateCalls()).toEqual(["child-1"])
 
-    trigger.click()
+    closeResult()
     await wait(0)
   })
 
@@ -431,18 +430,21 @@ describe("Delegated subagent activity DOM behavior", () => {
     const trigger = host.querySelector('[data-slot="activity-step-trigger"]') as HTMLButtonElement
     trigger.click()
     await wait(0)
+    const result = document.querySelector('[role="dialog"]')!
 
     expect(
-      host.querySelector('[data-component="tool-output"] > [data-component="task-subagent-detail"]'),
+      result.querySelector('[data-component="tool-output"] > [data-component="task-subagent-detail"]'),
     ).not.toBeNull()
-    expect(host.querySelector('[data-slot="task-subagent-agent"]')?.textContent).toBe("explore")
-    expect(host.querySelector('[data-slot="task-subagent-mode"]')?.textContent).toBe("background")
-    const state = host.querySelector('[data-slot="task-subagent-state"]') as HTMLElement
+    expect(result.querySelector('[data-slot="task-subagent-agent"]')?.textContent).toBe("explore")
+    expect(result.querySelector('[data-slot="task-subagent-mode"]')?.textContent).toBe("background")
+    const state = result.querySelector('[data-slot="task-subagent-state"]') as HTMLElement
     expect(state?.textContent).toContain("Running")
-    expect(host.querySelector('[data-slot="task-subagent-state-dot"]')).not.toBeNull()
-    expect(host.querySelector('[data-slot="task-subagent-empty"]')).toBeNull()
-    expect(host.querySelector('[data-slot="task-subagent-open"]')).not.toBeNull()
-    expect(host.querySelectorAll('[data-slot="task-tool-item"]')).toHaveLength(0)
+    expect(result.querySelector('[data-slot="task-subagent-state-dot"]')).not.toBeNull()
+    expect(result.querySelector('[data-slot="task-subagent-empty"]')).toBeNull()
+    expect(result.querySelector('[data-slot="task-subagent-open"]')).not.toBeNull()
+    expect(result.querySelectorAll('[data-slot="task-tool-item"]')).toHaveLength(0)
+    closeResult()
+    await wait(0)
   })
 })
 
@@ -493,4 +495,29 @@ describe("ActivityReceipt DOM behavior", () => {
     expect(host.querySelector('[data-slot="task-subagent-empty"]')).toBeNull()
     expect(host.querySelectorAll('[data-slot="task-tool-item"]')).toHaveLength(0)
   })
+})
+
+test("inline approval locks duplicate clicks and keeps a failed response retryable", async () => {
+  harness.setApproval(true)
+  await wait(0)
+  const approve = document.querySelector('[data-slot="activity-approval-actions"] button') as HTMLButtonElement
+  expect(approve).not.toBeNull()
+  const before = harness.getPermissionCalls().length
+  approve.click()
+  approve.click()
+  await wait(0)
+  expect(harness.getPermissionCalls()).toHaveLength(before + 1)
+  expect(approve.disabled).toBe(true)
+  harness.finishPermission(true)
+  await wait(0)
+  expect(document.querySelector('[data-slot="activity-approval-actions"] [role="alert"]')?.textContent).toContain(
+    "Approval unavailable",
+  )
+  expect(approve.disabled).toBe(false)
+  approve.click()
+  await wait(0)
+  expect(harness.getPermissionCalls()).toHaveLength(before + 2)
+  harness.finishPermission(false)
+  harness.setApproval(false)
+  await wait(0)
 })

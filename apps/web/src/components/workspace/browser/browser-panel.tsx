@@ -4,14 +4,15 @@ import { useBrowserDraft } from "./browser-draft"
 import { BrowserDataDialog } from "./browser-data-settings"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
-import { BROWSER_PROTOCOL_VERSION, type BrowserAPISessionState } from "@ericsanchezok/synergy-browser-core"
+import { BrowserNewTab } from "./browser-new-tab"
+import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { createEffect, createMemo, createResource, createSignal, lazy, Show, on, untrack } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, lazy, Show, on, untrack, onCleanup } from "solid-js"
 import { Trans, useLingui } from "@lingui/solid"
 import { useParams } from "@solidjs/router"
-import { BrowserStoreProvider, createBrowserStore } from "./browser-store"
-import { createBrowserWebSocket } from "./browser-ws"
+import { BrowserStoreProvider } from "./browser-store"
+import { useBrowserCatalog, type BrowserCatalog } from "./browser-catalog"
 import { AddressBar } from "./address-bar"
 import { BrowserSurface } from "./browser-surface"
 import { AgentAssistant } from "./agent-assistant"
@@ -20,13 +21,15 @@ import { browserDebug } from "./browser-debug"
 import { useSDK } from "@/context/sdk"
 import { usePlatform } from "@/context/platform"
 import { useWorkbenchPanels } from "@/context/workbench"
-import { browserPageTab } from "./browser-workbench-model"
+import { browserPageTab, browserWorkbenchRoute, type BrowserWorkbenchRoute } from "./browser-workbench-model"
 import { createBrowserCommandId } from "./browser-command"
 import { normalizeBrowserError } from "./browser-error"
 import { browser as B } from "@/locales/messages"
 import { resolveBrowserClientPresentation, type BrowserClientPresentationMode } from "./native-presentation-coordinator"
 import type { WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
 import { resolvePendingBrowserNavigation } from "./browser-view-command"
+import { BrowserPreparingPanel } from "./browser-preparing"
+import { useBrowserImportEntry } from "./browser-import"
 const ConsolePanel = lazy(() => import("./console-panel").then((module) => ({ default: module.ConsolePanel })))
 const NetworkPanel = lazy(() => import("./network-panel").then((module) => ({ default: module.NetworkPanel })))
 const ElementsPanel = lazy(() => import("./elements-panel").then((module) => ({ default: module.ElementsPanel })))
@@ -38,27 +41,21 @@ export function BrowserPanel(props: { tab: WorkbenchPanelTab }) {
   const sdk = useSDK()
   const platform = usePlatform()
   const lingui = useLingui()
-  const route = createMemo(() => {
-    const sessionID = params.id
-    const pathDirectory = params.dir ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey
-    return sessionID && pathDirectory ? { sessionID, pathDirectory, routeDirectory: params.dir } : null
-  })
+  const catalog = useBrowserCatalog()
+  const route = createMemo(
+    () =>
+      browserWorkbenchRoute(props.tab.state) ?? {
+        mode: "scope" as const,
+        path_directory: params.dir ?? sdk.scopeID ?? sdk.scopeKey,
+        scopeID: sdk.scopeID,
+      },
+  )
   const [initial, { refetch }] = createResource(route, async (input) => {
     const clientPresentation = await resolveBrowserClientPresentation({
       bridge: platform.browserNative,
       serverUrl: sdk.url,
     })
-    const response = await sdk.client.browser.session({
-      path_directory: input.pathDirectory,
-      query_directory: sdk.directory,
-      scopeID: sdk.scopeID,
-      mode: "session",
-      sessionID: input.sessionID,
-      presentation: "auto",
-      protocolVersion: BROWSER_PROTOCOL_VERSION,
-    })
-    if (!response.data) throw response.error ?? new Error("Browser session bootstrap failed")
-    return { session: response.data, clientPresentation }
+    return { catalog: await catalog.get(input), clientPresentation }
   })
 
   return (
@@ -66,83 +63,49 @@ export function BrowserPanel(props: { tab: WorkbenchPanelTab }) {
       keyed
       when={!initial.loading ? initial() : undefined}
       fallback={
-        <div class="browser-workspace flex h-full flex-col items-center justify-center gap-3 p-4 text-text-weak">
-          <div class="browser-empty-mark">
-            <Icon name={getSemanticIcon("browser.main")} class="size-4" />
-          </div>
-          <span class="text-14-medium text-text-strong">
-            {initial.error
-              ? normalizeBrowserError(initial.error, lingui._(B.bootstrapFailed.id)).message
-              : lingui._(B.connecting.id)}
-          </span>
-          <Show when={initial.error}>
-            <Button size="small" variant="primary" onClick={() => void refetch()}>
-              <Trans id={B.retry.id} message={B.retry.message} />
-            </Button>
-          </Show>
-        </div>
+        <BrowserPreparingPanel
+          tab={props.tab}
+          error={
+            initial.error ? normalizeBrowserError(initial.error, lingui._(B.bootstrapFailed.id)).message : undefined
+          }
+          onRetry={() => void refetch()}
+        />
       }
     >
-      {(state) => {
-        const browser = createBrowserStore()
-        return (
-          <BrowserPanelInner
-            browser={browser}
-            initial={state.session}
-            clientPresentation={state.clientPresentation}
-            routeDirectory={route()?.routeDirectory}
-            sessionID={route()!.sessionID}
-            tab={props.tab}
-          />
-        )
-      }}
+      {(state) => (
+        <BrowserPanelInner catalog={state.catalog} clientPresentation={state.clientPresentation} tab={props.tab} />
+      )}
     </Show>
   )
 }
 
 function BrowserPanelInner(props: {
-  browser: ReturnType<typeof createBrowserStore>
-  initial: BrowserAPISessionState
+  catalog: BrowserCatalog
   clientPresentation: BrowserClientPresentationMode
-  routeDirectory?: string
-  sessionID: string
   tab: WorkbenchPanelTab
 }) {
-  const browser = props.browser
-  const dialog = useDialog()
-  const workbench = useWorkbenchPanels()
-  const sdk = useSDK()
-  const platform = usePlatform()
+  const browser = props.catalog.store
+  const dialog = useDialog(),
+    workbench = useWorkbenchPanels(),
+    sdk = useSDK(),
+    platform = usePlatform()
+  const params = useParams()
   const { _ } = useLingui()
-  const draft = useBrowserDraft(props.sessionID)
-  const ownerKey = props.initial.ownerKey
+  const route = props.catalog.route
+  const draft = useBrowserDraft(() => params.id)
+  const ownerKey = props.catalog.initial.ownerKey
+  const ws = props.catalog.transport
+  const openImport = useBrowserImportEntry(() => props.tab)
   const openData = (section: "import" | "passwords") => {
+    if (section === "import") {
+      openImport()
+      return
+    }
     const page = browser.page()
     if (!page || !platform.browserNative?.dataAction) return
     dialog.show(() => <BrowserDataDialog ownerKey={ownerKey} pageId={page.id} url={page.url} section={section} />)
   }
-  browser.replacePages(props.initial.pages)
   if (props.tab.resourceId) browser.setSession("selectedPageId", props.tab.resourceId)
-  browser.setSession("seq", props.initial.seq)
-  browser.setSession("epoch", props.initial.epoch)
-  browser.setPresentation(props.clientPresentation === "native" ? null : props.initial.presentation)
-  for (const page of props.initial.pages)
-    browser.setHostStatus(page.id, page.status === "active" ? props.initial.hostStatus : "detached")
-  if (props.initial.error) {
-    browser.setBrowserError({
-      severity: "error",
-      code: props.initial.error.code,
-      message: props.initial.error.message,
-    })
-  }
-  browserDebug("panel.inner", { sessionID: props.sessionID, routeDirectory: props.routeDirectory, ownerKey })
-
-  const ws = createBrowserWebSocket(browser, {
-    sessionID: props.sessionID,
-    ownerKey,
-    routeDirectory: props.routeDirectory,
-    presentation: props.clientPresentation,
-  })
 
   createEffect(
     on(
@@ -154,12 +117,7 @@ function BrowserPanelInner(props: {
         untrack(
           () =>
             void workbench.openPanel("browser", {
-              init: browserPageTab(page, {
-                sessionID: props.sessionID,
-                path_directory: props.routeDirectory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey,
-                query_directory: sdk.directory,
-                scopeID: sdk.scopeID,
-              }),
+              init: browserPageTab(page, route),
             }),
         )
       },
@@ -218,15 +176,15 @@ function BrowserPanelInner(props: {
 
   const requestDiagnostics = async (action: "console" | "network" | "elements" | "assets" | "downloads" | "clear") => {
     const pageId = browser.pageId()
-    const routeDirectory = props.routeDirectory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey
+    const routeDirectory = route.path_directory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey
     if (!pageId || !routeDirectory) return
     try {
       const response = await sdk.client.browser.diagnostics({
         path_directory: routeDirectory,
         query_directory: sdk.directory,
         scopeID: sdk.scopeID,
-        mode: "session",
-        sessionID: props.sessionID,
+        mode: route.mode,
+        sessionID: route.sessionID,
         protocolVersion: BROWSER_PROTOCOL_VERSION,
         presentation: "native",
         nativeTicket: await ws.createNativeTicket(),
@@ -270,8 +228,7 @@ function BrowserPanelInner(props: {
     await draft.text(`Browser feedback: ${browser.page()?.url ?? ""}\n${comment}`)
     dismissAnnotation()
   }
-  const capturePage = async (fullPage: boolean): Promise<BrowserCapture> => {
-    const pageId = browser.pageId()
+  const capturePage = async (fullPage: boolean, pageId = browser.pageId()): Promise<BrowserCapture> => {
     if (!pageId) throw new Error("Open a page before capturing it.")
     const result = await platform.browserNative?.pageAction?.({
       protocolVersion: BROWSER_PROTOCOL_VERSION,
@@ -283,12 +240,34 @@ function BrowserPanelInner(props: {
     return result
   }
   const openCapture = async () => {
+    const pageId = browser.pageId(),
+      sessionKey = workbench.sessionKey()
+    let target: ReturnType<typeof draft.capture> | undefined
     try {
-      const initial = await capturePage(false)
-      dialog.show(() => <BrowserResultDialog initial={initial} recapture={capturePage} attach={draft.attach} />)
+      target = draft.capture()
+      const initial = await capturePage(false, pageId)
+      if (
+        !target.isCurrent() ||
+        sessionKey !== workbench.sessionKey() ||
+        !workbench.surface("side").opened() ||
+        workbench.surface("side").active() !== props.tab.id
+      )
+        throw new Error("The conversation changed. Return to the original task and capture it again.")
+      const captured = target
+      dialog.show(() => {
+        onCleanup(captured.release)
+        return (
+          <BrowserResultDialog
+            initial={initial}
+            recapture={(full) => capturePage(full, pageId)}
+            attach={captured.attach}
+          />
+        )
+      })
     } catch (error) {
+      target?.release()
       browser.setBrowserError({
-        pageId: browser.pageId() ?? undefined,
+        pageId: pageId ?? undefined,
         severity: "error",
         message: normalizeBrowserError(error, "Screenshot failed").message,
       })
@@ -297,11 +276,11 @@ function BrowserPanelInner(props: {
   const downloadArtifact = async (id: string, operation: "save" | "open" | "draft") => {
     const prepare = async () => {
       const result = await sdk.client.browser.downloadArtifact({
-        path_directory: props.routeDirectory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey,
+        path_directory: route.path_directory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey,
         query_directory: sdk.directory,
         scopeID: sdk.scopeID,
-        mode: "session",
-        sessionID: props.sessionID,
+        mode: route.mode,
+        sessionID: route.sessionID,
         presentation: "native",
         protocolVersion: BROWSER_PROTOCOL_VERSION,
         nativeTicket: await ws.createNativeTicket(),
@@ -379,12 +358,7 @@ function BrowserPanelInner(props: {
           onSettings={() =>
             dialog.show(() => (
               <BrowserStoreProvider store={browser}>
-                <BrowserSettings
-                  ownerKey={ownerKey}
-                  sessionID={props.sessionID}
-                  routeDirectory={props.routeDirectory}
-                  createTicket={ws.createNativeTicket}
-                />
+                <BrowserSettings ownerKey={ownerKey} route={route} createTicket={ws.createNativeTicket} />
               </BrowserStoreProvider>
             ))
           }
@@ -403,34 +377,10 @@ function BrowserPanelInner(props: {
             fallback={
               <Show
                 when={page() && page()?.url !== "about:blank"}
-                fallback={
-                  <div class="browser-new-tab">
-                    <div class="browser-new-tab-center">
-                      <div class="browser-new-tab-search">
-                        <Icon name={getSemanticIcon("action.search")} size="small" />
-                        <input
-                          aria-label={_(B.enterUrl)}
-                          placeholder={_(B.enterUrl)}
-                          onKeyDown={(event) => {
-                            if (event.key !== "Enter" || event.isComposing || !event.currentTarget.value.trim()) return
-                            event.preventDefault()
-                            browser.navigate(event.currentTarget.value.trim())
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <div class="browser-new-tab-footer">
-                      <Button size="small" variant="secondary" onClick={() => openData("import")}>
-                        <Icon name={getSemanticIcon("action.import")} size="small" />
-                        <Trans id={B.importData.id} message={B.importData.message} />
-                      </Button>
-                    </div>
-                  </div>
-                }
+                fallback={<BrowserNewTab onNavigate={browser.navigate} onImport={() => openData("import")} />}
               >
                 <BrowserSurface
-                  sessionID={props.sessionID}
-                  routeDirectory={props.routeDirectory}
+                  route={route}
                   ownerKey={ownerKey}
                   clientPresentation={props.clientPresentation}
                   onRetryNative={retryNative}

@@ -1,9 +1,10 @@
+import { settingsFieldCopy } from "../settings-field-copy"
 import { createMemo } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import type { SkillList } from "@ericsanchezok/synergy-sdk/client"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
-import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
-import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
+import { SettingRow } from "../components/SettingsSettingRow"
+import { SettingsPage, SettingsSection, SettingsAdvanced } from "../components/SettingsPrimitives"
 import type { SkillsSettings } from "../types"
 
 export type SkillSourceKey = keyof SkillsSettings
@@ -19,25 +20,25 @@ const skillCountBadge = {
   message: "{count, plural, one {# skill} other {# skills}}",
 }
 
-const agentsTitle = { id: "settings.skills.agents.title", message: "Agent Skills" }
+const agentsTitle = settingsFieldCopy.skillsAgents
 const agentsDesc = {
   id: "settings.skills.agents.desc",
-  message: "Load Agent Skills from .agents/skills directories (default: on).",
+  message: "Discover Agent Skills available on this device.",
 }
-const claudeTitle = { id: "settings.skills.claude.title", message: "Claude Code" }
+const claudeTitle = settingsFieldCopy.skillsClaude
 const claudeDesc = {
   id: "settings.skills.claude.desc",
-  message: "Load Claude Code skills from .claude/skills directories (default: on).",
+  message: "Discover Claude Code skills available on this device.",
 }
-const codexTitle = { id: "settings.skills.codex.title", message: "Codex" }
+const codexTitle = settingsFieldCopy.skillsCodex
 const codexDesc = {
   id: "settings.skills.codex.desc",
-  message: "Load Codex skills from .codex/skills directories (default: on).",
+  message: "Discover Codex skills available on this device.",
 }
-const openclawTitle = { id: "settings.skills.openclaw.title", message: "OpenClaw" }
+const openclawTitle = settingsFieldCopy.skillsOpenclaw
 const openclawDesc = {
   id: "settings.skills.openclaw.desc",
-  message: "Load OpenClaw skills from .openclaw/skills and workspace skills directories (default: on).",
+  message: "Discover OpenClaw skills available on this device.",
 }
 
 export function SkillsPanel(props: {
@@ -91,6 +92,18 @@ export function SkillsPanel(props: {
           }
         />
       </SettingsSection>
+      <SettingsAdvanced
+        id="skill-directories"
+        title={_({ id: "settings.skills.directories", message: "Discovery directories" })}
+      >
+        <p class="ds-section-hint">
+          {_({
+            id: "settings.skills.directories.description",
+            message:
+              "Agent Skills: .agents/skills. Claude Code: .claude/skills. Codex: .codex/skills. OpenClaw: .openclaw/skills and workspace skills directories.",
+          })}
+        </p>
+      </SettingsAdvanced>
     </SettingsPage>
   )
 }

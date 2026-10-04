@@ -2,26 +2,35 @@ import { requestErrorMessage } from "@/utils/error"
 
 export type PromptSubmitFailure =
   | { kind: "worktree-unavailable"; message: string }
+  | { kind: "workspace-unavailable"; message: string; workspaceID: string; reason?: string }
   | { kind: "generic"; message: string }
 
-function worktreeUnavailableMessage(error: unknown) {
-  if (!error || typeof error !== "object") return
-  if ("name" in error && error.name === "WorktreeUnavailableError") return requestErrorMessage(error)
-  if (!(error instanceof Error) || error.name !== "APIError" || !("data" in error)) return
-
+function failureBody(error: unknown): unknown {
+  if (!(error instanceof Error) || error.name !== "APIError" || !("data" in error)) return error
   const data = error.data as { statusCode?: number; responseBody?: string }
-  if (data.statusCode !== 409 || !data.responseBody) return
+  if (data.statusCode !== 409 || !data.responseBody) return error
   try {
-    const body = JSON.parse(data.responseBody) as { name?: string; data?: { message?: string } }
-    if (body.name !== "WorktreeUnavailableError" || !body.data?.message) return
-    return body.data.message
+    return JSON.parse(data.responseBody) as unknown
   } catch {
-    return
+    return error
   }
 }
 
 export function promptSubmitFailure(error: unknown): PromptSubmitFailure {
-  const worktreeMessage = worktreeUnavailableMessage(error)
-  if (worktreeMessage) return { kind: "worktree-unavailable", message: worktreeMessage }
+  const body = failureBody(error)
+  if (body && typeof body === "object" && "name" in body) {
+    if (body.name === "WorktreeUnavailableError")
+      return { kind: "worktree-unavailable", message: requestErrorMessage(body) }
+    if (body.name === "WorkspaceUnavailable" && "data" in body && body.data && typeof body.data === "object") {
+      const data = body.data
+      if ("workspaceID" in data && typeof data.workspaceID === "string")
+        return {
+          kind: "workspace-unavailable",
+          message: requestErrorMessage(body),
+          workspaceID: data.workspaceID,
+          reason: "reason" in data && typeof data.reason === "string" ? data.reason : undefined,
+        }
+    }
+  }
   return { kind: "generic", message: requestErrorMessage(error) }
 }

@@ -2,6 +2,8 @@
 
 Synergy keeps installation state under `<SYNERGY_HOME or OS home>/.synergy/`. `SYNERGY_HOME` selects the parent home, not the `.synergy` suffix. For example, `SYNERGY_HOME=/tmp/example` produces `/tmp/example/.synergy/`.
 
+File restoration receipts live below each Session’s `file_restore` namespace in the agent database. They retain the confirmation identity, expected versions and settled per-file outcome; file bytes stay in the existing Snapshot store. Session deletion removes these receipts with their owner. Prepared previews require new confirmation after Runtime restart or import.
+
 ## Physical layout
 
 | Path                                                      | Responsibility                                                                             |
@@ -31,6 +33,8 @@ Synergy keeps installation state under `<SYNERGY_HOME or OS home>/.synergy/`. `S
 | `schema/`                                                 | Installed JSON schemas                                                                     |
 
 Library, credentials, project files, browser profiles and observability remain separate stores with their own lifecycle. Do not copy an open Library/observability SQLite file without its owning backup protocol. Cache may be cleared on upgrade and is not a backup source. Treat auth, plugin recovery snapshots, logs, signing keys and exported Home archives as private data.
+
+Native Workspace mount receipts live under `state/environments/<environment>/<allocation>/workspace/mounts/`. Directory-identity migration retains malformed receipts unchanged and writes a private, durable record with the same filename under the sibling `identity-migration-issues/` directory. Each record contains the `invalid-receipt` reason and the SHA-256 hash of the original bytes. The affected mount remains unavailable until explicit recovery; other verified receipts can migrate. Preserve both directories for diagnosis.
 
 Removed user Inbox inputs and restoration receipts live at the logical keys `sessions/<scope>/<session>/inbox-removed/<item>`. They retain the complete domain input until Session deletion and never participate in ordinary queue discovery. See [Inbox removal and restoration](../architecture/session-and-messages.md#inbox-removal-and-restoration).
 

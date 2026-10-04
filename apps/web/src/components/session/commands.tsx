@@ -16,8 +16,14 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { useNavigate } from "@solidjs/router"
 import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
+import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard"
 import { fileRestoreFeedback } from "./file-restore-feedback"
+
+import { useFileRestore } from "./file-restore-dialog-loader"
 import { compactSessionWithCurrentModel } from "./compact-action"
+import { HistorySearchDialog } from "./history-search-dialog"
+import { createConversationTextActions } from "./conversation-text-actions"
+import { useNewTaskNavigation } from "./welcome/context"
 
 export function useSessionCommands(params: {
   command: ReturnType<typeof useCommand>
@@ -39,6 +45,7 @@ export function useSessionCommands(params: {
   navigateMessageByOffset: (offset: number) => void
   isWorking: () => boolean
   onRewind?: (message: UserMessage) => void
+  locateMessage?: (messageID: string, partID?: string) => Promise<boolean>
 }) {
   const {
     command,
@@ -59,11 +66,65 @@ export function useSessionCommands(params: {
     navigateMessageByOffset,
   } = params
 
+  const restoreFiles = useFileRestore(() => routeParams.id)
   const workbench = useWorkbenchPanels()
   const file = useFile()
   const { i18n } = useLocale()
+  const textActions = createConversationTextActions({
+    selection: () => ({ sessionID: routeParams.id, title: info()?.title }),
+    read: async (sessionID) => {
+      const result = await sdk.client.session.historyText({ sessionID }, { throwOnError: true })
+      if (!result.data) throw new Error(i18n._(S.historyTextFailed))
+      return result.data.text
+    },
+    copy: async (text) => (await copyTextToClipboard(text)).ok,
+    download: (text, filename) => {
+      const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }))
+      const anchor = document.createElement("a")
+      anchor.href = url
+      anchor.download = filename
+      anchor.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    },
+  })
+  const textAction = async (action: () => Promise<boolean>, copied = false) => {
+    try {
+      if ((await action()) && copied) showToast({ type: "success", title: i18n._(S.historyCopied) })
+    } catch {
+      showToast({ type: "error", title: i18n._(S.historyTextFailed) })
+    }
+  }
+  const newTask = useNewTaskNavigation(navigate)
 
   command.register(() => [
+    {
+      id: "session.history.copy",
+      title: i18n._(S.historyCopyTitle),
+      description: i18n._(S.historyCopyDescription),
+      category: i18n._(S.cmdCategorySession),
+      disabled: !routeParams.id,
+      onSelect: () => textAction(textActions.copy, true),
+    },
+    {
+      id: "session.history.export",
+      title: i18n._(S.historyExportTitle),
+      description: i18n._(S.historyExportDescription),
+      category: i18n._(S.cmdCategorySession),
+      disabled: !routeParams.id,
+      onSelect: () => textAction(textActions.export),
+    },
+    {
+      id: "session.history.search",
+      title: i18n._(S.historySearchTitle),
+      description: i18n._(S.historySearchPlaceholder),
+      category: i18n._(S.cmdCategorySession),
+      keybind: "mod+f",
+      disabled: !routeParams.id,
+      onSelect: () => {
+        if (routeParams.id && params.locateMessage)
+          dialog.show(() => <HistorySearchDialog sessionID={routeParams.id!} locate={params.locateMessage!} />)
+      },
+    },
     {
       id: "session.new",
       title: i18n._(S.cmdNewSession),
@@ -72,7 +133,7 @@ export function useSessionCommands(params: {
       keybind: "mod+shift+s",
       slash: "new",
       onSelect: () => {
-        navigate(`/${routeParams.dir}/session`)
+        newTask(routeParams.dir)
       },
     },
     {
@@ -267,11 +328,7 @@ export function useSessionCommands(params: {
         const sessionID = routeParams.id
         const rollback = info()?.history?.rollback
         if (!sessionID || !rollback) return
-        const result = await sdk.client.session.files.restore(
-          { sessionID, rollbackID: rollback.id },
-          { throwOnError: true },
-        )
-        showToast(fileRestoreFeedback(result.data, i18n))
+        void restoreFiles({ rollbackID: rollback.id })
       },
     },
     {

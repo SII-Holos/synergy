@@ -55,6 +55,25 @@ export const StorageStartupProgress = z.object({
 })
 export type StorageStartupProgress = z.infer<typeof StorageStartupProgress>
 
+export const MigrationStartupTask = z.enum([
+  "scheduled-work",
+  "blueprints",
+  "browser",
+  "connections",
+  "settings",
+  "notes",
+  "conversations",
+  "request-prices",
+  "file-history",
+  "tool-history",
+  "usage",
+  "workflows",
+  "scopes",
+  "workspaces",
+  "storage",
+])
+export type MigrationStartupTask = z.infer<typeof MigrationStartupTask>
+
 export const RuntimeStartupProgress = z.union([
   StorageMaintenanceEvent,
   z.discriminatedUnion("phase", [
@@ -74,6 +93,7 @@ export const RuntimeStartupProgress = z.union([
         step: count.positive(),
         current: count,
         total: count,
+        task: MigrationStartupTask.optional(),
       })
       .strict()
       .refine((value) => value.total === 0 || value.current <= value.total),

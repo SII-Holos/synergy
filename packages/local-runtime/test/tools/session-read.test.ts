@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { describe, expect, spyOn, test } from "bun:test"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -31,7 +32,7 @@ async function writeMessage(sessionID: string, text: string, created: number) {
     sessionID,
     role: "user",
     time: { created },
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test", modelID: "test" },
   })) as MessageV2.User
   await Session.updatePart({
@@ -85,7 +86,7 @@ describe("session_read", () => {
             sessionID: session.id,
             role: "user",
             time: { created: 101 },
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test" },
           })) as MessageV2.User
           const brokenPart = {

@@ -141,5 +141,5 @@ export function createSessionMessageLoader<TResult, TInput = void>(options: Load
     active.clear()
   }
 
-  return { load, state, release, dispose }
+  return { load, state, pending: (sessionID: string) => active.get(sessionID)?.promise, release, dispose }
 }

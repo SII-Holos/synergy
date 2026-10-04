@@ -76,7 +76,8 @@ async function geometry(trigger: Locator, name: string) {
 }
 try {
   await open()
-  check((await page.locator(".session-starter-card").count()) === 3, "three real task starters")
+  await page.locator(".welcome-create").waitFor()
+  check((await page.locator(".welcome-stage").count()) === 1, "one interactive task introduction")
   check((await page.locator(".session-status-bar button").count()) >= 3, "new task has real status actions")
   await page
     .locator(".session-status-bar")
@@ -101,10 +102,10 @@ try {
   await (await chooser).setFiles(path.join(home, "fixture.txt"))
   await page.getByText("fixture.txt", { exact: true }).first().waitFor()
   await editor.fill("Keep this draft")
-  await page.locator(".session-starter-card").nth(0).click()
+  await page.locator(".welcome-create").click()
   await page.getByRole("button", { name: /^(取消|Cancel)$/ }).click()
   check((await editor.innerText()) === "Keep this draft", "cancel preserves text")
-  await page.locator(".session-starter-card").nth(1).click()
+  await page.locator(".welcome-create").click()
   await page.getByRole("button", { name: /使用任务引导|Use task starter/ }).click()
   await page.waitForFunction(() => document.activeElement?.getAttribute("role") === "textbox")
   check((await editor.innerText()).length > 20, "starter replaces text and focuses editor")
@@ -181,7 +182,7 @@ try {
   await page.locator(".prompt-input-submit").click()
   await page.waitForURL(/\/session\/[^/]+$/)
   await page.locator(".session-conversation-content").waitFor()
-  check((await page.locator(".session-starter-card").count()) === 0, "first send replaces greeting")
+  check((await page.locator(".welcome-stage").count()) === 0, "first send replaces greeting")
   check((await page.locator(".session-status-bar button").count()) >= 3, "existing session real status")
   await page.getByText("已收到测试任务。", { exact: true }).waitFor({ timeout: 30_000 })
   await page.getByText("浅色与深色使用同一套语义角色", { exact: true }).waitFor()

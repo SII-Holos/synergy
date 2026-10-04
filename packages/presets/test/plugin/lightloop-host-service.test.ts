@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { registerPluginLightLoopAdapter } from "@ericsanchezok/synergy-plugin-host/plugin/host-services"
 import { lightLoopPluginAdapter } from "@ericsanchezok/synergy-workflows/light-loop/plugin-adapter"
 import { afterEach, describe, expect, mock, test } from "bun:test"
@@ -118,7 +119,7 @@ async function runAtomicStartTest(input?: { startError?: Error }) {
             pluginDir: tmp.path,
             sessionID: parent.id,
             messageID: "msg_lightloop_atomic",
-            agent: "synergy-max",
+            agent: PrimaryAgentIdentity.names.coding,
             directory: tmp.path,
           },
           request: {
@@ -265,7 +266,7 @@ describe("plugin LightLoop Host Service", () => {
               context: {
                 sessionID: session.id,
                 messageID: "msg_terminal_cancel",
-                agent: "synergy-max",
+                agent: PrimaryAgentIdentity.names.coding,
               },
             }),
           ).toEqual({

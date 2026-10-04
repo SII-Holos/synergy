@@ -85,3 +85,14 @@ describe("compaction card presentation", () => {
     })
   })
 })
+
+test("committed terminal metadata remains complete before summary content is hydrated", () => {
+  expect(
+    resolveCompactionCardPresentation({
+      attemptState: "committed",
+      hasRecovery: false,
+      messageCompleted: true,
+      hasSummary: false,
+    }),
+  ).toMatchObject({ status: "complete", canExpand: false })
+})

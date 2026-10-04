@@ -6,6 +6,7 @@ import fs from "fs/promises"
 import path from "path"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { FileSearchTool } from "../../src/tools/file-search"
+import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 
 const ctx = {
@@ -19,6 +20,37 @@ const ctx = {
 }
 
 describe("tool.file_search", () => {
+  test("captures only displayed hits and distinguishes path and content evidence", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "needle.ts"), "const needle = 42")
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          let text = ""
+          const recordActivity: NonNullable<Tool.Context["recordActivity"]> = async (capture) => {
+            text = capture.text
+            return { kind: capture.kind, mediaType: capture.mediaType, truncated: capture.truncated }
+          }
+          const result = await (
+            await FileSearchTool.init()
+          ).execute({ query: "needle", limit: 2 }, { ...ctx, recordActivity })
+          const captured = JSON.parse(text)
+          expect(captured.hits.length).toBe(result.metadata.count)
+          expect(captured.hits).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ kind: "path", path: "needle.ts" }),
+              expect.objectContaining({ kind: "content", path: "needle.ts", line: 1, text: "const needle = 42" }),
+            ]),
+          )
+        },
+      })
+    }))
+
   test("reports byte-budget omissions separately from the requested result limit", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({

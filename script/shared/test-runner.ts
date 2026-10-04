@@ -21,6 +21,36 @@ export type TestRunnerOptions = {
   extraSerial?: string[]
 }
 
+export function frontendBatches(files: string[], options: Omit<TestRunnerOptions, "root">) {
+  const { timeoutMs, isolated, browserOnly, extraSerial = [] } = options
+  const isolatedSet = new Set(isolated)
+  const browserSet = new Set(browserOnly)
+  const extraSerialSet = new Set(extraSerial)
+  const batches = [
+    {
+      files: files.filter((file) => !isolatedSet.has(file) && !browserSet.has(file) && !extraSerialSet.has(file)),
+      timeout: timeoutMs,
+      browser: false,
+    },
+    ...files
+      .filter((file) => isolatedSet.has(file))
+      .map((file) => ({
+        files: [file],
+        timeout: options.isolatedTimeoutMs ?? timeoutMs,
+        browser: browserSet.has(file),
+      })),
+    {
+      files: files.filter((file) => browserSet.has(file) && !isolatedSet.has(file)),
+      timeout: options.browserTimeoutMs ?? timeoutMs,
+      browser: true,
+    },
+    ...extraSerial
+      .filter((file) => files.includes(file))
+      .map((file) => ({ files: [file], timeout: timeoutMs, browser: false })),
+  ]
+  return batches.map((batch, id) => ({ ...batch, id })).filter((batch) => batch.files.length)
+}
+
 /**
  * Sharded test runner shared by apps/web and packages/ui.
  *
@@ -31,9 +61,7 @@ export type TestRunnerOptions = {
  * `bun test` overwrites `coverage/lcov.info` on every invocation.
  */
 export async function runBatchedTests(options: TestRunnerOptions) {
-  const { root, timeoutMs, isolated, browserOnly, extraSerial = [] } = options
-  const isolatedTimeoutMs = options.isolatedTimeoutMs ?? timeoutMs
-  const browserTimeoutMs = options.browserTimeoutMs ?? timeoutMs
+  const { root, timeoutMs } = options
   const failedBatches: Array<{ shard: number; exitCode: number }> = []
 
   async function collectTests(directory: string): Promise<string[]> {
@@ -98,27 +126,11 @@ export async function runBatchedTests(options: TestRunnerOptions) {
     await mkdir(path.join(root, "coverage", "shards"), { recursive: true })
   }
 
-  const isolatedSet = new Set(isolated)
-  const browserSet = new Set(browserOnly)
-  const extraSerialSet = new Set(extraSerial)
   const inventory = (await collectTests("test")).toSorted()
   const files: string[] = process.env.SYNERGY_TEST_FILES ? JSON.parse(process.env.SYNERGY_TEST_FILES) : inventory
   if (!files.length || files.some((file) => !inventory.includes(file)))
     throw new Error("Unknown or empty test selection")
-  await run(
-    files.filter((file) => !isolatedSet.has(file) && !browserSet.has(file) && !extraSerialSet.has(file)),
-    0,
-  )
-  let shard = 1
-  for (const file of files.filter((file) => isolatedSet.has(file))) {
-    await run([file], shard++, { timeout: isolatedTimeoutMs, browser: browserSet.has(file) })
-  }
-  await run(
-    files.filter((file) => browserSet.has(file) && !isolatedSet.has(file)),
-    shard++,
-    { browser: true, timeout: browserTimeoutMs },
-  )
-  for (const file of extraSerial.filter((file) => files.includes(file))) await run([file], shard++)
+  for (const batch of frontendBatches(files, options)) await run(batch.files, batch.id, batch)
 
   if (failedBatches.length > 0) {
     console.error(

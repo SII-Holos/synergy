@@ -30,6 +30,18 @@ export interface WorkbenchPanelTabInit {
   dirty?: boolean
 }
 
+export interface WorkbenchPanelOpenContext {
+  requestId: string
+  onCancel(handler: () => void | Promise<void>): void | Promise<void>
+}
+
+export interface WorkbenchPanelOpening {
+  phase: "preparing" | "error"
+  error?: unknown
+  resolve(): Promise<WorkbenchPanelTab>
+  retry(): Promise<WorkbenchPanelTab | undefined>
+}
+
 export interface WorkbenchPanelEntry extends SurfaceEntry {
   surface: WorkbenchPanelSurface
   cardinality: WorkbenchPanelCardinality
@@ -37,10 +49,22 @@ export interface WorkbenchPanelEntry extends SurfaceEntry {
   supportsDraftSession?: boolean
   launchable?: boolean
   component?: Component<WorkbenchPanelContentProps>
+  openingComponent?: Component<WorkbenchPanelContentProps>
   loader?: () => Promise<{ default: Component<WorkbenchPanelContentProps> }>
   exportName?: string
   defaultResource?: WorkbenchPanelTabInit
-  createTab?: () => WorkbenchPanelTabInit | void | Promise<WorkbenchPanelTabInit | void>
+  createTab?: (
+    init?: WorkbenchPanelTabInit,
+    context?: WorkbenchPanelOpenContext,
+  ) => WorkbenchPanelTabInit | void | Promise<WorkbenchPanelTabInit | void>
+  resolveTab?: (
+    init: WorkbenchPanelTabInit,
+    context?: WorkbenchPanelOpenContext,
+  ) => WorkbenchPanelTabInit | undefined | Promise<WorkbenchPanelTabInit | undefined>
+  restoreTab?: (
+    context?: WorkbenchPanelOpenContext,
+  ) => WorkbenchPanelTabInit | void | Promise<WorkbenchPanelTabInit | void>
+  beforeCloseTab?: (tab: WorkbenchPanelTab) => boolean | Promise<boolean>
   onCloseTab?: (tab: WorkbenchPanelTab) => void | boolean | Promise<void | boolean>
   title?: (tab: WorkbenchPanelTab, siblingTabs: WorkbenchPanelTab[]) => string | undefined
   tabActions?: (

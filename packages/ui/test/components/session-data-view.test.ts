@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, test } from "bun:test"
 import {
   createSessionDataView,
@@ -20,7 +21,7 @@ const MESSAGE = {
   role: "assistant",
   parentID: "root",
   rootID: "root",
-  agent: "synergy",
+  agent: TEST_AGENT_NAME,
   mode: "test",
   path: { cwd: "/workspace", root: "/workspace" },
   cost: 0,

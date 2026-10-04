@@ -184,6 +184,7 @@ describe("desktop startup overlay", () => {
     await destroyedOverlay.dismiss()
     await destroyedOverlay.setStatus({ title: "Loading", detail: "" })
     destroyedOverlay.setTheme(theme("dark"))
+    destroyedOverlay.setWindowState({ maximized: true, fullscreen: false, focused: true })
     expect(executedScripts).toEqual([])
   })
 
@@ -200,12 +201,18 @@ describe("desktop startup overlay", () => {
 
     await overlay.load()
     await overlay.setStatus({ title: "Loading workspace", detail: "Connecting" })
+    await overlay.setStatus({ title: "Loading workspace", detail: "Connecting" })
+    await overlay.setStatus({ title: "Loading workspace", detail: "Connecting" })
     overlay.setTheme(theme("dark"))
+    overlay.setWindowState({ maximized: true, fullscreen: false, focused: true })
     await Bun.sleep(0)
 
-    expect(executedScripts).toHaveLength(2)
+    expect(executedScripts).toHaveLength(3)
     expect(executedScripts[0]).toContain("Loading workspace")
     expect(executedScripts[1]).toContain('"effective":"dark"')
+    expect(executedScripts[2]).toBe(
+      'window.synergySetStartupWindowState?.({"maximized":true,"fullscreen":false,"focused":true})',
+    )
   })
 
   test("tolerates load failures and detached views on dismiss", async () => {

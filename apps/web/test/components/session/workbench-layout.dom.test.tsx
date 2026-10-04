@@ -1,10 +1,12 @@
-import { afterAll, beforeAll, expect, test } from "bun:test"
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solid from "vite-plugin-solid"
 import tailwind from "@tailwindcss/vite"
+import { lingui } from "@lingui/vite-plugin"
 
 let browser: Browser
 let page: Page
@@ -18,7 +20,7 @@ beforeAll(async () => {
   directory = await mkdtemp(path.join(import.meta.dir, ".workbench-layout-"))
   await Bun.write(
     path.join(directory, "index.html"),
-    '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+    '<!doctype html><div id="root"></div><script type="module" src="/main.tsx"></script>',
   )
   await Bun.write(
     path.join(directory, "platform.ts"),
@@ -26,10 +28,19 @@ beforeAll(async () => {
   )
   await Bun.write(path.join(directory, "decision.tsx"), "export const SessionDecisionOutlet = () => null")
   await Bun.write(
+    path.join(directory, "execution.ts"),
+    `export const useExecution = () => ({ available: () => false, state: {} });
+     export const useSDK = () => ({ client: {} });
+     export const useParams = () => ({ id: "fixture" })`,
+  )
+  await Bun.write(
     path.join(directory, "main.tsx"),
     `
     import { createSignal, Show } from "solid-js"
     import { render } from "solid-js/web"
+    import { I18nProvider } from "@lingui/solid"
+    import { setupI18n } from "@lingui/core"
+    import { TaskDetailsPopover } from ${JSON.stringify(`/@fs/${source}/components/execution/popover.tsx`)}
     import { SidebarNavigation } from  ${JSON.stringify(`/@fs/${source}/components/sidebar/sidebar-navigation.tsx`)}
     import  ${JSON.stringify(`/@fs/${source}/components/sidebar/sidebar.css`)}
     import { DefaultShell } from ${JSON.stringify(`/@fs/${source}/plugin/default-shell.tsx`)}
@@ -57,11 +68,11 @@ beforeAll(async () => {
       const composer = { input: () => input, mount: dock.mount, ready: () => true, isNewSession: fresh,
         readOnly: () => false, isGlobal: () => true, pendingText: () => "", scopeName: () => "Home",
         branch: () => undefined, lastModified: () => undefined, links: () => [],
-        render: part => part === "status" ? <button data-status>Connection details</button> : part === "inbox" && !fresh() ? <div class="session-inbox-anchor"><button data-inbox style="width:36px;height:36px">Inbox</button></div> : null }
+        render: part => part === "status" ? <button data-status>Connection details</button> : null }
       return <div style="height:100dvh"><DefaultSession context={{layout: {
         minimumWidth: () => undefined, promptHeight: height,
         render: part => part === "composer" ? <PromptDock context={composer} /> : part === "conversation" ?
-          <div class="flex-1 min-h-0"><Show when={fresh()} fallback={<div class="session-conversation-content session-content-column" data-message>Reply</div>}>
+          <div class="flex-1 min-h-0"><Show when={!fresh()}><header class="stb-root" style="justify-content:flex-end"><div class="stb-right"><TaskDetailsPopover inboxCount={1} inbox={() => <div class="session-inbox-list"><div class="session-inbox-row" data-inbox>Queued follow-up</div></div>} /></div></header></Show><Show when={fresh()} fallback={<div class="session-conversation-content session-content-column" data-message>Reply</div>}>
             <div class="session-empty-view"><div class="session-content-column">{greeting()}</div></div>
           </Show></div> : null,
       }}} /></div>
@@ -79,34 +90,57 @@ beforeAll(async () => {
         <button data-shell-switch onClick={() => setCustom(true)} style="position:fixed;bottom:0;right:0">Switch Shell</button>
       </div>
     }
-    render(() => new URLSearchParams(location.search).has("chrome") ? <ChromeFixture /> : <App />, document.getElementById("root"))
+    const i18n = setupI18n({ locale: "en", messages: { en: {} } })
+    render(() => <I18nProvider i18n={i18n}>{new URLSearchParams(location.search).has("chrome") ? <ChromeFixture /> : <App />}</I18nProvider>, document.getElementById("root"))
   `,
   )
   server = await createServer({
     configFile: false,
     root: directory,
     cacheDir: path.join(directory, ".vite"),
-    plugins: [solid(), tailwind()],
+    plugins: [solid(), tailwind(), ...lingui()],
     resolve: {
       alias: [
         { find: /^\.\/decision-surface$/, replacement: path.join(directory, "decision.tsx") },
         { find: "@/context/platform", replacement: path.join(directory, "platform.ts") },
+        { find: "@/context/execution", replacement: path.join(directory, "execution.ts") },
+        { find: "@/context/sdk", replacement: path.join(directory, "execution.ts") },
+        { find: "@solidjs/router", replacement: path.join(directory, "execution.ts") },
         { find: "@", replacement: source },
       ],
     },
     optimizeDeps: {
       noDiscovery: true,
-      include: ["solid-js", "solid-js/web", "solid-js/jsx-runtime", "@solid-primitives/resize-observer", "zod"],
+      include: [
+        "solid-js",
+        "solid-js/web",
+        "solid-js/jsx-runtime",
+        "@solid-primitives/resize-observer",
+        "@lingui/core",
+        "@lingui/solid",
+        "fuzzysort",
+        "zod",
+      ],
     },
-    server: { host: "127.0.0.1", port: 0, fs: { allow: [path.resolve(source, "../../..")] } },
+    server: { host: "127.0.0.1", port: await fixturePort(), fs: { allow: [path.resolve(source, "../../..")] } },
   })
   await server.listen()
   await server.warmupRequest("/main.tsx")
   url = server.resolvedUrls!.local[0]!
   browser = await chromium.launch({ headless: true })
-  page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
-  page.on("pageerror", (error) => errors.push(error.message))
 }, 60_000)
+
+beforeEach(async () => {
+  errors.length = 0
+  page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  page.setDefaultTimeout(5000)
+  page.setDefaultNavigationTimeout(30000)
+  page.on("pageerror", (error) => errors.push(error.message))
+})
+
+afterEach(async () => {
+  await page?.close()
+})
 
 afterAll(async () => {
   await browser?.close()
@@ -118,7 +152,15 @@ async function open(width = 1440, height = 900) {
   errors.length = 0
   await page.setViewportSize({ width, height })
   await page.goto(url)
-  await page.locator("[data-send]").waitFor()
+  await page
+    .locator("[data-send]")
+    .waitFor({ timeout: 5000 })
+    .catch((error) => {
+      throw new AggregateError(
+        [error, ...errors.map((message) => new Error(message))],
+        "Workbench fixture did not mount",
+      )
+    })
   expect(errors).toEqual([])
 }
 
@@ -126,12 +168,17 @@ async function bounds(selector: string) {
   return page.locator(selector).evaluate((element) => element.getBoundingClientRect().toJSON())
 }
 
-test("new and existing tasks keep their status actions available", async () => {
+test("new and existing tasks keep input actions without a reserved status footer", async () => {
   await open()
-  expect(await page.getByRole("button", { name: "Connection details" }).isVisible()).toBe(true)
+  expect(await page.locator("[data-status]").count()).toBe(0)
+  expect(await page.locator("[data-send]").isVisible()).toBe(true)
   await page.locator("[data-send]").click()
-  expect(await page.getByRole("button", { name: "Connection details" }).isVisible()).toBe(true)
-})
+  expect(await page.locator("[data-status]").count()).toBe(0)
+  expect(await page.locator("[data-send]").isVisible()).toBe(true)
+  const dock = await bounds(".session-prompt-dock-content")
+  const input = await bounds(".prompt-input-shell")
+  expect(Math.abs(dock.bottom - input.bottom)).toBeLessThanOrEqual(1)
+}, 30_000)
 
 test("first send keeps the composer anchored and the editor mounted", async () => {
   await open()
@@ -151,19 +198,163 @@ test("first send keeps the composer anchored and the editor mounted", async () =
   expect(await page.locator('[role="textbox"]').count()).toBe(1)
 }, 20_000)
 
-test("inbox remains within a narrow chat pane and touch actions retain their hit area", async () => {
+test("task details contain the inbox on narrow panes and touch actions retain their hit area", async () => {
   for (const width of [1440, 768, 375]) {
     await open(width, 812)
     await page.locator("[data-send]").click()
+    await page.getByRole("button", { name: "Task details", exact: true }).click()
+    await page.locator(".execution-compact-identity").hover()
+    await page.locator(".execution-identity-action").click()
+    await page.getByRole("button", { name: "Inbox history", exact: true }).click()
+    await page.locator("[data-inbox]").waitFor()
+    const popover = await bounds(".execution-popover")
     const inbox = await bounds("[data-inbox]")
-    expect(inbox.left).toBeGreaterThanOrEqual(0)
-    expect(inbox.right).toBeLessThanOrEqual(width)
+    expect(popover.left).toBeGreaterThanOrEqual(0)
+    expect(popover.right).toBeLessThanOrEqual(width)
+    expect(inbox.left).toBeGreaterThanOrEqual(popover.left)
+    expect(inbox.right).toBeLessThanOrEqual(popover.right)
+    await page.locator(".execution-inbox-back").click()
+    await page.waitForFunction(() => document.activeElement?.classList.contains("execution-identity-action"))
+    await page.keyboard.press("Escape")
+    await page.waitForFunction(() => document.activeElement?.classList.contains("execution-trigger"))
     if (width === 375) {
       const send = await bounds("[data-send]")
       expect(send.width).toBeGreaterThanOrEqual(44)
       expect(send.height).toBeGreaterThanOrEqual(44)
     }
   }
+}, 20_000)
+
+test("task details preserve the inbox throughout animated dismissal and return focus", async () => {
+  type DismissalWindow = Window & {
+    dismissalDone: boolean
+    dismissalFrames: Array<{ closed: boolean; title: string | null; inboxHidden: boolean }>
+  }
+  await open()
+  await page.locator("[data-send]").click()
+  const trigger = page.locator(".execution-trigger")
+  for (const action of ["close", "escape", "outside", "trigger"]) {
+    await trigger.click()
+    await page.locator(".execution-compact-identity").hover()
+    await page.locator(".execution-identity-action").click()
+    await page.getByRole("button", { name: "Inbox history", exact: true }).click()
+    await page.locator("[data-inbox]").waitFor()
+    await page
+      .locator(".execution-popover")
+      .evaluate((element) => Promise.allSettled(element.getAnimations().map((animation) => animation.finished)))
+    await page.evaluate(() => {
+      const state = window as unknown as DismissalWindow
+      const popup = document.querySelector(".execution-popover")!
+      state.dismissalFrames = []
+      state.dismissalDone = false
+      const sample = () => {
+        if (!popup.isConnected) {
+          state.dismissalDone = true
+          return
+        }
+        state.dismissalFrames.push({
+          closed: popup.hasAttribute("data-closed"),
+          title: popup.querySelector('[data-slot="popover-title"]')!.textContent,
+          inboxHidden: !popup.querySelector(".execution-inbox-back"),
+        })
+        requestAnimationFrame(sample)
+      }
+      requestAnimationFrame(sample)
+    })
+    if (action === "close") await page.locator('[data-slot="popover-close-button"]').click()
+    if (action === "escape") await page.keyboard.press("Escape")
+    if (action === "outside") await page.locator('[role="textbox"]').click()
+    if (action === "trigger") await trigger.click()
+    await page.locator(".execution-popover").waitFor({ state: "hidden" })
+    await page.waitForFunction(() => (window as unknown as DismissalWindow).dismissalDone)
+    const frames = await page.evaluate(() =>
+      (window as unknown as DismissalWindow).dismissalFrames.filter((frame) => frame.closed),
+    )
+    expect(frames.length).toBeGreaterThan(0)
+    expect(frames.every((frame) => frame.title === "Inbox history" && !frame.inboxHidden)).toBe(true)
+    await page.waitForFunction(
+      (outside) => document.activeElement?.matches(outside ? '[role="textbox"]' : ".execution-trigger"),
+      action === "outside",
+    )
+    await trigger.click()
+    await page.locator(".execution-identity-action").waitFor()
+    expect(await page.locator('[data-slot="popover-title"]').textContent()).toBe("Task details")
+    await page.waitForFunction(() => document.querySelector(".execution-popover")?.contains(document.activeElement))
+    await page.keyboard.press("Escape")
+    await page.locator(".execution-popover").waitFor({ state: "hidden" })
+    await page.waitForFunction(() => document.activeElement?.classList.contains("execution-trigger"))
+    expect(errors).toEqual([])
+  }
+}, 30_000)
+
+test("reopening task details during dismissal resets navigation without moving focus out of the popup", async () => {
+  await open()
+  await page.locator("[data-send]").click()
+  await page.locator('[role="textbox"]').fill("Retained unsent draft")
+  await page.locator(".execution-trigger").click()
+  for (let cycle = 0; cycle < 4; cycle++) {
+    await page.locator(".execution-compact-identity").hover()
+    await page.locator(".execution-identity-action").click()
+    await page.getByRole("button", { name: "Inbox history", exact: true }).click()
+    await page.locator("[data-inbox]").waitFor()
+    await page
+      .locator(".execution-popover")
+      .evaluate((element) => Promise.allSettled(element.getAnimations().map((animation) => animation.finished)))
+    await page.evaluate(() => {
+      document.querySelector<HTMLButtonElement>('[data-slot="popover-close-button"]')!.click()
+      document.querySelector<HTMLButtonElement>(".execution-trigger")!.click()
+    })
+    await page.waitForFunction(() => {
+      const popup = document.querySelector(".execution-popover")
+      return popup && !popup.hasAttribute("data-closed")
+    })
+    await page.locator(".execution-popover").evaluate(async (element) => {
+      await Promise.allSettled(element.getAnimations().map((animation) => animation.finished))
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    })
+    expect(await page.locator('[data-slot="popover-title"]').textContent()).toBe("Task details")
+    expect(
+      await page.locator(".execution-identity-action").evaluate((element) => element === document.activeElement),
+    ).toBe(true)
+    expect(await page.locator(".execution-inbox-back").count()).toBe(0)
+    expect(await page.locator('[role="textbox"]').textContent()).toBe("Retained unsent draft")
+    expect(await page.locator("[data-message]").isVisible()).toBe(true)
+  }
+  expect(errors).toEqual([])
+}, 20_000)
+
+test("completed task detail dismissal cannot move focus out of a newly opened popup", async () => {
+  await open()
+  await page.locator("[data-send]").click()
+  await page.locator(".execution-trigger").click()
+  await page.locator(".execution-compact-identity").hover()
+  await page.locator(".execution-identity-action").click()
+  await page.getByRole("button", { name: "Inbox history", exact: true }).click()
+  await page.locator("[data-inbox]").waitFor()
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const popup = document.querySelector(".execution-popover")!
+        const trigger = document.querySelector<HTMLButtonElement>(".execution-trigger")!
+        const observer = new MutationObserver(() => {
+          if (popup.isConnected) return
+          observer.disconnect()
+          trigger.click()
+          resolve()
+        })
+        observer.observe(document.body, { childList: true, subtree: true })
+        document.querySelector<HTMLButtonElement>('[data-slot="popover-close-button"]')!.click()
+      }),
+  )
+  await page.locator(".execution-popover").evaluate(async (element) => {
+    await Promise.allSettled(element.getAnimations().map((animation) => animation.finished))
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+  })
+  expect(await page.locator('[data-slot="popover-title"]').textContent()).toBe("Task details")
+  expect(await page.locator(".execution-popover").evaluate((element) => element.contains(document.activeElement))).toBe(
+    true,
+  )
+  expect(errors).toEqual([])
 }, 20_000)
 
 test("long input grows upward and keeps actions in a short or narrow viewport", async () => {

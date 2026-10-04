@@ -4,19 +4,24 @@ import { AgendaWatchTool } from "@ericsanchezok/synergy-workflows/agenda/tools/a
 describe("agenda_watch parameters", () => {
   test("delay and onSessionEnd are mutually exclusive — neither is rejected", async () => {
     const tool = await AgendaWatchTool.init()
-    expect(() => tool.parameters.parse({ title: "t", prompt: "p" })).toThrow()
+    expect(() => tool.parameters.parse({ agendaTitle: "t", executionInstructions: "p" })).toThrow()
   })
 
   test("delay and onSessionEnd are mutually exclusive — both is rejected", async () => {
     const tool = await AgendaWatchTool.init()
     expect(() =>
-      tool.parameters.parse({ title: "t", prompt: "p", delay: "1h", onSessionEnd: { sessionID: "ses_x" } }),
+      tool.parameters.parse({
+        agendaTitle: "t",
+        executionInstructions: "p",
+        delay: "1h",
+        onSessionEnd: { sessionID: "ses_x" },
+      }),
     ).toThrow()
   })
 
   test("delay alone parses", async () => {
     const tool = await AgendaWatchTool.init()
-    const parsed = tool.parameters.parse({ title: "t", prompt: "p", delay: "1h" })
+    const parsed = tool.parameters.parse({ agendaTitle: "t", executionInstructions: "p", delay: "1h" })
     expect(parsed.delay).toBe("1h")
     expect(parsed.onSessionEnd).toBeUndefined()
   })
@@ -24,8 +29,8 @@ describe("agenda_watch parameters", () => {
   test("onSessionEnd alone parses with optional filters", async () => {
     const tool = await AgendaWatchTool.init()
     const parsed = tool.parameters.parse({
-      title: "t",
-      prompt: "p",
+      agendaTitle: "t",
+      executionInstructions: "p",
       onSessionEnd: { sessionID: "ses_x", agent: "research", finish: "stop" },
     })
     expect(parsed.onSessionEnd).toEqual({ sessionID: "ses_x", agent: "research", finish: "stop" })

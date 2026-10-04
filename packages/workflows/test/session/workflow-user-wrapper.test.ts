@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { WorkflowUserWrapper } from "@ericsanchezok/synergy-harness/test/internal/session/workflow-user-wrapper"
@@ -23,7 +24,7 @@ function userMessage(id: string, text: string, metadata?: Record<string, any>): 
       sessionID,
       role: "user",
       time: { created: 0 },
-      agent: "synergy",
+      agent: PrimaryAgentIdentity.names.general,
       model: { providerID: "test", modelID: "test" },
       metadata,
       isRoot: true,
@@ -56,7 +57,7 @@ describe("WorkflowUserWrapper metadata", () => {
       expect(
         WorkflowUserWrapper.stripReservedMetadata({
           workflow: "plan",
-          workflowAgent: "synergy",
+          workflowAgent: PrimaryAgentIdentity.names.general,
           workflowVersion: 1,
           source: "mailbox",
         }),
@@ -68,33 +69,33 @@ describe("WorkflowUserWrapper metadata", () => {
       expect(
         WorkflowUserWrapper.metadataForUserMessage({
           session: planSession,
-          agentName: "synergy",
+          agentName: PrimaryAgentIdentity.names.general,
         }),
       ).toEqual({
         workflow: "plan",
-        workflowAgent: "synergy",
+        workflowAgent: PrimaryAgentIdentity.names.general,
         workflowVersion: 1,
       })
 
       expect(
         WorkflowUserWrapper.metadataForUserMessage({
           session: latticeSession,
-          agentName: "synergy",
+          agentName: PrimaryAgentIdentity.names.general,
         }),
       ).toEqual({
         workflow: "lattice",
-        workflowAgent: "synergy",
+        workflowAgent: PrimaryAgentIdentity.names.general,
         workflowVersion: 1,
       })
 
       expect(
         WorkflowUserWrapper.metadataForUserMessage({
           session: lightloopSession,
-          agentName: "synergy",
+          agentName: PrimaryAgentIdentity.names.general,
         }),
       ).toEqual({
         workflow: "lightloop",
-        workflowAgent: "synergy",
+        workflowAgent: PrimaryAgentIdentity.names.general,
         workflowVersion: 1,
       })
     }))
@@ -104,28 +105,28 @@ describe("WorkflowUserWrapper metadata", () => {
       expect(
         WorkflowUserWrapper.metadataForUserMessage({
           session: normalSession,
-          agentName: "synergy",
+          agentName: PrimaryAgentIdentity.names.general,
         }),
       ).toEqual({})
       expect(
         WorkflowUserWrapper.metadataForUserMessage({
           session: planSession,
           noReply: true,
-          agentName: "synergy",
+          agentName: PrimaryAgentIdentity.names.general,
         }),
       ).toEqual({})
       expect(
         WorkflowUserWrapper.metadataForUserMessage({
           session: planSession,
           metadata: { source: "blueprint_loop_start" },
-          agentName: "synergy",
+          agentName: PrimaryAgentIdentity.names.general,
         }),
       ).toEqual({})
       expect(
         WorkflowUserWrapper.metadataForUserMessage({
           session: planSession,
           metadata: { source: "mailbox" },
-          agentName: "synergy",
+          agentName: PrimaryAgentIdentity.names.general,
         }),
       ).toEqual({})
     }))
@@ -136,11 +137,11 @@ describe("WorkflowUserWrapper metadata", () => {
         WorkflowUserWrapper.metadataForUserMessage({
           session: planSession,
           metadata: { source: "mailbox", workflow: "plan" },
-          agentName: "synergy",
+          agentName: PrimaryAgentIdentity.names.general,
         }),
       ).toEqual({
         workflow: "plan",
-        workflowAgent: "synergy",
+        workflowAgent: PrimaryAgentIdentity.names.general,
         workflowVersion: 1,
       })
     }))
@@ -160,38 +161,38 @@ describe("WorkflowUserWrapper projection", () => {
     runtime.run(() => {
       const original = userMessage("message_1", "build the new importer", {
         workflow: "plan",
-        workflowAgent: "synergy",
+        workflowAgent: PrimaryAgentIdentity.names.general,
       })
       const projected = WorkflowUserWrapper.projectMessages({
         messages: [original],
         session: planSession,
-        agent: { name: "synergy" },
+        agent: { name: PrimaryAgentIdentity.names.general },
       })
 
       expect((original.parts[0] as MessageV2.TextPart).text).toBe("build the new importer")
       const text = (projected[0].parts[0] as MessageV2.TextPart).text
-      expect(text).toContain("You are synergy in the Plan workflow")
+      expect(text).toContain(`You are ${PrimaryAgentIdentity.names.general} in the Plan workflow`)
       expect(text).toContain("converge materially different routes")
       expect(text).toContain("single clarification checkpoint")
       expect(text).toContain("one question call")
       expect(text).toContain("User request:\nbuild the new importer")
     }))
 
-  test("uses coding-specific guidance for synergy-max Plan", () =>
+  test("uses coding-specific Plan guidance", () =>
     runtime.run(() => {
       const projected = WorkflowUserWrapper.projectMessages({
         messages: [
           userMessage("message_1", "refactor the route layer", {
             workflow: "plan",
-            workflowAgent: "synergy-max",
+            workflowAgent: PrimaryAgentIdentity.names.coding,
           }),
         ],
         session: planSession,
-        agent: { name: "synergy-max" },
+        agent: { name: PrimaryAgentIdentity.names.coding },
       })
 
       const text = (projected[0].parts[0] as MessageV2.TextPart).text
-      expect(text).toContain("You are synergy-max in the coding Plan workflow")
+      expect(text).toContain(`You are ${PrimaryAgentIdentity.names.coding} in the coding Plan workflow`)
       expect(text).toContain("Do not carry out the requested change.")
       expect(text).toContain("one material engineering route")
       expect(text).toContain("canonical owner")
@@ -206,15 +207,15 @@ describe("WorkflowUserWrapper projection", () => {
         messages: [
           userMessage("message_1", "build it", {
             workflow: "plan",
-            workflowAgent: "synergy-max",
+            workflowAgent: PrimaryAgentIdentity.names.coding,
           }),
         ],
         session: planSession,
-        agent: { name: "synergy" },
+        agent: { name: PrimaryAgentIdentity.names.general },
       })
 
       const text = (projected[0].parts[0] as MessageV2.TextPart).text
-      expect(text).toContain("You are synergy-max in the coding Plan workflow")
+      expect(text).toContain(`You are ${PrimaryAgentIdentity.names.coding} in the coding Plan workflow`)
     }))
 
   test("falls back to generic guidance for custom agents", () =>
@@ -240,7 +241,7 @@ describe("WorkflowUserWrapper projection", () => {
       const projected = WorkflowUserWrapper.projectMessages({
         messages: [userMessage("message_1", "ordinary history")],
         session: planSession,
-        agent: { name: "synergy" },
+        agent: { name: PrimaryAgentIdentity.names.general },
       })
 
       expect((projected[0].parts[0] as MessageV2.TextPart).text).toBe("ordinary history")

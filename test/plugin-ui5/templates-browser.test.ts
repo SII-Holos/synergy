@@ -20,6 +20,16 @@ test("all eight packed templates register and their contributed presentations mo
     const artifacts: string[] = []
     for (const { template, project } of projects) {
       scaffoldPluginProject(`sample-${template}`, template, project.root)
+      if (template === "shell") {
+        const source = Bun.file(path.join(project.root, "src/session.tsx"))
+        await Bun.write(
+          source,
+          (await source.text()).replace(
+            '<div class="studio-session-main">',
+            '<div class="studio-session-main"><aside data-plugin-inbox>{context.composerLayout?.render("inbox")}</aside>',
+          ),
+        )
+      }
       expect(await buildPluginProject(project.root)).toBe(true)
       const archive = packPluginProject(project.root)
       const installed = path.join(project.root, "installed")
@@ -44,7 +54,10 @@ test("all eight packed templates register and their contributed presentations mo
     diagnostics = await openPluginPreviewPage(preview, page)
     await page.goto(conversation.url)
     await page.locator('[data-plugin-ui="sample-slot"]').waitFor()
+    expect(await page.locator(".session-inbox-panel").count()).toBe(0)
+    await page.locator('[data-slot="turn-process-trigger"]').click()
     await page.locator('[data-plugin-ui="sample-tool-ui"]').waitFor()
+    expect(await page.locator('[data-component="conversation-activity"] > button').count()).toBe(0)
     await page.getByRole("button", { name: /open side workspace/i }).click()
     await page.getByRole("button", { name: /sample-workbench-panel/ }).click()
     await page.locator('[data-plugin-ui="sample-workbench-panel"]').waitFor()
@@ -66,6 +79,7 @@ test("all eight packed templates register and their contributed presentations mo
     }, new URL(preview.url).origin)
     await page.goto(conversation.url)
     await page.getByRole("textbox", { name: "Message", exact: true }).waitFor()
+    await page.locator("[data-plugin-inbox] .session-inbox-panel").waitFor()
     await page.locator('[data-skin-root="sample-skin:paper"]').first().waitFor({ state: "attached" })
     expect(
       await page.locator('[data-ui-part="composer"]').evaluate((node) => getComputedStyle(node).borderRadius),

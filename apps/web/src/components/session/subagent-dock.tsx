@@ -1,308 +1,288 @@
-import { For, Show, createEffect, createMemo, createSignal, onCleanup, type JSX } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { useLingui } from "@lingui/solid"
+import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import type { CortexTask } from "@ericsanchezok/synergy-sdk/client"
 import { useSessionDataView } from "@/context/session-data-view"
 import { useSDK } from "@/context/sdk"
 import { useNavigateToSession } from "@/composables/use-navigate-to-session"
-import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import type { CortexTask, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import { getAgentVisual } from "@/components/agent-visual"
-import { resolveRuntimeIconState } from "@/components/status-bar"
-import { useLocale } from "@/context/locale"
+import { resolveRuntimeIconState } from "@/components/status-bar/runtime"
 import { translateDescriptor } from "@/locales/translate"
+import { requestErrorMessage } from "@/utils/error"
 import { S } from "./session-i18n"
-import "./subagent-dock.css"
 import { sharedSecondTick } from "./second-tick"
+import { useSessionSurfaceFocus } from "./session-surface-focus"
+import "./subagent-dock.css"
 
-type RetrySessionStatus = Extract<SessionStatus, { type: "retry" }>
+const HOLD_MS = 2000
+const RING_LENGTH = 2 * Math.PI * 19
 
-function isRetryStatus(status: SessionStatus | undefined): status is RetrySessionStatus {
-  return status?.type === "retry"
-}
-
-const HOLD_TO_CANCEL_MS = 2000
-const HOLD_RING_CIRCUMFERENCE = 2 * Math.PI * 19
-function formatElapsed(startedAt: number, completedAt?: number): string {
-  const end = completedAt ?? Date.now()
-  const seconds = Math.max(0, Math.floor((end - startedAt) / 1000))
-  if (seconds < 60) return `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  const remaining = seconds % 60
-  return `${minutes}m ${remaining}s`
-}
-
-interface SubagentAvatarProps {
-  task: CortexTask
-  index: number
-  onCancel: (taskID: string) => void
-}
-
-function SubagentAvatar(props: SubagentAvatarProps) {
+function SubagentAvatar(props: { task: CortexTask; suppressed?: boolean }) {
   const view = useSessionDataView()
-  const navigateToSession = useNavigateToSession()
-  const { i18n } = useLocale()
-  const _ = (d: { id: string; message: string }) => i18n._(d)
-  const config = createMemo(() => getAgentVisual(props.task.agent))
-  const isQueued = () => props.task.status === "queued"
-  const sessionStatus = createMemo<SessionStatus | undefined>(() => view().statusFor(props.task.sessionID))
-  const runtimeState = createMemo(() => resolveRuntimeIconState(sessionStatus(), false, i18n))
-  const isRetrying = () => sessionStatus()?.type === "retry"
-  const [holdProgress, setHoldProgress] = createSignal(0)
-  const [isHolding, setIsHolding] = createSignal(false)
-
-  let holdFrame = 0
-  let holdStartAt = 0
-  let cancelledByHold = false
-  let suppressClick = false
-
-  const secondTick = sharedSecondTick()
-  // Elapsed clock runs only while the task is pending or active: the shared
-  // 1 Hz source stays alive while at least one running/queued avatar
-  // subscribes and the document is visible, so completed/error/cancelled
-  // tasks stop ticking entirely (their duration is frozen at completedAt).
+  const sdk = useSDK()
+  const openSession = useNavigateToSession()
+  const returnFocus = useSessionSurfaceFocus()
+  const { i18n } = useLingui()
+  const visual = createMemo(() => getAgentVisual(props.task.agent))
+  const status = () => view().statusFor(props.task.sessionID)
+  const runtime = () => resolveRuntimeIconState(status(), false, i18n())
+  const queued = () => props.task.status === "queued"
+  const [progress, setProgress] = createSignal(0)
+  const [holding, setHolding] = createSignal(false)
+  const [pending, setPending] = createSignal(false)
+  let live = true
+  let button: HTMLButtonElement | undefined
+  let frame = 0
+  let pointer: { id: number; x: number; y: number; valid: boolean; completed: boolean } | undefined
+  let spaceHeld = false
+  let spaceCompleted = false
+  let pointerClickAllowed = false
+  const clock = sharedSecondTick()
   createEffect(() => {
-    if (props.task.status !== "running" && props.task.status !== "queued") return
-    const unsubscribe = secondTick.subscribe()
-    onCleanup(unsubscribe)
+    if (props.task.status !== "running" && !queued()) return
+    onCleanup(clock.subscribe())
   })
   const elapsed = createMemo(() => {
-    if (props.task.status !== "running" && props.task.status !== "queued") {
-      return formatElapsed(props.task.startedAt, props.task.completedAt)
-    }
-    secondTick.read()
-    return formatElapsed(props.task.startedAt)
+    clock.read()
+    const seconds = Math.max(0, Math.floor((Date.now() - props.task.startedAt) / 1000))
+    return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`
   })
-
   const stopHold = () => {
-    if (holdFrame) cancelAnimationFrame(holdFrame)
-    holdFrame = 0
-    holdStartAt = 0
-    setIsHolding(false)
-    setHoldProgress(0)
+    cancelAnimationFrame(frame)
+    frame = 0
+    setHolding(false)
+    setProgress(0)
   }
-
-  onCleanup(() => {
-    if (holdFrame) cancelAnimationFrame(holdFrame)
-  })
-
-  const openSession = () => {
-    if (isQueued()) return
-    navigateToSession(props.task.sessionID)
-  }
-
-  const beginHold = () => {
-    if (isQueued()) return
-    cancelledByHold = false
-    holdStartAt = performance.now()
-    setIsHolding(true)
-    setHoldProgress(0)
-
-    const tick = (now: number) => {
-      const progress = Math.min((now - holdStartAt) / HOLD_TO_CANCEL_MS, 1)
-      setHoldProgress(progress)
-      if (progress >= 1) {
-        cancelledByHold = true
-        stopHold()
-        props.onCancel(props.task.id)
-        return
-      }
-      holdFrame = requestAnimationFrame(tick)
-    }
-
-    holdFrame = requestAnimationFrame(tick)
-  }
-
-  const handlePointerDown: JSX.EventHandlerUnion<HTMLButtonElement, PointerEvent> = (event) => {
-    if (isQueued()) return
-    if (event.pointerType === "mouse" && event.button !== 0) return
-    event.currentTarget.setPointerCapture(event.pointerId)
-    beginHold()
-  }
-
-  const handlePointerUp: JSX.EventHandlerUnion<HTMLButtonElement, PointerEvent> = (event) => {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
-    const didCancel = cancelledByHold
-    suppressClick = true
-    stopHold()
-    if (!didCancel) openSession()
-  }
-
-  const handlePointerLeave: JSX.EventHandlerUnion<HTMLButtonElement, PointerEvent> = () => {
-    if (!isHolding()) return
+  const abort = () => {
+    pointer = undefined
+    pointerClickAllowed = false
+    spaceHeld = false
     stopHold()
   }
-
-  const handlePointerCancel: JSX.EventHandlerUnion<HTMLButtonElement, PointerEvent> = (event) => {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
-    stopHold()
-  }
-
-  const handleClick: JSX.EventHandlerUnion<HTMLButtonElement, MouseEvent> = (event) => {
-    if (suppressClick) {
-      suppressClick = false
-      event.preventDefault()
-      return
-    }
-    openSession()
-  }
-
-  const ringOffset = () => HOLD_RING_CIRCUMFERENCE * (1 - holdProgress())
-
-  const tooltipContent = (): JSX.Element => {
-    const task = props.task
-    const cfg = config()
-    const state = runtimeState()
-    const status = sessionStatus()
-    const retryStatus = isRetryStatus(status) ? status : undefined
-    return (
-      <div class="subagent-popover flex flex-col gap-1.5 py-1 max-w-56">
-        <div class="flex items-center gap-2">
-          <span class="inline-flex items-center gap-1.5 text-13-medium">
-            <span class="select-none leading-none" style={{ "font-size": "14px" }}>
-              {cfg.emoji}
-            </span>
-            <span>{translateDescriptor(cfg.label, i18n)}</span>
-          </span>
-
-          <span class="text-11-regular text-text-subtle">{elapsed()}</span>
-        </div>
-        <div class="text-12-regular text-text-weak leading-relaxed line-clamp-2">{task.description}</div>
-        <Show when={!isQueued() && task.progress}>
-          <div class="flex items-center gap-2 text-11-regular text-text-subtle">
-            <Show when={task.progress!.toolCalls > 0}>
-              <span>{i18n._({ ...S.subagentToolsCount, values: { count: task.progress!.toolCalls } })}</span>
-            </Show>
-            <Show when={task.progress!.lastTool}>
-              <span class="truncate max-w-28">{task.progress!.lastTool}</span>
-            </Show>
-          </div>
-        </Show>
-        <Show when={retryStatus}>
-          {(status) => {
-            const s = status() as RetrySessionStatus
-            return (
-              <div class="flex flex-col gap-0.5">
-                <div class="flex items-center gap-1.5 text-11-medium text-text-on-critical-base">
-                  <Icon name={state.icon} size="small" />
-                  <span>{i18n._({ ...S.subagentRetry, values: { attempt: s.attempt } })}</span>
-                </div>
-                <Show when={s.message}>
-                  <span class="text-11-regular text-text-on-critical-base leading-relaxed break-words line-clamp-3">
-                    {s.message}
-                  </span>
-                </Show>
-              </div>
-            )
-          }}
-        </Show>
-        <span class="text-11-regular text-text-interactive-base">
-          {isQueued() ? _(S.subagentQueuedWait) : _(S.subagentTapToOpen)}
-        </span>
-      </div>
-    )
-  }
-
-  const ariaLabel = createMemo(() => {
-    if (isQueued())
-      return i18n._({ ...S.subagentAriaQueued, values: { agent: translateDescriptor(config().label, i18n) } })
-    const status = sessionStatus()
-    if (isRetryStatus(status)) {
-      return i18n._({
-        ...S.subagentRetryAria,
-        values: {
-          agent: translateDescriptor(config().label, i18n),
-          attempt: status.attempt,
-          message: status.message ?? "",
-        },
+  const cancel = async () => {
+    if (props.suppressed || pending() || queued() || props.task.status !== "running") return
+    setPending(true)
+    try {
+      await sdk.client.cortex.cancel({ taskID: props.task.id }, { throwOnError: true })
+    } catch (error) {
+      if (!live) return
+      setPending(false)
+      showToast({
+        type: "error",
+        title: i18n()._(S.subagentCancelFailed),
+        description: requestErrorMessage(error, i18n()._(S.subagentCancelFailed)),
       })
     }
-    return i18n._({ ...S.subagentAriaLabel, values: { description: props.task.description } })
+  }
+  const beginHold = (complete: () => void) => {
+    const started = performance.now()
+    setHolding(true)
+    const tick = (now: number) => {
+      const next = Math.min(1, (now - started) / HOLD_MS)
+      setProgress(next)
+      if (next < 1) {
+        frame = requestAnimationFrame(tick)
+        return
+      }
+      complete()
+      stopHold()
+      void cancel()
+    }
+    frame = requestAnimationFrame(tick)
+  }
+  const open = () => {
+    if (!props.suppressed && !queued() && !pending() && props.task.status === "running")
+      openSession(props.task.sessionID)
+  }
+  createEffect(() => {
+    if (props.suppressed || props.task.status !== "running") abort()
   })
-
+  window.addEventListener("blur", abort)
+  const visibility = () => {
+    if (document.hidden) abort()
+  }
+  document.addEventListener("visibilitychange", visibility)
+  onCleanup(() => {
+    const focused = button === document.activeElement
+    live = false
+    abort()
+    window.removeEventListener("blur", abort)
+    document.removeEventListener("visibilitychange", visibility)
+    if (focused)
+      queueMicrotask(() => {
+        if (document.activeElement === document.body) returnFocus()
+      })
+  })
+  const ariaLabel = () =>
+    i18n()._({
+      ...(queued() ? S.subagentAriaQueued : S.subagentAriaLabel),
+      values: { agent: translateDescriptor(visual().label, i18n()), description: props.task.description },
+    })
   return (
-    <div class="subagent-dock-item" style={{ "animation-delay": `${props.index * 60}ms` }}>
-      <Tooltip value={tooltipContent()} placement="top">
-        <button
-          type="button"
-          aria-label={ariaLabel()}
-          onClick={handleClick}
-          onPointerDown={handlePointerDown}
-          onPointerUp={handlePointerUp}
-          onPointerLeave={handlePointerLeave}
-          onPointerCancel={handlePointerCancel}
-          classList={{
-            "workbench-control-surface subagent-avatar group relative flex items-center justify-center size-9 rounded-full border transition-all duration-200": true,
-            [`subagent-avatar-${props.task.agent}`]: true,
-            "subagent-avatar-queued opacity-50 cursor-default": isQueued(),
-            "cursor-pointer hover:scale-105 hover:border-border-strong-base active:scale-95": !isQueued(),
-            "subagent-avatar-holding": isHolding(),
-            "subagent-avatar-retrying": isRetrying(),
-            "border-border-base": !isRetrying(),
-            "subagent-avatar-retry-border": isRetrying(),
-          }}
-          style={{ "--subagent-accent-color": config().color }}
-        >
-          <Show when={!isQueued() && isHolding()}>
-            <svg class="subagent-hold-ring absolute inset-0 -rotate-90" viewBox="0 0 44 44" aria-hidden="true">
-              <circle class="subagent-hold-ring-track" cx="22" cy="22" r="19" fill="none" />
-              <circle
-                class="subagent-hold-ring-progress"
-                cx="22"
-                cy="22"
-                r="19"
-                fill="none"
-                style={{
-                  "stroke-dasharray": `${HOLD_RING_CIRCUMFERENCE}`,
-                  "stroke-dashoffset": `${ringOffset()}`,
-                }}
-              />
-            </svg>
+    <Tooltip
+      placement="top"
+      inactive={props.suppressed}
+      value={
+        <div class="subagent-popover">
+          <div class="subagent-popover-heading">
+            <span>
+              {visual().emoji} {translateDescriptor(visual().label, i18n())}
+            </span>
+            <span>{elapsed()}</span>
+          </div>
+          <div>{props.task.description}</div>
+          <Show when={props.task.progress}>
+            {(progress) => (
+              <div class="subagent-popover-detail">
+                {i18n()._({ ...S.subagentToolsCount, values: { count: progress().toolCalls } })}
+                <Show when={progress().lastTool}> · {progress().lastTool}</Show>
+              </div>
+            )}
           </Show>
-          <span
-            classList={{
-              "subagent-icon inline-flex items-center justify-center size-5 select-none text-[16px] leading-none": true,
-              "text-icon-base": !isRetrying(),
-              "text-icon-critical-base": isRetrying(),
-            }}
-          >
-            {config().emoji}
-          </span>
-        </button>
-      </Tooltip>
-    </div>
+          <Show when={status()?.type === "retry"}>
+            <div class="subagent-popover-retry">
+              <Icon name={runtime().icon} size="small" />
+              <span>{runtime().tooltip}</span>
+            </div>
+          </Show>
+          <span class="subagent-popover-hint">{i18n()._(queued() ? S.subagentQueuedWait : S.subagentTapToOpen)}</span>
+        </div>
+      }
+    >
+      <button
+        ref={button}
+        type="button"
+        class="subagent-dock-avatar"
+        aria-label={ariaLabel()}
+        aria-busy={pending()}
+        aria-disabled={queued() || pending()}
+        data-queued={queued()}
+        data-holding={holding()}
+        data-retrying={status()?.type === "retry"}
+        style={{ "--subagent-accent-color": visual().color }}
+        onPointerDown={(event) => {
+          if (
+            props.suppressed ||
+            queued() ||
+            pending() ||
+            event.button !== 0 ||
+            !event.isPrimary ||
+            pointer ||
+            spaceHeld
+          )
+            return
+          pointerClickAllowed = false
+          pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, valid: true, completed: false }
+          event.currentTarget.setPointerCapture(event.pointerId)
+          beginHold(() => {
+            if (pointer) pointer.completed = true
+          })
+        }}
+        onPointerMove={(event) => {
+          if (!pointer || event.pointerId !== pointer.id) return
+          const box = event.currentTarget.getBoundingClientRect()
+          if (
+            Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 8 ||
+            event.clientX < box.left ||
+            event.clientX > box.right ||
+            event.clientY < box.top ||
+            event.clientY > box.bottom
+          )
+            abort()
+        }}
+        onPointerLeave={(event) => {
+          if (!pointer || event.pointerId === pointer.id) abort()
+        }}
+        onPointerCancel={(event) => {
+          if (pointer && event.pointerId !== pointer.id) return
+          abort()
+          pointer = undefined
+          if (event.currentTarget.hasPointerCapture(event.pointerId))
+            event.currentTarget.releasePointerCapture(event.pointerId)
+        }}
+        onLostPointerCapture={(event) => {
+          if (pointer && event.pointerId !== pointer.id) return
+          if (pointer) {
+            abort()
+            pointer = undefined
+          }
+        }}
+        onPointerUp={(event) => {
+          if (!pointer || event.pointerId !== pointer.id) return
+          pointerClickAllowed = pointer.valid && !pointer.completed
+          pointer = undefined
+          stopHold()
+          if (event.currentTarget.hasPointerCapture(event.pointerId))
+            event.currentTarget.releasePointerCapture(event.pointerId)
+        }}
+        onClick={(event) => {
+          if (!holding() && (event.detail === 0 || pointerClickAllowed)) open()
+          pointerClickAllowed = false
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault()
+            abort()
+            return
+          }
+          if (event.key !== " " || event.repeat || props.suppressed || queued() || pending() || pointer || spaceHeld)
+            return
+          event.preventDefault()
+          spaceHeld = true
+          spaceCompleted = false
+          beginHold(() => {
+            spaceCompleted = true
+          })
+        }}
+        onKeyUp={(event) => {
+          if (event.key !== " ") return
+          event.preventDefault()
+          const activate = spaceHeld && !spaceCompleted
+          spaceHeld = false
+          stopHold()
+          if (activate) open()
+        }}
+        onBlur={abort}
+        onContextMenu={(event) => event.preventDefault()}
+      >
+        <Show when={holding()}>
+          <svg class="subagent-hold-ring" viewBox="0 0 44 44" aria-hidden="true">
+            <circle class="subagent-hold-ring-track" cx="22" cy="22" r="19" fill="none" />
+            <circle
+              class="subagent-hold-ring-progress"
+              cx="22"
+              cy="22"
+              r="19"
+              fill="none"
+              style={{ "stroke-dasharray": RING_LENGTH, "stroke-dashoffset": RING_LENGTH * (1 - progress()) }}
+            />
+          </svg>
+        </Show>
+        <span aria-hidden="true" class="subagent-dock-emoji">
+          {visual().emoji}
+        </span>
+      </button>
+    </Tooltip>
   )
 }
 
-interface SubagentDockProps {
-  sessionID: string
-}
-
-export function SubagentDock(props: SubagentDockProps) {
+export function SubagentDock(props: { sessionID: string; suppressed?: boolean }) {
   const view = useSessionDataView()
-  const sdk = useSDK()
-
-  const activeTasks = createMemo(() =>
+  const tasks = createMemo(() =>
     view()
       .cortexTasks()
       .filter(
         (task) => task.parentSessionID === props.sessionID && (task.status === "running" || task.status === "queued"),
       )
-      .sort((a, b) => a.startedAt - b.startedAt),
+      .sort((a, b) => a.startedAt - b.startedAt || a.id.localeCompare(b.id)),
   )
-
-  const handleCancel = (taskID: string) => {
-    sdk.client.cortex.cancel({ taskID }).catch(() => {})
-  }
-
+  const { i18n } = useLingui()
   return (
-    <Show when={activeTasks().length > 0}>
-      <div class="flex items-center justify-center gap-2 pb-2 pointer-events-auto">
-        <For each={activeTasks()}>
-          {(task, index) => <SubagentAvatar task={task} index={index()} onCancel={handleCancel} />}
-        </For>
+    <Show when={tasks().length}>
+      <div class="subagent-dock" role="group" aria-label={i18n()._(S.subagentDockLabel)}>
+        <For each={tasks()}>{(task) => <SubagentAvatar task={task} suppressed={props.suppressed} />}</For>
       </div>
     </Show>
   )

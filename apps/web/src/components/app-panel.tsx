@@ -1,11 +1,14 @@
 import type { JSX, ParentProps } from "solid-js"
 import { Show, For } from "solid-js"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
+import { Tabs as SharedTabs } from "@ericsanchezok/synergy-ui/tabs"
+import { RadioGroup } from "@ericsanchezok/synergy-ui/radio-group"
+import "./app-panel.css"
 
 function Root(props: ParentProps<{ class?: string }>) {
   return (
     <div
-      class={`synergy-workbench-canvas flex h-full min-h-0 bg-background-stronger text-text-base ${props.class ?? ""}`}
+      class={`app-panel synergy-workbench-canvas flex h-full min-h-0 bg-background-stronger text-text-base ${props.class ?? ""}`}
     >
       {props.children}
     </div>
@@ -26,7 +29,7 @@ function Nav(props: ParentProps<{ class?: string; ref?: (element: HTMLDivElement
 function NavSection(props: { label: string; children: JSX.Element }) {
   return (
     <div class="flex flex-col gap-0.5 px-2 pb-3">
-      <div class="text-11-medium text-text-weaker px-2.5 pt-4 pb-1.5 uppercase tracking-wide">{props.label}</div>
+      <div class="app-panel-caption text-text-weaker px-2.5 pt-4 pb-1.5 uppercase tracking-wide">{props.label}</div>
       {props.children}
     </div>
   )
@@ -38,7 +41,7 @@ function NavItem(props: { icon: IconName; label: string; active?: boolean; badge
       type="button"
       aria-current={props.active ? "page" : undefined}
       classList={{
-        "flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-13-medium transition-colors w-full text-left": true,
+        "flex items-center gap-2.5 px-2.5 py-2 rounded-lg app-panel-control transition-colors w-full text-left": true,
         "workbench-selected-surface bg-surface-raised-base text-text-strong shadow-sm": props.active,
         "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover": !props.active,
       }}
@@ -56,26 +59,19 @@ function Content(props: ParentProps<{ class?: string }>) {
 }
 
 function Header(props: ParentProps<{ class?: string }>) {
-  return (
-    <div
-      class={`shrink-0 px-6 pt-6 pb-3 flex flex-col gap-3.5 border-b border-border-weaker-base/40 ${props.class ?? ""}`}
-      style={{ animation: "fadeUp 0.3s ease-out both" }}
-    >
-      {props.children}
-    </div>
-  )
+  return <header class={`app-panel-header ${props.class ?? ""}`}>{props.children}</header>
 }
 
 function HeaderRow(props: ParentProps) {
-  return <div class="flex items-center gap-2">{props.children}</div>
+  return <div class="app-panel-header-row">{props.children}</div>
 }
 
 function Title(props: { children: JSX.Element }) {
-  return <span class="text-15-medium text-text-strong flex-1">{props.children}</span>
+  return <h1 class="app-panel-title app-panel-title text-text-strong">{props.children}</h1>
 }
 
 function Subtitle(props: { children: JSX.Element }) {
-  return <span class="text-12-regular text-text-weak -mt-1">{props.children}</span>
+  return <span class="app-panel-caption text-text-weak">{props.children}</span>
 }
 
 function Actions(props: ParentProps) {
@@ -87,13 +83,14 @@ function Action(props: { icon: IconName; label?: string; title?: string; disable
     <button
       type="button"
       classList={{
-        "flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-13-medium transition-colors": true,
+        "flex items-center gap-1.5 px-2 py-1.5 rounded-lg app-panel-control transition-colors": true,
         "text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover": !props.disabled,
         "text-icon-weak-base": !!props.disabled,
       }}
       disabled={props.disabled}
       onClick={props.onClick}
       title={props.title ?? props.label}
+      aria-label={props.title ?? props.label}
     >
       <Icon name={props.icon} size="small" />
       <Show when={props.label}>
@@ -103,12 +100,22 @@ function Action(props: { icon: IconName; label?: string; title?: string; disable
   )
 }
 
-function Body(props: ParentProps<{ class?: string; padding?: boolean }>) {
-  const px = props.padding === false ? "" : "px-6"
+function Body(
+  props: ParentProps<{
+    class?: string
+    padding?: boolean
+    tab?: { id: string; value: string }
+    ref?: (element: HTMLDivElement) => void
+  }>,
+) {
+  const px = props.padding === false ? "" : "px-4 sm:px-6"
   return (
     <div
-      class={`flex-1 min-h-0 overflow-y-auto ${px} pb-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${props.class ?? ""}`}
-      style={{ animation: "fadeUp 0.35s ease-out 0.05s both" }}
+      ref={props.ref}
+      class={`app-panel-body flex-1 min-h-0 overflow-y-auto ${px} pb-6 ${props.class ?? ""}`}
+      role={props.tab ? "tabpanel" : undefined}
+      id={props.tab ? `${props.tab.id}-${props.tab.value}-panel` : undefined}
+      aria-labelledby={props.tab ? `${props.tab.id}-${props.tab.value}` : undefined}
     >
       {props.children}
     </div>
@@ -129,7 +136,7 @@ function Section(props: { label: string; actions?: JSX.Element; children: JSX.El
   return (
     <div class="flex flex-col gap-2.5">
       <div class="flex items-center justify-between px-0.5 mt-4 first:mt-0 mb-1">
-        <span class="text-12-medium text-text-weak">{props.label}</span>
+        <span class="app-panel-caption text-text-weak">{props.label}</span>
         {props.actions}
       </div>
       {props.children}
@@ -163,9 +170,9 @@ function Card(props: {
         <Icon name={props.icon!} size="normal" class="text-icon-weak-base shrink-0" />
       </Show>
       <div class="flex-1 min-w-0">
-        <div class="text-14-medium text-text-strong truncate">{props.title}</div>
+        <div class="app-panel-row-title text-text-strong truncate">{props.title}</div>
         <Show when={props.subtitle}>
-          <div class="text-12-regular text-text-weaker truncate mt-0.5">{props.subtitle}</div>
+          <div class="app-panel-caption text-text-weaker truncate mt-0.5">{props.subtitle}</div>
         </Show>
       </div>
       <Show when={props.trailing}>
@@ -202,8 +209,9 @@ function SegmentedNav(props: {
         {(item) => (
           <button
             type="button"
+            aria-pressed={props.active === item.id}
             classList={{
-              "px-3 py-1.5 rounded-md text-13-medium transition-colors": true,
+              "px-3 py-1.5 rounded-md app-panel-control transition-colors": true,
               "workbench-selected-surface bg-surface-raised-base text-text-strong shadow-sm": props.active === item.id,
               "text-text-weak hover:text-text-base": props.active !== item.id,
             }}
@@ -217,21 +225,64 @@ function SegmentedNav(props: {
   )
 }
 
+function Tabs(props: {
+  id?: string
+  label: string
+  items: { id: string; label: string }[]
+  active: string
+  onChange: (id: string) => void
+}) {
+  return (
+    <SharedTabs value={props.active} onChange={props.onChange} class="app-panel-tabs">
+      <SharedTabs.List aria-label={props.label}>
+        <For each={props.items}>
+          {(item) => (
+            <SharedTabs.Trigger
+              value={item.id}
+              id={props.id ? `${props.id}-${item.id}` : undefined}
+              aria-controls={props.id ? `${props.id}-${item.id}-panel` : undefined}
+            >
+              {item.label}
+            </SharedTabs.Trigger>
+          )}
+        </For>
+      </SharedTabs.List>
+    </SharedTabs>
+  )
+}
+
 function Empty(props: { icon: IconName; title: string; description?: string; action?: JSX.Element }) {
   return (
-    <div
-      class="flex flex-col items-center justify-center py-16 gap-3"
-      style={{ animation: "fadeUp 0.4s ease-out 0.1s both" }}
-    >
+    <div class="app-panel-empty flex flex-col items-center justify-center py-16 gap-3">
       <Icon name={props.icon} size="large" class="text-icon-weak-base" />
       <div class="text-center">
-        <div class="text-14-medium text-text-weak">{props.title}</div>
+        <div class="app-panel-row-title text-text-weak">{props.title}</div>
         <Show when={props.description}>
-          <div class="text-12-regular text-text-weaker mt-1 max-w-64">{props.description}</div>
+          <div class="app-panel-caption text-text-weaker mt-1 max-w-64">{props.description}</div>
         </Show>
       </div>
       <Show when={props.action}>{props.action}</Show>
     </div>
+  )
+}
+
+function Selection(props: {
+  label: string
+  items: { id: string; label: JSX.Element }[]
+  active: string
+  onChange: (id: string) => void
+  class?: string
+}) {
+  return (
+    <RadioGroup
+      class={`app-panel-selection ${props.class ?? ""}`}
+      aria-label={props.label}
+      options={props.items}
+      current={props.items.find((item) => item.id === props.active)}
+      value={(item) => item.id}
+      label={(item) => item.label}
+      onSelect={(item) => item && props.onChange(item.id)}
+    />
   )
 }
 
@@ -261,6 +312,37 @@ export const AppPanel = {
   Card,
   CardList,
   SegmentedNav,
+  Tabs,
+  Selection,
   Empty,
   Loading,
+}
+
+export function capturePanelFocusReturn() {
+  const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+  const panel = trigger?.closest<HTMLElement>(".app-panel")
+  const list = trigger?.closest<HTMLElement>("[data-panel-list]")
+  const item = trigger?.closest<HTMLElement>("[data-panel-item]")
+  const identity = item?.getAttribute("data-panel-item")
+  const entry = item?.matches("[data-panel-focus-entry]")
+    ? item
+    : item?.querySelector<HTMLElement>("[data-panel-focus-entry]")
+  const position = Array.from(list?.querySelectorAll("[data-panel-focus-entry]") ?? []).indexOf(entry ?? trigger!)
+  return () =>
+    requestAnimationFrame(() => {
+      if (trigger?.isConnected && trigger.getClientRects().length && !trigger.matches(":disabled")) return
+      if (!panel?.isConnected) return
+      const currentList = list?.isConnected ? list : panel
+      const sameItem = Array.from(currentList.querySelectorAll<HTMLElement>("[data-panel-item]")).find(
+        (item) => item.getAttribute("data-panel-item") === identity,
+      )
+      const entries = Array.from(currentList.querySelectorAll<HTMLElement>("[data-panel-focus-entry]"))
+      const target =
+        (sameItem?.matches("[data-panel-focus-entry]")
+          ? sameItem
+          : sameItem?.querySelector<HTMLElement>("[data-panel-focus-entry]")) ??
+        entries[Math.min(Math.max(0, position), entries.length - 1)] ??
+        panel.querySelector<HTMLElement>("input:not(:disabled), [role=tab][aria-selected=true]")
+      target?.focus()
+    })
 }

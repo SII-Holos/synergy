@@ -1,3 +1,4 @@
+import { agendaAgentItem } from "./agent-item"
 import z from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { Agenda } from ".."
@@ -5,19 +6,23 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import DESCRIPTION from "./agenda-cancel.txt"
 
 const parameters = z.object({
-  id: z.string().describe("Agenda item ID to cancel"),
+  agendaItemId: z.string().describe("Agenda item ID to cancel"),
 })
 
-export const AgendaCancelTool = Tool.define("agenda_cancel", {
-  description: DESCRIPTION,
-  parameters,
-  async execute(params: z.infer<typeof parameters>) {
-    const item = await Agenda.cancel(params.id)
+export const AgendaCancelTool = Tool.define(
+  "agenda_cancel",
+  {
+    description: DESCRIPTION,
+    parameters,
+    async execute(params: z.infer<typeof parameters>) {
+      const item = await Agenda.cancel(params.agendaItemId)
 
-    return {
-      title: "Cancelled",
-      output: `Agenda item cancelled.\nID: ${item.id}\nTitle: ${item.title}\nStatus: cancelled\n\nThe item will no longer fire. Execution history is preserved — use agenda_logs(id="${item.id}") to review.`,
-      metadata: { id: item.id, status: "cancelled" } as Record<string, any>,
-    }
+      return {
+        title: "Cancelled",
+        output: JSON.stringify(agendaAgentItem(item), null, 2),
+        metadata: { id: item.id, status: "cancelled" } as Record<string, any>,
+      }
+    },
   },
-})
+  { activityKind: "object" },
+)

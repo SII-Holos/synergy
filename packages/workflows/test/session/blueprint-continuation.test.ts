@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { BlueprintLoopStore } from "@ericsanchezok/synergy-workflows/blueprint"
 import { Cortex } from "@ericsanchezok/synergy-harness/cortex/manager"
@@ -67,7 +68,7 @@ async function writeUser(sessionID: string, metadata?: Record<string, unknown>) 
     role: "user",
     sessionID,
     time: { created: Date.now() },
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model,
     metadata,
   })
@@ -91,8 +92,8 @@ async function writeAssistant(
     role: "assistant",
     sessionID,
     parentID,
-    mode: "synergy",
-    agent: "synergy",
+    mode: PrimaryAgentIdentity.names.general,
+    agent: PrimaryAgentIdentity.names.general,
     path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
     cost: 0,
     tokens,

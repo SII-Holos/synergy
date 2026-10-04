@@ -24,12 +24,13 @@ describe("rollout call stream", () => {
     runtime.run(async () => {
       const args = input()
       {
-        using write = spyOn(Storage, "writeBinary").mockRejectedValue(new Error("disk full"))
+        using write = spyOn(Storage, "prepareBinary").mockRejectedValue(new Error("disk full"))
         await expect(
           RolloutCall.stream(args, async () => {
             throw new Error("must not execute")
           }),
         ).rejects.toMatchObject({ name: "RolloutRecordingError" })
+        expect(write).toHaveBeenCalled()
       }
       let started = false
       await expect(
@@ -59,9 +60,9 @@ describe("rollout call stream", () => {
 
   test("keeps recording failure authoritative when stream disposal also fails", () =>
     runtime.run(async () => {
-      const original = Storage.writeBinary.bind(Storage)
+      const original = Storage.prepareBinary.bind(Storage)
       let writes = 0
-      using write = spyOn(Storage, "writeBinary").mockImplementation(async (key, bytes) => {
+      using write = spyOn(Storage, "prepareBinary").mockImplementation(async (key, bytes) => {
         if (++writes > 1) throw new Error("disk full")
         return original(key, bytes)
       })
@@ -79,17 +80,18 @@ describe("rollout call stream", () => {
           for await (const event of stream.fullStream) void event
         })(),
       ).rejects.toMatchObject({ name: "RolloutRecordingError" })
+      expect(writes).toBeGreaterThan(1)
     }))
 
   test("aborts the owner and stops the stream after response persistence fails", () =>
     runtime.run(async () => {
       const args = input()
-      const original = Storage.writeBinary.bind(Storage)
+      const original = Storage.prepareBinary.bind(Storage)
       let writes = 0
       let produced = 0
       let aborted = false
       let disposed = false
-      using write = spyOn(Storage, "writeBinary").mockImplementation(async (key, bytes) => {
+      using write = spyOn(Storage, "prepareBinary").mockImplementation(async (key, bytes) => {
         if (++writes > 1) throw new Error("disk full")
         return original(key, bytes)
       })
@@ -117,6 +119,7 @@ describe("rollout call stream", () => {
         })(),
       ).rejects.toThrow()
       expect(produced).toBe(1)
+      expect(writes).toBeGreaterThan(1)
       expect(aborted).toBe(true)
       expect(disposed).toBe(true)
     }))
@@ -152,7 +155,7 @@ describe("rollout call stream", () => {
   test("never starts inference when request recording fails", () =>
     runtime.run(async () => {
       let started = false
-      using write = spyOn(Storage, "writeBinary").mockRejectedValue(new Error("disk full"))
+      using write = spyOn(Storage, "prepareBinary").mockRejectedValue(new Error("disk full"))
       await expect(
         RolloutCall.stream(input(), async () => {
           started = true
@@ -160,6 +163,7 @@ describe("rollout call stream", () => {
         }),
       ).rejects.toThrow()
       expect(started).toBe(false)
+      expect(write).toHaveBeenCalled()
     }))
 
   test("disposal without consumption preserves a cancelled call", () =>
@@ -210,7 +214,7 @@ describe("rollout non-streaming calls", () => {
       const args = input()
       let started = false
       let stopped = false
-      using write = spyOn(Storage, "writeBinary").mockRejectedValue(new Error("disk full"))
+      using write = spyOn(Storage, "prepareBinary").mockRejectedValue(new Error("disk full"))
       await expect(
         RolloutCall.execute(
           args,
@@ -225,6 +229,7 @@ describe("rollout non-streaming calls", () => {
       ).rejects.toMatchObject({ name: "RolloutRecordingError" })
       expect(started).toBe(false)
       expect(stopped).toBe(true)
+      expect(write).toHaveBeenCalled()
       expect((await RolloutLedger.getRun(args.owner, args.runID)).recording).toBe("failed")
     }))
 
@@ -247,10 +252,10 @@ describe("rollout non-streaming calls", () => {
 test("non-streaming response commit failure aborts the owner and closes run admission", () =>
   runtime.run(async () => {
     const args = input()
-    const original = Storage.writeBinary.bind(Storage)
+    const original = Storage.prepareBinary.bind(Storage)
     let returned = false
     let aborted = false
-    using write = spyOn(Storage, "writeBinary").mockImplementation(async (key, bytes) => {
+    using write = spyOn(Storage, "prepareBinary").mockImplementation(async (key, bytes) => {
       if (returned) throw new Error("disk full")
       return original(key, bytes)
     })

@@ -53,6 +53,26 @@ export namespace WorkspaceBinding {
       : importHistory(workspace, scopeID)
   }
 
+  export async function describeDefault(scope: Scope): Promise<Workspace | null> {
+    const workspace = ScopeContext.defaultWorkspace(scope)
+    const source = RuntimeContext.current().host.workspaceLocation
+    if (workspace && source) {
+      const location = {
+        scopeID: scope.id,
+        hostID: await source.hostID(),
+        path: path.resolve(workspace.path),
+      }
+      const existing = await WorkspaceCatalog.findByLocation(location)
+      if (existing) return WorkspaceCatalog.projection(existing)
+      const canonical = await source.identify(location.path, true)
+      if (canonical.path !== location.path) {
+        const aliased = await WorkspaceCatalog.findByLocation({ ...location, path: canonical.path })
+        if (aliased) return WorkspaceCatalog.projection(aliased)
+      }
+    }
+    return migrate(workspace, scope.id)
+  }
+
   export async function adopt(workspace: Workspace | null, scopeID: string): Promise<Workspace | null> {
     if (!workspace) return null
     if (workspace.scopeID !== scopeID) throw new Error("Workspace belongs to a different Scope")
@@ -163,14 +183,29 @@ export namespace WorkspaceBinding {
       throw new WorkspaceCatalog.Unavailable({
         message: "The Workspace directory identity is unverified; explicitly rebind it before executing",
         workspaceID,
+        reason: "identity_unverified",
       })
     const actual = await source.identify(info.binding.path).catch(() => {
-      throw new WorkspaceCatalog.Unavailable({ message: "The Workspace directory is unavailable", workspaceID })
+      throw new WorkspaceCatalog.Unavailable({
+        message: "The Workspace directory is unavailable",
+        workspaceID,
+        reason: "directory_unavailable",
+      })
     })
+    if (
+      !actual.physicalID ||
+      (info.binding.physicalID.startsWith("volume-v1:") && !actual.physicalID.startsWith("volume-v1:"))
+    )
+      throw new WorkspaceCatalog.Unavailable({
+        message: "The Workspace directory identity cannot be verified; rebind it before executing",
+        workspaceID,
+        reason: "identity_unverified",
+      })
     if (actual.physicalID !== info.binding.physicalID)
       throw new WorkspaceCatalog.Unavailable({
         message: "The Workspace directory was replaced; rebind it before executing",
         workspaceID,
+        reason: "identity_changed",
       })
     return WorkspaceCatalog.projection(info)
   }

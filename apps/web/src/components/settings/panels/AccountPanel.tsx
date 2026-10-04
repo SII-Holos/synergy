@@ -116,7 +116,16 @@ export function AccountPanel() {
   function connectionLabel() {
     if (!holos.loaded) return _(loadingLabel)
     if (!holos.state.identity.loggedIn) return _(signedOutLabel)
-    return holos.state.connection.status.replace(/_/g, " ")
+    const status = holos.state.connection.status
+    const labels = {
+      connected: { id: "settings.account.connection.connected", message: "Connected" },
+      connecting: { id: "settings.account.connection.connecting", message: "Connecting" },
+      disconnected: { id: "settings.account.connection.disconnected", message: "Disconnected" },
+      disabled: { id: "settings.account.connection.disabled", message: "Connection disabled" },
+      failed: { id: "settings.account.connection.failed", message: "Connection failed" },
+      unknown: { id: "settings.account.connection.unknown", message: "Status unavailable" },
+    }
+    return _(labels[status])
   }
 
   function validateAvatarUrl(value: string): string | undefined {
@@ -336,36 +345,42 @@ export function AccountPanel() {
               <div class="account-detail-label">{_(statusLabel)}</div>
               <div class="account-detail-copy">{_(statusDescription)}</div>
             </div>
-            <span class="ds-inline-badge">{connectionLabel()}</span>
+            <span class="ds-inline-badge" classList={{ "ds-inline-badge-muted": !holos.state.identity.loggedIn }}>
+              {connectionLabel()}
+            </span>
           </div>
           <div class="account-detail-row">
             <div class="min-w-0">
               <div class="account-detail-label">{_(agentIdLabel)}</div>
               <div class="account-detail-value">{activeAgentId() ?? _(noActiveAgent)}</div>
             </div>
-            <Button
-              type="button"
-              variant="secondary"
-              size="small"
-              icon={copyAgentID.copied() ? getSemanticIcon("state.success") : copyAgentID.icon()}
-              data-copy-state={copyAgentID.state()}
-              disabled={copyAgentID.disabled()}
-              onClick={() => void copyAgentID.copy()}
-            >
-              {copyAgentID.copied() ? _(copiedLabel) : _(copyLabel)}
-            </Button>
+            <Show when={activeAgentId()}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="small"
+                icon={copyAgentID.copied() ? getSemanticIcon("state.success") : copyAgentID.icon()}
+                data-copy-state={copyAgentID.state()}
+                disabled={copyAgentID.disabled()}
+                onClick={() => void copyAgentID.copy()}
+              >
+                {copyAgentID.copied() ? _(copiedLabel) : _(copyLabel)}
+              </Button>
+            </Show>
           </div>
         </div>
         <div class="account-agent-actions">
-          <Button
-            type="button"
-            variant="secondary"
-            size="small"
-            disabled={holos.state.identity.accounts.length <= 1}
-            onClick={() => actions.openAgentSwitcher()}
-          >
-            {_(switchAgentLabel)}
-          </Button>
+          <Show when={holos.state.identity.accounts.length > 1}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="small"
+              disabled={holos.state.identity.accounts.length <= 1}
+              onClick={() => actions.openAgentSwitcher()}
+            >
+              {_(switchAgentLabel)}
+            </Button>
+          </Show>
           <Button
             type="button"
             variant="secondary"

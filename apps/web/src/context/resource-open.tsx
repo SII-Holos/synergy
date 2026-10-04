@@ -1,4 +1,5 @@
 import { usePluginHost } from "@/plugin/host"
+import { useParams } from "@solidjs/router"
 import { toolReviewSource } from "./tool-review-target"
 import { onCleanup, onMount, type ParentProps } from "solid-js"
 import {
@@ -6,6 +7,8 @@ import {
   type OpenableResource,
   type ResourceOpenOptions,
   type ToolReviewTarget,
+  type ToolActivityTarget,
+  type ActivityDetailTarget,
 } from "@ericsanchezok/synergy-ui/context/resource-open"
 import { ImagePreview, type ImagePreviewImage } from "@ericsanchezok/synergy-ui/image-preview"
 import {
@@ -21,6 +24,7 @@ import { useFile } from "@/context/file"
 import { useSDK } from "@/context/sdk"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { attachmentWorkbenchPanelInit } from "@/components/attachment-workbench/model"
+import { executionDetailState } from "@/components/session/execution-detail-model"
 
 function stripQueryAndHash(input: string) {
   const hashIndex = input.indexOf("#")
@@ -84,6 +88,31 @@ export function ResourceOpenProvider(props: ParentProps) {
   const sdk = useSDK()
   const workbench = useWorkbenchPanels()
   const plugins = usePluginHost()
+  const params = useParams()
+
+  const openActivityDetail = (target: ActivityDetailTarget) => {
+    if (params.id !== target.sessionID) return false
+    void workbench.openPanel("execution-detail", {
+      reuseExisting: true,
+      init: { state: { server: sdk.url, scope: sdk.scopeKey, ...target } },
+    })
+    return true
+  }
+  const openToolActivity = (target: ToolActivityTarget) => openActivityDetail({ ...target, kind: "tool" })
+  const isActivityDetailSelected = (target: ActivityDetailTarget) => {
+    const side = workbench.surface("side")
+    if (!side.opened()) return false
+    const tab = side.tabs().find((tab) => tab.id === side.active() && tab.panelId === "execution-detail")
+    const state = executionDetailState(tab?.state, { server: sdk.url, scope: sdk.scopeKey, sessionID: params.id ?? "" })
+    return (
+      state?.sessionID === target.sessionID &&
+      state.messageID === target.messageID &&
+      state.kind === target.kind &&
+      (target.kind !== "tool" ||
+        (state.kind === "tool" && state.partID === target.partID && (!target.callID || state.callID === target.callID)))
+    )
+  }
+  const isToolActivitySelected = (target: ToolActivityTarget) => isActivityDetailSelected({ ...target, kind: "tool" })
 
   const openToolReview = (target: ToolReviewTarget) => {
     void workbench.openPanel("session-review", {
@@ -121,6 +150,11 @@ export function ResourceOpenProvider(props: ParentProps) {
   }
 
   const openAttachment = (attachment: AttachmentFile, options?: ResourceOpenOptions & { serverUrl?: string }) => {
+    const attachmentPanelInit = attachmentWorkbenchPanelInit(attachment)
+    if (options?.prefer === "workspace" && attachmentPanelInit) {
+      void workbench.openPanel("attachment", { init: attachmentPanelInit })
+      return true
+    }
     const path = attachmentPath(attachment)
     if (options?.prefer === "workspace" && path) return openWorkspaceFile(path)
 
@@ -134,7 +168,6 @@ export function ResourceOpenProvider(props: ParentProps) {
       return true
     }
 
-    const attachmentPanelInit = attachmentWorkbenchPanelInit(attachment)
     if (target === "attachment-workspace" && attachmentPanelInit) {
       void workbench.openPanel("attachment", {
         init: attachmentPanelInit,
@@ -176,7 +209,17 @@ export function ResourceOpenProvider(props: ParentProps) {
 
   return (
     <BaseResourceOpenProvider
-      value={{ open, openAttachment, resolveWorkspacePath, openWorkspaceSource, openToolReview }}
+      value={{
+        open,
+        openAttachment,
+        resolveWorkspacePath,
+        openWorkspaceSource,
+        openToolReview,
+        openToolActivity,
+        isToolActivitySelected,
+        openActivityDetail,
+        isActivityDetailSelected,
+      }}
     >
       {props.children}
     </BaseResourceOpenProvider>

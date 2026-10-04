@@ -1,0 +1,31 @@
+.conversation-display-row {
+  padding-block-end: 16px;
+}
+.conversation-display-row[data-row-kind="body"][data-message-role="user"] {
+  padding-block-end: 28px;
+}
+.conversation-display-row[data-row-kind="body"][data-activity-block] {
+  padding-block-end: 2px;
+}
+.conversation-display-row[data-row-kind="body"][data-activity-block][data-message-role="user"] {
+  padding-block-end: 2px;
+}
+.conversation-display-row[data-row-kind="activity"] {
+  padding-block-end: 16px;
+}
+[data-slot="activity-batch-summary"] {
+  margin-block-end: 4px;
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 20px;
+}
+.conversation-display-row[data-row-kind="footer"] {
+  padding-block-end: 28px;
+}
+.conversation-display-row[data-row-kind="process"],
+.conversation-display-row[data-row-kind="load"] {
+  padding-block-end: 0;
+}
+.conversation-display-row[hidden] {
+  display: none;
+}

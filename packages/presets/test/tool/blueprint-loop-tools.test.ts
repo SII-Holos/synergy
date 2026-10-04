@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { AgendaStore } from "@ericsanchezok/synergy-workflows/agenda/store"
 import { BlueprintLoopStore } from "@ericsanchezok/synergy-workflows/blueprint"
@@ -42,7 +43,7 @@ afterEach(() =>
   }),
 )
 
-function ctx(sessionID: string, agent = "synergy"): Tool.Context {
+function ctx(sessionID: string, agent: string = PrimaryAgentIdentity.names.general): Tool.Context {
   return {
     sessionID,
     messageID: Identifier.ascending("message"),

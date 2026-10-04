@@ -5,6 +5,7 @@ import { domFixture } from "../support/dom-fixtures"
 interface ProjectionMemoizationHarness {
   setStreamText: (text: string) => void
   setSessionStatus: (status: { type: string }) => void
+  completeStream: () => void
   getToolLookups: () => number
 }
 
@@ -107,14 +108,16 @@ describe("SessionTurn streaming projection memoization", () => {
     expect(doneTextRow()).toBe(textRow)
   })
 
-  test("settling re-projects the settled message once and reveals the copy action", async () => {
+  test("settling changes disclosure without re-projecting historical tools", async () => {
     expect(await waitUntil(() => harness.getToolLookups() > 0)).toBe(true)
     expect(document.querySelector('[data-slot="session-turn-timeline-item"][data-kind="copy-markdown"]')).toBeNull()
 
     const lookupsBeforeSettle = harness.getToolLookups()
     harness.setSessionStatus({ type: "idle" })
 
-    expect(await waitUntil(() => harness.getToolLookups() === lookupsBeforeSettle + 1)).toBe(true)
-    expect(document.querySelector('[data-slot="session-turn-timeline-item"][data-kind="copy-markdown"]')).not.toBeNull()
+    expect(await waitUntil(() => document.querySelector('[data-kind="copy-markdown"]') !== null, 300)).toBe(false)
+    harness.completeStream()
+    expect(await waitUntil(() => document.querySelector('[data-kind="copy-markdown"]') !== null)).toBe(true)
+    expect(harness.getToolLookups()).toBe(lookupsBeforeSettle)
   })
 })

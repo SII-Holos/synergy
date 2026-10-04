@@ -54,5 +54,11 @@ export function createLibraryCollection<T>(
     error: () => (state.key === key() ? state.error : undefined),
     loading: () => state.key !== key() || state.loading,
     refresh,
+    discard(predicate: (item: T) => boolean) {
+      version++
+      controller?.abort()
+      pending = undefined
+      setState({ items: state.items.filter((item) => !predicate(item)), loading: false })
+    },
   }
 }

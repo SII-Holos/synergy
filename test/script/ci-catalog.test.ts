@@ -7,6 +7,7 @@ import { catalog, changedFiles, workspaceInputs } from "../../script/ci/catalog"
 import { distributionCommands } from "../../script/ci/distributions"
 import { buildUnits, createPlan, LIMITS, selectAffected, type Task } from "../../script/ci/plan"
 import { commands } from "../../script/ci/run"
+import { requiresSandbox } from "../../script/ci"
 
 const tasks: Task[] = ["synergy", "codex", "opencode", "pi", "deepseek"].map((variant) => ({
   id: `native-${variant}`,
@@ -17,6 +18,26 @@ const tasks: Task[] = ["synergy", "codex", "opencode", "pi", "deepseek"].map((va
   owners: [],
   needs: [],
 }))
+
+test("independent Web distribution verification prepares its required native sandbox asset", async () => {
+  const entries = await catalog()
+  const suite = entries.find((entry) => entry.kind === "suite" && entry.package === "apps/web")!
+  for (const id of ["web-integration", "installed-core-binary", suite.id]) {
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "diagnostic",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks: entries,
+      only: [id],
+    })
+    expect(requiresSandbox(plan)).toBe(id !== suite.id)
+  }
+})
 
 test("every PostgreSQL matrix executes the retained usage rebuild and clear control", async () => {
   const entries = await catalog()
@@ -43,6 +64,33 @@ test("every PostgreSQL matrix executes the retained usage rebuild and clear cont
     expect(verification!.env?.SYNERGY_REQUIRE_POSTGRES_TESTS).toBe("1")
     expect(verification!.env?.SYNERGY_TEST_POSTGRES_URL).toBeTruthy()
     expect(control.inputs).toContain("packages/harness/test/storage/usage-ledger.test.ts")
+  }
+})
+
+test("every PostgreSQL matrix executes task context continuity", async () => {
+  const entries = await catalog()
+  const controls = entries.filter((entry) => entry.kind === "postgres")
+  expect(controls.map((entry) => entry.variant).sort()).toEqual(["16", "17", "18"])
+  const plan = createPlan({
+    base: "base",
+    head: "head",
+    sha: "tested",
+    run: "fixture",
+    mode: "full",
+    changed: [],
+    baseWorkspaces: [],
+    headWorkspaces: [],
+    tasks: entries,
+  })
+  for (const control of controls) {
+    expect(control.inputs).toContain("packages/harness/test/session/context-continuity.test.ts")
+    const recipe = await commands(control, plan)
+    const verification = recipe.find((entry) => entry.args.includes("test/session/context-continuity.test.ts"))
+    expect(verification).toBeDefined()
+    expect(verification!.cwd).toBe("packages/harness")
+    expect(verification!.env?.SYNERGY_TEST_STORAGE_BACKEND).toBe("postgres")
+    expect(verification!.env?.SYNERGY_REQUIRE_POSTGRES_TESTS).toBe("1")
+    expect(verification!.env?.SYNERGY_TEST_POSTGRES_URL).toBeTruthy()
   }
 })
 

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, describe, expect, test } from "bun:test"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -31,7 +32,7 @@ async function injectChannelMessage(sessionID: string, anchor: { chatId: string;
   const { createUserMessage } = await import("@ericsanchezok/synergy-harness/session/input")
   await createUserMessage({
     sessionID,
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test", modelID: "test-model" },
     parts: [{ type: "text", text: "帮我看看" }],
     metadata: {
@@ -90,7 +91,7 @@ describe("boss channel anchor propagation", () => {
         const { createUserMessage } = await import("@ericsanchezok/synergy-harness/session/input")
         const created = await createUserMessage({
           sessionID: boss.id,
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           model: { providerID: "test", modelID: "test-model" },
           parts: [{ type: "text", text: "帮我看看这个" }],
           metadata: {

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { LoopJob } from "../../src/session/loop-job"
 import { AsyncLocalStorage } from "node:async_hooks"
@@ -11,7 +12,7 @@ function context(sessionID: string, step = 1): LoopJob.Context {
     sessionID,
     role: "user",
     time: { created: Date.now() },
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test", modelID: "test" },
   } as LoopJob.Context["lastUser"]
   return {

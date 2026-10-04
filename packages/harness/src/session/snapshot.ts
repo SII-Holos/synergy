@@ -7,6 +7,7 @@ import { ScopeContext } from "../scope/context"
 import { SnapshotSchema } from "./snapshot-schema"
 import { SnapshotGit } from "./snapshot-git"
 import { SnapshotCapture } from "./snapshot-capture"
+import { SnapshotDurability } from "./snapshot-durability"
 import { SnapshotStore } from "./snapshot-store"
 import { SnapshotLink } from "./snapshot-link"
 import { SnapshotRestore } from "./snapshot-restore"
@@ -23,17 +24,31 @@ export namespace Snapshot {
     return SnapshotGit.run(...args)
   }
 
-  export async function track(sessionID: string, signal?: AbortSignal): Promise<string | undefined> {
+  export async function track(
+    sessionID: string,
+    signal?: AbortSignal,
+    onOmissions?: (omissions: SnapshotSchema.Omission[]) => void,
+  ): Promise<string | undefined> {
     if (signal?.aborted) return
     const source = workspace()
     if (!source) return
     await WorkspaceBinding.validate(source.id, ScopeContext.current.scope.id, source.generation)
     if ((await Config.current()).snapshot === false) return
+    const started = performance.now()
     try {
-      return await SnapshotStore.withSession(sessionID, () => trackImpl(sessionID, signal), signal)
+      return await SnapshotStore.withSession(sessionID, () => trackImpl(sessionID, signal, onOmissions), signal)
     } catch (error) {
       if (signal?.aborted) return undefined
       throw error
+    } finally {
+      ObservabilityMetrics.record({
+        name: "snapshot.track.total.duration",
+        value: performance.now() - started,
+        unit: "ms",
+        module: "session",
+        sessionID,
+        scopeID: ScopeContext.current.scope.id,
+      })
     }
   }
 
@@ -48,6 +63,7 @@ export namespace Snapshot {
     manifest: string | null,
     sessionID: string,
     signal?: AbortSignal,
+    onOmissions?: (omissions: SnapshotSchema.Omission[]) => void,
   ) {
     const source: SnapshotSchema.Workspace = {
       id: info.id,
@@ -63,46 +79,78 @@ export namespace Snapshot {
       { ...info, content: { revision: info.content?.revision ?? 0, manifest } },
       store,
     )
+    const started = performance.now()
     return SnapshotStore.withSession(
       sessionID,
       async () => {
         const operation = SnapshotStore.current()
-        await SnapshotStore.initialize(operation)
-        await SnapshotCapture.refresh(operation, signal, { tree, store })
-        const result = await gitSpawn(
-          ["git", "--git-dir", operation.repository, "write-tree"],
-          path.dirname(operation.repository),
-          undefined,
-          signal,
+        await phase("initialize", () => SnapshotStore.initialize(operation))
+        await SnapshotCapture.refresh(operation, signal, { tree, store }, onOmissions)
+        const options = await SnapshotDurability.treeOptions(operation.repository, signal)
+        const result = await phase("tree", () =>
+          gitSpawn(
+            ["git", ...options, "--git-dir", operation.repository, "write-tree"],
+            path.dirname(operation.repository),
+            undefined,
+            signal,
+          ),
         )
         if (result.exitCode !== 0 || !result.text.trim())
           throw new SnapshotStore.StorageError("Snapshot content could not be retained")
         const hash = result.text.trim()
-        if (!(await SnapshotStore.retainCurrent(hash, signal)))
+        if (!(await phase("retain", () => SnapshotStore.retainCurrent(hash, signal))))
           throw new SnapshotStore.StorageError("Snapshot retention failed")
         return hash
       },
       signal,
       { source },
+    ).finally(() =>
+      ObservabilityMetrics.record({
+        name: "snapshot.track.total.duration",
+        value: performance.now() - started,
+        unit: "ms",
+        module: "session",
+        sessionID,
+        scopeID: info.scopeID,
+      }),
     )
   }
 
-  async function trackImpl(sessionID: string, signal?: AbortSignal): Promise<string | undefined> {
+  async function phase<T>(name: string, fn: () => Promise<T>) {
+    const started = performance.now()
+    try {
+      return await fn()
+    } finally {
+      const operation = SnapshotStore.current()
+      ObservabilityMetrics.record({
+        name: `snapshot.track.${name}.duration`,
+        value: performance.now() - started,
+        unit: "ms",
+        module: "storage",
+        sessionID: operation.sessionID,
+        scopeID: operation.scopeID,
+      })
+    }
+  }
+
+  async function trackImpl(
+    sessionID: string,
+    signal?: AbortSignal,
+    onOmissions?: (omissions: SnapshotSchema.Omission[]) => void,
+  ): Promise<string | undefined> {
     if (signal?.aborted) return
     const started = Date.now()
     log.debug("track start", { sessionID, cwd: ScopeContext.current.directory })
     const git = gitdir()
-    await SnapshotStore.initialize(SnapshotStore.current())
-    const addResult = await refreshIndex(sessionID, signal)
+    await phase("initialize", () => SnapshotStore.initialize(SnapshotStore.current()))
+    const addResult = await refreshIndex(sessionID, signal, onOmissions)
     if (!addResult) {
       log.warn("track add failed", { sessionID, duration: Date.now() - started })
       return undefined
     }
-    const writeResult = await gitSpawn(
-      ["git", "--git-dir", git, "write-tree"],
-      ScopeContext.current.directory,
-      undefined,
-      signal,
+    const options = await SnapshotDurability.treeOptions(git, signal)
+    const writeResult = await phase("tree", () =>
+      gitSpawn(["git", ...options, "--git-dir", git, "write-tree"], ScopeContext.current.directory, undefined, signal),
     )
     if (writeResult.exitCode !== 0 || !writeResult.text.trim()) {
       log.warn("track write-tree failed", { sessionID, exitCode: writeResult.exitCode, duration: Date.now() - started })
@@ -111,7 +159,7 @@ export namespace Snapshot {
     const source = workspace()!
     await WorkspaceBinding.validate(source.id, ScopeContext.current.scope.id, source.generation)
     const hash = writeResult.text.trim()
-    if (!(await SnapshotStore.retainCurrent(hash, signal))) return undefined
+    if (!(await phase("retain", () => SnapshotStore.retainCurrent(hash, signal)))) return undefined
     log.info("tracking", { hash, cwd: ScopeContext.current.directory, git, duration: Date.now() - started })
     ObservabilityMetrics.record({
       name: "snapshot.track.duration",
@@ -119,6 +167,7 @@ export namespace Snapshot {
       unit: "ms",
       module: "session",
       sessionID,
+      scopeID: ScopeContext.current.scope.id,
     })
     return hash
   }
@@ -189,27 +238,64 @@ export namespace Snapshot {
   }
 
   export async function diffSummary(from: string, to: string, sessionID: string, signal?: AbortSignal) {
-    if (signal?.aborted) return []
+    signal?.throwIfAborted()
     return SnapshotStore.withSession(
       sessionID,
       async () => {
-        if (!(await SnapshotStore.ownsCurrent(from)) || !(await SnapshotStore.ownsCurrent(to))) return []
+        if (!(await SnapshotStore.ownsCurrent(from)) || !(await SnapshotStore.ownsCurrent(to)))
+          throw new SnapshotStore.StorageError("Snapshot comparison endpoints are unavailable")
         return diffSummaryImpl(from, to, sessionID, signal)
       },
       signal,
       { historical: true },
-    ).catch((error) => {
-      if (signal?.aborted) return []
-      throw error
-    })
+    )
+  }
+
+  export async function previewRestore(patches: Patch[], sessionID: string, signal?: AbortSignal) {
+    return withRestoreFiles(patches, sessionID, signal, (files) => SnapshotRestore.preview({ files, signal }))
+  }
+  export async function fileDiff(from: string, to: string, file: string, sessionID: string, signal?: AbortSignal) {
+    WorkspaceTree.Path.parse(file)
+    return SnapshotStore.withSession(
+      sessionID,
+      async () => {
+        if (!(await SnapshotStore.ownsCurrent(from)) || !(await SnapshotStore.ownsCurrent(to)))
+          throw new SnapshotStore.StorageError("Snapshot comparison endpoints are unavailable")
+        return (await diffSummaryImpl(from, to, sessionID, signal, file))[0]
+      },
+      signal,
+      { historical: true },
+    )
   }
 
   export async function revert(
     patches: Patch[],
     sessionID: string,
     signal?: AbortSignal,
+    preview?: Pick<SnapshotRestore.PreviewFile, "file" | "workspace" | "version">[],
   ): Promise<SnapshotRestore.Result> {
-    if (!patches.some((patch) => patch.files.length)) return { restoredFiles: [], failedFiles: [] }
+    return withRestoreFiles(patches, sessionID, signal, (files) => {
+      for (const file of files) {
+        if (!preview) continue
+        const expected = preview.find(
+          (row) =>
+            row.file === file.file &&
+            row.workspace.id === file.workspace.id &&
+            row.workspace.generation === file.workspace.generation,
+        )
+        if (!expected) throw new SnapshotRestore.Invalid({ message: "A selected file has no confirmed preview" })
+        file.expected = expected.version
+      }
+      return SnapshotRestore.apply({ files, signal })
+    })
+  }
+
+  async function withRestoreFiles<T>(
+    patches: Patch[],
+    sessionID: string,
+    signal: AbortSignal | undefined,
+    action: (files: SnapshotRestore.File[]) => Promise<T>,
+  ): Promise<T> {
     return SnapshotStore.withSession(
       sessionID,
       async () => {
@@ -305,7 +391,7 @@ export namespace Snapshot {
             })
           }
         }
-        return SnapshotRestore.apply({ files: [...files.values()], signal })
+        return action([...files.values()])
       },
       signal,
       { historical: true },
@@ -410,6 +496,7 @@ export namespace Snapshot {
     to: string,
     sessionID: string,
     signal?: AbortSignal,
+    file?: string,
   ): Promise<FileDiff[]> {
     const git = gitdir()
     const result: FileDiff[] = []
@@ -422,6 +509,7 @@ export namespace Snapshot {
         "core.quotepath=false",
         "--git-dir",
         git,
+        "--literal-pathspecs",
         "diff",
         "--no-ext-diff",
         "--no-renames",
@@ -431,7 +519,7 @@ export namespace Snapshot {
         from,
         to,
         "--",
-        ".",
+        file ?? ".",
       ],
       path.dirname(git),
       undefined,
@@ -439,7 +527,7 @@ export namespace Snapshot {
     )
     if (diff.exitCode !== 0) {
       log.warn("failed to get diff summary", { from, to, exitCode: diff.exitCode, stderr: diff.stderr })
-      return result
+      throw new SnapshotStore.StorageError("Snapshot comparison failed")
     }
 
     const parsed = parseNumstatPatch(diff.text)
@@ -500,12 +588,16 @@ export namespace Snapshot {
         }),
       )
     }
-    return SnapshotSchema.boundArray(result)
+    return file ? result : SnapshotSchema.boundArray(result)
   }
 
-  async function refreshIndex(sessionID: string, signal?: AbortSignal): Promise<boolean> {
+  async function refreshIndex(
+    sessionID: string,
+    signal?: AbortSignal,
+    onOmissions?: (omissions: SnapshotSchema.Omission[]) => void,
+  ): Promise<boolean> {
     try {
-      return await SnapshotCapture.refresh(SnapshotStore.current(), signal)
+      return await SnapshotCapture.refresh(SnapshotStore.current(), signal, undefined, onOmissions)
     } catch (error) {
       log.warn("snapshot capture failed", { sessionID, error })
       return false

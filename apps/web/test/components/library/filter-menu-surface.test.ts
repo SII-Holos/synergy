@@ -1,6 +1,6 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { readFile } from "node:fs/promises"
-import { chromium, type Browser } from "playwright"
+import { chromium } from "playwright"
 
 const libraryCss = await readFile(new URL("../../../src/components/library/library-panel.css", import.meta.url), "utf8")
 const menuFieldCss = await readFile(
@@ -11,16 +11,6 @@ const themeCss = await readFile(
   new URL("../../../../../packages/ui/src/styles/theme.generated.css", import.meta.url),
   "utf8",
 )
-
-let browser: Browser
-
-beforeAll(async () => {
-  browser = await chromium.launch({ headless: true })
-})
-
-afterAll(async () => {
-  await browser.close()
-})
 
 function relativeLuminance(color: string) {
   const channels = color
@@ -36,6 +26,7 @@ function relativeLuminance(color: string) {
 }
 
 async function readMenuStyles(colorScheme: "light" | "dark") {
+  const browser = await chromium.launch({ headless: true })
   const page = await browser.newPage({ colorScheme })
   try {
     await page.setContent(`
@@ -60,7 +51,7 @@ async function readMenuStyles(colorScheme: "light" | "dark") {
       }
     })
   } finally {
-    await page.close()
+    await browser.close()
   }
 }
 

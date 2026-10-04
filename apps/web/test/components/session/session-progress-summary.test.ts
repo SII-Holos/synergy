@@ -4,10 +4,9 @@ import {
   computeProgressIslandSnapshot,
   computeTodoSummary,
   computeProgressMode,
-  formatProgressIslandLabel,
 } from "../../../src/components/session/session-progress-summary"
 import type { DagNode } from "@ericsanchezok/synergy-ui/dag-graph"
-import type { TodoItem } from "../../../src/components/session/session-progress-summary"
+import type { Todo } from "@ericsanchezok/synergy-sdk/client"
 
 function n(
   id: string,
@@ -18,7 +17,7 @@ function n(
   return { id, content: `Task ${id}`, status, deps, ...extra }
 }
 
-function t(id: string, status: string, priority?: string): TodoItem {
+function t(id: string, status: string, priority = "medium"): Todo {
   return { id, content: `Task ${id}`, status, priority }
 }
 
@@ -108,7 +107,7 @@ describe("computeTodoSummary", () => {
       t("d", "cancelled"),
       t("e", "completed"),
     ])
-    expect(result.total).toBe(5)
+    expect(result.total).toBe(4)
     expect(result.completed).toBe(2)
     expect(result.inProgress).toBe(1)
     expect(result.pending).toBe(1)
@@ -152,14 +151,14 @@ describe("computeProgressIslandSnapshot", () => {
     const snapshot = computeProgressIslandSnapshot("none")
     expect(snapshot.status).toBe("hidden")
     expect(snapshot.total).toBe(0)
-    expect(formatProgressIslandLabel(snapshot)).toBe("")
   })
 
-  test("returns hidden when DAG data only contains cancelled nodes", () => {
+  test("all cancelled work is ended with a separate cancellation count", () => {
     const dag = computeDagSummary([n("a", "cancelled")])
     const snapshot = computeProgressIslandSnapshot("dag", dag)
 
-    expect(snapshot.status).toBe("hidden")
+    expect(snapshot.status).toBe("complete")
+    expect(snapshot.cancelled).toBe(1)
     expect(snapshot.total).toBe(0)
   })
 
@@ -169,9 +168,8 @@ describe("computeProgressIslandSnapshot", () => {
     const snapshot = computeProgressIslandSnapshot("both", dag, todo)
 
     expect(snapshot.status).toBe("complete")
-    expect(snapshot.completed).toBe(3)
-    expect(snapshot.total).toBe(3)
-    expect(formatProgressIslandLabel(snapshot)).toBe("Done · 3 tasks")
+    expect(snapshot.completed).toBe(1)
+    expect(snapshot.total).toBe(1)
   })
 
   test("failed work takes attention priority and stays explicit", () => {
@@ -180,7 +178,6 @@ describe("computeProgressIslandSnapshot", () => {
 
     expect(snapshot.status).toBe("attention")
     expect(snapshot.tone).toBe("failed")
-    expect(formatProgressIslandLabel(snapshot)).toBe("Needs attention · 1 failed")
   })
 
   test("blocked work takes attention priority over running work", () => {
@@ -189,7 +186,6 @@ describe("computeProgressIslandSnapshot", () => {
 
     expect(snapshot.status).toBe("attention")
     expect(snapshot.tone).toBe("blocked")
-    expect(formatProgressIslandLabel(snapshot)).toBe("Needs attention · 1 blocked")
   })
 
   test("running work summarizes active and pending counts", () => {
@@ -199,9 +195,9 @@ describe("computeProgressIslandSnapshot", () => {
 
     expect(snapshot.status).toBe("active")
     expect(snapshot.tone).toBe("running")
-    expect(snapshot.active).toBe(2)
-    expect(snapshot.pending).toBe(2)
-    expect(formatProgressIslandLabel(snapshot, "Reviewing changes")).toBe("Reviewing changes · 1/5")
+    expect(snapshot.active).toBe(1)
+    expect(snapshot.pending).toBe(1)
+    expect(snapshot.total).toBe(2)
   })
 
   test("pending-only work remains visible as ready work", () => {
@@ -210,7 +206,6 @@ describe("computeProgressIslandSnapshot", () => {
 
     expect(snapshot.status).toBe("active")
     expect(snapshot.tone).toBe("ready")
-    expect(formatProgressIslandLabel(snapshot)).toBe("Ready · 0/2")
   })
 
   test("pending-only work stays visible without lifecycle suppression", () => {
@@ -254,4 +249,12 @@ describe("computeProgressIslandSnapshot", () => {
 
     expect(snapshot.status).toBe("complete")
   })
+})
+
+test("unknown statuses count toward progress but are never complete", () => {
+  const todo = computeTodoSummary([t("a", "completed"), t("b", "unknown"), t("c", "cancelled")])
+  const snapshot = computeProgressIslandSnapshot("todo", undefined, todo)
+  expect(snapshot.total).toBe(2)
+  expect(snapshot.progressRatio).toBe(0.5)
+  expect(snapshot.status).toBe("active")
 })

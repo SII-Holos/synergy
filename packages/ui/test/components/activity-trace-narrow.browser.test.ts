@@ -100,7 +100,7 @@ describe("activity trace narrow layout", () => {
     })
 
     expect(metrics.titleRight).toBeLessThanOrEqual(metrics.traceRight + 1)
-    expect(metrics.titleScrollWidth).toBeGreaterThan(metrics.titleClientWidth)
+    expect(metrics.titleScrollWidth).toBeLessThanOrEqual(metrics.titleClientWidth)
   })
 
   test("long receipt titles stay inside the trace container", async () => {

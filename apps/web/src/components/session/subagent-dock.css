@@ -1,93 +1,106 @@
-/* Subagent Dock Animations */
-
-@keyframes subagent-enter {
-  from {
-    opacity: 0;
-    transform: translateY(4px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+.subagent-dock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 4px 12px 8px;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+  pointer-events: auto;
+  scrollbar-width: thin;
 }
-
-@keyframes subagent-exit {
-  from {
-    opacity: 1;
-    transform: scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(4px) scale(0.98);
-  }
+.subagent-dock-avatar {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border-weak-base);
+  border-radius: 50%;
+  background: var(--workbench-card-bg);
+  color: var(--text-base);
+  cursor: pointer;
+  touch-action: pan-x;
+  user-select: none;
+  transition:
+    background-color 120ms ease-out,
+    border-color 120ms ease-out;
 }
-
-@keyframes popover-enter {
-  0% {
-    opacity: 0;
-    transform: translateY(4px) scale(0.96);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+.subagent-dock-avatar:hover {
+  background: var(--workbench-row-bg-hover);
+  border-color: var(--border-strong-base);
 }
-
-.subagent-dock-item {
-  animation: subagent-enter 160ms var(--motion-ease-standard) both;
+.subagent-dock-avatar:focus-visible {
+  outline: 2px solid var(--border-interactive-base);
+  outline-offset: 2px;
 }
-
-.subagent-dock-item-exit {
-  animation: subagent-exit 120ms var(--motion-ease-standard) both;
+.subagent-dock-avatar[data-queued="true"] {
+  opacity: 0.6;
+  cursor: default;
 }
-
-.subagent-avatar-queued {
-  opacity: 0.55;
+.subagent-dock-avatar[aria-busy="true"] {
+  cursor: progress;
 }
-
-.subagent-avatar-queued::before,
-.subagent-avatar-queued::after {
-  display: none;
+.subagent-dock-avatar[data-retrying="true"] {
+  border-color: var(--border-critical-base);
 }
-
-.subagent-avatar-queued .subagent-icon {
-  animation: none !important;
+.subagent-dock-emoji {
+  font-size: 20px;
+  line-height: 1;
 }
-
-.subagent-popover {
-  animation: popover-enter 0.15s ease-out both;
-}
-
-.subagent-avatar-holding {
-  transform: scale(1.04);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-strong) 18%, transparent);
-}
-
 .subagent-hold-ring {
-  width: 100%;
-  height: 100%;
-  overflow: visible;
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
   pointer-events: none;
 }
-
 .subagent-hold-ring-track {
-  stroke: color-mix(in srgb, var(--subagent-accent-color, var(--text-weaker)) 16%, transparent);
+  stroke: var(--border-weak-base);
+  stroke-width: 2;
 }
-
 .subagent-hold-ring-progress {
-  stroke: color-mix(in srgb, var(--subagent-accent-color, var(--text-strong)) 72%, var(--text-strong) 10%);
+  stroke: var(--subagent-accent-color);
+  stroke-width: 2;
   stroke-linecap: round;
-  transition: stroke-dashoffset 40ms linear;
 }
-
-/* Retry state — red ring indicator */
-
-.subagent-avatar-retrying {
-  box-shadow:
-    0 0 0 2px var(--icon-critical-base),
-    0 0 0 4px color-mix(in srgb, var(--icon-critical-base) 28%, transparent) !important;
+.subagent-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 260px;
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
 }
-
-.subagent-avatar-retry-border {
-  border-color: color-mix(in srgb, var(--icon-critical-base) 72%, transparent);
+.subagent-popover-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 500;
+}
+.subagent-popover-heading > :last-child,
+.subagent-popover-detail {
+  color: var(--text-weak);
+}
+.subagent-popover-retry {
+  display: flex;
+  align-items: start;
+  gap: 4px;
+  color: var(--text-on-critical-base);
+}
+.subagent-popover-hint {
+  color: var(--text-interactive-base);
+}
+@media (pointer: coarse) {
+  .subagent-dock-avatar {
+    width: 44px;
+    height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .subagent-dock-avatar {
+    transition: none;
+  }
 }

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { afterEach, describe, expect, mock, test } from "bun:test"
 import { Agent } from "../../src/agent/agent"
 import { AgentCall } from "../../src/agent/call"
@@ -52,7 +53,7 @@ async function createSessionWithUser(title: string, text = "Hello") {
     sessionID: session.id,
     role: "user",
     time: { created: Date.now() },
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test", modelID: "test" },
   })) as MessageV2.User
   await Session.updatePart({
@@ -209,7 +210,7 @@ describe("ensureTitle", () => {
             sessionID: session.id,
             role: "user",
             time: { created: Date.now() },
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test" },
           })) as MessageV2.User
           await Session.updatePart({
@@ -260,7 +261,7 @@ describe("ensureTitle", () => {
             sessionID: session.id,
             role: "user",
             time: { created: Date.now() },
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test" },
           })) as MessageV2.User
           await Session.updatePart({

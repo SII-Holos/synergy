@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { I18nProvider } from "@lingui/solid"
 import { render } from "solid-js/web"
 import { createStore } from "solid-js/store"
@@ -20,7 +21,7 @@ const rootMessage = {
   sessionID,
   role: "user",
   time: { created: 1 },
-  agent: "synergy",
+  agent: TEST_AGENT_NAME,
   model: { providerID: "provider", modelID: "model" },
   isRoot: true,
   rootID,
@@ -32,7 +33,7 @@ const baseAssistant = {
   parentID: rootID,
   rootID,
   mode: "test",
-  agent: "synergy",
+  agent: TEST_AGENT_NAME,
   path: { cwd: "/workspace", root: "/workspace" },
   cost: 0,
   tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -124,5 +125,6 @@ render(
 globalThis.__projectionMemoizationHarness = {
   setStreamText: (text) => setStore("part", streamID, 0, "text", text),
   setSessionStatus: (status) => setRuntimeState("status", sessionID, status),
+  completeStream: () => setStore("message", sessionID, 2, "time", "completed", 5),
   getToolLookups: () => toolLookups,
 }

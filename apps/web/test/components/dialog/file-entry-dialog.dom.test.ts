@@ -41,10 +41,29 @@ beforeAll(async () => {
     import {setupI18n} from "@lingui/core"
     import {DialogProvider,useDialog} from "@ericsanchezok/synergy-ui/context/dialog"
     import {FileEntryDialog} from ${JSON.stringify(`/@fs/${appSrc}/components/file-workbench/entry-dialog.tsx`)}
+    import {FileCloseDialog} from ${JSON.stringify(`/@fs/${appSrc}/components/file-workbench/close-dialog.tsx`)}
     import {actions} from "./stubs"
     const i18n=setupI18n({locale:"en",messages:{en:{},"zh-CN":{"app.fileEntries.title":"文件操作","app.fileEntries.operation":"操作","app.fileEntries.move":"移动或重命名","app.fileEntries.remove":"永久删除","app.fileEntries.apply":"执行","app.fileEntries.cancel":"取消"}}})
     window.fixture.locale=()=>i18n.activate("zh-CN")
-    function App(){const dialog=useDialog();return <button id="open" onClick={()=>dialog.show(()=><FileEntryDialog actions={actions} workspacePath="/workspace" node={{path:"folder/source.txt",entryVersion:"entry:observed",type:"file",name:"source.txt"}} operation="move" dirty={true}/>)}>Open</button>}
+    window.fixture.closeResults=[]
+    function App(){
+      const dialog=useDialog()
+      async function leave(){
+        const choice=await new Promise(resolve=>{
+          let id
+          id=dialog.push(
+            ()=><FileCloseDialog name="draft.txt" choose={choice=>{resolve(choice);dialog.close(id)}}/>,
+            ()=>resolve("cancel"),
+            {protected:true},
+          )
+        })
+        window.fixture.closeResults.push(choice)
+      }
+      return <>
+        <button id="open" onClick={()=>dialog.show(()=><FileEntryDialog actions={actions} workspacePath="/workspace" node={{path:"folder/source.txt",entryVersion:"entry:observed",type:"file",name:"source.txt"}} operation="move" dirty={true}/>)}>Open</button>
+        <button id="leave" onClick={leave}>Leave file</button>
+      </>
+    }
     render(()=><I18nProvider i18n={i18n}><DialogProvider><App/></DialogProvider></I18nProvider>,document.getElementById("root"))
 
   `,
@@ -118,6 +137,50 @@ test("delete is explicit, localized and preserves the selected filesystem identi
   await page.getByRole("dialog").waitFor({ state: "hidden" })
   expect(await page.evaluate(() => (window as any).fixture.calls)).toEqual([
     { kind: "remove", path: "folder/source.txt", expectedVersion: "entry:observed", recursive: false },
+  ])
+  expect(errors).toEqual([])
+}, 30_000)
+
+interface FileCloseFixtureWindow extends Window {
+  fixture: { closeResults: Array<"save" | "discard" | "cancel"> }
+}
+
+test("save, discard and cancel return one choice and restore file-control focus", async () => {
+  errors.length = 0
+  await page.goto(base)
+  const results: FileCloseFixtureWindow["fixture"]["closeResults"] = []
+  for (const choice of ["save", "discard", "cancel"] as const) {
+    await page.getByRole("button", { name: "Leave file", exact: true }).click()
+    const dialog = page.getByRole("dialog", { name: "Save changes?", exact: true })
+    await dialog.waitFor()
+    expect(await dialog.getAttribute("aria-describedby")).toBeTruthy()
+    expect(await dialog.innerText()).toContain("Save changes to draft.txt before leaving this file.")
+    await dialog.getByRole("button", { name: new RegExp("^" + choice + "$", "i") }).click()
+    await dialog.waitFor({ state: "hidden" })
+    results.push(choice)
+    expect(await page.evaluate(() => (window as unknown as FileCloseFixtureWindow).fixture.closeResults)).toEqual(
+      results,
+    )
+    await page.waitForFunction(() => document.activeElement?.id === "leave")
+  }
+  expect(errors).toEqual([])
+}, 30_000)
+
+test("Escape and the close button cancel the file change without selecting save or discard", async () => {
+  errors.length = 0
+  await page.goto(base)
+  for (const action of ["escape", "close"]) {
+    await page.getByRole("button", { name: "Leave file", exact: true }).click()
+    const dialog = page.getByRole("dialog", { name: "Save changes?", exact: true })
+    await dialog.waitFor()
+    if (action === "escape") await page.keyboard.press("Escape")
+    else await dialog.getByRole("button", { name: "Close dialog", exact: true }).click()
+    await dialog.waitFor({ state: "hidden" })
+    await page.waitForFunction(() => document.activeElement?.id === "leave")
+  }
+  expect(await page.evaluate(() => (window as unknown as FileCloseFixtureWindow).fixture.closeResults)).toEqual([
+    "cancel",
+    "cancel",
   ])
   expect(errors).toEqual([])
 }, 30_000)

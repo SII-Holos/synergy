@@ -64,78 +64,94 @@ export const BrowserAnnotateTool = Tool.define<typeof parameters, BrowserAnnotat
     "Read or manage user annotations on browser pages. Annotations are user comments attached to specific elements or regions of a page.",
   parameters,
   async execute(params, ctx) {
-    const owner = BrowserOwner.fromToolContext(ctx)
-    const session = await BrowserToolHelper.getOrCreateSession(owner)
+    return BrowserToolHelper.withTask(ctx, async () => {
+      const shared = await BrowserToolHelper.getOrCreateSession(BrowserOwner.shared())
+      const historical = await BrowserToolHelper.getOrCreateSession(BrowserOwner.fromToolContext(ctx))
+      const owner = params.pageId
+        ? await BrowserToolHelper.resolveOwner(ctx, params.pageId)
+        : params.annotationId && historical.annotations.some((item) => item.id === params.annotationId)
+          ? historical.owner
+          : shared.owner
+      const session = owner.mode === "session" ? historical : shared
 
-    switch (params.action) {
-      case "list": {
-        const annotations = session.annotations
-        if (annotations.length === 0) {
-          return { title: "No annotations", output: "No pending annotations.", metadata: { count: 0 } }
+      switch (params.action) {
+        case "list": {
+          const annotations = [...shared.annotations, ...historical.annotations]
+          if (annotations.length === 0) {
+            return { title: "No annotations", output: "No pending annotations.", metadata: { count: 0 } }
+          }
+          const pending = annotations.filter((a) => !a.resolved)
+          const page = params.page ?? 0
+          const pageSize = params.pageSize ?? 50
+          const visible = pending.slice(page * pageSize, (page + 1) * pageSize)
+          const formatted = truncateBrowserOutput(
+            visible
+              .map(
+                (a) =>
+                  `[${a.id}] ${a.ref || "region"} "${a.comment}"${a.styleFeedback ? ` (style: ${JSON.stringify(a.styleFeedback)})` : ""}`,
+              )
+              .join("\n") || "No pending annotations.",
+          )
+          return {
+            title: `${pending.length} annotations`,
+            output: formatted.output,
+            metadata: {
+              count: annotations.length,
+              pending: pending.length,
+              page,
+              outputTruncated: formatted.truncated,
+            },
+          }
         }
-        const pending = annotations.filter((a) => !a.resolved)
-        const page = params.page ?? 0
-        const pageSize = params.pageSize ?? 50
-        const visible = pending.slice(page * pageSize, (page + 1) * pageSize)
-        const formatted = truncateBrowserOutput(
-          visible
-            .map(
-              (a) =>
-                `[${a.id}] ${a.ref || "region"} "${a.comment}"${a.styleFeedback ? ` (style: ${JSON.stringify(a.styleFeedback)})` : ""}`,
-            )
-            .join("\n") || "No pending annotations.",
-        )
-        return {
-          title: `${pending.length} annotations`,
-          output: formatted.output,
-          metadata: {
-            count: annotations.length,
-            pending: pending.length,
-            page,
-            outputTruncated: formatted.truncated,
-          },
+        case "read": {
+          const a = session.annotations.find((a) => a.id === params.annotationId)
+          if (!a)
+            return {
+              title: "Annotation not found",
+              output: `Annotation ${params.annotationId} not found.`,
+              metadata: {},
+            }
+          return {
+            title: `Annotation ${a.id}`,
+            output: `Element: ${a.ref || a.element || "region"}\nComment: ${a.comment}${a.styleFeedback ? `\nStyle feedback: ${JSON.stringify(a.styleFeedback)}` : ""}\nResolved: ${a.resolved}`,
+            metadata: { ...a },
+          }
+        }
+        case "resolve": {
+          const a = session.annotations.find((a) => a.id === params.annotationId)
+          if (!a)
+            return {
+              title: "Annotation not found",
+              output: `Annotation ${params.annotationId} not found.`,
+              metadata: {},
+            }
+          a.resolved = true
+          await session.save()
+          return {
+            title: `Resolved annotation ${a.id}`,
+            output: `Marked annotation "${a.comment}" as resolved.`,
+            metadata: { id: a.id },
+          }
+        }
+        case "create": {
+          const page = await BrowserToolHelper.getPage(owner, params.pageId!)
+          const input = {
+            ref: params.ref,
+            element: params.element,
+            comment: params.comment!,
+            styleFeedback: params.styleFeedback,
+            createdBy: "agent" as const,
+            pageID: page.id,
+            pageURL: page.url,
+          }
+          const ann = await session.addAnnotation(input)
+          return {
+            title: `Created annotation ${ann.id}`,
+            output: `Annotation created: "${ann.comment}"`,
+            metadata: { id: ann.id },
+          }
         }
       }
-      case "read": {
-        const a = session.annotations.find((a) => a.id === params.annotationId)
-        if (!a)
-          return { title: "Annotation not found", output: `Annotation ${params.annotationId} not found.`, metadata: {} }
-        return {
-          title: `Annotation ${a.id}`,
-          output: `Element: ${a.ref || a.element || "region"}\nComment: ${a.comment}${a.styleFeedback ? `\nStyle feedback: ${JSON.stringify(a.styleFeedback)}` : ""}\nResolved: ${a.resolved}`,
-          metadata: { ...a },
-        }
-      }
-      case "resolve": {
-        const a = session.annotations.find((a) => a.id === params.annotationId)
-        if (!a)
-          return { title: "Annotation not found", output: `Annotation ${params.annotationId} not found.`, metadata: {} }
-        a.resolved = true
-        await session.save()
-        return {
-          title: `Resolved annotation ${a.id}`,
-          output: `Marked annotation "${a.comment}" as resolved.`,
-          metadata: { id: a.id },
-        }
-      }
-      case "create": {
-        const page = await BrowserToolHelper.getPage(owner, params.pageId!)
-        const input = {
-          ref: params.ref,
-          element: params.element,
-          comment: params.comment!,
-          styleFeedback: params.styleFeedback,
-          createdBy: "agent" as const,
-          pageID: page.id,
-          pageURL: page.url,
-        }
-        const ann = await session.addAnnotation(input)
-        return {
-          title: `Created annotation ${ann.id}`,
-          output: `Annotation created: "${ann.comment}"`,
-          metadata: { id: ann.id },
-        }
-      }
-    }
+    })
   },
 })

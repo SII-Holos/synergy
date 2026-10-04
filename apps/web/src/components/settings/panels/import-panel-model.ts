@@ -28,6 +28,20 @@ type ApplyParametersInput = PlanParametersInput & {
   revision: string
 }
 
+export class ImportParseError extends Error {
+  readonly line: number
+  readonly column: number
+  constructor(text: string, error: ParseError) {
+    const preceding = text.slice(0, error.offset).split("\n")
+    const line = preceding.length
+    const column = preceding.at(-1)!.length + 1
+    super(`JSONC parse failed: ${printParseErrorCode(error.error)} at line ${line}, column ${column}`)
+    this.name = "ImportParseError"
+    this.line = line
+    this.column = column
+  }
+}
+
 export function parseImportText(text: string, source: string): Record<string, unknown> {
   if (new TextEncoder().encode(text).byteLength > MAX_IMPORT_SOURCE_BYTES) {
     throw new Error(`Config source exceeds ${MAX_IMPORT_SOURCE_BYTES} bytes: ${source}`)
@@ -38,7 +52,7 @@ export function parseImportText(text: string, source: string): Record<string, un
   const parsed = parseJsonc(normalized, errors, { allowTrailingComma: true })
   if (errors.length > 0) {
     const first = errors[0]!
-    throw new Error(`JSONC parse failed: ${printParseErrorCode(first.error)} at offset ${first.offset}`)
+    throw new ImportParseError(normalized, first)
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("Import payload must be an object")

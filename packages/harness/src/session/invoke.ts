@@ -1,3 +1,6 @@
+import { PrimaryAgentIdentity } from "../agent/primary-identity"
+
+import { ToolIntent } from "./tool-intent"
 import { RuntimeContext } from "../lifecycle/context"
 import { SessionModelSelection } from "./model-selection"
 import { SessionExecutionContributions } from "./execution-contributions"
@@ -461,15 +464,28 @@ export namespace SessionInvoke {
       throw error
     } finally {
       const errors: unknown[] = []
+      SessionManager.setActivity(sessionID, { phase: "waiting_background" }, { generation: lease.generation })
       try {
         await LoopJob.drain(sessionID)
       } catch (error) {
         errors.push(error)
       }
-      const outcome = lease.signal.aborted ? "cancelled" : failure || errors.length ? "failed" : undefined
+      const paused = lease.signal.aborted && PausedTurnAbort.is(lease.signal.reason)
+      const outcome = paused
+        ? undefined
+        : lease.signal.aborted
+          ? "cancelled"
+          : failure || errors.length
+            ? "failed"
+            : undefined
       for (const segment of segments) {
         try {
-          await RolloutLedger.finishSegment(segment, outcome ?? "completed")
+          SessionManager.setActivity(
+            sessionID,
+            { phase: "finalizing" },
+            { generation: lease.generation, rootID: segment.runID },
+          )
+          await RolloutLifecycle.finishSegment(segment, paused ? "interrupted" : (outcome ?? "completed"))
         } catch (error) {
           errors.push(error)
         }
@@ -494,6 +510,9 @@ export namespace SessionInvoke {
                 log.error("rollout run reconcile failed after release", { sessionID, runID, error })
               }
             }
+            await RolloutLifecycle.reconcileDelegatedRuns(sessionID, runIDs).catch((error) => {
+              log.error("delegated rollout run reconcile failed after release", { sessionID, error })
+            })
           },
           (error) => {
             log.error("detached turn work failed to settle", { sessionID, error })
@@ -586,7 +605,7 @@ export namespace SessionInvoke {
             let segment: RolloutSchema.ExecutionSegment | undefined
             let previousTerminalReplyID: string | undefined
             while (true) {
-              SessionManager.setStatus(sessionID, { type: "busy" })
+              SessionManager.setActivity(sessionID, { phase: "preparing_context" }, { generation: lease.generation })
               log.info("loop", { step, sessionID })
               if (abort.aborted) break
               session = await Session.get(sessionID)
@@ -655,10 +674,20 @@ export namespace SessionInvoke {
                 }
                 processedRootID = R.id
                 if (!segment) {
+                  SessionManager.setActivity(
+                    sessionID,
+                    { phase: "preparing_files" },
+                    { generation: lease.generation, rootID: R.id },
+                  )
                   segment = await RolloutLifecycle.start(session, R, RParts ?? [])
                   segments.push(segment)
                 }
               }
+              SessionManager.setActivity(
+                sessionID,
+                { phase: "preparing_context" },
+                { generation: lease.generation, rootID: R.id },
+              )
               previousTerminalReplyID = SessionProgress.findTerminalReply(msgs, R.id)?.info.id
               const modelSelection = await SessionModelSelection.capture(
                 sessionID,
@@ -972,7 +1001,7 @@ export namespace SessionInvoke {
               // This ordering maximizes prompt caching by keeping static content first.
               let systemParts: string[] = []
               let systemCacheBreakpoint: number | undefined
-              let lateSystemParts: string[] = []
+              let lateSystemParts: string[] = [ToolIntent.guidance]
 
               // Layer 1: Static — AGENTS.md instructions (stable within session)
               systemParts.push(...customParts)
@@ -1311,7 +1340,6 @@ export namespace SessionInvoke {
                 streamInput = undefined
               }
 
-              SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response…" })
               // Count LLM calls for registered workflow kinds in memory; flushed to
               // the durable domain state at turn boundaries / policy entry.
               const activeKind = WorkflowKindRegistry.effectiveKind(session?.workflow)
@@ -1380,6 +1408,7 @@ export namespace SessionInvoke {
                 activeToolIDs: resolvedTools.activeToolIDs,
                 codexReplay,
                 autoExpandable: resolvedTools.autoExpandable,
+                intentBindings: resolvedTools.intentBindings,
                 resolverInput: {
                   agent,
                   model,
@@ -1533,9 +1562,15 @@ export namespace SessionInvoke {
                   processedRootID,
                 )
                 const failed = terminal?.info.role === "assistant" && terminal.info.error
-                await RolloutLedger.finishSegment(
+                await RolloutLifecycle.finishSegment(
                   segment,
-                  abort.aborted ? "cancelled" : failed ? "failed" : "completed",
+                  abort.aborted
+                    ? PausedTurnAbort.is(abort.reason)
+                      ? "interrupted"
+                      : "cancelled"
+                    : failed
+                      ? "failed"
+                      : "completed",
                 )
               }
             }
@@ -2128,7 +2163,7 @@ export namespace SessionInvoke {
     agent: { name: string; mode?: string },
     sessionMessages: { info: { role: string }; parts: { type: string; tool?: string }[] }[],
   ): Promise<string | undefined> {
-    if (agent.name !== "synergy-max") return undefined
+    if (agent.name !== PrimaryAgentIdentity.names.coding) return undefined
 
     const lastUserIdx = sessionMessages.reduce((last, msg, idx) => (msg.info.role === "user" ? idx : last), -1)
     if (lastUserIdx < 0) return undefined
@@ -2377,7 +2412,7 @@ export namespace SessionInvoke {
       status = "completed"
       return result
     } finally {
-      await RolloutLedger.finishSegment(segment, status)
+      await RolloutLifecycle.finishSegment(segment, status)
       // Detached turn work (titles, summaries) keeps writing ledger records
       // after its segment closes, and finalizing first refuses a call this
       // process has not observed yet — stranding the run as permanently

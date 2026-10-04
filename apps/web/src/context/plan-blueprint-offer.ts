@@ -31,7 +31,8 @@ function resolveBlueprintNoteRequest(
   if (part.state.status !== "completed") return undefined
 
   const metadata = part.state.metadata ?? {}
-  const input = part.state.input ?? {}
+  const input =
+    part.state.input && typeof part.state.input === "object" && !Array.isArray(part.state.input) ? part.state.input : {}
   const action = stringValue(metadata.action) ?? stringValue(input.mode) ?? "create"
   if (action !== "create" && action !== "replace") return undefined
   if (action === "replace" && !includeReplacements) return undefined
@@ -47,7 +48,7 @@ function resolveBlueprintNoteRequest(
 
   return {
     noteID,
-    title: stringValue(metadata.title) ?? stringValue(input.title),
+    title: stringValue(metadata.title) ?? stringValue(input.noteTitle),
     runCount,
     scopeID: stringValue(metadata.scopeID),
   }

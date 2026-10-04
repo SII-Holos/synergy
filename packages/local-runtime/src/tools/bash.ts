@@ -27,11 +27,6 @@ const parameters = z
         `The working directory to run the command in. Defaults to the project directory. Use this instead of 'cd' commands.`,
       )
       .optional(),
-    description: z
-      .string()
-      .describe(
-        "Clear, concise description of what this command does in 5-10 words. Examples:\nInput: ls\nOutput: Lists files in current directory\n\nInput: git status\nOutput: Shows working tree status\n\nInput: npm install\nOutput: Installs package dependencies\n\nInput: mkdir foo\nOutput: Creates directory 'foo'",
-      ),
     background: z
       .boolean()
       .optional()
@@ -61,7 +56,20 @@ export const BashTool = Tool.define<typeof parameters, BashMetadata>(
     },
     parameters,
     async execute(params, ctx) {
-      return modelVisibleBashResult(await LocalBashBackend.execute(params, ctx))
+      const result = modelVisibleBashResult(await LocalBashBackend.execute(params, ctx))
+      return {
+        ...result,
+        activityEvidence: await ctx.recordActivity?.({
+          kind: "command",
+          text: result.output,
+          directory: params.workdir ?? ctx.resources?.directory,
+          processID: result.metadata.processId,
+          exitCode: result.metadata.exit,
+          signal: result.metadata.signal,
+          background: result.metadata.background,
+          mediaType: "text/plain",
+        }),
+      }
     },
   },
   { requiresWorkspace: false, requiresExecution: "exec" },

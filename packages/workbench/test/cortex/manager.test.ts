@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test, beforeEach, mock } from "bun:test"
 import { Cortex, CortexConcurrency } from "@ericsanchezok/synergy-harness/cortex"
 import { CortexTypes } from "@ericsanchezok/synergy-harness/cortex/types"
@@ -804,15 +805,16 @@ describe.serial("Cortex", () => {
                 if (task.progress?.lastTool === "bash") progressUpdates.push(task)
               }
             })
-            let releaseInvoke: (() => void) | undefined
+            const progressObserved = Promise.withResolvers<void>()
+            const invoke = Promise.withResolvers<void>()
             let taskID: string | undefined
             ;(SessionInvoke.invokeInternal as any) = mock(
               async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
                 await writeRunningToolProgress(input.sessionID)
                 await writeAssistantText(input.sessionID, "partial status")
-                await new Promise<void>((resolve) => {
-                  releaseInvoke = resolve
-                })
+                // Exercise progress visibility before the mock begins waiting for its release.
+                await progressObserved.promise
+                await invoke.promise
                 return writeAssistantText(input.sessionID, "done")
               },
             )
@@ -846,11 +848,13 @@ describe.serial("Cortex", () => {
               expect(progressTask?.progress?.lastToolStatus).toBe("running")
               expect(progressTask?.progress?.lastMessage).toBe("partial status")
 
-              releaseInvoke?.()
+              invoke.resolve()
+              progressObserved.resolve()
               const completed = await waitUntilTerminal(task.id)
               expect(completed?.status).toBe("completed")
             } finally {
-              releaseInvoke?.()
+              progressObserved.resolve()
+              invoke.resolve()
               if (taskID && Cortex.get(taskID)?.status === "running") await Cortex.cancel(taskID)
               unsubscribe()
               ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
@@ -1477,7 +1481,7 @@ describe.serial("Cortex", () => {
       return {
         sessionID,
         messageID: "msg_parent01234567890abc",
-        agent: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
         abort: new AbortController().signal,
         metadata: () => {},
         ask: async () => {},
@@ -1539,7 +1543,7 @@ describe.serial("Cortex", () => {
               expect(notification?.source.type).toBe("cortex")
               expect(notification?.message?.metadata?.source).toBe("cortex")
               const notificationText = notification?.message?.parts.find((part) => part.type === "text")?.text ?? ""
-              expect(notificationText).toContain(`task_output(task_id="${task.id}", mode="full")`)
+              expect(notificationText).toContain(`task_output(taskId="${task.id}", mode="full")`)
               expect(notificationText).not.toContain(`mode="progress"`)
               expect(notificationText).not.toContain(`mode="tail"`)
               expect(notificationText).not.toContain("completed")
@@ -1583,7 +1587,7 @@ describe.serial("Cortex", () => {
                 id: rootID,
                 role: "user",
                 sessionID: parentSession.id,
-                agent: "synergy",
+                agent: PrimaryAgentIdentity.names.general,
                 model: { providerID: "test-provider", modelID: "test-model" },
                 isRoot: true,
                 rootID,
@@ -1597,8 +1601,8 @@ describe.serial("Cortex", () => {
                 sessionID: parentSession.id,
                 parentID: rootID,
                 rootID,
-                mode: "synergy",
-                agent: "synergy",
+                mode: PrimaryAgentIdentity.names.general,
+                agent: PrimaryAgentIdentity.names.general,
                 path: { cwd: tmp.path, root: tmp.path },
                 cost: 0,
                 tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -1663,7 +1667,7 @@ describe.serial("Cortex", () => {
                 role: "user",
                 sessionID: parentSession.id,
                 time: { created: Date.now() },
-                agent: "synergy",
+                agent: PrimaryAgentIdentity.names.general,
                 model: { providerID: "test-provider", modelID: "test-model" },
                 isRoot: true,
                 rootID,
@@ -1742,7 +1746,7 @@ describe.serial("Cortex", () => {
                 role: "user",
                 sessionID: parentSession.id,
                 time: { created: Date.now() },
-                agent: "synergy",
+                agent: PrimaryAgentIdentity.names.general,
                 model: { providerID: "test-provider", modelID: "test-model" },
                 isRoot: true,
                 rootID,
@@ -1861,7 +1865,7 @@ describe.serial("Cortex", () => {
               const taskOutput = await TaskOutputTool.init()
               const ctx = taskOutputContext(parentSession.id)
               for (const mode of ["summary", "progress", "tail"] as const) {
-                const result = await persistTaskOutput(taskOutput, { task_id: task.id, mode }, ctx)
+                const result = await persistTaskOutput(taskOutput, { taskId: task.id, mode }, ctx)
 
                 expect(result.metadata.status).toBe("completed")
                 expect(await SessionInbox.list(parentSession.id)).toHaveLength(1)
@@ -1904,7 +1908,7 @@ describe.serial("Cortex", () => {
                 expect((await waitUntilCompleted(task.id))?.status).toBe("completed")
                 expect(await waitForNotification(parentSession.id, task.id)).toBeDefined()
 
-                const result = await persistTaskOutput(taskOutput, { task_id: task.id, mode }, ctx)
+                const result = await persistTaskOutput(taskOutput, { taskId: task.id, mode }, ctx)
 
                 expect(result.metadata.status).toBe("completed")
                 expect(result.output).toContain("--- Result ---")
@@ -1951,7 +1955,7 @@ describe.serial("Cortex", () => {
               const taskOutput = await TaskOutputTool.init()
               const result = await persistTaskOutput(
                 taskOutput,
-                { task_id: task.id, mode: "full" },
+                { taskId: task.id, mode: "full" },
                 taskOutputContext(parentSession.id),
               )
 
@@ -1994,7 +1998,7 @@ describe.serial("Cortex", () => {
               const taskOutput = await TaskOutputTool.init()
               const result = await persistTaskOutput(
                 taskOutput,
-                { task_id: task.id, mode: "progress" },
+                { taskId: task.id, mode: "progress" },
                 taskOutputContext(parentSession.id),
               )
 
@@ -2050,7 +2054,7 @@ describe.serial("Cortex", () => {
               const taskOutput = await TaskOutputTool.init()
               await persistTaskOutput(
                 taskOutput,
-                { task_id: first.id, mode: "full" },
+                { taskId: first.id, mode: "full" },
                 taskOutputContext(parentSession.id),
               )
 
@@ -2089,7 +2093,7 @@ describe.serial("Cortex", () => {
                 role: "user",
                 sessionID: parentSession.id,
                 time: { created: Date.now() },
-                agent: "synergy",
+                agent: PrimaryAgentIdentity.names.general,
                 model: { providerID: "test-provider", modelID: "test-model" },
                 isRoot: true,
                 rootID,
@@ -2140,8 +2144,8 @@ describe.serial("Cortex", () => {
               const taskOutput = await TaskOutputTool.init()
               const ctx = taskOutputContext(parentSession.id)
               const results = await Promise.all([
-                persistTaskOutput(taskOutput, { task_id: first.id, mode: "full" }, ctx),
-                persistTaskOutput(taskOutput, { task_id: second.id, mode: "full" }, ctx),
+                persistTaskOutput(taskOutput, { taskId: first.id, mode: "full" }, ctx),
+                persistTaskOutput(taskOutput, { taskId: second.id, mode: "full" }, ctx),
               ])
               const combinedOutput = results.map((result) => result.output).join("\n")
               expect(combinedOutput).toContain(`batch result ${first.sessionID}`)
@@ -2273,7 +2277,7 @@ describe.serial("Cortex", () => {
                 role: "user",
                 sessionID: parentSession.id,
                 time: { created: Date.now() },
-                agent: "synergy",
+                agent: PrimaryAgentIdentity.names.general,
                 model: { providerID: "test-provider", modelID: "parent-model" },
                 isRoot: true,
                 rootID,

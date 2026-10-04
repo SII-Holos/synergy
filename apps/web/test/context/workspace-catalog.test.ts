@@ -37,6 +37,18 @@ test("a delayed Scope snapshot retains only newer Workspace events from its own 
   expect(tracker.mergeWorkspaces({ epoch: "restart", seq: 0 }, [old], [first])).toEqual([old])
 })
 
+test("a partial navigation snapshot retains unrequested bindings and fences later events", () => {
+  const tracker = new ScopeWriteTracker()
+  const other = { ...first, id: "wsp_other" }
+  const old = { ...first, revision: 1, binding: { ...first.binding, generation: 1 } }
+  tracker.workspaceWrite({ epoch: "run", seq: 5 }, first.id)
+  expect(tracker.mergeWorkspaces({ epoch: "run", seq: 4 }, [old], [first, other], { complete: false })).toEqual([
+    first,
+    other,
+  ])
+  expect(tracker.mergeWorkspaces(undefined, [old], [first, other], { complete: false })).toEqual([old, other])
+})
+
 test("unresolved historical bindings clear stale paths and recover only the matching catalog identity", () => {
   const missing = { ...first, binding: { ...first.binding, state: "unbound" as const, path: null } }
   expect(projectWorkspaceBinding(previous, missing)).toBeNull()

@@ -2,6 +2,7 @@ import { registerSnapshotTestHost } from "../support/snapshot-host"
 import { describe, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
+import type { SnapshotSchema } from "../../src/session/snapshot-schema"
 import { Snapshot } from "../../src/session/snapshot"
 import { SnapshotStore } from "../../src/session/snapshot-store"
 import { SnapshotLease } from "../../src/session/snapshot-lease"
@@ -34,7 +35,9 @@ describe("shared snapshot storage", () => {
           expect(before).toBeTruthy()
           const oversized = "x".repeat(2 * 1024 * 1024 + 1)
           await Bun.write(file, oversized)
-          const after = await Snapshot.track("session-size")
+          const omissions: SnapshotSchema.Omission[] = []
+          const after = await Snapshot.track("session-size", undefined, (items) => omissions.push(...items))
+          expect(omissions).toEqual([{ file: "literal[1].txt", reason: "size_limit" }])
           expect(after).toBeTruthy()
           const repo = SnapshotStore.repository(scope.id)
           const files = (await SnapshotStore.command(repo, ["ls-tree", "-z", "--name-only", after!])).split("\0")

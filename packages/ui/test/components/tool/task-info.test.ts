@@ -6,7 +6,7 @@ describe("task tool card title", () => {
   test("presents delegation as an action and keeps the agent type as metadata", () => {
     const info = getTaskToolInfo({
       subagent_type: "explore",
-      description: "Inspect the tool registry",
+      taskTitle: "Inspect the tool registry",
     })
 
     expect(info.title).toBe(TOOL_TITLE_DESC.task)
@@ -18,7 +18,7 @@ describe("task tool card title", () => {
     const trigger = getTaskToolTrigger(
       {
         subagent_type: "explore",
-        description: "Inspect the tool registry",
+        taskTitle: "Inspect the tool registry",
       },
       { backgroundLabel: "Background" },
     )

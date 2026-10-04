@@ -1153,3 +1153,92 @@ for (const order of [
       }))
   }
 }
+
+for (const action of ["approve", "abort"] as const) {
+  test(`multiple ask targets share one complete request: ${action}`, () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const sessionID = `ses_batch_${action}`
+          const controller = new AbortController()
+          const event = Promise.withResolvers<PermissionNext.Request>()
+          const asked: PermissionNext.Request[] = []
+          const unsubscribe = Bus.subscribe(PermissionNext.Event.Asked, ({ properties }) => {
+            if (properties.sessionID !== sessionID) return
+            asked.push(properties)
+            event.resolve(properties)
+          })
+          const outcome = PermissionNext.ask({
+            sessionID,
+            permission: "write",
+            patterns: ["first", "second"],
+            metadata: {},
+            ruleset: PermissionNext.fromConfig({ write: "ask" }),
+            signal: controller.signal,
+          }).then(
+            () => undefined,
+            (error: unknown) => error,
+          )
+          try {
+            const request = await event.promise
+            expect(request.patterns).toEqual(["first", "second"])
+            expect((await PermissionNext.list()).filter((item) => item.sessionID === sessionID)).toHaveLength(1)
+            if (action === "approve") {
+              await PermissionNext.reply({ requestID: request.id, reply: "once" })
+              expect(await outcome).toBeUndefined()
+            } else {
+              controller.abort()
+              const error = await outcome
+              expect(error).toBeInstanceOf(DOMException)
+              expect((error as DOMException).name).toBe("AbortError")
+            }
+            expect(asked).toHaveLength(1)
+            expect((await PermissionNext.list()).filter((item) => item.sessionID === sessionID)).toHaveLength(0)
+          } finally {
+            controller.abort()
+            await outcome
+            unsubscribe()
+            await PermissionNext.clearForSession(sessionID)
+          }
+        },
+      })
+    }))
+}
+
+test("a persisted denial takes precedence over an earlier ask target", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const sessionID = "ses_persisted_batch_denial"
+        const permission = "batch_fixture"
+        const asked: PermissionNext.Request[] = []
+        const replies: Promise<void>[] = []
+        const unsubscribe = Bus.subscribe(PermissionNext.Event.Asked, ({ properties }) => {
+          if (properties.sessionID !== sessionID) return
+          asked.push(properties)
+          replies.push(PermissionNext.reply({ requestID: properties.id, reply: "once" }))
+        })
+        try {
+          await PermissionRules.addUserRule({ permission, pattern: "second", action: "deny" })
+          const ruleset = PermissionNext.merge(
+            [{ permission, pattern: "*", action: "ask" }],
+            await PermissionRules.userRuleset(),
+          )
+          await expect(
+            PermissionNext.ask({ sessionID, permission, patterns: ["first", "second"], metadata: {}, ruleset }),
+          ).rejects.toBeInstanceOf(PermissionNext.DeniedError)
+          expect(asked).toHaveLength(0)
+          expect((await PermissionNext.list()).filter((item) => item.sessionID === sessionID)).toHaveLength(0)
+        } finally {
+          await Promise.all(replies)
+          unsubscribe()
+          await PermissionNext.clearForSession(sessionID)
+          await PermissionRules.removeUserRule(permission, "second")
+        }
+      },
+    })
+  }))

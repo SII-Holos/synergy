@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { afterEach, describe, expect, mock, test } from "bun:test"
 import type { ModelMessage } from "ai"
 import { ContextUsage } from "../../src/session/context-usage"
@@ -18,7 +19,7 @@ function userMessage(parts: MessageV2.Part[], includeInContext = true): MessageV
       sessionID: "ses_test",
       role: "user",
       time: { created: 0 },
-      agent: "synergy",
+      agent: PrimaryAgentIdentity.names.general,
       model: { providerID: "test", modelID: "test-model" },
       mode: "build",
       includeInContext,
@@ -38,7 +39,7 @@ function assistantMessage(parts: MessageV2.Part[]): MessageV2.WithParts {
       modelID: "test-model",
       providerID: "test",
       mode: "build",
-      agent: "synergy",
+      agent: PrimaryAgentIdentity.names.general,
       path: { cwd: "/tmp", root: "/tmp" },
       cost: 0,
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

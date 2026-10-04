@@ -63,7 +63,7 @@ export function productProvider() {
                           name: "bash",
                           arguments: JSON.stringify({
                             command,
-                            description: "Wait at product acceptance barrier",
+                            workBrief: "Wait at product acceptance barrier",
                             yieldSeconds: 180,
                           }),
                         },

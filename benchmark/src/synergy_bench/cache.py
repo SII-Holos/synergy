@@ -80,7 +80,11 @@ def verify_object(path: Path) -> dict[str, Any]:
 def protected(cache: Path, category: str = "artifacts") -> set[str]:
     result = set()
     for file in (cache / "references").glob("*.json"):
-        result.update(read_json(file).get(category, []))
+        try:
+            reference = read_json(file)
+        except FileNotFoundError:
+            continue
+        result.update(reference.get(category, []))
     return result
 
 

@@ -1,3 +1,5 @@
+import { settingsFieldCopy } from "../settings-field-copy"
+import { useSettingsViewState } from "../settings-view-state"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { cancelReencodeConfirm, reencodeExperienceConfirm } from "@/components/dialog/confirm-copy"
 
@@ -5,14 +7,15 @@ import { useLingui } from "@lingui/solid"
 import { useLocale } from "@/context/locale"
 import { createSignal, Show, For, createMemo, onCleanup, onMount } from "solid-js"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { SettingsSubsection } from "../components/SettingsPrimitives"
 import { SettingsStepScale } from "../components/SettingsStepScale"
 import type { SettingsStepOption } from "../components/SettingsStepScale"
-import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
-import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
+import { SettingsPage, SettingsSection, SettingsAdvanced } from "../components/SettingsPrimitives"
+import { SettingRow } from "../components/SettingsSettingRow"
 import { useGlobalSDK } from "@/context/global-sdk"
 import type { ExperienceDetectResult, ExperienceDetectGroup, ReencodeJobState } from "@ericsanchezok/synergy-sdk/client"
 import type { LibrarySettingsStore } from "../types"
@@ -181,16 +184,16 @@ const learningPageDesc = {
 const captureSectionTitle = { id: "settings.library.learning.capture.title", message: "Capture" }
 const captureSectionDesc = {
   id: "settings.library.learning.capture.desc",
-  message: "Keep the library useful without turning these controls into raw configuration.",
+  message: "Allow knowledge capture and background reflection.",
 }
-const learnRowTitle = { id: "settings.library.learning.learnRow.title", message: "Learn from interactions" }
+const learnRowTitle = settingsFieldCopy.learningLearn
 const learnRowDesc = {
   id: "settings.library.learning.learnRow.desc",
   message: "Create and curate memories from useful conversation context.",
 }
-const learningOn = { id: "settings.library.learning.state.learning", message: "Learning" }
-const learningPaused = { id: "settings.library.learning.state.paused", message: "Paused" }
-const autonomyRowTitle = { id: "settings.library.learning.autonomyRow.title", message: "Autonomous routines" }
+const learningOn = { id: "settings.library.learning.state.learning", message: "Allowed" }
+const learningPaused = { id: "settings.library.learning.state.paused", message: "Not allowed" }
+const autonomyRowTitle = settingsFieldCopy.learningAutonomy
 const autonomyRowDesc = {
   id: "settings.library.learning.autonomyRow.desc",
   message: "Allow reflection and planning jobs to run quietly in the background.",
@@ -208,12 +211,12 @@ const recallSectionDesc = {
   id: "settings.library.memory.recall.desc",
   message: "Adjust precision and volume for contextual memories that are brought into a session.",
 }
-const matchRowTitle = { id: "settings.library.memory.matchRow.title", message: "Match strictness" }
+const matchRowTitle = settingsFieldCopy.memoryMatch
 const matchRowDesc = {
   id: "settings.library.memory.matchRow.desc",
   message: "Higher values keep recalled memories closer to the current context.",
 }
-const countRowTitle = { id: "settings.library.memory.countRow.title", message: "Memories per category" }
+const countRowTitle = settingsFieldCopy.memoryCount
 const countRowDesc = {
   id: "settings.library.memory.countRow.desc",
   message: "Limit how many memories each category can contribute.",
@@ -235,12 +238,12 @@ const retrievalSectionDesc = {
   id: "settings.library.experience.retrieval.desc",
   message: "Choose how many past patterns should influence future work.",
 }
-const expMatchRowTitle = { id: "settings.library.experience.matchRow.title", message: "Match strictness" }
+const expMatchRowTitle = settingsFieldCopy.experienceMatch
 const expMatchRowDesc = {
   id: "settings.library.experience.matchRow.desc",
   message: "Higher values keep recalled experiences closer to the current task.",
 }
-const expCountRowTitle = { id: "settings.library.experience.countRow.title", message: "Experiences to recall" }
+const expCountRowTitle = settingsFieldCopy.experienceCount
 const expCountRowDesc = {
   id: "settings.library.experience.countRow.desc",
   message: "Set how many past examples can be considered at once.",
@@ -254,7 +257,7 @@ const explorationSectionDesc = {
   id: "settings.library.experience.exploration.desc",
   message: "Control how often Synergy tries a less familiar path.",
 }
-const expEpsilonRowTitle = { id: "settings.library.experience.epsilonRow.title", message: "Exploration rate" }
+const expEpsilonRowTitle = settingsFieldCopy.experienceExploration
 const expEpsilonRowDesc = {
   id: "settings.library.experience.epsilonRow.desc",
   message: "Chance of exploring alternatives instead of using the best-known pattern.",
@@ -264,7 +267,7 @@ const exploratoryHigh = { id: "settings.library.experience.exploratoryHigh", mes
 const expEpsilonAria = { id: "settings.library.experience.epsilonAria", message: "Experience exploration rate" }
 
 /* encoding health section */
-const encodingHealthTitle = { id: "settings.library.encoding.health.title", message: "Encoding Health" }
+const encodingHealthTitle = settingsFieldCopy.encodingHealth
 const encodingHealthDesc = {
   id: "settings.library.encoding.health.desc",
   message: "Scan the database for records whose intent or script may not have been properly encoded.",
@@ -360,11 +363,9 @@ export function LearningPanel(props: {
         <SettingRow
           title={_(learnRowTitle)}
           description={_(learnRowDesc)}
+          stateLabel={props.library.learning !== "false" ? _(learningOn) : _(learningPaused)}
           trailing={
             <>
-              <span class="settings-row-state">
-                {props.library.learning !== "false" ? _(learningOn) : _(learningPaused)}
-              </span>
               <Switch
                 checked={props.library.learning !== "false"}
                 hideLabel
@@ -378,11 +379,9 @@ export function LearningPanel(props: {
         <SettingRow
           title={_(autonomyRowTitle)}
           description={_(autonomyRowDesc)}
+          stateLabel={props.library.autonomy !== "false" ? _(autonomyOn) : _(autonomyOff)}
           trailing={
             <>
-              <span class="settings-row-state">
-                {props.library.autonomy !== "false" ? _(autonomyOn) : _(autonomyOff)}
-              </span>
               <Switch
                 checked={props.library.autonomy !== "false"}
                 hideLabel
@@ -400,13 +399,14 @@ export function LearningPanel(props: {
 
 export function MemoryPanel(props: {
   library: LibrarySettingsStore
+  fieldError?: (key: keyof LibrarySettingsStore) => string | undefined
   embeddingConfigDirty: boolean
   onLibraryChange: (key: keyof LibrarySettingsStore, value: string) => void
   popoverLayer?: HTMLElement
 }) {
   const { _ } = useLingui()
   const opts = () => memoryCountDefs.map((def) => stepOption(_, def))
-  const simOpts = () => similarityOptionDefs.map((def) => stepOption(_, def))
+  const simOpts = () => similarityOptionDefs.map((def) => ({ ...stepOption(_, def), tickLabel: _(def.label) }))
   return (
     <SettingsPage title={_(memoryPageTitle)} description={_(memoryPageDesc)}>
       <SettingsSection title={_(recallSectionTitle)} description={_(recallSectionDesc)}>
@@ -420,7 +420,7 @@ export function MemoryPanel(props: {
               lowLabel={_(broaderLow)}
               highLabel={_(stricterHigh)}
               ariaLabel={_(memoryMatchAria)}
-              summary={(option) => `${option.label} ${option.value}`}
+              summary={(option) => option.label}
               onChange={(value) => props.onLibraryChange("memorySimThreshold", value)}
             />
           }
@@ -441,12 +441,49 @@ export function MemoryPanel(props: {
           }
         />
       </SettingsSection>
-      <LibraryEmbeddingSection
-        library={props.library}
-        configDirty={props.embeddingConfigDirty}
-        onLibraryChange={props.onLibraryChange}
-        popoverLayer={props.popoverLayer}
-      />
+      <SettingsAdvanced
+        id="precision"
+        forceOpen={
+          Boolean(props.fieldError?.("memorySimThreshold")) ||
+          useSettingsViewState()?.searchField() === _(settingsFieldCopy.memoryThreshold)
+        }
+        title={_({ id: "settings.library.precise", message: "Precise recall settings" })}
+      >
+        <SettingRow
+          title={_(settingsFieldCopy.memoryThreshold)}
+          description={_(matchRowDesc)}
+          trailing={
+            <TextField
+              type="number"
+              min="0"
+              max="1"
+              step="0.01"
+              value={props.library.memorySimThreshold}
+              validationState={props.fieldError?.("memorySimThreshold") ? "invalid" : "valid"}
+              error={props.fieldError?.("memorySimThreshold")}
+              onChange={(value) => props.onLibraryChange("memorySimThreshold", value)}
+            />
+          }
+        />
+      </SettingsAdvanced>
+      <SettingsAdvanced
+        id="embedding"
+        fields={[
+          settingsFieldCopy.embeddingModel,
+          settingsFieldCopy.embeddingSource,
+          settingsFieldCopy.embeddingOrigin,
+          settingsFieldCopy.embeddingCache,
+          settingsFieldCopy.embeddingFiles,
+        ].map((field) => _(field))}
+        title={_({ id: "settings.library.memory.advanced", message: "Model files and downloads" })}
+      >
+        <LibraryEmbeddingSection
+          library={props.library}
+          configDirty={props.embeddingConfigDirty}
+          onLibraryChange={props.onLibraryChange}
+          popoverLayer={props.popoverLayer}
+        />
+      </SettingsAdvanced>
     </SettingsPage>
   )
 }
@@ -542,8 +579,12 @@ function EncodingHealthSection() {
       const res = await globalSDK.client.library.experience.detect()
       if (res.error) throw res.error
       setResult(res.data)
-    } catch {
-      // scan fails silently — button re-enabled
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: _({ id: "settings.library.encoding.scanFailed", message: "Scan failed" }),
+        description: error instanceof Error ? error.message : _(jobLoadFallback),
+      })
     } finally {
       setScanning(false)
     }
@@ -779,13 +820,14 @@ function ExperienceGroupCards(props: {
 }
 
 export function ExperiencePanel(props: {
+  fieldError?: (key: keyof LibrarySettingsStore) => string | undefined
   library: LibrarySettingsStore
   onLibraryChange: (key: keyof LibrarySettingsStore, value: string) => void
 }) {
   const { _ } = useLingui()
-  const simOpts = () => similarityOptionDefs.map((def) => stepOption(_, def))
+  const simOpts = () => similarityOptionDefs.map((def) => ({ ...stepOption(_, def), tickLabel: _(def.label) }))
   const expCountOpts = () => experienceCountDefs.map((def) => stepOption(_, def))
-  const epsOpts = () => explorationDefs.map((def) => stepOption(_, def))
+  const epsOpts = () => explorationDefs.map((def) => ({ ...stepOption(_, def), tickLabel: _(def.label) }))
   return (
     <SettingsPage title={_(experiencePageTitle)} description={_(experiencePageDesc)}>
       <SettingsSection title={_(retrievalSectionTitle)} description={_(retrievalSectionDesc)}>
@@ -799,7 +841,7 @@ export function ExperiencePanel(props: {
               lowLabel={_(broaderLow)}
               highLabel={_(stricterHigh)}
               ariaLabel={_(expMatchAria)}
-              summary={(option) => `${option.label} ${option.value}`}
+              summary={(option) => option.label}
               onChange={(value) => props.onLibraryChange("experienceSimThreshold", value)}
             />
           }
@@ -831,13 +873,62 @@ export function ExperiencePanel(props: {
               lowLabel={_(stableLow)}
               highLabel={_(exploratoryHigh)}
               ariaLabel={_(expEpsilonAria)}
-              summary={(option) => `${option.label} ${option.value}`}
+              summary={(option) => option.label}
               onChange={(value) => props.onLibraryChange("experienceEpsilon", value)}
             />
           }
         />
       </SettingsSection>
-      <EncodingHealthSection />
+      <SettingsAdvanced
+        id="precision"
+        forceOpen={
+          Boolean(props.fieldError?.("experienceSimThreshold") || props.fieldError?.("experienceEpsilon")) ||
+          [settingsFieldCopy.experienceThreshold, settingsFieldCopy.experienceProbability].some(
+            (copy) => useSettingsViewState()?.searchField() === _(copy),
+          )
+        }
+        title={_({ id: "settings.library.precise", message: "Precise recall settings" })}
+      >
+        <SettingRow
+          title={_(settingsFieldCopy.experienceThreshold)}
+          description={_(expMatchRowDesc)}
+          trailing={
+            <TextField
+              type="number"
+              min="0"
+              max="1"
+              step="0.01"
+              value={props.library.experienceSimThreshold}
+              validationState={props.fieldError?.("experienceSimThreshold") ? "invalid" : "valid"}
+              error={props.fieldError?.("experienceSimThreshold")}
+              onChange={(value) => props.onLibraryChange("experienceSimThreshold", value)}
+            />
+          }
+        />
+        <SettingRow
+          title={_(settingsFieldCopy.experienceProbability)}
+          description={_(expEpsilonRowDesc)}
+          trailing={
+            <TextField
+              type="number"
+              min="0"
+              max="1"
+              step="0.01"
+              value={props.library.experienceEpsilon}
+              validationState={props.fieldError?.("experienceEpsilon") ? "invalid" : "valid"}
+              error={props.fieldError?.("experienceEpsilon")}
+              onChange={(value) => props.onLibraryChange("experienceEpsilon", value)}
+            />
+          }
+        />
+      </SettingsAdvanced>
+      <SettingsAdvanced
+        id="encoding"
+        fields={[_(encodingHealthTitle)]}
+        title={_({ id: "settings.library.experience.advanced", message: "Encoding and maintenance" })}
+      >
+        <EncodingHealthSection />
+      </SettingsAdvanced>
     </SettingsPage>
   )
 }

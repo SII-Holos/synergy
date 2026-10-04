@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import path from "node:path"
 import { EditTool } from "../../src/tools/edit"
@@ -20,7 +21,7 @@ test("local edit creates, authorizes, replaces and reports the actual file delta
           sessionID: "edit-lifecycle",
           messageID: "message",
           callID: "call",
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           abort: new AbortController().signal,
           metadata() {},
           async ask(input) {

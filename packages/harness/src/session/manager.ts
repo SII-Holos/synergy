@@ -18,7 +18,7 @@ import { BusyError, PausedTurnAbort } from "./error"
 import { SessionEvent } from "./event"
 import type { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
-import { Info, type StatusInfo } from "./types"
+import { Info, type StatusInfo, type Activity } from "./types"
 import { SessionEndpoint } from "./endpoint"
 import { SessionMemoryPressure } from "./memory-pressure"
 import { SessionInbox } from "./inbox"
@@ -88,6 +88,7 @@ export namespace SessionManager {
     lease: LoopLease
     controller: AbortController
     phase: LoopPhase
+    purpose?: "passive_input"
     rootID?: string
     /** Set by an internal cancellation (Cortex) that owns the session's queued work: fenced cleanup
      *  discards items queued before this timestamp at the loop boundary, preserving mail delivered
@@ -417,11 +418,18 @@ export namespace SessionManager {
   export async function run<T>(
     sessionID: string,
     fn: (lease: LoopLease) => Promise<T>,
-    options?: { lease?: LoopLease; releaseLease?: boolean; requestNextWorkOnFailure?: boolean; workspace?: "history" },
+    options?: {
+      lease?: LoopLease
+      releaseLease?: boolean
+      requestNextWorkOnFailure?: boolean
+      workspace?: "history"
+      purpose?: "passive_input"
+    },
   ): Promise<T> {
     const lease = options?.lease ?? acquire(sessionID)
     const runtime = getRuntime(sessionID)
     if (!lease || lease.sessionID !== sessionID || !runtime || !owns(runtime, lease)) throw new BusyError(sessionID)
+    if (options?.purpose) runtime.owner!.purpose = options.purpose
     let completed = false
     let admitted = !SessionExecutionSource.configured()
     const completion = Promise.withResolvers<void>()
@@ -525,7 +533,7 @@ export namespace SessionManager {
     runtime.owner = { lease, controller, phase: "starting" }
     runtimeState().leaseReleases.set(lease, Promise.withResolvers<void>())
     transitionExecutionPhase(runtime, "queued_agent")
-    runtime.status = { type: "busy" }
+    runtime.status = { type: "busy", activity: { phase: "materializing_input", startedAt: Date.now() } }
     return lease
   }
 
@@ -574,6 +582,7 @@ export namespace SessionManager {
       owner.fenceQueuedBefore ??= options.fenceQueuedBefore
     }
     if (owner.phase === "stopping") return "already_stopping"
+    setActivity(sessionID, { phase: "stopping" }, { generation: owner.lease.generation, rootID: owner.rootID })
     owner.phase = "stopping"
     transitionExecutionPhase(runtime, "stopping")
     owner.controller.abort(options?.pauseTurn ? new PausedTurnAbort() : undefined)
@@ -708,8 +717,18 @@ export namespace SessionManager {
     if (!runtimeState().accepting) return
     if (isRunning(sessionID)) return
     const session = await getSession(sessionID).catch(() => undefined)
+    if (session && (await SessionInbox.peekIdleNoReply(sessionID)).length) {
+      await run(
+        sessionID,
+        async () => {
+          for (const item of await SessionInbox.peekIdleNoReply(sessionID)) await SessionInbox.materializeItem(item)
+        },
+        { purpose: "passive_input" },
+      )
+      if (isRunning(sessionID)) return
+    }
     if (await SessionLifecycle.blocksDrive(session)) return
-    if (!options.force && !(await SessionInbox.hasRunnableItem(sessionID))) return
+    if (!options.force && !(await SessionInbox.hasRunnableItem(sessionID, { allowPassive: false }))) return
     if (!session) return
     await SessionExecutionSource.authorize({ sessionID, scopeID: session.scope.id, parentSessionID: session.parentID })
     const { SessionInvoke } = await import("./invoke")
@@ -743,6 +762,36 @@ export namespace SessionManager {
     if (!runtime) return
     runtime.status = status
     emitStatus(runtime, status)
+  }
+
+  export function setActivity(
+    sessionID: string,
+    activity: Pick<Activity, "phase" | "tool">,
+    expected: { generation: number; rootID?: string },
+  ): boolean {
+    const runtime = getRuntime(sessionID)
+    const owner = runtime?.owner
+    if (!runtime || !owner || owner.lease.generation !== expected.generation) return false
+    if (expected.rootID !== undefined && owner.rootID !== expected.rootID) return false
+    if (owner.phase === "stopping" || owner.lease.signal.aborted || runtime.status.type === "paused") return false
+    const previous = runtime.status.type === "busy" ? runtime.status.activity : undefined
+    if (
+      previous?.phase === activity.phase &&
+      previous.rootID === owner.rootID &&
+      previous.tool?.id === activity.tool?.id &&
+      previous.tool?.count === activity.tool?.count
+    )
+      return true
+    setStatus(sessionID, {
+      type: "busy",
+      activity: {
+        ...activity,
+        rootID: owner.rootID,
+        startedAt:
+          previous?.phase === activity.phase && previous.rootID === owner.rootID ? previous.startedAt : Date.now(),
+      },
+    })
+    return true
   }
 
   export function setExecutionPhase(sessionID: string, phase: ExecutionPhase): void {
@@ -785,6 +834,10 @@ export namespace SessionManager {
     return occupied(getRuntime(sessionID))
   }
 
+  export function isPassiveInputRunning(sessionID: string): boolean {
+    return getRuntime(sessionID)?.owner?.purpose === "passive_input"
+  }
+
   export function assertIdle(sessionID: string): void {
     if (occupied(getRuntime(sessionID))) throw new BusyError(sessionID)
   }
@@ -822,6 +875,19 @@ export namespace SessionManager {
       if (runtime.status.type !== "idle") count++
     }
     return count
+  }
+
+  export async function statusesFor(sessions: readonly Info[]): Promise<Record<string, StatusInfo>> {
+    const { resolve, toStatus } = await import("./working")
+    const entries = await Promise.all(
+      sessions.map(async (session) => {
+        const live = getRuntime(session.id)?.status
+        if (live && live.type !== "idle") return [session.id, live] as const
+        const working = await resolve(session.id, session)
+        return working ? ([session.id, toStatus(working)] as const) : undefined
+      }),
+    )
+    return Object.fromEntries(entries.flatMap((entry) => (entry ? [entry] : [])))
   }
 
   export async function listStatuses(scopeID?: string): Promise<Record<string, StatusInfo>> {

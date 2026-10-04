@@ -19,8 +19,8 @@ const repoRoot = path.resolve(import.meta.dir, "../../../..")
 
 const PROMPT_FILES = [
   "packages/harness/src/agent/prompt/developer/base.txt",
-  "packages/harness/src/agent/prompt/synergy/base.txt",
-  "packages/harness/src/agent/prompt/synergy-max/base.txt",
+  "packages/harness/src/agent/prompt/general/base.txt",
+  "packages/harness/src/agent/prompt/coding/base.txt",
 ]
 
 const SECONDS_FACING_TOOL_FILES = [

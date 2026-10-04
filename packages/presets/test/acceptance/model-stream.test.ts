@@ -59,7 +59,7 @@ for (const fault of ["disconnect", "timeout"] as const)
                           type: "function",
                           function: {
                             name: "bash",
-                            arguments: JSON.stringify({ command, description: "Acceptance command" }),
+                            arguments: JSON.stringify({ command, workBrief: "Acceptance command" }),
                           },
                         },
                       ],

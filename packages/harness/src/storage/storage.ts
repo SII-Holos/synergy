@@ -5,6 +5,7 @@ import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { StorageQueue } from "./queue"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { ArtifactPack } from "./artifact-pack"
+import type { ArtifactLocation } from "./artifact-location"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { NotFoundError as MissingRecord, StorageClosedError, StorageConflictError } from "./errors"
 import {
@@ -31,6 +32,7 @@ export namespace Storage {
     migrationAccess?: boolean
     transaction?: StoreTransaction
     effects?: Array<() => Promise<unknown> | void>
+    settled?: Array<() => void>
     pending?: Promise<unknown>[]
     eventCapture?: Promise<void>
   }
@@ -95,37 +97,45 @@ export namespace Storage {
       return body(parent.transaction)
     }
     let effects: Array<() => Promise<unknown> | void> = []
-    const result = await parent.store.transaction(async (tx) => {
-      if (!parent.migrationAccess) tx.restrictToPublishedOwners()
-      effects = []
-      const pending: Promise<unknown>[] = []
-      return RuntimeContext.transaction(() =>
-        context.run({ ...parent, owner: RuntimeContext.current(), transaction: tx, effects, pending }, async () => {
-          const result = await body(tx)
-          for (let offset = 0; offset < pending.length; ) {
-            const batch = pending.slice(offset)
-            offset += batch.length
-            await Promise.all(batch)
-          }
-          return result
-        }),
-      )
-    }, options)
-    for (const effect of effects) {
-      try {
-        await effect()
-      } catch (error) {
-        ObservabilityIssues.raise({
-          code: "STORAGE_POST_COMMIT_FAILED",
-          severity: "error",
-          module: "storage",
-          title: "A committed change could not publish its notification",
-          message: "The database commit succeeded. Pending events remain available for reconciliation.",
-          evidence: { errorName: error instanceof Error ? error.name : "unknown" },
-        })
+    const settled: Array<() => void> = []
+    try {
+      const result = await parent.store.transaction(async (tx) => {
+        if (!parent.migrationAccess) tx.restrictToPublishedOwners()
+        effects = []
+        const pending: Promise<unknown>[] = []
+        return RuntimeContext.transaction(() =>
+          context.run(
+            { ...parent, owner: RuntimeContext.current(), transaction: tx, effects, pending, settled },
+            async () => {
+              const result = await body(tx)
+              for (let offset = 0; offset < pending.length; ) {
+                const batch = pending.slice(offset)
+                offset += batch.length
+                await Promise.all(batch)
+              }
+              return result
+            },
+          ),
+        )
+      }, options)
+      for (const effect of effects) {
+        try {
+          await effect()
+        } catch (error) {
+          ObservabilityIssues.raise({
+            code: "STORAGE_POST_COMMIT_FAILED",
+            severity: "error",
+            module: "storage",
+            title: "A committed change could not publish its notification",
+            message: "The database commit succeeded. Pending events remain available for reconciliation.",
+            evidence: { errorName: error instanceof Error ? error.name : "unknown" },
+          })
+        }
       }
+      return result
+    } finally {
+      for (const release of settled) release()
     }
-    return result
   }
 
   export function snapshot<T>(
@@ -224,6 +234,10 @@ export namespace Storage {
     return snapshot((tx) => tx.queryKeys(input), { singleStatement: true })
   }
 
+  export function count(input: Omit<RecordQuery, "limit" | "after" | "descending">) {
+    return snapshot((tx) => tx.count(input), { singleStatement: true })
+  }
+
   export async function* records<T>(input: Omit<RecordQuery, "after"> = {}) {
     let after: string[] | undefined
     for (;;) {
@@ -236,7 +250,7 @@ export namespace Storage {
   }
 
   const runtimePacks = RuntimeContext.state(
-    () => new WeakMap<TransactionalStore, { pack: ArtifactPack; gate: StorageQueue }>(),
+    () => new WeakMap<TransactionalStore, { pack: ArtifactPack; gate: StorageQueue; prepared: Map<string, number> }>(),
   )
   function artifactPack(key: string[]) {
     if (!key.length || key.some((part) => !part || part === "." || part === ".." || /[\\/\0]/.test(part)))
@@ -248,32 +262,91 @@ export namespace Storage {
       pack = {
         pack: new ArtifactPack(path.join(handle.artifactDirectory, "agent-artifacts")),
         gate: new StorageQueue("artifact.gate"),
+        prepared: new Map(),
       }
       artifactPacks.set(handle.store, pack)
     }
     return pack
   }
 
-  export async function writeBinary(key: string[], content: Uint8Array) {
+  const preparedBinaryBrand = Symbol("prepared-binary")
+  export type PreparedBinary = Disposable & { readonly [preparedBinaryBrand]: true }
+  const preparedBinaries = new WeakMap<
+    PreparedBinary,
+    {
+      store: TransactionalStore
+      runtime: RuntimeContext.Instance
+      key: string[]
+      location: ArtifactLocation
+      released: boolean
+      publishing: boolean
+    }
+  >()
+
+  export async function prepareBinary(key: string[], content: Uint8Array): Promise<PreparedBinary> {
     if (current().transaction)
       throw new StorageConflictError("Artifact bytes must be flushed before the business transaction")
     const state = artifactPack(key)
     const bytes = new Uint8Array(content)
-    await state.gate.run(async () => {
+    return state.gate.run(async () => {
       const hash = createHash("sha256").update(bytes).digest("hex")
       const previous = await snapshot((tx) => tx.artifact(key)).catch((error: unknown) => {
         if (error instanceof NotFoundError) return undefined
         throw error
       })
-      if (previous?.sha256 === hash && previous.size === bytes.byteLength) {
-        await state.pack.verify(previous)
-        return
-      }
+      const existing = previous?.sha256 === hash && previous.size === bytes.byteLength
+      if (existing) await state.pack.verify(previous)
       const owner = JSON.stringify(key.slice(0, ["sessions", "operations"].includes(key[0]) ? 3 : 1))
-      const location = await state.pack.append(bytes, owner)
-      await transaction((tx) => tx.writeArtifacts([{ key, location }]))
+      const location = existing ? previous : await state.pack.append(bytes, owner)
+      const held = {
+        store: current().store,
+        runtime: RuntimeContext.current(),
+        key: [...key],
+        location,
+        released: false,
+        publishing: false,
+      }
+      state.prepared.set(location.pack, (state.prepared.get(location.pack) ?? 0) + 1)
+      const token: PreparedBinary = {
+        [preparedBinaryBrand]: true,
+        [Symbol.dispose]() {
+          if (held.released || held.publishing) return
+          held.released = true
+          const count = (state.prepared.get(location.pack) ?? 1) - 1
+          if (count) state.prepared.set(location.pack, count)
+          else state.prepared.delete(location.pack)
+        },
+      }
+      preparedBinaries.set(token, held)
+      ObservabilityResources.addWrite(content.byteLength)
+      return token
     })
-    ObservabilityResources.addWrite(content.byteLength)
+  }
+
+  export async function publishPreparedBinary(token: PreparedBinary) {
+    const prepared = preparedBinaries.get(token)
+    const handle = current()
+    if (!handle.transaction)
+      throw new StorageConflictError("Prepared artifact publication requires a write transaction")
+    if (
+      !prepared ||
+      prepared.released ||
+      prepared.store !== handle.store ||
+      prepared.runtime !== RuntimeContext.current()
+    )
+      throw new StorageConflictError("Prepared artifact belongs to a different or released storage owner")
+    if (!handle.settled) throw new StorageConflictError("Prepared artifacts require an owned write transaction")
+    prepared.publishing = true
+    handle.settled.push(() => {
+      prepared.publishing = false
+      token[Symbol.dispose]()
+    })
+    await handle.transaction.writeArtifacts([{ key: prepared.key, location: prepared.location }])
+  }
+
+  export async function writeBinary(key: string[], content: Uint8Array) {
+    using prepared = await prepareBinary(key, content)
+    await transaction(() => publishPreparedBinary(prepared))
   }
 
   export async function readBinary(key: string[], options?: { maxBytes?: number }): Promise<Uint8Array> {
@@ -335,6 +408,7 @@ export namespace Storage {
                 return result
               })
               for (const key of await store.list(["storage_pack_pins"])) referenced.add(key[1])
+              for (const pack of state.prepared.keys()) referenced.add(pack)
               const orphans = await state.pack.orphaned(referenced)
               await state.pack.prune(orphans)
               for (const name of orphans) reclaimed.add(name)
@@ -344,6 +418,7 @@ export namespace Storage {
               const candidates = await store.snapshot((tx) => tx.artifactGarbage())
               if (!candidates.length) return removed
               const pins = new Set((await store.list(["storage_pack_pins"])).map((key) => key[1]))
+              for (const pack of state.prepared.keys()) pins.add(pack)
               const unused = candidates
                 .filter((entry) => !entry.used && !pins.has(entry.pack) && !reclaimed.has(entry.pack))
                 .map((entry) => entry.pack)

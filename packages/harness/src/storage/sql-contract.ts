@@ -13,6 +13,7 @@ export function sqlParameterBytes(values: SqlValue[]): number {
 }
 
 export interface SqlQueryOptions {
+  background?: boolean
   // The operation names what a statement is doing *and* whether it can be split:
   // `reclaim` frees a bounded page count per call, while every other operation is
   // one engine call whose cost grows with the store. That distinction is what
@@ -23,6 +24,7 @@ export interface SqlQueryOptions {
 
 export interface SqlTransactionOptions {
   readOnly?: boolean
+  background?: boolean
   operationID?: string
   // Declared by the caller when its body issues at most one statement. A lone
   // statement is already atomic, so an explicit transaction would only add round

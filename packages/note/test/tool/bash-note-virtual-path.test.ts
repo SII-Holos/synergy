@@ -59,9 +59,8 @@ describe("bash note virtual paths", () => {
           const result = await bash.execute(
             {
               command: `cat /synergy/note/${noteID}`,
-              description: "Read reviewed note",
             },
-            baseContext,
+            { ...baseContext, workBrief: "Read reviewed note" },
           )
 
           expect(result.metadata.exit).toBe(0)
@@ -87,9 +86,8 @@ describe("bash note virtual paths", () => {
               command:
                 `cat '/synergy/note/${left.id}' && cat \"/synergy/note/${right.id}\" && ` +
                 `diff /synergy/note/${left.id} /synergy/note/${left.id}`,
-              description: "Consume reviewed notes",
             },
-            baseContext,
+            { ...baseContext, workBrief: "Consume reviewed notes" },
           )
 
           expect(result.metadata.exit).toBe(0)
@@ -106,9 +104,8 @@ describe("bash note virtual paths", () => {
         const result = await bash.execute(
           {
             command: `printf '你好\\n' && cat /synergy/note/${noteID}`,
-            description: "Consume a reviewed note after Unicode text",
           },
-          baseContext,
+          { ...baseContext, workBrief: "Consume a reviewed note after Unicode text" },
         )
 
         expect(result.metadata.exit).toBe(0)
@@ -127,9 +124,8 @@ describe("bash note virtual paths", () => {
           const result = await bash.execute(
             {
               command: "printf ok # /synergy/note/nte_missing",
-              description: "Print literal text",
             },
-            baseContext,
+            { ...baseContext, workBrief: "Print literal text" },
           )
 
           expect(result.metadata.exit).toBe(0)
@@ -153,9 +149,8 @@ describe("bash note virtual paths", () => {
             bash.execute(
               {
                 command: `touch ${JSON.stringify(marker)} && cat /synergy/note/nte_missing`,
-                description: "Consume missing note",
               },
-              baseContext,
+              { ...baseContext, workBrief: "Consume missing note" },
             ),
           ).rejects.toThrow("Note not found: nte_missing")
           expect(await Bun.file(marker).exists()).toBe(false)
@@ -190,9 +185,8 @@ describe("bash note virtual paths", () => {
         const result = await bash.execute(
           {
             command: `printf %s /synergy/note/${noteID}`,
-            description: "Inspect staged note path",
           },
-          baseContext,
+          { ...baseContext, workBrief: "Inspect staged note path" },
         )
         const materializedPath = result.output.trim()
 
@@ -253,9 +247,8 @@ describe("bash note virtual paths", () => {
           bash.execute(
             {
               command: `printf %s /synergy/note/${noteID}`,
-              description: "Inspect concurrent note path",
             },
-            baseContext,
+            { ...baseContext, workBrief: "Inspect concurrent note path" },
           )
         const [left, right] = await Promise.all([execute(), execute()])
         const leftPath = left.output.trim()
@@ -274,10 +267,10 @@ describe("bash note virtual paths", () => {
         const result = await bash.execute(
           {
             command: `printf '%s\\n' /synergy/note/${noteID}; sleep 0.2`,
-            description: "Keep reviewed note available",
+
             yieldSeconds: 0.02,
           },
-          baseContext,
+          { ...baseContext, workBrief: "Keep reviewed note available" },
         )
         const processID = result.metadata.processId
         expect(processID).toBeString()
@@ -305,24 +298,26 @@ describe("bash note virtual paths", () => {
         const result = await bash.execute(
           {
             command: `cat /synergy/note/${noteID}`,
-            description: "Read approved note revision",
           },
           {
-            ...baseContext,
-            ask: async () => {
-              const current = await NoteStore.getAny(ScopeContext.current.scope.id, noteID)
-              await NoteStore.update(ScopeContext.current.scope.id, noteID, {
-                expectedVersion: current.version,
-                content: NoteMarkdown.fromMarkdown("user-reviewed"),
-              })
+            ...{
+              ...baseContext,
+              ask: async () => {
+                const current = await NoteStore.getAny(ScopeContext.current.scope.id, noteID)
+                await NoteStore.update(ScopeContext.current.scope.id, noteID, {
+                  expectedVersion: current.version,
+                  content: NoteMarkdown.fromMarkdown("user-reviewed"),
+                })
+              },
+              extra: {
+                sandboxPrepare: async (input: { command: string }) => ({
+                  command: Shell.acceptable(),
+                  args: ["-c", input.command],
+                  sandboxed: false,
+                }),
+              },
             },
-            extra: {
-              sandboxPrepare: async (input: { command: string }) => ({
-                command: Shell.acceptable(),
-                args: ["-c", input.command],
-                sandboxed: false,
-              }),
-            },
+            workBrief: "Read approved note revision",
           },
         )
 
@@ -340,21 +335,23 @@ describe("bash note virtual paths", () => {
         const result = await bash.execute(
           {
             command: `cat /synergy/note/${noteID}`,
-            description: "Read sandboxed note",
           },
           {
-            ...baseContext,
-            extra: {
-              sandboxPrepare: async (input: { command: string; extraReadRoots: string[] }) => {
-                prepared = input
-                return {
-                  command: Shell.acceptable(),
-                  args: ["-c", input.command],
-                  sandboxed: false,
-                }
+            ...{
+              ...baseContext,
+              extra: {
+                sandboxPrepare: async (input: { command: string; extraReadRoots: string[] }) => {
+                  prepared = input
+                  return {
+                    command: Shell.acceptable(),
+                    args: ["-c", input.command],
+                    sandboxed: false,
+                  }
+                },
+                sandboxFallback: "deny",
               },
-              sandboxFallback: "deny",
             },
+            workBrief: "Read sandboxed note",
           },
         )
 
@@ -375,23 +372,25 @@ describe("bash note virtual paths", () => {
           bash.execute(
             {
               command: `cat /synergy/note/${noteID}`,
-              description: "Fail after staging",
             },
             {
-              ...baseContext,
-              metadata: () => {
-                throw new Error("metadata unavailable")
-              },
-              extra: {
-                sandboxPrepare: async (input: { command: string; extraReadRoots: string[] }) => {
-                  stagingRoot = input.extraReadRoots[0]
-                  return {
-                    command: Shell.acceptable(),
-                    args: ["-c", input.command],
-                    sandboxed: false,
-                  }
+              ...{
+                ...baseContext,
+                metadata: () => {
+                  throw new Error("metadata unavailable")
+                },
+                extra: {
+                  sandboxPrepare: async (input: { command: string; extraReadRoots: string[] }) => {
+                    stagingRoot = input.extraReadRoots[0]
+                    return {
+                      command: Shell.acceptable(),
+                      args: ["-c", input.command],
+                      sandboxed: false,
+                    }
+                  },
                 },
               },
+              workBrief: "Fail after staging",
             },
           ),
         ).rejects.toThrow("metadata unavailable")

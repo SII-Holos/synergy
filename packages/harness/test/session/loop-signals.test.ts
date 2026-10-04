@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { describe, expect, test, beforeAll } from "bun:test"
 import { LoopJob } from "../../src/session/loop-job"
 import { Log } from "../../src/util/log"
@@ -25,7 +26,7 @@ runtime.run(() => Log.init({ print: false }))
 // makeUser() returns the flat user shape for ctx.lastUser.
 // makeUserWrapper() returns the WithParts shape for ctx.messages.
 
-function makeUser(agent = "synergy"): any {
+function makeUser(agent: string = PrimaryAgentIdentity.names.general): any {
   return {
     id: "usr_test",
     role: "user" as const,
@@ -36,11 +37,11 @@ function makeUser(agent = "synergy"): any {
   }
 }
 
-function makeUserWrapper(agent = "synergy"): any {
+function makeUserWrapper(agent: string = PrimaryAgentIdentity.names.general): any {
   return { info: makeUser(agent), parts: [] }
 }
 
-function makeAssistant(toolParts: any[], agent = "synergy"): any {
+function makeAssistant(toolParts: any[], agent: string = PrimaryAgentIdentity.names.general): any {
   return {
     info: {
       id: `msg_${Math.random().toString(36).slice(2)}`,
@@ -92,7 +93,7 @@ async function makeCtx(
   step: number,
   messages: any[],
   lastUserParts: any[] = [],
-  agent = "synergy",
+  agent: string = PrimaryAgentIdentity.names.general,
 ): Promise<LoopJob.Context> {
   return ScopeContext.provide({
     scope: Scope.home(),

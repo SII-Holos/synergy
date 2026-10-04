@@ -849,11 +849,22 @@ export namespace ProviderCatalog {
     if (runtimeState().shutdown.signal.aborted) return
     return tracked(async () => {
       try {
-        await refresh(providerID, profileID, baseURL, configured)
-        if (runtimeState().shutdown.signal.aborted) return
+        const signature = async () =>
+          JSON.stringify(
+            [...(await readSnapshots()).values()]
+              .filter((snapshot) => snapshot.providerID === providerID)
+              .map(({ identityHash, activeModels, retainedModels }) => ({
+                identityHash,
+                activeModels,
+                retainedModels,
+              })),
+          )
+        const previous = await signature()
+        const result = await refresh(providerID, profileID, baseURL, configured)
+        if (runtimeState().shutdown.signal.aborted || result.failure || previous === (await signature())) return
         const { RuntimeReloadExecutor } = await import("../config/reload-executor")
         if (runtimeState().shutdown.signal.aborted) return
-        await RuntimeReloadExecutor.reload({ targets: ["provider"], reason: "provider model catalog refreshed" })
+        await RuntimeReloadExecutor.reloadGlobal({ targets: ["provider"], reason: "provider model catalog refreshed" })
       } catch (error) {
         log.warn("failed to apply provider model catalog refresh", { providerID, error })
       }

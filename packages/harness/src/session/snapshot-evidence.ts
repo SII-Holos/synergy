@@ -3,6 +3,8 @@ import type { MessageV2 } from "./message-v2"
 
 export namespace SnapshotEvidence {
   export function interrupt(part: MessageV2.Part): MessageV2.Part {
+    if (part.type === "patch" && part.checkpoint?.status === "pending")
+      return { ...part, checkpoint: { ...part.checkpoint, status: "incomplete", error: "interrupted" } }
     if (part.type !== "patch" || part.operation?.status !== "pending") return part
     return { ...part, operation: { ...part.operation, status: "incomplete" } }
   }
@@ -21,7 +23,7 @@ export namespace SnapshotEvidence {
         messageID,
       })) {
         const part = record.value
-        if (part.type === "patch" && part.operation?.status === "pending") {
+        if (part.type === "patch" && (part.operation?.status === "pending" || part.checkpoint?.status === "pending")) {
           await Storage.transaction(async () => {
             const current = await Storage.read<MessageV2.Part>(record.key)
             const next = interrupt(current)

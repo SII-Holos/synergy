@@ -1,3 +1,4 @@
+import { upgradeImportedRecord } from "../migration/import"
 import { WorkspaceCatalog } from "../workspace/catalog"
 import { normalizeSessionWorkspaceInfo } from "./migration"
 import { ModelSelection } from "./model-selection-schema"
@@ -405,27 +406,31 @@ export namespace SessionImport {
     scope: Scope
     idMap: Map<string, string>
   }): Session.Info {
+    const info = upgradeImportedRecord(
+      ["sessions", input.scope.id, input.sessionID, "info"],
+      input.info,
+    ) as Session.Info
     const scopeType = input.scope.type === "home" ? "home" : "project"
-    const workspace = input.info.workspace?.scopeID === input.scope.id ? input.info.workspace : null
-    const cortex = input.info.cortex
+    const workspace = info.workspace?.scopeID === input.scope.id ? info.workspace : null
+    const cortex = info.cortex
       ? {
-          ...input.info.cortex,
-          parentSessionID: input.idMap.get(input.info.cortex.parentSessionID) ?? input.info.cortex.parentSessionID,
+          ...info.cortex,
+          parentSessionID: input.idMap.get(info.cortex.parentSessionID) ?? info.cortex.parentSessionID,
         }
       : undefined
-    const forkedFrom = input.info.forkedFrom
+    const forkedFrom = info.forkedFrom
       ? {
-          ...input.info.forkedFrom,
-          sessionID: input.idMap.get(input.info.forkedFrom.sessionID) ?? input.info.forkedFrom.sessionID,
+          ...info.forkedFrom,
+          sessionID: input.idMap.get(info.forkedFrom.sessionID) ?? info.forkedFrom.sessionID,
         }
       : undefined
     const time = {
-      ...input.info.time,
+      ...info.time,
       compacting: undefined,
     }
 
     const result = Session.PersistedInfo.parse({
-      ...input.info,
+      ...info,
       id: input.sessionID,
       environmentID: null,
       scope: input.scope,
@@ -447,6 +452,10 @@ export namespace SessionImport {
     sessionID: string,
     idMap: Map<string, string>,
   ): Promise<MessageV2.Info> {
+    info = upgradeImportedRecord(
+      ["sessions", ScopeContext.current.scope.id, sessionID, "messages", info.id, "info"],
+      info,
+    ) as MessageV2.Info
     const metadata = info.metadata ? (remapSessionIDs(info.metadata, idMap) as Record<string, any>) : undefined
     if (info.role === "assistant") {
       return {

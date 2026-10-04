@@ -65,7 +65,20 @@ export class ScopeWriteTracker {
     version: EventWriteStamp | undefined,
     snapshot: readonly T[],
     local: readonly T[],
+    options: { complete?: boolean } = {},
   ): T[] {
+    if (options.complete === false) {
+      const received = new Map(snapshot.map((record) => [record.id, record]))
+      const retained = local.map((record) => {
+        const incoming = received.get(record.id)
+        received.delete(record.id)
+        return incoming &&
+          !(version && this.epoch === version.epoch && (this.workspaces.get(record.id) ?? -1) > version.seq)
+          ? incoming
+          : record
+      })
+      return [...retained, ...received.values()]
+    }
     if (!version || this.epoch !== version.epoch) return [...snapshot]
     const newer = local.filter((record) => (this.workspaces.get(record.id) ?? -1) > version.seq)
     const ids = new Set(newer.map((record) => record.id))

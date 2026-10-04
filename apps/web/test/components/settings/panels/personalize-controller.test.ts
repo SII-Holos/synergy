@@ -35,6 +35,22 @@ function withController<T>(
 }
 
 describe("Personalize custom instructions controller", () => {
+  test("saving acknowledges the submitted content while preserving later edits", async () => {
+    const pending = deferred<CustomInstructionsInfo>()
+    await withController(
+      { get: async () => primary, update: async () => pending.promise, reset: async () => primary },
+      async (controller) => {
+        await controller.load()
+        controller.setContent("Submitted")
+        const saving = controller.save()
+        controller.setContent("Later edit")
+        pending.resolve({ ...primary, content: "Submitted", hasOverride: true })
+        expect(await saving).toBe(true)
+        expect(controller.content()).toBe("Later edit")
+        expect(controller.dirty()).toBe(true)
+      },
+    )
+  })
   test("loads the effective AGENTS.md content without marking it dirty", async () => {
     const result = await withController(
       {

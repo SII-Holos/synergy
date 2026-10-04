@@ -1,0 +1,143 @@
+.welcome-stage {
+  container-type: inline-size;
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 410px;
+  display: flex;
+  flex-direction: column;
+  padding: clamp(24px, 6vh, 72px) 0 12px;
+  animation: welcome-enter 280ms ease-out both;
+}
+.welcome-ambient {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.welcome-scene-heading {
+  position: relative;
+  width: 100%;
+  max-width: 50rem;
+  margin-inline: auto;
+  padding-inline: 24px;
+  text-align: center;
+  pointer-events: none;
+}
+.welcome-scene-heading h1 {
+  color: var(--text-strong);
+  font-size: clamp(28px, 4.2cqw, 44px);
+  font-weight: 550;
+  letter-spacing: -0.035em;
+  line-height: 1.2;
+  text-wrap: balance;
+  margin: 0;
+}
+.welcome-scene-heading p {
+  margin: 16px 0 0;
+  color: var(--text-weak);
+  font-size: 14px;
+  line-height: 1.6;
+  text-wrap: balance;
+}
+.welcome-game {
+  flex: 1;
+  min-height: 250px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.welcome-game-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-height: 36px;
+  margin: 20px 16px 4px;
+  padding: 4px 8px;
+  color: var(--text-weak);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 20px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.welcome-game-status:hover {
+  color: var(--text-strong);
+}
+.welcome-game-status:focus-visible,
+.welcome-unavailable button:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 3px;
+}
+.welcome-game-space {
+  flex: 1;
+  width: 100%;
+  min-height: 200px;
+  position: relative;
+  display: flex;
+}
+.welcome-game-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+  cursor: crosshair;
+  outline: none;
+  border: 0;
+}
+.welcome-game:has(.welcome-game-canvas:focus-visible) .welcome-game-status {
+  text-decoration: underline;
+  text-decoration-color: var(--border-focus);
+  text-underline-offset: 5px;
+}
+.welcome-loading,
+.welcome-unavailable {
+  flex: 1;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-weak);
+  font-size: 14px;
+}
+.welcome-unavailable button {
+  margin-top: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+@keyframes welcome-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .welcome-stage {
+    animation: none;
+  }
+}
+@container (max-width: 400px) {
+  .welcome-stage {
+    min-height: 390px;
+    padding-top: 24px;
+  }
+  .welcome-scene-heading {
+    padding-inline: 16px;
+  }
+  .welcome-game-status {
+    font-size: 11px;
+    margin-top: 16px;
+  }
+}

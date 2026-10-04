@@ -11,8 +11,9 @@ import { useGlobalSync } from "@/context/global-sync"
 import { useLocale, type IntlFormatter } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
 import { compareProviderIDs, providerConnectCopy } from "@/components/provider/provider-recommendation"
-import { SettingsEntityList, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
+import { SettingsAdvanced, SettingsEntityList, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import {
+  completeUsageSnapshots,
   formatUsageResetSentence,
   formatUsageWindowDetail,
   formatUsageWindowLabel,
@@ -35,7 +36,7 @@ const pageDescription = {
   message: "Review quota windows, credits, and provider account health.",
 }
 const connectedLabel = { id: "settings.usage.connected", message: "Connected accounts" }
-const availableLabel = { id: "settings.usage.available", message: "Available to connect" }
+const availableLabel = { id: "settings.usage.available", message: "Accounts with usage data" }
 const needsLabel = { id: "settings.usage.needs", message: "Needs attention" }
 const nextResetLabel = { id: "settings.usage.nextReset", message: "Next reset" }
 const lastRefreshedLabel = { id: "settings.usage.lastRefreshed", message: "Last refreshed" }
@@ -57,18 +58,18 @@ const connectableEmptyDescription = {
   id: "settings.usage.connectable.emptyDesc",
   message: "Usage-capable providers will appear below as account panels.",
 }
-const connectedUsageTitle = { id: "settings.usage.connectedUsage.title", message: "Connected usage" }
+const connectedUsageTitle = { id: "settings.usage.connectedUsage.title", message: "Connected services" }
 const connectedUsageDescription = {
   id: "settings.usage.connectedUsage.description",
-  message: "Quota data is provider-specific; unavailable means Synergy has no reliable endpoint for that account.",
+  message: "Usage support and query results are shown separately from account authorization.",
 }
 const loadingLabel = { id: "settings.usage.loading", message: "Loading usage..." }
-const connectedEmptyTitle = { id: "settings.usage.connectedUsage.empty", message: "No connected usage providers" }
+const connectedEmptyTitle = { id: "settings.usage.connectedUsage.empty", message: "No connected services" }
 const connectedEmptyDescription = {
   id: "settings.usage.connectedUsage.emptyDesc",
-  message: "Connect Codex, Anthropic, Copilot, or OpenRouter to see account usage here.",
+  message: "Add a service in Providers to see its usage support and account health.",
 }
-const unavailableLabel = { id: "settings.usage.unavailable", message: "Usage unavailable for this provider." }
+const unavailableLabel = { id: "settings.usage.unavailable", message: "Usage has not been queried for this account." }
 const creditsLabel = { id: "settings.usage.credits", message: "Credits" }
 
 function cooldownText(date: string) {
@@ -88,7 +89,13 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
   const globalSync = useGlobalSync()
   const [usage, { refetch }] = createResource(async () => {
     const res = await globalSDK.client.provider.usage.list({ scopeID: "home" }, { throwOnError: true })
-    return res.data ?? {}
+    return completeUsageSnapshots(res.data ?? {}, globalSync.data.provider.connected, async (providerID) => {
+      const response = await globalSDK.client.provider.usage.get(
+        { scopeID: "home", providerID },
+        { throwOnError: true },
+      )
+      return response.data
+    })
   })
 
   const providers = createMemo(() => globalSync.data.provider.all)
@@ -103,7 +110,7 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
     const attentionIDs = Object.values(globalSync.data.provider.authHealth ?? {})
       .filter((health) => health.status === "action_required")
       .map((health) => health.providerID)
-    const ids = new Set([...USAGE_FIRST_PROVIDER_IDS, ...Object.keys(usage() ?? {}), ...attentionIDs])
+    const ids = new Set([...USAGE_FIRST_PROVIDER_IDS, ...Object.keys(usage() ?? {}), ...connected(), ...attentionIDs])
     return [...ids].filter((id) => providers().some((provider) => provider.id === id)).sort(sortProviderIDs)
   })
   const needsAttention = createMemo(() =>
@@ -147,11 +154,13 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
         <div class="usage-overview">
           <div class="usage-overview-metrics">
             <div class="usage-overview-metric">
-              <span class="usage-overview-value">{connectedUsage().length}</span>
+              <span class="usage-overview-value">{connected().size}</span>
               <span class="usage-overview-label">{_(connectedLabel)}</span>
             </div>
             <div class="usage-overview-metric">
-              <span class="usage-overview-value">{unconnected().length}</span>
+              <span class="usage-overview-value">
+                {connectedUsage().filter((item) => item.snapshot?.status === "available").length}
+              </span>
               <span class="usage-overview-label">{_(availableLabel)}</span>
             </div>
             <Show when={needsAttention().length > 0}>
@@ -212,6 +221,7 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
                     providerID={item.providerID}
                     providerName={providerName(item.providerID)}
                     snapshot={item.snapshot}
+                    queryFailed={Boolean(usage.error)}
                     health={globalSync.data.provider.authHealth?.[item.providerID]}
                     environment={globalSync.data.provider.profiles?.[item.providerID]?.environment}
                     onConnect={() => props.onConnectProvider(item.providerID)}
@@ -221,31 +231,6 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
             </div>
           </SettingsSection>
         </Show>
-
-        <SettingsSection title={_(connectableTitle)} description={_(connectableDescription)}>
-          <SettingsEntityList
-            isEmpty={unconnected().length === 0}
-            emptyTitle={_(connectableEmptyTitle)}
-            emptyDescription={_(connectableEmptyDescription)}
-          >
-            <div class="usage-connect-grid">
-              <For each={unconnected()}>
-                {(providerID) => (
-                  <button type="button" class="usage-connect-card" onClick={() => props.onConnectProvider(providerID)}>
-                    <ProviderIcon id={providerID} class="usage-provider-icon" />
-                    <div class="min-w-0 flex-1">
-                      <div class="usage-provider-name">{providerName(providerID)}</div>
-                      <div class="usage-provider-copy">
-                        {providerConnectCopy(providerID, globalSync.data.provider.profiles, providerName(providerID))}
-                      </div>
-                    </div>
-                    <Icon name={getSemanticIcon("action.add")} size="small" />
-                  </button>
-                )}
-              </For>
-            </div>
-          </SettingsEntityList>
-        </SettingsSection>
 
         <SettingsSection title={_(connectedUsageTitle)} description={_(connectedUsageDescription)}>
           <Show
@@ -269,6 +254,7 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
                       providerID={item.providerID}
                       providerName={providerName(item.providerID)}
                       snapshot={item.snapshot}
+                      queryFailed={Boolean(usage.error)}
                       health={globalSync.data.provider.authHealth?.[item.providerID]}
                       environment={globalSync.data.provider.profiles?.[item.providerID]?.environment}
                       onConnect={() => props.onConnectProvider(item.providerID)}
@@ -279,6 +265,36 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
             </SettingsEntityList>
           </Show>
         </SettingsSection>
+        <SettingsAdvanced id="providers" title={_(connectableTitle)}>
+          <SettingsSection title={_(connectableTitle)} description={_(connectableDescription)}>
+            <SettingsEntityList
+              isEmpty={unconnected().length === 0}
+              emptyTitle={_(connectableEmptyTitle)}
+              emptyDescription={_(connectableEmptyDescription)}
+            >
+              <div class="usage-connect-grid">
+                <For each={unconnected()}>
+                  {(providerID) => (
+                    <button
+                      type="button"
+                      class="usage-connect-card"
+                      onClick={() => props.onConnectProvider(providerID)}
+                    >
+                      <ProviderIcon id={providerID} class="usage-provider-icon" />
+                      <div class="min-w-0 flex-1">
+                        <div class="usage-provider-name">{providerName(providerID)}</div>
+                        <div class="usage-provider-copy">
+                          {providerConnectCopy(providerID, globalSync.data.provider.profiles, providerName(providerID))}
+                        </div>
+                      </div>
+                      <Icon name={getSemanticIcon("action.add")} size="small" />
+                    </button>
+                  )}
+                </For>
+              </div>
+            </SettingsEntityList>
+          </SettingsSection>
+        </SettingsAdvanced>
       </div>
     </SettingsPage>
   )
@@ -288,6 +304,7 @@ function UsageProviderPanel(props: {
   providerID: string
   providerName: string
   snapshot?: AccountUsageSnapshot
+  queryFailed?: boolean
   health?: ProviderAuthHealth
   environment?: string[]
   onConnect: () => void
@@ -295,7 +312,15 @@ function UsageProviderPanel(props: {
   const { _, i18n } = useLingui()
   const { fmt } = useLocale()
   const needsAction = createMemo(() => providerNeedsAction(props.health, props.snapshot))
-  const badge = createMemo(() => translateDescriptor(providerUsageStatusLabel(props.health, props.snapshot), i18n()))
+  const badge = createMemo(() =>
+    props.snapshot?.source === "unsupported"
+      ? _({ id: "settings.usage.unsupported", message: "Not supported" })
+      : props.snapshot?.status === "error" || props.queryFailed
+        ? _({ id: "settings.usage.queryFailed", message: "Query failed" })
+        : !props.snapshot
+          ? _({ id: "settings.usage.pending", message: "Not queried yet" })
+          : translateDescriptor(providerUsageStatusLabel(props.health, props.snapshot), i18n()),
+  )
   return (
     <div class="usage-provider-panel">
       <div class="usage-provider-panel-head">
@@ -329,14 +354,24 @@ function UsageProviderPanel(props: {
         {(value) => <div class="usage-muted-row">{_(providerRenewsText(formatUnix(value(), fmt)))}</div>}
       </Show>
 
-      <Show when={props.snapshot} fallback={<div class="usage-muted-row">{_(unavailableLabel)}</div>}>
+      <Show
+        when={props.snapshot}
+        fallback={<div class="usage-muted-row">{props.queryFailed ? _(errorTitle) : _(unavailableLabel)}</div>}
+      >
         {(snapshot) => (
           <>
             <Show when={snapshot().plan}>
               <div class="usage-muted-row">{_(planText(snapshot().plan!))}</div>
             </Show>
             <Show when={snapshot().unavailableReason}>
-              <div class="usage-muted-row">{snapshot().unavailableReason}</div>
+              <div class="usage-muted-row">
+                {snapshot().source === "unsupported"
+                  ? _({
+                      id: "settings.usage.unsupported.description",
+                      message: "Usage queries are not supported for this service.",
+                    })
+                  : snapshot().unavailableReason}
+              </div>
             </Show>
             <For each={snapshot().windows}>
               {(window) => (
@@ -371,12 +406,12 @@ function UsageProviderPanel(props: {
                   <div class="usage-window-reading">
                     <div class="usage-window-value">
                       {credits().unlimited
-                        ? "unlimited"
+                        ? _({ id: "settings.usage.credits.unlimited", message: "Unlimited" })
                         : credits().balance !== undefined
                           ? `${credits().balance}${credits().currency ? ` ${credits().currency}` : ""}`
                           : credits().hasCredits === false
-                            ? "none"
-                            : "available"}
+                            ? _({ id: "settings.usage.credits.none", message: "No credits" })
+                            : _({ id: "settings.usage.credits.available", message: "Available" })}
                     </div>
                   </div>
                 </div>

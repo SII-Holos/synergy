@@ -26,7 +26,7 @@ const navs = new Map<string, Nav>()
 const pending = new Map<string, string>()
 const active = new Map<string, string>()
 
-const required = ["session:params", "session:data-ready"]
+const required = ["session:params", "session:data-ready", "session:interactive"]
 
 function flush(id: string, reason: "complete" | "timeout") {
   const nav = navs.get(id)
@@ -116,6 +116,10 @@ function ensure(id: string, data: Omit<Nav, "marks" | "logged" | "timer">) {
 }
 
 export function navStart(input: { dir?: string; from?: string; to: string; scopeID?: string; trigger?: string }) {
+  for (const nav of navs.values()) if (nav.timer) clearTimeout(nav.timer)
+  navs.clear()
+  pending.clear()
+  active.clear()
   const id = uid()
   const start = now()
   const nav = ensure(id, { ...input, id, start })
@@ -127,12 +131,16 @@ export function navStart(input: { dir?: string; from?: string; to: string; scope
 
 export function navParams(input: { dir?: string; from?: string; to: string; scopeID?: string }) {
   const k = key(input.dir, input.to)
-  const pendingId = pending.get(k)
-  if (pendingId) pending.delete(k)
+  const pendingKey = pending.has(k) ? k : key(undefined, input.to)
+  const pendingId = pending.get(pendingKey)
+  if (pendingId) pending.delete(pendingKey)
+  if (!pendingId && active.has(k)) return active.get(k)!
   const id = pendingId ?? uid()
 
   const start = now()
   const nav = ensure(id, { ...input, id, start, trigger: pendingId ? "key" : "route" })
+  nav.dir = input.dir
+  nav.scopeID = input.scopeID ?? nav.scopeID
   nav.marks["session:params"] = start
 
   active.set(k, id)

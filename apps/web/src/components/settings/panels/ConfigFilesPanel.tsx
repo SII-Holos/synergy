@@ -22,6 +22,7 @@ function ownedKeysSummary(count: number) {
 }
 
 export function ConfigFilesPanel(props: {
+  focusedDomain?: string
   domains: ConfigDomainSummary[]
   openingDomain?: string
   onOpenDomain?: (domain: ConfigDomainSummary["id"]) => void
@@ -33,6 +34,8 @@ export function ConfigFilesPanel(props: {
         <For each={props.domains}>
           {(domain) => (
             <SettingsPathRow
+              compact
+              expanded={props.focusedDomain === domain.id}
               label={domain.filename}
               path={domain.path}
               status={domainStatus(domain, _)}

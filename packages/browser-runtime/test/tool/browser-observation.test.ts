@@ -1,7 +1,9 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, expect, test } from "bun:test"
 import { BrowserToolHelper } from "../../src/tools/browser-shared"
 import { BrowserAnnotateTool } from "../../src/tools/browser-annotate"
-import { BrowserSessionImpl } from "../../src/session"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { BrowserOwner } from "../../src/owner"
 import { BrowserStorage } from "../../src/storage"
 import { BrowserEvent } from "../../src/event"
 import { BrowserReadTool } from "../../src/tools/browser-read"
@@ -32,7 +34,7 @@ const original = {
 const context = {
   sessionID: "ses_observation",
   messageID: "msg_observation",
-  agent: "synergy",
+  agent: PrimaryAgentIdentity.names.general,
   abort: new AbortController().signal,
   metadata() {},
   async ask() {},
@@ -74,6 +76,10 @@ test("read reports bounded content and empty pages without exposing a transport 
 test("console and network queries reject inconsistent filters and preserve bounded evidence", () =>
   runtime.run(async () => {
     const consoleTool = await BrowserConsoleTool.init()
+    expect(consoleTool.parameters.safeParse({ pageId: "page-test", action: "get", entryId: "entry-1" }).success).toBe(
+      true,
+    )
+    expect(consoleTool.parameters.safeParse({ pageId: "page-test", action: "get", id: "entry-1" }).success).toBe(false)
     const network = await BrowserNetworkTool.init()
     for (const params of [{ action: "get" }, { action: "clear", id: "x" }, { action: "clear", level: "error" }])
       expect(consoleTool.parameters.safeParse(params).success).toBe(false)
@@ -85,7 +91,7 @@ test("console and network queries reject inconsistent filters and preserve bound
     expect(
       (
         await network.execute(
-          { pageId: "page-test", action: "get", id: "request-1", includeBody: true, maxBodyBytes: 100 },
+          { pageId: "page-test", action: "get", requestId: "request-1", includeBody: true, maxBodyBytes: 100 },
           context,
         )
       ).metadata.action,
@@ -202,16 +208,24 @@ test("annotation tools persist creation and resolution while paging only pending
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const owner = {
-          mode: "session" as const,
-          scopeID: ScopeContext.current.scope.id,
-          directory: tmp.path,
-          sessionID: context.sessionID,
-        }
-        const session = new BrowserSessionImpl(owner, async () => {
-          throw new Error("no browser launch")
+        const task = await Session.create({})
+        const ctx = { ...context, sessionID: task.id }
+        const owner = BrowserOwner.shared()
+        await BrowserStorage.save(owner, {
+          timestamp: 1,
+          pages: [
+            {
+              id: "page-test",
+              url: "https://example.com/",
+              title: "Example",
+              profileId: "personal",
+              status: "suspended",
+              isLoading: false,
+              lastActiveAt: 1,
+            },
+          ],
         })
-        BrowserToolHelper.getOrCreateSession = async () => session
+        const session = await BrowserToolHelper.getOrCreateSession(owner)
         BrowserToolHelper.getPage = async () => ({ id: "page-test", url: "https://example.com/" }) as never
         try {
           const tool = await BrowserAnnotateTool.init()
@@ -223,7 +237,7 @@ test("annotation tools persist creation and resolution while paging only pending
             { action: "list", annotationId: "bad" },
           ])
             expect(tool.parameters.safeParse(params).success).toBe(false)
-          expect((await tool.execute({ action: "list" }, context)).metadata.count).toBe(0)
+          expect((await tool.execute({ action: "list" }, ctx)).metadata.count).toBe(0)
           const created = await tool.execute(
             {
               pageId: "page-test",
@@ -232,7 +246,7 @@ test("annotation tools persist creation and resolution while paging only pending
               ref: "button-1",
               styleFeedback: { color: "darker" },
             },
-            context,
+            ctx,
           )
           const annotationId = created.metadata.id!
           expect((await BrowserStorage.load(owner))?.annotations?.[0]).toMatchObject({
@@ -240,18 +254,18 @@ test("annotation tools persist creation and resolution while paging only pending
             pageID: "page-test",
             resolved: false,
           })
-          expect((await tool.execute({ action: "read", annotationId }, context)).output).toContain("Improve contrast")
-          expect((await tool.execute({ action: "list", pageSize: 1 }, context)).output).toContain("darker")
-          expect((await tool.execute({ action: "list", page: 1, pageSize: 1 }, context)).output).toBe(
+          expect((await tool.execute({ action: "read", annotationId }, ctx)).output).toContain("Improve contrast")
+          expect((await tool.execute({ action: "list", pageSize: 1 }, ctx)).output).toContain("darker")
+          expect((await tool.execute({ action: "list", page: 1, pageSize: 1 }, ctx)).output).toBe(
             "No pending annotations.",
           )
-          await tool.execute({ action: "resolve", annotationId }, context)
+          await tool.execute({ action: "resolve", annotationId }, ctx)
           expect((await BrowserStorage.load(owner))?.annotations?.[0]?.resolved).toBe(true)
-          expect((await tool.execute({ action: "list" }, context)).metadata).toMatchObject({ count: 1, pending: 0 })
-          expect((await tool.execute({ action: "resolve", annotationId: "missing" }, context)).title).toBe(
+          expect((await tool.execute({ action: "list" }, ctx)).metadata).toMatchObject({ count: 1, pending: 0 })
+          expect((await tool.execute({ action: "resolve", annotationId: "missing" }, ctx)).title).toBe(
             "Annotation not found",
           )
-          expect((await tool.execute({ action: "read", annotationId: "missing" }, context)).title).toBe(
+          expect((await tool.execute({ action: "read", annotationId: "missing" }, ctx)).title).toBe(
             "Annotation not found",
           )
         } finally {

@@ -36,7 +36,7 @@ The session header marks only its empty flex span as draggable. Its padding and 
 
 Configuration remains directly reachable with differentiated emphasis: model name and one chevron, secondary thinking text, Agent name, and permission icon with its current state. Work location removes redundant chevrons. Add becomes the first circular control, and its existing section data now drives a grouped list. Model popovers use natural content height with a bounded, independently scrolling result area. These are presentation changes over existing domain controllers, without new persistence, HTTP or Plugin UI contracts.
 
-The side-workspace toggle belongs to the full built-in session rather than the resizing conversation pane. A private App context provides its stable DOM mount; a Portal preserves the existing controller and focus while both header and tab row reserve the same corner. Custom session layouts keep their local controls, without extending the Plugin UI API. Thinking displays only the current level, with its purpose retained in Tooltip and accessible text. Working-location labels inherit one type role, and quick-switch rows reserve a trailing selection column so choosing a model cannot displace its metadata badge. The model catalog passes its reactive array to List so recent entries refresh with selection. Shared List selection uses its existing key contract instead of object identity, keeping the check visible when catalog entries are rebuilt after a selection or search.
+The side-workspace toggle belongs to the full built-in session rather than the resizing conversation pane. A private App context provides its stable DOM mount; a Portal preserves the existing controller and focus while both header and tab row reserve the same corner. Custom session layouts keep their local controls, without extending the Plugin UI API. Thinking displays only the current level, with its purpose retained in Tooltip and accessible text. Working-location labels inherit one type role, and quick-switch rows reserve a trailing selection column so choosing a model cannot displace its metadata badge. Session quick switching and Settings model management pass reactive arrays to List so recent entries and newly loaded catalog models refresh without search input. Shared List selection uses its existing key contract instead of object identity, keeping the check visible when catalog entries are rebuilt after a selection or search.
 
 ## Alternatives considered
 
@@ -48,6 +48,8 @@ The side-workspace toggle belongs to the full built-in session rather than the r
 
 **Center the new-task Composer and move it after sending.** The travel breaks the user's input reference point. A stable bottom position makes the first send the same interaction as subsequent sends.
 
+The introduction content is refined by [interactive task introductions](2026-10-02-interactive-task-welcome.md), with explicit-new selection and stable local interaction.
+
 **Rotating greetings and examples.** They add visual changes unrelated to the user's task. Stable task starters provide useful drafting and project/file actions without timed changes. They reuse revision-checked input edits, require confirmation before replacing text, and preserve attachments and working location.
 
 **Direct DOM insertion for plain-text paste.** It bypasses native undo. The existing contenteditable editor retains a tested native editing command rather than adding a second custom history owner.
@@ -57,6 +59,8 @@ The side-workspace toggle belongs to the full built-in session rather than the r
 **Broadcast macOS fullscreen or infer it from size.** Native transitions across Spaces are asynchronous. Overlay geometry already owns native control exclusion and avoids restoring the unsafe broadcast path.
 
 **Give every selector a chevron.** Identical emphasis obscures the primary choice. Accessible names, expanded state, focus and selected surfaces preserve discoverability while visual forms differ.
+
+**Pass model memos as List loaders.** Function-valued items load when the search filter changes and do not subscribe to later catalog publication. Reactive arrays preserve the shared loader API while keeping model management current after its initial partial catalog.
 
 **Make the full header draggable and layer independent controls above it.** Native hit testing can still consume clicks on controls outside that header's subtree. A dedicated empty flex span preserves window dragging without duplicating navigation widths or depending on z-index to resolve native input.
 

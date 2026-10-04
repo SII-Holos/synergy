@@ -1,8 +1,8 @@
 import { createMemo, createEffect, createSignal, Show, on, onCleanup } from "solid-js"
 import { useSessionDataView } from "@/context/session-data-view"
-import { useLocale } from "@/context/locale"
+import { useLingui } from "@lingui/solid"
 import { DagGraph } from "@ericsanchezok/synergy-ui/dag-graph"
-import { useNavigate, useParams } from "@solidjs/router"
+import { useNavigateToSession } from "@/composables/use-navigate-to-session"
 import type { DagNode } from "@ericsanchezok/synergy-ui/dag-graph"
 import type { DagSummary } from "./session-progress-summary"
 import { S } from "./session-i18n"
@@ -16,9 +16,8 @@ interface SessionProgressDagProps {
 
 export function SessionProgressDag(props: SessionProgressDagProps) {
   const view = useSessionDataView()
-  const navigate = useNavigate()
-  const params = useParams()
-  const { i18n } = useLocale()
+  const openSession = useNavigateToSession()
+  const { i18n } = useLingui()
   const nodes = createMemo<DagNode[]>(() => view().dagNodesFor(props.sessionID))
   const [userInteracted, setUserInteracted] = createSignal(false)
   let previousNodes = new Map<string, string>()
@@ -74,20 +73,17 @@ export function SessionProgressDag(props: SessionProgressDagProps) {
       setSelectedNodeId(node.id)
     }
   }
-  const openSession = (sessionID: string) => {
-    navigate(`/${params.dir}/session/${sessionID}`)
-  }
-
   return (
     <Show
       when={nodes().length > 0}
-      fallback={<div class="text-text-weaker text-xs px-3 py-2">{i18n._(S.progressNoActivePlan)}</div>}
+      fallback={<div class="text-text-weaker text-xs px-3 py-2">{i18n()._(S.progressNoActivePlan)}</div>}
     >
       <div class={props.class ? `${props.class} h-full` : "h-full"}>
         <DagGraph
           nodes={nodes()}
           ready={props.summary.ready}
           variant="panel"
+          showStats={false}
           frozen={props.frozen}
           selectedNodeId={selectedNodeId()}
           onSelectNode={handleSelectNode}

@@ -1,8 +1,12 @@
 import type { SessionWorkspaceTransitionRequest } from "./worktree-session"
-import { createMemo, createResource, createSignal, For, Show, type JSX } from "solid-js"
+import { createMemo, createResource, createSignal, For, Show, Suspense, onCleanup, type JSX } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { useLingui } from "@lingui/solid"
-import type { ProjectDirectories, SessionWorkspaceSelection, Worktree } from "@ericsanchezok/synergy-sdk/client"
+import type {
+  ProjectDirectories,
+  SessionWorkspaceSelection,
+  WorktreeInventoryEntry,
+} from "@ericsanchezok/synergy-sdk/client"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
@@ -14,6 +18,7 @@ import { useSync } from "@/context/sync"
 import { useLayout } from "@/context/layout"
 import { getScopeLabel, resolveProjectScope } from "@/utils/scope"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
+import { loadWorktreeInventory } from "@/utils/worktree-inventory"
 import { requestErrorMessage } from "@/utils/error"
 import type { PromptStartOptionGroup } from "../prompt-input/start-options"
 import { ProjectTaskButton } from "./project-task-button"
@@ -21,14 +26,19 @@ import { ComputerMenu } from "../dialog/computer-menu"
 import { DialogScopeEdit } from "../dialog/dialog-scope-edit"
 import { DialogWorktrees } from "../dialog/dialog-worktrees"
 import { DialogWorkingLocation } from "../dialog/dialog-working-location"
+import { DialogProjectDirectoryRecovery } from "../dialog/dialog-project-directory-recovery"
+import { sameProjectDirectories } from "../dialog/project-directory-recovery"
 import { projectEntryCopy as copy } from "../dialog/project-entry-copy"
+import { workspaceBranch, workspaceLabel } from "../dialog/workspace-dialog-model"
+import { locationCopy } from "../dialog/task-location-copy"
 
-export function SessionWorkContext(props: {
+type WorkContextProps = {
   onWorkspaceTransition?: (request: SessionWorkspaceTransitionRequest) => void
   running?: boolean
   environmentID?: string | null
   environmentProfile?: string | null
   workspaceSelection?: SessionWorkspaceSelection
+  workspaceSelectionKey?: string
   onEnvironmentChange?: (id: string | null | undefined) => void
   onEnvironmentProfileChange?: (profile: string | null | undefined) => void
   startOptions: PromptStartOptionGroup[]
@@ -37,9 +47,21 @@ export function SessionWorkContext(props: {
   uploading?: boolean
   directories?: ProjectDirectories
   directoryError?: string
-  onRefresh?: () => void
+  onRefresh?: () => void | Promise<void>
   onSelect?: (selection: SessionWorkspaceSelection) => void
-}) {
+}
+export function SessionWorkContext(props: WorkContextProps) {
+  const { _ } = useLingui()
+  const params = useParams()
+  return (
+    <Show when={!params.id}>
+      <Suspense fallback={<span class="project-inline-note">{_(copy.loading)}</span>}>
+        <WorkContextContent {...props} />
+      </Suspense>
+    </Show>
+  )
+}
+function WorkContextContent(props: WorkContextProps) {
   const { _ } = useLingui()
   const sdk = useSDK()
   const globalSDK = useGlobalSDK()
@@ -48,6 +70,7 @@ export function SessionWorkContext(props: {
   const dialog = useDialog()
   const params = useParams()
   const [open, setOpen] = createSignal(false)
+  const [optionsOpen, setOptionsOpen] = createSignal(false)
   const [pending, setPending] = createSignal(false)
   const [error, setError] = createSignal("")
   const scope = createMemo(() => resolveProjectScope(sdk.scopeKey, sync.scope, layout.scopes.list()))
@@ -55,21 +78,55 @@ export function SessionWorkContext(props: {
     props.directories?.folders.find((folder) => folder.workspaceID === props.directories?.mainWorkspaceID),
   )
   const session = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
-  const [trees] = createResource(
+  let inventoryRequest: AbortController | undefined
+  let disposed = false
+  onCleanup(() => {
+    disposed = true
+    inventoryRequest?.abort()
+  })
+  const inventoryVersion = createMemo(() =>
+    JSON.stringify([
+      props.directories?.revision,
+      sync.data.workspaces.map((workspace) => [workspace.id, workspace.binding.generation]),
+    ]),
+  )
+  const [trees, { refetch: refreshTrees }] = createResource(
     () =>
       !sdk.isHome && globalSDK.capabilities.has("workbench")
-        ? { scopeID: sdk.scopeID, revision: props.directories?.revision, workspaceID: session()?.workspaceID }
+        ? { client: sdk.client, url: globalSDK.url, scopeID: sdk.scopeID, version: inventoryVersion() }
         : false,
-    async ({ scopeID }) => {
+    async (owner) => {
+      inventoryRequest?.abort()
+      const controller = new AbortController()
+      inventoryRequest = controller
       try {
         setError("")
-        return (await sdk.client.project.worktrees({ scopeID }, { throwOnError: true })).data
+        return {
+          ...owner,
+          items:
+            (await loadWorktreeInventory(owner.client, owner.url, owner.scopeID, owner.version, controller.signal)).data
+              ?.items ?? [],
+        }
       } catch (failure) {
+        if (
+          controller.signal.aborted ||
+          sdk.client !== owner.client ||
+          sdk.scopeID !== owner.scopeID ||
+          globalSDK.url !== owner.url
+        )
+          return undefined
         setError(requestErrorMessage(failure, _(copy.unavailable)))
-        return []
+        return { ...owner, items: [] }
       }
     },
   )
+  const treeItems = () => {
+    const snapshot = trees.latest
+    return snapshot?.client === sdk.client && snapshot.scopeID === sdk.scopeID && snapshot.url === globalSDK.url
+      ? snapshot.items
+      : []
+  }
+  const needsRecovery = () => props.directories?.folders.some((folder) => !folder.available)
   const [environment] = createResource(
     () => session()?.environmentID,
     async (environmentID) => (await sdk.client.environment.get({ environmentID }, { throwOnError: true })).data,
@@ -77,6 +134,13 @@ export function SessionWorkContext(props: {
   const actual = () => session()?.workspace
   const selectedTree = () =>
     props.workspaceSelection?.mode === "existing" ? props.workspaceSelection.target : undefined
+  const selectedWorkspace = () => treeItems().find((tree) => tree.id === selectedTree() || tree.path === selectedTree())
+  const selectedDirectory = () => {
+    const selection = props.workspaceSelection
+    return selection?.mode === "workspace"
+      ? sync.data.workspaces.find((item) => item.id === selection.workspaceID)
+      : undefined
+  }
   const mainSelected = () =>
     params.id
       ? session()?.workspaceID === main()?.workspaceID
@@ -91,11 +155,37 @@ export function SessionWorkContext(props: {
             ? _(copy.originalMain)
             : _(copy.unavailable)
     if (props.workspaceSelection?.mode === "create") return _(copy.newWorktree)
-    return (
-      trees()?.find((tree) => tree.id === selectedTree() || tree.path === selectedTree())?.branch ??
-      (selectedTree() ? getFilename(selectedTree()!) : _(copy.main))
-    )
+    if (props.workspaceSelection?.mode === "none") return _(locationCopy.noFiles)
+    if (props.workspaceSelection?.mode === "workspace") {
+      const selected = selectedDirectory()
+      return mainSelected()
+        ? _(copy.main)
+        : selected
+          ? (workspaceBranch(selected) ?? workspaceLabel(selected))
+          : _(copy.unavailable)
+    }
+    return selectedWorkspace()?.branch ?? (selectedTree() ? getFilename(selectedTree()!) : _(copy.main))
   }
+  const location = () =>
+    [
+      label(),
+      props.workspaceSelection?.mode === "create" ? _(copy.onSend) : undefined,
+      actual()?.path ??
+        (props.workspaceSelection?.mode === "none"
+          ? undefined
+          : props.workspaceSelection?.mode === "workspace"
+            ? (selectedDirectory()?.binding.path ?? (mainSelected() ? main()?.path : undefined))
+            : selectedTree()
+              ? selectedWorkspace()?.path
+              : main()?.path),
+    ]
+      .filter(Boolean)
+      .join("\n")
+  const worktreeSelected = () =>
+    actual()?.type === "git_worktree" ||
+    selectedDirectory()?.type === "git_worktree" ||
+    props.workspaceSelection?.mode === "create" ||
+    props.workspaceSelection?.mode === "existing"
   async function select(selection: SessionWorkspaceSelection) {
     if (pending() || props.running || props.disabled) return false
     setPending(true)
@@ -117,8 +207,49 @@ export function SessionWorkContext(props: {
       setPending(false)
     }
   }
-  const useTree = (tree: Worktree) =>
+  const useTree = (tree: WorktreeInventoryEntry) =>
     select({ mode: "existing", target: tree.id, sourceWorkspaceID: tree.sourceWorkspaceID })
+  function recover(mode: "create" | "main") {
+    const directories = props.directories
+    if (!directories || pending() || props.disabled || props.running) return
+    const client = sdk.client
+    const scopeID = sdk.scopeID
+    const url = globalSDK.url
+    const selectionKey = () => props.workspaceSelectionKey ?? JSON.stringify(props.workspaceSelection)
+    const selection = selectionKey()
+    const isCurrent = () =>
+      !disposed &&
+      sdk.client === client &&
+      sdk.scopeID === scopeID &&
+      globalSDK.url === url &&
+      !!props.directories &&
+      sameProjectDirectories(directories, props.directories) &&
+      selectionKey() === selection
+    setOpen(false)
+    document.querySelector<HTMLButtonElement>("[data-worktree-task-selector]")?.focus({ preventScroll: true })
+    dialog.show(() => (
+      <DialogProjectDirectoryRecovery
+        directories={directories}
+        isCurrent={isCurrent}
+        onRecovered={async (restored) => {
+          await props.onRefresh?.()
+          await refreshTrees()
+          if (!isCurrent()) return
+          const folder = restored.folders.find((item) => item.workspaceID === restored.mainWorkspaceID)
+          if (!folder?.available) return
+          if (mode === "create" && !folder.git) {
+            setError(_(copy.notGit))
+            return
+          }
+          await select(
+            mode === "create"
+              ? { mode: "create", sourceWorkspaceID: folder.workspaceID }
+              : { mode: "workspace", workspaceID: folder.workspaceID, workspaceGeneration: folder.generation },
+          )
+        }}
+      />
+    ))
+  }
   function settings() {
     const project = scope()
     if (project) dialog.show(() => <DialogScopeEdit scope={{ ...project, expanded: true }} onSaved={props.onRefresh} />)
@@ -138,30 +269,26 @@ export function SessionWorkContext(props: {
         summary={_(copy.unsupported)}
         nativeFiles={!!actual()?.path || !!main()}
         profile={props.environmentProfile}
+        environmentID={props.environmentID}
+        mainWorkspaceID={props.directories?.mainWorkspaceID}
         onProfileChange={props.onEnvironmentProfileChange}
         onEnvironmentChange={props.onEnvironmentChange}
         selection={props.workspaceSelection}
+        onWorkspaceSelect={props.onSelect}
         groups={props.startOptions}
       />
     ))
   return (
     <div class="session-work-context" role="group" aria-label={_(copy.computer)}>
-      <ComputerMenu disabled={props.disabled || props.uploading || pending()} />
+      <ComputerMenu showTooltip={false} disabled={props.disabled || props.uploading || pending()} />
       <ProjectTaskButton
         label={getScopeLabel(scope(), sdk.scopeKey)}
+        path={main()?.path}
         disabled={props.disabled || pending()}
         uploading={props.uploading}
         onSettings={sdk.isHome ? undefined : settings}
       />
-      <Show
-        when={
-          !sdk.isHome &&
-          ((trees()?.length ?? 0) > 0 ||
-            main()?.git ||
-            actual()?.type === "git_worktree" ||
-            (params.id && actual()?.path !== main()?.path))
-        }
-      >
+      <Show when={!sdk.isHome && globalSDK.capabilities.has("workbench")}>
         <Popover
           variant="menu"
           title={_(copy.worktrees)}
@@ -170,16 +297,18 @@ export function SessionWorkContext(props: {
           placement="top-start"
           class="project-select-popover"
           triggerAs={(attributes) => (
-            <Tooltip value={open() || dialog.active ? "" : (actual()?.path ?? main()?.path ?? "")}>
+            <Tooltip inactive value={location()}>
               <button
                 {...attributes}
                 class="session-work-context-button"
                 data-worktree-task-selector
                 disabled={props.disabled || pending()}
-                aria-label={label()}
+                aria-label={location()}
               >
-                <Icon name={getSemanticIcon("workspace.worktree")} size="small" />
-                <span>{label()}</span>
+                <Icon
+                  name={getSemanticIcon(worktreeSelected() ? "workspace.worktree" : "workspace.main")}
+                  size="small"
+                />
               </button>
             </Tooltip>
           )}
@@ -187,15 +316,17 @@ export function SessionWorkContext(props: {
           <button
             type="button"
             class="project-flow-row"
-            disabled={props.running || pending() || !main()?.available}
+            disabled={props.running || pending() || !main()}
             aria-pressed={mainSelected()}
             onClick={() =>
-              main() &&
-              void select({
-                mode: "workspace",
-                workspaceID: main()!.workspaceID,
-                workspaceGeneration: main()!.generation,
-              })
+              needsRecovery()
+                ? recover("main")
+                : main() &&
+                  void select({
+                    mode: "workspace",
+                    workspaceID: main()!.workspaceID,
+                    workspaceGeneration: main()!.generation,
+                  })
             }
           >
             <Icon name={getSemanticIcon("workspace.main")} size="small" />
@@ -206,38 +337,46 @@ export function SessionWorkContext(props: {
               </Show>
             </span>
           </button>
-          <Show when={main()?.git}>
-            <button
-              type="button"
-              class="project-flow-row"
-              disabled={props.running || pending()}
-              aria-pressed={!params.id && props.workspaceSelection?.mode === "create"}
-              onClick={() => void select({ mode: "create", sourceWorkspaceID: main()!.workspaceID })}
-            >
-              <Icon name={getSemanticIcon("workspace.worktree")} size="small" />
-              <span class="project-flow-row-copy">
-                <strong>{_(copy.newWorktree)}</strong>
-                <small>
-                  {(props.directories?.additionalWorkspaceIDs.length ?? 0) > 0
-                    ? _({
-                        ...copy.shared,
-                        values: {
-                          folder: getFilename(main()!.path),
-                          count: props.directories!.additionalWorkspaceIDs.length,
-                        },
-                      })
-                    : _(copy.onSend)}
-                </small>
-              </span>
-              <span class="project-flow-check">
-                <Show when={!params.id && props.workspaceSelection?.mode === "create"}>
-                  <Icon name={getSemanticIcon("state.success")} size="small" />
-                </Show>
-              </span>
-            </button>
-          </Show>
+          <button
+            type="button"
+            class="project-flow-row"
+            disabled={props.running || pending() || !main() || (main()?.available && !main()?.git)}
+            aria-pressed={!params.id && props.workspaceSelection?.mode === "create"}
+            onClick={() =>
+              needsRecovery()
+                ? recover("create")
+                : void select({ mode: "create", sourceWorkspaceID: main()!.workspaceID })
+            }
+          >
+            <Icon name={getSemanticIcon("workspace.worktree")} size="small" />
+            <span class="project-flow-row-copy">
+              <strong>{_(copy.newWorktree)}</strong>
+              <small>
+                {!main()
+                  ? _(copy.unavailable)
+                  : main()?.available && !main()?.git
+                    ? _(copy.notGit)
+                    : needsRecovery()
+                      ? _(copy.confirmFolder)
+                      : (props.directories?.additionalWorkspaceIDs.length ?? 0) > 0
+                        ? _({
+                            ...copy.shared,
+                            values: {
+                              folder: getFilename(main()!.path),
+                              count: props.directories!.additionalWorkspaceIDs.length,
+                            },
+                          })
+                        : _(copy.onSend)}
+              </small>
+            </span>
+            <span class="project-flow-check">
+              <Show when={!params.id && props.workspaceSelection?.mode === "create"}>
+                <Icon name={getSemanticIcon("state.success")} size="small" />
+              </Show>
+            </span>
+          </button>
           <div class="project-flow-list">
-            <For each={trees()}>
+            <For each={treeItems()}>
               {(tree) => (
                 <button
                   type="button"
@@ -255,7 +394,14 @@ export function SessionWorkContext(props: {
                     </small>
                   </span>
                   <span class="project-flow-check">
-                    <Show when={actual()?.path === tree.path || selectedTree() === tree.id}>
+                    <Show
+                      when={
+                        actual()?.path === tree.path ||
+                        selectedTree() === tree.id ||
+                        selectedDirectory()?.id === tree.id ||
+                        selectedDirectory()?.binding.path === tree.path
+                      }
+                    >
                       <Icon name={getSemanticIcon("state.success")} size="small" />
                     </Show>
                   </span>
@@ -280,6 +426,7 @@ export function SessionWorkContext(props: {
                 dialog.show(() => (
                   <DialogWorktrees
                     scopeID={sdk.scopeID}
+                    inventoryVersion={inventoryVersion()}
                     disabled={props.running}
                     onSelect={async (tree) => {
                       if (await useTree(tree)) dialog.close()
@@ -293,17 +440,61 @@ export function SessionWorkContext(props: {
           </div>
         </Popover>
       </Show>
-      <Show when={props.directoryError}>
-        <button class="session-work-context-button" data-unavailable="true" onClick={props.onRefresh}>
-          {_(copy.retry)}
-        </button>
-      </Show>
-      <Show when={custom()}>
-        <Tooltip value={_(copy.unsupported)}>
-          <button class="session-work-context-button" data-unavailable="true" onClick={advanced}>
-            {_(copy.developer)}
-          </button>
-        </Tooltip>
+      <Show when={props.directoryError || custom()}>
+        <Popover
+          variant="menu"
+          title={_(copy.locationOptions)}
+          open={optionsOpen()}
+          onOpenChange={setOptionsOpen}
+          placement="top-end"
+          class="project-select-popover"
+          triggerAs={(attributes) => (
+            <Tooltip value={optionsOpen() || dialog.active ? "" : props.directoryError || _(copy.unsupported)}>
+              <button
+                {...attributes}
+                type="button"
+                class="session-work-context-button"
+                data-location-options
+                data-unavailable="true"
+                disabled={props.disabled || pending()}
+                aria-label={_(copy.locationOptions)}
+              >
+                <Icon name={getSemanticIcon(props.directoryError ? "state.warning" : "action.more")} size="small" />
+              </button>
+            </Tooltip>
+          )}
+        >
+          <Show when={props.directoryError}>
+            <p class="project-inline-error" role="alert">
+              {props.directoryError}
+            </p>
+            <button
+              type="button"
+              class="project-flow-row"
+              onClick={() => {
+                setOptionsOpen(false)
+                props.onRefresh?.()
+              }}
+            >
+              <Icon name={getSemanticIcon("action.refresh")} size="small" />
+              {_(copy.retry)}
+            </button>
+          </Show>
+          <Show when={custom()}>
+            <button
+              type="button"
+              class="project-flow-row"
+              onClick={() => {
+                setOptionsOpen(false)
+                document.querySelector<HTMLButtonElement>("[data-location-options]")?.focus({ preventScroll: true })
+                advanced()
+              }}
+            >
+              <Icon name={getSemanticIcon("settings.general")} size="small" />
+              {_(copy.developer)}
+            </button>
+          </Show>
+        </Popover>
       </Show>
       {props.children}
     </div>

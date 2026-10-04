@@ -6,9 +6,9 @@ import DESCRIPTION from "./note-write.txt"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 
 const parameters = z.object({
-  id: z.string().optional().describe("Note ID to update. If omitted, creates a new note."),
-  title: z.string().optional().describe("Note title. Required when creating a new note."),
-  content: z.string().describe("Note content in markdown format."),
+  noteId: z.string().optional().describe("Note ID to update. If omitted, creates a new note."),
+  noteTitle: z.string().optional().describe("Note title. Required when creating a new note."),
+  noteContent: z.string().describe("Note content in markdown format."),
   mode: z
     .enum(["create", "append", "replace"])
     .default("create")
@@ -18,7 +18,10 @@ const parameters = z.object({
     .enum(["note", "blueprint"])
     .optional()
     .describe("Document kind. Use 'blueprint' when this note should be executable as a BlueprintLoop."),
-  description: z.string().optional().describe("Short blueprint description. Only used when kind is 'blueprint'."),
+  blueprintDescription: z
+    .string()
+    .optional()
+    .describe("Short blueprint description. Only used when kind is 'blueprint'."),
   scope: z
     .enum(["current", "home"])
     .default("current")
@@ -36,7 +39,7 @@ function createConflictResult(input: {
     title: input.title,
     output: [
       `Error: note changed since it was read for ${input.action}.`,
-      `ID: ${input.id}`,
+      `noteId: ${input.id}`,
       `Expected version: ${input.expectedVersion}`,
       `Current version: ${input.currentVersion}`,
       "Please retry the operation against the latest note content.",
@@ -125,8 +128,8 @@ async function updateExisting(input: {
     title: nextTitle,
     output: [
       `${label} updated successfully (${input.action === "append" ? "appended" : "replaced"}).`,
-      `ID: ${input.id}`,
-      `Title: ${nextTitle}`,
+      `noteId: ${input.id}`,
+      `noteTitle: ${nextTitle}`,
       `Kind: ${kind}`,
       ...(input.tags ? [`Tags: ${input.tags.join(", ")}`] : []),
     ].join("\n"),
@@ -140,117 +143,121 @@ async function updateExisting(input: {
   }
 }
 
-export const NoteWriteTool = Tool.define("note_write", {
-  description: DESCRIPTION,
-  parameters,
-  async execute(params: z.infer<typeof parameters>, ctx) {
-    const tiptapContent = NoteMarkdown.fromMarkdown(params.content)
+export const NoteWriteTool = Tool.define(
+  "note_write",
+  {
+    description: DESCRIPTION,
+    parameters,
+    async execute(params: z.infer<typeof parameters>, ctx) {
+      const tiptapContent = NoteMarkdown.fromMarkdown(params.noteContent)
 
-    if (params.mode === "create") {
-      if (!params.title) {
+      if (params.mode === "create") {
+        if (!params.noteTitle) {
+          return {
+            title: "Error",
+            output: "Error: noteTitle is required when creating a new note.",
+            metadata: { action: "create" } as Record<string, any>,
+          }
+        }
+
+        const scopeID = params.scope === "home" ? "home" : ScopeContext.current.scope.id
+        const kind = NoteBlueprintPolicy.requestedKind({
+          kind: params.kind,
+          description: params.blueprintDescription,
+          fallback: "note",
+        })
+        const session = await Session.get(ctx.sessionID)
+        const decision = NoteBlueprintPolicy.evaluateWrite({
+          workflowKind: session.workflow?.kind,
+          action: "create",
+          requestedKind: kind,
+        })
+        if (!decision.allowed) {
+          return NoteBlueprintPolicy.blockedResult({ action: decision.action, title: params.noteTitle })
+        }
+        const note = await NoteStore.create(
+          {
+            title: params.noteTitle,
+            content: tiptapContent,
+            tags: params.tags,
+            kind,
+            blueprint:
+              kind === "blueprint"
+                ? {
+                    description: params.blueprintDescription,
+                  }
+                : undefined,
+          },
+          { scopeID },
+        )
+
+        const label = kind === "blueprint" ? "Blueprint" : "Note"
+        const runCount = kind === "blueprint" ? numberValue(note.blueprint?.runCount) : undefined
         return {
-          title: "Error",
-          output: "Error: title is required when creating a new note.",
-          metadata: { action: "create" } as Record<string, any>,
+          title: note.title,
+          output: [
+            `${label} created successfully.`,
+            `noteId: ${note.id}`,
+            `noteTitle: ${note.title}`,
+            `Kind: ${kind}`,
+            `Scope: ${scopeID}`,
+            ...(note.tags.length > 0 ? [`Tags: ${note.tags.join(", ")}`] : []),
+          ].join("\n"),
+          metadata: {
+            id: note.id,
+            action: "create",
+            title: note.title,
+            kind,
+            scopeID,
+            ...(runCount !== undefined ? { runCount } : undefined),
+          } as Record<string, any>,
         }
       }
 
-      const scopeID = params.scope === "home" ? "home" : ScopeContext.current.scope.id
-      const kind = NoteBlueprintPolicy.requestedKind({
-        kind: params.kind,
-        description: params.description,
-        fallback: "note",
-      })
-      const session = await Session.get(ctx.sessionID)
-      const decision = NoteBlueprintPolicy.evaluateWrite({
-        workflowKind: session.workflow?.kind,
-        action: "create",
-        requestedKind: kind,
-      })
-      if (!decision.allowed) {
-        return NoteBlueprintPolicy.blockedResult({ action: decision.action, title: params.title })
+      if (!params.noteId) {
+        return {
+          title: "Error",
+          output: "Error: noteId is required when using append or replace mode.",
+          metadata: { action: params.mode } as Record<string, any>,
+        }
       }
-      const note = await NoteStore.create(
-        {
-          title: params.title,
-          content: tiptapContent,
+
+      if (params.mode === "append") {
+        return updateExisting({
+          id: params.noteId,
+          action: "append",
+          title: params.noteTitle,
           tags: params.tags,
-          kind,
-          blueprint:
-            kind === "blueprint"
-              ? {
-                  description: params.description,
-                }
-              : undefined,
-        },
-        { scopeID },
-      )
-
-      const label = kind === "blueprint" ? "Blueprint" : "Note"
-      const runCount = kind === "blueprint" ? numberValue(note.blueprint?.runCount) : undefined
-      return {
-        title: note.title,
-        output: [
-          `${label} created successfully.`,
-          `ID: ${note.id}`,
-          `Title: ${note.title}`,
-          `Kind: ${kind}`,
-          `Scope: ${scopeID}`,
-          ...(note.tags.length > 0 ? [`Tags: ${note.tags.join(", ")}`] : []),
-        ].join("\n"),
-        metadata: {
-          id: note.id,
-          action: "create",
-          title: note.title,
-          kind,
-          scopeID,
-          ...(runCount !== undefined ? { runCount } : undefined),
-        } as Record<string, any>,
+          kind: params.kind,
+          description: params.blueprintDescription,
+          content: (existing) => ({
+            type: "doc" as const,
+            content: [...(existing.content?.content ?? []), ...(tiptapContent.content ?? [])],
+          }),
+          ctx,
+        })
       }
-    }
 
-    if (!params.id) {
+      if (params.mode === "replace") {
+        return updateExisting({
+          id: params.noteId,
+          action: "replace",
+          title: params.noteTitle,
+          tags: params.tags,
+          kind: params.kind,
+          description: params.blueprintDescription,
+          content: () => tiptapContent,
+          ctx,
+          optimistic: false,
+        })
+      }
+
       return {
         title: "Error",
-        output: "Error: id is required when using append or replace mode.",
+        output: `Error: unknown mode "${params.mode}".`,
         metadata: { action: params.mode } as Record<string, any>,
       }
-    }
-
-    if (params.mode === "append") {
-      return updateExisting({
-        id: params.id,
-        action: "append",
-        title: params.title,
-        tags: params.tags,
-        kind: params.kind,
-        description: params.description,
-        content: (existing) => ({
-          type: "doc" as const,
-          content: [...(existing.content?.content ?? []), ...(tiptapContent.content ?? [])],
-        }),
-        ctx,
-      })
-    }
-
-    if (params.mode === "replace") {
-      return updateExisting({
-        id: params.id,
-        action: "replace",
-        title: params.title,
-        tags: params.tags,
-        kind: params.kind,
-        description: params.description,
-        content: () => tiptapContent,
-        ctx,
-        optimistic: false,
-      })
-    }
-
-    return {
-      title: "Error",
-      output: `Error: unknown mode "${params.mode}".`,
-      metadata: { action: params.mode } as Record<string, any>,
-    }
+    },
   },
-})
+  { activityKind: "object" },
+)

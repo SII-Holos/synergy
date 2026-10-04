@@ -8,6 +8,19 @@ import {
 } from "../../../src/components/session/session-history-scroll"
 
 describe("session history prepend scroll", () => {
+  test("keeps the first visible Part identity when one message spans several display rows", () => {
+    expect(
+      selectPrependAnchor(
+        [
+          { messageID: "message", rowKey: "part:earlier", top: -240, bottom: -140 },
+          { messageID: "message", rowKey: "part:visible", top: -40, bottom: 60 },
+          { messageID: "message", rowKey: "part:next", top: 60, bottom: 160 },
+        ],
+        0,
+      ),
+    ).toEqual({ messageID: "message", rowKey: "part:visible", offsetTop: -40 })
+  })
+
   test("anchors the first message intersecting the viewport", () => {
     expect(
       selectPrependAnchor(

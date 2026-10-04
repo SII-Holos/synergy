@@ -1,8 +1,9 @@
-import { AgendaSeriesList } from "./series-list"
-import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
-import { Portal } from "solid-js/web"
+import { AgendaTaskList } from "./task-list"
+import { AgendaDetails } from "./details"
+import { createEffect, createMemo, createSignal, on, onCleanup, Show } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
-import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -12,15 +13,13 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { agendaActionConfirm } from "@/components/dialog/confirm-copy"
-import { AppPanel } from "@/components/app-panel"
+import { AppPanel, capturePanelFocusReturn } from "@/components/app-panel"
 import { WorkspaceMobileHeader } from "@/components/workspace/mobile-header"
 import { useWorkspaceMobileHeaderClose } from "@/components/workspace/mobile-header-close"
-import { relativeTime, absoluteDate } from "@/utils/time"
 import type { AgendaItem, AgendaRunLog } from "@ericsanchezok/synergy-sdk/client"
 import { CalendarGrid, type ViewMode } from "./calendar"
-import { MiniCalendar } from "./mini-calendar"
-import { AgendaForm } from "./form"
-import { expandItems, hasTimeTriggers, type CalendarEvent } from "./expand"
+import { AgendaFormDialog } from "./form"
+import { agendaRange, forecastAgenda, filterAgendaTasks, type AgendaTaskFilter, type CalendarEvent } from "./forecast"
 import { ActivityView } from "./activity-view"
 import {
   defaultAgendaActivityState,
@@ -29,44 +28,14 @@ import {
   requestAgendaActivity,
   type AgendaActivityState,
 } from "./activity-state"
-import { agendaRunStatusTone, agendaStatusTone, formatAgendaDuration } from "./shared"
 import "./agenda-dialog.css"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLocale } from "@/context/locale"
 import { A } from "./agenda-i18n"
 
-type AgendaAction = "trigger" | "activate" | "pause" | "complete" | "cancel" | "remove"
+import { AgendaDetailActions, type AgendaAction } from "./detail-actions"
 
-function makeTriggerSummary(
-  triggers: AgendaItem["triggers"],
-  _: (d: { id: string; message: string }, values?: Record<string, unknown>) => string,
-): string {
-  if (!triggers || triggers.length === 0) return _(A.triggerManual)
-  return triggers
-    .map((t) => {
-      switch (t.type) {
-        case "cron":
-          return _(A.triggerCron, { expr: t.expr })
-        case "every":
-          return _(A.triggerEvery, { interval: t.interval })
-        case "at":
-          return _(A.triggerAt, { time: new Date(t.at).toISOString() })
-        case "delay":
-          return _(A.triggerDelay, { delay: String(t.delay) })
-        case "watch": {
-          const w = t.watch
-          if ("command" in w) return _(A.triggerPoll, { command: w.command })
-          if ("tool" in w) return _(A.triggerTool, { tool: w.tool })
-          return _(A.triggerWatch, { glob: w.glob })
-        }
-        default:
-          return _(A.triggerUnknown)
-      }
-    })
-    .join(", ")
-}
-
-type PanelTab = "schedule" | "activity"
+type PanelTab = "schedule" | "tasks" | "activity"
 
 export function AgendaPanel() {
   const sdk = useGlobalSDK()
@@ -75,21 +44,46 @@ export function AgendaPanel() {
   const confirm = useConfirm()
   const navigate = useNavigate()
   const params = useParams()
-  const { i18n } = useLocale()
+  const { i18n, fmt } = useLocale()
   const _ = (d: { id: string; message: string }, values?: Record<string, unknown>) =>
     i18n._(values ? { ...d, values } : d)
 
   const [tab, setTab] = createSignal<PanelTab>("schedule")
+  const scrollPositions = new Map<PanelTab, number>()
+  let scrollArea: HTMLDivElement | undefined
+  let scrollOwner: PanelTab = "schedule"
+  function selectTab(value: PanelTab) {
+    if (value === tab()) return
+    if (scrollOwner === tab()) scrollPositions.set(tab(), scrollArea?.scrollTop ?? 0)
+    setTab(value)
+    requestAnimationFrame(() => {
+      if (tab() !== value || !scrollArea?.isConnected) return
+      scrollArea.scrollTop = scrollPositions.get(value) ?? 0
+      scrollOwner = value
+    })
+  }
   const onCloseWorkspace = useWorkspaceMobileHeaderClose()
-  const [popoverItem, setPopoverItem] = createSignal<AgendaItem | undefined>()
-  const [popoverRect, setPopoverRect] = createSignal<DOMRect | undefined>()
+  let detailDialogID: string | undefined
+  const [activeDetailItemID, setActiveDetailItemID] = createSignal<string>()
+  const runsRequests = new Map<string, number>()
+  onCleanup(() => {
+    runsRequests.clear()
+    if (detailDialogID) dialog.close(detailDialogID)
+  })
+  const [runsError, setRunsError] = createSignal(new Set<string>())
   const [runsCache, setRunsCache] = createSignal<Record<string, AgendaRunLog[]>>({})
   const [actionLoading, setActionLoading] = createSignal<Set<string>>(new Set())
   const [actionDone, setActionDone] = createSignal<Set<string>>(new Set())
 
   const [viewMode, setViewMode] = createSignal<ViewMode>("list")
   const [anchor, setAnchor] = createSignal(Date.now())
-  const [calendarRange, setCalendarRange] = createSignal<{ start: number; end: number }>({ start: 0, end: 0 })
+  const [scopeFilter, setScopeFilter] = createSignal("")
+  const [taskQuery, setTaskQuery] = createSignal("")
+  const [taskFilter, setTaskFilter] = createSignal<AgendaTaskFilter>("all")
+  const [now, setNow] = createSignal(Date.now())
+  const clock = window.setInterval(() => setNow(Date.now()), 60_000)
+  onCleanup(() => window.clearInterval(clock))
+  let searchInput: HTMLInputElement | undefined
 
   const [activity, setActivity] = createSignal<AgendaActivityState>(defaultAgendaActivityState())
   const [activityLoading, setActivityLoading] = createSignal(false)
@@ -100,59 +94,101 @@ export function AgendaPanel() {
 
   const items = createMemo(() => globalSync.agenda)
 
-  const todoItems = createMemo(() => items().filter((item) => !hasTimeTriggers(item)))
-  const scheduleItems = createMemo(() => items().filter((item) => hasTimeTriggers(item)))
-
-  const calendarEvents = createMemo(() => {
-    const range = calendarRange()
-    if (!range.start || !range.end) return []
-    return expandItems(scheduleItems(), range.start, range.end)
-  })
-
-  const triggerSummary = (triggers: AgendaItem["triggers"]) => makeTriggerSummary(triggers, _)
+  const matchingItems = createMemo(() => filterAgendaTasks(items(), { query: taskQuery(), scopeID: scopeFilter() }))
+  const taskItems = createMemo(() =>
+    filterAgendaTasks(matchingItems(), { query: "", scopeID: "", filter: taskFilter() }),
+  )
+  const forecast = createMemo(() => forecastAgenda(matchingItems(), agendaRange(anchor(), viewMode()), { now: now() }))
+  const historyScope = () => scopeFilter() || directory() || "home"
+  const scopeLabel = (item: AgendaItem) =>
+    globalSync.data.scope.find((scope) => scope.id === item.origin.scope.id)?.name ??
+    (item.origin.scope.type === "home" ? _({ id: "app.sidebar.section.home", message: "Home" }) : item.origin.scope.id)
+  function clearFilters() {
+    setTaskQuery("")
+    setTaskFilter("all")
+    setScopeFilter("")
+    searchInput?.focus()
+  }
 
   function itemById(id: string): AgendaItem | undefined {
     return items().find((i) => i.id === id)
   }
 
-  function directoryForItem(item: AgendaItem): string | undefined {
-    if (item.origin?.scope?.type === "home") return "home"
-    return item.origin?.scope?.directory ?? item.origin?.scope?.worktree ?? directory()
+  function directoryForItem(item: AgendaItem): string {
+    return item.origin.scope.id
   }
 
   async function loadRuns(id: string) {
-    if (runsCache()[id]) return
     const item = itemById(id)
-    const dir = item ? directoryForItem(item) : directory()
-    if (!dir) return
+    const scopeID = item ? directoryForItem(item) : directory()
+    if (!scopeID) return
+    const request = (runsRequests.get(id) ?? 0) + 1
+    runsRequests.set(id, request)
+    const isCurrent = () => runsRequests.get(id) === request && itemById(id)?.origin.scope.id === scopeID
+    setRunsError((previous) => {
+      const next = new Set(previous)
+      next.delete(id)
+      return next
+    })
     try {
-      const result = await sdk.client.agenda.runs({ id, scopeID: dir })
-      if (result.data) setRunsCache((prev) => ({ ...prev, [id]: result.data as AgendaRunLog[] }))
-    } catch {}
+      const result = await sdk.client.agenda.runs({ id, scopeID }, { throwOnError: true })
+      if (!isCurrent()) return
+      setRunsCache((previous) => ({ ...previous, [id]: result.data ?? [] }))
+    } catch {
+      if (!isCurrent()) return
+      setRunsError((previous) => new Set(previous).add(id))
+    }
   }
 
+  const detailHistoryRevision = createMemo(() => {
+    const id = activeDetailItemID()
+    const item = id ? itemById(id) : undefined
+    if (!item) return undefined
+    return JSON.stringify([
+      id,
+      item.origin.scope.id,
+      item.state?.lastRunAt,
+      item.state?.lastRunStatus,
+      item.state?.runCount,
+    ])
+  })
+  createEffect(
+    on(detailHistoryRevision, () => {
+      const id = activeDetailItemID()
+      if (id) void loadRuns(id)
+    }),
+  )
+
   async function performAction(id: string, action: AgendaAction, options?: { throwOnError?: boolean }) {
+    if ([...actionLoading()].some((key) => key.startsWith(`${id}-`))) return
     const item = itemById(id)
     const dir = item ? directoryForItem(item) : directory()
     if (!dir) return
     setActionLoading((prev) => new Set(prev).add(`${id}-${action}`))
     try {
       const ops: Record<string, () => Promise<unknown>> = {
-        trigger: () => sdk.client.agenda.trigger({ id, scopeID: dir }),
-        activate: () => sdk.client.agenda.activate({ id, scopeID: dir }),
-        pause: () => sdk.client.agenda.pause({ id, scopeID: dir }),
-        complete: () => sdk.client.agenda.complete({ id, scopeID: dir }),
-        cancel: () => sdk.client.agenda.cancel({ id, scopeID: dir }),
-        remove: () => sdk.client.agenda.remove({ id, scopeID: dir }),
+        trigger: () => sdk.client.agenda.trigger({ id, scopeID: dir }, { throwOnError: true }),
+        activate: () => sdk.client.agenda.activate({ id, scopeID: dir }, { throwOnError: true }),
+        pause: () => sdk.client.agenda.pause({ id, scopeID: dir }, { throwOnError: true }),
+        complete: () => sdk.client.agenda.complete({ id, scopeID: dir }, { throwOnError: true }),
+        cancel: () => sdk.client.agenda.cancel({ id, scopeID: dir }, { throwOnError: true }),
+        remove: () => sdk.client.agenda.remove({ id, scopeID: dir }, { throwOnError: true }),
       }
       await ops[action]()
-      setRunsCache((prev) => {
-        const next = { ...prev }
-        delete next[id]
-        return next
-      })
-      if (action === "remove" && popoverItem()?.id === id) setPopoverItem(undefined)
+      if (action === "remove") {
+        runsRequests.delete(id)
+        setRunsCache((prev) => {
+          const next = { ...prev }
+          delete next[id]
+          return next
+        })
+      } else if (activeDetailItemID() === id) void loadRuns(id)
       if (action === "trigger") {
+        showToast({
+          type: "success",
+          title: _({ id: "app.agenda.action.submitted", message: "Execution submitted" }),
+          description: _({ id: "app.agenda.action.submittedHint", message: "Check History for the execution result." }),
+        })
         const key = `${id}-${action}`
         setActionDone((prev) => new Set(prev).add(key))
         setTimeout(
@@ -187,16 +223,18 @@ export function AgendaPanel() {
   const isDone = (id: string, action: string) => actionDone().has(`${id}-${action}`)
 
   function formDirectory(item?: AgendaItem): string {
-    if (item) return directoryForItem(item) ?? directory() ?? globalSync.data.paths.home
-    return directory() ?? globalSync.data.paths.home
+    if (item) return directoryForItem(item) ?? directory() ?? "home"
+    return scopeFilter() || directory() || "home"
   }
 
   function openForm(item?: AgendaItem) {
-    dialog.show(() => (
-      <Dialog class="agenda-form-dialog" title={item ? _(A.editAgenda) : _(A.newAgenda)}>
-        <AgendaForm directory={formDirectory(item)} item={item} presentation="dialog" onBack={() => dialog.close()} />
-      </Dialog>
-    ))
+    const restoreFocus = capturePanelFocusReturn()
+    let formID: string | undefined
+    const open = item && detailDialogID ? dialog.push : dialog.show
+    formID = open(
+      () => <AgendaFormDialog directory={formDirectory(item)} item={item} onClose={() => dialog.close(formID)} />,
+      restoreFocus,
+    )
   }
 
   function openCreate() {
@@ -207,10 +245,54 @@ export function AgendaPanel() {
     openForm(item)
   }
 
-  function openDetail(item: AgendaItem, rect?: DOMRect) {
-    setPopoverRect(rect)
-    setPopoverItem(item)
-    loadRuns(item.id)
+  function openDetail(item: AgendaItem, occurrence?: CalendarEvent) {
+    const restoreFocus = capturePanelFocusReturn()
+    const current = () => itemById(item.id) ?? item
+    detailDialogID = dialog.show(
+      () => (
+        <Dialog
+          size="wide"
+          class="app-panel-detail-dialog agenda-detail-dialog"
+          title={current().title}
+          footer={
+            <div class="agenda-detail-actions">
+              <button type="button" class="agenda-secondary-action" onClick={() => openEdit(current())}>
+                {_(A.detailEdit)}
+              </button>
+              <AgendaDetailActions
+                item={current()}
+                isLoading={isLoading}
+                isDone={isDone}
+                onAction={(action) => requestAction(current(), action)}
+                _={_}
+              />
+            </div>
+          }
+        >
+          <AgendaDetails
+            item={current()}
+            occurrence={occurrence}
+            now={now()}
+            scopeName={
+              globalSync.data.scope.find((scope) => scope.id === current().origin.scope.id)?.name ??
+              (current().origin.scope.type === "home"
+                ? _({ id: "app.sidebar.section.home", message: "Home" })
+                : current().origin.scope.id)
+            }
+            runs={runsCache()[item.id]}
+            runsError={runsError().has(item.id)}
+            onRetry={() => void loadRuns(item.id)}
+            _={_}
+          />
+        </Dialog>
+      ),
+      () => {
+        detailDialogID = undefined
+        setActiveDetailItemID(undefined)
+        restoreFocus()
+      },
+    )
+    setActiveDetailItemID(item.id)
   }
 
   function requestAction(item: AgendaItem, action: AgendaAction) {
@@ -218,61 +300,63 @@ export function AgendaPanel() {
       confirm.show({
         ...agendaActionConfirm(action, item.title),
         onConfirm: () => performAction(item.id, action, { throwOnError: true }),
+        onConfirmed: () => {
+          if (action === "remove" && activeDetailItemID() === item.id && detailDialogID) dialog.close(detailDialogID)
+        },
       })
       return
     }
     void performAction(item.id, action)
   }
 
-  function handleEventClick(event: CalendarEvent, e?: MouseEvent) {
-    const rect = e ? (e.target as HTMLElement).getBoundingClientRect() : undefined
+  function handleEventClick(event: CalendarEvent) {
     const item = itemById(event.itemId)
-    if (item) openDetail(item, rect)
+    if (item) openDetail(item, event)
   }
 
-  function handleDateClick(ts: number) {
-    setAnchor(ts)
-  }
-
+  let activityRequest = 0
+  let activityContext = ""
+  onCleanup(() => {
+    activityRequest++
+  })
   async function loadActivity(options?: { reset?: boolean; append?: boolean; query?: string }) {
-    if (activityLoading()) return
     if (!sdk?.client?.agenda) return
+    const scopeID = historyScope()
+    const query = (options?.query ?? activityQuery()).trim()
+    const context = JSON.stringify([scopeID, query])
+    if (activityLoading() && context === activityContext) return
+    const changed = context !== activityContext
+    const request = ++activityRequest
+    activityContext = context
+    if (changed) setActivity(defaultAgendaActivityState(activity().limit))
     setActivityLoading(true)
     setActivityError(null)
+    const current = () => request === activityRequest && historyScope() === scopeID && activityQuery().trim() === query
     try {
-      const reset = options?.reset ?? false
-      const append = options?.append ?? false
-      const query = options?.query ?? activityQuery()
       const page = await requestAgendaActivity({
         client: sdk.client,
-        scopeID: directory() ?? "home",
+        scopeID,
         query,
-        append,
+        append: !changed && options?.append,
         state: activity(),
       })
-
-      setActivity((prev) => mergeAgendaActivityPage({ previous: prev, page, append }))
-
-      if (reset) {
-        setActivityQuery(query)
-      }
-    } catch (error: unknown) {
-      setActivityError(normalizeAgendaActivityError(error))
-      setActivity(defaultAgendaActivityState(activity().limit))
+      if (current())
+        setActivity((previous) => mergeAgendaActivityPage({ previous, page, append: !changed && options?.append }))
+    } catch (error) {
+      if (current()) setActivityError(normalizeAgendaActivityError(error, _(A.activityUnavailable)))
+    } finally {
+      if (request === activityRequest) setActivityLoading(false)
     }
-    setActivityLoading(false)
   }
 
   createEffect(
-    on(tab, (t) => {
-      if (t === "activity") void loadActivity()
+    on([tab, directory, scopeFilter], ([currentTab]) => {
+      if (currentTab === "activity") void loadActivity()
     }),
   )
 
   function navigateToSession(sessionID: string, scopeID: string) {
-    const dir = scopeID === "home" ? "home" : directory()
-    if (!dir) return
-    navigate(`/${base64Encode(dir)}/session/${sessionID}`)
+    navigate(`/${base64Encode(scopeID)}/session/${sessionID}`)
   }
 
   return (
@@ -283,107 +367,165 @@ export function AgendaPanel() {
           <div class="agenda-header-inner">
             <AppPanel.HeaderRow>
               <AppPanel.Title>{_(A.panelTitle)}</AppPanel.Title>
-              <button
-                type="button"
-                class="inline-flex h-9 items-center gap-2 rounded-xl bg-text-strong px-3.5 text-13-medium text-background-base ring-1 ring-inset ring-border-weaker-selected shadow-sm transition-colors hover:bg-text-base"
-                onClick={openCreate}
-              >
-                <Icon name={getSemanticIcon("action.add")} size="small" class="text-background-base" />
+              <button type="button" class="agenda-create-action app-panel-control" onClick={openCreate}>
+                <Icon name={getSemanticIcon("action.add")} size="small" />
                 <span>{_(A.newAgenda)}</span>
               </button>
             </AppPanel.HeaderRow>
-            <AppPanel.SegmentedNav
+            <AppPanel.Tabs
+              id="agenda"
+              label={_(A.panelTitle)}
               items={[
                 { id: "schedule", label: _(A.scheduleTab) },
+                { id: "tasks", label: _({ id: "app.agenda.panel.tab.tasks", message: "Tasks" }) },
                 { id: "activity", label: _(A.activityTab) },
               ]}
               active={tab()}
-              onChange={(id) => setTab(id as PanelTab)}
+              onChange={(value) => selectTab(value as PanelTab)}
             />
           </div>
         </AppPanel.Header>
-
-        <Show when={tab() === "schedule"}>
-          <AppPanel.Body padding={false} class="agenda-body">
-            <div class="agenda-stage">
-              <Show when={viewMode() !== "list"}>
-                <div class="grid w-full grid-cols-1 items-stretch gap-3 pb-1 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
-                  <div class="agenda-main-surface h-full p-3.5">
-                    <MiniCalendar anchor={anchor()} viewMode={viewMode()} onDateClick={handleDateClick} />
-                  </div>
-                  <div class="agenda-main-surface min-w-0 flex h-full flex-col p-3">
-                    <Show
-                      when={todoItems().length > 0}
-                      fallback={
-                        <div class="agenda-inner-surface flex min-h-0 flex-1 items-center justify-center px-3 py-4">
-                          <span class="text-10-medium text-text-weaker/60">{_(A.noTodoItems)}</span>
-                        </div>
-                      }
+        <AppPanel.Body
+          ref={(element) => {
+            scrollArea = element
+          }}
+          padding={false}
+          class="agenda-body"
+          tab={{ id: "agenda", value: tab() }}
+        >
+          <div class="agenda-stage">
+            <p class="app-panel-copy text-text-weak">
+              {tab() === "schedule"
+                ? _({
+                    id: "app.agenda.arrangements.description",
+                    message:
+                      "See when your enabled tasks are expected to run. Select a date to change the displayed range.",
+                  })
+                : tab() === "tasks"
+                  ? _({
+                      id: "app.agenda.tasks.description",
+                      message: "Manage all task rules, including manual, event-triggered, disabled and archived tasks.",
+                    })
+                  : _({
+                      id: "app.agenda.activity.description",
+                      message: "Review actual executions, results and related sessions, newest first.",
+                    })}
+            </p>
+            <div class="agenda-page-tools">
+              <div class="agenda-scope-filter app-panel-control">
+                <span>{_({ id: "app.agenda.scope.filter", message: "Scope" })}</span>
+                <MenuField
+                  ariaLabel={_({ id: "app.agenda.scope.filter", message: "Scope" })}
+                  value={tab() === "activity" ? historyScope() : scopeFilter()}
+                  triggerClass="menu-field-trigger agenda-scope-select"
+                  options={[
+                    ...(tab() !== "activity"
+                      ? [{ value: "", label: _({ id: "app.agenda.scope.all", message: "All Scopes" }) }]
+                      : []),
+                    { value: "home", label: _({ id: "app.sidebar.section.home", message: "Home" }) },
+                    ...globalSync.data.scope
+                      .filter((scope) => scope.id !== "home")
+                      .map((scope) => ({ value: scope.id, label: scope.name || scope.id })),
+                  ]}
+                  onChange={setScopeFilter}
+                />
+              </div>
+              <Show when={tab() !== "activity"}>
+                <div class="agenda-search">
+                  <input
+                    ref={searchInput}
+                    value={taskQuery()}
+                    aria-label={_({ id: "app.agenda.tasks.search", message: "Search tasks" })}
+                    placeholder={_({ id: "app.agenda.tasks.search", message: "Search tasks" })}
+                    onInput={(event) => setTaskQuery(event.currentTarget.value)}
+                  />
+                  <Show when={taskQuery()}>
+                    <button
+                      type="button"
+                      class="agenda-secondary-action"
+                      onClick={() => {
+                        setTaskQuery("")
+                        searchInput?.focus()
+                      }}
                     >
-                      <div class="flex items-center justify-between gap-2 mb-2 px-0.5">
-                        <div class="flex items-center gap-1.5 min-w-0">
-                          <span class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">
-                            {_(A.todoLabel)}
-                          </span>
-                          <span class="inline-flex items-center rounded-full bg-surface-raised-base px-2 py-0.5 text-[10px] font-medium text-text-weaker">
-                            {todoItems().length}
-                          </span>
-                        </div>
-                      </div>
-                      <div class="min-h-0 flex-1 overflow-y-auto flex flex-col gap-1.5 [scrollbar-width:thin]">
-                        <For each={todoItems()}>
-                          {(item) => (
-                            <TodoCard
-                              item={item}
-                              onClick={(e) => openDetail(item, (e.target as HTMLElement).getBoundingClientRect())}
-                              triggerSummary={triggerSummary}
-                            />
-                          )}
-                        </For>
-                      </div>
-                    </Show>
-                  </div>
+                      {_({ id: "app.agenda.search.clear", message: "Clear search" })}
+                    </button>
+                  </Show>
+                </div>
+                <Show when={scopeFilter() || taskQuery() || (tab() === "tasks" && taskFilter() !== "all")}>
+                  <button type="button" class="agenda-secondary-action" onClick={clearFilters}>
+                    {_({ id: "app.agenda.filters.clear", message: "Clear filters" })}
+                  </button>
+                </Show>
+              </Show>
+            </div>
+            <Show when={tab() === "schedule"}>
+              <Show when={forecast().limited.length || forecast().invalid.length || forecast().relative.length}>
+                <div class="agenda-forecast-warning app-panel-caption" role="status">
+                  <Show when={forecast().relative.length}>
+                    <p>
+                      {_({
+                        id: "app.agenda.arrangements.relative",
+                        message:
+                          "Some interval or delayed tasks depend on activation and execution times; only their known next trigger is shown.",
+                      })}
+                    </p>
+                  </Show>
+                  <Show when={forecast().limited.length}>
+                    <p>
+                      {_(
+                        {
+                          id: "app.agenda.arrangements.limited",
+                          message:
+                            "Partial preview: {count} task rules exceed this range's limit (200 cron or 500 interval times per trigger). Narrow the range to see more.",
+                        },
+                        { count: forecast().limited.length },
+                      )}
+                    </p>
+                  </Show>
+                  <Show when={forecast().invalid.length}>
+                    <p>
+                      {_(
+                        {
+                          id: "app.agenda.arrangements.invalid",
+                          message: "{count} task rules could not be predicted. Review their trigger settings in Tasks.",
+                        },
+                        { count: forecast().invalid.length },
+                      )}
+                    </p>
+                  </Show>
                 </div>
               </Show>
-              <div class="relative flex flex-1 flex-col" classList={{ "min-h-[720px]": viewMode() !== "list" }}>
-                <CalendarGrid
-                  viewMode={viewMode()}
-                  anchor={anchor()}
-                  events={calendarEvents()}
-                  listContent={<AgendaSeriesList items={items()} events={calendarEvents()} onSelect={openDetail} />}
-                  onViewModeChange={setViewMode}
-                  onAnchorChange={setAnchor}
-                  onEventClick={handleEventClick}
-                  onRangeChange={(start, end) => setCalendarRange({ start, end })}
-                />
-
-                <Show when={popoverItem()}>
-                  <Portal>
-                    <DetailPopover
-                      anchor={popoverRect()}
-                      item={popoverItem()!}
-                      runs={runsCache()[popoverItem()!.id]}
-                      isLoading={isLoading}
-                      isDone={isDone}
-                      onClose={() => setPopoverItem(undefined)}
-                      onAction={(action) => requestAction(popoverItem()!, action)}
-                      onEdit={() => {
-                        const pi = popoverItem()!
-                        setPopoverItem(undefined)
-                        openEdit(pi)
-                      }}
-                      _={_}
-                    />
-                  </Portal>
-                </Show>
-              </div>
-            </div>
-          </AppPanel.Body>
-        </Show>
-
-        <Show when={tab() === "activity"}>
-          <AppPanel.Body padding={false} class="agenda-body">
-            <div class="agenda-stage">
+              <CalendarGrid
+                viewMode={viewMode()}
+                anchor={anchor()}
+                events={forecast().events}
+                now={now()}
+                scopeLabel={(event) => {
+                  const item = itemById(event.itemId)
+                  return item ? scopeLabel(item) : ""
+                }}
+                onViewModeChange={setViewMode}
+                onAnchorChange={setAnchor}
+                onEventClick={handleEventClick}
+                onHistory={() => selectTab("activity")}
+              />
+            </Show>
+            <Show when={tab() === "tasks"}>
+              <AgendaTaskList
+                items={taskItems()}
+                filter={taskFilter()}
+                onFilterChange={setTaskFilter}
+                onSelect={(item) => openDetail(item)}
+                onAction={requestAction}
+                isLoading={isLoading}
+                scopeLabel={scopeLabel}
+                onClear={clearFilters}
+                filtered={!!scopeFilter() || !!taskQuery() || taskFilter() !== "all"}
+                now={now()}
+              />
+            </Show>
+            <Show when={tab() === "activity"}>
               <ActivityView
                 items={activity().items}
                 total={activity().total}
@@ -391,366 +533,23 @@ export function AgendaPanel() {
                 loading={activityLoading()}
                 query={activityQuery()}
                 error={activityError()}
-                onQueryChange={(value: string) => {
+                onQueryChange={(value) => {
                   setActivityQuery(value)
                   void loadActivity({ reset: true, query: value })
                 }}
+                onRetry={() => void loadActivity({ query: activityQuery() })}
+                onRefresh={() => void loadActivity()}
                 onLoadMore={() => void loadActivity({ append: true })}
                 onNavigate={navigateToSession}
-                onItemClick={(itemId) => {
-                  const item = itemById(itemId)
+                onItemClick={(id) => {
+                  const item = itemById(id)
                   if (item) openDetail(item)
                 }}
               />
-            </div>
-          </AppPanel.Body>
-        </Show>
+            </Show>
+          </div>
+        </AppPanel.Body>
       </AppPanel.Content>
     </AppPanel.Root>
-  )
-}
-
-function TodoCard(props: {
-  item: AgendaItem
-  onClick: (e: MouseEvent) => void
-  triggerSummary: (triggers: AgendaItem["triggers"]) => string
-}) {
-  return (
-    <button
-      type="button"
-      class="agenda-inner-surface w-full text-left flex cursor-pointer items-center gap-2.5 px-2.5 py-2 transition-colors hover:bg-surface-raised-base-hover"
-      onClick={props.onClick}
-    >
-      <span
-        class={`shrink-0 w-1.5 h-1.5 rounded-full ${props.item.status === "active" ? "bg-icon-success-base" : props.item.status === "paused" ? "bg-icon-warning-base" : props.item.status === "done" ? "bg-text-weaker" : "bg-border-base"}`}
-      />
-      <span class="min-w-0 flex-1 truncate text-12-regular text-text-strong">{props.item.title}</span>
-      <span class="inline-flex shrink-0 items-center rounded-full bg-surface-inset-base px-2 py-0.5 text-[9px] font-medium text-text-weaker">
-        {props.triggerSummary(props.item.triggers)}
-      </span>
-    </button>
-  )
-}
-
-function DetailPopover(props: {
-  anchor?: DOMRect
-  item: AgendaItem
-  runs: AgendaRunLog[] | undefined
-  isLoading: (id: string, action: string) => boolean
-  isDone: (id: string, action: string) => boolean
-  onClose: () => void
-  onAction: (action: AgendaAction) => void
-  onEdit: () => void
-  _: (d: { id: string; message: string }, values?: Record<string, unknown>) => string
-}) {
-  const { i18n, fmt } = useLocale()
-  const { _ } = props
-  const triggerSummary = (triggers: AgendaItem["triggers"]) => makeTriggerSummary(triggers, _)
-
-  const pos = () => {
-    const a = props.anchor
-    if (!a) return { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }
-    const cardW = 360
-    const cardH = 480
-    let left = a.left + a.width / 2 - cardW / 2
-    const vw = window.innerWidth
-    if (left < 12) left = 12
-    if (left + cardW > vw - 12) left = vw - cardW - 12
-    let top = a.bottom + 8
-    const vh = window.innerHeight
-    if (top + cardH > vh - 16) top = a.top - cardH - 8
-    if (top < 8) top = 8
-    return { top: `${top}px`, left: `${left}px` }
-  }
-  let cardRef: HTMLDivElement | undefined
-  const state = () => props.item.state
-
-  createEffect(() => {
-    function onMouseDown(e: MouseEvent) {
-      if (cardRef && !cardRef.contains(e.target as Node)) props.onClose()
-    }
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") props.onClose()
-    }
-    document.addEventListener("mousedown", onMouseDown)
-    document.addEventListener("keydown", onKeyDown)
-    onCleanup(() => {
-      document.removeEventListener("mousedown", onMouseDown)
-      document.removeEventListener("keydown", onKeyDown)
-    })
-  })
-  return (
-    <div
-      ref={cardRef}
-      class="agenda-detail-popover workbench-popover-surface pointer-events-auto fixed z-[102] w-full max-w-sm max-h-[calc(100vh-32px)] flex flex-col overflow-hidden rounded-[1.35rem] border border-border-base/40 bg-background-base animate-in fade-in slide-in-from-top-2 duration-150"
-      style={pos()}
-    >
-      <div class="shrink-0 flex items-center gap-1 px-3.5 pt-3 pb-2">
-        <button
-          type="button"
-          class="size-7 flex items-center justify-center rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
-          onClick={props.onEdit}
-          title={_(A.detailEdit)}
-        >
-          <Icon name={getSemanticIcon("action.rename")} size="small" />
-        </button>
-        <ActionIconBtn
-          icon={getSemanticIcon("action.remove")}
-          title={_(A.detailDelete)}
-          loading={props.isLoading(props.item.id, "remove")}
-          onClick={() => props.onAction("remove")}
-          danger
-        />
-        <div class="flex-1" />
-        <button
-          type="button"
-          class="size-7 flex items-center justify-center rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
-          onClick={props.onClose}
-          title={_(A.detailClose)}
-        >
-          <Icon name={getSemanticIcon("action.close")} size="small" />
-        </button>
-      </div>
-
-      <div class="agenda-detail-body flex-1 min-h-0 overflow-y-auto px-4 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div class="flex flex-col gap-3">
-          <div class="agenda-detail-title-row">
-            <span class="agenda-detail-title">{props.item.title}</span>
-            <span class={`agenda-detail-status ${agendaStatusTone(props.item.status)}`}>{props.item.status}</span>
-          </div>
-
-          <Show when={props.item.description}>
-            <p class="text-12-regular text-text-weak leading-relaxed">{props.item.description}</p>
-          </Show>
-
-          <div class="flex items-center gap-1.5 flex-wrap">
-            <span class="agenda-detail-chip">{triggerSummary(props.item.triggers)}</span>
-            <Show when={state()?.runCount}>
-              <span class="agenda-detail-chip">{_(A.detailRuns, { count: state()!.runCount! })}</span>
-            </Show>
-            <Show when={state()?.consecutiveErrors && state()!.consecutiveErrors! > 0}>
-              <span class="agenda-detail-chip agenda-detail-chip-danger">
-                {_(A.detailErrors, { count: state()!.consecutiveErrors! })}
-              </span>
-            </Show>
-            <Show when={props.item.createdBy === "agent"}>
-              <span class="agenda-detail-chip">{_(A.detailAgent)}</span>
-            </Show>
-          </div>
-
-          <Show when={state()?.nextRunAt}>
-            <div class="agenda-detail-meta">{_(A.detailNext, { time: relativeTime(fmt, state()!.nextRunAt!) })}</div>
-          </Show>
-
-          <Show when={state()?.lastRunAt}>
-            <div class="agenda-detail-meta">
-              {_(A.detailLastRun, { date: absoluteDate(fmt, state()!.lastRunAt!) })}
-              <Show when={state()?.lastRunStatus}>
-                {" · "}
-                <span class={agendaRunStatusTone(state()!.lastRunStatus!)}>{state()!.lastRunStatus}</span>
-              </Show>
-              <Show when={state()?.lastRunDuration}>
-                {" · "}
-                {formatAgendaDuration(state()!.lastRunDuration!)}
-              </Show>
-            </div>
-          </Show>
-
-          <Show when={state()?.lastRunError}>
-            <div class="text-11-regular text-text-diff-delete-base bg-text-diff-delete-base/6 rounded-[0.95rem] px-3 py-2 ring-1 ring-inset ring-text-diff-delete-base/10 line-clamp-3">
-              {state()!.lastRunError}
-            </div>
-          </Show>
-
-          <Show when={props.item.tags && props.item.tags.length > 0}>
-            <div class="flex items-center gap-1.5 flex-wrap">
-              <For each={props.item.tags}>{(tag) => <span class="agenda-detail-chip">#{tag}</span>}</For>
-            </div>
-          </Show>
-
-          <Show when={props.item.prompt}>
-            <div class="agenda-detail-section">
-              <div class="agenda-detail-section-label">{_(A.detailTaskLabel)}</div>
-              <p class="text-11-regular text-text-weak leading-relaxed whitespace-pre-wrap line-clamp-4">
-                {props.item.prompt}
-              </p>
-              <Show when={props.item.agent}>
-                <span class="agenda-detail-meta mt-1.5 block">
-                  {_(A.detailAgentLabel, { agent: props.item.agent! })}
-                </span>
-              </Show>
-            </div>
-          </Show>
-
-          <ActionBar
-            item={props.item}
-            isLoading={props.isLoading}
-            isDone={props.isDone}
-            onAction={props.onAction}
-            _={_}
-          />
-
-          <Show when={props.runs} fallback={<Spinner class="size-3.5 my-1" />}>
-            {(runs) => (
-              <Show when={runs().length > 0}>
-                <div class="agenda-detail-section">
-                  <div class="agenda-detail-section-label">{_(A.detailRecentRuns)}</div>
-                  <For each={runs().slice(0, 8)}>{(run) => <RunRow run={run} />}</For>
-                </div>
-              </Show>
-            )}
-          </Show>
-          <div class="agenda-detail-footer">
-            {_(A.detailCreated, { date: absoluteDate(fmt, props.item.time.created) })}
-            <Show when={props.item.time.updated !== props.item.time.created}>
-              {" · "}
-              {_(A.detailUpdated, { date: absoluteDate(fmt, props.item.time.updated) })}
-            </Show>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ActionIconBtn(props: {
-  icon: IconName
-  title: string
-  loading: boolean
-  onClick: () => void
-  danger?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      classList={{
-        "size-7 flex items-center justify-center rounded-lg transition-colors": true,
-        "text-icon-weak-base hover:text-text-diff-delete-base hover:bg-text-diff-delete-base/10":
-          !!props.danger && !props.loading,
-        "text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover": !props.danger && !props.loading,
-        "opacity-40 pointer-events-none": props.loading,
-      }}
-      onClick={props.onClick}
-      disabled={props.loading}
-      title={props.title}
-    >
-      <Show when={props.loading} fallback={<Icon name={props.icon} size="small" />}>
-        <Spinner class="size-3" />
-      </Show>
-    </button>
-  )
-}
-
-function ActionBar(props: {
-  item: AgendaItem
-  isLoading: (id: string, action: string) => boolean
-  isDone: (id: string, action: string) => boolean
-  onAction: (action: AgendaAction) => void
-  _: (d: { id: string; message: string }) => string
-}) {
-  const { _ } = props
-  const status = () => props.item.status
-
-  const hasActions = () => status() !== "cancelled"
-
-  return (
-    <Show when={hasActions()}>
-      <div class="flex items-center gap-1.5 flex-wrap">
-        <Show when={status() === "active" || status() === "paused" || status() === "pending"}>
-          <ActionButton
-            label={_(A.actionTrigger)}
-            loading={props.isLoading(props.item.id, "trigger")}
-            done={props.isDone(props.item.id, "trigger")}
-            onClick={() => props.onAction("trigger")}
-            variant="primary"
-          />
-        </Show>
-        <Show when={status() === "paused" || status() === "pending"}>
-          <ActionButton
-            label={_(A.actionActivate)}
-            loading={props.isLoading(props.item.id, "activate")}
-            onClick={() => props.onAction("activate")}
-          />
-        </Show>
-        <Show when={status() === "active"}>
-          <ActionButton
-            label={_(A.actionPause)}
-            loading={props.isLoading(props.item.id, "pause")}
-            onClick={() => props.onAction("pause")}
-          />
-        </Show>
-        <Show when={status() !== "done" && status() !== "cancelled"}>
-          <ActionButton
-            label={_(A.actionComplete)}
-            loading={props.isLoading(props.item.id, "complete")}
-            onClick={() => props.onAction("complete")}
-          />
-        </Show>
-        <Show when={status() !== "cancelled"}>
-          <ActionButton
-            label={_(A.actionCancel)}
-            loading={props.isLoading(props.item.id, "cancel")}
-            onClick={() => props.onAction("cancel")}
-            variant="danger"
-          />
-        </Show>
-      </div>
-    </Show>
-  )
-}
-
-function ActionButton(props: {
-  label: string
-  loading: boolean
-  done?: boolean
-  onClick: () => void
-  variant?: "primary" | "danger" | "default"
-}) {
-  const variant = () => props.variant ?? "default"
-  const done = () => props.done ?? false
-
-  return (
-    <button
-      type="button"
-      classList={{
-        "px-2.5 py-1 rounded-full text-11-medium border transition-colors": true,
-        "border-icon-success-base/25 bg-icon-success-base/8 text-icon-success-base": done(),
-        "border-border-base/45 bg-text-strong text-background-base hover:bg-text-base":
-          variant() === "primary" && !props.loading && !done(),
-        "border-text-diff-delete-base/25 bg-text-diff-delete-base/6 text-text-diff-delete-base hover:bg-text-diff-delete-base/10":
-          variant() === "danger" && !props.loading && !done(),
-        "border-border-base/45 bg-surface-raised-base text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover":
-          variant() === "default" && !props.loading && !done(),
-        "opacity-50 pointer-events-none": props.loading || done(),
-      }}
-      onClick={props.onClick}
-      disabled={props.loading || done()}
-    >
-      <Show when={props.loading} fallback={done() ? `${props.label} ✓` : props.label}>
-        <Spinner class="size-3 inline-block mr-1" />
-        {props.label}
-      </Show>
-    </button>
-  )
-}
-
-function RunRow(props: { run: AgendaRunLog }) {
-  const { i18n, fmt } = useLocale()
-  return (
-    <div class="agenda-run-row">
-      <span class={`shrink-0 ${agendaRunStatusTone(props.run.status)}`}>
-        {props.run.status === "ok" ? "✓" : props.run.status === "error" ? "✗" : "–"}
-      </span>
-      <span class="text-text-weaker shrink-0">{props.run.trigger.type}</span>
-      <Show when={props.run.duration}>
-        <span class="text-text-weaker shrink-0">{formatAgendaDuration(props.run.duration!)}</span>
-      </Show>
-      <span class="flex-1 min-w-0 text-text-weak truncate">
-        <Show when={props.run.error} fallback="">
-          <span class="text-text-diff-delete-base">{props.run.error}</span>
-        </Show>
-      </span>
-      <span class="text-text-weaker shrink-0">{relativeTime(fmt, props.run.time.started)}</span>
-    </div>
   )
 }

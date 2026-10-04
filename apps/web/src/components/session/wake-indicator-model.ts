@@ -30,6 +30,10 @@ export const W = {
   triggerPending: { id: "session.agenda.wake.trigger.pending", message: "Pending" },
 
   panelTitle: { id: "session.agenda.wake.panel.title", message: "Scheduled wake" },
+  tasksTitle: { id: "session.agenda.tasks.title", message: "Scheduled tasks" },
+  more: { id: "session.agenda.more", message: "Load more scheduled tasks" },
+  actionFailed: { id: "session.agenda.actionFailed", message: "Could not update the scheduled task. Try again." },
+  loadFailed: { id: "session.agenda.retry", message: "Could not load scheduled activity. Retry" },
   panelDescription: {
     id: "session.agenda.wake.panel.description",
     message: "This session will be woken by {count, plural, one {# task} other {# tasks}}",

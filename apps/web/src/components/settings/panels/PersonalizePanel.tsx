@@ -1,3 +1,4 @@
+import { settingsFieldCopy } from "../settings-field-copy"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
@@ -5,7 +6,7 @@ import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Show, onMount } from "solid-js"
 import { useLocale } from "@/context/locale"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
-import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
+import { SettingsPage, SettingsSection, SettingsAdvanced } from "../components/SettingsPrimitives"
 import type { PersonalizeController } from "./personalize-controller"
 
 const confirmResetTitle = { id: "settings.personalize.confirmReset.title", message: "Reset custom instructions?" }
@@ -18,8 +19,6 @@ const confirmResetConfirmLabel = {
   message: "Stage reset to AGENTS.md",
 }
 const confirmResetCancelLabel = { id: "settings.personalize.confirmReset.cancel", message: "Keep override" }
-const managedOverrideTitle = { id: "settings.personalize.managedOverride", message: "Managed override" }
-const globalInstructionsTitle = { id: "settings.personalize.globalInstructions", message: "Global instructions" }
 const noGlobalFile = {
   id: "settings.personalize.noGlobalFile",
   message: "No global instructions file exists yet. Saving creates AGENTS.override.md.",
@@ -32,7 +31,7 @@ const pageDescription = {
   id: "settings.personalize.page.description",
   message: "Set global instructions that shape how Synergy works with you across projects.",
 }
-const sectionTitle = { id: "settings.personalize.section.title", message: "Custom Instructions" }
+const sectionTitle = settingsFieldCopy.customInstructions
 const sectionDescription = {
   id: "settings.personalize.section.description",
   message:
@@ -77,7 +76,7 @@ export function PersonalizePanel(props: { controller: PersonalizeController }) {
 
   return (
     <SettingsPage title={_(pageTitle)} description={_(pageDescription)}>
-      <SettingsSection title={_(sectionTitle)} description={_(sectionDescription)}>
+      <SettingsSection>
         <Show
           when={controller.info()}
           fallback={
@@ -95,27 +94,8 @@ export function PersonalizePanel(props: { controller: PersonalizeController }) {
           }
         >
           <div class="personalize-editor">
-            <div class="personalize-source-row">
-              <div>
-                <div class="personalize-source-title">
-                  {controller.info()?.hasOverride ? _(managedOverrideTitle) : _(globalInstructionsTitle)}
-                </div>
-                <div class="personalize-source-description">
-                  <Show when={controller.info()?.sourceFilename} fallback={_(noGlobalFile)}>
-                    {_({ ...showingSource, values: { filename: controller.info()?.sourceFilename ?? "" } })}
-                  </Show>
-                </div>
-              </div>
-              <Show when={controller.info()?.hasOverride}>
-                <Button type="button" variant="ghost" size="small" disabled={controller.busy()} onClick={reset}>
-                  {_(confirmResetConfirmLabel)}
-                </Button>
-              </Show>
-            </div>
-
             <TextField
               label={_(sectionTitle)}
-              hideLabel
               multiline
               class="personalize-instructions-input"
               value={controller.content()}
@@ -144,6 +124,26 @@ export function PersonalizePanel(props: { controller: PersonalizeController }) {
                   </span>
                 </Show>
               </div>
+            </div>
+            <div class="personalize-source-row">
+              <div>
+                <SettingsAdvanced
+                  id="instruction-source"
+                  title={_({ id: "settings.personalize.source.details", message: "Instruction source" })}
+                >
+                  <div class="personalize-source-description">
+                    <p>{_(sectionDescription)}</p>
+                    <Show when={controller.info()?.sourceFilename} fallback={_(noGlobalFile)}>
+                      {_({ ...showingSource, values: { filename: controller.info()?.sourceFilename ?? "" } })}
+                    </Show>
+                  </div>
+                </SettingsAdvanced>
+              </div>
+              <Show when={controller.info()?.hasOverride}>
+                <Button type="button" variant="ghost" size="small" disabled={controller.busy()} onClick={reset}>
+                  {_(confirmResetConfirmLabel)}
+                </Button>
+              </Show>
             </div>
           </div>
         </Show>

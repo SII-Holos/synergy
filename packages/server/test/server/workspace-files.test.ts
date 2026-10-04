@@ -6,6 +6,7 @@ import path from "path"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Server } from "../../src/server/server"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -71,7 +72,7 @@ describe("GET /workspace/files", () => {
       expect(stat.status).toBe(200)
       const statBody = await stat.json()
       expect(statBody.path).toBe("src/tracked.ts")
-      expect(statBody.gitStatus).toBe("modified")
+      expect(statBody.gitStatus).toBeUndefined()
 
       const read = await app.request(await workspaceUrl("read", tmp.path, { path: "src/tracked.ts", range: "0:1" }))
       expect(read.status).toBe(200)
@@ -85,6 +86,7 @@ describe("GET /workspace/files", () => {
       expect(searchBody.items.some((item: any) => item.path === "src/fresh.ts")).toBe(true)
 
       const status = await app.request(await workspaceUrl("status", tmp.path))
+      if (status.status !== 200) await Log.init({ print: true, level: "ERROR" })
       expect(status.status).toBe(200)
       const statusBody = await status.json()
       expect(statusBody.files.find((file: any) => file.path === "src/tracked.ts")?.status).toBe("modified")

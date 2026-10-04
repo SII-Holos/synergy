@@ -309,7 +309,10 @@ export const DAG_CHROME_DESC = {
   focus: d("dag.chrome.focus", "Focus"),
   nodeMetadata: d("dag.chrome.node-metadata", "Node metadata"),
   fit: d("dag.chrome.fit", "Fit"),
+  zoomIn: d("dag.chrome.zoomIn", "Zoom in"),
+  zoomOut: d("dag.chrome.zoomOut", "Zoom out"),
   openSession: d("dag.chrome.open-session", "Open session"),
+  nodeDetails: d("dag.chrome.nodeDetails", "Task details"),
   closeDetails: d("dag.chrome.close-details", "Close node details"),
   hint: d("dag.chrome.hint", "Drag to pan · Ctrl/\u2318 + wheel to zoom · Double-click to focus"),
   worktree: d("dag.chrome.worktree", "Worktree"),
@@ -333,9 +336,6 @@ export const BODY_PRIMITIVES_DESC = {
 export const TURN_CHANGE_DESC = {
   reviewChanges: d("turn-change.review-changes", "Review changes"),
   binary: d("turn-change.binary", "Binary"),
-  calculating: d("turn-change.calculating", "Calculating file changes…"),
-  calculationFailed: d("turn-change.calculation-failed", "Couldn’t calculate file changes"),
-  recordingIncomplete: d("turn-change.recording-incomplete", "File change recording is incomplete"),
 } as const
 
 // ── Session turn chrome ─────────────────────────────────────────────

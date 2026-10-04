@@ -142,5 +142,5 @@ export const SaveFileTool = Tool.define(
       )
     },
   },
-  { requiresWorkspace: true },
+  { requiresWorkspace: true, activityKind: "file-change" },
 )

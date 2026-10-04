@@ -5,33 +5,37 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import DESCRIPTION from "./note-delete.txt"
 
 const parameters = z.object({
-  id: z.string().describe("Note ID to permanently delete. The note must already be archived."),
+  noteId: z.string().describe("Note ID to permanently delete. The note must already be archived."),
 })
 
-export const NoteDeleteTool = Tool.define("note_delete", {
-  description: DESCRIPTION,
-  parameters,
-  async execute(params: z.infer<typeof parameters>) {
-    const scopeID = ScopeContext.current.scope.id
+export const NoteDeleteTool = Tool.define(
+  "note_delete",
+  {
+    description: DESCRIPTION,
+    parameters,
+    async execute(params: z.infer<typeof parameters>) {
+      const scopeID = ScopeContext.current.scope.id
 
-    const note = await NoteStore.getAny(scopeID, params.id)
+      const note = await NoteStore.getAny(scopeID, params.noteId)
 
-    if (!note.archived) {
-      return {
-        title: `Cannot delete active note`,
-        output:
-          `Note "${note.title}" [${note.id}] is still active and must be archived before it can be permanently deleted. ` +
-          `Use note_archive({ ids: ["${params.id}"], action: "archive" }) first, then retry note_delete.`,
-        metadata: { id: params.id, archived: false } as Record<string, any>,
+      if (!note.archived) {
+        return {
+          title: `Cannot delete active note`,
+          output:
+            `Note "${note.title}" [${note.id}] is still active and must be archived before it can be permanently deleted. ` +
+            `Use note_archive({ ids: ["${params.noteId}"], action: "archive" }) first, then retry note_delete.`,
+          metadata: { id: params.noteId, archived: false } as Record<string, any>,
+        }
       }
-    }
 
-    await NoteStore.removeAny(scopeID, params.id)
+      await NoteStore.removeAny(scopeID, params.noteId)
 
-    return {
-      title: `Deleted note`,
-      output: `Permanently deleted note "${note.title}" [${note.id}].`,
-      metadata: { id: params.id, title: note.title, archived: true } as Record<string, any>,
-    }
+      return {
+        title: `Deleted note`,
+        output: `Permanently deleted note "${note.title}" [${note.id}].`,
+        metadata: { id: params.noteId, title: note.title, archived: true } as Record<string, any>,
+      }
+    },
   },
-})
+  { activityKind: "object" },
+)

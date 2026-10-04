@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { existsSync, mkdirSync } from "fs"
@@ -30,7 +31,7 @@ function ctx(sessionID: string): Tool.Context {
     sessionID,
     messageID: Identifier.ascending("message"),
     callID: "call-boss-project-test",
-    agent: "synergy-max",
+    agent: PrimaryAgentIdentity.names.coding,
     abort: AbortSignal.any([]),
     metadata: () => {},
     ask: async () => {},
@@ -165,12 +166,17 @@ describe("boss_project tool", () => {
         const tool = await BossProjectTool.init()
         const customInstructions = "只关注 API 层。"
         const result = await tool.execute(
-          { directory: projectDir, title: "My API Project", agent: "synergy", instructions: customInstructions },
+          {
+            directory: projectDir,
+            title: "My API Project",
+            agent: PrimaryAgentIdentity.names.general,
+            instructions: customInstructions,
+          },
           ctx(boss.id),
         )
         const session = await Session.get(result.metadata.sessionID as string)
         expect(session.title).toBe("My API Project")
-        expect(session.agentOverride).toBe("synergy")
+        expect(session.agentOverride).toBe(PrimaryAgentIdentity.names.general)
         const workflowInstructions = (session.workflow as { instructions?: string }).instructions ?? ""
         expect(workflowInstructions).toContain(customInstructions)
         expect(workflowInstructions).toContain(boss.id)

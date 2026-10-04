@@ -1,4 +1,15 @@
 import type { AgendaActivityEntry, AgendaActivityPage, SynergyClient } from "@ericsanchezok/synergy-sdk/client"
+import { requestErrorMessage } from "@/utils/error"
+import { startOfDay } from "./date"
+
+export function groupAgendaActivity(items: AgendaActivityEntry[]) {
+  const groups = new Map<number, AgendaActivityEntry[]>()
+  for (const entry of [...items].sort((a, b) => b.run.time.started - a.run.time.started)) {
+    const day = startOfDay(entry.run.time.started)
+    groups.set(day, [...(groups.get(day) ?? []), entry])
+  }
+  return [...groups].map(([day, entries]) => ({ day, entries }))
+}
 
 export type AgendaActivityState = {
   items: AgendaActivityEntry[]
@@ -30,12 +41,15 @@ export async function requestAgendaActivity(input: {
   }
 
   const offset = input.append ? input.state.offset + input.state.items.length : 0
-  const res = await input.client.agenda.activity({
-    scopeID: input.scopeID,
-    query: input.query || undefined,
-    offset,
-    limit: input.state.limit,
-  })
+  const res = await input.client.agenda.activity(
+    {
+      scopeID: input.scopeID,
+      query: input.query || undefined,
+      offset,
+      limit: input.state.limit,
+    },
+    { throwOnError: true },
+  )
 
   const page = (res.data as AgendaActivityPage | undefined) ?? defaultAgendaActivityState(input.state.limit)
   return page
@@ -49,23 +63,12 @@ export function mergeAgendaActivityPage(input: {
   return {
     items: input.append ? [...input.previous.items, ...input.page.items] : input.page.items,
     total: input.page.total,
-    offset: input.page.offset,
+    offset: input.append ? input.previous.offset : input.page.offset,
     limit: input.page.limit,
     hasMore: input.page.hasMore,
   }
 }
 
-export function normalizeAgendaActivityError(error: unknown): string {
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === "object" && error !== null && "data" in error
-        ? String((error as any).data?.message ?? "")
-        : ""
-
-  if (message.toLowerCase().includes("agenda item not found: activity")) {
-    return "Activity endpoint is unavailable on the running server instance"
-  }
-
-  return message || "Activity is unavailable right now"
+export function normalizeAgendaActivityError(error: unknown, fallback: string): string {
+  return requestErrorMessage(error, fallback)
 }

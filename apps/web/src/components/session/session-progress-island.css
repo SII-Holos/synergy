@@ -1,316 +1,277 @@
 .session-progress-island {
-  --session-progress-island-collapsed-height: 34px;
-  --session-progress-island-collapsed-gap: 8px;
-  --session-progress-island-collapsed-padding-inline: 12px;
-  --session-progress-island-collapsed-max-width: min(620px, calc(100vw - 24px));
-  --session-progress-island-expanded-width: min(900px, calc(100vw - 24px));
-  /* A normal-flow child inside the shared prompt-dock-float-layer wrapper.
-     Desktop: the wrapper is an absolute overlay (bottom-full) above the
-     composer, so expanding the island never changes --prompt-height.
-     Mobile: the wrapper is in normal flow, so a busy island reserves space
-     above the composer instead of covering the last messages.
-     SubagentDock sits above, island below. */
+  position: relative;
   display: flex;
   width: 100%;
   justify-content: center;
   padding: 0 12px 6px;
   pointer-events: auto;
-}
-
-.session-progress-island-surface {
-  overflow: hidden;
-  width: fit-content;
-  max-width: var(--session-progress-island-collapsed-max-width);
-  border-radius: 999px;
   color: var(--text-base);
-  background: var(--workbench-card-bg, var(--surface-raised-stronger));
-  transition:
-    width 290ms cubic-bezier(0.22, 1, 0.36, 1) 80ms,
-    border-radius 240ms cubic-bezier(0.4, 0, 0.2, 1) 70ms,
-    background-color 140ms ease-out;
-  animation: session-progress-island-enter 180ms cubic-bezier(0.2, 0, 0, 1) both;
+  animation: progress-enter 180ms ease-out both;
 }
-
-.session-progress-island[data-collapsed-width="measured"] .session-progress-island-surface {
-  width: min(var(--session-progress-island-collapsed-width), 100%);
-  max-width: min(900px, calc(100vw - 24px));
-}
-
-.session-progress-island[data-expanded="true"] .session-progress-island-surface {
-  width: var(--session-progress-island-expanded-width);
-  max-width: 100%;
-  border-radius: 22px;
-  transition:
-    width 380ms cubic-bezier(0.16, 1, 0.3, 1),
-    border-radius 320ms cubic-bezier(0.16, 1, 0.3, 1),
-    background-color 140ms ease-out;
-}
-
 .session-progress-island-header {
   display: flex;
-  width: 100%;
-  min-width: 0;
-  height: var(--session-progress-island-collapsed-height);
   align-items: center;
-  gap: var(--session-progress-island-collapsed-gap);
-  padding: 0 var(--session-progress-island-collapsed-padding-inline);
+  gap: 8px;
+  min-height: 40px;
+  min-width: 0;
+  max-width: min(620px, 100%);
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-weak-base);
+  background: var(--workbench-card-bg);
   color: var(--text-weak);
+  font-size: 14px;
+  line-height: 20px;
   transition:
-    height 260ms cubic-bezier(0.22, 1, 0.36, 1) 70ms,
-    padding 260ms cubic-bezier(0.22, 1, 0.36, 1) 70ms,
-    color 140ms ease-out,
-    background-color 140ms ease-out;
+    color 120ms ease-out,
+    background-color 120ms ease-out;
 }
-
 .session-progress-island-header:hover {
   color: var(--text-base);
-  background: var(--workbench-card-bg-hover, var(--surface-raised-base-hover));
+  background: var(--workbench-row-bg-hover);
 }
-
-.session-progress-island[data-expanded="true"] .session-progress-island-header {
-  height: 44px;
-  padding: 0 16px;
-  transition:
-    height 340ms cubic-bezier(0.16, 1, 0.3, 1),
-    padding 340ms cubic-bezier(0.16, 1, 0.3, 1),
-    color 140ms ease-out,
-    background-color 140ms ease-out;
+.session-progress-island-header:focus-visible,
+.session-progress-island-tab:focus-visible {
+  outline: 2px solid var(--border-interactive-base);
+  outline-offset: 2px;
 }
-
-.session-progress-island-indicator {
-  display: inline-flex;
-  flex: 0 0 auto;
-  color: var(--text-interactive-base);
-}
-
-.session-progress-island[data-tone="ready"] .session-progress-island-indicator,
-.session-progress-island[data-tone="neutral"] .session-progress-island-indicator {
-  color: var(--text-weaker);
-}
-
-.session-progress-island[data-tone="blocked"] .session-progress-island-indicator {
-  color: var(--border-warning-base);
-}
-
-.session-progress-island[data-tone="failed"] .session-progress-island-indicator {
-  color: var(--border-critical-base);
-}
-
-.session-progress-island[data-tone="complete"] .session-progress-island-indicator {
-  color: var(--border-success-base);
-}
-
-.session-progress-island[data-tone="running"]
-  .session-progress-island-indicator
-  [data-slot="progress-circle-progress"] {
-  animation: session-progress-island-breathe 1.8s ease-in-out infinite;
-}
-
 .session-progress-island-title {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: -0.01em;
 }
-
-.session-progress-island-measure {
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: -1;
-  display: flex;
-  width: max-content;
-  max-width: var(--session-progress-island-collapsed-max-width);
-  height: var(--session-progress-island-collapsed-height);
-  align-items: center;
-  gap: var(--session-progress-island-collapsed-gap);
-  padding: 0 var(--session-progress-island-collapsed-padding-inline);
-  visibility: hidden;
-  pointer-events: none;
+.session-progress-island-indicator {
+  display: inline-flex;
+  flex: none;
+  color: var(--text-interactive-base);
 }
-
-.session-progress-island-measure [data-slot="progress-circle-progress"] {
-  animation: none !important;
+.session-progress-island[data-tone="complete"] .session-progress-island-indicator {
+  color: var(--text-on-success-base);
 }
-
-.session-progress-island-detail {
-  flex: 0 0 auto;
-  color: var(--text-weaker);
-  font-size: 11px;
+.session-progress-island[data-tone="failed"] .session-progress-island-indicator {
+  color: var(--text-on-critical-base);
 }
-
+.session-progress-island[data-tone="blocked"] .session-progress-island-indicator {
+  color: var(--text-on-warning-base);
+}
 .session-progress-island-chevron {
-  flex: 0 0 auto;
-  color: var(--icon-weak-base);
-  transition: transform 180ms cubic-bezier(0.2, 0, 0, 1);
+  flex: none;
+  transition: transform 120ms ease-out;
 }
-
 .session-progress-island-chevron.is-expanded {
   transform: rotate(180deg);
 }
-
-/* Keep the large DAG panel out of normal flow during expand and collapse.
-
-   5 Chrome traces showed the DAG panel's ~7000 DOM elements make any height
-   animation expensive when the panel is in flow (grid 0fr→1fr, max-height,
-   contain, content-visibility all recalc'd thousands of elements per frame),
-   and display:none caused a 60ms cold-layout on each toggle.
-
-   The panel therefore stays rendered, absolute, and fixed at its expanded
-   width while the empty wrapper animates height and the shell clips it. */
-.session-progress-island-panel-wrap {
-  position: relative;
-  height: 0;
-  overflow: hidden;
-  transition: height 290ms cubic-bezier(0.4, 0, 0.2, 1) 25ms;
-}
-
-.session-progress-island-panel-wrap[data-expanded="true"] {
-  height: min(52vh, 560px);
-  transition: height 420ms cubic-bezier(0.16, 1, 0.3, 1) 20ms;
-}
-
-.session-progress-island-panel {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  display: flex;
-  width: var(--session-progress-island-expanded-width);
-  height: min(52vh, 560px);
-  flex-direction: column;
-  overflow: hidden;
-  border-top: 1px solid var(--border-weak-base);
-  opacity: 0;
+.session-progress-island-positioner {
   pointer-events: none;
-  transform: translateX(-50%) translateY(-7px) scale(0.992);
-  transform-origin: top center;
-  transition:
-    opacity 135ms ease-out,
-    transform 170ms cubic-bezier(0.4, 0, 0.2, 1);
 }
-
-.session-progress-island-panel-wrap[data-expanded="true"] .session-progress-island-panel {
-  opacity: 1;
+.session-progress-island-positioner[data-compact="true"] {
+  position: fixed;
+  top: var(--progress-viewport-top, 0);
+  left: var(--progress-viewport-left, 0);
+  width: var(--progress-viewport-width, 100vw);
+  height: var(--progress-viewport-height, 100dvh);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 60;
   pointer-events: auto;
-  transform: translateX(-50%) translateY(0) scale(1);
-  transition:
-    opacity 230ms ease-out 105ms,
-    transform 300ms cubic-bezier(0.16, 1, 0.3, 1) 85ms;
 }
-
+.session-progress-island-positioner[data-compact="true"] .session-progress-island-panel {
+  position: relative;
+  max-height: min(560px, calc(var(--progress-viewport-height, 100dvh) - 32px));
+  z-index: 1;
+}
+.session-progress-island-positioner[data-compact="true"] .session-progress-island-panel[data-view="dag"] {
+  height: min(560px, calc(var(--progress-viewport-height, 100dvh) - 32px));
+}
+.session-progress-island-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--surface-overlay);
+}
+.session-progress-island-close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  color: var(--text-weak);
+}
+.session-progress-island-close:hover {
+  background: var(--workbench-row-bg-hover);
+  color: var(--text-base);
+}
+.session-progress-island-close:focus-visible {
+  outline: 2px solid var(--border-interactive-base);
+  outline-offset: 2px;
+}
+.session-progress-island[data-expanded="true"] {
+  z-index: 50;
+}
+.session-progress-island[data-expanded="true"] .session-progress-island-positioner {
+  pointer-events: auto;
+}
+.session-progress-island-panel {
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 50rem);
+  max-height: min(52dvh, 560px, var(--kb-popper-content-available-height, 52dvh));
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-weak-base);
+  border-radius: 12px;
+  background: var(--workbench-card-bg);
+  box-shadow: var(--shadow-popover);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 180ms ease-out;
+}
+.session-progress-island[data-expanded="true"] .session-progress-island-panel,
+.session-progress-island-panel[data-expanded="true"] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+.session-progress-island-panel[data-view="dag"] {
+  height: min(52dvh, 560px, var(--kb-popper-content-available-height, 52dvh));
+}
 .session-progress-island-panel-topline {
   display: flex;
-  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 7px 12px 5px;
-  color: var(--text-subtle);
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: none;
+  padding: 10px 12px;
   font-size: 12px;
+  line-height: 18px;
 }
-
+.session-progress-island-positioner[data-compact="true"] .session-progress-island-count {
+  margin-left: auto;
+}
+.session-progress-island-count {
+  color: var(--text-weak);
+}
 .session-progress-island-tabs {
   display: flex;
-  flex: 0 0 auto;
+  flex-wrap: wrap;
   gap: 4px;
-  padding: 0 12px 6px;
 }
-
 .session-progress-island-tab {
-  border-radius: 999px;
-  padding: 3px 9px;
-  color: var(--text-weak);
+  padding: 4px 8px;
+  border-radius: 6px;
   font-size: 12px;
-  transition:
-    color 140ms ease-out,
-    background-color 140ms ease-out;
+  line-height: 18px;
+  min-height: 40px;
+  color: var(--text-weak);
 }
-.session-progress-island-tab:hover {
+.session-progress-island-tab[aria-pressed="true"] {
+  background: var(--workbench-selected-bg);
   color: var(--text-base);
-  background: var(--workbench-control-bg-hover, var(--surface-raised-base-hover));
 }
-
-.session-progress-island-tab.is-selected {
-  color: var(--text-strong);
-  background: var(--workbench-selected-bg, var(--surface-raised-base-hover));
-}
-
 .session-progress-island-body {
-  min-height: 0;
+  position: relative;
   flex: 1 1 auto;
-  overflow: hidden;
-  padding: 0 6px;
-}
-
-.session-progress-todo {
-  display: flex;
-  height: 100%;
   min-height: 0;
-  flex-direction: column;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
-
-.session-progress-todo-list {
-  display: flex;
-  min-height: 0;
-  flex: 1 1 auto;
-  flex-direction: column;
-  overflow-y: auto;
-}
-
-@keyframes session-progress-island-enter {
-  from {
-    opacity: 0;
-    transform: translateY(6px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes session-progress-island-breathe {
-  0%,
-  100% {
-    opacity: 0.62;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-@keyframes session-progress-island-exit {
-  from {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(-4px) scale(0.97);
-  }
-}
-
-.session-progress-island[data-exiting="true"] {
-  animation: session-progress-island-exit 300ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+.session-progress-view[data-active="false"] {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
   pointer-events: none;
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .session-progress-island-surface,
-  .session-progress-island-header,
-  .session-progress-island-chevron,
-  .session-progress-island-tab,
-  .session-progress-island-panel-wrap,
-  .session-progress-island-panel {
-    transition: none !important;
+.session-progress-dag-view {
+  height: 100%;
+  min-height: 0;
+}
+.session-progress-todo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px 12px;
+}
+.session-progress-todo-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  column-gap: 8px;
+  row-gap: 2px;
+  align-items: start;
+  padding: 10px 0;
+  border-top: 1px solid var(--border-weak-base);
+}
+.session-progress-todo-icon {
+  display: flex;
+  padding-top: 2px;
+  color: var(--text-weak);
+}
+.session-progress-todo-row[data-status="in_progress"] .session-progress-todo-icon {
+  color: var(--text-interactive-base);
+}
+.session-progress-todo-row[data-status="completed"] .session-progress-todo-icon {
+  color: var(--text-on-success-base);
+}
+.session-progress-todo-content {
+  font-size: 14px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.session-progress-todo-row[data-status="cancelled"] .session-progress-todo-content {
+  text-decoration: line-through;
+  color: var(--text-weak);
+}
+.session-progress-todo-priority {
+  grid-column: 2;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-weak);
+}
+.session-progress-island[data-exiting="true"] {
+  animation: progress-exit 180ms ease-in both;
+  pointer-events: none;
+}
+@keyframes progress-enter {
+  from {
+    opacity: 0;
   }
-
-  .session-progress-island-surface,
-  .session-progress-island[data-tone="running"]
-    .session-progress-island-indicator
-    [data-slot="progress-circle-progress"] {
-    animation: none !important;
+  to {
+    opacity: 1;
+  }
+}
+@keyframes progress-exit {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@media (pointer: coarse) {
+  .session-progress-island-header,
+  .session-progress-island-tab,
+  .session-progress-island-close {
+    min-height: 44px;
+  }
+  .session-progress-island-close {
+    min-width: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .session-progress-island,
+  .session-progress-island[data-exiting="true"] {
+    animation: none;
+  }
+  .session-progress-island-panel,
+  .session-progress-island-header,
+  .session-progress-island-tab,
+  .session-progress-island-chevron {
+    transition: none;
   }
 }

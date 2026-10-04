@@ -19,3 +19,5 @@ The private native process protocol acknowledges preparation after the worker in
 ## Consequences
 
 Preparation adds one bounded protocol event without starting command effects. Parent and worker must use the same current protocol. A real Linux worker regression pauses after stream greetings and verifies that binding failure preserves its cause, never runs the command and releases the unactivated claim. Existing activation, cancellation, descendant and output-drain tests retain their completion requirements.
+
+Native descendant fixtures publish their PID marker by writing a sibling temporary file and renaming it after completion. Consumers validate a positive integer PID before native membership or termination probes. Windows pipe and PTY regressions exposed the previous race: file existence preceded its contents and an empty marker became PID zero. Linux uses the same publication rule so readiness never relies on observing an incomplete file.

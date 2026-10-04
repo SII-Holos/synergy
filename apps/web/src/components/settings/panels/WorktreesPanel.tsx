@@ -27,15 +27,15 @@ function scopeLabel(directory: string, name?: string) {
   return name || getFilename(directory)
 }
 
-const pageTitle = { id: "settings.worktrees.page.title", message: "Independent copies" }
+const pageTitle = { id: "settings.worktrees.page.title", message: "Worktrees" }
 const pageDescription = {
   id: "settings.worktrees.page.description",
-  message: "Review project copies, their files and linked tasks.",
+  message: "Review worktrees, their files and linked tasks.",
 }
-const sectionTitle = { id: "settings.worktrees.section.title", message: "Project copies" }
+const sectionTitle = { id: "settings.worktrees.section.title", message: "Project worktrees" }
 const sectionDescription = {
   id: "settings.worktrees.section.description",
-  message: "Copies are grouped by source project. Project files and externally managed copies are read-only.",
+  message: "Worktrees are grouped by project. The main worktree and externally managed worktrees are read-only.",
 }
 const refreshLabel = { id: "settings.worktrees.refresh", message: "Refresh" }
 const refreshingLabel = { id: "settings.worktrees.refreshing", message: "Refreshing..." }
@@ -54,7 +54,10 @@ const forceRemovingLabel = { id: "settings.worktrees.remove.force.removing", mes
 const deletingLabel = { id: "settings.worktrees.deleting", message: "Deleting..." }
 const deleteLabel = { id: "settings.worktrees.delete", message: "Delete" }
 const loadErrorAllTitle = { id: "settings.worktrees.loadError.all", message: "Worktrees failed to load" }
-const loadErrorSomeTitle = { id: "settings.worktrees.loadError.some", message: "Some worktrees failed to load" }
+const loadErrorSomeTitle = {
+  id: "settings.worktrees.loadError.some",
+  message: "Some worktrees failed to load",
+}
 const loadErrorDesc = {
   id: "settings.worktrees.loadError.desc",
   message: "{count, plural, one {# project scope could not be loaded.} other {# project scopes could not be loaded.}}",
@@ -70,9 +73,9 @@ const worktreeCountSummary = {
   message:
     "{worktreeCount, plural, one {# worktree} other {# worktrees}} across {projectCount, plural, one {# project} other {# projects}}",
 }
-const mainBadgeLabel = { id: "settings.worktrees.badge.main", message: "main" }
-const externalBadgeLabel = { id: "settings.worktrees.badge.external", message: "external" }
-const managedBadgeLabel = { id: "settings.worktrees.badge.managed", message: "managed" }
+const mainBadgeLabel = { id: "settings.worktrees.badge.main", message: "Project files" }
+const externalBadgeLabel = { id: "settings.worktrees.badge.external", message: "Externally managed" }
+const managedBadgeLabel = { id: "settings.worktrees.badge.managed", message: "Managed worktree" }
 const dirtyBadgeLabel = { id: "settings.worktrees.badge.dirty", message: "dirty" }
 const staleBadgeLabel = { id: "settings.worktrees.badge.stale", message: "stale" }
 const boundSessionSingular = { id: "settings.worktrees.badge.boundSession.singular", message: "bound session" }

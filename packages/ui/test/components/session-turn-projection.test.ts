@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, mock, test } from "bun:test"
 import type { AssistantMessage, Message as MessageType, UserMessage } from "@ericsanchezok/synergy-sdk/client"
 
@@ -80,7 +81,7 @@ function user(
     sessionID: "session",
     role: "user",
     time: { created: 1 },
-    agent: "synergy",
+    agent: TEST_AGENT_NAME,
     model: { providerID: "provider", modelID: "model" },
     isRoot,
     rootID: opts?.rootID ?? id,
@@ -97,7 +98,7 @@ function assistantFor(id: string, parentID: string, opts?: { visible?: boolean }
     parentID,
     rootID: parentID,
     mode: "test",
-    agent: "synergy",
+    agent: TEST_AGENT_NAME,
     path: { cwd: "/tmp", root: "/tmp" },
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

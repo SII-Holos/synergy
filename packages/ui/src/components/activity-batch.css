@@ -1,0 +1,244 @@
+[data-component="activity-batch"],
+[data-component="process-reasoning"] {
+  min-width: 0;
+  width: 100%;
+  color: var(--text-weak);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+[data-slot="turn-process-trigger"],
+[data-slot="activity-batch-trigger"],
+[data-slot="process-reasoning-trigger"] {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+  min-height: 28px;
+  box-sizing: border-box;
+  gap: 8px;
+  padding: 4px 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-weak);
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: start;
+  cursor: pointer;
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+[data-slot="turn-process-trigger"]:enabled:hover,
+[data-slot="activity-batch-trigger"]:hover,
+[data-slot="process-reasoning-trigger"]:hover {
+  color: var(--text-base);
+}
+
+[data-slot="turn-process-trigger"]:disabled {
+  cursor: default;
+}
+
+[data-slot="turn-process-trigger"]:focus-visible,
+[data-slot="activity-batch-trigger"]:focus-visible,
+[data-slot="process-reasoning-trigger"]:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+[data-slot="turn-process-trigger"] [data-component="icon"],
+[data-slot="activity-batch-trigger"] > [data-component="icon"]:last-child,
+[data-slot="process-reasoning-trigger"] > [data-component="icon"]:last-child {
+  flex-shrink: 0;
+  transition: transform var(--motion-duration-base) var(--motion-ease-standard);
+}
+
+[data-slot="turn-process-trigger"][aria-expanded="true"] [data-component="icon"]:last-child,
+[data-slot="activity-batch-trigger"][aria-expanded="true"] > [data-component="icon"]:last-child {
+  transform: rotate(90deg);
+}
+
+[data-slot="process-reasoning-trigger"][aria-expanded="true"] > [data-component="icon"]:last-child {
+  transform: rotate(90deg);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  [data-slot="process-reasoning-trigger"] > [data-component="icon"]:last-child {
+    opacity: 0;
+  }
+
+  [data-slot="process-reasoning-trigger"]:is(:hover, :focus-visible, [aria-expanded="true"])
+    > [data-component="icon"]:last-child {
+    opacity: 1;
+  }
+}
+
+[data-slot="activity-batch-trigger"][hidden],
+[data-slot="activity-reasoning"][hidden] {
+  display: none;
+}
+
+[data-motion-changing] {
+  overflow: hidden;
+}
+
+[data-component="activity-batch"] > [data-component="collapsible"] > [data-slot="activity-batch-trigger"] {
+  height: auto;
+  padding: 4px 0;
+  color: var(--text-weak);
+  font-weight: var(--font-weight-regular);
+  cursor: pointer;
+}
+
+[data-component="activity-batch"] > [data-component="collapsible"] > [data-slot="activity-batch-trigger"]:hover {
+  color: var(--text-base);
+}
+
+[data-component="activity-batch"]
+  > [data-component="collapsible"]
+  > [data-slot="activity-batch-trigger"]:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+[data-slot="turn-process-meta"] {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  column-gap: 16px;
+  width: 100%;
+  margin-block-end: 12px;
+}
+
+[data-slot="turn-prior-stop"] {
+  font-size: 12px;
+  color: var(--text-weak);
+}
+
+[data-slot="activity-live-indicator"] {
+  flex: 0 0 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: currentColor;
+  animation: activity-live-pulse 1.4s var(--motion-ease-standard) infinite;
+}
+
+[data-component="activity-batch"] [data-slot="collapsible-content"],
+[data-component="process-reasoning"] [data-slot="collapsible-content"] {
+  animation-duration: var(--motion-duration-slow);
+  animation-timing-function: var(--motion-ease-standard);
+}
+
+[data-slot="session-turn-timeline-item"][hidden] {
+  display: none !important;
+}
+
+[data-slot="process-reasoning-preview"] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-slot="process-reasoning-detail"] {
+  max-height: 24rem;
+  overflow: auto;
+  margin: 0;
+  padding: 4px 0 8px 28px;
+  color: var(--text-weak);
+  font-family: var(--font-family-sans);
+  font-size: 14px;
+  line-height: 22px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+[data-slot="process-reasoning-trigger"] > [data-component="icon"]:first-child {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+}
+
+[data-slot="activity-history-pages"],
+[data-slot="reasoning-toolbar"] {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-width: 0;
+  padding: 4px 0;
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+[data-slot="activity-history-pages"] button,
+[data-slot="reasoning-toolbar"] button {
+  padding: 4px 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+[data-slot="activity-history-pages"] button:hover,
+[data-slot="reasoning-toolbar"] button:hover {
+  color: var(--text-base);
+}
+
+[data-slot="activity-history-pages"] button:disabled {
+  color: var(--text-subtle);
+  cursor: default;
+}
+
+[data-slot="activity-history-pages"] button:focus-visible,
+[data-slot="reasoning-toolbar"] button:focus-visible,
+[data-slot="process-reasoning-detail"]:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+[data-slot="reasoning-segment"] + [data-slot="reasoning-segment"] {
+  margin-block-start: 16px;
+}
+
+[data-slot="reasoning-segment-heading"] {
+  margin-block-end: 4px;
+  color: var(--text-base);
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+  line-height: 20px;
+}
+
+@keyframes activity-live-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="activity-live-indicator"],
+  [data-component="activity-batch"] *,
+  [data-component="process-reasoning"] *,
+  [data-slot="turn-process-trigger"] * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+[data-slot="process-reasoning-detail"][hidden],
+[data-slot="process-reasoning-panel"][hidden] {
+  display: none;
+}
+[data-slot="process-reasoning-detail"] > div + div {
+  margin-top: 16px;
+}

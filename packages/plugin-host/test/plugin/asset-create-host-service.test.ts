@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import fs from "fs/promises"
 import { describe, expect, test } from "bun:test"
 import { capability, compilePluginManifest, definePlugin } from "@ericsanchezok/synergy-plugin"
@@ -50,7 +51,12 @@ function context(
       scopeId: "scope-one",
       sessionId: input.sessionId ?? "session-one",
       directory: "/workspace",
-      actor: input.actor ?? { type: "agent", agent: "synergy", messageId: "message-one", callId: "call-one" },
+      actor: input.actor ?? {
+        type: "agent",
+        agent: PrimaryAgentIdentity.names.general,
+        messageId: "message-one",
+        callId: "call-one",
+      },
     },
     signal: AbortSignal.any([]),
     capabilities: new Set(input.capabilities ?? ["asset.write"]),
@@ -112,7 +118,13 @@ async function setupHostInvocation() {
           sessionId: overrides.sessionId ?? sessionID,
           directory: tmp.path,
           actor:
-            overrides.actor ?? ({ type: "agent", agent: "synergy", messageId: messageID, callId: "call-one" } as const),
+            overrides.actor ??
+            ({
+              type: "agent",
+              agent: PrimaryAgentIdentity.names.general,
+              messageId: messageID,
+              callId: "call-one",
+            } as const),
         },
         method: "asset.create" as never,
         params,
@@ -131,7 +143,12 @@ describe("plugin asset.create context", () => {
       expect(context({ actor: { type: "lifecycle" } }).asset).toBeUndefined()
       expect(
         context({
-          actor: { type: "agent", agent: "synergy", messageId: "message-one", callId: "call-one" },
+          actor: {
+            type: "agent",
+            agent: PrimaryAgentIdentity.names.general,
+            messageId: "message-one",
+            callId: "call-one",
+          },
           sessionId: "",
         }).asset,
       ).toBeUndefined()

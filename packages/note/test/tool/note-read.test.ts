@@ -49,7 +49,7 @@ describe("note_read blocks output", () => {
           })
 
           const result = await execute({
-            ids: [note.id],
+            noteIds: [note.id],
             format: "blocks",
             offset: 1,
             limit: 1,

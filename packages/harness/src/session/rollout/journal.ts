@@ -1,4 +1,5 @@
 import z from "zod"
+import { setImmediate } from "node:timers/promises"
 import { Storage } from "../../storage/storage"
 import { Lock } from "../../util/lock"
 import { RolloutArtifact } from "./artifact"
@@ -6,9 +7,14 @@ import { RolloutPending } from "./pending"
 import type { RolloutSchema } from "./schema"
 import { record } from "./error"
 import { UsageLedger } from "../../usage/ledger"
+import { Bus } from "../../bus"
 import { RolloutEvents } from "./events"
+import { ScopeContext } from "../../scope/context"
+import { Scope } from "../../scope"
+import { Log } from "../../util/log"
 
 export namespace RolloutJournal {
+  const log = Log.create({ service: "rollout.journal" })
   const Revision = z.number().int().nonnegative().safe()
   const Head = z
     .object({ allocated: Revision, committed: Revision })
@@ -94,7 +100,12 @@ export namespace RolloutJournal {
     return record(() => recoverPending(owner, onProgress))
   }
 
-  export async function write(owner: RolloutSchema.Owner, key: string[], value: unknown) {
+  export async function write(
+    owner: RolloutSchema.Owner,
+    key: string[],
+    value: unknown,
+    publish?: () => Promise<void>,
+  ) {
     return record(async () => {
       const base = RolloutArtifact.root(owner)
       if (!base.every((segment, index) => key[index] === segment)) throw new Error("Rollout write escapes its owner")
@@ -116,6 +127,7 @@ export namespace RolloutJournal {
       // a crash can never expose a head that disagrees with the persisted
       // event set or leave an applied projection without its evidence.
       await Storage.transaction(async () => {
+        await publish?.()
         await RolloutPending.track(owner)
         await Storage.write(eventKey(owner, seq), event)
         await Storage.write(key, event.value)
@@ -124,6 +136,15 @@ export namespace RolloutJournal {
         await Storage.write([...root(owner), "head"], { allocated: seq, committed: seq })
         await capture(owner, event)
       })
+      await ScopeContext.provide({
+        scope: ScopeContext.tryScope() ?? Scope.home(),
+        fn: () =>
+          Bus.publish(RolloutEvents.Updated, {
+            owner,
+            revision: seq,
+            record: RolloutEvents.parse(event.key, event.value),
+          }),
+      }).catch((error) => log.warn("execution notification failed", { error }))
       return seq
     })
   }
@@ -141,6 +162,7 @@ export namespace RolloutJournal {
         if (event.seq !== start + i) throw new Error("Rollout journal sequence mismatch")
         yield event
       }
+      await setImmediate()
     }
   }
 }

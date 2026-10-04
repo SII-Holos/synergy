@@ -11,6 +11,7 @@ import { RolloutSchema } from "./schema"
 import { record, RolloutRecordingError } from "./error"
 import { ProviderPricing } from "../../provider/pricing"
 import { RolloutUsage } from "./usage"
+import { SessionActivityEvent } from "../activity-events"
 
 export namespace RolloutLedger {
   type Owner = RolloutSchema.Owner
@@ -105,6 +106,7 @@ export namespace RolloutLedger {
       recording: "partial",
     })
     await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], reopened))
+    await SessionActivityEvent.execution(owner, runID)
     return reopened
   }
 
@@ -144,6 +146,7 @@ export namespace RolloutLedger {
       cancelRequestedAt: undefined,
     })
     await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], resumed))
+    await SessionActivityEvent.execution(owner, runID)
     return resumed
   }
 
@@ -222,6 +225,7 @@ export namespace RolloutLedger {
     await record(() =>
       RolloutJournal.write(input.owner, [...root(input.owner, input.runID), "segments", segment.id], segment),
     )
+    await SessionActivityEvent.execution(input.owner, input.runID)
     return segment
   }
 
@@ -272,14 +276,15 @@ export namespace RolloutLedger {
     return result.sort((a, b) => a.index - b.index)
   }
 
-  export async function writeAttempt(value: RolloutSchema.AttemptRecord) {
+  export async function writeAttempt(value: RolloutSchema.AttemptRecord, publish?: () => Promise<void>) {
     const attempt = RolloutSchema.AttemptRecord.parse(value)
-    await writeExecution([...attemptRoot(attempt.owner, attempt.runID, attempt.callID), attempt.id], attempt)
+    await writeExecution([...attemptRoot(attempt.owner, attempt.runID, attempt.callID), attempt.id], attempt, publish)
   }
 
   async function writeExecution<T extends { owner: Owner; runID: string; id: string; started: number; status: string }>(
     key: string[],
     value: T,
+    publish?: () => Promise<void>,
   ) {
     return record(async () => {
       using lock = await Lock.write(`rollout-record:${key.join(":")}`)
@@ -287,7 +292,10 @@ export namespace RolloutLedger {
         if (error instanceof Storage.NotFoundError) return undefined
         throw error
       })
-      if (current && current.status !== "running") return current
+      if (current && current.status !== "running") {
+        if (publish) throw new Error("Cannot append evidence to a terminal execution")
+        return current
+      }
       if (
         current &&
         (current.id !== value.id ||
@@ -296,7 +304,7 @@ export namespace RolloutLedger {
           JSON.stringify(current.owner) !== JSON.stringify(value.owner))
       )
         throw new Error("Rollout execution identity changed")
-      await RolloutJournal.write(value.owner, key, value)
+      await RolloutJournal.write(value.owner, key, value, publish)
       return value
     })
   }
@@ -528,6 +536,7 @@ export namespace RolloutLedger {
           : "partial",
     }
     await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], completed))
+    await SessionActivityEvent.execution(owner, runID)
     instanceState.recordingFailures.delete(lockKey(owner, runID))
     return completed
   }

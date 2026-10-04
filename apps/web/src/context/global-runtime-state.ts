@@ -12,8 +12,9 @@
 // The snapshot merge follows the same post-stamp discipline as the Scope
 // buckets: a snapshot response is stamped before its fields are read, so only
 // keys with an event write after that stamp may override it. The key space is
-// flat rather than (Scope, session) because none of this state is
-// Scope-scoped.
+// flat because session ids are globally unique. Permission and question reads
+// and their sequencing stamps are Scope-local, so their callers use a tracker
+// per Scope and adopt only that Scope's index slice.
 
 import type { SessionStatus } from "@ericsanchezok/synergy-sdk"
 import type { EventWriteStamp } from "./scope-snapshot-merge"

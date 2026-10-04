@@ -19,11 +19,23 @@ import { testRuntime } from "../support/runtime"
 import { storageTestBackends } from "../support/storage-backends"
 
 for (const backend of storageTestBackends()) {
-  for (const mode of ["tool", "tool-compaction", "initial-compaction", "queued-task"] as const) {
+  for (const mode of [
+    "tool",
+    "tool-compaction",
+    "initial-compaction",
+    "queued-task",
+    "empty-context",
+    "queued-empty-context",
+    "cancel-context",
+  ] as const) {
     test(`${backend}: ${mode} retains task context at the model boundary`, async () => {
       const prompts: string[] = []
       const collected: boolean[] = []
       const committed: string[] = []
+      const collectionStarted = Promise.withResolvers<void>()
+      const releaseCollection = Promise.withResolvers<void>()
+      let collectionSignal: AbortSignal | undefined
+      const queued = mode === "queued-task" || mode === "queued-empty-context"
       let compactions = 0
       let calls = 0
       const stream = (chunks: LanguageModelV2StreamPart[]) => ({
@@ -132,8 +144,15 @@ for (const backend of storageTestBackends()) {
         register() {
           ProviderSdkSource.register({ load: async () => () => sdk, loadSync: () => () => sdk })
           SessionContextContributions.register("fixture-context", {
-            async contribute(input) {
+            async contribute(input): Promise<SessionContextContributions.Result | undefined> {
               collected.push(input.isTopSession)
+              if (mode === "empty-context" || (mode === "queued-empty-context" && collected.length === 2)) return
+              if (mode === "cancel-context" && collected.length === 1) {
+                collectionSignal = input.signal
+                collectionStarted.resolve()
+                await releaseCollection.promise
+                return { context: "<cancelled-context>Discard this result.</cancelled-context>", injection: {} }
+              }
               return {
                 context: `<fixture-context>${input.isTopSession ? "root" : "child"} memory ${collected.length}</fixture-context>`,
                 injection: { fixture: "synthetic-memory" },
@@ -149,7 +168,7 @@ for (const backend of storageTestBackends()) {
               description: "Advance the synthetic task.",
               parameters: z.object({}),
               async execute(_, context) {
-                if (mode === "queued-task" && calls === 1)
+                if (queued && calls === 1)
                   await SessionInbox.enqueueUser({
                     sessionID: context.sessionID,
                     agent: "fixture",
@@ -196,17 +215,56 @@ for (const backend of storageTestBackends()) {
                   type: "compaction",
                   auto: true,
                 })
-              const result = await SessionInvoke.invoke(input)
-              const expectedCalls = mode === "initial-compaction" ? 1 : mode === "queued-task" ? 4 : 2
-              expect(prompts).toHaveLength(expectedCalls)
-              for (const prompt of prompts) expect(prompt.includes("root memory")).toBe(true)
-              if (mode === "queued-task") {
-                for (const prompt of prompts.slice(0, 2)) expect(prompt.includes("root memory 1")).toBe(true)
-                for (const prompt of prompts.slice(2)) expect(prompt.includes("root memory 2")).toBe(true)
-                expect(collected).toEqual([true, true])
-                expect(committed).toEqual([session.id, session.id])
+              if (mode === "cancel-context") {
+                const pending = SessionInvoke.invoke(input).then(
+                  () => undefined,
+                  (error: unknown) => error,
+                )
+                try {
+                  await collectionStarted.promise
+                  SessionInvoke.cancel(session.id)
+                  releaseCollection.resolve()
+                  expect(await pending).toMatchObject({ data: { errorName: "MessageAbortedError" } })
+                  expect(collectionSignal?.aborted).toBe(true)
+                  expect(prompts).toHaveLength(0)
+                  expect(committed).toHaveLength(0)
+                  const next = { ...input, messageID: Identifier.ascending("message") }
+                  await createUserMessage(next)
+                  await SessionInvoke.invoke(next)
+                  expect(prompts).toHaveLength(2)
+                  for (const prompt of prompts) {
+                    expect(prompt.includes("root memory 2")).toBe(true)
+                    expect(prompt.includes("cancelled-context")).toBe(false)
+                  }
+                  expect(collected).toEqual([true, true])
+                  expect(committed).toEqual([session.id])
+                } finally {
+                  releaseCollection.resolve()
+                  await pending
+                }
                 return
               }
+              const result = await SessionInvoke.invoke(input)
+              const expectedCalls = mode === "initial-compaction" ? 1 : queued ? 4 : 2
+              expect(prompts).toHaveLength(expectedCalls)
+              if (mode === "empty-context") {
+                for (const prompt of prompts) expect(prompt.includes("fixture-context")).toBe(false)
+                expect(collected).toEqual([true])
+                expect(committed).toHaveLength(0)
+                return
+              }
+              if (queued) {
+                for (const prompt of prompts.slice(0, 2)) expect(prompt.includes("root memory 1")).toBe(true)
+                for (const prompt of prompts.slice(2)) {
+                  expect(prompt.includes("root memory 1")).toBe(false)
+                  if (mode === "queued-task") expect(prompt.includes("root memory 2")).toBe(true)
+                  else expect(prompt.includes("fixture-context")).toBe(false)
+                }
+                expect(collected).toEqual([true, true])
+                expect(committed).toEqual(mode === "queued-task" ? [session.id, session.id] : [session.id])
+                return
+              }
+              for (const prompt of prompts) expect(prompt.includes("root memory")).toBe(true)
               expect(collected).toEqual([true])
               expect(committed).toEqual([session.id])
               if (mode === "initial-compaction") {

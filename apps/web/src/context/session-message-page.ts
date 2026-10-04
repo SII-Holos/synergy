@@ -11,7 +11,12 @@ import { findLatestSessionContextUsageMessage, type SessionContextUsageMessage }
 import { isOptimisticMessagePending } from "./session-optimistic-message"
 
 type PartRef = { id: string }
-type MessagePageItem<M extends MessageRef, P extends PartRef> = { info: M; parts: P[] }
+type MessagePageItem<M extends MessageRef, P extends PartRef> = {
+  info: M
+  parts?: P[]
+  order?: string
+  version?: string
+}
 
 type MessagePage<M extends MessageRef, P extends PartRef> = {
   items: MessagePageItem<M, P>[]
@@ -32,6 +37,7 @@ export function planMessagePageApply<M extends MessageRef & SessionContextUsageM
   current?: MessageWindowState<M>
   mode?: "latest" | "history"
   cap?: number
+  replace?: boolean
 }): MessagePageApplyPlan<M, P> {
   const items = input.page.items.filter((item) => !!item?.info?.id)
   const referencedRoots = input.page.referencedRoots.filter((item) => !!item?.info?.id)
@@ -45,7 +51,7 @@ export function planMessagePageApply<M extends MessageRef & SessionContextUsageM
   let result =
     input.mode === "history"
       ? prependOlderPage(
-          current,
+          input.replace ? { ...current, messages: [], tailMissingLatest: true } : current,
           [...referencedRoots, ...items].map((item) => item.info),
           input.cap,
         )
@@ -75,6 +81,7 @@ export function planMessagePageApply<M extends MessageRef & SessionContextUsageM
   const parts: Record<string, P[]> = {}
   for (const item of [...referencedRoots, ...items]) {
     if (!keepIds.has(item.info.id)) continue
+    if (!item.parts) continue
     parts[item.info.id] = item.parts
       .filter((part) => !!part?.id)
       .slice()

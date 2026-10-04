@@ -20,6 +20,27 @@ async function waitUntil(check: () => boolean, timeoutMs = 2000) {
 }
 
 describe("FileWatcherEvents ownership", () => {
+  test("rejects an unsuccessful resync and permits a subsequent recovery", async () => {
+    let attempts = 0
+    const drain = FileWatcherEvents.createDrain({
+      debounceMs: 0,
+      maxPending: 10,
+      async process() {},
+      async overflow() {
+        if (++attempts === 1) throw new Error("resync failed")
+      },
+    })
+    try {
+      drain.resync()
+      await expect(drain.idle()).rejects.toThrow("resync failed")
+      drain.resync()
+      await drain.idle()
+      expect(attempts).toBe(2)
+    } finally {
+      await drain.dispose()
+    }
+  })
+
   test("keeps .synergy browsable while excluding it from the root watcher", () =>
     runtime.run(() => {
       expect(FileIgnore.match(".synergy/worktrees/example/src/index.ts")).toBe(false)
@@ -312,6 +333,64 @@ describe("FileWatcherEvents path normalization", () => {
 })
 
 describe("FileWatcherEvents drain", () => {
+  test("recovers a failed batch through resync without another native event", async () => {
+    const error = new Error("batch publication failed")
+    const failures: unknown[] = []
+    let resyncs = 0
+    const batches: FileWatcherEvents.WorkspaceChange[][] = []
+    const drain = FileWatcherEvents.createDrain({
+      debounceMs: 0,
+      maxPending: 10,
+      async process(batch) {
+        batches.push(batch)
+        if (batches.length === 1) throw error
+      },
+      async overflow() {
+        resyncs++
+        drain.enqueue([{ path: "/repo/during-resync.ts", event: "changed" }])
+      },
+      onError: (error) => failures.push(error),
+    })
+    try {
+      drain.enqueue([{ path: "/repo/failed.ts", event: "changed" }])
+      await expect(drain.idle()).rejects.toBe(error)
+      await waitUntil(() => resyncs === 1)
+      await drain.idle()
+      expect(batches).toEqual([
+        [{ path: "/repo/failed.ts", event: "changed" }],
+        [{ path: "/repo/during-resync.ts", event: "changed" }],
+      ])
+      expect(failures).toEqual([error])
+    } finally {
+      await drain.dispose()
+    }
+  })
+
+  test("backs off failed resyncs and cancels recovery on disposal", async () => {
+    let attempts = 0
+    const drain = FileWatcherEvents.createDrain({
+      debounceMs: 0,
+      maxPending: 10,
+      async process() {},
+      async overflow() {
+        attempts++
+        throw new Error("resync unavailable")
+      },
+    })
+    try {
+      drain.resync()
+      await expect(drain.idle()).rejects.toThrow("resync unavailable")
+      await Bun.sleep(30)
+      expect(attempts).toBe(1)
+      await waitUntil(() => attempts === 2)
+    } finally {
+      await drain.dispose()
+    }
+    const stopped = attempts
+    await Bun.sleep(1100)
+    expect(attempts).toBe(stopped)
+  })
+
   test("deduplicates paths and never runs more than one batch concurrently", () =>
     runtime.run(async () => {
       let active = 0
@@ -542,6 +621,43 @@ describe("FileWatcherEvents drain", () => {
 })
 
 describe("FileWatcherEvents subscription recovery", () => {
+  test("resynchronizes changes made in the reconnect gap before declaring recovery", () =>
+    runtime.run(async () => {
+      const pending = Promise.withResolvers<void>()
+      await using directory = await tmpdir()
+      const file = path.join(directory.path, "recovered.txt")
+      await Bun.write(file, "before")
+      let projected = "before"
+      let attempts = 0
+      let generation = 0
+      const recovery = FileWatcherEvents.createSubscriptionRecovery({
+        retryMs: 0,
+        connect: async () => {
+          if (++attempts === 2) await Bun.write(file, "changed during reconnect")
+          return {}
+        },
+        disconnect: async () => {},
+        onError: () => {},
+        resync: async (context) => {
+          generation = context.generation
+          await pending.promise
+          if (context.isCurrent()) projected = await Bun.file(file).text()
+        },
+      })
+      await recovery.start()
+      try {
+        await recovery.fail(new Error("FSEvents dropped events"))
+        await waitUntil(() => attempts === 2)
+        expect(recovery.active()).toBe(false)
+        pending.resolve()
+        await waitUntil(() => recovery.active())
+        expect(projected).toBe("changed during reconnect")
+        expect(generation).toBeGreaterThan(1)
+      } finally {
+        pending.resolve()
+        await recovery.dispose()
+      }
+    }))
   test("does not retry a terminal subscription failure", () =>
     runtime.run(async () => {
       let attempts = 0

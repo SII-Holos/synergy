@@ -2,7 +2,17 @@ import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { identifyDirectory, readOrCreateIdentityFile } from "../src/filesystem-identity"
+import { filesystemObjectID, identifyDirectory, readOrCreateIdentityFile } from "../src/filesystem-identity"
+
+test("persistent volume identity survives device reassignment without accepting another object", () => {
+  const stat = { dev: 10n, ino: 42n, birthtimeNs: 123456789n }
+  const original = filesystemObjectID(stat, "volume-a")
+  expect(filesystemObjectID({ ...stat, dev: 11n }, "volume-a")).toBe(original)
+  expect(filesystemObjectID(stat, "volume-b")).not.toBe(original)
+  expect(filesystemObjectID({ ...stat, ino: 43n }, "volume-a")).not.toBe(original)
+  expect(filesystemObjectID({ ...stat, birthtimeNs: 123456790n }, "volume-a")).not.toBe(original)
+  expect(filesystemObjectID(stat)).toBe("10:42:123456789")
+})
 
 test("directory identity survives child writes, metadata changes and rename", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-identity-"))

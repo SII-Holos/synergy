@@ -6,11 +6,37 @@
   max-width: min(54rem, 100%);
   margin-inline: auto;
   color: var(--text-weak);
-  font-size: var(--font-size-small);
-  line-height: var(--line-height-large);
+  font-size: 14px;
+  line-height: 20px;
 }
 
 [data-component="activity-trace"] {
+  [data-slot="activity-approval-actions"] {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 0 4px 28px;
+  }
+
+  [data-slot="activity-approval-actions"] button {
+    padding: 6px 12px;
+    border: 1px solid var(--border-base);
+    border-radius: var(--radius-sm);
+    background: var(--surface-base);
+    color: var(--text-base);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  [data-slot="activity-approval-actions"] button:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-xs-border-focus);
+  }
+
+  [data-slot="activity-approval-actions"] button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
   [data-component="collapsible"] {
     overflow: visible;
   }
@@ -18,27 +44,41 @@
   [data-slot="activity-step-trigger"] {
     position: relative;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     width: 100%;
     min-width: 0;
-    min-height: 32px;
+    min-height: 28px;
+    box-sizing: border-box;
     gap: 8px;
-    padding: 3px 2px;
+    padding: 4px 0;
     border: 0;
     color: inherit;
     background: transparent;
+    font: inherit;
     text-align: start;
     cursor: pointer;
     border-radius: var(--radius-sm);
+    transition: color var(--motion-duration-fast) var(--motion-ease-standard);
 
     &:hover {
       color: var(--text-base);
-      background: var(--surface-base-hover);
+    }
+
+    &:is(:hover, [aria-pressed="true"]) [data-slot="activity-step-title"] {
+      color: var(--text-base);
+    }
+
+    &[aria-pressed="true"] [data-slot="activity-step-title"] {
+      font-weight: var(--font-weight-medium);
+    }
+
+    &:is(:hover, [aria-pressed="true"]) [data-slot="activity-step-icon"] {
+      color: var(--icon-base);
     }
 
     &:focus-visible {
-      outline: none;
-      box-shadow: var(--shadow-xs-border-focus);
+      outline: 2px solid var(--border-focus);
+      outline-offset: -2px;
     }
   }
 
@@ -65,6 +105,22 @@
     min-width: 0;
   }
 
+  [data-slot="activity-step"][hidden] {
+    display: none;
+  }
+
+  [data-slot="activity-step"][data-current] [data-slot="activity-step-title"] {
+    color: var(--text-base);
+  }
+
+  [data-slot="activity-step"][data-current] [data-slot="activity-step-icon"] {
+    color: var(--icon-base);
+  }
+
+  [data-slot="activity-step"][data-working] [data-slot="activity-step-title"] {
+    animation: activity-current-emphasis 1.8s var(--motion-ease-standard) infinite;
+  }
+
   .activity-step-audit-trigger {
     position: absolute;
     left: -28px;
@@ -81,9 +137,20 @@
 
   [data-slot="activity-step-icon"] {
     display: grid;
-    flex: 0 0 18px;
+    flex: 0 0 20px;
+    width: 20px;
+    height: 20px;
     place-items: center;
     color: var(--icon-weak-base);
+  }
+
+  [data-slot="activity-step-icon"] [data-component="icon"] {
+    width: 18px;
+    height: 18px;
+  }
+
+  [data-slot="activity-step-icon"] svg {
+    stroke-width: 1.5;
   }
 
   [data-slot="activity-step-audit-icon"] {
@@ -115,10 +182,10 @@
   [data-slot="activity-step-title"] {
     flex: 0 1 auto;
     min-width: 0;
-    overflow: hidden;
     color: var(--text-weak);
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    transition: color var(--motion-duration-fast) var(--motion-ease-standard);
   }
 
   [data-slot="activity-step-subtitle"] {
@@ -132,6 +199,16 @@
   [data-component="attachment-gallery"],
   [data-slot="activity-specialized-detail"] {
     margin: 6px 0 0 26px;
+  }
+}
+
+@keyframes activity-current-emphasis {
+  0%,
+  100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
   }
 }
 
@@ -341,7 +418,15 @@
 @media (max-width: 420px) {
   [data-component="activity-trace"] {
     [data-slot="activity-step-trigger"] [data-slot="activity-state"] span {
-      display: none;
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+      border: 0;
     }
   }
 
@@ -353,6 +438,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  [data-component="activity-trace"] [data-slot="activity-step-trigger"],
+  [data-component="activity-trace"] [data-slot="activity-step-title"] {
+    transition: none;
+    animation: none !important;
+  }
+
   [data-component="animated-activity-count"] [data-slot="activity-count-old"],
   [data-component="animated-activity-count"] [data-slot="activity-count-new"] {
     animation: none !important;

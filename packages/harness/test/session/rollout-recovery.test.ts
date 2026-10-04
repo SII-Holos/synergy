@@ -11,9 +11,47 @@ import { RolloutArtifact } from "../../src/session/rollout/artifact"
 import { RolloutSnapshot } from "../../src/session/rollout/snapshot"
 import { RolloutJournal } from "../../src/session/rollout/journal"
 import { MessageV2 } from "../../src/session/message-v2"
+import { Experiment } from "../../src/config/experiment"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
+
+test("recovery preserves historical runtime configuration and committed journal evidence", () =>
+  runtime.run(async () => {
+    const owner = { kind: "operation" as const, scopeID: "test", operationID: crypto.randomUUID() }
+    const run = await RolloutLedger.beginRun(owner, "historical-runtime")
+    const captured = Experiment.capture({ execution: { toolExecutorConcurrency: { local_process: 2 } } })
+    const historicalRuntime = {
+      ...captured.runtime,
+      execution: { ...captured.runtime.execution, toolExecutorConcurrency: { local_process: 2, link: 3 } },
+    }
+    const configuration = {
+      ...captured,
+      runtime: historicalRuntime,
+      fingerprint: Experiment.fingerprint({ effective: captured.effective, runtime: historicalRuntime }),
+    }
+    await RolloutJournal.write(owner, [...RolloutArtifact.root(owner), "runs", run.id, "info"], {
+      ...run,
+      configuration,
+    })
+    const head = (await RolloutJournal.head(owner)).committed
+    const recordedRevision = (await RolloutSnapshot.read(owner)).revision
+    const evidence = []
+    for await (const event of RolloutJournal.events(owner, head)) evidence.push(event)
+
+    await RolloutRecovery.owner(owner)
+    const restored = await RolloutLedger.getRun(owner, run.id)
+    expect(restored.status).toBe("interrupted")
+    expect(restored.configuration).toEqual(configuration)
+    expect((await RolloutSnapshot.read(owner, { revision: recordedRevision })).runs[0].configuration).toEqual(
+      configuration,
+    )
+    const original = []
+    for await (const event of RolloutJournal.events(owner, head)) original.push(event)
+    expect(original).toEqual(evidence)
+    await RolloutRecovery.owner(owner)
+    expect(await RolloutLedger.getRun(owner, run.id)).toEqual(restored)
+  }))
 
 test("startup marks unfinished file evidence incomplete without recapturing or changing completed evidence", () =>
   runtime.run(async () => {

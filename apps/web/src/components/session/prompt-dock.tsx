@@ -44,13 +44,9 @@ export function PromptDock(props: PluginComponentProps<PluginComposerLayoutServi
             </For>
             <div class="relative">
               <Show when={layout.input()}>{(input) => <DefaultComposer context={{ input: input() }} />}</Show>
-              {layout.render("inbox")}
             </div>
           </Show>
         </Show>
-        <div class="session-prompt-dock-footer">
-          <div class="pointer-events-auto">{layout.render("status")}</div>
-        </div>
       </div>
     </div>
   )

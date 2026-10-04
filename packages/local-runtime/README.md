@@ -8,6 +8,8 @@
 
 Run `bun test test/client.test.ts` for the in-process Scope/event contract and `bun run typecheck`. Tests use the isolated home preload declared in `bunfig.toml`.
 
+Package entrypoint contracts are verified by `bun test test/component.test.ts test/cli/scope.test.ts test/skill/summary.test.ts test/workspace/relocation.test.ts`: selected worker registration, Home reload wiring, CLI Scope cleanup, discovered skill summaries and copied Git metadata independence.
+
 `registerLocalRuntime()` also registers bundled model SDK factories and the custom SDK loader. Agent worker bootstrap creates an explicit Runtime context, registers local capabilities, then starts the harness runner.
 
 Source workers launch this package’s `src/agent-worker.ts` through the harness worker-entry registration. The full product registers its own entry; compiled executables dispatch the same composition through `__agent-turn-runner`.
@@ -31,3 +33,5 @@ On Docker hosts with AppArmor enabled, load the supplied `src/environment/vendor
 The `workspace/blob-store` export supplies `s3BlobStore` and `ossBlobStore` for Harness `WorkspaceBlobs` registration. Their credential callbacks allow the host to rotate credentials without persisting them in Workspace specs. Classic and anchored file tools select dormant object or active Executor views through the same file facade; file-only object edits allocate no compute. Validate signing, bounded reads, checkpoint materialization and source-loss restoration with `bun test test/workspace/blob-store.test.ts test/workspace/tree.test.ts`.
 
 Coding reads and searches use shared display budgets; anchored edits return compact final-file previews with full UI diffs. See [workspace file architecture](../../docs/architecture/workspace-and-files.md). The fixed-input observation probe at `test/tools/coding-observation-probe.test.ts` can emit versioned UTF-8 byte measurements through `SYNERGY_OBSERVATION_REPORT`; it does not invoke a model or estimate token savings.
+
+Selective hosts call `registerLocalToolInputHistory()` from `./tool-input-history` while composing their tool catalog. This retains owned input migrations without registering native providers or product tool groups.

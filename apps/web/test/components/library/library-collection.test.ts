@@ -43,3 +43,32 @@ test("search results belong to their query, including late failures and refresh 
     mounted.dispose()
   }
 })
+
+test("confirmed removals invalidate older refreshes and survive a failed recovery request", async () => {
+  const pending = Promise.withResolvers<string[]>()
+  let calls = 0
+  const mounted = createRoot((dispose) => ({
+    dispose,
+    collection: createLibraryCollection(
+      () => "same",
+      async () => {
+        if (++calls === 1) return ["first", "second"]
+        if (calls === 2) return pending.promise
+        throw new Error("Refresh unavailable")
+      },
+    ),
+  }))
+  try {
+    await settle()
+    const refresh = mounted.collection.refresh()
+    await settle()
+    mounted.collection.discard((item) => item === "first")
+    await mounted.collection.refresh()
+    expect(mounted.collection.items()).toEqual(["second"])
+    pending.resolve(["first", "second"])
+    await refresh
+    expect(mounted.collection.items()).toEqual(["second"])
+  } finally {
+    mounted.dispose()
+  }
+})

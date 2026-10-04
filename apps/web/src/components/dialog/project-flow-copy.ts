@@ -1,12 +1,14 @@
 export const projectFlowCopy = {
   cancel: { id: "project.flow.cancel", message: "Cancel" },
   choose: { id: "project.flow.choose", message: "Choose project" },
+  currentProject: { id: "project.flow.currentProject", message: "Project: {name}" },
   description: { id: "project.flow.description", message: "Keep your draft and choose where this task belongs." },
   search: { id: "project.flow.search", message: "Search projects" },
   none: { id: "project.flow.none", message: "No project" },
   noneDescription: { id: "project.flow.noneDescription", message: "Start a task without project files." },
   open: { id: "project.flow.open", message: "Open folder" },
   empty: { id: "project.flow.empty", message: "No matching projects" },
+  directoryUnavailable: { id: "project.flow.directoryUnavailable", message: "Directory unavailable" },
   merge: { id: "project.flow.merge", message: "Merge and switch" },
   mergeTitle: { id: "project.flow.mergeTitle", message: "This project already has a draft" },
   mergeDescription: {

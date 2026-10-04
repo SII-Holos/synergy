@@ -88,6 +88,34 @@ describe("SecretMask engine", () => {
       expect(await SecretMask.maskMessages(messages)).toBe(false)
     }))
 
+  test("maskMessages covers precise tool intent and entity text fields without touching binary data", () =>
+    runtime.run(async () => {
+      const value = `registered-${crypto.randomUUID()}`
+      const entry = await SecretVault.register(value, { kind: "user" })
+      tracked.push(entry.id)
+      const input = {
+        workBrief: value,
+        memoryTitle: value,
+        memoryContent: value,
+        agendaTitle: value,
+        agendaDescription: value,
+        executionInstructions: value,
+        taskTitle: value,
+        taskInstructions: value,
+        noteTitle: value,
+        noteContent: value,
+        blueprintDescription: value,
+        artifactTitle: value,
+      }
+      const messages = [
+        { role: "assistant", content: [{ type: "tool-call", toolName: "test", toolCallId: "test", input }] },
+        { role: "user", content: [{ type: "image", image: value }] },
+      ]
+      expect(await SecretMask.maskMessages(messages)).toBe(true)
+      expect(Object.values(input)).toEqual(Object.keys(input).map(() => SecretMask.token(entry.id)))
+      expect(messages[1].content[0]).toEqual({ type: "image", image: value })
+    }))
+
   test("transformResult masks output and title in place", () =>
     runtime.run(async () => {
       const value = `xoxb-${crypto.randomUUID()}`

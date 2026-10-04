@@ -236,12 +236,6 @@ export namespace StorageRetention {
     return { candidates, protectedByWindow, protectedLive }
   }
 
-  /**
-   * Enumerates evidence owners with the recency of their newest record. The scan
-   * reads indexed owner columns and timestamps, never record bodies. Its cost
-   * still grows with the evidence record count, so a pass reaches it only once
-   * the store is already over budget.
-   */
   export async function owners(): Promise<Owner[]> {
     const rows = await Storage.current().store.evidenceOwners()
     return rows.map((row) => ({
@@ -268,6 +262,7 @@ export namespace StorageRetention {
     signal?: AbortSignal
   }): Promise<Report> {
     const handle = Storage.current()
+    const deadline = performance.now() + (input.budgetMs ?? (input.maintenance ? Infinity : DEFAULT_BUDGET_MS))
     const filename = handle.store.sqliteFilename
     const footprint = () => (filename ? SqliteMaintenance.physicalFootprint(filename) : 0)
     const sampledAt = input.now ?? Date.now()
@@ -397,7 +392,6 @@ export namespace StorageRetention {
     // evidence protecting this budget is outside it. That is what the
     // scheduler's capped backoff bounds, so this pass neither loops here nor
     // reports a condition the next sweep resolves.
-    const deadline = performance.now() + (input.budgetMs ?? (input.maintenance ? Infinity : DEFAULT_BUDGET_MS))
     for (const owner of candidates) {
       input.signal?.throwIfAborted()
       if (!overBudget() || performance.now() > deadline) break
@@ -413,18 +407,13 @@ export namespace StorageRetention {
       )
       // Re-check liveness immediately before deleting: a session can start
       // between enumeration and this prune.
-      const result = input.maintenance
-        ? {
-            records: await handle.store.transaction((tx) =>
-              tx.pruneTree(owner.key, { maintenance: true, signal: input.signal }),
-            ),
-            deferred: undefined,
-          }
-        : await handle.store.pruneTreeWithinBudget(owner.key, {
-            limits: ONLINE_LIMITS,
-            cutoff: sampledAt - effective.windowMs,
-            active: () => owner.kind === "session" && new Set(liveSessionIDs()).has(owner.id),
-          })
+      const result = await handle.store.pruneTreeWithinBudget(owner.key, {
+        limits: ONLINE_LIMITS,
+        cutoff: sampledAt - effective.windowMs,
+        active: () => owner.kind === "session" && new Set(liveSessionIDs()).has(owner.id),
+        maintenance: input.maintenance,
+        signal: input.signal,
+      })
       if (result.deferred === "active") report.protectedLive++
       else if (result.deferred === "recent") report.protectedByWindow++
       else if (result.deferred) report.deferred.push({ key: owner.key, reason: result.deferred })

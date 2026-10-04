@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -227,7 +228,7 @@ describe("session lifecycle events", () => {
             sessionID: session.id,
             role: "user",
             time: { created: Date.now() },
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test" },
             metadata: { source: "prompt" },
           })) as MessageV2.User
@@ -268,7 +269,7 @@ describe("session lifecycle events", () => {
             sessionID: session.id,
             role: "user",
             time: { created: Date.now() },
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test-provider", modelID: "test-model" },
           })
           const contextUsage = ContextUsage.reconcile(
@@ -298,7 +299,7 @@ describe("session lifecycle events", () => {
             modelID: "test-model",
             providerID: "test-provider",
             mode: "build",
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             path: { cwd: tmp.path, root: tmp.path },
             cost: 0,
             tokens: { input: 12, output: 2, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -347,7 +348,7 @@ describe("session lifecycle events", () => {
             sessionID: session.id,
             role: "user",
             time: { created: Date.now() },
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test" },
             isRoot: true,
             rootID,
@@ -377,7 +378,7 @@ describe("session lifecycle events", () => {
               modelID: "test",
               providerID: "test",
               mode: "build",
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               path: { cwd: tmp.path, root: tmp.path },
               summary: false,
               cost: 0,

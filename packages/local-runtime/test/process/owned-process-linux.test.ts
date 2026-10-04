@@ -110,7 +110,7 @@ nativeTest(
       kind: "process",
       roots: [directory.path],
     })
-    const script = `await Bun.write(${JSON.stringify(marker)},String(process.pid)); setInterval(() => {},1000)`
+    const script = `import {rename} from 'node:fs/promises'; const marker=${JSON.stringify(marker)}; await Bun.write(marker+'.tmp',String(process.pid)); await rename(marker+'.tmp',marker); setInterval(() => {},1000)`
     const root = `import {spawn} from 'node:child_process'; const c=spawn(process.execPath,['-e',${JSON.stringify(script)}],{env:{},stdio:'ignore',detached:true}); c.unref()`
     let control: Socket | undefined
     const messages = OwnedProtocol.messages
@@ -136,7 +136,10 @@ nativeTest(
         if (Date.now() >= until) throw new Error("Descendant did not start")
         await Bun.sleep(10)
       }
-      descendant = Number(await Bun.file(marker).text())
+      const pid = Number(await Bun.file(marker).text())
+      expect(Number.isSafeInteger(pid)).toBe(true)
+      expect(pid).toBeGreaterThan(0)
+      descendant = pid
       process.kill(claim.pid, "SIGKILL")
       const transport = Object.assign(new Error("control connection reset"), { code: "ECONNRESET" })
       control!.emit("error", transport)

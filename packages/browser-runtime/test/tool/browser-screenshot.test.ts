@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { BrowserScreenshotTool } from "@ericsanchezok/synergy-browser-runtime/tools/browser-screenshot"
 import { BrowserToolHelper } from "@ericsanchezok/synergy-browser-runtime/tools/browser-shared"
@@ -41,7 +42,7 @@ function context(supportsImageInput: boolean, lookAtAvailable = true, supportedI
     sessionID: "ses_browser_screenshot_test",
     messageID: "msg_browser_screenshot_test",
     callID: "call_browser_screenshot_test",
-    agent: "synergy-max",
+    agent: PrimaryAgentIdentity.names.coding,
     abort: new AbortController().signal,
     extra: {
       model: {

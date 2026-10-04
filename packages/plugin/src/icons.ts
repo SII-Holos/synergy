@@ -1,3 +1,8 @@
+const surfaceSizingIcons = {
+  expand: "maximize-2",
+  collapse: "minimize-2",
+} as const
+
 export const SemanticIconToken = {
   // Product entities
   "holos.main": "satellite",
@@ -41,11 +46,14 @@ export const SemanticIconToken = {
   "memory.main": "brain",
   "experience.main": "lightbulb",
   "agents.main": "users",
+  "agent.identity": "bot",
   "providers.main": "server",
   "providers.reconnect": "shield-alert",
   "agenda.main": "calendar-clock",
   "kanban.main": "kanban",
   "terminal.main": "code",
+  "composer.expand": surfaceSizingIcons.expand,
+  "composer.collapse": surfaceSizingIcons.collapse,
 
   // Session runtime
   "session.default": "message-square",
@@ -54,6 +62,7 @@ export const SemanticIconToken = {
   "task.research": "telescope",
   "task.write": "pen",
   "session.running": "loader-circle",
+  "session.followLatest": "list-end",
   "session.idle": "circle",
   "session.waiting": "hourglass",
   "session.retry": "rotate-ccw",
@@ -65,6 +74,13 @@ export const SemanticIconToken = {
   "session.rewind": "undo-dot",
   "session.archive": "message-square-more",
   "session.context": "chart-pie",
+  "session.taskDetails": "file-clock",
+  "execution.elapsed": "timer-reset",
+  "execution.tokens": "binary",
+  "execution.cost": "circle-dollar-sign",
+  "inbox.task": "list-ordered",
+  "inbox.steer": "corner-up-right",
+  "inbox.context": "notebook-tabs",
 
   // Product domains
   "blueprint.main": "clipboard-list",
@@ -97,7 +113,7 @@ export const SemanticIconToken = {
   "performance.storage": "hard-drive",
   "performance.library": "book-marked",
   "performance.vitals": "circle-gauge",
-  "performance.analysis": "binoculars",
+  "performance.analysis": "file-chart-column",
 
   // Settings areas that are not product entities
   "settings.account": "user",
@@ -107,13 +123,14 @@ export const SemanticIconToken = {
   "settings.colorDark": "moon",
   "settings.models": "cpu",
   "settings.usage": "gauge",
+  "settings.skills": "puzzle",
   "settings.learning": "graduation-cap",
   "settings.commands": "terminal",
   "settings.permissions": "shield-check",
   "settings.sandbox": "lock-keyhole",
   "settings.secrets": "vault",
   "settings.controlProfile": "scale",
-  "settings.questions": "help-circle",
+  "settings.questions": "message-circle-question",
   "settings.compaction": "list-collapse",
   "settings.timeouts": "clock",
   "settings.formatter": "file-pen",
@@ -127,7 +144,8 @@ export const SemanticIconToken = {
 
   // Permission modes and prompts
   "permission.required": "octagon-alert",
-  "permission.guarded": "badge-check",
+  "permission.guarded": "shield-half",
+  "plugin.sourceVerified": "badge-check",
   "permission.autonomous": "orbit",
   "permission.fullAccess": "shield-x",
 
@@ -136,6 +154,10 @@ export const SemanticIconToken = {
   "app.sidebar.open": "panel-left-open",
   "app.sidebar.close": "panel-left-close",
   "app.sideWorkspace": "panel-right",
+  "workspace.fullscreen": "maximize-2",
+  "workspace.split": "shrink",
+  "workspace.newTab": "square-plus",
+  "workspace.collapse": "panel-right-close",
   "app.bottomSpace": "panel-bottom",
   "app.statusBar": "panel-bottom-dashed",
   "app.statusBar.toggle": "panel-bottom-open",
@@ -144,7 +166,7 @@ export const SemanticIconToken = {
   "product.update.install": "rotate-cw",
   "window.minimize": "minus",
   "window.maximize": "square",
-  "window.restore": "minimize-2",
+  "window.restore": surfaceSizingIcons.collapse,
   "window.close": "square-x",
 
   // Navigation
@@ -152,6 +174,7 @@ export const SemanticIconToken = {
   "navigation.forward": "arrow-right",
   "navigation.expand": "chevron-right",
   "navigation.collapse": "chevron-down",
+  "navigation.latest": "arrow-down",
   "navigation.home": "home",
 
   // Prompt composer and command entry
@@ -182,6 +205,8 @@ export const SemanticIconToken = {
   "command.start": "zap",
 
   // Generic actions and state
+  "action.expand": surfaceSizingIcons.expand,
+  "action.collapse": surfaceSizingIcons.collapse,
   "action.pin": "pin",
   "action.unpin": "pin-off",
   "action.download": "download-cloud",
@@ -216,6 +241,7 @@ export const SemanticIconToken = {
   "state.warning": "alert-triangle",
   "state.error": "ban",
   "state.complete": "circle-check",
+  "state.cancelled": "circle-minus",
 } as const
 
 export type SemanticIconTokenName = keyof typeof SemanticIconToken

@@ -5,7 +5,8 @@ import { loadManifest } from "../coverage-check"
 import { collectTests } from "../../packages/testing/script/batches"
 import { type Task, type WorkspaceInput } from "./plan"
 import { workspaces } from "../workspace-manifest"
-import { partitionSuite } from "./suites"
+import { partitionSuite, suiteSeconds } from "./suites"
+import { estimateTask, timingProfile, validateTimings } from "./timing"
 export { changedFiles } from "./selection"
 
 export const ROOT = path.resolve(import.meta.dir, "../..")
@@ -214,7 +215,14 @@ export async function catalog(root = ROOT): Promise<Task[]> {
       "windows-native",
       "windows",
       450,
-      ["apps/desktop", "packages/cli", "packages/harness", "packages/local-runtime", "packages/util"],
+      [
+        "packages/cli",
+        "packages/harness",
+        "packages/local-runtime",
+        "packages/util",
+        "packages/lsp",
+        "packages/formatter",
+      ],
       {
         pool: "windows",
         variant: "native",
@@ -226,10 +234,16 @@ export async function catalog(root = ROOT): Promise<Task[]> {
       variant: "desktop",
       outputs: ["junit"],
     }),
-    task("macos-workspace", "native-workspace", 300, ["packages/local-runtime", "packages/lsp", "packages/formatter"], {
-      pool: "macos",
-      package: "packages/local-runtime",
-    }),
+    task(
+      "macos-workspace",
+      "native-workspace",
+      300,
+      ["packages/local-runtime", "packages/lsp", "packages/formatter", "packages/harness"],
+      {
+        pool: "macos",
+        package: "packages/local-runtime",
+      },
+    ),
     ...[16, 17, 18].map((version) =>
       task(`postgres-${version}`, "postgres", 180, ["packages/harness"], {
         pool: "postgres",
@@ -342,25 +356,31 @@ export async function catalog(root = ROOT): Promise<Task[]> {
       ),
     ),
     ...["synergy", "codex", "opencode", "pi", "deepseek"].map((variant) =>
-      task(`native-${variant}`, "benchmark-native", 180, [], {
-        pool: "docker",
-        variant,
-        selection: "test_native_matrix",
-        files: ["benchmark/test/test_matrix_docker.py"],
-        scenarios: ["chat-completions", "responses"].map(
-          (protocol) => `test_native_matrix_preserves_protocol_and_adapter_behavior[${protocol}]`,
-        ),
-        scenarioPrefix: "test_native_matrix_",
-        needs: variant === "synergy" ? ["benchmark-prepare"] : [],
-      }),
+      task(
+        `native-${variant}`,
+        "benchmark-native",
+        180,
+        variant === "synergy" ? ["packages/harness", "packages/local-runtime", "packages/presets", "packages/cli"] : [],
+        {
+          pool: "docker",
+          variant,
+          selection: "test_native_matrix",
+          files: ["benchmark/test/test_matrix_docker.py"],
+          scenarios: ["chat-completions", "responses"].map(
+            (protocol) => `test_native_matrix_preserves_protocol_and_adapter_behavior[${protocol}]`,
+          ),
+          scenarioPrefix: "test_native_matrix_",
+          needs: variant === "synergy" ? ["benchmark-prepare"] : [],
+        },
+      ),
     ),
     ...[
-      ...["tool-roundtrip", "empty-provider-stop"].map((id) => ({
-        id: `task-home-${id}`,
-        selection: `test_synergy_preserves_task_home and ${id}`,
-        seconds: id === "tool-roundtrip" ? 145 : 215,
-        scenarios: [`test_synergy_preserves_task_home_and_native_stopping[${id}]`],
-      })),
+      {
+        id: "task-home-empty-provider-stop",
+        selection: "test_synergy_preserves_task_home",
+        seconds: 215,
+        scenarios: ["test_synergy_preserves_task_home_and_native_stopping"],
+      },
       {
         id: "unattended",
         selection: "test_synergy_unattended",
@@ -385,15 +405,21 @@ export async function catalog(root = ROOT): Promise<Task[]> {
         scenarios: [`test_synergy_native_semantics[${id}]`],
       })),
     ].map((entry) =>
-      task(`native-synergy-${entry.id}`, "benchmark-native", entry.seconds, [], {
-        pool: "docker",
-        variant: "synergy",
-        selection: entry.selection,
-        needs: ["benchmark-prepare"],
-        files: ["benchmark/test/test_matrix_docker.py"],
-        scenarios: entry.scenarios,
-        scenarioPrefix: entry.scenarios ? "test_synergy_" : undefined,
-      }),
+      task(
+        `native-synergy-${entry.id}`,
+        "benchmark-native",
+        entry.seconds,
+        ["packages/harness", "packages/local-runtime", "packages/presets", "packages/cli"],
+        {
+          pool: "docker",
+          variant: "synergy",
+          selection: entry.selection,
+          needs: ["benchmark-prepare"],
+          files: ["benchmark/test/test_matrix_docker.py"],
+          scenarios: entry.scenarios,
+          scenarioPrefix: entry.scenarios ? "test_synergy_" : undefined,
+        },
+      ),
     ),
     ...["completed", "cancelled", "failed"].map((variant) =>
       task(`rollout-${variant}`, "rollout", variant === "completed" ? 320 : 15, ["packages/harness"], {
@@ -406,15 +432,7 @@ export async function catalog(root = ROOT): Promise<Task[]> {
   tasks.find((task) => task.id === "root-tests")!.files = (await collectTests("test/script", root))
     .filter((file) => !specialized.has(file))
     .sort()
-  const weights: Record<string, number> = {
-    "packages/presets": 500,
-    "apps/web": 640,
-    "packages/connections": 180,
-    "packages/ui": 320,
-    "packages/local-runtime": 640,
-    "packages/library": 130,
-  }
-  const times = (await Bun.file(path.join(import.meta.dir, "timings.json")).json()) as Record<string, number>
+  const times = validateTimings(await Bun.file(path.join(import.meta.dir, "timings.json")).json())
   const counts: Record<string, number> = {
     "packages/harness": 4,
     "apps/web": 4,
@@ -441,7 +459,7 @@ export async function catalog(root = ROOT): Promise<Task[]> {
         task(
           `suite-${name}${partition === undefined ? "" : `-${partition}`}`,
           "suite",
-          directory === "packages/harness" ? 200 : Math.ceil((weights[directory] ?? 45) / count),
+          suiteSeconds(group, path.join(root, directory), times, directory, batchShards),
           [directory],
           {
             package: directory,
@@ -455,6 +473,10 @@ export async function catalog(root = ROOT): Promise<Task[]> {
     }
   }
   for (const entry of tasks) {
+    if (entry.kind === "suite" && entry.package === "packages/local-runtime")
+      entry.needs = tasks
+        .filter((task) => task.kind === "suite" && ["packages/cli", "packages/presets"].includes(task.package ?? ""))
+        .map((task) => task.id)
     if (entry.kind === "native-workspace" || (entry.kind === "windows" && entry.variant === "native"))
       entry.needs = tasks
         .filter((task) => task.kind === "suite" && task.package === entry.package)
@@ -493,6 +515,11 @@ export async function catalog(root = ROOT): Promise<Task[]> {
         .filter((file) => !tasks.some((task) => task.kind === "benchmark-streams" && task.files?.includes(file)))
         .sort()
   }
-  for (const entry of tasks) if (times[entry.id] !== undefined) entry.seconds = times[entry.id]!
+  for (const entry of tasks) {
+    if (entry.kind === "suite") continue
+    const platform = entry.pool === "windows" ? "win32" : entry.pool === "macos" ? "darwin" : "linux"
+    const seconds = estimateTask(times, timingProfile(platform, platform === "darwin" ? "arm64" : "x64"), entry.id)
+    if (seconds !== undefined) entry.seconds = seconds
+  }
   return tasks
 }

@@ -61,10 +61,12 @@ async def test_collected_native_controls_cover_each_required_behavior_once(matri
     homes = [call for call in calls if call.get("task_home")]
     unattended = [call for call in calls if call.get("unattended")]
     ordinary = [call for call in calls if not call.get("long_session") and not call.get("unattended")]
-    assert len(business + semantics + homes + unattended + ordinary) == len(calls)
+    stops = [call for call in homes if call.get("empty_stop")]
+    assert len(business + semantics + stops + unattended + ordinary) == len(calls)
     protocols = {"chat-completions", "responses"}
     assert len(business) == 1 and business[0]["long_session"] and business[0]["bun_jit"]
     assert business[0]["models"] == ("fixture-one",)
+    assert len(semantics) == 4
     assert all(call["long_session"] and len(call["models"]) == 1 for call in semantics)
     axes = [(False, True), tuple(protocols), ("fixture-one", "fixture-two")]
     rows = [(call["bun_jit"], call["protocol"], call["models"][0]) for call in semantics]
@@ -72,7 +74,8 @@ async def test_collected_native_controls_cover_each_required_behavior_once(matri
         assert {(row[first], row[second]) for row in rows} == set(product(axes[first], axes[second]))
     assert {call["protocol"] for call in ordinary} == protocols
     assert {call["models"][0] for call in ordinary} == {"fixture-one", "fixture-two"}
-    assert {call["empty_stop"] for call in homes} == {False, True}
+    assert len(homes) == 2 and len(stops) == 1
+    assert next(call for call in homes if not call.get("empty_stop")) in semantics
     assert all(call["tool_turns"] == 2 and call["long_session"] for call in homes)
-    assert next(call for call in homes if call["empty_stop"])["models"] == ("fixture-one",)
+    assert stops[0]["models"] == ("fixture-one",)
     assert all(call["bun_jit"] for call in unattended) and unattended

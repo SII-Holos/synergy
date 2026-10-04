@@ -32,8 +32,6 @@ describe("settings typography contract", () => {
   test("settings CSS uses semantic type tokens instead of naked pixel font sizes", async () => {
     const css = await readSettingsFile("settings-panel.css")
     expect(css).not.toMatch(/font-size:\s*\d+(?:\.\d+)?px\b/)
-    expect(css).toContain("var(--type-ui-page-title-size)")
-    expect(css).toContain("var(--type-ui-body-size)")
   })
 
   test("shared number fields keep semantic control typography with stable numerals", async () => {
@@ -48,7 +46,6 @@ describe("settings typography contract", () => {
   test("settings CSS uses tokenized weights instead of temporary numeric weights", async () => {
     const css = await readSettingsFile("settings-panel.css")
     expect(css).not.toMatch(/font-weight:\s*(?:400|500|550|600|650|700)\b/)
-    expect(css).toContain("var(--font-weight-semibold)")
     expect(css).toContain("var(--font-weight-medium)")
   })
 

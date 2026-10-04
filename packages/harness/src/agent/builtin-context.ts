@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "./primary-identity"
 import { PermissionNext } from "../permission/next"
 import type { Provider } from "../provider/provider"
 import { Truncate } from "../tool/truncation"
@@ -268,7 +269,7 @@ export function createSubagent(ctx: BuiltinAgentContext, definition: SubagentDef
     permission: PermissionNext.merge(ctx.defaults, baseToolPermissions(definition.permission), ctx.user),
     mode: "subagent",
     native: true,
-    visibleTo: definition.visibleTo ?? ["synergy-max", "supervisor"],
+    visibleTo: definition.visibleTo ?? [PrimaryAgentIdentity.names.coding, "supervisor"],
     delegationGroups: definition.delegationGroups,
     hidden: definition.hidden,
     ...resolveAgentModelRole(ctx, definition.model ?? "mid"),

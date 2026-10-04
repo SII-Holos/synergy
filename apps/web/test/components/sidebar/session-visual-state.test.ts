@@ -122,9 +122,9 @@ describe("resolveSessionVisualState", () => {
   test("keeps worktree identity when no runtime context is available", () => {
     const visual = resolveSessionVisualState({ entry: entry({ workspaceType: "git_worktree" }) })
 
-    expect(visual.icon).toBe(getSemanticIcon("workspace.worktree"))
-    expect(visual.tone).toBe("worktree")
-    expect(msg(visual.label)).toBe("Worktree session")
+    expect(visual.worktree).toBe(true)
+    expect(visual.tone).toBe("default")
+    expect(msg(visual.label)).toBe("Home session")
   })
 
   test("keeps child identity when no runtime context is available", () => {
@@ -275,10 +275,10 @@ describe("resolveSessionVisualState", () => {
     })
     const child = resolveSessionVisualState({ entry: entry({ parentID: "ses_parent", completionNotice: UNREAD }) })
 
-    expect(worktree.icon).toBe(getSemanticIcon("workspace.worktree"))
-    expect(worktree.tone).toBe("worktree")
+    expect(worktree.worktree).toBe(true)
+    expect(worktree.tone).toBe("default")
     expect(worktree.completionUnread).toBe(true)
-    expect(msg(worktree.label)).toBe("Worktree session; response ready")
+    expect(msg(worktree.label)).toBe("Home session; response ready")
     expect(child.icon).toBe(getSemanticIcon("session.child"))
     expect(child.tone).toBe("muted")
     expect(child.completionUnread).toBe(true)
@@ -357,6 +357,14 @@ describe("resolveSessionVisualState", () => {
 })
 
 describe("scopeKeyForNavEntry", () => {
+  test("worktree identity stays separate from running and waiting status", () => {
+    for (const state of [{}, { status: { type: "busy" as const } }, { waiting: true }]) {
+      const result = resolveSessionVisualState({ entry: entry({ workspaceType: "git_worktree" }), ...state })
+      expect(result.worktree).toBe(true)
+      expect(result.icon).not.toBe(getSemanticIcon("workspace.worktree"))
+    }
+    expect(resolveSessionVisualState({ entry: entry() }).worktree).toBe(false)
+  })
   test("maps Home entries to the canonical Home scope key", () => {
     expect(scopeKeyForNavEntry(entry(), [])).toBe("home")
   })

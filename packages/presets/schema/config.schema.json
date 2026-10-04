@@ -413,7 +413,7 @@
       "additionalProperties": { "anyOf": [{ "type": "string" }, { "type": "null" }] }
     },
     "default_agent": {
-      "description": "Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid.",
+      "description": "Default agent to use when none is specified. Must be a visible primary agent. Falls back to the general-purpose primary, then another visible primary if unavailable.",
       "type": "string"
     },
     "username": {
@@ -424,9 +424,9 @@
       "description": "Agent configuration",
       "type": "object",
       "properties": {
-        "synergy": { "ref": "AgentConfig" },
-        "synergy-max": { "ref": "AgentConfig" },
-        "synergy-flash": { "ref": "AgentConfig" },
+        "atlas": { "ref": "AgentConfig" },
+        "forge": { "ref": "AgentConfig" },
+        "pico": { "ref": "AgentConfig" },
         "developer": { "ref": "AgentConfig" },
         "general": { "ref": "AgentConfig" },
         "explore": { "ref": "AgentConfig" },
@@ -3003,6 +3003,10 @@
           "ref": "VoiceSttConfig",
           "type": "object",
           "properties": {
+            "enabled": {
+              "description": "Enable voice input. When omitted, a configured model enables it.",
+              "type": "boolean"
+            },
             "billingMode": {
               "description": "Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.",
               "type": "string",
@@ -3097,15 +3101,21 @@
               },
               "additionalProperties": false
             },
-            "baseURL": { "description": "Base URL for the speech-to-text API (OpenAI-compatible)", "type": "string" },
-            "apiKey": { "description": "API key for the speech-to-text service", "type": "string" },
+            "baseURL": {
+              "description": "OpenAI-compatible endpoint. Null restores the default endpoint.",
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
+            },
+            "apiKey": {
+              "description": "Speech-to-text credential. Null removes the credential.",
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
+            },
             "model": {
               "description": "Speech-to-text model name. Voice input is disabled when not set.",
               "type": "string"
             },
             "language": {
               "description": "BCP-47 language hint for transcription, e.g. zh, en. Auto-detected when not set.",
-              "type": "string"
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
             }
           },
           "additionalProperties": false
@@ -3115,6 +3125,10 @@
           "ref": "VoiceTtsConfig",
           "type": "object",
           "properties": {
+            "enabled": {
+              "description": "Enable speech output. When omitted, a configured model enables it.",
+              "type": "boolean"
+            },
             "billingMode": {
               "description": "Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.",
               "type": "string",
@@ -3209,16 +3223,25 @@
               },
               "additionalProperties": false
             },
-            "baseURL": { "description": "Base URL for the text-to-speech API (OpenAI-compatible)", "type": "string" },
-            "apiKey": { "description": "API key for the text-to-speech service", "type": "string" },
+            "baseURL": {
+              "description": "OpenAI-compatible endpoint. Null restores the default endpoint.",
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
+            },
+            "apiKey": {
+              "description": "Text-to-speech credential. Null removes the credential.",
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
+            },
             "model": {
               "description": "Text-to-speech model name. The speak tool is disabled when not set.",
               "type": "string"
             },
-            "voice": { "description": "Voice name for synthesis (provider-specific, e.g. alloy)", "type": "string" },
+            "voice": {
+              "description": "Voice name for synthesis. Null restores the service default.",
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
+            },
             "instructions": {
               "description": "Natural-language delivery instructions applied to synthesized speech, e.g. tone and pace",
-              "type": "string"
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
             }
           },
           "additionalProperties": false
@@ -3233,7 +3256,7 @@
     },
     "theme": { "description": "Theme name to use for the interface", "type": "string" },
     "activityDisplay": {
-      "description": "How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced)",
+      "description": "Execution process detail: full = expanded process, balanced = current stage with completed process collapsed, minimal = compact progress. All modes use the same process view (default: balanced)",
       "type": "string",
       "enum": ["full", "balanced", "minimal"]
     },
@@ -3246,7 +3269,10 @@
       "description": "Execution profile for new Web/Desktop composer sessions. Omitted follows the global resource default; null disables execution selection. References an existing global profile without defining hosts or credentials.",
       "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
     },
-    "compactReasoning": { "description": "Show live reasoning in a compact single-line viewport", "type": "boolean" },
+    "compactReasoning": {
+      "description": "Show a compact reasoning preview in the execution process (default: false)",
+      "type": "boolean"
+    },
     "quick_switcher": {
       "description": "Quick switcher model visibility preferences",
       "ref": "QuickSwitcherConfig",

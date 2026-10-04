@@ -49,7 +49,7 @@ An experience retains:
 
 The reward dimensions are outcome, intent understanding, execution, orchestration, and expression. Their configured weights produce a composite reward, while per-dimension Q-values evolve as related outcomes are observed. This supports retrieval based on both semantic similarity and accumulated usefulness rather than treating every past turn equally.
 
-Memory and Experience retrieval run in parallel during prompt preparation. An embedding failure does not prevent always-on Memory from being injected; experience retrieval simply contributes no result when its required vector path is unavailable.
+Memory and Experience retrieval share one query embedding and then run in parallel during prompt preparation. Automatic recall has a three-second budget; timeout cancels the request and keeps always-on Memory. An embedding failure is not retried independently by the two retrieval branches and does not prevent always-on Memory from being injected; experience retrieval contributes no result when its required vector path is unavailable. Explicit Library searches retain their separate execution budget.
 
 When the session loop detects the same context-pressure signal that can initiate compaction, the hidden `chronicler` may start a silent, unattended child session. It receives the current model-visible conversation, searches existing Memory, and writes or refines durable knowledge when `library.memory.enabled` is active and its model role is available. This job is asynchronous and best-effort: it does not block compaction or guarantee that every conversation becomes Memory.
 

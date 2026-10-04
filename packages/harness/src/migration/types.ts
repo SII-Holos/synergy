@@ -2,6 +2,8 @@ export interface Migration {
   id: string
   description: string
   up(progress: (current: number, total: number, phase?: number) => void): Promise<void>
+  upgradeConfig?(config: Record<string, unknown>): void
+  upgradeRecord?(key: string[], record: Record<string, unknown>): void
   down?(progress: (current: number, total: number) => void): Promise<void>
   dependsOn?: string[]
   version?: string

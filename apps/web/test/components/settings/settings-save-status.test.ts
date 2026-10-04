@@ -55,7 +55,7 @@ describe("Settings footer save status", () => {
   })
 })
 
-test("treats personalize loading as an active save state", () => {
+test("distinguishes loading preferences from saving preferences", () => {
   expect(
     settingsSaveFooterStatus({
       saving: false,
@@ -65,5 +65,21 @@ test("treats personalize loading as an active save state", () => {
       server: "idle",
       personalize: "loading",
     }),
-  ).toBe("saving")
+  ).toBe("loading")
+})
+
+test("validation and persisted changes awaiting a read have different recovery states", () => {
+  const base = {
+    saving: false,
+    dirty: true,
+    resultCurrent: true,
+    server: "idle" as const,
+    personalize: "idle" as const,
+  }
+  expect(settingsSaveFooterStatus({ ...base, aggregate: "invalid" })).toBe("invalid")
+  expect(settingsSaveFooterStatus({ ...base, aggregate: "refresh", refreshPending: true })).toBe("refresh")
+  expect(settingsSaveFooterStatus({ ...base, aggregate: "partial" })).toBe("partial")
+  expect(settingsSaveFooterStatus({ ...base, resultCurrent: false, aggregate: "refresh", refreshPending: true })).toBe(
+    "refresh",
+  )
 })

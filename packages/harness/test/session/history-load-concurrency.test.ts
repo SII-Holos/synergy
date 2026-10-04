@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { describe, expect, spyOn, test } from "bun:test"
 import { Identifier } from "../../src/id/id"
 import { ScopeContext } from "../../src/scope/context"
@@ -21,7 +22,7 @@ async function writeAnchoredUser(sessionID: string, text: string): Promise<Messa
     id: Identifier.ascending("message"),
     role: "user",
     sessionID,
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test-provider", modelID: "test-model" },
     time: { created: Date.now() },
   })) as MessageV2.User

@@ -295,7 +295,12 @@ export const WorkspaceFilesRoute = () =>
       }),
       validator("query", WorkspaceReferenceQuery),
       async (c) => {
-        return c.json(await WorkspaceFileStatus.summary())
+        const summary = await WorkspaceFileStatus.summary()
+        if (summary.sync) {
+          c.header("x-synergy-epoch", summary.sync.epoch)
+          c.header("x-synergy-seq", String(summary.sync.seq))
+        }
+        return c.json(summary)
       },
     )
     .get(

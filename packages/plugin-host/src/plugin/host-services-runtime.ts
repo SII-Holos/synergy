@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { PluginInvocationWorkspace } from "./invocation-workspace"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
@@ -537,7 +538,7 @@ async function resolveStartParent(
     pluginDir: input.pluginDir,
     sessionID,
     messageID,
-    agent: actor.type === "agent" ? actor.agent : "synergy",
+    agent: actor.type === "agent" ? actor.agent : PrimaryAgentIdentity.names.general,
     callID: actor.type === "agent" ? actor.callId : undefined,
     directory: ScopeContext.current.workspace?.path,
     abort: input.signal,

@@ -60,7 +60,7 @@ export const PI = {
   worktreeUnavailableDescription: {
     id: "prompt.submit.worktreeUnavailable.description",
     message:
-      "This session's worktree no longer exists. Your prompt was restored. Restore the missing worktree or move to another session before trying again.",
+      "This session's worktree is no longer available. Your prompt was restored. Move to another session before trying again.",
   },
   worktreeUnavailableClose: {
     id: "prompt.submit.worktreeUnavailable.close",

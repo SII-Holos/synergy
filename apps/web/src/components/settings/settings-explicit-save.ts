@@ -1,6 +1,17 @@
+import type { SettingsDomainResult } from "./settings-domain-save"
+
+export type SettingsSaveOutcome = {
+  phase: "complete" | "write" | "refresh"
+  error?: unknown
+  domains?: SettingsDomainResult[]
+}
+
 export type ExplicitSettingsSaveSource = {
+  name?: string
+  page?: string
+  validate?(): boolean
   dirty(): boolean
-  save(): Promise<boolean>
+  save(): Promise<boolean | SettingsSaveOutcome>
 }
 
 export function hasExplicitSettingsChanges(sources: ExplicitSettingsSaveSource[]) {
@@ -52,17 +63,41 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export async function saveExplicitSettingsChanges(sources: ExplicitSettingsSaveSource[]) {
-  const active = sources.filter((source) => source.dirty())
-  if (active.length === 0) return false
+  return (await saveSettingsSources(sources)).saved
+}
 
-  const results = await Promise.all(
-    active.map(async (source) => {
-      try {
-        return await source.save()
-      } catch {
-        return false
-      }
-    }),
-  )
-  return results.every(Boolean)
+export async function saveSettingsSources(sources: ExplicitSettingsSaveSource[]) {
+  const active = sources.filter((source) => source.dirty())
+  const invalid = active.filter((source) => source.validate?.() === false)
+  const results = invalid.length
+    ? []
+    : await Promise.all(
+        active.map(async (source) => {
+          let outcome: SettingsSaveOutcome
+          try {
+            const result = await source.save()
+            outcome = typeof result === "boolean" ? { phase: result ? "complete" : "write" } : result
+          } catch (error) {
+            outcome = { phase: "write", error }
+          }
+          return { source, outcome }
+        }),
+      )
+  const failed = invalid.length
+    ? invalid
+    : results.filter(({ outcome }) => outcome.phase === "write").map(({ source }) => source)
+  const successful = results.filter(({ outcome }) => outcome.phase === "complete").map(({ source }) => source)
+  const refreshPending = results
+    .filter(
+      ({ outcome }) => outcome.phase === "refresh" || outcome.domains?.some((domain) => domain.phase === "refresh"),
+    )
+    .map(({ source }) => source)
+  return {
+    saved: active.length > 0 && !failed.length && !refreshPending.length,
+    invalid: invalid.length > 0,
+    failed,
+    successful,
+    refreshPending,
+    results,
+  }
 }

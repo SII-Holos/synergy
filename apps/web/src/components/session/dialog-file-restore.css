@@ -1,0 +1,59 @@
+.file-restore-dialog .file-restore-files {
+  overflow: auto;
+  max-height: 55dvh;
+  padding: 0 24px 16px;
+}
+.file-restore-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.file-restore-direction {
+  color: var(--text-weak);
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+.file-restore-error {
+  color: var(--text-on-error-base);
+  white-space: pre-wrap;
+  margin-bottom: 12px;
+}
+.file-restore-file {
+  border-bottom: 1px solid var(--border-weak-base);
+}
+.file-restore-file > button {
+  display: flex;
+  width: 100%;
+  gap: 12px;
+  padding: 12px 0;
+  text-align: left;
+  align-items: center;
+  justify-content: space-between;
+}
+.file-restore-file > button > span:first-child {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.file-restore-file > button > span:last-child {
+  color: var(--text-weak);
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.file-restore-file > button:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+.file-restore-file > p {
+  color: var(--text-weak);
+  padding-block: 8px;
+}
+@media (max-width: 480px) {
+  .file-restore-dialog .file-restore-files {
+    padding-inline: 16px;
+  }
+  .file-restore-file > button {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+}

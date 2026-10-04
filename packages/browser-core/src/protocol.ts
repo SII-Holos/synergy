@@ -2,7 +2,7 @@ import z from "zod"
 
 import { BrowserProfileIdSchema } from "./profile.js"
 
-export const BROWSER_PROTOCOL_VERSION = 4 as const
+export const BROWSER_PROTOCOL_VERSION = 5 as const
 export const BROWSER_HOST_INSTALL_TIMEOUT_MS = 120_000
 export const BROWSER_HOST_START_TIMEOUT_MS = 30_000
 export const BROWSER_HOST_WAIT_TIMEOUT_MS = 5_000
@@ -1335,6 +1335,8 @@ export const BrowserEventSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("agent.activity"),
+      sessionID: nonEmpty,
+      operationID: nonEmpty,
       protocolVersion,
       seq: z.number().int().nonnegative(),
       epoch: nonEmpty,

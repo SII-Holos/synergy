@@ -187,6 +187,11 @@ test("Home Browser descriptors and navigation policy do not require a filesystem
   expect(body.status).toBe("empty")
 }, 30_000)
 
+async function verifyReleasedPort(port: number) {
+  const probe = Bun.serve({ hostname: "127.0.0.1", port, fetch: () => new Response("available") })
+  await probe.stop(true)
+}
+
 test("closing HTTP runtimes releases their application and configuration", async () => {
   async function cycle() {
     await using fixture = await runtimeHome()
@@ -195,7 +200,8 @@ test("closing HTTP runtimes releases their application and configuration", async
       mode: "oneshot",
       network: { hostname: "127.0.0.1", port: 0 },
     })
-    const response = await fetch(`http://127.0.0.1:${runtime.server.port}/global/health`)
+    const port = runtime.server.port!
+    const response = await fetch(`http://127.0.0.1:${port}/global/health`)
     expect(response.status).toBe(200)
     await response.arrayBuffer()
     const owner = runtime.run(RuntimeContext.current)
@@ -205,6 +211,7 @@ test("closing HTTP runtimes releases their application and configuration", async
         fn: () => ObservabilityContext.withContextAsync({ module: "server" }, () => runtime.close()),
       }),
     )
+    await RuntimeContext.exit(() => verifyReleasedPort(port))
     return [new WeakRef(runtime.config), new WeakRef(owner)]
   }
   const references = [await cycle(), await cycle(), await cycle()].flat()

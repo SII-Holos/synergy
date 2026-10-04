@@ -26,6 +26,7 @@ import { ObservabilityConfig } from "../observability/config"
 import { Global } from "../global/index"
 import { Experiment } from "../config/experiment"
 import { Session } from "../session/index"
+import { SessionHistorySearch } from "../session/history-search"
 import { SessionManager } from "../session/manager"
 import { SessionCortexRuntime } from "../session/cortex-runtime"
 import { SessionAbort } from "../session/abort"
@@ -179,6 +180,7 @@ export namespace RuntimeHandle {
           return
         }
         for (const stop of stopBackground) await cleanup(stop)
+        await cleanup(() => SessionHistorySearch.stop())
         await cleanup(() => StorageRetention.stop())
         await cleanup(() => stopReclamation?.())
         await cleanup(() => stopEnvironments?.())

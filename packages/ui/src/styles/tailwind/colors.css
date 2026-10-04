@@ -160,6 +160,7 @@
   --color-surface-base-hover: var(--surface-base-hover);
   --color-surface-base-interactive-active: var(--surface-base-interactive-active);
   --color-surface-brand-base: var(--surface-brand-base);
+  --color-surface-brand-image: var(--surface-brand-image);
   --color-surface-brand-hover: var(--surface-brand-hover);
   --color-surface-critical-base: var(--surface-critical-base);
   --color-surface-critical-solid: var(--surface-critical-solid);

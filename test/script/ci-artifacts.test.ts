@@ -117,6 +117,7 @@ test("build identity follows newly added transitive workspace inputs", async () 
 test("shared preparation compiles the committed SDK without regenerating its inputs", () => {
   const recipes = buildCommands()
   expect(recipes.find((command) => command.cwd.endsWith("packages/sdk/js"))!.args).toContain("--compile-only")
+  expect(recipes.some((command) => command.cwd.endsWith(path.join("packages", "testing")))).toBe(false)
   expect(recipes.at(-1)!.cwd).toEndWith("packages/plugin")
 })
 
@@ -158,6 +159,32 @@ test("the shared Web build is restored once and rejects changed source or output
     await symlink(os.tmpdir(), path.join(root, "apps/web/custom-elements.d.ts"))
     await expect(buildIdentity(root)).rejects.toThrow("outside")
   } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("intermediate build reuse excludes Web and tested SHA but still rejects changed module bytes", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ci-intermediate-"))
+  const previous = process.env.SYNERGY_CI_WEB_BUILD
+  const sha = process.env.SYNERGY_CI_TESTED_SHA
+  try {
+    await inputs(root)
+    process.env.SYNERGY_CI_WEB_BUILD = "true"
+    process.env.SYNERGY_CI_TESTED_SHA = "first"
+    await Bun.write(path.join(root, "packages/plugin/dist/index.js"), "verified plugin")
+    await Bun.write(path.join(root, "packages/local-runtime/.artifacts/watcher/watcher"), "verified watcher")
+    await publishBuild(root, "intermediate")
+    process.env.SYNERGY_CI_TESTED_SHA = "second"
+    await Bun.write(path.join(root, "apps/web/dist/index.html"), "current web")
+    await restoreBuild(root, "intermediate")
+    expect(await Bun.file(path.join(root, "apps/web/dist/index.html")).text()).toBe("current web")
+    await Bun.write(path.join(root, ".artifacts/ci/intermediate/packages/plugin/dist/index.js"), "corrupt")
+    await expect(restoreBuild(root, "intermediate")).rejects.toThrow("changed")
+  } finally {
+    if (previous === undefined) delete process.env.SYNERGY_CI_WEB_BUILD
+    else process.env.SYNERGY_CI_WEB_BUILD = previous
+    if (sha === undefined) delete process.env.SYNERGY_CI_TESTED_SHA
+    else process.env.SYNERGY_CI_TESTED_SHA = sha
     await rm(root, { recursive: true, force: true })
   }
 })

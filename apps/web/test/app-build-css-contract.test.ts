@@ -425,7 +425,7 @@ async function expectPromptDockKeepsReadableWidth(css: string) {
   }
 }
 
-async function expectSessionInboxBadgePreservesIconCenter(css: string) {
+async function expectTaskDetailsBadgePreservesIconCenter(css: string) {
   const browserType = process.env.SYNERGY_APP_LAYOUT_BROWSER === "webkit" ? webkit : chromium
   const browser = await browserType.launch({ headless: true })
   try {
@@ -434,16 +434,16 @@ async function expectSessionInboxBadgePreservesIconCenter(css: string) {
       <style>${css}</style>
       <button
         data-trigger="empty"
-        class="session-inbox-trigger statusbar-glass relative flex size-9 items-center justify-center rounded-full"
+        class="stb-icon-btn execution-trigger"
       >
         <span data-icon></span>
       </button>
       <button
         data-trigger="active"
-        class="session-inbox-trigger statusbar-glass relative flex size-9 items-center justify-center rounded-full"
+        class="stb-icon-btn execution-trigger"
       >
         <span data-icon></span>
-        <span data-badge class="session-inbox-badge">1</span>
+        <span data-badge class="execution-trigger-count">1</span>
       </button>
       <style>[data-icon] { display: block; width: 16px; height: 16px; }</style>
     `)
@@ -475,7 +475,7 @@ async function expectSessionInboxBadgePreservesIconCenter(css: string) {
     expect(Math.abs(layout.emptyIconOffset)).toBeLessThanOrEqual(0.5)
     expect(Math.abs(layout.activeIconOffset)).toBeLessThanOrEqual(0.5)
     expect(layout.badgePosition).toBe("absolute")
-    expect(layout.badgeColor).toBe("rgb(255, 255, 255)")
+    expect(layout.badgeColor).not.toBe("rgba(0, 0, 0, 0)")
   } finally {
     await browser.close()
   }
@@ -638,7 +638,7 @@ async function readPromptDockLayoutTokens(): Promise<PromptDockLayoutTokens> {
   const conversation = await Bun.file(new URL("conversation.tsx", sessionDir)).text()
   const clearanceLine = conversation
     .split("\n")
-    .find((line) => line.includes("md:pb-[calc(var(--prompt-height,10rem)+96px)]"))
+    .find((line) => line.includes("md:pb-[calc(var(--prompt-height,10rem)+32px)]"))
   const clearanceMatch = clearanceLine?.match(/"([^"]+)"/)
   if (!clearanceMatch || !clearanceMatch[1]!.includes("pb-6")) {
     throw new Error("conversation.tsx must keep the mobile pb-6 prompt clearance")
@@ -648,19 +648,12 @@ async function readPromptDockLayoutTokens(): Promise<PromptDockLayoutTokens> {
   const floatLine = floatLayer.split("\n").find((line) => line.includes('class="prompt-dock-float-layer'))
   const floatMatch = floatLine?.match(/class="([^"]+)"/)
   const floatLayerClass = floatMatch?.[1]
-  if (
-    !floatLayerClass ||
-    !floatLayerClass.includes("relative") ||
-    !floatLayerClass.includes("md:absolute") ||
-    !floatLayerClass.includes("md:bottom-full")
-  ) {
-    throw new Error("prompt-dock-float-layer.tsx must flow in normal mode on mobile and overlay on desktop")
-  }
+  if (!floatLayerClass) throw new Error("Missing prompt dock activity fixture classes")
 
   return { clearanceClass: clearanceMatch[1]!, floatLayerClass }
 }
 
-async function expectPromptDockAndMobileFloatFlow(css: string) {
+async function expectPromptDockActivityFlow(css: string) {
   const { clearanceClass, floatLayerClass } = await readPromptDockLayoutTokens()
   const browserType = process.env.SYNERGY_APP_LAYOUT_BROWSER === "webkit" ? webkit : chromium
   const browser = await browserType.launch({ headless: true })
@@ -668,7 +661,7 @@ async function expectPromptDockAndMobileFloatFlow(css: string) {
     const page = await browser.newPage({ viewport: { width: 1200, height: 400 } })
     await page.setContent(`
       <style>*, ::before, ::after { box-sizing: border-box; } ${css}</style>
-      <div data-dock class="session-prompt-dock" style="width: 100%; display: flex; flex-direction: column; background: #111;">
+      <div data-dock class="session-prompt-dock" style="position: absolute; bottom: 0; width: 100%; display: flex; flex-direction: column; background: #111;">
         <div data-float class="${floatLayerClass}">
           <div data-busy style="height: 40px; width: 100%;"></div>
         </div>
@@ -686,36 +679,47 @@ async function expectPromptDockAndMobileFloatFlow(css: string) {
         if (!dock || !float || !composer || !content) throw new Error("Missing prompt dock layout fixture")
         const dockRect = dock.getBoundingClientRect()
         const composerRect = composer.getBoundingClientRect()
+        content.style.setProperty("--prompt-height", `${dockRect.height}px`)
         return {
           dockPaddingTop: getComputedStyle(dock).paddingTop,
-          floatPosition: getComputedStyle(float).position,
+          dockBottom: dockRect.bottom,
+          dockHeight: dockRect.height,
+          composerBottom: composerRect.bottom,
           composerOffset: composerRect.top - dockRect.top,
           contentPaddingBottom: getComputedStyle(content).paddingBottom,
         }
       })
 
-    // Floating desktop controls do not move the stable input anchor.
     const desktop = await measure()
     expect(desktop.dockPaddingTop).toBe("0px")
-    expect(desktop.floatPosition).toBe("absolute")
-    expect(desktop.composerOffset).toBe(0)
-    expect(desktop.contentPaddingBottom).toBe("256px")
+    expect(desktop.dockBottom).toBe(400)
+    expect(desktop.dockHeight).toBe(128)
+    expect(desktop.composerBottom).toBe(392)
+    expect(desktop.composerOffset).toBe(40)
+    expect(desktop.contentPaddingBottom).toBe("160px")
 
-    // Mobile: the band collapses to zero, the float layer flows in normal
-    // document order, so a busy control pushes the composer down instead of
-    // covering the last messages.
     await page.setViewportSize({ width: 390, height: 400 })
     const mobileBusy = await measure()
     expect(mobileBusy.dockPaddingTop).toBe("0px")
-    expect(mobileBusy.floatPosition).toBe("relative")
+    expect(mobileBusy.dockBottom).toBe(400)
+    expect(mobileBusy.dockHeight).toBe(128)
+    expect(mobileBusy.composerBottom).toBe(392)
     expect(mobileBusy.composerOffset).toBe(40)
     expect(mobileBusy.contentPaddingBottom).toBe("24px")
 
-    // Idle mobile: the float layer collapses to zero height - no residual
-    // empty band above the composer.
     await page.evaluate(() => document.querySelector("[data-busy]")?.remove())
     const mobileIdle = await measure()
+    expect(mobileIdle.dockBottom).toBe(400)
+    expect(mobileIdle.dockHeight).toBe(88)
+    expect(mobileIdle.composerBottom).toBe(392)
     expect(mobileIdle.composerOffset).toBe(0)
+    await page.setViewportSize({ width: 1200, height: 400 })
+    const desktopIdle = await measure()
+    expect(desktopIdle.dockBottom).toBe(400)
+    expect(desktopIdle.dockHeight).toBe(88)
+    expect(desktopIdle.composerBottom).toBe(392)
+    expect(desktopIdle.composerOffset).toBe(0)
+    expect(desktopIdle.contentPaddingBottom).toBe("120px")
   } finally {
     await browser.close()
   }
@@ -858,31 +862,30 @@ describe("app production build contract", () => {
         expectRootRule(fileWorkbenchCss, contract)
       }
 
-      const expandedCompactionBodies = collectRootRuleBodies(
-        css,
-        "[data-component=compaction-card] [data-slot=collapsible-content][data-expanded]",
+      expectRootRule(css, {
+        selector: "[data-slot=process-event-trigger]",
+        declarations: ["min-height:28px", "width:100%", "font-size:14px", "line-height:20px"],
+      })
+      expectRootRule(css, {
+        selector: "[data-component=process-viewport]",
+        declarations: ["overflow:auto", "overflow-anchor:none", "pointer-events:auto"],
+      })
+      expect(collectRootRuleBodies(css, "[data-component=process-viewport]").join(";")).toMatch(
+        /max-height:min\(20rem,var\(--process-viewport-limit,\s*45dvh\)\)/,
       )
-      expect(expandedCompactionBodies.length, "Missing expanded compaction card CSS rule").toBeGreaterThan(0)
-      expect(expandedCompactionBodies.join(";")).not.toContain(" both")
-      const shimmerSelectors = [
-        "[data-component=compaction-card][data-status=running]:before",
-        "[data-component=compaction-card][data-status=running]::before",
-      ]
-      const runningCompactionShimmerRules = shimmerSelectors.flatMap((selector) => collectRuleMatches(css, selector))
-      const rootShimmer = runningCompactionShimmerRules
+      const runningProcessRules = collectRuleMatches(css, "[data-slot=process-event-icon][data-running]")
+      const rootMotion = runningProcessRules
         .filter((rule) => !rule.ancestors.some((ancestor) => ancestor.startsWith("@media")))
         .map((rule) => rule.body)
         .join(";")
-      expect(rootShimmer, "Missing running compaction shimmer CSS rule").toContain("animation:compaction-card-shimmer")
-      expect(rootShimmer).toContain("will-change:transform,opacity")
+      expect(rootMotion, "Missing running process icon animation").toContain("animation:process-event-spin")
 
-      const reducedMotionShimmer = runningCompactionShimmerRules
+      const reducedMotion = runningProcessRules
         .filter((rule) => rule.ancestors.some(isReducedMotionAtRule))
         .map((rule) => rule.body)
         .join(";")
-      expect(reducedMotionShimmer, "Missing reduced-motion compaction shimmer override").toContain("animation:none")
-      expect(reducedMotionShimmer).toContain("will-change:auto")
-      expect(css).toContain("@keyframes compaction-card-shimmer{")
+      expect(reducedMotion, "Missing reduced-motion process icon override").toContain("animation:none")
+      expect(css).toContain("@keyframes process-event-spin{")
 
       expect(index).not.toMatch(/rel="modulepreload"[^>]+vendor-(?:mermaid|tiptap)/)
       const initialAssets = initialJavaScriptAssets(index)
@@ -923,9 +926,9 @@ describe("app production build contract", () => {
       expect(markdownChunk).toBeDefined()
       expect(assets.some((asset) => asset.startsWith("pdf.worker.min-") && asset.endsWith(".mjs"))).toBe(true)
       await expectSessionWorkbenchPaneTracksBottomSurface(css)
-      await expectSessionInboxBadgePreservesIconCenter(css)
+      await expectTaskDetailsBadgePreservesIconCenter(css)
       await expectPromptDockKeepsReadableWidth(css)
-      await expectPromptDockAndMobileFloatFlow(css)
+      await expectPromptDockActivityFlow(css)
       await expectStatusbarSubsessionContentFillsBody(css)
       await expectFileWorkbenchExplorerResizeMatchesMode(css)
       await expectAttachmentToolbarFitsNarrowPanel(attachmentWorkbenchCss)

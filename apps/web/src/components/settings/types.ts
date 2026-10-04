@@ -44,7 +44,7 @@ export const UI_DEFAULTS = {
   activityDisplay: "balanced" as ActivityDisplay,
   username: "" as string,
   snapshot: true,
-  compactReasoning: true,
+  compactReasoning: false,
   permission: "ask" as string, // resolved from backend { "*": "ask" } object
   sandboxEnabled: "true" as string,
   sandboxFallbackPolicy: "warn" as string,
@@ -90,7 +90,7 @@ export const UI_DEFAULTS = {
   lspWriteDiagnostics: "true" as string,
   lspDiagnosticsSeverity: "error" as string,
   lspDiagnosticsScope: "project" as string,
-  defaultAgent: "synergy" as string,
+  defaultAgent: "" as string,
   defaultSessionWorkspace: "main" as NewSessionWorkspacePreference,
 } as const
 

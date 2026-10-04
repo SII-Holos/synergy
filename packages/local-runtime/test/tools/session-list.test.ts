@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -13,7 +14,7 @@ const ctx = {
   sessionID: "ses_source_session_list",
   messageID: "msg_source_session_list",
   callID: "call_source_session_list",
-  agent: "synergy-max",
+  agent: PrimaryAgentIdentity.names.coding,
   abort: AbortSignal.any([]),
   metadata: () => {},
   ask: async () => {},

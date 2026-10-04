@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Channel } from "../../src/channel"
@@ -77,7 +78,7 @@ test("delivers continuation questions from durable channel root metadata after t
           role: "user",
           isRoot: true,
           rootID,
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           model: { providerID: "test-provider", modelID: "test-model" },
           time: { created: Date.now() },
           metadata: {
@@ -91,8 +92,8 @@ test("delivers continuation questions from durable channel root metadata after t
           parentID: rootID,
           rootID,
           role: "assistant",
-          mode: "synergy",
-          agent: "synergy",
+          mode: PrimaryAgentIdentity.names.general,
+          agent: PrimaryAgentIdentity.names.general,
           path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
           cost: 0,
           tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -108,7 +109,7 @@ test("delivers continuation questions from durable channel root metadata after t
           role: "user",
           isRoot: true,
           rootID: newerRootID,
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           model: { providerID: "test-provider", modelID: "test-model" },
           time: { created: Date.now() + 1 },
           metadata: {
@@ -214,7 +215,7 @@ test("delivers to the durable root's real chatId when the session endpoint chatI
           role: "user",
           isRoot: true,
           rootID,
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           model: { providerID: "test-provider", modelID: "test-model" },
           time: { created: Date.now() },
           metadata: {
@@ -229,8 +230,8 @@ test("delivers to the durable root's real chatId when the session endpoint chatI
           parentID: rootID,
           rootID,
           role: "assistant",
-          mode: "synergy",
-          agent: "synergy",
+          mode: PrimaryAgentIdentity.names.general,
+          agent: PrimaryAgentIdentity.names.general,
           path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
           cost: 0,
           tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

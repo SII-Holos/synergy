@@ -8,7 +8,7 @@ Child model requests discard cached context after the first request. A pending c
 
 ## Decision
 
-The session loop tracks the root whose context it has prepared. It collects contributions at that root's first model preparation, replacing any prior task's cache, and reuses the result for subsequent root and child model requests. A successful initial preparation records collection even when no contribution is present. Commitment occurs once for the task. Pre-model compaction does not consume context initialization; a newly materialized Inbox root receives fresh context.
+The session loop tracks the root whose context it has prepared. It collects contributions at that root's first model preparation, replacing any prior task's cache, and reuses the result for subsequent root and child model requests. A successful initial preparation records collection even when no contribution is present. Commitment occurs once per prepared root within that loop; cancellation during collection commits nothing. Pre-model compaction does not consume context initialization; a newly materialized Inbox root receives fresh context, including an empty result that replaces the previous task's context.
 
 The existing contribution deadline, cancellation, fallback, injection metadata and loop-exit eviction remain in place. The Harness continues owning caching while registered domains own context content and retrieval. No host registration or public export changes are required.
 
@@ -20,4 +20,4 @@ The existing contribution deadline, cancellation, fallback, injection metadata a
 
 ## Consequences
 
-Context is stable across tools and real compaction but refreshed at task boundaries. Model-boundary regressions exercise child execution, compaction before the first request, and two Inbox roots within one invocation. The suite uses actual transactional storage and deterministic SDK streams; it is registered for the PostgreSQL matrix, whose real-database execution is separate from SQLite evidence.
+Context is stable across tools and real compaction but refreshed at task boundaries. Model-boundary regressions exercise child execution, compaction before the first request, two Inbox roots within one invocation, empty results and cancellation during collection followed by healthy work. The suite uses actual transactional storage and deterministic SDK streams. The PostgreSQL matrix selects it for every supported database version; SQLite and real PostgreSQL executions provide separate evidence.

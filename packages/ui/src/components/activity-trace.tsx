@@ -1,11 +1,16 @@
 import type { MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
-import { createEffect, createMemo, createSignal, For, lazy, on, onCleanup, Show } from "solid-js"
+import { useResourceOpen } from "../context/resource-open"
+import { useData } from "../context/data"
+import { createEffect, createMemo, createSignal, For, lazy, on, onCleanup, Show, type JSX } from "solid-js"
+import { createDisclosureMotionRef } from "../utils/disclosure-motion"
 import {
   finishActivityCountTransition,
   reduceActivityCountTransition,
   type ActivityCountTransition,
 } from "./activity-count-transition"
+import { Dialog as KobalteDialog } from "@kobalte/core/dialog"
+import { Dialog } from "./dialog"
 import { Collapsible } from "./collapsible"
 import { specializedActivityDetail } from "./activity-specialized-detail-model"
 import { Icon, type IconName } from "./icon"
@@ -47,7 +52,7 @@ export const ACTIVITY_TRACE_DESC = {
     "inspect-local": d("activity.trace.family.inspect-local", "Inspected"),
     "research-web": d("activity.trace.family.research-web", "Researched"),
     "modify-files": d("activity.trace.family.modify-files", "Changed"),
-    execute: d("activity.trace.family.execute", "Ran"),
+    execute: d("activity.trace.family.execute", "Run command"),
     browser: d("activity.trace.family.browser", "Browsed"),
     delegate: d("activity.trace.family.delegate", "Delegated"),
     produce: d("activity.trace.family.produce", "Produced"),
@@ -148,7 +153,7 @@ function familyDescriptor(family: ActivityFamily): MessageDescriptor {
 function familyIcon(family: ActivityFamily) {
   switch (family) {
     case "inspect-local":
-      return "glasses" as const
+      return "file-text" as const
     case "research-web":
       return "globe" as const
     case "modify-files":
@@ -187,11 +192,52 @@ function ActivityState(props: { state: ActivityGroupState; label: string }) {
   )
 }
 
-function ActivityStep(props: { step: ActivityStepProjection; serverUrl: string }) {
+function ActivityStep(props: {
+  step: ActivityStepProjection
+  serverUrl: string
+  hidden?: boolean
+  current?: boolean
+  quiet?: boolean
+  motion?: boolean
+  onFocus?: (partID: string | undefined) => void
+}) {
   const { i18n, _ } = useLingui()
   const [open, setOpen] = createSignal(false)
-  const familyLabel = createMemo(() => localize(familyDescriptor(props.step.family), _))
+  const resources = useResourceOpen()
+  const data = useData()
+  const [responding, setResponding] = createSignal(false)
+  const [responseError, setResponseError] = createSignal<string>()
+  const request = () =>
+    data.view
+      .permissionsFor(props.step.part.sessionID)
+      .find(
+        (request) =>
+          request.tool?.messageID === props.step.part.messageID && request.tool.callID === props.step.part.callID,
+      )
+  createEffect(
+    on(
+      () => request()?.id,
+      () => {
+        setResponding(false)
+        setResponseError(undefined)
+      },
+    ),
+  )
+  const respond = async (response: "once" | "reject") => {
+    const selected = request()
+    if (!selected || responding() || !data.respondToPermission) return
+    setResponding(true)
+    try {
+      await data.respondToPermission({ sessionID: props.step.part.sessionID, permissionID: selected.id, response })
+    } catch (error) {
+      setResponseError(error instanceof Error ? error.message : String(error))
+      setResponding(false)
+    }
+  }
   const title = createMemo(() => localize(props.step.title, _))
+  const label = () =>
+    props.step.part.workBrief?.trim() ||
+    (props.step.subtitle && !title().includes(props.step.subtitle) ? `${title()} · ${props.step.subtitle}` : title())
   const stateLabel = createMemo(() => _(stateDescriptor(props.step.state)))
   const approval = createMemo(() => {
     const metadata = props.step.part.state.metadata
@@ -199,9 +245,26 @@ function ActivityStep(props: { step: ActivityStepProjection; serverUrl: string }
     return (metadata as Record<string, unknown>).approval as Record<string, unknown> | undefined
   })
   const audit = createMemo(() => getApprovalAudit(approval(), i18n()))
+  const motionRef = createDisclosureMotionRef({
+    visible: () => props.hidden !== true,
+    animate: () => props.motion === true,
+    appear: () => props.current === true && props.step.state === "running",
+  })
   return (
-    <li data-slot="activity-step" data-family={props.step.family} data-state={props.step.state}>
-      <Show when={audit().icon}>
+    <li
+      data-slot="activity-step"
+      data-part-id={props.step.part.id}
+      data-family={props.step.family}
+      data-state={props.step.state}
+      data-current={props.current ? "" : undefined}
+      data-working={props.current && props.step.state === "running" ? "" : undefined}
+      ref={motionRef}
+      onFocusIn={() => props.onFocus?.(props.step.part.id)}
+      onFocusOut={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) props.onFocus?.(undefined)
+      }}
+    >
+      <Show when={props.step.state === "error" && audit().icon}>
         <Tooltip
           placement="right"
           class="activity-step-audit-trigger"
@@ -225,41 +288,69 @@ function ActivityStep(props: { step: ActivityStepProjection; serverUrl: string }
           </span>
         </Tooltip>
       </Show>
-      <Collapsible open={open()} onOpenChange={setOpen} variant="ghost">
-        <Collapsible.Trigger data-slot="activity-step-trigger" type="button">
-          <span data-slot="activity-step-icon" aria-hidden="true">
-            <Icon name={props.step.icon} size="small" />
+      <button
+        data-slot="activity-step-trigger"
+        type="button"
+        aria-label={props.step.state === "error" || props.quiet ? `${label()} · ${stateLabel()}` : undefined}
+        aria-pressed={
+          resources?.isToolActivitySelected?.({
+            sessionID: props.step.part.sessionID,
+            messageID: props.step.part.messageID,
+            partID: props.step.part.id,
+            callID: props.step.part.callID,
+          }) ?? open()
+        }
+        onClick={() => {
+          if (
+            !resources?.openToolActivity?.({
+              sessionID: props.step.part.sessionID,
+              messageID: props.step.part.messageID,
+              partID: props.step.part.id,
+              callID: props.step.part.callID,
+            })
+          )
+            setOpen(true)
+        }}
+      >
+        <span data-slot="activity-step-icon" aria-hidden="true">
+          <Icon name={props.step.icon} size="small" />
+        </span>
+        <span data-slot="activity-step-copy">
+          <span data-slot="activity-step-title" title={label()}>
+            {label()}
           </span>
-          <div data-slot="activity-step-copy">
-            <span data-slot="activity-step-family">{familyLabel()}</span>
-            <span data-slot="activity-step-title" title={title()}>
-              {title()}
-            </span>
-            <Show when={props.step.subtitle}>
-              {(subtitle) => (
-                <span data-slot="activity-step-subtitle" title={subtitle()}>
-                  {subtitle()}
-                </span>
-              )}
-            </Show>
-          </div>
+        </span>
+        <Show when={(!props.quiet && props.step.state === "running") || props.step.state === "waiting-approval"}>
           <ActivityState state={props.step.state} label={stateLabel()} />
-          <Icon
-            name={open() ? getSemanticIcon("navigation.collapse") : getSemanticIcon("navigation.expand")}
-            size="small"
-          />
-        </Collapsible.Trigger>
-        <Collapsible.Content>
-          <ToolResultBody
-            part={props.step.part}
-            serverUrl={props.serverUrl}
-            sessionId={props.step.part.sessionID}
-            messageId={props.step.part.messageID}
-            resultOnly
-            defaultOpen
-          />
-        </Collapsible.Content>
-      </Collapsible>
+        </Show>
+      </button>
+      <Show when={request() && data.respondToPermission}>
+        <div data-slot="activity-approval-actions">
+          <button type="button" disabled={responding()} onClick={() => void respond("once")}>
+            {_({ id: "activity.approval.allowOnce", message: "Allow once" })}
+          </button>
+          <button type="button" disabled={responding()} onClick={() => void respond("reject")}>
+            {_({ id: "activity.approval.reject", message: "Decline" })}
+          </button>
+          <Show when={responseError()}>{(error) => <span role="alert">{error()}</span>}</Show>
+        </div>
+      </Show>
+      <KobalteDialog open={open()} onOpenChange={setOpen}>
+        <Show when={open()}>
+          <KobalteDialog.Portal>
+            <Dialog title={label()} size="wide">
+              <ToolResultBody
+                part={props.step.part}
+                serverUrl={props.serverUrl}
+                sessionId={props.step.part.sessionID}
+                messageId={props.step.part.messageID}
+                resultOnly
+                defaultOpen
+              />
+            </Dialog>
+          </KobalteDialog.Portal>
+        </Show>
+      </KobalteDialog>
     </li>
   )
 }
@@ -296,7 +387,17 @@ export function ActivityReasoningSummary(props: { item: ActivityReasoningSummary
   )
 }
 
-export function ActivityTrace(props: { group: ActivityGroupItem; serverUrl: string }) {
+export function ActivityTrace(props: {
+  group: ActivityGroupItem
+  serverUrl: string
+  id?: string
+  visibleSteps?: ReadonlySet<string>
+  currentSteps?: ReadonlySet<string>
+  quiet?: boolean
+  onStepFocus?: (partID: string | undefined) => void
+  motion?: boolean
+  afterStep?: (partID: string) => JSX.Element
+}) {
   const emptyStepSnapshot = {
     keys: [] as string[],
     map: new Map<string, ActivityStepProjection>(),
@@ -313,12 +414,27 @@ export function ActivityTrace(props: { group: ActivityGroupItem; serverUrl: stri
 
   return (
     <div data-component="activity-trace">
-      <ol data-slot="activity-step-list">
+      <ol id={props.id} data-slot="activity-step-list">
         <For each={stepSnapshot().keys}>
           {(key) => {
             const step = () => stepSnapshot().map.get(key)
             return (
-              <Show when={step()}>{(current) => <ActivityStep step={current()} serverUrl={props.serverUrl} />}</Show>
+              <>
+                <Show when={step()}>
+                  {(current) => (
+                    <ActivityStep
+                      step={current()}
+                      serverUrl={props.serverUrl}
+                      hidden={props.visibleSteps !== undefined && !props.visibleSteps.has(key)}
+                      current={props.currentSteps?.has(key)}
+                      quiet={props.quiet}
+                      onFocus={props.onStepFocus}
+                      motion={props.motion}
+                    />
+                  )}
+                </Show>
+                {props.afterStep?.(key)}
+              </>
             )
           }}
         </For>

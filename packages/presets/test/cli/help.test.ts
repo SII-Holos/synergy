@@ -67,19 +67,13 @@ describe("product CLI help", () => {
       expect(help).not.toContain("synergy build")
     }))
 
-  test("send documents explicit scope selection and cwd fallback", () =>
+  test("send documents scope selection, cwd fallback and the lightloop workflow", () =>
     runtime.run(async () => {
       const help = await cliHelp(["send", "--help"])
 
       expect(help).toContain("--scope")
       expect(help).toContain("registered scope id")
       expect(help).toContain("current directory")
-    }))
-
-  test("send documents the lightloop workflow option", () =>
-    runtime.run(async () => {
-      const help = await cliHelp(["send", "--help"])
-
       expect(help).toContain("--workflow")
       expect(help).toContain("lightloop")
     }))

@@ -17,6 +17,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     `
     export const optionalRequests = []
     export const requests = []
+    export const modelRequests = []
     export const replays = []
     export const lists = []
     export const inboxRequests = []
@@ -28,13 +29,14 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     export const seedStatuses = () => Promise.resolve({data:{"remote-runner":{type:"busy"},"remote-paused":{type:"paused",reason:"aborted",since:1}},response:{headers:{get:name=>name==="x-synergy-seq"?"0":name==="x-synergy-epoch"?"test-epoch":undefined}}})
     export function createSynergyClient(options) {
       return {
-        scope: { bootstrap: () => options.scopeID.startsWith("background.") ? ok({scopeID:options.scopeID,provider:{all:[]},agent:[],config:{}}) : new Promise(resolve => requests.push({key:options.scopeID,resolve})) },
+        scope: { bootstrapCore: () => (options.scopeID === "home" || options.scopeID.startsWith("background.")) ? ok({scopeID:options.scopeID,provider:{all:[]},agent:[],config:{}}) : new Promise(resolve => requests.push({key:options.scopeID,resolve})) },
+        provider:{modelsById:()=>new Promise(resolve=>modelRequests.push(resolve)),catalogPage:()=>new Promise(resolve=>modelRequests.push(resolve))},
         permission: {list:()=>ok([])}, question: {list:()=>ok([])},
         event:{replay:()=>new Promise(resolve=>replays.push(resolve))},
         session:{list:()=>new Promise(resolve=>lists.push(resolve)),inbox:()=>{inboxRequests.push(options.scopeID);inboxReady();return ok([])}},
       }
     }
-    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>false},prepareScopeState(){},connected:()=>false,event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
+    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>false},prepareScopeState(){},connected:()=>false,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>{optionalRequests.push("agenda");return ok([])}}},
       scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:seedStatuses},
     }})
@@ -58,13 +60,13 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     import { I18nProvider } from "@lingui/solid"
     import { setupI18n } from "@lingui/core"
     import { GlobalSyncProvider, useGlobalSync } from ${JSON.stringify(globalSync)}
-    import { requests, replays, lists, emit, inboxRequests, inboxArrived, optionalRequests } from ${JSON.stringify(stub)}
+    import { requests, modelRequests, replays, lists, emit, inboxRequests, inboxArrived, optionalRequests } from ${JSON.stringify(stub)}
     export function mount(root) {
       let api, ready
       const started = new Promise(resolve=>ready=resolve)
       function Child(){api=useGlobalSync();ready();return <div>ready</div>}
       const dispose=render(()=><I18nProvider i18n={setupI18n({locale:'en',messages:{en:{}}})}><GlobalSyncProvider><Child/></GlobalSyncProvider></I18nProvider>,root)
-      return {started,dispose,requests,emit,replays,lists,inboxRequests,inboxArrived,optionalRequests,api:()=>api,
+      return {started,dispose,requests,modelRequests,emit,replays,lists,inboxRequests,inboxArrived,optionalRequests,api:()=>api,
         seedInbox(key) {api.ensureScopeState(key)[1]("inbox","fixture-session",[{id:"pending"}])},
         complete(index,version) {const request=requests[index];request.resolve({data:{scopeID:request.key,provider:{all:[]},agent:[],config:{version}}})},
         waitComplete(state) {return new Promise(resolve=>createRoot(dispose=>createComputed(()=>{if(state[0].status==='complete'){dispose();resolve()}})))},
@@ -125,6 +127,8 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       retainScopeState(key: string): { state: State; release(): void }
       peekScopeState(key: string): State | undefined
       ensureScopeState(key: string): State
+      ensureModels(key: string, models: { providerID: string; modelID: string }[]): Promise<void>
+      loadModelCatalog(key: string): Promise<void>
       beginContextProjection(key: string, sessionID: string): number
       setLatestContextMessage(key: string, sessionID: string, message: null, revision: number): void
       failure: unknown
@@ -139,6 +143,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
         complete(index: number, version: string): void
         optionalRequests: string[]
         requests: unknown[]
+        modelRequests: Array<(value: unknown) => void>
         emit(key: string, seq: number): void
         seedInbox(key: string): void
         inboxRequests: string[]
@@ -240,6 +245,22 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       api.setLatestContextMessage("shared", "never-loaded", null, pendingRevision)
       expect(latest.state[0].latestContextMessage["never-loaded"]).toBeUndefined()
       latest.release()
+      for (const operation of ["ensureModels", "loadModelCatalog"] as const) {
+        const key = `background.models.${operation}`
+        const lease = api.retainScopeState(key)
+        await h.waitComplete(lease.state)
+        const pending =
+          operation === "ensureModels"
+            ? api.ensureModels(key, [{ providerID: "test", modelID: "test" }])
+            : api.loadModelCatalog(key)
+        const settled = pending.catch(() => {})
+        lease.release()
+        await evictInactive()
+        expect(api.peekScopeState(key)).toBeUndefined()
+        h.modelRequests.at(-1)!({ data: { models: [], total: 0 } })
+        await settled
+        expect(api.peekScopeState(key)).toBeUndefined()
+      }
       const first = api.retainScopeState("/repo")
       const neighbor = api.retainScopeState("/repo:variant")
       h.seedInbox("/repo")

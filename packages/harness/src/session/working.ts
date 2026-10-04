@@ -1,6 +1,6 @@
 import { Log } from "../util/log"
 import { SessionManager } from "./manager"
-import type { StatusInfo, WorkingInfo } from "./types"
+import type { Info, StatusInfo, WorkingInfo } from "./types"
 
 const log = Log.create({ service: "session.working" })
 
@@ -18,16 +18,16 @@ const log = Log.create({ service: "session.working" })
  * that a turn is running, and projecting it as work is what let a dead process
  * pin a session in a state no control could clear.
  */
-export async function resolve(sessionID: string): Promise<WorkingInfo | undefined> {
+export async function resolve(sessionID: string, stored?: Pick<Info, "paused">): Promise<WorkingInfo | undefined> {
   if (SessionManager.isRunning(sessionID)) {
     const runtime = SessionManager.getRuntime(sessionID)
     const status = runtime?.status
-    if (status?.type === "busy") return { status: "busy", description: status.description }
+    if (status?.type === "busy") return { status: "busy", description: status.description, activity: status.activity }
     if (status?.type === "retry")
       return { status: "retry", attempt: status.attempt, message: status.message, next: status.next }
   }
 
-  const session = await SessionManager.getSession(sessionID)
+  const session = stored ?? (await SessionManager.getSession(sessionID))
   if (!session?.paused) return undefined
   log.info("resolved paused session", { sessionID, reason: session.paused.reason })
   return {
@@ -41,7 +41,7 @@ export async function resolve(sessionID: string): Promise<WorkingInfo | undefine
 export function toStatus(working: WorkingInfo): StatusInfo {
   switch (working.status) {
     case "busy":
-      return { type: "busy", description: working.description }
+      return { type: "busy", description: working.description, activity: working.activity }
     case "retry":
       return { type: "retry", attempt: working.attempt, message: working.message, next: working.next }
     case "paused":

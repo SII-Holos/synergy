@@ -1,4 +1,7 @@
-import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { WorkspaceMobileHeader } from "@/components/workspace/mobile-header"
+import { useWorkspaceMobileHeaderClose } from "@/components/workspace/mobile-header-close"
+import { AppPanel } from "@/components/app-panel"
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, type Accessor } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useNavigate } from "@solidjs/router"
 import { useLingui } from "@lingui/solid"
@@ -13,6 +16,7 @@ import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
 import { planMessagePageApply } from "@/context/session-message-page"
 import { scopeKeyForNavEntry } from "@/components/sidebar/session-visual-state"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { kanbanPage } from "@/locales/messages"
 import { resolveActivityDisplay } from "@ericsanchezok/synergy-ui/session-turn-activity"
 import type { ControlProfileId } from "@/context/input"
@@ -49,6 +53,8 @@ const EMPTY_BOARD_PANE_DATA: BoardPaneData = {
 
 export function KanbanPanel() {
   const { _ } = useLingui()
+  const onCloseWorkspace = useWorkspaceMobileHeaderClose()
+  const [drafts, setDrafts] = createStore<Record<string, string>>({})
   const navigate = useNavigate()
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
@@ -235,34 +241,70 @@ export function KanbanPanel() {
     })
   }
 
-  const renderPane = (pane: BoardPane, variant: "focus" | "rail" | "default" = "default") => {
+  const renderPane = (
+    pane: Accessor<BoardPane>,
+    variant: "focus" | "rail" | "default" = "default",
+    onActivate?: () => void,
+  ) => {
     // Render the pane shell unconditionally: the scope store may not exist
     // yet on first paint (it is created lazily by the loader), so fall back to
     // empty data and let the pane show its header/loading state until the
     // first message-page apply populates the store (which re-renders).
-    const child =
-      pane.kind === "unavailable"
+    const child = () =>
+      pane().kind === "unavailable"
         ? EMPTY_BOARD_PANE_DATA
-        : ((globalSync.peekScopeState(pane.scopeKey)?.[0] as BoardPaneData | undefined) ?? EMPTY_BOARD_PANE_DATA)
+        : ((globalSync.peekScopeState(pane().scopeKey)?.[0] as BoardPaneData | undefined) ?? EMPTY_BOARD_PANE_DATA)
     return (
       <KanbanPane
-        pane={pane}
-        data={child}
+        pane={pane()}
+        draft={drafts[pane().key] ?? ""}
+        onDraftChange={(value) => setDrafts(pane().key, value)}
+        reorderActions={[
+          {
+            id: "previous",
+            label: _({ id: "app.kanban.movePrevious", message: "Move earlier" }),
+            disabled: !store.pinned.includes(pane().key) || store.pinned.indexOf(pane().key) === 0,
+            target: store.pinned[Math.max(0, store.pinned.indexOf(pane().key) - 1)],
+          },
+          {
+            id: "next",
+            label: _({ id: "app.kanban.moveNext", message: "Move later" }),
+            disabled:
+              !store.pinned.includes(pane().key) || store.pinned.indexOf(pane().key) === store.pinned.length - 1,
+            target: store.pinned[store.pinned.indexOf(pane().key) + 1],
+          },
+          {
+            id: "first",
+            label: _({ id: "app.kanban.moveFirst", message: "Move to beginning" }),
+            disabled: !store.pinned.includes(pane().key) || store.pinned.indexOf(pane().key) === 0,
+            target: store.pinned[0],
+          },
+          {
+            id: "last",
+            label: _({ id: "app.kanban.moveLast", message: "Move to end" }),
+            disabled:
+              !store.pinned.includes(pane().key) || store.pinned.indexOf(pane().key) === store.pinned.length - 1,
+            target: store.pinned.at(-1),
+          },
+        ]}
+        onReorder={(key) => reorderPane(pane().key, key)}
+        data={child()}
         serverUrl={globalSDK.url}
-        directory={pane.scopeKey}
-        follow={followFor(pane)}
-        onToggleFollow={() => toggleFollow(pane)}
-        onOpen={() => openSession(pane)}
-        onPinToggle={() => (store.pinned.includes(pane.key) ? unpinPane(pane) : pinKey(pane.key))}
-        pinned={() => store.pinned.includes(pane.key)}
+        directory={pane().scopeKey}
+        follow={() => followFor(pane())()}
+        onToggleFollow={() => toggleFollow(pane())}
+        onOpen={() => openSession(pane())}
+        onActivate={onActivate}
+        onPinToggle={() => (store.pinned.includes(pane().key) ? unpinPane(pane()) : pinKey(pane().key))}
+        pinned={() => store.pinned.includes(pane().key)}
         compact={variant === "rail"}
         activityDisplay={activityDisplay}
         compactReasoning={compactReasoning}
-        loadState={loadStateFor(pane)}
-        onRetry={retryPane(pane)}
-        onSend={sendToPane(pane)}
-        onUpdateProfile={updateProfileFor(pane)}
-        onSetWorkflow={setWorkflowFor(pane)}
+        loadState={() => loadStateFor(pane())()}
+        onRetry={() => retryPane(pane())()}
+        onSend={(text, options) => sendToPane(pane())(text, options)}
+        onUpdateProfile={(profile) => updateProfileFor(pane())(profile)}
+        onSetWorkflow={(kind) => setWorkflowFor(pane())(kind)}
       />
     )
   }
@@ -322,83 +364,83 @@ export function KanbanPanel() {
   return (
     <div
       data-component="kanban-panel"
-      class="kanban-panel"
+      class="app-panel kanban-panel"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       data-dragging={dragActive() || undefined}
     >
-      <div class="kanban-toolbar">
-        <span class="kanban-toolbar-title">{_(kanbanPage.title)}</span>
-        <div class="kanban-layout-switcher" role="group" aria-label={_(kanbanPage.ariaLayout)}>
-          <button
-            class="kanban-layout-btn"
-            data-active={layoutMode() === "grid" || undefined}
-            onClick={() => setLayoutMode("grid")}
-          >
-            {_(kanbanPage.layoutGrid)}
-          </button>
-          <button
-            class="kanban-layout-btn"
-            data-active={layoutMode() === "focus" || undefined}
-            onClick={() => setLayoutMode("focus")}
-          >
-            {_(kanbanPage.layoutFocus)}
-          </button>
-        </div>
-        <Show when={layoutMode() === "grid"}>
-          <div class="kanban-grid-config" role="group" aria-label={_(kanbanPage.gridLayoutLabel)}>
-            <label class="kanban-grid-config-field">
-              <span>{_(kanbanPage.gridColumns)}</span>
-              <select
-                value={store.gridCols}
-                onChange={(event) => setStore("gridCols", Number(event.currentTarget.value))}
-              >
-                <option value={1}>1</option>
-                <option value={2}>2</option>
-                <option value={3}>3</option>
-                <option value={4}>4</option>
-              </select>
-            </label>
-            <label class="kanban-grid-config-field">
-              <span>{_(kanbanPage.gridRows)}</span>
-              <select
-                value={store.gridRows}
-                onChange={(event) => setStore("gridRows", Number(event.currentTarget.value))}
-              >
-                <option value={1}>1</option>
-                <option value={2}>2</option>
-                <option value={3}>3</option>
-              </select>
-            </label>
-          </div>
-        </Show>
-        <Show when={unpinnedSources().length > 0}>
-          <Popover
-            trigger={
-              <button class="kanban-add-btn">
-                <span>{_(kanbanPage.addPane)}</span>
-              </button>
-            }
-            title={_(kanbanPage.addPane)}
-            description={_(kanbanPage.addPaneHint)}
-          >
-            <div class="kanban-add-menu" role="listbox" aria-label={_(kanbanPage.addPane)}>
-              <For each={unpinnedSources()}>
-                {(source) => (
-                  <button class="kanban-add-item" role="option" onClick={() => pinSource(source)}>
-                    <span class="kanban-add-item-title">{source.entry.title}</span>
-                    <span class="kanban-add-item-scope">
-                      {source.entry.scopeType === "home" ? "HOME" : source.entry.scopeID}
-                    </span>
-                  </button>
-                )}
-              </For>
+      <WorkspaceMobileHeader onClose={onCloseWorkspace} />
+      <AppPanel.Header class="kanban-header">
+        <AppPanel.HeaderRow>
+          <AppPanel.Title>{_(kanbanPage.title)}</AppPanel.Title>
+          <Show when={unpinnedSources().length > 0}>
+            <Popover
+              triggerAs={(triggerProps) => (
+                <button {...triggerProps} type="button" class="kanban-add-btn">
+                  <span>{_(kanbanPage.addPane)}</span>
+                </button>
+              )}
+              title={_(kanbanPage.addPane)}
+              description={_(kanbanPage.addPaneHint)}
+            >
+              <div class="kanban-add-menu" role="group" aria-label={_(kanbanPage.addPane)}>
+                <For each={unpinnedSources()}>
+                  {(source) => (
+                    <button type="button" class="kanban-add-item" onClick={() => pinSource(source)}>
+                      <span class="kanban-add-item-title">{source.entry.title}</span>
+                      <span class="kanban-add-item-scope">
+                        {source.entry.scopeType === "home"
+                          ? _({ id: "app.sidebar.section.home", message: "Home" })
+                          : globalSync.data.scope.find((scope) => scope.id === source.entry.scopeID)?.name ||
+                            _({ id: "app.kanban.scope.unknown", message: "Unknown scope" })}
+                      </span>
+                    </button>
+                  )}
+                </For>
+              </div>
+            </Popover>
+          </Show>
+        </AppPanel.HeaderRow>
+        <div class="kanban-toolbar">
+          <AppPanel.Selection
+            label={_(kanbanPage.ariaLayout)}
+            items={[
+              { id: "grid", label: _(kanbanPage.layoutGrid) },
+              { id: "focus", label: _(kanbanPage.layoutFocus) },
+            ]}
+            active={layoutMode()}
+            onChange={(id) => setLayoutMode(id as "grid" | "focus")}
+          />
+          <Show when={layoutMode() === "grid"}>
+            <div class="kanban-grid-config" role="group" aria-label={_(kanbanPage.gridLayoutLabel)}>
+              <div class="kanban-grid-config-field">
+                <span>{_(kanbanPage.gridColumns)}</span>
+                <MenuField
+                  ariaLabel={_(kanbanPage.gridColumns)}
+                  value={String(store.gridCols)}
+                  triggerClass="menu-field-trigger kanban-grid-select"
+                  surfaceClass="kanban-grid-menu"
+                  options={[1, 2, 3, 4].map((value) => ({ value: String(value), label: String(value) }))}
+                  onChange={(value) => setStore("gridCols", Number(value))}
+                />
+              </div>
+              <div class="kanban-grid-config-field">
+                <span>{_(kanbanPage.gridRows)}</span>
+                <MenuField
+                  ariaLabel={_(kanbanPage.gridRows)}
+                  value={String(store.gridRows)}
+                  triggerClass="menu-field-trigger kanban-grid-select"
+                  surfaceClass="kanban-grid-menu"
+                  options={[1, 2, 3].map((value) => ({ value: String(value), label: String(value) }))}
+                  onChange={(value) => setStore("gridRows", Number(value))}
+                />
+              </div>
             </div>
-          </Popover>
-        </Show>
-      </div>
+          </Show>
+        </div>
+      </AppPanel.Header>
       <div class="kanban-body">
         <Show
           when={panes().length > 0}
@@ -430,7 +472,11 @@ export function KanbanPanel() {
 function SwitchLayout(props: {
   mode: KanbanLayout
   panes: BoardPane[]
-  render: (pane: BoardPane, variant?: "focus" | "rail") => ReturnType<typeof KanbanPanel> | null
+  render: (
+    pane: Accessor<BoardPane>,
+    variant?: "focus" | "rail",
+    onActivate?: () => void,
+  ) => ReturnType<typeof KanbanPanel> | null
   gridCols: number
   gridRows: number
   focusRailWidth: number
@@ -453,7 +499,7 @@ function SwitchLayout(props: {
       <Show when={props.mode === "focus"} fallback={<></>}>
         <KanbanFocus
           panes={panes()}
-          renderPane={(pane, variant) => render(pane, variant) ?? <></>}
+          renderPane={(pane, variant, onActivate) => render(pane, variant, onActivate) ?? <></>}
           railWidth={() => props.focusRailWidth}
           onRailResize={props.onRailResize}
         />

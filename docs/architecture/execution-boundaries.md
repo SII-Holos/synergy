@@ -141,6 +141,8 @@ An authorization decision combines several sources without treating them as inte
 
 Explicit denials and hard boundaries are not bypassed by preauthorization. Deny rules win over allow rules when both match.
 
+A multi-target permission request evaluates every target before creating a pending approval. Any denied target rejects the complete request without emitting an approval event, regardless of target order or mandatory-confirmation metadata. Otherwise, targets requiring confirmation share one pending request; its cancellation and reply apply to the complete target list.
+
 In `guarded`, unresolved asks can be presented to the user. A response can authorize once, for the session, always, or reject. In `autonomous`, an ask is converted to a policy denial rather than waiting for a user who may never be present.
 
 ## Live Profile Transitions

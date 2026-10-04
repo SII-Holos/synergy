@@ -1,3 +1,5 @@
+import { settingsFieldCopy } from "./settings-field-copy"
+import { MODEL_ROLES } from "./types"
 import type { MessageDescriptor } from "@lingui/core"
 import type { SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 
@@ -6,13 +8,13 @@ const SETTINGS_GROUP_KEYS = ["personal", "core", "library", "integrations", "saf
 type SettingsGroupKey = (typeof SETTINGS_GROUP_KEYS)[number]
 
 const SETTINGS_GROUP_COPY = {
-  personal: { id: "settings.catalog.group.personal", message: "Personal" },
-  core: { id: "settings.catalog.group.core", message: "Core" },
-  library: { id: "settings.catalog.group.library", message: "Library" },
-  integrations: { id: "settings.catalog.group.integrations", message: "Integrations" },
-  safety: { id: "settings.catalog.group.safety", message: "Safety" },
-  runtime: { id: "settings.catalog.group.runtime", message: "Runtime" },
-  system: { id: "settings.catalog.group.system", message: "System" },
+  personal: { id: "settings.catalog.group.personal", message: "Personal preferences" },
+  core: { id: "settings.catalog.group.core", message: "Models and services" },
+  library: { id: "settings.catalog.group.library", message: "Knowledge and skills" },
+  integrations: { id: "settings.catalog.group.integrations", message: "Connections and integrations" },
+  safety: { id: "settings.catalog.group.safety", message: "Security and permissions" },
+  runtime: { id: "settings.catalog.group.runtime", message: "Runtime and automation" },
+  system: { id: "settings.catalog.group.system", message: "Data and system" },
 } satisfies Record<SettingsGroupKey, MessageDescriptor>
 
 export const SETTINGS_GROUP_ORDER: readonly SettingsGroupKey[] = SETTINGS_GROUP_KEYS
@@ -62,6 +64,7 @@ export type SettingsCatalogCopy = {
   description: MessageDescriptor
   searchTerms: MessageDescriptor
   rowLabels: MessageDescriptor[]
+  fieldAliases?: { label: MessageDescriptor; aliases: MessageDescriptor }[]
 }
 
 export type SettingsCatalogSection = {
@@ -76,6 +79,7 @@ export type SettingsCatalogSection = {
   domainIds: string[]
   rowLabels: string[]
   visibility?: "standard" | "developer"
+  fieldAliases?: Record<string, string[]>
   copy: SettingsCatalogCopy
 }
 
@@ -110,9 +114,27 @@ const BUILTIN_SETTINGS_COPY = {
       message: "personalize | custom instructions | system prompt | AGENTS.md | AGENTS.override.md",
       comment: SEARCH_TERMS_COMMENT,
     },
-    rowLabels: [{ id: "settings.catalog.personalize.row.customInstructions", message: "Custom Instructions" }],
+    rowLabels: [settingsFieldCopy.customInstructions],
   },
   general: {
+    fieldAliases: [
+      {
+        label: { id: "settings.general.colorScheme.label", message: "Color scheme" },
+        aliases: {
+          id: "settings.search.alias.color",
+          message: "light | dark | automatic appearance | change colors",
+          comment: SEARCH_TERMS_COMMENT,
+        },
+      },
+      {
+        label: { id: "settings.general.notifications.title", message: "Notifications" },
+        aliases: {
+          id: "settings.search.alias.notifications",
+          message: "notification | toast | popup | mute | duration | toast duration",
+          comment: SEARCH_TERMS_COMMENT,
+        },
+      },
+    ],
     label: { id: "settings.catalog.general.label", message: "General" },
     description: {
       id: "settings.catalog.general.description",
@@ -125,15 +147,18 @@ const BUILTIN_SETTINGS_COPY = {
       comment: SEARCH_TERMS_COMMENT,
     },
     rowLabels: [
-      { id: "settings.catalog.general.row.colorScheme", message: "Color Scheme" },
+      { id: "settings.general.colorScheme.label", message: "Color scheme" },
+      { id: "settings.general.theme.title", message: "Theme" },
+      { id: "app.plugin.shell.preference.title", message: "Workbench" },
+      { id: "app.plugin.skin.preference.title", message: "Skin" },
+      { id: "settings.general.zoom.title", message: "Interface zoom" },
       { id: "settings.general.font.title", message: "Interface font" },
       { id: "settings.general.monoFont.title", message: "Monospace font" },
-      { id: "settings.catalog.general.row.interfaceLanguage", message: "Interface Language" },
-      { id: "settings.catalog.general.row.activityDisplay", message: "Activity display" },
-      { id: "settings.catalog.general.row.newSessionWorkspace", message: "New task starting point" },
-      { id: "settings.catalog.general.row.productUpdates", message: "Product Updates" },
-      { id: "settings.catalog.general.row.notifications", message: "Notifications" },
-      { id: "settings.catalog.general.row.toastDuration", message: "Toast Duration" },
+      { id: "settings.general.language.title", message: "Interface language" },
+      { id: "settings.general.activityDisplay.title", message: "Activity display" },
+      { id: "settings.general.workspace.title", message: "New task starting point" },
+      { id: "settings.general.updates.title", message: "Product updates" },
+      { id: "settings.general.notifications.title", message: "Notifications" },
     ],
   },
   models: {
@@ -144,14 +169,27 @@ const BUILTIN_SETTINGS_COPY = {
       message: "model | provider | role",
       comment: SEARCH_TERMS_COMMENT,
     },
-    rowLabels: [
-      { id: "settings.catalog.models.row.default", message: "Default Model" },
-      { id: "settings.catalog.models.row.mini", message: "Mini Model" },
-      { id: "settings.catalog.models.row.vision", message: "Vision Model" },
-      { id: "settings.catalog.models.row.thinking", message: "Thinking Model" },
-    ],
+    rowLabels: MODEL_ROLES.map((role) => role.label),
   },
   voice: {
+    fieldAliases: [
+      {
+        label: { id: "settings.voice.stt.title", message: "Voice input" },
+        aliases: {
+          id: "settings.search.alias.stt",
+          message: "stt | microphone | dictation | speech recognition | audio to text",
+          comment: SEARCH_TERMS_COMMENT,
+        },
+      },
+      {
+        label: { id: "settings.voice.tts.title", message: "Read answers aloud" },
+        aliases: {
+          id: "settings.search.alias.tts",
+          message: "tts | speech synthesis | read aloud | audio preview",
+          comment: SEARCH_TERMS_COMMENT,
+        },
+      },
+    ],
     label: { id: "settings.catalog.voice.label", message: "Voice" },
     description: {
       id: "settings.catalog.voice.description",
@@ -163,8 +201,8 @@ const BUILTIN_SETTINGS_COPY = {
       comment: SEARCH_TERMS_COMMENT,
     },
     rowLabels: [
-      { id: "settings.catalog.voice.row.speechRecognition", message: "Speech Recognition" },
-      { id: "settings.catalog.voice.row.speechSynthesis", message: "Speech Synthesis" },
+      { id: "settings.voice.stt.title", message: "Voice input" },
+      { id: "settings.voice.tts.title", message: "Read answers aloud" },
     ],
   },
   providers: {
@@ -211,10 +249,7 @@ const BUILTIN_SETTINGS_COPY = {
       message: "library | learning | autonomy",
       comment: SEARCH_TERMS_COMMENT,
     },
-    rowLabels: [
-      { id: "settings.catalog.learning.row.enableLearning", message: "Enable Learning" },
-      { id: "settings.catalog.learning.row.enableAutonomy", message: "Enable Autonomy" },
-    ],
+    rowLabels: [settingsFieldCopy.learningLearn, settingsFieldCopy.learningAutonomy],
   },
   memory: {
     label: { id: "settings.catalog.memory.label", message: "Memory" },
@@ -229,11 +264,14 @@ const BUILTIN_SETTINGS_COPY = {
       comment: SEARCH_TERMS_COMMENT,
     },
     rowLabels: [
-      { id: "settings.catalog.memory.row.similarity", message: "Memory Similarity" },
-      { id: "settings.catalog.memory.row.perCategory", message: "Memory per Category" },
-      { id: "settings.catalog.memory.row.currentModel", message: "Current Model" },
-      { id: "settings.catalog.memory.row.downloadSource", message: "Download Source" },
-      { id: "settings.catalog.memory.row.localModelFiles", message: "Local Model Files" },
+      settingsFieldCopy.memoryMatch,
+      settingsFieldCopy.memoryCount,
+      settingsFieldCopy.memoryThreshold,
+      settingsFieldCopy.embeddingModel,
+      settingsFieldCopy.embeddingSource,
+      settingsFieldCopy.embeddingFiles,
+      settingsFieldCopy.embeddingOrigin,
+      settingsFieldCopy.embeddingCache,
     ],
   },
   experience: {
@@ -248,9 +286,12 @@ const BUILTIN_SETTINGS_COPY = {
       comment: SEARCH_TERMS_COMMENT,
     },
     rowLabels: [
-      { id: "settings.catalog.experience.row.similarity", message: "Experience Similarity" },
-      { id: "settings.catalog.experience.row.count", message: "Experience Count" },
-      { id: "settings.catalog.experience.row.explorationRate", message: "Exploration Rate" },
+      settingsFieldCopy.experienceMatch,
+      settingsFieldCopy.experienceCount,
+      settingsFieldCopy.experienceExploration,
+      settingsFieldCopy.experienceThreshold,
+      settingsFieldCopy.experienceProbability,
+      settingsFieldCopy.encodingHealth,
     ],
   },
   skills: {
@@ -265,10 +306,10 @@ const BUILTIN_SETTINGS_COPY = {
       comment: SEARCH_TERMS_COMMENT,
     },
     rowLabels: [
-      { id: "settings.catalog.skills.row.agents", message: "Agent Skills" },
-      { id: "settings.catalog.skills.row.claude", message: "Claude Code" },
-      { id: "settings.catalog.skills.row.codex", message: "Codex" },
-      { id: "settings.catalog.skills.row.openclaw", message: "OpenClaw" },
+      settingsFieldCopy.skillsAgents,
+      settingsFieldCopy.skillsClaude,
+      settingsFieldCopy.skillsCodex,
+      settingsFieldCopy.skillsOpenclaw,
     ],
   },
   mcp: {
@@ -310,8 +351,8 @@ const BUILTIN_SETTINGS_COPY = {
       comment: SEARCH_TERMS_COMMENT,
     },
     rowLabels: [
-      { id: "settings.catalog.permissions.row.mode", message: "Permission Mode" },
-      { id: "settings.catalog.permissions.row.smartAllow", message: "Smart Allow" },
+      { id: "settings.permissions.modeRow.title", message: "Permission Mode" },
+      { id: "settings.permissions.smartAllow.title", message: "Smart Allow" },
     ],
   },
   sandbox: {
@@ -351,14 +392,17 @@ const BUILTIN_SETTINGS_COPY = {
     },
   },
   questions: {
-    label: { id: "settings.catalog.questions.label", message: "Questions" },
-    description: { id: "settings.catalog.questions.description", message: "Question timeout behavior." },
+    label: { id: "settings.catalog.questions.label", message: "Waiting for response" },
+    description: {
+      id: "settings.catalog.questions.description",
+      message: "Choose how long unanswered questions remain open.",
+    },
     searchTerms: {
       id: "settings.catalog.questions.searchTerms",
       message: "question | timeout | prompt",
       comment: SEARCH_TERMS_COMMENT,
     },
-    rowLabels: [{ id: "settings.catalog.questions.row.responseTimeout", message: "Response Timeout" }],
+    rowLabels: [settingsFieldCopy.questionResponse],
   },
   compaction: {
     label: { id: "settings.catalog.compaction.label", message: "Compaction" },
@@ -372,13 +416,13 @@ const BUILTIN_SETTINGS_COPY = {
       comment: SEARCH_TERMS_COMMENT,
     },
     rowLabels: [
-      { id: "settings.catalog.compaction.row.autoCompact", message: "Auto Compact" },
-      { id: "settings.catalog.compaction.row.overflowThreshold", message: "Overflow Threshold" },
-      { id: "settings.catalog.compaction.row.maxHistoryImages", message: "Max History Images" },
+      settingsFieldCopy.compactionAuto,
+      settingsFieldCopy.compactionOverflow,
+      settingsFieldCopy.compactionImages,
     ],
   },
   timeouts: {
-    label: { id: "settings.catalog.timeouts.label", message: "Agents" },
+    label: { id: "settings.catalog.timeouts.label", message: "Agent runtime" },
     description: {
       id: "settings.catalog.timeouts.description",
       message: "Agent worker capacity, subagent concurrency, provider timeouts, and tool timeout controls.",
@@ -390,8 +434,16 @@ const BUILTIN_SETTINGS_COPY = {
       comment: SEARCH_TERMS_COMMENT,
     },
     rowLabels: [
-      { id: "settings.catalog.timeouts.row.agentWorkerPool", message: "Agent Worker Pool" },
-      { id: "settings.catalog.timeouts.row.maxConcurrentSubagents", message: "Max Concurrent Subagents" },
+      settingsFieldCopy.agentWorkers,
+      settingsFieldCopy.agentConcurrency,
+      settingsFieldCopy.coauthor,
+      settingsFieldCopy.defaultAgent,
+      settingsFieldCopy.invokeTimeout,
+      settingsFieldCopy.providerTtfb,
+      settingsFieldCopy.providerIdle,
+      settingsFieldCopy.providerWall,
+      settingsFieldCopy.toolTimeout,
+      settingsFieldCopy.toolOverrides,
     ],
   },
   "code-checks": {
@@ -405,11 +457,7 @@ const BUILTIN_SETTINGS_COPY = {
       message: "code | checks | lsp | diagnostics | severity | scope | write | edit",
       comment: SEARCH_TERMS_COMMENT,
     },
-    rowLabels: [
-      { id: "settings.catalog.codeChecks.row.includeDiagnostics", message: "Include Diagnostics" },
-      { id: "settings.catalog.codeChecks.row.diagnosticSeverity", message: "Diagnostic Severity" },
-      { id: "settings.catalog.codeChecks.row.diagnosticScope", message: "Diagnostic Scope" },
-    ],
+    rowLabels: [settingsFieldCopy.codeInclude, settingsFieldCopy.codeSeverity, settingsFieldCopy.codeScope],
   },
   formatter: {
     label: { id: "settings.catalog.formatter.label", message: "Formatter" },
@@ -436,7 +484,7 @@ const BUILTIN_SETTINGS_COPY = {
     },
   },
   observability: {
-    label: { id: "settings.catalog.observability.label", message: "Observability" },
+    label: { id: "settings.catalog.observability.label", message: "Diagnostics" },
     description: {
       id: "settings.catalog.observability.description",
       message: "Raw logs, traces, telemetry collection, and runtime configuration.",
@@ -451,18 +499,17 @@ const BUILTIN_SETTINGS_COPY = {
     label: { id: "settings.catalog.boss.label", message: "Boss Mode" },
     description: {
       id: "settings.catalog.boss.description",
-      message:
-        "Turn this Synergy instance into a colleague: auto-create a runtime boss session and route all Feishu messages to it.",
+      message: "Coordinate tasks and projects from one entry point.",
     },
     searchTerms: {
       id: "settings.catalog.boss.searchTerms",
-      message: "boss | colleague | feishu | routing | runtime",
+      message: "boss | task | project | assistant | feishu",
       comment: SEARCH_TERMS_COMMENT,
     },
     rowLabels: [
-      { id: "settings.catalog.boss.row.bossMode", message: "Boss Mode" },
-      { id: "settings.catalog.boss.row.identity", message: "Colleague Identity" },
-      { id: "settings.catalog.boss.row.interval", message: "World Overview Briefing Interval (days)" },
+      { id: "settings.runtime.boss.title", message: "Boss Mode" },
+      settingsFieldCopy.bossPersonality,
+      settingsFieldCopy.bossName,
     ],
   },
   import: {
@@ -499,11 +546,11 @@ const BUILTIN_SETTINGS_COPY = {
     },
   },
   worktrees: {
-    label: { id: "settings.catalog.worktrees.label", message: "Independent copies" },
+    label: { id: "settings.catalog.worktrees.label", message: "Worktrees" },
     description: {
       id: "settings.catalog.worktrees.description",
       message:
-        "Review independent project copies, their status and associated tasks, and clean up copies you no longer need.",
+        "Review project worktrees, their status and associated tasks, and clean up worktrees you no longer need.",
     },
     searchTerms: {
       id: "settings.catalog.worktrees.searchTerms",
@@ -526,24 +573,24 @@ const BUILTIN_SETTINGS_COPY = {
 } satisfies Record<BuiltinSettingsId, SettingsCopyDefinition>
 
 export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
-  section("account", "personal", 10, "settings.account", ["holos"]),
+  section("account", "personal", 30, "settings.account", ["holos"]),
   section("personalize", "personal", 20, "settings.personalize"),
-  section("general", "core", 10, "settings.general", ["general"]),
+  section("general", "personal", 10, "settings.general", ["general"]),
   section("models", "core", 20, "settings.models", ["models"]),
   section("voice", "core", 25, "settings.voice", ["voice"]),
-  section("providers", "core", 50, "providers.main", ["providers"]),
+  section("providers", "core", 10, "providers.main", ["providers"]),
   section("usage", "core", 60, "settings.usage", ["providers"]),
   section("github", "integrations", 5, "github.main", ["providers", "github"]),
   section("learning", "library", 10, "settings.learning", ["library"]),
   section("memory", "library", 20, "memory.main", ["library", "general"]),
   section("experience", "library", 30, "experience.main", ["library"]),
-  section("skills", "library", 40, "command.rmslop", ["skills"]),
+  section("skills", "library", 40, "settings.skills", ["skills"]),
   section("mcp", "integrations", 10, "mcp.main", ["mcp"]),
   section("channels", "integrations", 20, "channels.main", ["channels"]),
   section("email", "integrations", 30, "email.main", ["email"]),
-  section("permissions", "safety", 10, "settings.permissions", ["permissions"]),
-  section("sandbox", "safety", 20, "settings.sandbox", ["permissions"]),
-  section("control-profile", "safety", 30, "settings.controlProfile", ["permissions"]),
+  section("permissions", "safety", 20, "settings.permissions", ["permissions"]),
+  section("sandbox", "safety", 30, "settings.sandbox", ["permissions"]),
+  section("control-profile", "safety", 10, "settings.controlProfile", ["permissions"]),
   section("secrets", "safety", 40, "settings.secrets", ["permissions"]),
   section("questions", "runtime", 10, "settings.questions", ["runtime"]),
   section("compaction", "runtime", 20, "settings.compaction", ["runtime"]),
@@ -556,11 +603,11 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
     visibility: "developer",
   }),
   section("boss", "runtime", 80, "prompt.boss", { domainIds: ["runtime"] }),
-  section("import", "system", 10, "settings.import"),
-  section("config-files", "system", 20, "settings.configFiles"),
+  section("import", "system", 40, "settings.import"),
+  section("config-files", "system", 50, "settings.configFiles"),
   section("archived-sessions", "system", 30, "session.archive"),
-  section("worktrees", "system", 40, "workspace.worktree"),
-  section("storage", "system", 45, "settings.storage", ["general"]),
+  section("worktrees", "system", 10, "workspace.worktree"),
+  section("storage", "system", 20, "settings.storage", ["general"]),
 ]
 
 function section(
@@ -589,6 +636,12 @@ function section(
     domainIds,
     rowLabels: rowLabels.map(defaultMessage),
     visibility,
+    fieldAliases: Object.fromEntries(
+      (copy.fieldAliases ?? []).map((target) => [
+        defaultMessage(target.label),
+        splitSearchTerms(defaultMessage(target.aliases)),
+      ]),
+    ),
     copy,
   }
 }

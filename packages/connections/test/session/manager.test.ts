@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test, mock } from "bun:test"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
@@ -251,7 +252,7 @@ describe("SessionManager.getSession", () => {
                 role: "user",
                 sessionID: parentSession.id,
                 time: { created: Date.now() },
-                agent: "synergy",
+                agent: PrimaryAgentIdentity.names.general,
                 model: { providerID: "test-provider", modelID: "test-model" },
                 isRoot: true,
                 rootID,
@@ -378,7 +379,7 @@ describe("loop ownership", () => {
             sessionID = session.id
             const item = await SessionInbox.enqueueUser({
               sessionID,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "missing-model" },
               parts: [{ type: "text", text: "Retry after provider recovery" }],
             })
@@ -605,21 +606,46 @@ describe("signalAbort", () => {
       }
     }))
 
-  test("does not change the runtime status", () =>
-    runtime.run(() => {
-      const sessionID = "ses_signal_abort_status"
-      SessionManager.unregisterRuntime(sessionID)
-      const lease = SessionManager.acquire(sessionID)
-      expect(lease).toBeDefined()
-      const runtime = SessionManager.getRuntime(sessionID)!
-      try {
-        runtime.status = { type: "busy", description: "thinking..." }
+  test("publishes stopping activity and stays busy until its owner releases", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const lease = SessionManager.acquire(session.id)!
+          expect(SessionManager.bindRootTask(lease, "root_abort_status")).toBe(true)
+          const current = SessionManager.getRuntime(session.id)!
+          try {
+            current.status = { type: "busy", description: "thinking..." }
+            const startedAt = Date.now()
 
-        expect(SessionManager.signalAbort(sessionID)).toBe("signaled")
-        expect(runtime.status).toEqual({ type: "busy", description: "thinking..." })
-      } finally {
-        SessionManager.unregisterRuntime(sessionID)
-      }
+            expect(SessionManager.signalAbort(session.id)).toBe("signaled")
+            expect(current.status).toEqual({
+              type: "busy",
+              activity: { phase: "stopping", rootID: "root_abort_status", startedAt: expect.any(Number) },
+            })
+            if (current.status.type !== "busy") throw new Error("Stopping released the runtime early")
+            expect(current.status.activity!.startedAt).toBeGreaterThanOrEqual(startedAt)
+            expect(current.status.activity!.startedAt).toBeLessThanOrEqual(Date.now())
+            expect((await SessionManager.listStatuses())[session.id]).toEqual(current.status)
+            expect(current.owner?.lease).toBe(lease)
+            expect(SessionManager.isRunning(session.id)).toBe(true)
+
+            const stopping = current.status
+            expect(SessionManager.signalAbort(session.id)).toBe("already_stopping")
+            expect(current.status).toBe(stopping)
+
+            expect(await SessionManager.release(lease, { requestNextWork: false })).toBe(true)
+            expect(SessionManager.getRuntime(session.id)?.status).toEqual({ type: "idle" })
+            expect(SessionManager.isRunning(session.id)).toBe(false)
+            expect((await SessionManager.listStatuses())[session.id]).toBeUndefined()
+          } finally {
+            await SessionManager.release(lease, { requestNextWork: false })
+            SessionManager.unregisterRuntime(session.id)
+          }
+        },
+      })
     }))
 
   test("distinguishes missing and idle runtimes", () =>

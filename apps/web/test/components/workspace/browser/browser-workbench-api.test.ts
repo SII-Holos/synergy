@@ -9,11 +9,107 @@ import {
 } from "../../../../src/components/workspace/browser/browser-workbench-api"
 
 const route = {
+  mode: "session" as const,
   sessionID: "session-one",
   path_directory: "home",
   query_directory: "/fixture/project",
   scopeID: "scope-one",
 }
+
+test("a new shared page uses Scope authority without a conversation request", async () => {
+  const input = fixture((request) =>
+    new URL(request.url).pathname.endsWith("/pages")
+      ? Response.json({ id: "shared-page", url: "about:blank", title: "" })
+      : Response.json({ ownerKey: "canonical-scope" }),
+  )
+  const shared = { mode: "scope" as const, path_directory: "home", scopeID: "scope-one" }
+  const tab = await openBrowserWorkbenchPage({ ...input, route: shared })
+  expect(input.requests).toHaveLength(2)
+  expect(input.requests.every((request) => new URL(request.url).pathname.includes("/browser/"))).toBe(true)
+  for (const request of input.requests) {
+    expect(new URL(request.url).searchParams.get("mode")).toBe("scope")
+    expect(new URL(request.url).searchParams.has("sessionID")).toBe(false)
+  }
+  expect(tab.state).toMatchObject({
+    browserRoute: { mode: "scope", ownerKey: "canonical-scope", serverUrl: input.serverUrl },
+  })
+})
+
+test("manual recovery resumes the most recent page without creating another page", async () => {
+  const input = fixture((request) =>
+    request.method === "GET"
+      ? Response.json({
+          ownerKey: "owner-one",
+          pages: [
+            { id: "older", url: "https://example.org", title: "Older", status: "suspended", lastActiveAt: 1 },
+            { id: "recent", url: "https://example.com", title: "Recent", status: "suspended", lastActiveAt: 2 },
+          ],
+        })
+      : Response.json({
+          type: "control.result",
+          protocolVersion: BROWSER_PROTOCOL_VERSION,
+          result: {
+            type: "page",
+            page: { id: "recent", url: "https://example.com", title: "Recent", status: "active" },
+          },
+        }),
+  )
+  const tab = await openBrowserWorkbenchPage({ ...input, restore: true })
+  expect(tab.resourceId).toBe("recent")
+  expect(input.requests.filter((request) => request.method === "POST")).toHaveLength(1)
+  expect(await input.requests[1]!.json()).toMatchObject({ pageId: "recent", command: { type: "resume" } })
+})
+
+test("open retries carry the caller's stable request identity", async () => {
+  const input = fixture((request) =>
+    request.method === "GET"
+      ? Response.json({ ownerKey: "owner-one", pages: [] })
+      : Response.json({ id: "opened", title: "", url: "about:blank", status: "active" }),
+  )
+  await openBrowserWorkbenchPage({ ...input, requestId: "open-intent-one" })
+  await openBrowserWorkbenchPage({ ...input, requestId: "open-intent-one" })
+  const bodies = await Promise.all(
+    input.requests.filter((request) => request.method === "POST").map((request) => request.json()),
+  )
+  expect(bodies).toEqual([
+    { requestId: "open-intent-one", url: "about:blank" },
+    { requestId: "open-intent-one", url: "about:blank" },
+  ])
+})
+
+test("an explicit missing import target never opens a replacement page", async () => {
+  const input = fixture(() => Response.json({ ownerKey: "owner-one", pages: [] }))
+  await expect(openBrowserWorkbenchPage({ ...input, pageId: "missing" })).rejects.toThrow()
+  expect(input.requests.every((request) => request.method === "GET")).toBe(true)
+})
+
+test("an uncertain empty-Workspace open cannot restore a different page on retry", async () => {
+  let reads = 0
+  let writes = 0
+  const input = fixture((request) => {
+    if (request.method === "GET")
+      return Response.json({
+        ownerKey: "owner-one",
+        epoch: "one",
+        pages: reads++
+          ? [{ id: "other", title: "Other", url: "https://example.com", status: "active", lastActiveAt: 10 }]
+          : [],
+      })
+    if (writes++ === 0) throw new TypeError("Connection lost")
+    return Response.json({ id: "opened", title: "", url: "about:blank", status: "active" })
+  })
+  const selection = {}
+  await expect(
+    openBrowserWorkbenchPage({ ...input, restore: true, requestId: "same-request", selection }),
+  ).rejects.toThrow()
+  const tab = await openBrowserWorkbenchPage({ ...input, restore: true, requestId: "same-request", selection })
+  expect(tab.resourceId).toBe("opened")
+  const requests = input.requests.filter((request) => request.method === "POST")
+  expect(await Promise.all(requests.map((request) => request.json()))).toEqual([
+    { requestId: "same-request", url: "about:blank" },
+    { requestId: "same-request", url: "about:blank" },
+  ])
+})
 
 function fixture(respond: (request: Request) => Response = () => Response.json({ ownerKey: "owner-one" })) {
   const requests: Request[] = []
@@ -52,7 +148,8 @@ test("workbench access binds the native ticket to the server owner and preserves
   const input = fixture()
   expect(await browserWorkbenchAccess(input)).toEqual({
     ...route,
-    mode: "session",
+    ownerKey: "owner-one",
+    serverUrl: input.serverUrl,
     presentation: "native",
     nativeTicket: "native-ticket",
   })
@@ -80,12 +177,12 @@ test("opening a page returns its peer tab and closing targets that page with nat
     return Response.json({ ownerKey: "owner-one" })
   })
   expect(await openBrowserWorkbenchPage(input)).toEqual({
-    id: "browser:page-new",
+    id: 'browser:["http://browser.test","owner-one"]:page-new',
     panelId: "browser",
     resourceId: "page-new",
     title: "about:blank",
-    state: { browserRoute: route, browserURL: "about:blank" },
-    source: "browser",
+    state: { browserRoute: { ...route, ownerKey: "owner-one", serverUrl: input.serverUrl }, browserURL: "about:blank" },
+    source: '["http://browser.test","owner-one"]',
   })
   await closeBrowserWorkbenchPage({ ...input, pageId: "page-new" })
   const mutations = input.requests.filter((request) => request.method === "POST")

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterAll, expect, test } from "bun:test"
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -73,7 +74,7 @@ async function context(signal = new AbortController().signal) {
         sessionID: session.id,
         role: "user",
         isRoot: true,
-        agent: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
         model: { providerID: "fixture", modelID: "fixture" },
         time: { created: Date.now() },
       })
@@ -83,7 +84,7 @@ async function context(signal = new AbortController().signal) {
         role: "assistant",
         rootID: user.id,
         parentID: user.id,
-        agent: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
         mode: "synergy",
         path: { cwd: null, root: null },
         providerID: "fixture",
@@ -99,7 +100,7 @@ async function context(signal = new AbortController().signal) {
   const ctx: Tool.Context = {
     sessionID: session.id,
     messageID: assistant.id,
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     abort: signal,
     metadata() {},
     async ask(input) {

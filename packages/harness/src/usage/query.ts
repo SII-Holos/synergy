@@ -1,3 +1,5 @@
+import { PrimaryAgentUpgrade } from "../agent/primary-identity-upgrade"
+import { createHash } from "node:crypto"
 import { z } from "zod"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { Storage } from "../storage/storage"
@@ -132,47 +134,71 @@ export namespace UsageQuery {
     record.kind === "attempt" ? (record.timing?.sentAt ?? record.started) : record.started
   const scopeKey = (owner: UsageSchema.Owner) => `${owner.scopeID}:${UsageLedger.ownerKey(owner)}`
   const runKey = (owner: UsageSchema.Owner, runID: string) => `${scopeKey(owner)}:${runID}`
-  type Selection = { runs: Set<string>; owners: Set<string>; roots: Set<string> }
+  type Selection = {
+    runs: Set<string>
+    owners: Set<string>
+    roots: Set<string>
+    targets: Map<string, UsageSchema.Owner>
+  }
 
   async function related(filter: z.output<typeof UsageSchema.Filter>): Promise<Selection | undefined> {
     if ((!filter.sessionID && !filter.runID) || (!filter.includeDescendants && !filter.runID)) return undefined
-    const runs: UsageSchema.Link[] = []
     const selected = new Set<string>()
     const owners = new Set<string>()
+    const targets = new Map<string, UsageSchema.Owner>()
+    const pending: UsageSchema.Link[] = []
+    const children = new Map<string, UsageSchema.Link[]>()
+    const add = (record: UsageSchema.Link) => {
+      if (selected.has(runKey(record.owner, record.runID))) return
+      selected.add(runKey(record.owner, record.runID))
+      owners.add(scopeKey(record.owner))
+      targets.set(scopeKey(record.owner), record.owner)
+      pending.push(record)
+    }
     for await (const row of Storage.records<UsageSchema.Link>({
       kind: "usage_link",
       scopeID: filter.scopeID,
-    })) {
-      const record = row.value
-      runs.push(record)
-      if (
-        (!filter.sessionID || (record.owner.kind === "session" && record.owner.sessionID === filter.sessionID)) &&
-        (!filter.runID || record.runID === filter.runID)
-      ) {
-        selected.add(runKey(record.owner, record.runID))
-        owners.add(scopeKey(record.owner))
-      }
-    }
-    const result = { runs: selected, owners, roots: new Set(owners) }
+      sessionID: filter.sessionID,
+      orderEquals: filter.runID,
+    }))
+      add(row.value)
+    const result = { runs: selected, owners, roots: new Set(owners), targets }
     if (!filter.includeDescendants) return result
-    let changed = true
-    while (changed) {
-      changed = false
-      for (const record of runs) {
-        const parent = record.parent
-        const owner = parent?.owner ?? record.parentOwner
-        if (!owner || selected.has(runKey(record.owner, record.runID))) continue
-        const directParent =
-          (!filter.sessionID || (owner.kind === "session" && owner.sessionID === filter.sessionID)) &&
-          (!filter.runID || parent?.runID === filter.runID)
-        const linked =
-          directParent ||
-          (parent?.runID ? selected.has(runKey(owner, parent.runID)) : !filter.runID && owners.has(scopeKey(owner)))
-        if (!linked) continue
-        selected.add(runKey(record.owner, record.runID))
-        owners.add(scopeKey(record.owner))
-        changed = true
+    const linked = (record: UsageSchema.Link) => {
+      if (filter.scopeID && record.owner.scopeID !== filter.scopeID) return false
+      const parent = record.parent
+      const owner = parent?.owner ?? record.parentOwner
+      if (!owner) return false
+      const direct =
+        (!filter.sessionID || (owner.kind === "session" && owner.sessionID === filter.sessionID)) &&
+        (!filter.runID || parent?.runID === filter.runID)
+      return (
+        direct ||
+        (parent?.runID ? selected.has(runKey(owner, parent.runID)) : !filter.runID && owners.has(scopeKey(owner)))
+      )
+    }
+    for await (const row of Storage.records<UsageSchema.Link>({
+      kind: "usage_parent",
+      scopeID: filter.scopeID,
+      sessionID: filter.sessionID ? `session_${filter.sessionID}` : undefined,
+      messageID: filter.runID,
+    }))
+      if (linked(row.value)) add(row.value)
+    for (let index = 0; index < pending.length; index++) {
+      const owner = pending[index].owner
+      const key = scopeKey(owner)
+      let values = children.get(key)
+      if (!values) {
+        values = []
+        for await (const row of Storage.records<UsageSchema.Link>({
+          kind: "usage_parent",
+          scopeID: owner.scopeID,
+          sessionID: UsageLedger.ownerKey(owner),
+        }))
+          values.push(row.value)
+        children.set(key, values)
       }
+      for (const value of values) if (linked(value)) add(value)
     }
     return result
   }
@@ -196,7 +222,13 @@ export namespace UsageQuery {
           : field in record
             ? record[field as "purpose" & keyof typeof record]
             : undefined
-      if (filter[field] !== undefined && value !== filter[field]) return false
+      if (filter[field] !== undefined) {
+        if (field === "agent") {
+          const agent = typeof value === "string" ? value : "purpose" in record ? record.purpose : undefined
+          if (typeof agent !== "string" || PrimaryAgentUpgrade.name(agent) !== PrimaryAgentUpgrade.name(filter.agent!))
+            return false
+        } else if (value !== filter[field]) return false
+      }
     }
     return true
   }
@@ -211,12 +243,53 @@ export namespace UsageQuery {
     yield* scanSelected(filter, await related(filter), after)
   }
   async function* scanSelected(filter: z.output<typeof UsageSchema.Filter>, selection?: Selection, after?: string[]) {
+    const sources: AsyncGenerator<UsageSchema.Record>[] = []
+    if (filter.sessionID) sources.push(scanOwner(filter, selection, after, filter.sessionID))
+    if (!filter.sessionID && !filter.runID) sources.push(scanOwner(filter, selection, after))
+    for (const owner of selection?.targets.values() ?? []) {
+      if (owner.kind === "session" && owner.sessionID === filter.sessionID) continue
+      sources.push(scanOwner({ ...filter, scopeID: owner.scopeID }, selection, after, owner))
+    }
+    const heads = await Promise.all(sources.map((source) => source.next()))
+    for (;;) {
+      let next = -1
+      for (let index = 0; index < heads.length; index++) {
+        if (heads[index].done) continue
+        if (
+          next === -1 ||
+          compareKeys(UsageLedger.timeKey(heads[index].value!), UsageLedger.timeKey(heads[next].value!)) < 0
+        )
+          next = index
+      }
+      if (next === -1) return
+      yield heads[next].value!
+      heads[next] = await sources[next].next()
+    }
+  }
+  function compareKeys(left: string[], right: string[]) {
+    const a = left.at(-1)!
+    const b = right.at(-1)!
+    if (a !== b) return a < b ? -1 : 1
+    return Buffer.compare(
+      createHash("sha256").update(JSON.stringify(left)).digest(),
+      createHash("sha256").update(JSON.stringify(right)).digest(),
+    )
+  }
+  async function* scanOwner(
+    filter: z.output<typeof UsageSchema.Filter>,
+    selection: Selection | undefined,
+    after?: string[],
+    owner?: UsageSchema.Owner | string,
+  ) {
+    const operation = typeof owner === "object" && owner.kind === "operation" ? owner : undefined
     let cursor = after
     for (;;) {
       const batch = await Storage.query<{ key: string[] }>({
         kind: "usage_time",
+        prefix: operation ? ["usage_time", operation.scopeID, UsageLedger.ownerKey(operation)] : undefined,
         scopeID: filter.scopeID,
-        sessionID: !filter.includeDescendants ? filter.sessionID : undefined,
+        sessionID:
+          typeof owner === "string" ? owner : owner?.kind === "session" ? owner.sessionID : operation ? "" : undefined,
         after: cursor,
         orderFrom: filter.from === undefined ? undefined : String(filter.from).padStart(17, "0"),
         orderTo: filter.to === undefined ? undefined : String(filter.to).padStart(17, "0"),
@@ -234,6 +307,13 @@ export namespace UsageQuery {
   }
   export async function records(input: UsageSchema.Filter = {}, options: { cursor?: string; limit?: number } = {}) {
     return Storage.snapshot(() => readPage(input, options))
+  }
+  export async function collect(input: UsageSchema.Filter) {
+    return Storage.snapshot(async () => {
+      const records: UsageSchema.Record[] = []
+      for await (const record of scan(input)) records.push(record)
+      return records
+    })
   }
   async function readPage(input: UsageSchema.Filter, options: { cursor?: string; limit?: number }) {
     const filter = validate(input)
@@ -522,7 +602,7 @@ export namespace UsageQuery {
         }
         model.records.push(record)
         models.set(JSON.stringify([model.providerID, model.modelID]), model)
-        const agent = record.agent ?? record.purpose
+        const agent = PrimaryAgentUpgrade.name(record.agent ?? record.purpose)
         const attributed = agents.get(agent) ?? []
         attributed.push(record)
         agents.set(agent, attributed)
