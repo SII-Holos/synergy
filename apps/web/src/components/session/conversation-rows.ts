@@ -177,7 +177,7 @@ function groupActivities(
     ) {
       if (!block) {
         block = {
-          key: `${row.root.id}:activity:${row.parts[0].id}`,
+          key: `${row.root.id}:activity:${row.event ? row.key : row.parts[0].id}`,
           parts: [],
           tools: 0,
           reasoning: 0,
@@ -198,8 +198,8 @@ function groupActivities(
       block.entries.push(row)
       for (const part of row.parts) {
         block.parts.push(part.id)
-        if (part.type === "tool") block.tools++
-        else if (part.type === "reasoning") block.reasoning++
+        if (!row.event && part.type === "tool") block.tools++
+        else if (!row.event && part.type === "reasoning") block.reasoning++
       }
       row.activity = block
     } else if (row.kind !== "process") {

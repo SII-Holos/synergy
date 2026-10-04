@@ -10,6 +10,7 @@ type Fixture = {
   child(taskID: string, value: string): void
   resolveEvent(index: number, text: string, state?: "running" | "committed" | "failed"): void
   refreshEvent(): void
+  rejectEvent(index: number): void
   switchOwner(server: string, scope: string, sessionID?: string): void
   select(partID: string): void
   activity(revision: number, messageID?: string): void
@@ -68,6 +69,7 @@ beforeAll(async () => {
         request.resolve({data:{info,parts:[{id:"event-part",messageID:info.id,sessionID:info.sessionID,type:request.kind==="compaction"&&status==="committed"?"compaction_recovery":"text",text,summary:request.kind==="compaction"?text:undefined,mechanical:false}]}})
       },
       refreshEvent(){setEventLive({id:state().messageID,time:{created:1,completed:3},metadata:{compactionAttempt:{state:"committed"}}})},
+      rejectEvent(index){requests[index].reject({data:{message:"Temporary process detail failure"}})},
       switchOwner(server,scope,sessionID="session"){batch(()=>{setOwner({server,scope,sessionID});setState({...owner,messageID:"message",partID:"part-a",callID:"call-part-a"})})},
       select(partID){setState({...state(),partID,callID:"call-"+partID})},
       activity(revision,messageID="message"){activityListener?.({properties:{sessionID:owner.sessionID,messageID,callID:state().callID,revision}})},
@@ -77,7 +79,7 @@ beforeAll(async () => {
       close(){setOpen(false)},facts(){return {requests:requests.length,aborted:requests.map(request=>request.signal.aborted),resultUnmounts,copied}}
     }
     export {h}
-    export const useSDK=()=>({get url(){return owner.server},get scopeKey(){return owner.scope},event:{on(type,listener){activityListener=listener;return()=>{activityListener=undefined}}},client:{session:{message:async(target,options)=>new Promise(resolve=>requests.push({...target,kind:state().kind,signal:options.signal,resolve})),get:async()=>({data:{cortex:child}}),toolActivity:async(target,options)=>new Promise(resolve=>requests.push({...target,partID:state().partID,signal:options.signal,resolve}))}}})
+    export const useSDK=()=>({get url(){return owner.server},get scopeKey(){return owner.scope},event:{on(type,listener){activityListener=listener;return()=>{activityListener=undefined}}},client:{session:{message:async(target,options)=>new Promise((resolve,reject)=>requests.push({...target,kind:state().kind,signal:options.signal,resolve,reject})),get:async()=>({data:{cortex:child}}),toolActivity:async(target,options)=>new Promise(resolve=>requests.push({...target,partID:state().partID,signal:options.signal,resolve}))}}})
     export const useParams=()=>({get id(){return owner.sessionID}})
     export const useSessionDataView=()=>()=>({messagesFor:()=>eventLive()?[eventLive()]:[],partsFor:()=>[]})
     export const useData=()=>({navigateToSession(){}})
@@ -91,7 +93,7 @@ beforeAll(async () => {
     export const Icon=()=> <span/>
     export const Markdown=props=> <div data-markdown>{props.text}</div>
     export const compactionErrorText=error=>error?.data?.message
-    export const ErrorCard=props=><div>{props.error}</div>
+    export const ErrorCard=props=><div><p>{props.error}</p>{props.actions}</div>
     export const getToolInfo=(tool,input)=>({subtitle:input.filePath??input.command})
     export const getSemanticIcon=()=>"arrow-left"
     export {createCopyController}
@@ -166,6 +168,28 @@ afterAll(async () => {
   await server?.close()
   if (fixture) await rm(fixture, { recursive: true, force: true })
 })
+
+test("process detail failures remain local, preserve accepted evidence and allow one manual retry", async () => {
+  await page.goto(base)
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture?.facts().requests === 1)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.event("compaction"))
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture.facts().requests === 2)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.rejectEvent(1))
+  await page.getByText("Temporary process detail failure", { exact: true }).waitFor()
+  const retry = page.getByRole("button", { name: "Retry loading content", exact: true })
+  await retry.focus()
+  await retry.press("Enter")
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture.facts().requests === 3)
+  expect(await retry.isDisabled()).toBe(true)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.resolveEvent(2, "Accepted summary"))
+  await page.getByText("Accepted summary", { exact: true }).waitFor()
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.refreshEvent())
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture.facts().requests === 4)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.rejectEvent(3))
+  await page.getByText("Temporary process detail failure", { exact: true }).waitFor()
+  expect(await page.getByText("Accepted summary", { exact: true }).count()).toBe(1)
+  expect(errors).toEqual([])
+}, 30000)
 
 test("agent notices read the exact task result and never substitute a reused child task", async () => {
   for (const task of ["ctx_original", "ctx_later"]) {

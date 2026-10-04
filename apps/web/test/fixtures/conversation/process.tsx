@@ -284,7 +284,7 @@ window.__conversationProcess = {
       time: { created: 50 },
     }
     setData("part", message.id, [part(message.id, "delivery-text", "text", "Captured child result")])
-    setData("message", "session", [root, work, more, message])
+    setData("message", "session", (messages) => [...messages.filter((item) => item.id !== message.id), message])
   },
   compaction(state: "running" | "committed" | "failed") {
     const message: AssistantMessage = {
@@ -312,7 +312,7 @@ window.__conversationProcess = {
           ]
         : [],
     )
-    setData("message", "session", [root, work, more, message])
+    setData("message", "session", (messages) => [...messages.filter((item) => item.id !== message.id), message])
   },
   mode: setMode,
   locate: (messageID: string, partID?: string) => locate?.(messageID, "auto", partID) ?? Promise.resolve(false),

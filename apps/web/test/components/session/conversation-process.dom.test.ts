@@ -118,6 +118,27 @@ test("a late child delivery has one chronological process row and opens the righ
   expect(await page.getByText("Captured child result", { exact: true }).count()).toBe(0)
 })
 
+test("tools and reasoning share compact spacing across virtual chunks", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => window.__conversationProcess.grow(20))
+  const viewport = page.locator('[data-component="process-viewport"]').last()
+  await viewport.waitFor()
+  const triggers = viewport.locator('[data-slot="activity-step-trigger"]')
+  await triggers.first().waitFor()
+  const geometry = await triggers.evaluateAll((elements) =>
+    elements.slice(0, 8).map((element) => {
+      const rect = element.getBoundingClientRect()
+      return { top: rect.top, bottom: rect.bottom, height: rect.height }
+    }),
+  )
+  expect(geometry.length).toBeGreaterThan(1)
+  for (const [index, current] of geometry.entries()) {
+    expect(current.height).toBe(28)
+    if (index) expect(current.top - geometry[index - 1].bottom).toBe(2)
+  }
+})
+
 test("a long logical block uses a bounded independent viewport", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
@@ -137,6 +158,54 @@ test("a long logical block uses a bounded independent viewport", async () => {
   await frames()
   expect(await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)).toBe(mainOffset)
   expect(await page.evaluate(() => window.__conversationProcess.retained())).toBeLessThan(120)
+})
+
+test("a finished process can reach the end while retaining its outer conversation", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.grow(62)
+    window.__conversationProcess.mode("full")
+    window.__conversationProcess.stream()
+    window.__conversationProcess.complete()
+  })
+  await frames()
+  const viewport = page.locator('[data-component="process-viewport"]').last()
+  await viewport.waitFor()
+  await viewport.focus()
+  await frames()
+  const outerOffset = await page.locator("[data-scroller]").evaluate((element) => element.scrollTop)
+  await viewport.press("End")
+  await frames()
+  await page.locator('[data-part-id="many-61"]').waitFor()
+  expect(await page.locator("[data-scroller]").evaluate((element) => element.scrollTop)).toBe(outerOffset)
+  expect(
+    await page.locator('[data-part-id="many-61"]').evaluate((element) => {
+      const bounds = element.closest('[data-component="process-viewport"]')!.getBoundingClientRect()
+      const item = element.getBoundingClientRect()
+      return item.bottom > bounds.top && item.top < bounds.bottom
+    }),
+  ).toBe(true)
+  expect(await page.getByText("Final answer stays mounted.", { exact: true }).count()).toBe(1)
+  expect(await page.locator('[data-component="virtual-conversation-rows"]').count()).toBe(1)
+  expect(errors).toEqual([])
+})
+
+test("a live compaction without hydrated Parts creates one compact process window", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.prepare()
+    window.__conversationProcess.mode("full")
+    window.__conversationProcess.compaction("running")
+  })
+  const event = page.locator('[data-component="process-event-row"]')
+  await event.waitFor()
+  await page.waitForFunction(() => document.querySelectorAll('[data-component="process-viewport"]').length === 1)
+  expect(await event.count()).toBe(1)
+  expect(await page.locator('[data-component="process-viewport"]').count()).toBe(1)
+  expect(await event.locator("button").textContent()).toContain("Compressing context")
+  expect(errors).toEqual([])
 })
 
 test("a process locator opens a closed group and finds an offscreen part in its own viewport", async () => {

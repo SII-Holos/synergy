@@ -51,7 +51,7 @@
   overflow: visible;
 }
 [data-component="process-viewport"]
-  [data-component="session-turn"]
+  [data-component="session-turn"][data-activity-body]
   [data-slot="session-turn-timeline-item"]:not([hidden])
   ~ [data-slot="session-turn-timeline-item"]:not([hidden]) {
   margin-block-start: 2px;

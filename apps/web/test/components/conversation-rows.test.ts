@@ -10,6 +10,40 @@ const parts = Array.from(
     ({ id: `p${index.toString().padStart(4, "0")}`, messageID: "reply", type: "tool" }) as SessionPartSummary,
 )
 
+test("unhydrated system events form stable groups without requiring a first Part", () => {
+  const delivery = {
+    ...root,
+    id: "delivery",
+    isRoot: false,
+    origin: { type: "cortex", sessionID: "child" },
+  } as Message
+  const compaction = {
+    ...reply,
+    id: "compaction",
+    metadata: { compactionAttempt: { state: "running" } },
+  } as Message
+  for (const event of [delivery, compaction]) {
+    const input = {
+      timeline: [root],
+      messagesFor: () => [reply, event],
+      summaries: () => [] as SessionPartSummary[],
+      page: () => undefined,
+      process: () => ({ open: true, working: true }),
+    }
+    const initial = buildConversationRows(input)
+    const group = initial.find((row) => row.kind === "activity")!
+    expect(group.activity?.tools).toBe(0)
+    expect(group.activity?.entries.map((row) => row.message.id)).toEqual([event.id])
+    const hydrated = buildConversationRows({
+      ...input,
+      previous: initial,
+      summaries: (id) =>
+        id === event.id ? [{ ...parts[0], id: "loaded-event-part", messageID: id, type: "text" }] : [],
+    })
+    expect(hydrated.find((row) => row.kind === "activity")?.key).toBe(group.key)
+  }
+})
+
 test("root user content is a display row when the turn projection contains only its replies", () => {
   const rootPart = { ...parts[0], id: "root-part", messageID: root.id, type: "text" as const }
   const rows = buildConversationRows({

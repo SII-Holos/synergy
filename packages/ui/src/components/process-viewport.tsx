@@ -42,9 +42,11 @@ export function ProcessViewport(
   let viewport!: HTMLDivElement, content!: HTMLDivElement
   let frame: number | undefined
   let resumeRequested = false
+  let explicitFollow = false
   let previousOffset = 0
   const pause = () => {
     resumeRequested = false
+    explicitFollow = false
     if (!overflow()) return
     setFollowing(false)
     props.onReading?.(true)
@@ -58,6 +60,7 @@ export function ProcessViewport(
   }
   const latest = () => {
     resumeRequested = false
+    explicitFollow = true
     setFollowing(true)
     setUnread(false)
     props.onReading?.(false)
@@ -68,7 +71,7 @@ export function ProcessViewport(
       () => props.revision,
       () => {
         if (!untrack(following)) setUnread(true)
-        else if (props.active) follow()
+        else if (props.active || explicitFollow) follow(explicitFollow)
       },
       { defer: true },
     ),
@@ -76,7 +79,7 @@ export function ProcessViewport(
   onMount(() => {
     const measure = () => {
       setOverflow(viewport.scrollHeight > viewport.clientHeight + 1)
-      if (props.active && following()) follow()
+      if ((props.active || explicitFollow) && following()) follow(explicitFollow)
     }
     const observer = new ResizeObserver(measure)
     observer.observe(viewport)
@@ -147,9 +150,13 @@ export function ProcessViewport(
           }
         }}
         onKeyDown={(event) => {
+          if ((event.target as Element).closest("input, textarea, [contenteditable='true']")) return
           if (["ArrowUp", "PageUp", "Home"].includes(event.key)) pause()
           if (["ArrowDown", "PageDown"].includes(event.key)) resumeRequested = true
-          if (event.key === "End") latest()
+          if (event.key === "End") {
+            event.preventDefault()
+            latest()
+          }
         }}
         onScroll={() => {
           props.onScroll?.()

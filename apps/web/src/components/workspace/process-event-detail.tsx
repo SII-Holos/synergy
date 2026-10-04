@@ -38,49 +38,71 @@ export function ProcessEventDetailWorkbenchContent(
       .find((message) => message.id === state.messageID)
     return { ...state, identity: identity(), revision: JSON.stringify([live?.time, live?.metadata?.compactionAttempt]) }
   })
-  const [snapshot] = createResource(request, async (target) => {
-    controller?.abort()
-    const current = new AbortController()
-    controller = current
-    const result = await sdk.client.session.message(
-      { sessionID: target.sessionID, messageID: target.messageID },
-      { signal: current.signal, throwOnError: true },
-    )
-    if (!result.data || result.data.info.id !== target.messageID || result.data.info.sessionID !== target.sessionID)
-      throw new Error(_({ id: "session.process.unavailable", message: "This process record is no longer available." }))
-    const message = result.data.info
-    let output: string | undefined
-    if (
-      target.kind === "agent-delivery" &&
-      message.role === "user" &&
-      message.origin?.type === "cortex" &&
-      message.origin.taskID &&
-      message.origin.sessionID
-    ) {
-      const child = await sdk.client.session
-        .get({ sessionID: message.origin.sessionID }, { signal: current.signal, throwOnError: true })
-        .catch(() => undefined)
+  const [snapshot, { refetch }] = createResource(
+    request,
+    async (target) => {
+      controller?.abort()
+      const current = new AbortController()
+      controller = current
+      const result = await sdk.client.session
+        .message(
+          { sessionID: target.sessionID, messageID: target.messageID },
+          { signal: current.signal, throwOnError: true },
+        )
+        .catch((error: unknown) => {
+          if (error instanceof Error) throw error
+          throw new Error(
+            requestErrorMessage(
+              error,
+              _({ id: "session.process.loadFailed", message: "Unable to load process details." }),
+            ),
+            { cause: error },
+          )
+        })
+      if (!result.data || result.data.info.id !== target.messageID || result.data.info.sessionID !== target.sessionID)
+        throw new Error(
+          _({ id: "session.process.unavailable", message: "This process record is no longer available." }),
+        )
+      const message = result.data.info
+      let output: string | undefined
       if (
-        child?.data?.cortex?.taskID === message.origin.taskID &&
-        child.data.cortex.parentSessionID === target.sessionID
+        target.kind === "agent-delivery" &&
+        message.role === "user" &&
+        message.origin?.type === "cortex" &&
+        message.origin.taskID &&
+        message.origin.sessionID
+      ) {
+        const child = await sdk.client.session
+          .get({ sessionID: message.origin.sessionID }, { signal: current.signal, throwOnError: true })
+          .catch(() => undefined)
+        if (
+          child?.data?.cortex?.taskID === message.origin.taskID &&
+          child.data.cortex.parentSessionID === target.sessionID
+        )
+          output = processTaskOutputText(child.data.cortex.output)
+      }
+      if (
+        current.signal.aborted ||
+        identity() !== target.identity ||
+        sdk.url !== target.server ||
+        sdk.scopeKey !== target.scope
       )
-        output = processTaskOutputText(child.data.cortex.output)
-    }
-    if (
-      current.signal.aborted ||
-      identity() !== target.identity ||
-      sdk.url !== target.server ||
-      sdk.scopeKey !== target.scope
-    )
-      throw new DOMException("Aborted", "AbortError")
-    return { ...result.data, output, identity: target.identity }
-  })
+        throw new DOMException("Aborted", "AbortError")
+      return { ...result.data, output, identity: target.identity }
+    },
+    { initialValue: undefined },
+  )
   onCleanup(() => controller?.abort())
   createEffect(() => {
     identity()
     setExpanded(false)
   })
-  const saved = () => (snapshot.latest?.identity === identity() ? snapshot.latest : undefined)
+  const saved = createMemo<(typeof snapshot)["latest"]>((previous) => {
+    const owner = identity()
+    if (snapshot.error) return previous?.identity === owner ? previous : undefined
+    const next = snapshot.latest
+    return next?.identity === owner ? next : undefined
+  })
   const message = () => saved()?.info
   const taskID = () => {
     const current = message()
@@ -169,6 +191,16 @@ export function ProcessEventDetailWorkbenchContent(
               snapshot.error,
               _({ id: "session.process.loadFailed", message: "Unable to load process details." }),
             )}
+            actions={
+              <Button
+                variant="ghost"
+                size="small"
+                disabled={snapshot.loading}
+                onClick={() => void Promise.resolve(refetch()).catch(() => undefined)}
+              >
+                {_({ id: "session.content.retry", message: "Retry loading content" })}
+              </Button>
+            }
           />
         </Show>
         <Show when={error()}>{(text) => <ErrorCard error={text()} />}</Show>

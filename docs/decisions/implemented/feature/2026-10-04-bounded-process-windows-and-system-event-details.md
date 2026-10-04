@@ -12,7 +12,9 @@ Each continuous process group owns one bounded scrolling window. Its inner virtu
 
 Tools, reasoning, Agent deliveries and compaction join their canonical order within the same logical group. Only tool Parts contribute to its operation count. Metadata and footer segments cannot emit another segment's Agent delivery or compaction. Running compaction uses a compact status row; its animation respects reduced motion.
 
-Agent and compaction rows select the Session-owned execution detail panel with a discriminated event identity. The panel performs read-only generated SDK calls, preserves resolved content during refresh, aborts replaced selections, and guards server, Scope, Session and message identity. Exact Cortex task identity follows the [delivery identity decision](../architecture/2026-10-04-retain-cortex-delivery-task-identity.md). A reused child Session cannot replace the original result; missing evidence is explicit.
+An event-first group uses the event's message identity, including before any body Part is hydrated. Loading or replacing its detail content cannot rename the group, and an unloaded preceding span cannot make the event depend on an earlier tool Part.
+
+Agent and compaction rows select the Session-owned execution detail panel with a discriminated event identity. The panel performs read-only generated SDK calls, preserves resolved content during refresh and failed refreshes, aborts replaced selections, and guards server, Scope, Session and message identity. Read failures stay local, retain structured diagnostic text and allow one explicit retry while pending. Exact Cortex task identity follows the [delivery identity decision](../architecture/2026-10-04-retain-cortex-delivery-task-identity.md). A reused child Session cannot replace the original result; missing evidence is explicit.
 
 Local scrolling pauses following independently from the outer conversation. New content exposes an overlay latest control. Virtualizer offsets and bounded layout snapshots preserve reading through history prepend and reopening. Focused or selected inner rows retain their outer owner.
 
