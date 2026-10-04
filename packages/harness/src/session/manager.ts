@@ -480,14 +480,13 @@ export namespace SessionManager {
           const owner = runtime?.owner && owns(runtime, lease) ? runtime.owner : undefined
           const fenced = owner?.fenceQueuedWork === true
           const fenceQueuedBefore = owner?.fenceQueuedBefore
-          const postFenceWork =
-            fenced && fenceQueuedBefore !== undefined
-              ? await (
-                  await import("./inbox")
-                ).SessionInbox.hasRunnableItem(sessionID, {
-                  createdAfter: fenceQueuedBefore,
-                }).catch(() => false)
-              : false
+          let postFenceWork = false
+          if (fenced && fenceQueuedBefore !== undefined) {
+            const { SessionInbox } = await import("./inbox")
+            postFenceWork = await SessionInbox.hasRunnableItem(sessionID, {
+              createdAfter: fenceQueuedBefore,
+            }).catch(() => false)
+          }
           await finish(lease, {
             requestNextWork:
               admitted && (!fenced || postFenceWork) && (completed || options?.requestNextWorkOnFailure !== false),
