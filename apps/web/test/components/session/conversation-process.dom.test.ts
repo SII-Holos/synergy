@@ -21,6 +21,7 @@ type Fixture = {
   grow(count: number): void
   prepend(count: number): void
   delivery(): void
+  manualCompaction(): void
   compaction(state: "running" | "committed" | "failed"): void
   mode(value: "balanced" | "full" | "minimal"): void
   locate(messageID: string, partID?: string): Promise<boolean>
@@ -173,7 +174,16 @@ test("a finished process can reach the end while retaining its outer conversatio
   const viewport = page.locator('[data-component="process-viewport"]').last()
   await viewport.waitFor()
   await viewport.focus()
-  await frames()
+  await page.waitForFunction(() => {
+    const outer = document.querySelector<HTMLElement>("[data-scroller]")!
+    const signature = `${outer.scrollTop}:${outer.scrollHeight}`
+    const state = window as unknown as { settledOuter?: { signature: string; at: number } }
+    if (state.settledOuter?.signature !== signature) {
+      state.settledOuter = { signature, at: performance.now() }
+      return false
+    }
+    return performance.now() - state.settledOuter.at > 200
+  })
   const outerOffset = await page.locator("[data-scroller]").evaluate((element) => element.scrollTop)
   await viewport.press("End")
   await frames()
@@ -300,6 +310,32 @@ test("compaction has one compact lifecycle row and exposes running status while 
     messageID: "compression",
   })
   expect(await page.getByText("Compressed continuation", { exact: true }).count()).toBe(0)
+}, 30000)
+
+test("a manual compaction request is replaced by one completed event inside its process window", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => window.__conversationProcess.manualCompaction())
+  const event = page.locator('[data-component="process-event-row"]')
+  await event.waitFor()
+  expect(await event.count()).toBe(1)
+  expect(await event.getAttribute("data-status")).toBe("running")
+  expect(await page.locator('[data-component="process-viewport"] [data-component="process-event-row"]').count()).toBe(1)
+  await page.evaluate(() => window.__conversationProcess.compaction("committed"))
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll('[data-component="process-event-row"]').length === 1 &&
+      document.querySelectorAll('[data-component="process-event-row"][data-status="complete"]').length === 1,
+  )
+  expect(await event.count()).toBe(1)
+  expect(await page.locator('[data-component="process-event-row"][data-status="running"]').count()).toBe(0)
+  await event.locator("button").click()
+  expect(await page.evaluate(() => window.__processSelection)).toEqual({
+    kind: "compaction",
+    sessionID: "session",
+    messageID: "compression",
+  })
+  expect(errors).toEqual([])
 }, 30000)
 
 test("logical execution folds across messages, preserves prose and retains the final Markdown through exit", async () => {

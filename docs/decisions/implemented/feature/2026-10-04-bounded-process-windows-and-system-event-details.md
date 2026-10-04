@@ -14,6 +14,8 @@ Tools, reasoning, Agent deliveries and compaction join their canonical order wit
 
 An event-first group uses the event's message identity, including before any body Part is hydrated. Loading or replacing its detail content cannot rename the group, and an unloaded preceding span cannot make the event depend on an earlier tool Part.
 
+A manual compaction request owns a pending process event only until its canonical attempt arrives. The attempt replaces the request's presentation across running, completed, failed and empty outcomes, so segmented rendering cannot retain a request spinner after completion. Detached execution reconciliation reads effective transcript history, including rollback visibility, rather than the compacted model working set; compaction cannot remove a previous root's durable completion evidence.
+
 Agent and compaction rows select the Session-owned execution detail panel with a discriminated event identity. The panel performs read-only generated SDK calls, preserves resolved content during refresh and failed refreshes, aborts replaced selections, and guards server, Scope, Session and message identity. Read failures stay local, retain structured diagnostic text and allow one explicit retry while pending. Exact Cortex task identity follows the [delivery identity decision](../architecture/2026-10-04-retain-cortex-delivery-task-identity.md). A reused child Session cannot replace the original result; missing evidence is explicit.
 
 Local scrolling pauses following independently from the outer conversation. New content exposes an overlay latest control. Virtualizer offsets and bounded layout snapshots preserve reading through history prepend and reopening. Focused or selected inner rows retain their outer owner.

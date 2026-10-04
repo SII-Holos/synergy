@@ -286,6 +286,13 @@ window.__conversationProcess = {
     setData("part", message.id, [part(message.id, "delivery-text", "text", "Captured child result")])
     setData("message", "session", (messages) => [...messages.filter((item) => item.id !== message.id), message])
   },
+  manualCompaction() {
+    setData("message", "session", 0, "metadata", { compactionBoundary: true })
+    setData("part", "root", [
+      { id: "compact-request", sessionID: "session", messageID: "root", type: "compaction", auto: false },
+    ])
+    setData("message", "session", (messages) => [messages[0]])
+  },
   compaction(state: "running" | "committed" | "failed") {
     const message: AssistantMessage = {
       ...assistant("compression"),

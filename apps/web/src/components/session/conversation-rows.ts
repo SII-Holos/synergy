@@ -52,6 +52,13 @@ export function buildConversationRows(input: {
         : [root, ...input.messagesFor(root).filter((message) => message.id !== root.id)]
     const processState = root.role === "user" ? input.process?.(root) : undefined
     const lastAssistant = messages.findLast((message) => message.role === "assistant")
+    const isCompaction = (message: Message) =>
+      message.role === "assistant" &&
+      (message.metadata?.compactionAttempt ||
+        message.mode === "compaction" ||
+        message.agent === "compaction" ||
+        input.summaries(message.id).some((part) => part.type === "compaction_recovery"))
+    const hasCompaction = messages.some(isCompaction)
     const eventFor = (message: Message) => {
       if (
         message.role === "user" &&
@@ -60,9 +67,11 @@ export function buildConversationRows(input: {
       )
         return "agent-delivery" as const
       if (
-        message.role === "assistant" &&
-        (message.metadata?.compactionAttempt ||
-          input.summaries(message.id).some((part) => part.type === "compaction_recovery"))
+        isCompaction(message) ||
+        (message.role === "user" &&
+          message.metadata?.compactionBoundary === true &&
+          !hasCompaction &&
+          input.summaries(message.id).some((part) => part.type === "compaction"))
       )
         return "compaction" as const
     }
@@ -88,6 +97,7 @@ export function buildConversationRows(input: {
     let header = false
     for (const message of messages) {
       const event = eventFor(message)
+      if (message.role === "user" && message.metadata?.compactionBoundary === true && !event) continue
       if (process && (message.role === "assistant" || event) && !header) {
         rows.push({ key: `${root.id}:process`, root, message: root, kind: "process", process })
         header = true

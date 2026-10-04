@@ -10,6 +10,34 @@ const parts = Array.from(
     ({ id: `p${index.toString().padStart(4, "0")}`, messageID: "reply", type: "tool" }) as SessionPartSummary,
 )
 
+test("a manual compaction request yields to its canonical attempt without a stale running row", () => {
+  const boundary = { ...root, metadata: { compactionBoundary: true } } as Message
+  const request = { ...parts[0], id: "request", messageID: root.id, type: "compaction" } as SessionPartSummary
+  const attempt = {
+    ...reply,
+    mode: "compaction",
+    agent: "compaction",
+    metadata: { compactionAttempt: { state: "committed" } },
+  } as Message
+  const input = {
+    timeline: [boundary],
+    summaries: (id: string) => (id === root.id ? [request] : []),
+    page: () => ({ hasMore: false }),
+    process: () => ({ open: true, working: true }),
+  }
+  const pending = buildConversationRows({ ...input, messagesFor: () => [] })
+  expect(pending.filter((row) => row.kind === "body").map((row) => [row.message.id, row.event])).toEqual([
+    [root.id, "compaction"],
+  ])
+  for (const state of ["running", "committed", "failed", "empty"]) {
+    const message = { ...attempt, metadata: { compactionAttempt: { state } } } as Message
+    const completed = buildConversationRows({ ...input, previous: pending, messagesFor: () => [message] })
+    const bodies = completed.filter((row) => row.kind === "body")
+    expect(bodies.map((row) => row.message.id)).toEqual(state === "empty" ? [] : [reply.id])
+    expect(bodies.every((row) => row.event === "compaction")).toBe(true)
+  }
+})
+
 test("unhydrated system events form stable groups without requiring a first Part", () => {
   const delivery = {
     ...root,

@@ -25,6 +25,8 @@ Do not run `quality:quick` alongside browser suites or development builds in the
 
 ## Workbench Presentation Acceptance
 
+For compaction acceptance, observe session idle and durable turn completion separately. Cross detached result settlement with a committed compaction, and verify that a request's pending process row yields to its canonical running, completed, failed or empty attempt across segmented rendering.
+
 Use the isolated provider and synthetic-data workflow in `develop-synergy` for the real new-task → first-send → reply → switch-and-return path. Keep component fixtures for failure injection and geometry, but do not label them end-to-end or real-provider evidence. Register browser suites with their owning serial runner. Do not run a narrow suite alongside that runner when they share a Vite fixture root or dependency cache; finish one run before starting the other. Measure the actual Composer, status footer, floating inbox and menu bounds in both wide and narrow chat panes; a full-width browser can still contain a narrow pane. Allow subpixel rounding rather than exact floating-point width equality. Native IME, real 200% zoom, reduced motion and visual focus each need explicit evidence; pasted text or a resized viewport is not a substitute.
 
 CI `package:check` builds its own package closure and runs on the separate contracts runner. Keep rebuilding gates apart from suites consuming workspace `dist`; isolated Homes do not isolate the checkout's compiled files.

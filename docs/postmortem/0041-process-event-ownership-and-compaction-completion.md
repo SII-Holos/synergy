@@ -1,0 +1,32 @@
+# Process event ownership and compaction completion
+
+## Executive summary
+
+Conversation inspection reproduced duplicate Agent deliveries above their chronological position and a manual compaction request that continued displaying a spinner after its attempt completed. Joint Web acceptance also found a historical execution record that remained running after compaction removed its completion evidence from the model working set.
+
+## Summary
+
+The message order in storage was correct. Segmented turn rendering let metadata and footer segments project an Agent delivery owned by another content segment. Manual compaction had a similar ownership mismatch: the request's segment could not see the assistant attempt and continued projecting its own pending row. Independently, detached rollout reconciliation used compacted model history, which can exclude a previously completed root and its reply.
+
+## Timeline
+
+- On 2026-10-04, message-flow inspection traced the apparent Agent ordering error to duplicate segment projection.
+- Production Web acceptance reproduced simultaneous pending and completed compaction rows.
+- The same acceptance observed an idle session with a previous root's rollout still running after manual compaction.
+- Behavioral regressions reproduced request ownership and missing completion evidence, then passed with the corrected projections.
+
+## Root cause
+
+Content ownership was inferred from each segment's available messages rather than the complete turn. Metadata-only segments could emit delivery content, and a request-only segment treated an existing compaction attempt as absent. Rollout completion used a model input optimization as execution authority; delayed settlement could run after that projection dropped earlier roots.
+
+## Guardrails added
+
+- [Conversation rows](../../apps/web/src/components/session/conversation-rows.ts) own chronological events and replace manual request presentation when any canonical attempt arrives.
+- [Segment rendering](../../packages/ui/src/components/session-turn.tsx) restricts delivery projection to its content owner.
+- [Rollout reconciliation](../../packages/harness/src/session/rollout/lifecycle.ts) uses effective transcript history with rollback events applied.
+- [Conversation tests](../../apps/web/test/components/session/conversation-process.dom.test.ts) verify a single completed event inside its process window; [rollout tests](../../packages/harness/test/session/rollout-continuation.test.ts) verify completion after model history has excluded the root.
+- The [testing workflow](../../.synergy/skill/testing-guide/SKILL.md) checks terminal execution evidence separately from session idle status. The [decision record](../decisions/implemented/feature/2026-10-04-bounded-process-windows-and-system-event-details.md) records the ownership rules.
+
+## Lessons
+
+Virtualized segments cannot infer that an event is absent from a turn merely because it is absent from their own content. Session idle and durable execution completion are separate observations. A model working set optimized by compaction cannot determine historical execution outcomes.

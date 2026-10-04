@@ -22,7 +22,7 @@ Otherwise, write a bug fix with tests.
 Name files `NNNN-kebab-case-title.md` using the next available number. Use these sections:
 
 - **Executive summary** — one paragraph: what broke, its cause, why it escaped, and the durable lesson.
-- **Summary** — the full detail of the failure.
+- **Summary** — details of the failure.
 - **Timeline** — what was observed and when.
 - **Root cause** — the mechanism, and why every safety net missed it.
 - **Guardrails added** — the concrete fixes, linked: tests, doc updates, gate changes.
@@ -30,6 +30,7 @@ Name files `NNNN-kebab-case-title.md` using the next available number. Use these
 
 ## Index
 
+- [0041: Compaction completion](0041-process-event-ownership-and-compaction-completion.md)
 - [0039: Paused output blocked process activation](0039-paused-output-blocked-process-activation.md)
 - [0038: Session latency](0038-session-interactions-amplified-global-work.md)
 - [0035: Titlebar controls](0035-native-titlebar-swallowed-controls.md)
