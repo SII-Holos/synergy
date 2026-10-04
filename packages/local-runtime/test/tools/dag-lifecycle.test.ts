@@ -6,6 +6,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { DagReadTool, DagWriteTool, DagPatchTool } from "../../src/tools/dag"
+import { TodoWriteTool, TodoReadTool } from "../../src/tools/todo"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -37,6 +38,40 @@ const read = await DagReadTool.init(),
   write = await DagWriteTool.init(),
   patch = await DagPatchTool.init()
 const node = (id: string, deps: string[] = []): Dag.Node => ({ id, content: `Research ${id}`, status: "pending", deps })
+
+test("DAG patches report changed and promoted nodes without repeating unrelated nodes", () =>
+  runtime.run(async () => {
+    await fixture(async (ctx) => {
+      await write.execute({ nodes: [node("a"), node("b", ["a"]), node("c")] }, ctx)
+      const result = await patch.execute(
+        {
+          nodes: [
+            { id: "a", status: "completed" },
+            { id: "missing", status: "completed" },
+          ],
+        },
+        ctx,
+      )
+      expect(result.output).toContain("Research a")
+      expect(result.output).toContain("Research b")
+      expect(result.output).not.toContain("Research c")
+      expect(result.output).toContain('Node "missing" not found')
+      expect(result.metadata.nodes).toHaveLength(3)
+    })
+  }))
+
+test("todo writes acknowledge the retained call and keep the full list available to UI and reads", () =>
+  runtime.run(async () => {
+    await fixture(async (ctx) => {
+      const todos = [
+        { id: "a", content: "A long plan already present in the call", status: "in_progress", priority: "high" },
+      ]
+      const result = await (await TodoWriteTool.init()).execute({ todos }, ctx)
+      expect(result.output).toBe("Todo list updated.")
+      expect(result.metadata.todos).toEqual(todos)
+      expect((await (await TodoReadTool.init()).execute({}, ctx)).output).toContain(todos[0].content)
+    })
+  }))
 
 test("DAG tools persist assignments, promote dependencies and preserve completed nodes", () =>
   runtime.run(async () => {

@@ -127,6 +127,8 @@ Separately exercise a real child closing stdin while unread input is queued, the
 
 When a public operation returns a typed in-progress outcome at its foreground budget, correctness tests must await its documented completion path before asserting durable results. Exercise that outcome with an explicit held-operation fixture; do not raise the product deadline or swallow unrelated failures.
 
+For model-context persistence, assert final provider payloads across tool steps and changed context, not only an internal message array. Cover hidden-message effects on root/steer consumers, rollback, Runtime reopening, failed and successful compaction, and reserved metadata at public input/import. Keep comparison state tied to retained text; a UI notification or stored hash alone does not establish what the model can see.
+
 ## Choose the Lowest Useful Level
 
 For byte-bounded queues, hold a worker busy and admit several individually valid requests across scheduling lanes. Verify aggregate rejection and exact byte release on dispatch, queued cancellation, startup failure, and shutdown; a single oversized request does not exercise aggregate admission.

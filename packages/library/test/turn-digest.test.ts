@@ -1,9 +1,13 @@
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
-import type { Session } from "@ericsanchezok/synergy-harness/session"
 import { TurnDigest } from "../src/turn-digest"
 import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import type { Turn } from "@ericsanchezok/synergy-harness/session/turn"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
+import { testRuntime } from "./support/runtime"
 
 // ---------------------------------------------------------------------------
 // Test data builders — minimal objects that satisfy the type constraints
@@ -11,7 +15,7 @@ import type { Turn } from "@ericsanchezok/synergy-harness/session/turn"
 
 const partBase = { id: "p1", sessionID: "ses_1", messageID: "msg_1" }
 
-function userMsg(id: string, parts: MessageV2.Part[]): MessageV2.WithParts {
+function userMsg(id: string, parts: MessageV2.Part[]): MessageV2.WithParts & { info: MessageV2.User } {
   return {
     info: {
       id,
@@ -102,6 +106,66 @@ function patchPart(files: string[]): MessageV2.PatchPart {
 function turn(user: MessageV2.WithParts, assistants: MessageV2.WithParts[]): Turn.Raw {
   return { user, assistants }
 }
+
+test("extracts a retained learning turn across hidden context updates without including the next user turn", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      async fn() {
+        const session = await Session.create({ title: "Learning with retained context" })
+        const root = userMsg(Identifier.ascending("message"), [textPart("Fix the regression")])
+        root.info = { ...root.info, isRoot: true, rootID: root.info.id, origin: { type: "user" }, visible: true }
+        const context = userMsg(Identifier.ascending("message"), [
+          { ...textPart("<context-update>Retained advisory</context-update>"), origin: "system" },
+        ])
+        context.info = {
+          ...context.info,
+          rootID: root.info.id,
+          isRoot: false,
+          visible: false,
+          includeInContext: true,
+          origin: { type: "system", detail: "context_update" },
+        }
+        const first = assistantMsg(root.info.id, [textPart("Found the cause")])
+        first.info.id = Identifier.ascending("message")
+        const changed = { ...context, info: { ...context.info, id: Identifier.ascending("message") } }
+        const last = assistantMsg(root.info.id, [textPart("Fixed and verified")])
+        last.info.id = Identifier.ascending("message")
+        const next = userMsg(Identifier.ascending("message"), [textPart("An unrelated task")])
+        const nextAnswer = assistantMsg(next.info.id, [textPart("Unrelated answer")])
+        nextAnswer.info.id = Identifier.ascending("message")
+        const messages = [root, context, first, changed, last, next, nextAnswer]
+        const created = Date.now()
+        for (const [index, message] of messages.entries()) {
+          await Session.updateMessage({
+            ...message.info,
+            sessionID: session.id,
+            time: { ...message.info.time, created: created + index },
+          })
+          for (const part of message.parts)
+            await Session.updatePart({
+              ...part,
+              id: Identifier.ascending("part"),
+              sessionID: session.id,
+              messageID: message.info.id,
+            })
+        }
+        const retained = await Session.messages({ sessionID: session.id })
+        expect(retained.map((message) => message.info.id)).toEqual(messages.map((message) => message.info.id))
+        for (const anchor of [root.info.id, context.info.id]) {
+          const extracted = TurnDigest.extractSingle(session, retained, anchor)
+          expect(extracted?.digest.input).toBe("Fix the regression")
+          expect(extracted?.turn.assistants.map((message) => message.info.id)).toEqual([first.info.id, last.info.id])
+          expect(extracted?.digest.segments).toEqual([
+            { type: "text", text: "Found the cause" },
+            { type: "text", text: "Fixed and verified" },
+          ])
+        }
+      },
+    }),
+  )
+})
 
 // ---------------------------------------------------------------------------
 // Tests

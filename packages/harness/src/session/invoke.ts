@@ -52,6 +52,8 @@ import { ContextUsage } from "./context-usage"
 import { PermissionNext } from "../permission/next"
 import { ControlProfileCompiler } from "../control-profile/compiler"
 import { buildPermissionContext } from "./permission-context"
+import { SessionPromptContext } from "./prompt-context"
+import { PromptCachePolicy } from "../provider/prompt-cache-policy"
 import { Config } from "../config/config"
 import { SessionCortexRuntime } from "./cortex-runtime"
 import { Observability } from "../observability"
@@ -853,6 +855,7 @@ export namespace SessionInvoke {
               const producingProvider = await Provider.getProvider(model.providerID)
               const deliveryMetadata = channelDeliveryMetadata(msgs, lastFinishedIndex)
               const toolDisplayByName = new Map<string, ToolDisplay>()
+              const contextIdentity = SessionPromptContext.reserve()
               const processor = SessionProcessor.create({
                 imageAttachments: msgs.flatMap((message) =>
                   message.parts.flatMap((part) => {
@@ -865,7 +868,7 @@ export namespace SessionInvoke {
                     })
                   }),
                 ),
-                assistantMessage: (await Session.updateMessage({
+                assistantMessage: {
                   id: Identifier.ascending("message"),
                   parentID: R.id,
                   rootID: R.id,
@@ -894,7 +897,7 @@ export namespace SessionInvoke {
                   },
                   sessionID,
                   ...(deliveryMetadata ? { metadata: deliveryMetadata } : {}),
-                })) as MessageV2.Assistant,
+                },
                 sessionID: sessionID,
                 model,
                 abort,
@@ -995,7 +998,17 @@ export namespace SessionInvoke {
               // This ordering maximizes prompt caching by keeping static content first.
               let systemParts: string[] = []
               let systemCacheBreakpoint: number | undefined
-              let lateSystemParts: string[] = [ToolIntent.guidance]
+              let lateSystemParts: string[] = []
+              const contextSections: SessionPromptContext.Section[] = []
+              function advisory(
+                id: string,
+                text: string | undefined,
+                options: { rootScoped?: boolean; event?: boolean } = {},
+              ) {
+                if (text) lateSystemParts.push(text)
+                contextSections.push({ id, text, ...options })
+              }
+              advisory("tool-intent", ToolIntent.guidance)
 
               // Layer 1: Static — AGENTS.md instructions (stable within session)
               systemParts.push(...customParts)
@@ -1039,8 +1052,8 @@ export namespace SessionInvoke {
               }
 
               // Layer 3: Dynamic advisory context — loop-stable memory/experience, volatile across turns
+              advisory("memory", memoryResult?.context, { rootScoped: true })
               if (memoryResult) {
-                lateSystemParts.push(memoryResult.context)
                 if (firstModelPreparation) cacheResult(sessionID, memoryResult)
                 const { injection } = memoryResult
                 if (firstModelPreparation) SessionContextContributions.committed(sessionID, memoryResult)
@@ -1056,13 +1069,13 @@ export namespace SessionInvoke {
               }
 
               // Layer 4: Dynamic advisory context — environment block (contains timestamp, changes per invoke)
-              lateSystemParts.push(...envParts)
+              advisory("environment", envParts.join("\n\n"))
 
               // Layer 4.5: Dynamic advisory context — git health diagnostics (warns about uncommitted changes, large files, etc.)
               const gitHealthBlock = ScopeContext.current.workspace
                 ? SessionProjectHealth.injectCachedGitHealth(ScopeContext.current.directory)
                 : undefined
-              if (gitHealthBlock) lateSystemParts.push(gitHealthBlock)
+              advisory("git-health", gitHealthBlock)
 
               // Layer 4.55: Configurable advisory context — git commit coauthor footer reminder
               // Only meaningful in a git working tree; use the same live probe as the
@@ -1073,18 +1086,19 @@ export namespace SessionInvoke {
                   ScopeContext.current.workspace &&
                   (await SessionProjectHealth.isGitRepo(ScopeContext.current.directory))
                 if (inGitRepo) {
-                  lateSystemParts.push(`<coauthor-reminder>\n${COAUTHOR_REMINDER.trim()}\n</coauthor-reminder>`)
+                  advisory("coauthor", `<coauthor-reminder>\n${COAUTHOR_REMINDER.trim()}\n</coauthor-reminder>`)
                 }
               }
 
               // Domain advisories share the turn cancellation signal.
-              lateSystemParts.push(...advisoryParts)
+              advisory("domain-reminders", advisoryParts.join("\n\n"), { rootScoped: true })
 
               // Secret token semantics — present only when the vault is in
               // use, so installs that never register secrets see no extra
               // prompt bytes.
               if (await SecretVault.hasAny()) {
-                lateSystemParts.push(
+                advisory(
+                  "secret-tokens",
                   "<secret-tokens>\n" +
                     "Registered secrets appear in this conversation only as ⟦sec:<id>⟧ references. " +
                     "Synergy resolves them to the real values automatically when a tool call executes; " +
@@ -1095,19 +1109,38 @@ export namespace SessionInvoke {
               }
 
               // Layer 6: Dynamic advisory context — cortex reminders and time context
-              if (cortexReminder) lateSystemParts.push(cortexReminder)
+              advisory("cortex", cortexReminder)
 
               // Layer 7: Dynamic advisory context — planning reminder when agent self-executes without a DAG
               const planningReminder = await buildPlanningReminder(sessionID, agent, sessionMessages)
-              if (planningReminder) lateSystemParts.push(planningReminder)
+              advisory("planning", planningReminder, { rootScoped: true })
 
               if (step === 1 && lastFinished?.time.completed) {
                 const elapsed = R.time.created - lastFinished.time.completed
                 if (elapsed > 0) {
-                  lateSystemParts.push(
+                  advisory(
+                    "elapsed",
                     `<time-context>\nTime since your last response: ${formatElapsed(elapsed)}\n</time-context>`,
+                    { rootScoped: true, event: true },
                   )
                 }
+              }
+              let promptContext: MessageV2.WithParts | undefined
+              if (PromptCachePolicy.layout(model, producingProvider?.profileID) === "late-user-context") {
+                try {
+                  promptContext = await SessionPromptContext.prepare({
+                    root: R,
+                    history: sessionMessages,
+                    sections: contextSections,
+                    identity: contextIdentity,
+                    modelKey: JSON.stringify([model.providerID, producingProvider?.profileID, model.id, model.api.id]),
+                  })
+                } catch (error) {
+                  await completeAssistantWithError({ sessionID, processor, model, error, abort })
+                  break
+                }
+                if (promptContext) sessionMessages.push(promptContext)
+                lateSystemParts = []
               }
               const historyBeforeBytes = LLMTurnMemory.estimateBytes(sessionMessages)
               using memoryTurn = LLMTurnMemory.begin({
@@ -1232,6 +1265,15 @@ export namespace SessionInvoke {
                   error: new PromptBudgeter.ContextBudgetExceededError(),
                   abort,
                 })
+                break
+              }
+
+              try {
+                abort.throwIfAborted()
+                await SessionPromptContext.commit(promptContext, processor.message)
+                if (promptContext) msgs.push(promptContext)
+              } catch (error) {
+                await completeAssistantWithError({ sessionID, processor, model, error, abort })
                 break
               }
 
@@ -2124,9 +2166,8 @@ export namespace SessionInvoke {
 
     const taskList = running
       .map((t) => {
-        const elapsed = Math.floor((Date.now() - t.startedAt) / 1000)
         const lastTool = t.lastTool ? ` | last: ${t.lastTool}${t.lastToolStatus ? ` (${t.lastToolStatus})` : ""}` : ""
-        return `- \`${t.id}\` [${elapsed}s] — @${t.agent} — ${t.description} — ${t.health}${lastTool}`
+        return `- \`${t.id}\` — @${t.agent} — ${t.description} — ${t.health}${lastTool}`
       })
       .join("\n")
 
@@ -2151,11 +2192,11 @@ export namespace SessionInvoke {
   async function buildPlanningReminder(
     sessionID: string,
     agent: { name: string; mode?: string },
-    sessionMessages: { info: { role: string }; parts: { type: string; tool?: string }[] }[],
+    sessionMessages: MessageV2.WithParts[],
   ): Promise<string | undefined> {
     if (agent.name !== PrimaryAgentIdentity.names.coding) return undefined
 
-    const lastUserIdx = sessionMessages.reduce((last, msg, idx) => (msg.info.role === "user" ? idx : last), -1)
+    const lastUserIdx = MessageV2.lastUserInputIndex(sessionMessages)
     if (lastUserIdx < 0) return undefined
 
     const currentTurnTools = new Set<string>()

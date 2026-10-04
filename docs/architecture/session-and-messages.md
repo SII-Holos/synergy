@@ -418,6 +418,8 @@ The index is not part of session export or canonical recovery state. Missing, in
 
 Visible history and model context can therefore differ intentionally without losing the durable record.
 
+Advisory context updates use hidden, non-root system-origin user messages with `origin.detail = "context_update"`. Their versioned comparison metadata references the retained text parts. Public input and transcript import discard that reserved metadata; target invocations capture their own current state. Context and its assistant shell are committed together after prompt-budget admission. See [prompt assembly](llm-loop.md#prompt-assembly).
+
 ## Rollback, Redo, and File Restore
 
 History rollback is an event overlay on the raw transcript.

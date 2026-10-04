@@ -1,3 +1,4 @@
+import { SessionPromptContext } from "./prompt-context"
 import { upgradeImportedRecord } from "../migration/import"
 import { WorkspaceCatalog } from "../workspace/catalog"
 import { normalizeSessionWorkspaceInfo } from "./migration"
@@ -456,7 +457,9 @@ export namespace SessionImport {
       ["sessions", ScopeContext.current.scope.id, sessionID, "messages", info.id, "info"],
       info,
     ) as MessageV2.Info
-    const metadata = info.metadata ? (remapSessionIDs(info.metadata, idMap) as Record<string, any>) : undefined
+    const metadata = SessionPromptContext.stripMetadata(
+      info.metadata ? (remapSessionIDs(info.metadata, idMap) as Record<string, unknown>) : undefined,
+    )
     if (info.role === "assistant") {
       return {
         ...info,

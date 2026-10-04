@@ -63,6 +63,8 @@ Open questions intentionally left for later work included advanced Anthropic TTL
 
 Current prompt assembly and compaction contracts live in [LLM loop and compaction](../architecture/llm-loop.md). Current provider configuration belongs in [Configuration](../reference/configuration.md); operational performance evidence belongs in [Performance observability](../operations/performance-observability.md).
 
+[Codex harness 与 Synergy 缓存机制比较](context-efficiency/2026-09-28-codex-harness-cache-analysis.md)核对旧报告的 OpenAI-Codex 路由与原生 harness 的区别，比较固定版本的上下文更新、工具发现、reasoning 回放和增量传输，并区分源码机制与尚未测量的收益。
+
 ### UI API 5 frontend performance
 
 [UI API 5 performance acceptance](2026-09-07-plugin-ui5-performance.md) records the same-machine production-build comparison, bounded rendering and plugin request counts for the public frontend extraction.
@@ -73,7 +75,9 @@ Current prompt assembly and compaction contracts live in [LLM loop and compactio
 
 ### 编码观察与等待成本
 
-[Local-24 最终修复研究](context-efficiency/2026-09-23-local24-glm-fault-repair-study.md) 保存完整配对结果与受干扰项的来源；[CompCert 与 Mailman 等待提示实验](context-efficiency/2026-09-24-process-waiting-study.md) 单独记录后续两项的原生测试、逐请求用量、等待行为、资源条件和完整最终数据。
+[PR #1475 优化分析](context-efficiency/2026-09-28-pr1475-optimization-analysis.md) 对照最终合并实现，解释工具输出、编辑证据、固定提示、等待行为、benchmark 调度和原生可靠性的变化，并区分确定性收益与模型实验观察。
+
+[上下文效率研究索引](context-efficiency/README.md) 按问题和实验顺序组织原始报告及数据，包含早期失败、来源选择、两题定向验证和最后候选 24 题覆盖；历史证据保持原样。
 
 [等待提示后续诊断](context-efficiency/2026-09-24-process-waiting-followup.md) 区分子进程交互等待、命令失败、工具目录和缓存成本，并说明定向验证与完整 24 题覆盖分别回答的问题。
 

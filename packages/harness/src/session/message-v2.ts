@@ -1247,6 +1247,15 @@ export namespace MessageV2 {
     return new Set(canonical.values())
   }
 
+  export function lastUserInputIndex(input: WithParts[]): number {
+    return deriveSemantics(input).findLastIndex(
+      ({ info }) =>
+        info.role === "user" &&
+        info.includeInContext !== false &&
+        (info.isRoot === true || info.origin?.type === "user" || info.origin?.type === "channel"),
+    )
+  }
+
   export function projectModelMessages(
     input: WithParts[],
     opts?: {
@@ -1305,6 +1314,9 @@ export namespace MessageV2 {
             userMessage.parts.push({
               type: "text",
               text: part.text,
+              ...(msg.info.origin?.type === "system" && msg.info.origin.detail === "context_update"
+                ? { providerMetadata: { synergy: { durableContext: true } } }
+                : {}),
             })
             addModelMessageContribution(provenance, isSystemPart(part) ? "instructions" : "conversation", part.text)
           }

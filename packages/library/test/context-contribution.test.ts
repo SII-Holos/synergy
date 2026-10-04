@@ -150,6 +150,16 @@ test("context contribution combines filtered semantic memory with attributed exp
             { type: "text", text: "system-only", synthetic: true },
           ],
         },
+        {
+          info: {
+            role: "user",
+            isRoot: false,
+            origin: { type: "system", detail: "context_update" },
+            visible: false,
+            includeInContext: true,
+          },
+          parts: [{ type: "text", origin: "system", text: "current environment" }],
+        },
       ] as MessageV2.WithParts[]
       const result = await buildMemoryContext("session-research", "scope-research", messages, {
         memory: {

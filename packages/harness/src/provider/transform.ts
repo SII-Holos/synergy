@@ -193,6 +193,7 @@ export namespace ProviderTransform {
     if (!Array.isArray(msg.content)) return false
     return msg.content.some(
       (part) =>
+        part.providerOptions?.synergy?.durableContext !== true &&
         (part as { type: string; text?: string }).type === "text" &&
         (part as { text?: string }).text?.includes("<runtime-context>"),
     )

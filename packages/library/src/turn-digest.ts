@@ -118,7 +118,10 @@ export namespace TurnDigest {
     options?: Options,
   ): ExtractedTurn | undefined {
     const rootID = Turn.resolveRealUser(msgs, userMessageID)
-    const turn = rootID === userMessageID ? Turn.collectOne(msgs, userMessageID) : collectChain(msgs, rootID)
+    const turn =
+      rootID === userMessageID
+        ? Turn.collectOne(msgs, userMessageID, { skipSynthetic: true })
+        : collectChain(msgs, rootID)
     if (!turn) return undefined
     if (turn.assistants.length === 0) return undefined
     return { digest: build(session, turn.user, turn.assistants, options), turn }

@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test"
 import { simulateReadableStream } from "ai"
-import type { LanguageModelV2, LanguageModelV2StreamPart, ProviderV2 } from "@ai-sdk/provider"
+import type {
+  LanguageModelV2,
+  LanguageModelV2CallOptions,
+  LanguageModelV2StreamPart,
+  ProviderV2,
+} from "@ai-sdk/provider"
 import { z } from "zod"
 import { Cortex } from "../../src/cortex"
 import { Identifier } from "../../src/id/id"
@@ -256,9 +261,20 @@ for (const backend of storageTestBackends()) {
               if (queued) {
                 for (const prompt of prompts.slice(0, 2)) expect(prompt.includes("root memory 1")).toBe(true)
                 for (const prompt of prompts.slice(2)) {
-                  expect(prompt.includes("root memory 1")).toBe(false)
-                  if (mode === "queued-task") expect(prompt.includes("root memory 2")).toBe(true)
-                  else expect(prompt.includes("fixture-context")).toBe(false)
+                  const messages = JSON.parse(prompt) as LanguageModelV2CallOptions["prompt"]
+                  const currentMemory = messages
+                    .flatMap((message) => (Array.isArray(message.content) ? message.content : []))
+                    .filter((part) => part.type === "text" && part.text.startsWith('<context-update section="memory">'))
+                    .at(-1)
+                  expect(currentMemory?.type).toBe("text")
+                  if (currentMemory?.type !== "text") throw new Error("Missing current task memory update")
+                  expect(currentMemory.text).not.toContain("root memory 1")
+                  expect(currentMemory.text).toContain("Applies only to the user task containing this update.")
+                  if (mode === "queued-task") expect(currentMemory.text).toContain("root memory 2")
+                  else
+                    expect(currentMemory.text).toContain(
+                      "The previous advisory context in this section no longer applies.",
+                    )
                 }
                 expect(collected).toEqual([true, true])
                 expect(committed).toEqual(mode === "queued-task" ? [session.id, session.id] : [session.id])

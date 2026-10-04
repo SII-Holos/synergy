@@ -29,3 +29,5 @@ dagpatch({ nodes: [
 ```
 
 After patching, downstream pending nodes whose deps are all completed will be auto-promoted to `running`.
+
+The result reports actual changed nodes, including automatic promotions and partial failures. Unchanged nodes remain as previously recorded. Use `dagread` when you need the complete current graph.

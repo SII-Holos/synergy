@@ -1,7 +1,6 @@
 import { SessionExecutionContributions } from "@ericsanchezok/synergy-harness/session/execution-contributions"
 import { ContinuationWait } from "@ericsanchezok/synergy-harness/session/continuation-wait"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
-import { formatElapsed } from "@ericsanchezok/synergy-harness/util/elapsed"
 import { AgendaStore } from "./store"
 import { AgendaSessionWakeup } from "./session-wakeup"
 
@@ -56,11 +55,10 @@ export async function buildAgendaReminder(sessionID: string, scopeID: string): P
 
   if (waking.length === 0) return undefined
 
-  const lines = waking.map((item) => {
-    const remaining = item.nextRunAt! - now
-    const remainingStr = formatElapsed(remaining)
-    return `- **\`${item.id}\`** "${item.title}" will wake this session in ~${remainingStr}`
-  })
+  const lines = waking.map(
+    (item) =>
+      `- **\`${item.id}\`** "${item.title}" will wake this session at ${new Date(item.nextRunAt!).toISOString()}`,
+  )
 
   return [
     `<agenda-reminder>`,

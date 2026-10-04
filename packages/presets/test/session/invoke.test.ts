@@ -96,6 +96,22 @@ function assistantMessage(id: string, parentID: string, text: string): MessageV2
   }
 }
 
+function advisoryText(
+  input: Pick<Parameters<typeof PromptBudgeter.buildPlan>[0], "messages" | "lateSystem">,
+): string[] {
+  return [
+    ...(input.lateSystem ?? []),
+    ...input.messages.flatMap((message) => {
+      if (message.role !== "user") return []
+      const parts =
+        typeof message.content === "string"
+          ? [message.content]
+          : message.content.flatMap((part) => (part.type === "text" ? [part.text] : []))
+      return parts.filter((text) => text.startsWith("<context-update "))
+    }),
+  ]
+}
+
 function installBasicLoopMocks(options?: {
   onBuildPlan?: (input: Parameters<typeof PromptBudgeter.buildPlan>[0]) => PromptBudgeter.PromptPlan | void
   onProcess?: (
@@ -349,7 +365,8 @@ describe("SessionInvoke Skill command rendering", () => {
 
             const messages = await Session.messages({ sessionID: session.id })
             const users = messages.filter(
-              (message): message is MessageV2.WithParts & { info: MessageV2.User } => message.info.role === "user",
+              (message): message is MessageV2.WithParts & { info: MessageV2.User } =>
+                message.info.role === "user" && message.info.isRoot === true,
             )
             expect(users).toHaveLength(1)
             expect(users[0].info.isRoot).toBe(true)
@@ -379,11 +396,11 @@ describe("SessionInvoke workspace execution context", () => {
       let worktreeID: string | undefined
       let worktreePath = ""
       let assistantPath: MessageV2.Assistant["path"] | undefined
-      let lateSystemPrompt = ""
+      let advisoryPrompt = ""
       const restore = installBasicLoopMocks({
         onProcess: async (input, assistant) => {
           assistantPath = assistant.path
-          lateSystemPrompt = input.lateSystem?.join("\n") ?? ""
+          advisoryPrompt = advisoryText(input).join("\n")
         },
       })
 
@@ -401,9 +418,9 @@ describe("SessionInvoke workspace execution context", () => {
         await SessionInvoke.loop.force(sessionID)
 
         expect(assistantPath).toEqual({ cwd: worktreePath, root: worktreePath })
-        expect(lateSystemPrompt).toContain(`Working directory: ${worktreePath}`)
-        expect(lateSystemPrompt).toContain(`Workspace path: ${worktreePath}`)
-        expect(lateSystemPrompt).toContain(`Original checkout: ${tmp.path}`)
+        expect(advisoryPrompt).toContain(`Working directory: ${worktreePath}`)
+        expect(advisoryPrompt).toContain(`Workspace path: ${worktreePath}`)
+        expect(advisoryPrompt).toContain(`Original checkout: ${tmp.path}`)
       } finally {
         restore()
         SessionManager.unregisterRuntime(sessionID)
@@ -657,7 +674,7 @@ describe("SessionProgress.needsModelCall", () => {
 })
 
 describe("SessionInvoke system prompt assembly", () => {
-  test("injects the git coauthor reminder into model system prompts", () =>
+  test("records the git coauthor reminder in model advisory context", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
 
@@ -674,7 +691,7 @@ describe("SessionInvoke system prompt assembly", () => {
       const originalEmbeddingGenerate = Embedding.generate
 
       let capturedSystem: string[] | undefined
-      let capturedLateSystem: string[] | undefined
+      let capturedAdvisory: string[] | undefined
 
       try {
         ;(Provider.getModel as any) = mock(async () => ({
@@ -718,7 +735,7 @@ describe("SessionInvoke system prompt assembly", () => {
         }))
         ;(PromptBudgeter.buildPlan as any) = mock(async (input: Parameters<typeof PromptBudgeter.buildPlan>[0]) => {
           capturedSystem = [...input.system]
-          capturedLateSystem = input.lateSystem ? [...input.lateSystem] : undefined
+          capturedAdvisory = advisoryText(input)
           return {
             system: input.system,
             systemCacheBreakpoint: input.systemCacheBreakpoint,
@@ -778,13 +795,13 @@ describe("SessionInvoke system prompt assembly", () => {
             await SessionInvoke.loop.force(promptSessionID)
 
             const systemPrompt = capturedSystem?.join("\n") ?? ""
-            const lateSystemPrompt = capturedLateSystem?.join("\n") ?? ""
+            const advisoryPrompt = capturedAdvisory?.join("\n") ?? ""
             expect(systemPrompt).not.toContain("<coauthor-reminder>")
-            expect(lateSystemPrompt).toContain("<coauthor-reminder>")
-            expect(lateSystemPrompt).toContain(
+            expect(advisoryPrompt).toContain("<coauthor-reminder>")
+            expect(advisoryPrompt).toContain(
               "Co-authored-by: synergy-agent <299070056+synergy-agent@users.noreply.github.com>",
             )
-            expect(lateSystemPrompt).toContain("</coauthor-reminder>")
+            expect(advisoryPrompt).toContain("</coauthor-reminder>")
           },
         })
       } finally {
@@ -807,11 +824,11 @@ describe.serial("SessionInvoke memory recall", () => {
   test("keeps always memories when contextual recall times out", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
-      let capturedLateSystem: string[] | undefined
+      let capturedAdvisory: string[] | undefined
       const restore = installBasicLoopMocks({
         config: { library: { memory: { enabled: true }, experience: { retrieve: false } } },
         onBuildPlan: (input) => {
-          capturedLateSystem = input.lateSystem ? [...input.lateSystem] : undefined
+          capturedAdvisory = advisoryText(input)
         },
       })
       const originalSetTimeout = globalThis.setTimeout
@@ -845,9 +862,9 @@ describe.serial("SessionInvoke memory recall", () => {
             try {
               await SessionInvoke.loop.force(session.id)
 
-              const lateSystemPrompt = capturedLateSystem?.join("\n") ?? ""
-              expect(lateSystemPrompt).toContain('<entry title="Always workflow memory">')
-              expect(lateSystemPrompt).toContain("Keep the workflow contract in every top-level turn.")
+              const advisoryPrompt = capturedAdvisory?.join("\n") ?? ""
+              expect(advisoryPrompt).toContain('<entry title="Always workflow memory">')
+              expect(advisoryPrompt).toContain("Keep the workflow contract in every top-level turn.")
 
               const messages = await Session.messages({ sessionID: session.id })
               const user = messages.find((message) => message.info.role === "user")
@@ -902,12 +919,12 @@ describe.serial("SessionInvoke memory recall", () => {
   test("merges always and contextual memories with one always-memory read", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
-      let capturedLateSystem: string[] | undefined
+      let capturedAdvisory: string[] | undefined
       let memoryListCalls = 0
       const restore = installBasicLoopMocks({
         config: { library: { memory: { enabled: true }, experience: { retrieve: false } } },
         onBuildPlan: (input) => {
-          capturedLateSystem = input.lateSystem ? [...input.lateSystem] : undefined
+          capturedAdvisory = advisoryText(input)
         },
       })
       const originalMemoryList = LibraryDB.Memory.list
@@ -953,9 +970,9 @@ describe.serial("SessionInvoke memory recall", () => {
             try {
               await SessionInvoke.loop.force(session.id)
 
-              const lateSystemPrompt = capturedLateSystem?.join("\n") ?? ""
-              expect(lateSystemPrompt).toContain('<entry title="Always workflow memory">')
-              expect(lateSystemPrompt).toContain('<entry title="Contextual workflow memory" similarity="0.900">')
+              const advisoryPrompt = capturedAdvisory?.join("\n") ?? ""
+              expect(advisoryPrompt).toContain('<entry title="Always workflow memory">')
+              expect(advisoryPrompt).toContain('<entry title="Contextual workflow memory" similarity="0.900">')
               expect(memoryListCalls).toBe(1)
 
               const messages = await Session.messages({ sessionID: session.id })
@@ -1822,11 +1839,11 @@ describe("SessionInvoke coauthor reminder prompt", () => {
       await using tmp = await tmpdir({ git: true })
       let activeSessionID = ""
       let systemPrompt = ""
-      let lateSystemPrompt = ""
+      let advisoryPrompt = ""
       const restore = installBasicLoopMocks({
         onProcess: async (input) => {
           systemPrompt = input.system.join("\n")
-          lateSystemPrompt = input.lateSystem?.join("\n") ?? ""
+          advisoryPrompt = advisoryText(input).join("\n")
         },
       })
 
@@ -1840,8 +1857,8 @@ describe("SessionInvoke coauthor reminder prompt", () => {
             await SessionInvoke.loop.force(session.id)
 
             expect(systemPrompt).not.toContain("<coauthor-reminder>")
-            expect(lateSystemPrompt).toContain("<coauthor-reminder>")
-            expect(lateSystemPrompt).toContain("Co-authored-by: synergy-agent")
+            expect(advisoryPrompt).toContain("<coauthor-reminder>")
+            expect(advisoryPrompt).toContain("Co-authored-by: synergy-agent")
           },
         })
       } finally {
@@ -1863,12 +1880,12 @@ describe("SessionInvoke coauthor reminder prompt", () => {
       })
       let activeSessionID = ""
       let systemPrompt = ""
-      let lateSystemPrompt = ""
+      let advisoryPrompt = ""
       const restore = installBasicLoopMocks({
         config: { prompt: { coauthorReminder: false } },
         onProcess: async (input) => {
           systemPrompt = input.system.join("\n")
-          lateSystemPrompt = input.lateSystem?.join("\n") ?? ""
+          advisoryPrompt = advisoryText(input).join("\n")
         },
       })
 
@@ -1883,8 +1900,8 @@ describe("SessionInvoke coauthor reminder prompt", () => {
 
             expect(systemPrompt).not.toContain("<coauthor-reminder>")
             expect(systemPrompt).not.toContain("Co-authored-by: synergy-agent")
-            expect(lateSystemPrompt).not.toContain("<coauthor-reminder>")
-            expect(lateSystemPrompt).not.toContain("Co-authored-by: synergy-agent")
+            expect(advisoryPrompt).not.toContain("<coauthor-reminder>")
+            expect(advisoryPrompt).not.toContain("Co-authored-by: synergy-agent")
           },
         })
       } finally {
@@ -1898,11 +1915,11 @@ describe("SessionInvoke coauthor reminder prompt", () => {
       await using tmp = await tmpdir()
       let activeSessionID = ""
       let systemPrompt = ""
-      let lateSystemPrompt = ""
+      let advisoryPrompt = ""
       const restore = installBasicLoopMocks({
         onProcess: async (input) => {
           systemPrompt = input.system.join("\n")
-          lateSystemPrompt = input.lateSystem?.join("\n") ?? ""
+          advisoryPrompt = advisoryText(input).join("\n")
         },
       })
 
@@ -1916,8 +1933,8 @@ describe("SessionInvoke coauthor reminder prompt", () => {
             await SessionInvoke.loop.force(session.id)
 
             expect(systemPrompt).not.toContain("<coauthor-reminder>")
-            expect(lateSystemPrompt).not.toContain("<coauthor-reminder>")
-            expect(lateSystemPrompt).not.toContain("Co-authored-by: synergy-agent")
+            expect(advisoryPrompt).not.toContain("<coauthor-reminder>")
+            expect(advisoryPrompt).not.toContain("Co-authored-by: synergy-agent")
           },
         })
       } finally {
@@ -2697,7 +2714,11 @@ test("rollout continuation recovers when a steer arrives mid-materialization", (
             const messages = await Session.messages({ sessionID: session.id })
             expect(SessionProgress.needsModelCall(messages, rootID)).toBe(false)
             expect(SessionProgress.needsModelCall(messages, queued.messageID)).toBe(false)
-            expect(messages.filter((message) => message.info.role === "user")).toHaveLength(3)
+            expect(
+              messages.filter(
+                (message) => message.info.role === "user" && message.info.origin?.detail !== "context_update",
+              ),
+            ).toHaveLength(3)
             await LoopJob.settleDetached(session.id)
           } finally {
             SessionManager.unregisterRuntime(session.id)
