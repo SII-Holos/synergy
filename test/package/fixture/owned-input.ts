@@ -18,7 +18,12 @@ process.env.SYNERGY_LAUNCHER_COMMAND = JSON.stringify([
   path.join(process.cwd(), "node_modules/.bin/synergy"),
 ])
 const host = createLocalHost()
-const runtime = await openAgentRuntime({ host, home: host.root, mode: "oneshot", components: [localRuntime()] })
+const runtime = await openAgentRuntime({
+  host,
+  home: host.root,
+  mode: "oneshot",
+  components: [localRuntime({ workers: false })],
+})
 try {
   await runtime.run(() =>
     WorkspaceAccess.withinTask(async () => {

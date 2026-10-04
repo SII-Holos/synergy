@@ -24,7 +24,7 @@ const factories: Record<string, [string, string]> = {
 }
 const selected = factories[mode]
 const components = [
-  (await import("@ericsanchezok/synergy-local-runtime/component")).localRuntime(),
+  (await import("@ericsanchezok/synergy-local-runtime/component")).localRuntime({ workers: false }),
   ...(selected ? [(await import(`${prefix}${selected[0]}/component`))[selected[1]]()] : []),
 ]
 const runtime = full
@@ -113,12 +113,9 @@ try {
           () => true,
           () => false,
         )
-        assert.equal(installed, domain === "plugin-host" || mode === domain, `unexpected installed domain ${pkg}`)
-        assert.equal(
-          lockfile.includes(JSON.stringify(prefix + pkg)),
-          domain === "plugin-host" || mode === domain,
-          `unexpected locked domain ${pkg}`,
-        )
+        const expected = mode === domain || (domain === "plugin-host" && mode === "mcp")
+        assert.equal(installed, expected, `unexpected installed domain ${pkg}`)
+        assert.equal(lockfile.includes(JSON.stringify(prefix + pkg)), expected, `unexpected locked domain ${pkg}`)
       }
     }
     const schema = await Bun.file(path.join(host.root, "schema/config.schema.json")).json()
