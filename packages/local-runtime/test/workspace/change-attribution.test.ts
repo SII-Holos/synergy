@@ -165,7 +165,7 @@ test(
             await SessionFileChanges.finish(a.input)
             await expect(
               WorkspaceAccess.exclusive([tmp.path], async () => {}, AbortSignal.timeout(100)),
-            ).rejects.toMatchObject({ name: "TimeoutError" })
+            ).rejects.toBeInstanceOf(WorkspaceAccess.BusyError)
             const frozen = await Session.diff(a.session.id)
             await Bun.write(file, "late output\n")
             owned!.child.stdin!.end()

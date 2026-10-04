@@ -81,7 +81,11 @@ export function DiffPreview(props: DiffPreviewProps) {
       </Show>
       <Show
         when={lines().length > 0}
-        fallback={<div data-slot="diff-preview-empty">{TOOL_DIFF_PREVIEW_EMPTY_MESSAGE}</div>}
+        fallback={
+          <div data-slot="diff-preview-empty">
+            {_({ id: "ui.diff.noPreview", message: "No text preview available." })}
+          </div>
+        }
       >
         <pre data-slot="diff-preview-body" aria-label={_(DIFF_DESC.fileDiffPreview)}>
           <For each={lines()}>

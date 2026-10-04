@@ -271,7 +271,7 @@ export namespace SnapshotGit {
           proc.stdin.write(stdin)
           proc.stdin.end()
         }
-        const stdout = new Response(proc.stdout).bytes()
+        const stdout = new Response(proc.stdout).arrayBuffer().then((buffer) => new Uint8Array(buffer))
         const stderr = new Response(proc.stderr).text().catch(() => "")
         const [bytes, stderrText, exitCode] = await withTimeout(
           withAbort(Promise.all([stdout, stderr, proc.exited]), childSignal.signal),

@@ -32,10 +32,10 @@ beforeAll(async () => {
     const [workspace,setWorkspace]=createSignal({id:"wsp_a",generation:1,path:"/a"})
     const [open,setOpen]=createSignal([])
     const [diffs,setDiffs]=createSignal([{id:"wsp_a",generation:1,root:"/a"},{id:"wsp_b",generation:1,root:"/b"}].map(workspace=>({file:"same.txt",workspace,additions:1,deletions:0,preview:"+"+workspace.root})))
-    const h=window.fixture={calls:[],pending:()=>setPending(true),ready:()=>setPending(false),incomplete:()=>setIncomplete(true),empty:()=>setDiffs([]),locale:(locale)=>i18n.activate(locale),operations:()=>setDiffs(["first","last"].map(operationID=>({file:"same.txt",workspace:{id:"wsp_a",generation:1,root:"/a"},operationID,additions:1,deletions:1,preview:"+"+operationID}))),legacy:()=>setDiffs(["/legacy-a","/legacy-b"].map(legacyRoot=>({file:"same.txt",legacyRoot,additions:1,deletions:0,preview:"+"+legacyRoot}))),switch:()=>setWorkspace({id:"wsp_b",generation:1,path:"/b"}),rebind:()=>setWorkspace({id:"wsp_b",generation:2,path:"/b"})}
+    const h=window.fixture={calls:[],loads:[],metadata:()=>setDiffs([{file:"compact.txt",workspace:{id:"wsp_a",generation:1,root:"/a"},additions:1,deletions:0}]),pending:()=>setPending(true),ready:()=>setPending(false),incomplete:()=>setIncomplete(true),empty:()=>setDiffs([]),locale:(locale)=>i18n.activate(locale),operations:()=>setDiffs(["first","last"].map(operationID=>({file:"same.txt",workspace:{id:"wsp_a",generation:1,root:"/a"},operationID,additions:1,deletions:1,preview:"+"+operationID}))),legacy:()=>setDiffs(["/legacy-a","/legacy-b"].map(legacyRoot=>({file:"same.txt",legacyRoot,additions:1,deletions:0,preview:"+"+legacyRoot}))),switch:()=>setWorkspace({id:"wsp_b",generation:1,path:"/b"}),rebind:()=>setWorkspace({id:"wsp_b",generation:2,path:"/b"})}
     const view=()=>({review:{open,setOpen},scroll:()=>undefined,setScroll(){}})
     const i18n=setupI18n({locale:"en",messages:{en:{},"zh-CN":{"turn-change.recording-incomplete":"文件改动记录尚不完整"}}})
-    render(()=><I18nProvider i18n={i18n}><SessionReviewTab workspace={workspace} diffs={diffs} diffState={()=>incomplete()?{status:"error",code:"incomplete"}:undefined} view={view} diffStyle="unified" onViewFile={file=>h.calls.push(file)}/><TurnChangeSummaryPanel diffs={diffs()} state={pending()?"pending":incomplete()?"partial":"ready"} incomplete={incomplete()} onReviewRequested={()=>{}} onFileSelected={file=>h.calls.push(file)}/></I18nProvider>,document.getElementById("root"))
+    render(()=><I18nProvider i18n={i18n}><SessionReviewTab workspace={workspace} diffs={diffs} loadDiff={async(diff)=>{h.loads.push(diff.file);return {...diff,preview:"+complete historical content"}}} diffState={()=>incomplete()?{status:"error",code:"incomplete"}:undefined} view={view} diffStyle="unified" onViewFile={file=>h.calls.push(file)}/><TurnChangeSummaryPanel diffs={diffs()} state={pending()?"pending":incomplete()?"partial":"ready"} incomplete={incomplete()} onReviewRequested={()=>{}} onFileSelected={file=>h.calls.push(file)}/></I18nProvider>,document.getElementById("root"))
   `,
   )
   const reservation = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
@@ -168,4 +168,35 @@ test("pending and partial settlement keep the same file card and rows mounted", 
     )
     expect(await page.locator('[data-slot="turn-change-summary-row"]').count()).toBe(2)
   }
+})
+
+test("opening a file with Enter does not toggle its diff", async () => {
+  await page.goto(base)
+  const button = page.locator('[data-slot="session-review-view-button"]').first()
+  await button.waitFor()
+  await button.focus()
+  await page.keyboard.press("Enter")
+  expect(await page.evaluate(() => (window as unknown as { fixture: { calls: string[] } }).fixture.calls)).toEqual([
+    "same.txt",
+  ])
+  expect(await button.evaluate((element) => element.parentElement?.closest("button"))).toBeNull()
+})
+
+test("compact summaries load historical content even without the truncated flag", async () => {
+  await page.goto(base)
+  await page.locator('[data-slot="session-review-view-button"]').first().waitFor()
+  await page.evaluate(() => (window as unknown as { fixture: { metadata(): void } }).fixture.metadata())
+  await page.getByRole("button", { name: "Expand all" }).click()
+  await page.getByText("+complete historical content", { exact: true }).waitFor()
+  expect(await page.evaluate(() => (window as unknown as { fixture: { loads: string[] } }).fixture.loads)).toEqual([
+    "compact.txt",
+  ])
+})
+
+test("an empty comparison has an explanation and no enabled expand action", async () => {
+  await page.goto(base)
+  await page.locator('[data-slot="session-review-view-button"]').first().waitFor()
+  await page.evaluate(() => (window as unknown as { fixture: { empty(): void } }).fixture.empty())
+  await page.getByText("No changes", { exact: true }).waitFor()
+  expect(await page.getByRole("button", { name: "Expand all" }).isEnabled()).toBe(false)
 })

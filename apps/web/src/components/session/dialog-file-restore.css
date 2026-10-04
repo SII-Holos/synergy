@@ -15,7 +15,7 @@
   font-size: 13px;
 }
 .file-restore-error {
-  color: var(--text-on-error-base);
+  color: var(--text-error);
   white-space: pre-wrap;
   margin-bottom: 12px;
 }

@@ -215,13 +215,97 @@ export namespace Snapshot {
     return withRestoreFiles(patches, sessionID, signal, (files) => SnapshotRestore.preview({ files, signal }))
   }
   export async function fileDiff(from: string, to: string, file: string, sessionID: string, signal?: AbortSignal) {
-    WorkspaceTree.Path.parse(file)
+    SnapshotSchema.FilePath.parse(file)
     return SnapshotStore.withSession(
       sessionID,
       async () => {
         if (!(await SnapshotStore.ownsCurrent(from)) || !(await SnapshotStore.ownsCurrent(to)))
           throw new SnapshotStore.StorageError("Snapshot comparison endpoints are unavailable")
-        return (await diffSummaryImpl(from, to, sessionID, signal, file))[0]
+        const diff = (await diffSummaryImpl(from, to, sessionID, signal, file))[0]
+        if (!diff) return
+        const git = gitdir()
+        const entries = await objectEntries(
+          git,
+          [
+            { tree: from, file },
+            { tree: to, file },
+          ],
+          signal,
+        )
+        if ([...entries.values()].some((entry) => entry.size > 1024 * 1024)) return { ...diff, patch: undefined }
+        const canonical = await gitSpawn(
+          [
+            "git",
+            "--git-dir",
+            git,
+            "--literal-pathspecs",
+            "diff",
+            "--binary",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--no-renames",
+            from,
+            to,
+            "--",
+            file,
+          ],
+          path.dirname(git),
+          undefined,
+          signal,
+        )
+        if (canonical.exitCode !== 0) throw new SnapshotStore.StorageError("Historical patch is unavailable")
+        return { ...diff, patch: canonical.text }
+      },
+      signal,
+      { historical: true },
+    )
+  }
+
+  export async function fileVersions(
+    from: string,
+    to: string,
+    file: string,
+    sessionID: string,
+    signal?: AbortSignal,
+  ): Promise<SnapshotSchema.FileVersions> {
+    const filename = SnapshotSchema.FilePath.parse(file)
+    return SnapshotStore.withSession(
+      sessionID,
+      async () => {
+        if (!(await SnapshotStore.ownsCurrent(from)) || !(await SnapshotStore.ownsCurrent(to)))
+          throw new SnapshotStore.StorageError("Snapshot ownership is unavailable")
+        const git = gitdir()
+        const entries = await objectEntries(
+          git,
+          [
+            { tree: from, file: filename },
+            { tree: to, file: filename },
+          ],
+          signal,
+        )
+        const read = async (tree: string): Promise<SnapshotSchema.FileVersion> => {
+          const entry = entries.get(objectSizeKey(tree, filename))
+          if (!entry) return { kind: "missing", version: "missing", bytes: 0 }
+          const base = { version: entry.oid, bytes: entry.size }
+          if (entry.mode === "120000") return { ...base, kind: "symlink" }
+          if (entry.size > 1024 * 1024) return { ...base, kind: "oversized" }
+          const result = await gitSpawn(
+            ["git", "--git-dir", git, "cat-file", "blob", entry.oid],
+            path.dirname(git),
+            undefined,
+            signal,
+          )
+          if (result.exitCode !== 0 || result.bytes.length !== entry.size)
+            throw new SnapshotStore.StorageError("Snapshot file content is unavailable")
+          try {
+            if (result.bytes.includes(0)) throw new Error("binary")
+            return { ...base, kind: "text", content: new TextDecoder("utf-8", { fatal: true }).decode(result.bytes) }
+          } catch {
+            return { ...base, kind: "binary", base64: Buffer.from(result.bytes).toString("base64") }
+          }
+        }
+        const [before, after] = await Promise.all([read(from), read(to)])
+        return { before, after }
       },
       signal,
       { historical: true },

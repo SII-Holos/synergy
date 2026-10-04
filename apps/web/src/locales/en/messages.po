@@ -8585,10 +8585,6 @@ msgstr "Raw messages"
 msgid "app.review.toolUnavailable"
 msgstr "This tool result is no longer available."
 
-#. js-lingui-explicit-id
-msgid "app.review.turnUnavailable"
-msgstr "This turn is no longer available."
-
 #. ── components/scopes/active-zone.tsx ────────────────────────────────
 msgid "app.scopes.activeZone.active"
 msgstr "Active"
@@ -15586,6 +15582,350 @@ msgstr "Memories"
 #. ── Session resonance popover ───────────────────────────────────────
 msgid "resonance.title"
 msgstr "Resonance"
+
+#. js-lingui-explicit-id
+msgid "review.file.binaryBytes"
+msgstr "Binary file · {bytes} bytes"
+
+#. js-lingui-explicit-id
+msgid "review.panel.addComment"
+msgstr "Comment on selected lines"
+
+#. js-lingui-explicit-id
+msgid "review.panel.after"
+msgstr "After"
+
+#. js-lingui-explicit-id
+msgid "review.panel.applyComparison"
+msgstr "Compare"
+
+#. js-lingui-explicit-id
+msgid "review.panel.authorityUnavailable"
+msgstr "This historical change has no retained workspace authority."
+
+#. js-lingui-explicit-id
+msgid "review.panel.auto"
+msgstr "Auto"
+
+#. js-lingui-explicit-id
+msgid "review.panel.before"
+msgstr "Before"
+
+#. js-lingui-explicit-id
+msgid "review.panel.binary"
+msgstr "Binary file"
+
+#. js-lingui-explicit-id
+msgid "review.panel.branch"
+msgstr "Branch"
+
+#. js-lingui-explicit-id
+msgid "review.panel.cancel"
+msgstr "Cancel"
+
+#. js-lingui-explicit-id
+msgid "review.panel.collapse"
+msgstr "Collapse all"
+
+#. js-lingui-explicit-id
+msgid "review.panel.comment"
+msgstr "Comment"
+
+#. js-lingui-explicit-id
+msgid "review.panel.comments"
+msgstr "Review comments"
+
+#. js-lingui-explicit-id
+msgid "review.panel.comparisonUnavailable"
+msgstr "The comparison returned no result."
+
+#. js-lingui-explicit-id
+msgid "review.panel.contentUnavailable"
+msgstr "Captured content is unavailable."
+
+#. js-lingui-explicit-id
+msgid "review.panel.copied"
+msgstr "Copied"
+
+#. js-lingui-explicit-id
+msgid "review.panel.copyApply"
+msgstr "Copy git apply command"
+
+#. js-lingui-explicit-id
+msgid "review.panel.copyFailed"
+msgstr "Copy failed. Try exporting the patch instead."
+
+#. js-lingui-explicit-id
+msgid "review.panel.copyPath"
+msgstr "Copy path"
+
+#. js-lingui-explicit-id
+msgid "review.panel.edit"
+msgstr "Edit comment"
+
+#. js-lingui-explicit-id
+msgid "review.panel.empty"
+msgstr "No changes"
+
+#. js-lingui-explicit-id
+msgid "review.panel.expand"
+msgstr "Expand all"
+
+#. js-lingui-explicit-id
+msgid "review.panel.export"
+msgstr "Export patch"
+
+#. js-lingui-explicit-id
+msgid "review.panel.exporting"
+msgstr "Preparing patch… {done}/{total}"
+
+#. js-lingui-explicit-id
+msgid "review.panel.files"
+msgstr "Files"
+
+#. js-lingui-explicit-id
+msgid "review.panel.filter"
+msgstr "Filter files…"
+
+#. js-lingui-explicit-id
+msgid "review.panel.filterEmpty"
+msgstr "No files match this filter."
+
+#. js-lingui-explicit-id
+msgid "review.panel.foldedImports"
+msgstr "{count} import lines folded"
+
+#. js-lingui-explicit-id
+msgid "review.panel.from"
+msgstr "Base reference"
+
+#. js-lingui-explicit-id
+msgid "review.panel.full"
+msgstr "Show full file"
+
+#. js-lingui-explicit-id
+msgid "review.panel.handoff"
+msgstr "Send selected comments"
+
+#. js-lingui-explicit-id
+msgid "review.panel.historical"
+msgstr "This version belongs to another workspace binding."
+
+#. js-lingui-explicit-id
+msgid "review.panel.ignoreWhitespace"
+msgstr "Ignore whitespace differences"
+
+#. js-lingui-explicit-id
+msgid "review.panel.imports"
+msgstr "Fold imports"
+
+#. js-lingui-explicit-id
+msgid "review.panel.jump"
+msgstr "Jump to file"
+
+#. js-lingui-explicit-id
+msgid "review.panel.layout"
+msgstr "Diff layout"
+
+#. js-lingui-explicit-id
+msgid "review.panel.loading"
+msgstr "Loading comparison…"
+
+#. js-lingui-explicit-id
+msgid "review.panel.markViewed"
+msgstr "Mark as viewed"
+
+#. js-lingui-explicit-id
+msgid "review.panel.missing"
+msgstr "This file does not exist in this version."
+
+#. js-lingui-explicit-id
+msgid "review.panel.next"
+msgstr "Next file"
+
+#. js-lingui-explicit-id
+msgid "review.panel.notesFailed"
+msgstr "Review notes could not be loaded."
+
+#. js-lingui-explicit-id
+msgid "review.panel.noTurn"
+msgstr "Select a turn with recorded file changes."
+
+#. js-lingui-explicit-id
+msgid "review.panel.obsolete"
+msgstr "The file changed. This comment keeps its original excerpt."
+
+#. js-lingui-explicit-id
+msgid "review.panel.open"
+msgstr "Open current file"
+
+#. js-lingui-explicit-id
+msgid "review.panel.options"
+msgstr "Review options"
+
+#. js-lingui-explicit-id
+msgid "review.panel.oversized"
+msgstr "This file exceeds the preview size limit."
+
+#. js-lingui-explicit-id
+msgid "review.panel.partial"
+msgstr "Recording is incomplete. Available changes are shown below."
+
+#. js-lingui-explicit-id
+msgid "review.panel.patchUnavailable"
+msgstr "An applicable patch is unavailable for this file."
+
+#. js-lingui-explicit-id
+msgid "review.panel.pending"
+msgstr "Recording file changes…"
+
+#. js-lingui-explicit-id
+msgid "review.panel.preview"
+msgstr "Preview"
+
+#. js-lingui-explicit-id
+msgid "review.panel.previous"
+msgstr "Previous file"
+
+#. js-lingui-explicit-id
+msgid "review.panel.read"
+msgstr "Loading file content…"
+
+#. js-lingui-explicit-id
+msgid "review.panel.readOnly"
+msgstr "Read only"
+
+#. js-lingui-explicit-id
+msgid "review.panel.refresh"
+msgstr "Refresh comparison"
+
+#. js-lingui-explicit-id
+msgid "review.panel.refreshing"
+msgstr "Refreshing…"
+
+#. js-lingui-explicit-id
+msgid "review.panel.remove"
+msgstr "Delete comment"
+
+#. js-lingui-explicit-id
+msgid "review.panel.reopen"
+msgstr "Reopen comment"
+
+#. js-lingui-explicit-id
+msgid "review.panel.resolve"
+msgstr "Resolve comment"
+
+#. js-lingui-explicit-id
+msgid "review.panel.resolved"
+msgstr "Resolved"
+
+#. js-lingui-explicit-id
+msgid "review.panel.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "review.panel.save"
+msgstr "Save comment"
+
+#. js-lingui-explicit-id
+msgid "review.panel.selectionMixed"
+msgstr "Select a range on one side, up to 200 lines."
+
+#. js-lingui-explicit-id
+msgid "review.panel.selectLines"
+msgstr "Select line numbers in the diff to add a comment."
+
+#. js-lingui-explicit-id
+msgid "review.panel.send"
+msgstr "Send to this conversation"
+
+#. js-lingui-explicit-id
+msgid "review.panel.sendFailed"
+msgstr "The conversation did not accept these comments. Try again."
+
+#. js-lingui-explicit-id
+msgid "review.panel.sending"
+msgstr "Sending…"
+
+#. js-lingui-explicit-id
+msgid "review.panel.sent"
+msgstr "Comments accepted by the conversation."
+
+#. js-lingui-explicit-id
+msgid "review.panel.session"
+msgstr "Session"
+
+#. js-lingui-explicit-id
+msgid "review.panel.sessionRequired"
+msgstr "Open a conversation to review changes."
+
+#. js-lingui-explicit-id
+msgid "review.panel.source"
+msgstr "Comparison"
+
+#. js-lingui-explicit-id
+msgid "review.panel.sourceView"
+msgstr "Source"
+
+#. js-lingui-explicit-id
+msgid "review.panel.split"
+msgstr "Split"
+
+#. js-lingui-explicit-id
+msgid "review.panel.symlink"
+msgstr "Symbolic links and submodules have no text preview."
+
+#. js-lingui-explicit-id
+msgid "review.panel.to"
+msgstr "Target reference"
+
+#. js-lingui-explicit-id
+msgid "review.panel.turn"
+msgstr "Turn"
+
+#. js-lingui-explicit-id
+msgid "review.panel.turnUnavailable"
+msgstr "The selected turn is unavailable."
+
+#. js-lingui-explicit-id
+msgid "review.panel.undo"
+msgstr "Undo changes"
+
+#. js-lingui-explicit-id
+msgid "review.panel.undoFile"
+msgstr "Undo this file"
+
+#. js-lingui-explicit-id
+msgid "review.panel.unified"
+msgstr "Unified"
+
+#. js-lingui-explicit-id
+msgid "review.panel.versions"
+msgstr "File versions"
+
+#. js-lingui-explicit-id
+msgid "review.panel.viewed"
+msgstr "Viewed"
+
+#. js-lingui-explicit-id
+msgid "review.panel.whitespace"
+msgstr "Show whitespace"
+
+#. js-lingui-explicit-id
+msgid "review.panel.words"
+msgstr "Word differences"
+
+#. js-lingui-explicit-id
+msgid "review.panel.workspaceRequired"
+msgstr "Select a workspace to compare files."
+
+#. js-lingui-explicit-id
+msgid "review.panel.worktree"
+msgstr "Working changes"
+
+#. js-lingui-explicit-id
+msgid "review.panel.wrap"
+msgstr "Wrap lines"
 
 #. scopes
 msgid "scopes.active"
@@ -25433,6 +25773,10 @@ msgid "ui.dialog.close"
 msgstr "Close dialog"
 
 #. js-lingui-explicit-id
+msgid "ui.diff.noPreview"
+msgstr "No text preview available."
+
+#. js-lingui-explicit-id
 msgid "ui.errorCard.copied"
 msgstr "Copied"
 
@@ -25576,6 +25920,30 @@ msgstr "From {source}"
 msgid "ui.mediaGeneration.generating"
 msgstr "Generating media"
 
+#. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
+msgid "ui.review.after"
+msgstr "after"
+
+#. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
+msgid "ui.review.before"
+msgstr "before"
+
+#. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
+msgid "ui.review.expandAllContext"
+msgstr "Expand all context"
+
+#. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
+msgid "ui.review.expandContext"
+msgstr "Expand unchanged context"
+
+#. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
+msgid "ui.review.selectLine"
+msgstr "Select line {line} in {side}"
+
+#. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
+msgid "ui.review.unchanged"
+msgstr "{count} unchanged lines"
+
 #. js-lingui-explicit-id
 msgid "ui.session.awaitingResponse"
 msgstr "Synergy is thinking…"
@@ -25583,6 +25951,10 @@ msgstr "Synergy is thinking…"
 #. js-lingui-explicit-id
 msgid "ui.sessionReview.loadingFile"
 msgstr "Loading historical file content…"
+
+#. js-lingui-explicit-id
+msgid "ui.sessionReview.noChanges"
+msgstr "No changes"
 
 #. js-lingui-explicit-id
 msgid "ui.sessionReview.retryFile"

@@ -2,6 +2,36 @@ import { z } from "zod"
 import { SessionBounds } from "./bounds"
 
 export namespace SnapshotSchema {
+  export const FilePath = z
+    .string()
+    .min(1)
+    .max(4096)
+    .refine(
+      (value) =>
+        !value.includes("\\") &&
+        !value.includes("\0") &&
+        !value.startsWith("/") &&
+        !/^[a-zA-Z]:/.test(value) &&
+        !value.split("/").some((part) => !part || part === "." || part === ".."),
+      "Expected a relative captured file path",
+    )
+  export const FileVersion = z
+    .object({
+      kind: z.enum(["text", "binary", "missing", "oversized", "symlink"]),
+      version: z.string(),
+      bytes: z.number().int().nonnegative(),
+      content: z.string().optional(),
+      base64: z.string().optional(),
+    })
+    .meta({ ref: "ReviewFileVersion" })
+  export type FileVersion = z.infer<typeof FileVersion>
+  export const FileVersions = z
+    .object({
+      before: FileVersion,
+      after: FileVersion,
+    })
+    .meta({ ref: "ReviewFileVersions" })
+  export type FileVersions = z.infer<typeof FileVersions>
   export const DiffState = z.discriminatedUnion("status", [
     z.object({ status: z.literal("pending"), deadlineAt: z.number() }),
     z.object({ status: z.literal("ready") }),

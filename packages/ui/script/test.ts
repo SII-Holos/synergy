@@ -11,6 +11,8 @@ await runBatchedTests({
   root,
   timeoutMs: 120000,
   isolated: [
+    "test/components/iframe-focus.browser.test.ts",
+    "test/components/review-viewer.dom.test.ts",
     "test/components/message-readers.render.test.ts",
     "test/components/execution-completion.dom.test.ts",
     "test/components/tool/computer-tool-renders.test.tsx",

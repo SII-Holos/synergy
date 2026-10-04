@@ -1,0 +1,464 @@
+.review-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  container: review-panel / inline-size;
+  color: var(--text-base);
+  background: var(--background-base);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-small);
+  line-height: 20px;
+}
+.review-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-weak-base);
+  flex: none;
+}
+.review-toolbar-source,
+.review-toolbar-tools,
+.review-totals,
+.review-refs,
+.review-version-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.review-toolbar-source {
+  flex: 1 1 auto;
+}
+.review-toolbar-tools {
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+}
+.review-totals {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-weak);
+  white-space: nowrap;
+}
+.review-toolbar [data-component="menu-field"] {
+  min-width: 0;
+}
+.review-panel [data-component="icon-button"],
+.review-file-header [data-component="icon-button"] {
+  flex-shrink: 0;
+}
+.review-refs {
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-weak-base);
+}
+.review-refs input {
+  flex: 1 1 120px;
+  width: 0;
+}
+.review-refs > span {
+  color: var(--text-weak);
+}
+.review-panel input,
+.review-panel textarea,
+.review-navigation input,
+.review-send-preview {
+  color: var(--text-base);
+  background: var(--surface-inset-base);
+  border: 1px solid var(--border-base);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+}
+.review-panel input:focus-visible,
+.review-panel textarea:focus-visible,
+.review-navigation input:focus-visible,
+.review-send-preview:focus-visible,
+.review-panel button:focus-visible,
+.review-file-header button:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+.review-progress,
+.review-banner {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 12px;
+  color: var(--text-weak);
+  border-bottom: 1px solid var(--border-weak-base);
+  flex: none;
+  overflow-wrap: anywhere;
+}
+.review-banner > span {
+  flex: 1;
+  min-width: 0;
+}
+.review-progress {
+  background: var(--surface-inset-base);
+}
+.review-error {
+  color: var(--text-error);
+}
+.review-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.review-sidebar {
+  width: 232px;
+  flex-shrink: 0;
+  min-height: 0;
+  border-inline-end: 1px solid var(--border-weak-base);
+  overflow: auto;
+}
+.review-navigation {
+  padding: 8px;
+  min-width: 0;
+  max-height: 65dvh;
+  overflow: auto;
+}
+.review-sidebar .review-navigation {
+  max-height: none;
+}
+.review-filter {
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 8px;
+}
+.review-file-tree,
+.review-file-tree ul {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.review-file-tree button {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  min-height: 32px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--text-base);
+  background: transparent;
+  text-align: start;
+  padding: 4px 6px;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+.review-file-tree button > span {
+  min-width: 0;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.review-file-tree button [data-component="icon"],
+.review-file-tree button [data-component="file-icon"] {
+  flex-shrink: 0;
+}
+.review-file-tree button:hover {
+  background: var(--surface-base-hover);
+}
+.review-file-tree button[data-selected="true"] {
+  color: var(--text-interactive-base);
+  background: var(--surface-interactive-base);
+}
+.review-file-tree button[data-viewed="true"] > span {
+  color: var(--text-weak);
+}
+.review-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+[data-component="review-viewer"] {
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.review-file-header {
+  display: flex;
+  flex-direction: column;
+  color: var(--text-base);
+  background: var(--background-base);
+  border-bottom: 1px solid var(--border-weak-base);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-small);
+  line-height: 20px;
+  min-width: 0;
+}
+.review-file-header[data-selected="true"] {
+  background: var(--surface-base-hover);
+}
+.review-file-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 4px 10px;
+}
+.review-file-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.review-file-toggle > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.review-file-path {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1;
+}
+.review-file-basename {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.review-file-directory {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-weak);
+  font-size: var(--font-size-x-small);
+  flex: 1;
+  min-width: 0;
+}
+.review-file-toggle > [data-component="icon"],
+.review-file-toggle > [data-component="file-icon"] {
+  flex-shrink: 0;
+}
+.review-file-main > [data-component="diff-changes"] {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.review-file-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
+  flex: none;
+}
+.review-file-header:hover .review-file-actions,
+.review-file-header:focus-within .review-file-actions {
+  opacity: 1;
+}
+.review-file-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 8px;
+  color: var(--text-weak);
+  font-size: var(--font-size-x-small);
+  overflow-wrap: anywhere;
+}
+.review-file-status.review-error {
+  color: var(--text-error);
+}
+.review-import-fold {
+  text-align: start;
+  padding: 4px 12px;
+  background: var(--surface-inset-base);
+  color: var(--text-weak);
+  border: 0;
+  cursor: pointer;
+}
+.review-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px 16px;
+  color: var(--text-weak);
+  min-height: 160px;
+}
+.review-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  min-width: 224px;
+  max-width: min(360px, calc(100vw - 24px));
+}
+.review-menu > [data-component="button"] {
+  justify-content: start;
+}
+.review-comments {
+  width: 280px;
+  max-width: 48%;
+  min-height: 0;
+  padding: 12px;
+  overflow: auto;
+  border-inline-start: 1px solid var(--border-weak-base);
+}
+.review-comments form > p,
+.review-comments > p {
+  color: var(--text-weak);
+  margin-block: 8px;
+  overflow-wrap: anywhere;
+}
+.review-comments textarea {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  margin-bottom: 8px;
+}
+.review-comments form > [data-component="button"],
+.review-comments > [data-component="button"] {
+  width: 100%;
+  min-height: 32px;
+}
+.review-comments > [data-component="button"] {
+  margin-top: 12px;
+}
+.review-comment-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+  min-width: 0;
+}
+.review-comment-title [data-slot="checkbox-checkbox-content"] {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.review-comment {
+  padding-block: 12px;
+  border-bottom: 1px solid var(--border-weak-base);
+}
+.review-comment[data-resolved="true"] {
+  color: var(--text-weak);
+}
+.review-comment blockquote {
+  margin: 8px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.review-comment pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-family-mono);
+  max-height: 240px;
+  overflow: auto;
+}
+.review-comment-obsolete {
+  color: var(--text-weak);
+  font-size: var(--font-size-x-small);
+}
+.review-comment-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: end;
+  margin-top: 4px;
+  opacity: 0;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
+}
+.review-comment:hover .review-comment-actions,
+.review-comment:focus-within .review-comment-actions {
+  opacity: 1;
+}
+.review-send-preview {
+  width: 100%;
+  min-height: 280px;
+  resize: vertical;
+}
+.review-version-preview {
+  min-height: 240px;
+}
+.review-version-controls {
+  margin-bottom: 16px;
+}
+.review-version-preview pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-family-mono);
+  max-height: 65dvh;
+  overflow: auto;
+}
+.review-version-preview img {
+  display: block;
+  max-height: 60dvh;
+  max-width: 100%;
+  margin-inline: auto;
+  object-fit: contain;
+}
+.review-loading-icon {
+  animation: review-loading-spin 1s linear infinite;
+}
+@keyframes review-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@container review-panel (max-width: 540px) {
+  .review-toolbar {
+    gap: 6px;
+    padding: 8px;
+  }
+  .review-toolbar-tools {
+    justify-content: space-between;
+    width: 100%;
+  }
+  .review-body {
+    flex-direction: column;
+  }
+  .review-comments {
+    width: auto;
+    max-width: none;
+    max-height: 45%;
+    background: var(--background-base);
+    border: 0;
+    border-top: 1px solid var(--border-weak-base);
+    flex-shrink: 0;
+  }
+  .review-file-directory {
+    display: none;
+  }
+  .review-file-main {
+    gap: 4px;
+    padding-inline: 6px;
+  }
+}
+@media (hover: none), (pointer: coarse) {
+  .review-file-actions,
+  .review-comment-actions {
+    opacity: 1;
+  }
+  .review-panel [data-component="icon-button"],
+  .review-file-header [data-component="icon-button"],
+  .review-file-tree button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .review-panel *,
+  .review-file-actions {
+    transition: none !important;
+    animation: none !important;
+  }
+}

@@ -36,6 +36,7 @@ export interface SessionReviewProps {
   loadDiff?: (diff: FileDiff, signal: AbortSignal) => Promise<FileDiff>
   actions?: JSX.Element
   notice?: JSX.Element
+  recordingIncomplete?: boolean
   diffs: (FileDiff & { preloaded?: PreloadMultiFileDiffResult<any> })[]
   onViewFile?: (file: string, diff: FileDiff) => void
   canViewFile?: (diff: FileDiff) => boolean
@@ -91,7 +92,12 @@ export const SessionReview = (props: SessionReviewProps) => {
               onSelect={(style) => style && props.onDiffStyleChange?.(style)}
             />
           </Show>
-          <Button size="normal" icon="grip-vertical" onClick={handleExpandOrCollapseAll}>
+          <Button
+            size="normal"
+            icon={getSemanticIcon(open().length ? "action.collapse" : "action.expand")}
+            disabled={!props.diffs.length}
+            onClick={handleExpandOrCollapseAll}
+          >
             <Switch>
               <Match when={open().length > 0}>{_(SESSION_REVIEW_DESC.collapseAll)}</Match>
               <Match when={true}>{_(SESSION_REVIEW_DESC.expandAll)}</Match>
@@ -106,6 +112,12 @@ export const SessionReview = (props: SessionReviewProps) => {
           [props.classes?.container ?? ""]: !!props.classes?.container,
         }}
       >
+        <Show when={!props.diffs.length && !props.recordingIncomplete}>
+          <div data-slot="session-review-empty" role="status">
+            <Icon name={getSemanticIcon("command.review")} />
+            {_({ id: "ui.sessionReview.noChanges", message: "No changes" })}
+          </div>
+        </Show>
         <Accordion multiple value={open()} onChange={handleChange}>
           <For each={props.diffs}>
             {(diff, index) => (
@@ -116,50 +128,51 @@ export const SessionReview = (props: SessionReviewProps) => {
                 data-selected={props.selectedFile === reviewFileKey(diff) ? "true" : undefined}
               >
                 <StickyAccordionHeader>
-                  <Accordion.Trigger>
-                    <div data-slot="session-review-trigger-content">
-                      <div data-slot="session-review-file-info">
-                        <FileIcon node={{ path: diff.file, type: "file" }} />
-                        <div data-slot="session-review-file-name-container">
-                          <Show when={diff.workspace?.root ?? diff.legacyRoot}>
-                            {(root) => <span data-slot="session-review-directory">{root()} / </span>}
-                          </Show>
-                          <Show when={diff.file.includes("/")}>
-                            <span data-slot="session-review-directory">{getDirectory(diff.file)}&lrm;</span>
-                          </Show>
-                          <span data-slot="session-review-filename">{getFilename(diff.file)}</span>
-                          <Show when={diff.operationID}>
-                            <span data-slot="session-review-operation">
-                              {_({ ...SESSION_REVIEW_DESC.operation, values: { number: index() + 1 } })}
-                            </span>
-                          </Show>
-                          <Show when={props.onViewFile}>
-                            <button
-                              data-slot="session-review-view-button"
-                              type="button"
-                              disabled={props.canViewFile?.(diff) === false}
-                              aria-label={_(SESSION_REVIEW_DESC.viewFile)}
-                              title={_(
-                                props.canViewFile?.(diff) === false
-                                  ? SESSION_REVIEW_DESC.historicalBinding
-                                  : SESSION_REVIEW_DESC.viewFile,
-                              )}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                if (props.canViewFile?.(diff) !== false) props.onViewFile?.(diff.file, diff)
-                              }}
-                            >
-                              <Icon name={getSemanticIcon("action.view")} size="small" />
-                            </button>
-                          </Show>
+                  <div data-slot="session-review-file-header">
+                    <Accordion.Trigger>
+                      <div data-slot="session-review-trigger-content">
+                        <div data-slot="session-review-file-info">
+                          <FileIcon node={{ path: diff.file, type: "file" }} />
+                          <div data-slot="session-review-file-name-container">
+                            <Show when={diff.workspace?.root ?? diff.legacyRoot}>
+                              {(root) => <span data-slot="session-review-directory">{root()} / </span>}
+                            </Show>
+                            <Show when={diff.file.includes("/")}>
+                              <span data-slot="session-review-directory">{getDirectory(diff.file)}&lrm;</span>
+                            </Show>
+                            <span data-slot="session-review-filename">{getFilename(diff.file)}</span>
+                            <Show when={diff.operationID}>
+                              <span data-slot="session-review-operation">
+                                {_({ ...SESSION_REVIEW_DESC.operation, values: { number: index() + 1 } })}
+                              </span>
+                            </Show>
+                          </div>
+                        </div>
+                        <div data-slot="session-review-trigger-actions">
+                          <DiffChanges changes={diff} />
+                          <Icon name="grip-vertical" size="small" />
                         </div>
                       </div>
-                      <div data-slot="session-review-trigger-actions">
-                        <DiffChanges changes={diff} />
-                        <Icon name="grip-vertical" size="small" />
-                      </div>
-                    </div>
-                  </Accordion.Trigger>
+                    </Accordion.Trigger>
+                    <Show when={props.onViewFile}>
+                      <button
+                        data-slot="session-review-view-button"
+                        type="button"
+                        disabled={props.canViewFile?.(diff) === false}
+                        aria-label={_(SESSION_REVIEW_DESC.viewFile)}
+                        title={_(
+                          props.canViewFile?.(diff) === false
+                            ? SESSION_REVIEW_DESC.historicalBinding
+                            : SESSION_REVIEW_DESC.viewFile,
+                        )}
+                        onClick={() => {
+                          if (props.canViewFile?.(diff) !== false) props.onViewFile?.(diff.file, diff)
+                        }}
+                      >
+                        <Icon name={getSemanticIcon("action.view")} size="small" />
+                      </button>
+                    </Show>
+                  </div>
                 </StickyAccordionHeader>
                 <Accordion.Content data-slot="session-review-accordion-content">
                   <Show when={open().includes(reviewFileKey(diff))}>
@@ -189,7 +202,10 @@ function ReviewFileBody(props: {
   const controller = new AbortController()
   onCleanup(() => controller.abort())
   const [full, { refetch }] = createResource(
-    () => props.diff.truncated && !!props.loadDiff,
+    () =>
+      Boolean(
+        props.loadDiff && (props.diff.truncated || (!props.diff.patch && !props.diff.preview && !props.diff.binary)),
+      ),
     () => props.loadDiff!(props.diff, controller.signal),
     { initialValue: undefined },
   )
@@ -197,18 +213,22 @@ function ReviewFileBody(props: {
   return (
     <>
       <Show when={full.loading}>
-        <p role="status">{_({ id: "ui.sessionReview.loadingFile", message: "Loading historical file content…" })}</p>
+        <p data-slot="session-review-file-status" role="status">
+          {_({ id: "ui.sessionReview.loadingFile", message: "Loading historical file content…" })}
+        </p>
       </Show>
       <Show when={full.error}>
         <Button variant="ghost" onClick={() => void refetch()}>
           {_({ id: "ui.sessionReview.retryFile", message: "Retry loading historical content" })}
         </Button>
       </Show>
-      <DiffPatchGate
-        patch={diff().patch}
-        diffStyle={props.diffStyle}
-        fallback={<DiffPreview diff={diff()} variant="review" />}
-      />
+      <Show when={!full.loading}>
+        <DiffPatchGate
+          patch={diff().patch}
+          diffStyle={props.diffStyle}
+          fallback={<DiffPreview diff={diff()} variant="review" />}
+        />
+      </Show>
     </>
   )
 }
