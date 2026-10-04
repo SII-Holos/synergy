@@ -424,6 +424,21 @@
 .review-file-status.review-error {
   color: var(--text-error);
 }
+.review-file-main > [data-component="checkbox"] {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  gap: 0;
+  justify-content: center;
+}
+.review-file-main > [data-component="checkbox"] [data-slot="checkbox-checkbox-control"] {
+  position: relative;
+}
+.review-file-main > [data-component="checkbox"] [data-slot="checkbox-checkbox-control"]::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
 .review-import-fold {
   text-align: start;
   padding: 4px 6px;
@@ -625,6 +640,13 @@
   .review-popover [data-component="button"],
   .review-popover [data-component="checkbox"] {
     min-height: 44px;
+  }
+  .review-file-main > [data-component="checkbox"] {
+    width: 44px;
+    height: 44px;
+  }
+  .review-file-main > [data-component="checkbox"] [data-slot="checkbox-checkbox-control"]::before {
+    inset: -14px;
   }
   .review-compact-actions[data-compact="true"] {
     display: flex;

@@ -544,6 +544,17 @@ test("compact touch controls fit phone panes and keep refresh and fold reachable
       expect(await menu.getByRole("button", { name: "Collapse all", exact: true }).isVisible()).toBe(true)
       await page.keyboard.press("Escape")
       await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Review options")
+      const header = page
+        .locator(".review-file-header")
+        .filter({ has: page.getByRole("button", { name: "src/first.ts", exact: true }) })
+      const viewed = header.locator('[data-component="checkbox"]')
+      const target = await viewed.boundingBox()
+      expect(target && target.width >= 44 && target.height >= 44).toBe(true)
+      await viewed.tap({ position: { x: 3, y: 22 } })
+      await header.locator('[data-component="checkbox"][data-checked]').waitFor()
+      expect(await header.getByRole("checkbox", { name: "Mark as viewed", exact: true }).isChecked()).toBe(true)
+      await header.getByRole("checkbox", { name: "Mark as viewed", exact: true }).press("Space")
+      await header.locator('[data-component="checkbox"]:not([data-checked])').waitFor()
     }
     expect(errors).toEqual([])
   } finally {
