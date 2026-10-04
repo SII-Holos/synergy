@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { WriteTool } from "@ericsanchezok/synergy-local-runtime/tools/write"
@@ -12,7 +13,7 @@ const ctx = {
   sessionID: "test",
   messageID: "",
   callID: "",
-  agent: "synergy",
+  agent: PrimaryAgentIdentity.names.general,
   abort: AbortSignal.any([]),
   metadata: () => {},
   ask: async () => {},

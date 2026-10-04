@@ -1,4 +1,5 @@
 import { useLingui } from "@lingui/solid"
+import { sessionActivityLabel } from "./session-status"
 import { SESSION_TURN_DESC, MAILBOX_DESC, TOOL_LABEL_DESC } from "./tool-title-descriptors"
 
 import type {
@@ -30,12 +31,14 @@ import {
   Switch,
 } from "solid-js"
 import type { Accessor } from "solid-js"
+import type { PluginConversationActivityView } from "@ericsanchezok/synergy-plugin"
+import { ActivityBatch } from "./activity-batch"
+import { ActivityReasoning } from "./process-reasoning"
+import { createDisclosureMotionRef } from "../utils/disclosure-motion"
+import { projectActivityBatches, resolveActivityDisclosure } from "./session-turn-process"
+export { resolveActivityDisclosure } from "./session-turn-process"
 import { TurnChangeSummaryPanel } from "./turn-change-summary-panel"
-import {
-  resolveTurnDiffPanelState,
-  TURN_DIFF_PENDING_DELAY_MS,
-  type TurnDiffPanelState,
-} from "./turn-change-summary-panel-model"
+import { resolveTurnDiffPanelState, type TurnDiffPanelState } from "./turn-change-summary-panel-model"
 import { Message, Part, getToolInfo } from "./message-part"
 import { MessageSlotOutlet, type MessageSlotName } from "./message-slots"
 import { AttachmentGallery } from "./attachment-card"
@@ -58,21 +61,21 @@ import { Dynamic } from "solid-js/web"
 import { createAutoScroll } from "../hooks"
 import { getSpecialUserMessageRenderer } from "./special-user-message"
 import { CompactionCard } from "./compaction-card"
+import { ProcessEventRow } from "./process-event-row"
 import { createCopyController } from "./clipboard"
 import { hasVisibleUserMessageContent, isSystemPart } from "./user-message-utils"
-import { ActivityReasoningSummary, ActivityReceipt, ActivityTrace, MinimalActivitySummary } from "./activity-trace"
+import { ActivityReceipt, ActivityTrace } from "./activity-trace"
 import { CompactReasoningLine } from "./compact-reasoning"
 import {
   activityItemStableKey,
   isActivityTimelineItem,
   projectAssistantActivityItems,
-  projectBalancedReasoningItems,
-  projectMinimalActivityItems,
   resolveActivityDisplay,
   type ActivityDisplayMode,
   type ActivityTimelineItem,
 } from "./session-turn-activity"
 import { timelineItemStableKey, timelineVisualKind, type SessionTurnTimelineItem } from "./session-turn-timeline-item"
+import { ExecutionCompletion, type TurnExecutionSummary } from "./execution-completion"
 import { externalLoadNotify, externalLookup, resolveExternalToolRenderer } from "./tool-registry-lazy"
 export { timelineItemStableKey, timelineVisualKind } from "./session-turn-timeline-item"
 export type { SessionTurnTimelineItem, SessionTurnTimelineVisualKind } from "./session-turn-timeline-item"
@@ -261,6 +264,7 @@ export function shouldShowTurnDiffs(
   if (!diffState) return (summary?.diffs.length ?? 0) > 0 ? "ready" : "hidden"
   if (diffState.status === "pending") return "pending"
   if (diffState.status === "error") return "error"
+  if (diffState.status === "partial") return "partial"
   return summary.diffs.length > 0 ? "ready" : "hidden"
 }
 
@@ -473,6 +477,7 @@ export function resolveTurnWorking(input: {
   sessionStatus?: SessionStatus
 }): boolean {
   if (!input.isLastUserMessage) return false
+  if (input.sessionStatus?.type === "paused") return false
 
   let latestUserIndex = -1
   let lastAssistant: AssistantMessage | undefined
@@ -490,30 +495,12 @@ export function resolveTurnWorking(input: {
   })
   if (hasTerminalReply) return false
 
-  if (lastAssistant?.time.completed == null) return input.sessionStatus?.type !== "idle"
+  if (lastAssistant?.time.completed == null) return !!input.sessionStatus && input.sessionStatus.type !== "idle"
   return !!input.sessionStatus && input.sessionStatus.type !== "idle"
 }
 
-const awaitingResponse = { id: "ui.session.awaitingResponse", message: "Awaiting response…" }
-
-export function providerPreludeText(status: SessionStatus | undefined, fallback = awaitingResponse.message): string {
-  if (status?.type === "busy") {
-    const description = status.description?.trim()
-    if (description) return description
-  }
-  return fallback
-}
-
-export function shouldShowProviderPrelude(input: {
-  working: boolean
-  hasError: boolean
-  latestAssistant?: AssistantMessage
-  latestAssistantTimelineItems: readonly (SessionTurnTimelineItem | ActivityTimelineItem)[]
-}): boolean {
-  if (!input.working || input.hasError) return false
-  if (!input.latestAssistant) return true
-  if (input.latestAssistant.time.completed != null) return false
-  return input.latestAssistantTimelineItems.length === 0
+export function shouldShowCurrentActivity(input: { working: boolean; hasError: boolean }): boolean {
+  return input.working && !input.hasError
 }
 
 function TimelineItemDisplay(props: {
@@ -521,6 +508,12 @@ function TimelineItemDisplay(props: {
   serverUrl: string
   working?: boolean
   compactReasoning?: boolean
+  activityDisplay?: ActivityDisplayMode
+  activityView?: PluginConversationActivityView
+  activeBatch?: string
+  following?: boolean
+  onInspectProcess?: () => void
+  initialReasoning?: boolean
 }) {
   const running = createMemo(() => {
     if (props.item.kind !== "reasoning") return false
@@ -675,13 +668,19 @@ function adjacentActivityGroup(
 function isReasoningDisplayItem(item: SessionTurnDisplayItem): boolean {
   if (!isAssistantTimelineDisplayItem(item)) return false
   if (isActivityTimelineItem(item) && item.kind === "activity-reasoning-summary") return true
+  if (item.kind === "activity-batch") return item.entries?.some((entry) => entry.kind === "reasoning") ?? false
   return displayItemTimelineItem(item)?.kind === "reasoning"
 }
 
 function isToolRegionDisplayItem(item: SessionTurnDisplayItem): boolean {
   if (!isAssistantTimelineDisplayItem(item)) return false
   if (isActivityTimelineItem(item)) {
-    return item.kind === "activity-group" || item.kind === "activity-summary" || item.kind === "activity-receipt"
+    return (
+      item.kind === "activity-batch" ||
+      item.kind === "activity-group" ||
+      item.kind === "activity-summary" ||
+      item.kind === "activity-receipt"
+    )
   }
   return isToolTimelineItem(item)
 }
@@ -823,6 +822,12 @@ export function TimelineDisplay(props: {
   onRewind?: () => void
   working: boolean
   compactReasoning?: boolean
+  activityDisplay?: ActivityDisplayMode
+  activityView?: PluginConversationActivityView
+  activeBatch?: string
+  following?: boolean
+  onInspectProcess?: () => void
+  initialReasoning?: boolean
 }) {
   return (
     <ErrorBoundary
@@ -844,20 +849,21 @@ function TimelineDisplayInner(props: {
   onRewind?: () => void
   working: boolean
   compactReasoning?: boolean
+  activityDisplay?: ActivityDisplayMode
+  activityView?: PluginConversationActivityView
+  activeBatch?: string
+  following?: boolean
+  onInspectProcess?: () => void
+  initialReasoning?: boolean
 }) {
   const { _ } = useLingui()
-  const activityGroup = createMemo(() => {
-    const item = props.item
-    return isActivityTimelineItem(item) && item.kind === "activity-group" ? item : undefined
-  })
-  const activitySummary = createMemo(() => {
-    const item = props.item
-    return isActivityTimelineItem(item) && item.kind === "activity-summary" ? item : undefined
-  })
-  const activityReasoning = createMemo(() => {
-    const item = props.item
-    return isActivityTimelineItem(item) && item.kind === "activity-reasoning-summary" ? item : undefined
-  })
+  const activityBatch = createMemo(() =>
+    isActivityTimelineItem(props.item) && props.item.kind === "activity-batch" ? props.item : undefined,
+  )
+  const exceptionalTools = createMemo(() =>
+    isActivityTimelineItem(props.item) && props.item.kind === "activity-group" ? props.item : undefined,
+  )
+  const reasoning = createMemo(() => (props.item.kind === "activity-reasoning-summary" ? props.item : undefined))
   const activityReceipt = createMemo(() => {
     const item = props.item
     return isActivityTimelineItem(item) && item.kind === "activity-receipt" ? item : undefined
@@ -873,9 +879,33 @@ function TimelineDisplayInner(props: {
 
   return (
     <Switch>
-      <Match when={activityGroup()}>{(item) => <ActivityTrace group={item()} serverUrl={props.serverUrl} />}</Match>
-      <Match when={activitySummary()}>{(item) => <MinimalActivitySummary item={item()} />}</Match>
-      <Match when={activityReasoning()}>{(item) => <ActivityReasoningSummary item={item()} />}</Match>
+      <Match when={reasoning()}>
+        {(item) => (
+          <ActivityReasoning
+            item={item()}
+            working={props.working}
+            initial={props.initialReasoning}
+            preview={props.compactReasoning === true}
+            view={props.activityView}
+            onInspect={props.onInspectProcess}
+          />
+        )}
+      </Match>
+      <Match when={activityBatch()}>
+        {(item) => (
+          <ActivityBatch
+            batch={item()}
+            serverUrl={props.serverUrl}
+            mode={props.activityDisplay ?? "balanced"}
+            active={props.activeBatch === item().key}
+            following={props.following !== false}
+            reasoningPreview={props.compactReasoning}
+            view={props.activityView}
+            onInspect={props.onInspectProcess}
+          />
+        )}
+      </Match>
+      <Match when={exceptionalTools()}>{(item) => <ActivityTrace group={item()} serverUrl={props.serverUrl} />}</Match>
       <Match when={activityReceipt()}>{(item) => <ActivityReceipt item={item()} serverUrl={props.serverUrl} />}</Match>
       <Match when={guidedUser()}>
         {(item) => (
@@ -886,24 +916,31 @@ function TimelineDisplayInner(props: {
       </Match>
       <Match when={nonRootUser()}>
         {(item) => (
-          <div data-slot="session-turn-rewind-wrapper">
-            <div data-slot="session-turn-chip" data-origin={item().message.origin?.type ?? "guided"}>
-              <Icon name={getSemanticIcon(originIconToken(item().message.origin))} size="small" />
-              <span data-slot="session-turn-chip-label">{item().originLabel}</span>
-            </div>
-            <button
-              type="button"
-              data-slot="session-turn-rewind-button"
-              onClick={(event) => {
-                event.stopPropagation()
-                props.onRewind?.()
-              }}
-              title={_(SESSION_TURN_DESC.rewindTitle)}
-            >
-              <Icon name={getSemanticIcon("session.rewind")} size="small" />
-              <span>{_(SESSION_TURN_DESC.rewind)}</span>
-            </button>
-          </div>
+          <Show
+            when={["cortex", "agent"].includes(item().message.origin?.type ?? "")}
+            fallback={
+              <div data-slot="session-turn-rewind-wrapper">
+                <div data-slot="session-turn-chip" data-origin={item().message.origin?.type ?? "guided"}>
+                  <Icon name={getSemanticIcon(originIconToken(item().message.origin))} size="small" />
+                  <span data-slot="session-turn-chip-label">{item().originLabel}</span>
+                </div>
+                <button
+                  type="button"
+                  data-slot="session-turn-rewind-button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    props.onRewind?.()
+                  }}
+                  title={_(SESSION_TURN_DESC.rewindTitle)}
+                >
+                  <Icon name={getSemanticIcon("session.rewind")} size="small" />
+                  <span>{_(SESSION_TURN_DESC.rewind)}</span>
+                </button>
+              </div>
+            }
+          >
+            <ProcessEventRow message={item().message} />
+          </Show>
         )}
       </Match>
       <Match when={timelineItem()}>
@@ -917,47 +954,6 @@ function TimelineDisplayInner(props: {
         )}
       </Match>
     </Switch>
-  )
-}
-
-function ProviderPrelude(props: {
-  text: string
-  elapsed?: string
-  segments?: readonly string[]
-  variant?: "running" | "completed"
-}) {
-  return (
-    <div
-      data-component="provider-prelude"
-      data-variant={props.variant ?? "running"}
-      role="status"
-      aria-live="polite"
-      aria-label={props.text}
-    >
-      <span data-slot="provider-prelude-text">{props.text}</span>
-      <Show when={props.elapsed}>
-        {(elapsed) => (
-          <>
-            <span data-slot="provider-prelude-separator" aria-hidden="true">
-              ·
-            </span>
-            <span data-slot="provider-prelude-time" aria-hidden="true">
-              {elapsed()}
-            </span>
-          </>
-        )}
-      </Show>
-      <For each={props.segments ?? []}>
-        {(segment) => (
-          <>
-            <span data-slot="provider-prelude-separator" aria-hidden="true">
-              ·
-            </span>
-            <span data-slot="provider-prelude-stat">{segment}</span>
-          </>
-        )}
-      </For>
-    </div>
   )
 }
 
@@ -997,9 +993,31 @@ export function SessionTurn(
     onRewind?: () => void
     rollbackActive?: boolean
     onReviewChanges?: (input: { messageID: string; file?: string }) => void
+    onRestoreChanges?: (messageID: string) => void
     onForkMessage?: (messageID: string) => void
+    executionSummary?: TurnExecutionSummary
+    onExecutionDetails?: () => void
     activityDisplay?: ActivityDisplayMode
     compactReasoning?: boolean
+    copyMessageText?: (messageID: string) => Promise<string>
+    segment?: {
+      user: boolean
+      footer: boolean
+      parts: readonly { messageID: string; id: string }[]
+      before: boolean
+      after: boolean
+      beforeTool?: boolean
+      beforeReasoning?: boolean
+      activityBody?: boolean
+      processHeader?: boolean
+      processBody?: boolean
+      contentMessageID?: string
+      process?: { open: boolean; working: boolean; hasContent: boolean; hasTurnContent: boolean }
+    }
+    activityView?: PluginConversationActivityView
+    following?: boolean
+    submission?: { activity?: import("@ericsanchezok/synergy-sdk/client").SessionActivity; failed: boolean }
+    executionState?: import("@ericsanchezok/synergy-sdk/client").TurnExecutionState
     classes?: {
       root?: string
       content?: string
@@ -1011,6 +1029,20 @@ export function SessionTurn(
   const view = data.view
   const { _, i18n } = useLingui()
   const activityDisplay = createMemo(() => resolveActivityDisplay(props.activityDisplay))
+  const segmentParts = createMemo(() => {
+    if (!props.segment) return view.partTable()
+    const table: Record<string, PartType[]> = {}
+    for (const selected of props.segment.parts) {
+      const part = view.partsFor(selected.messageID).find((part) => part.id === selected.id)
+      if (part) (table[selected.messageID] ??= []).push(part)
+    }
+    return table
+  })
+  const partsFor = (messageID: string) =>
+    props.segment ? (segmentParts()[messageID] ?? emptyParts) : view.partsFor(messageID)
+  const showFooter = () => !props.segment || props.segment.footer
+  const beforeBoundary = () => !props.segment || props.segment.before
+  const afterBoundary = () => !props.segment || props.segment.after
 
   const emptyParts: PartType[] = []
   const emptyAssistant: AssistantMessage[] = []
@@ -1033,7 +1065,7 @@ export function SessionTurn(
   const parts = createMemo(() => {
     const msg = message()
     if (!msg) return emptyParts
-    return view.partsFor(msg.id)
+    return partsFor(msg.id)
   })
 
   const turnMessages = createMemo(() => props.messages, emptyDisplayMessages, { equals: same })
@@ -1053,7 +1085,7 @@ export function SessionTurn(
   const lastAssistantMessage = createMemo(() => assistantMessages().at(-1))
 
   // Compaction failures own their error presentation in the lifecycle card.
-  const error = createMemo(() => assistantMessages().find((m) => !isCompactionAssistant(m) && m.error)?.error)
+  const error = createMemo(() => assistantMessages().findLast((m) => !isCompactionAssistant(m))?.error)
   const errorMessage = createMemo(() => {
     const value = error()
     if (!value) return ""
@@ -1070,6 +1102,7 @@ export function SessionTurn(
   const permissionCount = createMemo(() => permissions().length)
 
   const shellModePart = createMemo(() => {
+    if (props.segment) return
     const p = parts()
     if (!p.every((part) => part?.type === "text" && isSystemPart(part))) return
 
@@ -1084,11 +1117,16 @@ export function SessionTurn(
   })
 
   const working = createMemo(() =>
-    resolveTurnWorking({
-      isLastUserMessage: isLastUserMessage(),
-      messages: turnMessages(),
-      sessionStatus: view.statusFor(props.sessionID),
-    }),
+    props.submission
+      ? !props.submission.failed
+      : (props.segment?.process?.working ??
+        (props.executionState
+          ? ["preparing", "running", "approval"].includes(props.executionState.status)
+          : resolveTurnWorking({
+              isLastUserMessage: isLastUserMessage(),
+              messages: turnMessages(),
+              sessionStatus: view.statusFor(props.sessionID),
+            }))),
   )
 
   const isToolRenderBoundary = (tool: string) => {
@@ -1100,14 +1138,19 @@ export function SessionTurn(
   }
 
   const projectAssistantMessage = (item: AssistantMessage): SessionTurnAssistantDisplayItem[] => {
-    const visibleItems = collectSessionTurnTimelineItems([item], view.partTable(), working())
-    if (activityDisplay() === "full") return visibleItems
-
-    const sourceItems = collectSessionTurnTimelineItems([item], view.partTable(), true)
+    if (props.segment && isCompactionAssistant(item)) {
+      const ownsRecovery = segmentParts()[item.id]?.some((part) => part.type === "compaction_recovery")
+      const placeholder =
+        props.segment.contentMessageID === item.id &&
+        isProjectedCompactionAttempt(item) &&
+        !view.partsFor(item.id).some((part) => part.type === "compaction_recovery")
+      if (!ownsRecovery && !placeholder) return []
+    }
+    const sourceItems = collectSessionTurnTimelineItems([item], segmentParts(), true)
     return projectAssistantActivityItems({
       message: item,
       sourceItems,
-      visibleItems,
+      visibleItems: sourceItems,
       permissions: permissions(),
       resolveToolInfo: getToolInfo,
       isToolRenderBoundary,
@@ -1126,7 +1169,13 @@ export function SessionTurn(
         if (item.role === "user") {
           const userMsg = item as UserMessage
           if (userMsg.isRoot !== false) return emptyDisplayItems
-          const itemParts = view.partsFor(item.id)
+          if (
+            props.segment &&
+            props.segment.contentMessageID !== userMsg.id &&
+            !props.segment.parts.some((part) => part.messageID === userMsg.id)
+          )
+            return emptyDisplayItems
+          const itemParts = partsFor(item.id)
           // A user's own mid-run message (steer / follow-up) renders as their
           // message bubble; system-injected non-root messages (cortex, agenda,
           // …) render as a compact origin chip.
@@ -1164,46 +1213,13 @@ export function SessionTurn(
 
   const timelineItems = createMemo(
     () => {
-      // Subscribe to working() directly: settling flips it and must re-project
-      // every message once (reasoning promotion/hiding in full mode). The
-      // per-message accessors below stay cached across streaming deltas.
-      const isWorking = working()
       const result: SessionTurnDisplayItem[] = []
-      const msg = message()
       result.push(...userCompactionDisplayItems())
       for (const accessor of displayItemProjections()) {
         result.push(...accessor())
       }
-      const assistants = displayMessages().filter(
-        (item): item is AssistantMessage =>
-          item.role === "assistant" && !isCompactionAssistant(item as AssistantMessage),
-      )
-      if (activityDisplay() === "minimal") {
-        return projectMinimalActivityItems(result, msg?.id ?? props.messageID, !isWorking) as SessionTurnDisplayItem[]
-      }
-      if (activityDisplay() === "balanced") {
-        let liveReasoningParts: Map<string, ReasoningPart> | undefined
-        if (props.compactReasoning && isWorking) {
-          liveReasoningParts = new Map()
-          for (const assistant of assistants) {
-            const reasoningPart = view
-              .partsFor(assistant.id)
-              .findLast((part): part is ReasoningPart => part.type === "reasoning" && Boolean(part.text.trim()))
-            if (reasoningPart) liveReasoningParts.set(assistant.id, reasoningPart)
-          }
-        }
-        const projected = projectBalancedReasoningItems(result, isWorking, {
-          compactReasoningParts: liveReasoningParts,
-        }) as SessionTurnDisplayItem[]
-        return props.compactReasoning && !isWorking
-          ? injectPersistedReasoningItems(projected, assistants, view.partTable())
-          : projected
-      }
-      if (props.compactReasoning) {
-        if (isWorking) return compactReasoningTimelineItems(result)
-        return injectPersistedReasoningItems(result, assistants, view.partTable())
-      }
-      return result
+
+      return props.segment?.activityBody ? result : projectActivityBatches(result)
     },
     emptyDisplayItems,
     { equals: same },
@@ -1218,24 +1234,15 @@ export function SessionTurn(
     return result
   })
   const hasCompactionEvent = createMemo(() => timelineItems().some(isCompactionDisplayItem))
-  const showUserChrome = createMemo(() => shouldShowTurnUserChrome(message(), parts(), hasCompactionEvent()))
-  const [pendingDelayElapsed, setPendingDelayElapsed] = createSignal(false)
+  const showUserChrome = createMemo(
+    () => (props.segment?.user ?? true) && shouldShowTurnUserChrome(message(), parts(), hasCompactionEvent()),
+  )
   const [animateReadyDiffPanel, setAnimateReadyDiffPanel] = createSignal(false)
   const diffSettlementStatus = createMemo(() => message()?.summary?.diffState?.status)
   const incompleteFileRecording = createMemo(() => {
     const state = message()?.summary?.diffState
-    return state?.status === "error" && state.code === "incomplete"
+    return state?.status === "partial" || (state?.status === "error" && state.code === "incomplete")
   })
-
-  createEffect(
-    on(diffSettlementStatus, (status) => {
-      setPendingDelayElapsed(false)
-      if (status !== "pending") return
-
-      const pendingTimer = setTimeout(() => setPendingDelayElapsed(true), TURN_DIFF_PENDING_DELAY_MS)
-      onCleanup(() => clearTimeout(pendingTimer))
-    }),
-  )
 
   createEffect(on(diffSettlementStatus, (status) => setAnimateReadyDiffPanel(status === "ready"), { defer: true }))
 
@@ -1245,7 +1252,7 @@ export function SessionTurn(
       hasCompactionEvent: hasCompactionEvent(),
       isCompactedParent: !!msg && compactionParentIDs().has(msg.id),
     })
-    return resolveTurnDiffPanelState(projected, pendingDelayElapsed())
+    return resolveTurnDiffPanelState(projected, (msg?.summary?.diffs.length ?? 0) > 0)
   })
   const visibleDiffPanelState = createMemo<Exclude<TurnDiffPanelState, "hidden"> | undefined>(() => {
     const state = diffPanelState()
@@ -1262,8 +1269,7 @@ export function SessionTurn(
     // -1 (or the projection array shorter than display). Guard the access —
     // an empty projection is the graceful degradation path.
     const selected = (displayItemProjections()[index]?.() ?? []) as SessionTurnAssistantDisplayItem[]
-    if (activityDisplay() !== "minimal") return selected as SessionTurnAssistantDisplayItem[]
-    return projectMinimalActivityItems(selected, message()?.id ?? props.messageID, !working())
+    return selected as SessionTurnAssistantDisplayItem[]
   })
   const emptyTimelineItemSnapshot = {
     keys: [] as string[],
@@ -1329,6 +1335,7 @@ export function SessionTurn(
   })
   const copyController = createCopyController({
     text: markdownText,
+    loadText: props.copyMessageText ? () => props.copyMessageText!(lastAssistantMessage()!.id) : undefined,
     copyLabel: _(SESSION_TURN_DESC.copyMarkdown),
     copiedLabel: _(SESSION_TURN_DESC.copied),
     failureDescription: _(SESSION_TURN_DESC.copyFailure),
@@ -1340,53 +1347,148 @@ export function SessionTurn(
     <MessageSlotOutlet slot={slot} sessionId={props.sessionID} messageId={messageId} role={role} />
   )
   const hasTimelineItems = createMemo(() => timelineItems().length > 0)
-  const sessionStatus = createMemo(() => view.statusFor(props.sessionID))
-  const [providerPreludeNow, setProviderPreludeNow] = createSignal(Date.now())
-  const providerPreludeStarted = createMemo(() => message()?.time.created)
-  const providerPreludeElapsed = createMemo(() =>
-    providerPreludeElapsedLabel(providerPreludeStarted(), providerPreludeNow()),
+  const sessionStatus = createMemo(() =>
+    props.submission?.activity
+      ? { type: "busy" as const, activity: props.submission.activity }
+      : view.statusFor(props.sessionID),
   )
-  const showProviderPrelude = createMemo(() =>
-    hasCompactionEvent()
-      ? false
-      : shouldShowProviderPrelude({
-          working: working(),
-          hasError: !!error(),
-          latestAssistant: lastAssistantMessage(),
-          latestAssistantTimelineItems: latestAssistantTimelineItems(),
-        }),
-  )
-  const completedTurnStats = createMemo(() => {
-    if (working() || hasCompactionEvent() || error()) return undefined
-    return turnCompletionStats(assistantMessages(), i18n?.()?.locale)
-  })
-
-  createEffect(() => {
-    if (!showProviderPrelude()) {
-      setProviderPreludeNow(Date.now())
-      return
-    }
-
-    setProviderPreludeNow(Date.now())
-    const timer = setInterval(() => setProviderPreludeNow(Date.now()), 1000)
-    onCleanup(() => clearInterval(timer))
-  })
+  const showCurrentActivity = createMemo(() => shouldShowCurrentActivity({ working: working(), hasError: !!error() }))
+  const showExecutionCompletion = createMemo(() => !working() && !!props.executionSummary)
 
   const autoScroll = createAutoScroll({
     working,
     onUserInteracted: props.onUserInteracted,
   })
+  const following = () => props.following ?? !autoScroll.userScrolled()
+  const [explicitProcessOpen, setExplicitProcessOpen] = createSignal<boolean>()
+  const [heldProcessOpen, setHeldProcessOpen] = createSignal(false)
+  createEffect(
+    on(working, (value, previous) => {
+      if (previous && !value && !following()) setHeldProcessOpen(true)
+    }),
+  )
+  createEffect(() => {
+    if (following()) setHeldProcessOpen(false)
+  })
+  const turnReasoning = createMemo(() =>
+    turnMessages().flatMap((message) =>
+      partsFor(message.id).filter((part): part is ReasoningPart => part.type === "reasoning" && !!part.text.trim()),
+    ),
+  )
+  const reasoningRunning = () => {
+    const latest = turnReasoning().at(-1)
+    return working() && !!latest && latest.time?.end == null
+  }
+  const reasoningItem = (item: SessionTurnDisplayItem) =>
+    item.kind === "activity-reasoning-summary" ||
+    (isAssistantTimelineDisplayItem(item) && displayItemTimelineItem(item)?.part?.type === "reasoning")
+  const processKey = () => `turn-process:${props.messageID}`
+  const processOpen = () =>
+    props.segment?.process?.open ??
+    resolveActivityDisclosure({
+      mode: activityDisplay(),
+      working: working(),
+      heldOpen: heldProcessOpen(),
+      explicit: props.activityView?.getExpanded(processKey()) ?? explicitProcessOpen(),
+    })
+  const activeBatch = createMemo(() => {
+    if (!working()) return undefined
+    const running = timelineItems().findLast((item) => item.kind === "activity-batch" && item.state === "running")
+    if (running?.kind === "activity-batch") return running.key
+    const last = timelineItems().findLast((item) => !reasoningItem(item) && !isActivityBoundaryDisplayItem(item))
+    return last?.kind === "activity-batch" ? last.key : undefined
+  })
+  const isProcessItem = (item: SessionTurnDisplayItem) => {
+    if (props.segment?.processBody !== undefined) return props.segment.processBody
+    if (item.kind === "activity-batch" || item.kind === "activity-reasoning-summary") return true
+    const timeline = isAssistantTimelineDisplayItem(item) ? displayItemTimelineItem(item) : undefined
+    if (timeline?.kind !== "part" || timeline.part.type !== "text") return false
+    if (
+      item.message.id !== lastAssistantMessage()?.id ||
+      (item.message.role === "assistant" && item.message.finish === "tool-calls")
+    )
+      return true
+    const parts = view.partsFor(item.message.id)
+    const index = parts.findIndex((part) => part.id === timeline.part.id)
+    return parts.slice(index + 1).some((part) => part.type === "tool")
+  }
+  const paused = () => {
+    const status = sessionStatus()
+    return isLastUserMessage() && status?.type === "paused" ? status : undefined
+  }
+  const hasProcess = createMemo(
+    () =>
+      (props.segment?.process?.hasContent ?? (turnReasoning().length > 0 || timelineItems().some(isProcessItem))) ||
+      !!paused(),
+  )
+  const showProcessHeader = () => !props.segment || props.segment.processHeader
+  const inspectProcess = () => {
+    if (props.activityView) props.activityView.setExpanded(processKey(), true)
+    else setExplicitProcessOpen(true)
+  }
+  const stopped = () =>
+    props.executionState
+      ? props.executionState.status === "stopped"
+      : lastAssistantMessage()?.error?.name === "MessageAbortedError" ||
+        (paused()?.type === "paused" && paused()?.reason === "aborted")
+  const turnDuration = () => {
+    const execution = props.executionState
+    const start = execution?.startedAt ?? assistantMessages()[0]?.time.created
+    const end = execution?.endedAt ?? lastAssistantMessage()?.time.completed
+    return start !== undefined && end !== undefined ? Math.max(0, Math.round((end - start) / 1000)) : undefined
+  }
+  const compacting = createMemo(() =>
+    assistantMessages().some(
+      (item) =>
+        isCompactionAssistant(item) &&
+        (item.metadata?.compactionAttempt as { state?: unknown } | undefined)?.state === "running",
+    ),
+  )
+  const activeAction = () =>
+    compacting()
+      ? _({ id: "ui.compaction.running", message: "Compressing context..." })
+      : sessionActivityLabel(sessionStatus(), i18n(), {
+          rootID: props.messageID,
+          approval: props.executionState?.status === "approval" || (isLastUserMessage() && permissionCount() > 0),
+          question: isLastUserMessage() && view.questionsFor(props.sessionID).length > 0,
+        })
+  const processLabel = () =>
+    working()
+      ? activeAction()
+      : stopped()
+        ? _({ id: "session.process.stopped", message: "Stopped" })
+        : props.executionState?.status === "interrupted"
+          ? _({ id: "session.process.interrupted", message: "Interrupted" })
+          : props.submission?.failed ||
+              props.executionState?.status === "failed" ||
+              (!props.executionState && (error() || (paused()?.type === "paused" && paused()?.reason === "failed")))
+            ? _({ id: "session.process.failed", message: "Execution failed" })
+            : paused() || !lastAssistantMessage()?.time.completed
+              ? _({ id: "session.process.paused", message: "Paused" })
+              : turnDuration() !== undefined
+                ? _({
+                    id: "session.process.workedDuration",
+                    message: "Worked for {seconds} s",
+                    values: { seconds: turnDuration()! },
+                  })
+                : _({ id: "session.process.completed", message: "Work completed" })
 
   createEffect(
     on(permissionCount, (count, prev) => {
       if (!count) return
       if (prev !== undefined && count <= prev) return
-      autoScroll.forceScrollToBottom()
+      if (following()) autoScroll.forceScrollToBottom()
     }),
   )
 
   return (
-    <div data-component="session-turn" data-activity-display={activityDisplay()} class={props.classes?.root}>
+    <div
+      data-component="session-turn"
+      data-segment-footer={props.segment?.footer ? "" : undefined}
+      data-activity-body={props.segment?.activityBody ? "" : undefined}
+      data-activity-display={activityDisplay()}
+      class={props.classes?.root}
+    >
       <div
         ref={autoScroll.scrollRef}
         onScroll={autoScroll.handleScroll}
@@ -1407,24 +1509,35 @@ export function SessionTurn(
                     {(shellPart) => <Part part={shellPart()} message={msg()} defaultOpen />}
                   </Match>
                   <Match when={true}>
-                    <Show when={showUserChrome()}>{renderMessageSlot("message.before-user")}</Show>
+                    <Show when={showUserChrome() && beforeBoundary()}>{renderMessageSlot("message.before-user")}</Show>
                     <Show when={showUserChrome()}>
-                      {renderCoreMessageSlot("message.before", msg().id, "user")}
+                      <Show when={beforeBoundary()}>{renderCoreMessageSlot("message.before", msg().id, "user")}</Show>
                       {/* Mailbox source annotation */}
                       <Show when={(msg() as UserMessage).metadata?.mailbox && !specialUserMessageRenderer()}>
                         <MailboxSourceBadge message={msg() as UserMessage} />
                       </Show>
                       {/* User message */}
-                      <div data-slot="session-turn-rewind-wrapper" data-align="right">
+                      <div
+                        data-slot="session-turn-rewind-wrapper"
+                        data-align="right"
+                        data-scroll-anchor={`turn-user:${msg().id}`}
+                      >
                         <Show
                           when={specialUserMessageRenderer()}
-                          fallback={<Message message={msg()} parts={parts()} userVariant="turn-bubble" />}
+                          fallback={
+                            <Message
+                              message={msg()}
+                              parts={parts()}
+                              userVariant="turn-bubble"
+                              loadCopyText={props.copyMessageText ? () => props.copyMessageText!(msg().id) : undefined}
+                            />
+                          }
                         >
                           {(SpecialUserMessage) => (
                             <Dynamic component={SpecialUserMessage()} message={msg()} parts={parts()} />
                           )}
                         </Show>
-                        <Show when={props.onRewind && !specialUserMessageRenderer()}>
+                        <Show when={afterBoundary() && props.onRewind && !specialUserMessageRenderer()}>
                           <button
                             type="button"
                             data-slot="session-turn-rewind-button"
@@ -1438,20 +1551,61 @@ export function SessionTurn(
                             <span>{_(SESSION_TURN_DESC.rewind)}</span>
                           </button>
                         </Show>
-                        {renderCoreMessageSlot("message.actions", msg().id, "user")}
+                        <Show when={afterBoundary()}>{renderCoreMessageSlot("message.actions", msg().id, "user")}</Show>
                       </div>
-                      {renderCoreMessageSlot("message.after", msg().id, "user")}
-                      {renderMessageSlot("message.after-user")}
+                      <Show when={afterBoundary()}>
+                        {renderCoreMessageSlot("message.after", msg().id, "user")}
+                        {renderMessageSlot("message.after-user")}
+                      </Show>
                     </Show>
                     <Show
                       when={
                         hasTimelineItems() ||
-                        showProviderPrelude() ||
-                        completedTurnStats() ||
-                        (!working() && !!visibleDiffPanelState())
+                        (showProcessHeader() && (hasProcess() || showCurrentActivity())) ||
+                        (showFooter() && (showExecutionCompletion() || (!working() && !!visibleDiffPanelState())))
                       }
                     >
                       <div data-slot="session-turn-timeline">
+                        <Show when={showProcessHeader()}>
+                          <div data-slot="turn-process-meta">
+                            <Show when={hasProcess() || showCurrentActivity()}>
+                              <button
+                                type="button"
+                                data-slot="turn-process-trigger"
+                                data-scroll-anchor={processKey()}
+                                aria-expanded={hasProcess() ? processOpen() : undefined}
+                                disabled={!hasProcess()}
+                                onClick={() => {
+                                  const next = !processOpen()
+                                  if (props.activityView) props.activityView.setExpanded(processKey(), next)
+                                  else setExplicitProcessOpen(next)
+                                }}
+                              >
+                                <Show
+                                  when={
+                                    working() &&
+                                    !reasoningRunning() &&
+                                    !timelineItems().some(
+                                      (item) => item.kind === "activity-batch" && item.state === "running",
+                                    )
+                                  }
+                                >
+                                  <span data-slot="activity-live-indicator" aria-hidden="true" />
+                                </Show>
+                                <span>{processLabel()}</span>
+                                <Show when={props.executionState?.stoppedAt.length && !stopped()}>
+                                  <span data-slot="turn-prior-stop">
+                                    {_({ id: "session.process.priorStop", message: "Previously stopped" })}
+                                  </span>
+                                </Show>
+
+                                <Show when={hasProcess()}>
+                                  <Icon name={getSemanticIcon("navigation.expand")} size="small" />
+                                </Show>
+                              </button>
+                            </Show>
+                          </div>
+                        </Show>
                         <For each={timelineItemSnapshot().keys}>
                           {(key, index) => {
                             const item = () => timelineItemSnapshot().map.get(key)
@@ -1470,89 +1624,116 @@ export function SessionTurn(
                               adjacentActivityGroup(timelineItemSnapshot().keys, timelineItemSnapshot().map, index(), 1)
                             return (
                               <Show when={item()}>
-                                {(current) => (
-                                  <>
-                                    <Show when={boundary()?.first === index()}>
-                                      {renderCoreMessageSlot(
-                                        "message.before",
-                                        current().message.id,
-                                        current().message.role,
-                                      )}
-                                    </Show>
-                                    <Show when={index() === timelineSlotIndexes().firstReasoning}>
-                                      {renderMessageSlot("message.before-reasoning")}
-                                    </Show>
-                                    <Show when={index() === timelineSlotIndexes().firstTool}>
-                                      {renderMessageSlot("message.before-tools")}
-                                    </Show>
-                                    <div
-                                      data-slot="session-turn-timeline-item"
-                                      data-kind={displayItemVisualKind(current())}
-                                      data-activity-continues={activityContinues() ? "" : undefined}
-                                      data-activity-follows={activityFollows() ? "" : undefined}
-                                      hidden={isActivityBoundaryDisplayItem(current())}
-                                      data-compact-reasoning={
-                                        props.compactReasoning && displayItemVisualKind(current()) === "reasoning"
-                                          ? "true"
-                                          : undefined
-                                      }
-                                    >
-                                      <TimelineDisplay
-                                        item={current()}
-                                        serverUrl={data.serverUrl}
-                                        rollbackActive={props.rollbackActive === true}
-                                        onRewind={props.onRewind}
-                                        working={working()}
-                                        compactReasoning={
-                                          props.compactReasoning && displayItemVisualKind(current()) === "reasoning"
+                                {(current) => {
+                                  const motionRef = createDisclosureMotionRef({
+                                    visible: () =>
+                                      !isActivityBoundaryDisplayItem(current()) &&
+                                      (!isProcessItem(current()) || processOpen()),
+                                    animate: following,
+                                    content: displayItemVisualKind(current()) === "text",
+                                    appear: () =>
+                                      working() &&
+                                      current().message.id === lastAssistantMessage()?.id &&
+                                      displayItemVisualKind(current()) === "text",
+                                  })
+                                  return (
+                                    <>
+                                      <Show when={beforeBoundary() && boundary()?.first === index()}>
+                                        {renderCoreMessageSlot(
+                                          "message.before",
+                                          current().message.id,
+                                          current().message.role,
+                                        )}
+                                      </Show>
+                                      <Show
+                                        when={
+                                          (props.segment?.beforeReasoning ?? beforeBoundary()) &&
+                                          index() === timelineSlotIndexes().firstReasoning
                                         }
-                                      />
-                                    </div>
-                                    <Show when={index() === timelineSlotIndexes().lastReasoning}>
-                                      {renderMessageSlot("message.after-reasoning")}
-                                    </Show>
-                                    <Show when={index() === timelineSlotIndexes().lastTool}>
-                                      {renderMessageSlot("message.after-tools")}
-                                    </Show>
-                                    <Show when={boundary()?.last === index()}>
-                                      {renderCoreMessageSlot(
-                                        "message.actions",
-                                        current().message.id,
-                                        current().message.role,
-                                      )}
-                                      {renderCoreMessageSlot(
-                                        "message.after",
-                                        current().message.id,
-                                        current().message.role,
-                                      )}
-                                    </Show>
-                                  </>
-                                )}
+                                      >
+                                        {renderMessageSlot("message.before-reasoning")}
+                                      </Show>
+                                      <Show
+                                        when={
+                                          (props.segment?.beforeTool ?? beforeBoundary()) &&
+                                          index() === timelineSlotIndexes().firstTool
+                                        }
+                                      >
+                                        {renderMessageSlot("message.before-tools")}
+                                      </Show>
+                                      <div
+                                        data-slot="session-turn-timeline-item"
+                                        data-scroll-anchor={key}
+                                        data-kind={displayItemVisualKind(current())}
+                                        data-activity-continues={activityContinues() ? "" : undefined}
+                                        data-activity-follows={activityFollows() ? "" : undefined}
+                                        ref={motionRef}
+                                        data-compact-reasoning={
+                                          props.compactReasoning &&
+                                          (displayItemVisualKind(current()) === "reasoning" ||
+                                            displayItemVisualKind(current()) === "activity-reasoning-summary")
+                                            ? "true"
+                                            : undefined
+                                        }
+                                      >
+                                        <TimelineDisplay
+                                          item={current()}
+                                          initialReasoning={
+                                            !props.segment?.activityBody && index() === 0 && reasoningItem(current())
+                                          }
+                                          serverUrl={data.serverUrl}
+                                          rollbackActive={props.rollbackActive === true}
+                                          onRewind={props.onRewind}
+                                          working={working()}
+                                          activityDisplay={activityDisplay()}
+                                          activityView={props.activityView}
+                                          activeBatch={activeBatch()}
+                                          following={following()}
+                                          onInspectProcess={inspectProcess}
+                                          compactReasoning={props.compactReasoning}
+                                        />
+                                      </div>
+                                      <Show when={afterBoundary() && index() === timelineSlotIndexes().lastReasoning}>
+                                        {renderMessageSlot("message.after-reasoning")}
+                                      </Show>
+                                      <Show when={afterBoundary() && index() === timelineSlotIndexes().lastTool}>
+                                        {renderMessageSlot("message.after-tools")}
+                                      </Show>
+                                      <Show when={afterBoundary() && boundary()?.last === index()}>
+                                        {renderCoreMessageSlot(
+                                          "message.actions",
+                                          current().message.id,
+                                          current().message.role,
+                                        )}
+                                        {renderCoreMessageSlot(
+                                          "message.after",
+                                          current().message.id,
+                                          current().message.role,
+                                        )}
+                                      </Show>
+                                    </>
+                                  )
+                                }}
                               </Show>
                             )
                           }}
                         </For>
-                        <Show when={showProviderPrelude()}>
-                          <div data-slot="session-turn-timeline-item" data-kind="provider-prelude">
-                            <ProviderPrelude
-                              text={providerPreludeText(sessionStatus(), _(awaitingResponse))}
-                              elapsed={providerPreludeElapsed()}
+                        <Show when={showFooter() && showExecutionCompletion()}>
+                          <div data-slot="session-turn-timeline-item" data-kind="execution-completion">
+                            <ExecutionCompletion
+                              summary={props.executionSummary}
+                              onDetails={props.onExecutionDetails}
                             />
                           </div>
                         </Show>
-                        <Show when={completedTurnStats()}>
-                          {(stats) => (
-                            <div data-slot="session-turn-timeline-item" data-kind="provider-prelude">
-                              <ProviderPrelude
-                                text={_(SESSION_TURN_DESC.completed)}
-                                elapsed={stats().duration}
-                                segments={stats().segments}
-                                variant="completed"
-                              />
-                            </div>
-                          )}
-                        </Show>
-                        <Show when={!working() && markdownText()}>
+                        <Show
+                          when={
+                            showFooter() &&
+                            !working() &&
+                            lastAssistantMessage()?.time.completed != null &&
+                            (markdownText() || (props.copyMessageText && lastAssistantMessage()))
+                          }
+                        >
                           <div data-slot="session-turn-timeline-item" data-kind="copy-markdown">
                             <div data-slot="assistant-message-meta">
                               <Show keyed when={assistantTimestamp()}>
@@ -1586,24 +1767,39 @@ export function SessionTurn(
                             </div>
                           </div>
                         </Show>
-                        <Show when={!working() ? visibleDiffPanelState() : undefined}>
+                        <Show
+                          when={
+                            showFooter() && (!working() || (msg().summary?.diffs.length ?? 0) > 0)
+                              ? visibleDiffPanelState()
+                              : undefined
+                          }
+                        >
                           {(state) => (
-                            <TurnChangeSummaryPanel
-                              diffs={msg().summary?.diffs ?? []}
-                              state={state()}
-                              incomplete={incompleteFileRecording()}
-                              animateReady={animateReadyDiffPanel()}
-                              onReviewRequested={() => props.onReviewChanges?.({ messageID: msg().id })}
-                              onFileSelected={(file) => props.onReviewChanges?.({ messageID: msg().id, file })}
-                            />
+                            <div
+                              data-slot="session-turn-timeline-item"
+                              data-kind="review"
+                              data-scroll-anchor={`turn-review:${msg().id}`}
+                            >
+                              <TurnChangeSummaryPanel
+                                diffs={msg().summary?.diffs ?? []}
+                                state={state()}
+                                incomplete={incompleteFileRecording()}
+                                animateReady={animateReadyDiffPanel()}
+                                onUndoRequested={
+                                  props.onRestoreChanges ? () => props.onRestoreChanges?.(msg().id) : undefined
+                                }
+                                onReviewRequested={() => props.onReviewChanges?.({ messageID: msg().id })}
+                                onFileSelected={(file) => props.onReviewChanges?.({ messageID: msg().id, file })}
+                              />
+                            </div>
                           )}
                         </Show>
                       </div>
                     </Show>
-                    <Show when={error()}>
+                    <Show when={showFooter() && error() && !stopped()}>
                       <ErrorCard error={errorMessage()} />
                     </Show>
-                    {renderMessageSlot("message.after-message")}
+                    <Show when={showFooter()}>{renderMessageSlot("message.after-message")}</Show>
                   </Match>
                 </Switch>
               </div>

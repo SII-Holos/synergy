@@ -45,7 +45,7 @@ describe("note_archive", () => {
             content: { type: "doc", content: [paragraph("b")] },
           })
 
-          const result = await execute({ ids: [a.id, b.id] })
+          const result = await execute({ noteIds: [a.id, b.id] })
 
           expect(result.title).toBe("Archived 2 notes")
           expect(result.output).toContain("Archived 2 notes")
@@ -75,8 +75,8 @@ describe("note_archive", () => {
             content: { type: "doc", content: [paragraph("x")] },
           })
 
-          await execute({ ids: [note.id] })
-          const result = await execute({ ids: [note.id] })
+          await execute({ noteIds: [note.id] })
+          const result = await execute({ noteIds: [note.id] })
 
           expect(result.title).toBe("Archived 1 note")
           expect(result.output).toContain(`[${note.id}]`)
@@ -101,11 +101,11 @@ describe("note_archive", () => {
             content: { type: "doc", content: [paragraph("r")] },
           })
 
-          await execute({ ids: [note.id] })
+          await execute({ noteIds: [note.id] })
           const archived = await NoteStore.get(scope.id, note.id)
           expect(archived.archived).toBe(true)
 
-          const result = await execute({ ids: [note.id], unarchive: true })
+          const result = await execute({ noteIds: [note.id], unarchive: true })
 
           expect(result.title).toBe("Unarchived 1 note")
           expect(result.output).toContain("Restored 1 note")

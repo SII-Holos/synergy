@@ -4,6 +4,7 @@ import {
   canAddProviderAccount,
   removeProviderAccount,
   saveProviderAccount,
+  createProviderAccountCommand,
   type ProviderConnectionClient,
 } from "../../../../src/components/settings/panels/provider-account-operations"
 
@@ -40,9 +41,57 @@ function mockClient() {
 }
 
 describe("provider account operations", () => {
+  test("retries the read after account creation without creating another account", async () => {
+    let writes = 0
+    let reads = 0
+    const command = createProviderAccountCommand(
+      async () => {
+        writes++
+        return connection()
+      },
+      async () => {
+        reads++
+        if (reads === 1) throw new Error("refresh failed")
+      },
+    )
+    await expect(command.run()).rejects.toThrow("refresh failed")
+    expect(command.persisted()).toBe(true)
+    expect((await command.run()).id).toBe("deepseek-work")
+    expect(writes).toBe(1)
+    expect(reads).toBe(2)
+  })
   test("only permits another account when the server reports a reusable catalog", () => {
     expect(canAddProviderAccount(connection({ canCreateSibling: true }))).toBe(true)
     expect(canAddProviderAccount(connection({ canCreateSibling: false }))).toBe(false)
+  })
+
+  test("recovers a connection whose creation response was lost instead of creating another one", async () => {
+    let writes = 0
+    const command = createProviderAccountCommand(
+      async () => {
+        writes++
+        throw new Error("response lost")
+      },
+      async () => {},
+      async () => connection(),
+    )
+    expect((await command.run()).id).toBe("deepseek-work")
+    expect((await command.run()).id).toBe("deepseek-work")
+    expect(writes).toBe(1)
+  })
+
+  test("preserves the caller's stable account identity when retrying creation", async () => {
+    const { client, calls } = mockClient()
+    await saveProviderAccount(client, {
+      mode: "create",
+      id: "account-stable",
+      profileID: "deepseek",
+      name: "Work",
+      enabled: true,
+    })
+    expect(calls[0].input).toEqual({
+      providerConnectionCreateInput: { id: "account-stable", profileID: "deepseek", name: "Work", enabled: true },
+    })
   })
 
   test("creates a named account with its own endpoint and enabled state", async () => {

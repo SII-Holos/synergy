@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test"
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
@@ -9,6 +10,8 @@ let browser: Browser
 let page: Page
 let server: ViteDevServer
 let fixtureDirectory: string
+let fixtureUrl: string
+const errors: string[] = []
 
 beforeAll(async () => {
   fixtureDirectory = await mkdtemp(path.join(import.meta.dir, ".settings-dialog-dismiss-fixture-"))
@@ -33,6 +36,8 @@ beforeAll(async () => {
         import { useConfirm } from "/@fs/${path.resolve(import.meta.dir, "../../../src/components/dialog/confirm-dialog.tsx")}"
         import "/@fs/${path.resolve(import.meta.dir, "../../../src/components/settings/settings-panel.css")}"
         import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
+        import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
+        import { SettingsChoices } from "/@fs/${path.resolve(import.meta.dir, "../../../src/components/settings/components/SettingsChoices.tsx")}"
         import { locateSettingsField } from "/@fs/${path.resolve(import.meta.dir, "../../../src/components/settings/settings-search.ts")}"
         function Settings() {
           const dialog = useDialog()
@@ -40,6 +45,7 @@ beforeAll(async () => {
           let fields
           let cleanupSearch
           const [showFields, setShowFields] = createSignal(false)
+          const [choice, setChoice] = createSignal("auto")
           onCleanup(() => cleanupSearch?.())
           const locate = (label) => {
             cleanupSearch?.()
@@ -61,17 +67,20 @@ beforeAll(async () => {
           })
           return <SettingsDialogFrame ariaLabel="Settings" onRequestClose={save.closeWithGuard}>
             <input aria-label="Draft" value={draft()} onInput={e => setDraft(e.currentTarget.value)} />
+            <input aria-label="Inline editor" on:keydown={event => { if (event.key === "Escape") event.preventDefault() }} />
             <button onClick={save.closeWithGuard}>Close settings</button>
             <button onClick={save.closeWithGuard}>Cancel settings</button>
             <button onClick={() => void save.saveServerChanges()}>Save settings</button>
             <output>{save.status()}</output>
+            <MenuField ariaLabel="Language" value="en" onChange={() => {}} options={[{ value: "en", label: "English" }, { value: "zh", label: "Chinese" }]} />
             <button onClick={() => locate("Interface font")}>Find interface font</button>
             <button onClick={() => locate("Monospace font")}>Find monospace font</button>
-            <div ref={fields} class="settings-panel-content" style="height:100px;overflow:auto;--border-interactive-focus:currentColor" data-testid="fields">
+            <div ref={fields} class="settings-panel-content" style="height:100px;width:500px;max-width:100%;overflow:auto;--border-interactive-focus:currentColor" data-testid="fields">
               {showFields() && <><div style="height:400px" />
-                <SettingRow title="Interface font" description="Choose your interface font" trailing={<button>Choose interface font</button>} />
+                <SettingRow title="Interface font" description="Choose your interface font" controlLayout="group" statePlacement="description" stateLabel="Selected font will apply after saving" trailing={<div class="settings-font-controls"><button>Choose interface font</button><button>Check fonts</button></div>} />
                 <div style="height:200px" />
                 <SettingRow title="Monospace font" description="Choose your code font" trailing={<button>Choose monospace font</button>} />
+                <SettingsChoices ariaLabel="Color" value={choice()} options={[{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }, { value: "auto", label: "Auto" }]} onChange={setChoice} />
               </>}
             </div>
           </SettingsDialogFrame>
@@ -116,6 +125,11 @@ beforeAll(async () => {
     configFile: false,
     root: fixtureDirectory,
     plugins: [solidPlugin()],
+    cacheDir: path.join(fixtureDirectory, ".vite"),
+    optimizeDeps: {
+      noDiscovery: true,
+      include: ["solid-js", "solid-js/web", "solid-js/store", "@lingui/core", "@lingui/solid", "jsonc-parser"],
+    },
     resolve: {
       alias: [
         { find: "@/context/global-sdk", replacement: path.join(fixtureDirectory, "sdk.ts") },
@@ -124,21 +138,20 @@ beforeAll(async () => {
     },
     server: {
       host: "127.0.0.1",
-      port: 5204,
+      port: await fixturePort(),
       strictPort: true,
       fs: { allow: [path.resolve(import.meta.dir, "../../../..")] },
     },
   })
   await server.listen()
+  await server.warmupRequest("/main.tsx")
 
   const url = server.resolvedUrls?.local[0]
   if (!url) throw new Error("Expected Vite test server URL")
 
   browser = await chromium.launch({ headless: true })
-  page = await browser.newPage({ viewport: { width: 800, height: 600 } })
-  page.setDefaultTimeout(2500)
-  await page.goto(url, { timeout: 20_000 })
-}, 30_000)
+  fixtureUrl = url
+}, 75_000)
 
 afterAll(async () => {
   await page?.close()
@@ -147,9 +160,95 @@ afterAll(async () => {
   if (fixtureDirectory) await rm(fixtureDirectory, { recursive: true, force: true })
 })
 
+async function loadSettings() {
+  await page?.close()
+  errors.length = 0
+  page = await browser.newPage({ viewport: { width: 800, height: 600 } })
+  page.setDefaultTimeout(5000)
+  page.on("pageerror", (error) => errors.push(error.message))
+  await page.goto(fixtureUrl, { timeout: 60_000, waitUntil: "domcontentloaded" })
+  await page.getByRole("textbox", { name: "Draft" }).waitFor({ timeout: 20000 })
+}
+
+afterEach(() => expect(errors).toEqual([]))
+
 describe("Settings dialog dismissal", () => {
+  test("Escape consumed by an inline control never requests Settings dismissal", async () => {
+    await loadSettings()
+    await page.getByRole("textbox", { name: "Inline editor" }).press("Escape")
+    expect(await page.getByRole("dialog", { name: "Settings", exact: true }).count()).toBe(1)
+  })
+
+  test("Escape from a focused settings option closes its menu before the draft guard", async () => {
+    for (const draft of ["", "Keep my draft"]) {
+      await loadSettings()
+      await page.getByRole("textbox", { name: "Draft" }).fill(draft)
+      const trigger = page.getByRole("button", { name: "Language: English", exact: true })
+      await trigger.click()
+      await page.getByRole("option", { name: "Chinese", exact: true }).press("Escape")
+      await page.getByRole("option", { name: "Chinese", exact: true }).waitFor({ state: "detached" })
+      expect(await page.getByRole("dialog", { name: "Settings", exact: true }).count()).toBe(1)
+      expect(await page.getByRole("dialog").count()).toBe(1)
+      expect(await page.getByRole("textbox", { name: "Draft" }).inputValue()).toBe(draft)
+      await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Language: English")
+      await trigger.press("Escape")
+      if (draft) await page.getByRole("dialog", { name: "Discard unsaved changes?", exact: true }).waitFor()
+      else await page.getByRole("dialog", { name: "Settings", exact: true }).waitFor({ state: "detached" })
+    }
+  })
+
+  test("focusing a lower radio option scrolls the content without displacing the fixed dialog body", async () => {
+    await loadSettings()
+    await page.getByRole("button", { name: "Find interface font", exact: true }).click()
+    await page.getByRole("radio", { name: "Auto", exact: true }).press("ArrowUp")
+    expect(await page.getByRole("radio", { name: "Dark", exact: true }).isChecked()).toBe(true)
+    expect(await page.locator('[data-slot="dialog-body"]').evaluate((el) => el.scrollTop)).toBe(0)
+    const bounds = await page.getByRole("radio", { name: "Dark", exact: true }).evaluate((el) => ({
+      y: el.getBoundingClientRect().y,
+      bottom: el.getBoundingClientRect().bottom,
+      container: document.querySelector('[data-testid="fields"]')!.getBoundingClientRect().toJSON(),
+    }))
+    expect(bounds.y).toBeGreaterThanOrEqual(bounds.container.top)
+    expect(bounds.bottom).toBeLessThanOrEqual(bounds.container.bottom)
+  })
+  test("discard confirmation names its close action and initially focuses continuing to edit", async () => {
+    await loadSettings()
+    await page.getByRole("textbox", { name: "Draft" }).fill("Keep my draft")
+    await page.getByRole("button", { name: "Close settings", exact: true }).click()
+    const confirmation = page.getByRole("dialog", { name: "Discard unsaved changes?", exact: true })
+    await confirmation.waitFor()
+    expect(
+      await confirmation.getByRole("button", { name: "Close Discard unsaved changes?", exact: true }).count(),
+    ).toBe(1)
+    expect(
+      await confirmation
+        .getByRole("button", { name: "Keep Editing", exact: true })
+        .evaluate((el) => ({ focused: el === document.activeElement, active: document.activeElement?.outerHTML })),
+    ).toMatchObject({ focused: true })
+  })
+
+  test("a field group keeps its state beside the description and stacks controls at narrow content widths", async () => {
+    await loadSettings()
+    await page.getByRole("button", { name: "Find interface font", exact: true }).click()
+    const row = page.locator(".ds-setting-row").filter({ hasText: "Interface font" })
+    const boxes = await row.evaluate((el) => {
+      const box = (selector: string) => {
+        const rect = el.querySelector(selector)!.getBoundingClientRect()
+        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+      }
+      return {
+        state: box(".settings-row-state"),
+        description: box(".settings-row-description"),
+        controls: box(".settings-font-controls"),
+      }
+    })
+    expect(boxes.state.x).toBe(boxes.description.x)
+    expect(boxes.state.width).toBeGreaterThan(150)
+    expect(boxes.controls.y).toBeGreaterThanOrEqual(boxes.state.y + boxes.state.height)
+  })
+
   test("Escape closes clean settings while the backdrop stays inert", async () => {
-    await page.reload()
+    await loadSettings()
     await page.getByRole("textbox", { name: "Draft" }).waitFor()
     const overlay = page.locator('[data-component="dialog-overlay"]')
     await overlay.dispatchEvent("pointerdown")
@@ -160,7 +259,7 @@ describe("Settings dialog dismissal", () => {
   })
 
   test("Escape, close and cancel share the dirty guard, and nested Escape only dismisses confirmation", async () => {
-    await page.reload()
+    await loadSettings()
     await page.getByRole("textbox", { name: "Draft" }).fill("Keep my draft")
     for (const action of ["Escape", "Close settings", "Cancel settings"]) {
       if (action === "Escape") await page.keyboard.press("Escape")
@@ -177,7 +276,7 @@ describe("Settings dialog dismissal", () => {
   })
 
   test("field navigation waits for rendered rows, scrolls and moves focus, then clears the previous match", async () => {
-    await page.reload()
+    await loadSettings()
     await page.emulateMedia({ reducedMotion: "reduce" })
     await page.getByRole("button", { name: "Find interface font", exact: true }).click()
     await page.waitForFunction(() => document.activeElement?.getAttribute("data-settings-search-match") === "true")
@@ -190,7 +289,7 @@ describe("Settings dialog dismissal", () => {
   })
 
   test("pending saves reject close and duplicates; HTTP failure keeps the draft and retry success stays open", async () => {
-    await page.reload()
+    await loadSettings()
     let writes = 0
     let release: (() => void) | undefined
     let fail = true

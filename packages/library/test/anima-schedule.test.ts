@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import { AnimaSchedule } from "../src/anima-schedule"
 
@@ -37,7 +38,7 @@ const items: AnimaSchedule.Item[] = [
   { id: "paused-anima", title: "Wake", agent: "anima", status: "paused", scopeID: "home" },
   { id: "active-anima", title: "Wake", agent: "anima", status: "active", scopeID: "home" },
   { id: "done-anima", title: "Wake", agent: "anima", status: "done", scopeID: "home" },
-  { id: "other-agent", title: "Task", agent: "synergy", status: "paused", scopeID: "home" },
+  { id: "other-agent", title: "Task", agent: PrimaryAgentIdentity.names.general, status: "paused", scopeID: "home" },
 ]
 
 test("enabling Library autonomy resumes only paused Anima schedules", async () => {

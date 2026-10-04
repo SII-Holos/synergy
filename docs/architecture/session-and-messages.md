@@ -103,7 +103,7 @@ The durable session can outlive its in-memory runtime. Runtime state is reconstr
 
 ## Durable input recovery
 
-A client-supplied message ID identifies one input. Concurrent retries share a deterministic Inbox item, and materialization receipts and terminal runs prevent reinsertion after completion or cancellation. Explicit Inbox retry clears its failure and the session pause under the session control lock; task retry does not reopen an unrelated old root. A newly queued task advances past historical roots without execution evidence and terminal roots before resolving configuration, so an unavailable historical model cannot own the new task.
+A client-supplied message ID identifies one input. `input`, idle `noReply` and `prompt_async` acknowledge only after durable Inbox admission. Idle passive input retains its internal admission marker through recovery and materializes without opening an LLM turn or clearing a pause. Concurrent retries share a deterministic Inbox item, and materialization receipts and terminal runs prevent reinsertion after completion or cancellation. Explicit Inbox retry clears its failure and the session pause under the session control lock; task retry does not reopen an unrelated old root. A newly queued task advances past historical roots without execution evidence and terminal roots before resolving configuration, so an unavailable historical model cannot own the new task.
 
 `GET /session/{sessionID}/input/{messageID}/status` projects the durable Inbox item, canonical message and Rollout run in one storage snapshot. States are `accepted`, `preparing`, `queued_storage`, `materializing`, `running`, `retrying`, `completed`, `cancelled` and `failed`. Scheduling and queue detail is bounded Runtime-local telemetry published through the coalescible `session.input.progress` event; it is not another durable message state machine. Exhausted scheduling retries park the saved task. A paused saved input requires explicit retry and reports `SessionPaused`; time spent waiting alone never declares failure. A begun run stays running through detached settlement until its durable terminal state is recorded.
 
@@ -210,6 +210,8 @@ The LLM loop uses a compaction-aware read boundary instead of materializing the 
 
 Part hydration is bounded on every read path. Full-history model loading resolves its selected set first, then hydrates parts through the same declared concurrency window pagination uses, so hydration cost is independent of how many messages a session holds. This matters because the authoritative storage queue rejects rather than waits once its depth is reached, and it is shared process-wide: an unbounded fan-out on one large session would otherwise fail that session's own turns and starve every other session's reads.
 
+Newest-first streaming propagates message-info and part hydration failures. Only a missing message-info record after the chronology snapshot may be skipped; an unavailable or corrupt record cannot be presented as a successfully loaded history with evidence omitted.
+
 Downstream loop, compaction, history, and frontend code read canonical fields. They must not recreate the retired metadata heuristics.
 
 When a paginated result contains a non-root message whose root lies outside the page, session history loading adds the missing root record so consumers do not lose task identity.
@@ -286,13 +288,19 @@ Tool parts carry an optional timeout observation at `state.metadata.toolTimeout`
 
 A countdown renders only from a real server anchor. `running` carries `time.start`; `pending` and `generating` carry no `time` at all, so no countdown is shown before execution begins, and the runtime never fabricates an anchor for a state that has none. The window's meaning comes from `source`: `auto_background` windows hand the process to the background and the tool keeps running, so they are labelled as such and never as a timeout; only `tool_timeout` aborts.
 
+### Tool intent and activity evidence
+
+The public model-tool facade adds optional `workBrief` to each request-frozen definition, including discovered, dynamic plugin and MCP tools. A plain object admits the field directly; conflicting names, root references and composed or non-object schemas use `{ workBrief, toolInput }` with preserved native references. Canonical tool parts retain trimmed intent and the input shape separately from business input. Execution, authorization, fingerprints and repeated-call comparisons consume business input. The invocation context exposes intent to operation-title consumers; tool authors do not declare it. Model history reconstructs the facade, while raw rollout audit bytes retain the original request. Missing intent never triggers a summary model call or blocks execution.
+
+Tool-owning domains register historical field mappings through `Tool.registerInputHistory`; the central versioned Session migration upgrades parts without altering entity storage, ordinary HTTP contracts or audit bytes. Bash's historical call description becomes common intent. Migrations preserve explicit current fields and never invent intent, read snapshots or success facts. Part preparation masks registered secrets in common intent before storage and publication; precise entity text fields retain the provider-payload masking boundary without modifying binary content or raw audit evidence.
+
+Optional `ToolActivityEvidence` identifies operation-time resources, Workspace generation, captured ranges, Artifact content references, truncation and process facts. File reads and searches capture only the actual observation. Activity queries never reopen the current file as historical evidence. Large content stays in existing private Artifacts, process output and file-change ledgers; the message projection contains references. Scope-aware tool queries check message, part and call identity, bound result bytes and retain secret handling. Missing historical evidence is explicit and distinct from no changes.
+
 ### Activity presentation
 
-Activity display is a local projection over the original message parts. No background agent generates tool summaries or semantic group membership, and session startup, completion, and shutdown do not schedule or drain presentation inference. Adjacent ordinary tools group deterministically by activity family and scope, capped at 24 steps. Text, reasoning, attachments, receipt tools, dedicated renderers, and message transitions preserve their timeline boundaries.
+All display modes consume one ordered projection with turn process, bounded consecutive mixed-tool batches and flat selectable rows. Text, Scope, approvals, receipts, deliverables and dedicated renderers preserve boundaries; stable message/part IDs own keys. Statistics count confirmed successful operations; unique file counts require qualified resource identity, with operation counts otherwise. No presentation inference or generated tool summary runs. `workBrief` supplies known intent; action/object facts provide the fallback. One secondary entrance per turn exposes raw reasoning in its original order; preview is opt-in.
 
-Balanced UI renders each original tool call as a flat, independently expandable row with its family action, title, state, result, and specialized content. Minimal UI counts actions and activity families from those same parts, keeping permissions, failures, and external-action receipts explicit. Neither mode displays model-generated tool-summary text. Historical assistant `metadata.activity` remains stored as optional metadata, but its summaries and signatures are ignored by presentation; no destructive migration or backfill is required.
-
-Balanced UI derives a presentation-only reasoning status per assistant message: while the turn works after reasoning begins, each working assistant message shows its own pending `Thinking…` row anchored at that message's position; the row disappears once the message completes with assistant text, tool, or receipt output, and a reasoning-only completed turn keeps one generic `Reasoning` fallback. No reasoning text or source is attached. When `compactReasoning` is enabled, each message's working status upgrades into its own live single-line reasoning row, and each settled assistant message keeps one collapsed expandable reasoning row anchored at its original part position instead of suppressing the reasoning. `full` keeps the raw reasoning chronology, while `minimal` keeps its compact presentation without rendering reasoning rows.
+`TurnExecutionState` derives each root's state and stopped execution segments from the existing rollout ledger and root-owned pending approvals. Session-wide status and historical tool errors cannot replace root outcome. A returned background tool and its process retain separate states. Selected process output invalidates its own activity through the existing scoped event connection; root updates replay through the same channel. Batch root-status and single-tool result queries are bounded, lazy generated SDK reads.
 
 ### Assets and attachments
 
@@ -318,58 +326,34 @@ The Side Workspace Context panel reads this field from normal message synchroniz
 
 ## Turn Diffs
 
-Each user message may carry computed file-change diffs from the turn's patch parts. New patches capture an immutable before/after tree for each actual write operation, after physical admission and before its release. Model-step start and finish parts carry accounting without filesystem attribution. Native processes retain exclusion until both their tree and evidence finalization finish, including after the tool returns or its Task ends. Explicit shared Workspaces keep their original binding in each record. Legacy step snapshots remain readable as historical evidence. Diffs are stored in `summary.diffs` on the `UserMessage` schema and surfaced to the frontend through the existing `message.updated` reconcile flow — no separate event, store, or route.
+Session file history describes workspace net changes during execution, including user and external-process writes. It does not infer an author from a tool result. `SessionFileChanges` captures one baseline before execution and one endpoint when an execution segment finishes, fails or stops. A workspace first used later in the segment receives its baseline before that use. Each system `patch` part carries `checkpoint.version = 1`, root and segment identities, capture timestamps, source Workspace identity/generation, immutable tree references and capture omissions. Checkpoints do not enter model input.
 
-### Diff state machine
+Continuation retains the root's first baseline and appends a new execution segment. A new root receives a new baseline. `SnapshotRanges.net` compares the earliest baseline with the latest available endpoint for each Workspace binding. The session comparison spans each binding's first baseline and latest endpoint; it does not sum operation statistics. Restoring a file to its baseline removes its net difference. Independent workspaces with equal relative filenames remain separate.
 
-`summary.diffState` records the lifecycle of diff computation for a turn:
+Background process ownership and save receipts remain with the Runtime. A segment endpoint freezes only the bytes observed during that capture, without waiting for background completion. Later process writes cannot revise that endpoint; another segment may capture them. Concrete tool evidence remains owned by its tool domain and is not inferred from the workspace comparison.
 
-| Status    | Meaning                                                                                                                   |
-| --------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `pending` | Diff is being computed; includes the server-owned expiry marker `deadlineAt` (epoch ms) for timeout and restart recovery. |
-| `ready`   | Diffs computed successfully.                                                                                              |
-| `error`   | Diff computation failed; carries a safe error `code` (`timeout`, `git_failure`, `incomplete`, or `unknown`).              |
+### Settlement and synchronization
 
-The non-blocking summary `LoopJob` derives turn diffs in this order:
+Both the user message and session summary carry `diffState` and optional `diffIssues`. The turn's `summary.diffs` is the UI projection; session totals and the existing session Diff query use the same net comparison.
 
-1. fresh-merge `diffState: { status: "pending", deadlineAt }` on the user message before `computeDiff()` so the frontend sees the pending state immediately;
-2. call `computeDiff()` using each recorded write operation from every assistant revision belonging to the root turn; exact operation pairs never span intervening writes by another owner;
-3. on success, write `{ diffs, diffState: { status: "ready" } }` atomically;
-4. on failure, write `{ diffState: { status: "error", code } }`; on a per-run timeout, apply `error/timeout` only if the diff is still `pending`, preserving an already-`ready` settlement while later enrichment or session aggregation finishes.
+| State     | Meaning                                                                                               |
+| --------- | ----------------------------------------------------------------------------------------------------- |
+| `pending` | Comparison is in progress. `deadlineAt` is a server recovery marker; existing results remain visible. |
+| `ready`   | The configured capture scope was recorded, including a verified empty net change.                     |
+| `partial` | Usable comparisons exist, with identified missing workspaces or files.                                |
+| `error`   | No usable comparison can establish the change set. This is not evidence of no changes.                |
 
-An interrupted or failed operation capture remains explicitly incomplete, retains available diffs and cannot authorize file restoration. Background completion queues a diff-only refresh without title/body model calls. It uses the same per-session ordering, yields live execution capacity while waiting, and refreshes mutable pending parts before applying a captured root-turn view. Native process completion is published after its evidence is finalized, so completion consumers do not observe an unfinished archive.
+Safe issue codes distinguish unavailable baselines, capture failures, interrupted execution, legacy ranges, comparison failures, file read failures and size limits. A preview's truncation does not make its retained source incomplete. Capture omissions exclude affected paths from full statistics, historical detail and restoration; available files remain visible. An unavailable workspace comparison preserves its previous displayed evidence. A failed initial capture cannot acquire a replacement baseline from later filesystem contents.
 
-Title generation may continue after either outcome. Body generation runs only when diff settlement succeeded with a non-empty diff set. Diff errors persist safe error codes only and do not block the session or later queued turns. A stale persisted `pending` state is projected to `error/timeout` at the backend read boundary after its deadline; the frontend renders the server settlement state and never compares `deadlineAt` with the client clock.
+Summary work runs FIFO per session and coalesces duplicate root/revision jobs. Completion schedules diff-only settlement through `LoopJob`, independently of title/body model generation. Pending checkpoint parts are refreshed before comparison. `message.updated` publishes turn settlement; `session.updated` and the established session Diff event publish session projections. Clients do not infer failure from their own clock or issue requests for every streamed token.
 
-### Ordering and caching
+### Historical reads and upgrades
 
-Summary computation is FIFO per session. Queue identity includes the terminal assistant revision, so later continuations of the same root turn are processed while duplicate triggers for one revision are coalesced. Each worker must settle after cancellation before the queue advances, preventing timed-out work from overwriting a later revision. Each `summarizeNow()` run owns a `diffCache` that lets its session-level and turn-level computations reuse the same in-flight snapshot-range promise when their bounds match.
+`GET /session/{sessionID}/files/diff` reads one retained file comparison for an optional root message and a qualified Workspace/generation/path. It never rereads the live file. Review requests full content only when a truncated file is expanded and releases the request/renderers on close.
 
-### Schema
+The central `20261003-session-turn-file-checkpoints` migration delegates to the Session owner. It preserves old operation parts, trees and displayed diffs, adds explicit legacy checkpoint records from available endpoints, and upgrades summary cursors to version 4. A legacy operation interval is marked incomplete as a turn baseline; missing endpoints are never fabricated. Recovery marks pending checkpoints interrupted without scanning current files. Fork remaps checkpoint root identity and retains both endpoints; import/export and permanent deletion use the existing snapshot ownership system.
 
-`diffState` is an optional additive field on `summary`:
-
-```ts
-diffState?: {
-  status: "pending"
-  deadlineAt: number
-} | {
-  status: "ready"
-} | {
-  status: "error"
-  code: "timeout" | "git_failure" | "incomplete" | "unknown"
-}
-```
-
-`summary.diffs` is always present when `summary` exists (default empty array).
-
-### Invariants
-
-- A ready settlement writes `diffState` and `summary.diffs` in the same `updateSummary` call; an error settlement writes only its safe state and preserves existing summary fields.
-- A message without `diffState` but with non-empty `diffs` is treated as legacy `ready` at the read boundary.
-- `deadlineAt` is a server recovery marker. Clients render the persisted settlement state and do not derive terminal state from their local clock.
-- `summary.diffs` is the sole turn-level diff data source. The session-level `session_diff` bucket is a separate aggregation of all turn diffs for the Review workbench panel.
-- No migration, route, event, storage export version, config, or new runtime module was required for the diff settlement flow; it uses only the existing summary infrastructure.
+See [workspace snapshot and restore ownership](workspace-and-files.md#snapshots-rollback-and-restore) and the [workspace net change decision](../decisions/implemented/architecture/2026-10-03-workspace-net-change-review.md).
 
 ## Persistent Inbox
 
@@ -414,6 +398,8 @@ Message info records remain the canonical transcript and `time.created`, followe
 
 Newest-first bounded readers use the derived `session_message_order_v1` index instead of eagerly parsing every message info. The index stores one sortable marker per message plus a ready/count state record. Message creation, chronology changes, removal, and permanent session deletion maintain it under a per-session write lock. Ordinary streaming updates whose `time.created` value is unchanged do not rewrite marker state.
 
+An indexed message that was deleted can be absent while a reader traverses its snapshot. Newest-first readers tolerate that missing-record condition; storage availability and integrity errors propagate instead of hiding unreadable evidence.
+
 The index is not part of session export or canonical recovery state. Missing, incomplete, or internally inconsistent index state is rebuilt from canonical message infos before use; a non-ready state left by interruption also forces a rebuild. Consumers must not derive transcript semantics from marker filenames or treat the index as an independent message source.
 
 ## Model Context Projection
@@ -441,9 +427,9 @@ History rollback is an event overlay on the raw transcript.
 - A rollback records the cut, dropped message IDs, affected root turns, and available patch parts.
 - Effective history applies rollback and unrollback events without deleting raw messages.
 - Redo is allowed only for the latest active rollback and only before new messages make it ambiguous.
-- Model context, summaries, session forks, and frontend history use effective history.
+- Model context, conversation summaries, session forks, and frontend history use effective history. Workspace net comparisons retain recorded checkpoints independently of conversation rollback.
 
-Rollback does not modify project files. File restoration is a separate explicit operation that applies stored snapshot patch data for selected files or parts.
+Rollback does not modify project files. File restoration has a separate preview and confirmation, described in [workspace restoration](workspace-and-files.md#snapshots-rollback-and-restore). It never resends a message or rewrites the original historical Diff.
 
 ## Archive and Deletion
 
@@ -480,6 +466,8 @@ Startup no longer discovers runnable `task` inbox items and requests work, and i
 
 When a running interactive session is stopped, `SessionAbort.abort` persists the pause before signalling the owning controller, sets the phase to `stopping`, cancels descendant Cortex work and calls the shared `SessionInvoke.repairAbortState` path to settle interrupted tool parts; the frontend presents local stopping feedback immediately while that request settles. A user stop leaves the session paused and awaiting an explicit Continue or Abandon, so the work is not restarted behind the user's back. `SessionAbort.Result` reports `outcome`, `repaired`, `paused`, and `abandoned`, so a caller can tell a real stop from a no-op on an idle session.
 
+A resumable stop closes its execution segment as `interrupted` and keeps the rollout open. Both segment finishers read `PausedTurnAbort` from their own abort signal; deferred reconciliation cannot turn a cleared pause latch into a cancelled run. Explicit abandonment and internal cancellation retain terminal outcomes.
+
 The same rule holds while the turn is still running. A stop that leaves the session resumable aborts the runtime with a `PausedTurnAbort` reason, and the two writers that would otherwise terminalize the interrupted turn — the processor's error flattening and its post-unwind finalization, plus the `completeAssistantWithError` funnel that can win when the abort lands during turn preparation — read that intent from the abort signal they are already unwinding, so the intent is atomic with the stop rather than a flag a concurrent repair has to race. A release carrying this pause reason cannot schedule queued work while abort repair is still pending. An internal cancellation, an abandon, and a stop on a session the latch cannot hold carry no such reason and still settle the turn honestly.
 
 `repairAbortState` republishes the resolved status through `SessionManager.publishStatusOnly()`, so a latch change reaches live clients. The published status is exactly what `SessionWorking.resolve()` resolves — `paused` with its reason for a latched session, otherwise `busy`, `retry`, or `idle` — instead of an unconditional idle. `internalCancel` is the single opt-out from latching: a cancellation a domain performs on work it owns (Lattice, Light Loop, Cortex, Boss) settles the turn without writing a pause the user never requested. `terminalize` and `abandonWorkflow` are what Abandon passes so the transcript gets an honest end and the bound workflow is cancelled. Abandon fences and removes all previously queued inbox work, waits for its live execution owner to exit, cancels the removed tasks' rollout records, terminalizes the breakpoint, and invokes the bound workflow's domain cancellation. Cancellation hooks also complete before the pause is cleared. Later input survives the fence. Only successful settlement clears the pause and returns `paused: false`; a failed cancellation returns `SessionAbandonError` (HTTP 409) and remains paused for explicit retry. The `paused` result always reports the persisted state, including a pre-existing pause.
@@ -513,6 +501,8 @@ Local Bash opens process evidence before spawning. stdout and stderr are archive
 
 Continuation admission and rollout reconciliation share a per-session, per-root lock. Admission holds it while draining steer items, materializing their messages, deciding whether a model call is needed, and opening an execution segment. Reconciliation waits while admission holds the lock and requires the latest input for the root to have a terminal reply; an earlier reply does not settle a later continuation.
 
+Rollout reconciliation resolves terminal replies from effective transcript history with rollback events applied. The compacted model working set cannot own historical execution outcomes because its projection excludes roots and replies before the compaction boundary.
+
 Run cancellation drains its execution owner, detached jobs, and native processes before taking the settlement lock. With no active segment, it terminalizes orphaned call/tool/process records as interrupted before recording cancellation, so post-release reconciliation cannot race the cancellation result. Active segments still block closure.
 
 The continuation repair migration persists a rollout recovery intent before reopening incorrectly completed work. Startup routes that intent through the normal drive/wake path even when the inbox is empty. The intent survives failed wake attempts and is cleared once the root is answered, cancelled, failed, or superseded. This targeted repair does not enable automatic resume for ordinary interrupted sessions or add messages to the transcript.
@@ -522,3 +512,11 @@ Recording-error cancellation carries the source root ID. The active loop lease b
 Workspace-free sessions can use enabled model, network and managed-data capabilities. Input acceptance and the model loop do not require a physical Workspace. Workspace-dependent operations validate the persisted binding and acquire resource ownership when used, regardless of control profile. An unavailable file binding does not block managed-data or network tools. Missing projects retain readable history and never acquire the host working directory implicitly. See [Runtime and Scope](runtime-and-scope.md#session-workspace).
 
 The version-3 summary cursor preserves individual operation identities and endpoints. Its owning migration upgrades version-2 ranges without changing canonical history, metadata or archived state; obsolete derived cursors rebuild from canonical parts. Snapshot retention and transfer include both endpoints. Review keeps repeated changes to the same path independently expandable, while the compact turn summary groups their file counts and preserves Workspace identity.
+
+## Presentation and full-history operations
+
+SessionHistory owns the ordered display projection used by `session.timelinePage`, `session.partPage`, `session.partContent` and `session.messageDetails`. Header and Part summaries carry separate original-content versions and byte counts; Part summaries are never canonical Parts. Headers retain compact file-change metadata while original prompts, patches and larger metadata resolve on demand. Canonical message writes and removals update the display index in the same transaction. Versioned migrations either publish changed headers and Parts through those hooks or invalidate the affected Part page and text-search generation in the same storage transaction; a previously prepared cache cannot outlive a migrated canonical record. Historical header and Part preparation resumes from persisted cursors and verifies source generation before publishing readiness. Every display read applies the same effective rollback visibility used by canonical history.
+
+Text search indexes canonical Part versions incrementally, excluding system text through `MessageV2.isSystemPart()`. SQLite uses FTS5 trigram indexing for longer substrings, while short queries and PostgreSQL use bounded continuation pages. Results are checked against source revision and effective message visibility. Changed and removed sources enqueue bounded collection of obsolete fragments. Original copying and export cover the complete effective history independently of display and body caches.
+
+Conversation text operations read canonical effective history in one read snapshot, preserving rollback visibility and original Part text across concurrent writes. Their default extraction retains the assistant reasoning fallback when no text Part exists, omits synthetic text and exposes reasoning/tool inclusion explicitly. Portable transcript archives retain raw history and evidence for import. Inbox admission atomically commits its item and navigation activity before publishing notifications; run-shell publication remains a separate step so cancellation can observe the accepted item. Passive materialization has an explicit transient owner purpose: overlapping idle `noReply` inputs retain passive recovery admission, and passive-only work cannot request an LLM loop or clear a pause.

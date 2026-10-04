@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from synergy_bench.environment import CachedDockerEnvironment
-from synergy_bench.resources import Capacity, Request, ResourcePool
+from synergy_bench.resources import Capacity, Request, ResourcePool, ResourcePressureError
 from synergy_bench.scheduling import PhaseResources, current_resources
 
 
@@ -23,6 +23,20 @@ def environment(tmp_path, *, keep=False):
         benchmark_platform="linux/amd64",
         keep_containers=keep,
     )
+
+
+@pytest.fixture
+def network_admission_clock(monkeypatch):
+    from synergy_bench import environment as module
+
+    elapsed = 0.0
+
+    def advance(seconds):
+        nonlocal elapsed
+        elapsed += seconds
+
+    monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=lambda: elapsed, time=module.time.time))
+    return advance
 
 
 async def test_build_wait_records_its_resource_pressure_before_cancellation(tmp_path, monkeypatch):
@@ -97,7 +111,9 @@ async def test_compose_reserves_real_networks_before_starting_and_keeps_up_optio
 
 
 @pytest.mark.parametrize("keep", [False, True])
-async def test_partial_network_exhaustion_cleans_only_its_project_or_retains_debug(tmp_path, monkeypatch, keep):
+async def test_partial_network_exhaustion_cleans_only_its_project_or_retains_debug(
+    tmp_path, monkeypatch, network_admission_clock, keep
+):
     from synergy_bench import environment as module
 
     env = environment(tmp_path, keep=keep)
@@ -108,6 +124,8 @@ async def test_partial_network_exhaustion_cleans_only_its_project_or_retains_deb
 
     async def compose(args, **kwargs):
         commands.append(args)
+        if args[0] == "create":
+            network_admission_clock(0.01)
         return SimpleNamespace(
             return_code=int(args[0] == "create" and len(commands) == 2),
             stdout="all predefined address pools have been fully subnetted",
@@ -135,6 +153,44 @@ async def test_partial_network_exhaustion_cleans_only_its_project_or_retains_deb
             assert commands[2] == ["down", "--volumes", "--remove-orphans"]
             assert len(inspected) == 3
             assert any(row.get("reason") == "network_address_pressure" for row in phases.events)
+    finally:
+        await phases.finish(resources_removed=True)
+        current_resources.reset(token)
+
+
+async def test_sustained_network_pressure_stops_at_its_deadline_after_owned_cleanup(
+    tmp_path, monkeypatch, network_admission_clock
+):
+    from synergy_bench import environment as module
+
+    env = environment(tmp_path)
+    pool = ResourcePool(Capacity(2, 4 * 1024**3), 2, pressure_timeout_seconds=1)
+    phases = PhaseResources(pool, tmp_path)
+    commands = []
+    inspected = []
+
+    async def compose(args, **kwargs):
+        commands.append(args[0])
+        if args[0] == "create":
+            network_admission_clock(1)
+            return SimpleNamespace(return_code=1, stdout="all predefined address pools have been fully subnetted")
+        return SimpleNamespace(return_code=0, stdout="")
+
+    def inspect(args, **kwargs):
+        inspected.append(args)
+        assert "label=com.docker.compose.project=sb-admission" in args
+        return ""
+
+    monkeypatch.setattr(env, "_compose_command", compose)
+    monkeypatch.setattr(module, "command", inspect)
+    token = current_resources.set(phases)
+    try:
+        with pytest.raises(ResourcePressureError, match="network pressure"):
+            await env._run_docker_compose_command(["up", "--detach", "--wait"])
+        assert commands == ["pull", "create", "down"]
+        assert len(inspected) == 3
+        assert pool.active == 0
+        assert any(row.get("reason") == "network_address_pressure" for row in phases.events)
     finally:
         await phases.finish(resources_removed=True)
         current_resources.reset(token)

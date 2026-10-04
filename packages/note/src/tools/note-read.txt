@@ -11,7 +11,7 @@ Precise edit workflow:
 3. Use blockId operations in note_edit. Do not use block numbers as edit targets.
 4. Re-read after conflicts or hash mismatches. Do not guess a new target from stale block numbers.
 
-Use this after `note_list` or `note_search` to read the full details of specific notes or Blueprint notes. For BlueprintLoop execution, read the Blueprint note with `note_read({ ids: [...] })` before carrying out the Blueprint.
+Use this after `note_list` or `note_search` to read the full details of specific notes or Blueprint notes. For BlueprintLoop execution, read the Blueprint note with `note_read({ noteIds: [...] })` before carrying out the Blueprint.
 
 Pagination:
 - markdown pagination is line-based.

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { expect, test } from "bun:test"
 import { SessionContextContributions } from "../../src/session/context-contributions"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -82,8 +83,8 @@ test("assistant completion waits for contributed work before closing execution",
       parentID: "root-context-test",
       role: "assistant",
       time: { created: 1 },
-      agent: "synergy",
-      mode: "synergy",
+      agent: PrimaryAgentIdentity.names.general,
+      mode: PrimaryAgentIdentity.names.general,
       modelID: "test",
       providerID: "test",
       path: { cwd: "/tmp", root: "/tmp" },
@@ -136,8 +137,8 @@ test("completion failure preserves its error after the other contributions settl
       parentID: "root-context-test",
       role: "assistant",
       time: { created: 1 },
-      agent: "synergy",
-      mode: "synergy",
+      agent: PrimaryAgentIdentity.names.general,
+      mode: PrimaryAgentIdentity.names.general,
       modelID: "test",
       providerID: "test",
       path: { cwd: "/tmp", root: "/tmp" },

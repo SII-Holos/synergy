@@ -133,7 +133,7 @@ export namespace WorkspaceFileService {
     const mime = Bun.file(absolute).type
     const binary = type === "file" && (mime?.startsWith("text/") ? false : likelyBinaryByExtension(absolute))
     const gitStatus =
-      options?.resolveGitStatus === false ? options.gitStatus : await WorkspaceFileStatus.statusForPath(relativePath)
+      options?.resolveGitStatus === true ? await WorkspaceFileStatus.statusForPath(relativePath) : options?.gitStatus
 
     return {
       path: relativePath,
@@ -424,7 +424,7 @@ export namespace WorkspaceFileService {
   }): Promise<WorkspaceFile.ChildrenResponse> {
     const absolute = resolve(input.path ?? "")
     await assertRealpathInside(absolute)
-    const parent = await node(absolute)
+    const parent = await node(absolute, { resolveGitStatus: false })
     if (parent.type !== "directory") {
       return {
         path: parent.path,
@@ -456,12 +456,10 @@ export namespace WorkspaceFileService {
     const offset = Math.max(0, Number.parseInt(input.cursor ?? "0", 10) || 0)
     const limit = Math.max(1, Math.min(input.limit ?? DEFAULT_CHILDREN_LIMIT, 1000))
     const pageEntries = entries.slice(offset, offset + limit)
-    const statusMap = await WorkspaceFileStatus.statusMap()
     const page = (
       await mapConcurrent(pageEntries, NODE_CONCURRENCY, (item) =>
         node(item.entry.path, {
           resolveGitStatus: false,
-          gitStatus: statusMap.get(item.relativePath),
         }).catch(() => undefined),
       )
     ).filter((item): item is WorkspaceFile.Node => !!item && visible(item, input))

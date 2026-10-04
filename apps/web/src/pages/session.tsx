@@ -1,3 +1,4 @@
+import { useFileRestore } from "@/components/session/file-restore-dialog-loader"
 import { catalogFileWorkspace } from "@/context/file/workspace"
 import { projectEntryCopy } from "@/components/dialog/project-entry-copy"
 import { projectTaskIntent } from "@/components/session/project-task-intent"
@@ -5,9 +6,7 @@ import { handleComposerTypingAutofocus } from "@/components/prompt-input/typing-
 import { useGlobalSDK } from "@/context/global-sdk"
 import { SessionPreparation } from "@/components/session/session-preparation"
 import type { PluginComposerLayoutService } from "@ericsanchezok/synergy-plugin"
-import { StatusBar } from "@/components/status-bar"
 import { NewSessionGreeting } from "@/components/session/session-new-view"
-import { prepareTaskStarter } from "@/components/session/task-starter"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { SlotOutlet } from "@/plugin/slot-outlet"
 import { SessionInbox } from "@/components/session/session-inbox"
@@ -20,12 +19,13 @@ import {
 } from "@/components/session/prompt-dock-model"
 import { S } from "@/components/session/session-i18n"
 import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
-import { SessionTransitionCard } from "@/components/session/session-transition-card"
+import { SessionSubmissionStatus } from "@/components/session/session-submission-status"
+import { SessionSubmissionPreview } from "@/components/session/session-submission-preview"
 import { HostView } from "@/plugin/host-view"
 import type { PluginSessionService, PluginSessionLayoutService } from "@ericsanchezok/synergy-plugin"
 import { DefaultSession } from "@/plugin/default-session"
 import { PluginPageOutlet } from "@/plugin/shell-outlet"
-import { BrowserViewEffects } from "@/components/workspace/browser/browser-view-effects"
+import { WorkspaceOutputEffects } from "@/components/workspace/workspace-output-effects"
 import { createPromptInputController } from "@/components/prompt-input/prompt-controller"
 import { SessionDecisionHost } from "@/components/session/decision-surface"
 import {
@@ -42,6 +42,7 @@ import {
   type JSX,
 } from "solid-js"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -52,6 +53,7 @@ import { hasSpecialUserMessageRenderer } from "@ericsanchezok/synergy-ui/special
 
 import { sessionSideWorkspaceMounts, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
 import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
+import { captureConversationReadingAnchor } from "@/components/session/conversation-reading-anchor"
 
 import { useSync } from "@/context/sync"
 import { useSessionDataView } from "@/context/session-data-view"
@@ -71,6 +73,7 @@ import type {
 } from "@ericsanchezok/synergy-sdk/client"
 import { useSDK } from "@/context/sdk"
 import { observeSessionInput } from "@/components/session/session-input-observer"
+import { recoverSessionInputReceipt } from "@/components/prompt-input/input-receipt"
 import { usePrompt } from "@/context/prompt"
 import { extractPromptDraft } from "@/utils/prompt"
 import { inlineLength } from "@/components/prompt-input/content"
@@ -80,7 +83,6 @@ import { navMark, navParams } from "@/utils/perf"
 import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 
-import { fileRestoreFeedback } from "@/components/session/file-restore-feedback"
 import { requestErrorMessage } from "@/utils/error"
 import { useSessionCommands } from "@/components/session/commands"
 import { useSessionMeta } from "@/composables/use-session-meta"
@@ -96,7 +98,6 @@ import { AP } from "@/app-i18n"
 import { MobileWorkspaceDialog } from "@/components/workspace/mobile-workspace-dialog"
 import { WorkbenchSurface } from "@/components/workspace/workbench-surface"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
-import { blueprintNoteCreateFocusRequest } from "@/context/plan-blueprint-offer"
 import {
   createNewSessionWorkspaceAcceptedProgress,
   createNewSessionWorkspaceSuccessProgress,
@@ -139,7 +140,7 @@ import { TerminalProvider } from "@/context/terminal"
 import { PromptProvider } from "@/context/prompt"
 import { ResourceOpenProvider } from "@/context/resource-open"
 import { BuiltinWorkbenchPanelsProvider } from "@/components/workspace/builtin-workbench-panels"
-import { useSessionTransition } from "@/context/session-transition"
+import { draftTransitionKey, useSessionTransition } from "@/context/session-transition"
 import {
   isActionCommandMessage,
   messagesFrom,
@@ -198,6 +199,7 @@ function SessionPageContent() {
   const confirm = useConfirm()
   const command = useCommand()
   const params = useParams()
+  const restoreFiles = useFileRestore(() => params.id)
   const navigate = useNavigate()
   const location = useLocation()
   const sdk = useSDK()
@@ -249,6 +251,12 @@ function SessionPageContent() {
     if (!id) return
     if (!hasMessageWindowSnapshot(dataView().messagesFor(id), sync.data.messageWindow[id])) return
     navMark({ dir: params.dir, to: id, name: "session:data-ready" })
+    if (!prompt.ready()) return
+    const dir = params.dir
+    const frame = requestAnimationFrame(() => {
+      if (params.id === id && params.dir === dir) navMark({ dir, to: id, name: "session:interactive" })
+    })
+    onCleanup(() => cancelAnimationFrame(frame))
   })
 
   const isDesktop = () => layout.isDesktop()
@@ -264,6 +272,7 @@ function SessionPageContent() {
     promptHeight: 0,
     mobileReviewOpen: false,
     mobileReviewSelectedFile: undefined as string | undefined,
+    mobileReviewMessageID: undefined as string | undefined,
     delayedMessageLoad: undefined as { sessionID: string; generation: number } | undefined,
   })
 
@@ -291,8 +300,7 @@ function SessionPageContent() {
   })
   const visibleSessionTransitionEntry = createMemo(() => {
     const sessionID = params.id
-    if (!sessionID) return undefined
-    return sessionTransition.get(sessionID)
+    return sessionTransition.get(sessionID ?? draftTransitionKey(sdk.url, sdk.scopeKey))
   })
   const visibleSessionTransition = createMemo(() => visibleSessionTransitionEntry()?.progress ?? null)
   const visibleSessionTransitionActions = createMemo(() => visibleSessionTransitionEntry()?.actions)
@@ -480,14 +488,21 @@ function SessionPageContent() {
     if (!rb) return raw
     return messagesHiddenByRollback(raw, rb)
   })
-  const openRewindConfirm = (message: UserMessage | undefined) => {
+  const openRewindConfirm = async (message: UserMessage | undefined) => {
     if (!message?.id) return
     if (!messageAllowsCanonicalActions(message)) return
-    const targetMsg = message
-    const targetID = targetMsg.id
+    const targetID = message.id
     const sessionID = params.id
     if (!sessionID) return
-    const cutParts = dataView().partsFor(targetID)
+    const canonical = await sdk.client.session
+      .message({ sessionID, messageID: targetID }, { throwOnError: true })
+      .catch((error) => {
+        showToast({ type: "error", description: requestErrorMessage(error) })
+        return undefined
+      })
+    if (params.id !== sessionID || canonical?.data?.info.role !== "user") return
+    const targetMsg = canonical.data.info
+    const cutParts = canonical.data.parts
     const retryInput = createRewindRetryInput({ message: targetMsg, parts: cutParts })
     dialog.push(() => (
       <DialogRewindConfirm
@@ -495,7 +510,7 @@ function SessionPageContent() {
         allMessages={messages().filter((m) => m.role === "user" || m.role === "assistant")}
         partsByMessage={dataView().partTable()}
         canRetry={retryInput !== undefined}
-        onConfirm={async (action, cutMessageID, restoreFiles) => {
+        onConfirm={async (action, cutMessageID) => {
           if (!sessionID || !cutMessageID) return
           const previousActiveMessage = previousMessage(userMessages(), cutMessageID)
           // Abort if running, then allow the runtime to release its loop lease before rollback asserts idle.
@@ -514,28 +529,13 @@ function SessionPageContent() {
               return requestErrorMessage(error)
             }
           }
-          let restoreFailed = false
-          if (restoreFiles && result.data?.id) {
-            try {
-              const restored = await sdk.client.session.files.restore(
-                { sessionID, rollbackID: result.data.id },
-                { throwOnError: true },
-              )
-              const feedback = fileRestoreFeedback(restored.data, i18n)
-              restoreFailed = feedback.type === "error"
-              showToast(feedback)
-            } catch (error) {
-              restoreFailed = true
-              showToast({ type: "error", description: requestErrorMessage(error, i18n._(S.transitionRecoveryFailed)) })
-            }
-          }
           if (cutParts.length > 0) {
             const restored = extractPromptDraft({ message: targetMsg, parts: cutParts, directory: sdk.directory })
             prompt.set(restored.prompt, inlineLength(restored.prompt))
             prompt.context.set(restored.context)
           }
           setActiveMessage(previousActiveMessage)
-          if (restoreFailed || action !== "retry" || !retryInput) return
+          if (action !== "retry" || !retryInput) return
           try {
             await sdk.client.session.input(retryInput, { throwOnError: true })
             prompt.resetDraft()
@@ -695,7 +695,6 @@ function SessionPageContent() {
       sessionID,
       createSessionTransitionHandoffErrorProgress({
         kind: accepted.kind,
-        steps: accepted.steps,
         error,
       }),
       {
@@ -775,8 +774,13 @@ function SessionPageContent() {
       if (!attempt) return
       const sessionID = params.id!
       const handoff = visibleSessionTransitionEntry()!.handoff!
+      let unconfirmed = handoff.unconfirmed
       const update = async (status: SessionInputProgress) => {
         if (handoffAttempt() !== attempt) return
+        if (unconfirmed && status.durable) {
+          sessionTransition.confirmHandoff(sessionID, handoff.messageID)
+          unconfirmed = undefined
+        }
         if (status.canonical) {
           await sync.session.refresh(sessionID)
           return
@@ -790,7 +794,7 @@ function SessionPageContent() {
           setSessionTransition(
             sessionID,
             {
-              ...createSessionTransitionHandoffErrorProgress({ kind: accepted.kind, steps: accepted.steps }),
+              ...createSessionTransitionHandoffErrorProgress({ kind: accepted.kind }),
               description: S.transitionDescCancelled,
             },
             { dismiss: () => dismissSessionTransitionHandoff(sessionID, handoff.messageID) },
@@ -798,33 +802,44 @@ function SessionPageContent() {
           )
           return
         }
-        const description =
+        const phase =
           status.state === "queued_storage"
-            ? S.transitionDescStorage
+            ? "queued_storage"
             : status.state === "retrying"
-              ? S.transitionDescRetrying
-              : Date.now() - (handoff.acceptedAt ?? Date.now()) >= SESSION_TRANSITION_HANDOFF_TIMEOUT_MS
-                ? S.transitionDescDelayed
-                : S.transitionDescInitializing
-        setSessionTransition(sessionID, { ...accepted, description }, undefined, handoff)
+              ? "retrying_input"
+              : "materializing_input"
+        setSessionTransition(
+          sessionID,
+          { ...accepted, activity: { phase, startedAt: accepted.activity?.startedAt ?? Date.now() } },
+          undefined,
+          handoff,
+        )
       }
       const stop = observeSessionInput({
-        read: async (signal) =>
-          (
-            await sdk.client.session.inputStatus(
-              { sessionID, messageID: handoff.messageID },
-              { signal, throwOnError: true },
+        read: (signal) => recoverSessionInputReceipt(sdk.client, { sessionID, messageID: handoff.messageID }, signal),
+        update: async (receipt) => {
+          if (handoffAttempt() !== attempt) return false
+          if (receipt.kind === "accepted") await update(receipt.progress)
+          else if (receipt.kind === "missing") {
+            if (unconfirmed) unconfirmed.missing()
+            else showStalledHandoff(sessionID, handoff)
+            return false
+          } else {
+            const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
+            setSessionTransition(
+              sessionID,
+              { ...accepted, activity: { phase: "reconnecting", startedAt: Date.now() } },
+              undefined,
+              handoff,
             )
-          ).data,
-        update: async (status) => {
-          if (status) await update(status)
+          }
         },
         unavailable: () => {
           if (handoffAttempt() !== attempt) return
           const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
           setSessionTransition(
             sessionID,
-            { ...accepted, description: S.transitionDescReconnecting },
+            { ...accepted, activity: { phase: "reconnecting", startedAt: Date.now() } },
             undefined,
             handoff,
           )
@@ -942,22 +957,31 @@ function SessionPageContent() {
       !sdk.isHome && globalSDK.capabilities.has("workbench") ? { client: sdk.client, scopeID: sdk.scopeID } : false,
     async ({ client, scopeID }) => {
       try {
-        return { data: (await client.project.directories({ scopeID }, { throwOnError: true })).data, error: "" }
+        return {
+          client,
+          scopeID,
+          data: (await client.project.directories({ scopeID }, { throwOnError: true })).data,
+          error: "",
+        }
       } catch (error) {
-        return { data: undefined, error: error instanceof Error ? error.message : String(error) }
+        return { client, scopeID, data: undefined, error: error instanceof Error ? error.message : String(error) }
       }
     },
   )
+  const projectDirectorySnapshot = () => {
+    const snapshot = projectDirectories.latest
+    return snapshot?.client === sdk.client && snapshot.scopeID === sdk.scopeID ? snapshot : undefined
+  }
   const mainFolder = createMemo(() =>
-    projectDirectories()?.data?.folders.find(
-      (folder) => folder.workspaceID === projectDirectories()?.data?.mainWorkspaceID,
+    projectDirectorySnapshot()?.data?.folders.find(
+      (folder) => folder.workspaceID === projectDirectorySnapshot()?.data?.mainWorkspaceID,
     ),
   )
   const scopeRoot = createMemo(() => mainFolder()?.path ?? sync.scope?.local?.worktree ?? sync.data.path.directory)
   const newSessionWorkspaceSelection = createMemo(() =>
     globalSDK.capabilities.has("workbench") && !sdk.isHome
       ? projectTaskIntent({
-          directories: projectDirectories()?.data,
+          directories: projectDirectorySnapshot()?.data,
           selected: store.newSessionWorkspaceSelection,
           preference: sync.data.config.defaultSessionWorkspace ?? "main",
         })
@@ -976,7 +1000,7 @@ function SessionPageContent() {
         item.id === id ||
         (choice.mode === "existing" && [item.metadata.worktreeID, item.binding.path].includes(choice.target)),
     )
-    const folder = projectDirectories()?.data?.folders.find((item) => item.workspaceID === id)
+    const folder = projectDirectorySnapshot()?.data?.folders.find((item) => item.workspaceID === id)
     projectFiles.setTaskWorkspace(
       record
         ? catalogFileWorkspace(record)
@@ -1117,28 +1141,6 @@ function SessionPageContent() {
   const sessionHasMessages = createMemo(() => (messageSnapshot()?.length ?? 0) > 0)
 
   const sessionMeta = useSessionMeta(currentSession, sessionHasMessages)
-  const focusedBlueprintCreateParts = new Set<string>()
-  const unsubBlueprintNoteCreate = sdk.event.on("message.part.updated", (event) => {
-    const sessionID = params.id
-    if (!sessionID) return
-
-    const request = blueprintNoteCreateFocusRequest(event.properties.part, sessionID)
-    if (!request) return
-
-    const key = `${event.properties.part.sessionID}:${event.properties.part.id}:${request.noteID}`
-    if (focusedBlueprintCreateParts.has(key)) return
-    focusedBlueprintCreateParts.add(key)
-
-    void workbench.openPanel("notes", {
-      reuseExisting: true,
-      init: {
-        resourceId: request.noteID,
-        source:
-          request.scopeID === "home" ? HOME_SCOPE_KEY : request.scopeID || (sdk.isHome ? HOME_SCOPE_KEY : sdk.scopeKey),
-      },
-    })
-  })
-  onCleanup(unsubBlueprintNoteCreate)
 
   createEffect(() => {
     const session = currentSession()
@@ -1211,6 +1213,7 @@ function SessionPageContent() {
     navigateMessageByOffset,
     isWorking: () => isWorkingStatus(status()),
     onRewind: openRewindConfirm,
+    locateMessage,
   })
 
   const handleKeyDown = (event: KeyboardEvent) => {
@@ -1219,9 +1222,31 @@ function SessionPageContent() {
 
   const isWorking = createMemo(() => isWorkingStatus(status()))
   const [scrolledUp, setScrolledUp] = createSignal(false)
+  const [historyLocationPinned, setHistoryLocationPinned] = createSignal(false)
+  const releaseHistoryLocation = (event: WheelEvent | KeyboardEvent) => {
+    if (
+      (event instanceof WheelEvent && event.deltaY > 0) ||
+      (event instanceof KeyboardEvent && ["ArrowDown", "PageDown", "End"].includes(event.key))
+    )
+      setHistoryLocationPinned(false)
+  }
 
   const autoScroll = createAutoScroll({
     working: isWorking,
+    captureReadingAnchor() {
+      const container = scroller
+      if (!container) return
+      const owner = sessionKey()
+      const server = sdk.url
+      const scope = sdk.scopeKey
+      const current = () =>
+        owner === sessionKey() && sdk.url === server && sdk.scopeKey === scope && scroller === container
+      if (container.scrollHeight - container.clientHeight - container.scrollTop < 10)
+        return () => {
+          if (current()) container.scrollTop = container.scrollHeight
+        }
+      return captureConversationReadingAnchor(container, current)
+    },
     onMeasure: (distance) => {
       // Until the session's initial scroll lands, growth-driven measures only
       // see the partially laid-out document and would flash the jump button;
@@ -1231,6 +1256,10 @@ function SessionPageContent() {
       setScrolledUp(distance > 100)
     },
   })
+  const conversationAutoScroll = {
+    ...autoScroll,
+    forceScrollToBottom: () => autoScroll.forceScrollToBottom({ untilInteraction: true }),
+  }
 
   let scrollSpyFrame: number | undefined
   let scrollSpyTarget: HTMLDivElement | undefined
@@ -1245,7 +1274,11 @@ function SessionPageContent() {
     // before the swapped-out owner's cleanup runs; only clear when the
     // binding is still the element this releaser bound.
     if (!el && releaseOf !== undefined && scroller !== releaseOf) return
+    scroller?.removeEventListener("wheel", releaseHistoryLocation)
+    scroller?.removeEventListener("keydown", releaseHistoryLocation)
     scroller = el
+    el?.addEventListener("wheel", releaseHistoryLocation, { passive: true })
+    el?.addEventListener("keydown", releaseHistoryLocation)
     autoScroll.scrollRef(el, releaseOf)
   }
 
@@ -1263,10 +1296,14 @@ function SessionPageContent() {
     const container = scroller
     if (!container) return
     const viewportTop = container.getBoundingClientRect().top
-    const candidates = Array.from(container.querySelectorAll<HTMLElement>("[data-message-id]")).map((node) => {
+    const rows = container.querySelectorAll<HTMLElement>("[data-display-row]")
+    const candidates = Array.from(
+      rows.length ? rows : container.querySelectorAll<HTMLElement>("[data-message-id]"),
+    ).map((node) => {
       const rect = node.getBoundingClientRect()
       return {
         messageID: node.dataset.messageId ?? "",
+        rowKey: node.dataset.displayRow,
         top: rect.top,
         bottom: rect.bottom,
       }
@@ -1280,8 +1317,10 @@ function SessionPageContent() {
   const restorePrependScrollAnchor = (anchor: PrependScrollAnchor | undefined) => {
     const container = scroller
     if (!container || !anchor) return
-    const node = Array.from(container.querySelectorAll<HTMLElement>("[data-message-id]")).find(
-      (candidate) => candidate.dataset.messageId === anchor.messageID,
+    const node = Array.from(
+      container.querySelectorAll<HTMLElement>(anchor.rowKey ? "[data-display-row]" : "[data-message-id]"),
+    ).find((candidate) =>
+      anchor.rowKey ? candidate.dataset.displayRow === anchor.rowKey : candidate.dataset.messageId === anchor.messageID,
     )
     if (!node) return
     const afterOffsetTop = node.getBoundingClientRect().top - container.getBoundingClientRect().top
@@ -1295,6 +1334,8 @@ function SessionPageContent() {
   const loadEarlierMessages = async () => {
     const id = params.id
     if (!id) return
+    setHistoryLocationPinned(true)
+    autoScroll.handleInteraction()
     const scrollAnchor = capturePrependScrollAnchor()
     try {
       const result = await sync.session.history.loadMore(id)
@@ -1303,7 +1344,7 @@ function SessionPageContent() {
       afterHistoryLayoutSettles(() => {
         if (params.id !== id) return
         if (result === "latest") {
-          autoScroll.forceScrollToBottom()
+          autoScroll.forceScrollToBottom({ untilInteraction: true })
           return
         }
         restorePrependScrollAnchor(scrollAnchor)
@@ -1323,9 +1364,10 @@ function SessionPageContent() {
     try {
       await sync.session.history.returnLatest(id)
       if (params.id !== id) return
+      setHistoryLocationPinned(false)
       setStore("turnStart", 0)
       afterHistoryLayoutSettles(() => {
-        if (params.id === id) autoScroll.forceScrollToBottom()
+        if (params.id === id) autoScroll.forceScrollToBottom({ untilInteraction: true })
       })
     } catch (error) {
       showToast({
@@ -1354,6 +1396,7 @@ function SessionPageContent() {
       tailMissingLatest: historyTailMissingLatest,
       pendingLatest: historyPendingLatest,
       historyLoading: historyLoading,
+      locationPinned: historyLocationPinned,
     },
     () => returnToLatestMessages(),
   )
@@ -1459,12 +1502,29 @@ function SessionPageContent() {
   }
 
   const clearHash = () => {
+    setHistoryLocationPinned(false)
     if (!window.location.hash) return
     replaceSessionHistoryUrl(window.history, window.location.pathname + window.location.search)
   }
 
+  let messageLocator: ((messageID: string, behavior?: ScrollBehavior, partID?: string) => Promise<boolean>) | undefined
+  async function locateMessage(messageID: string, partID?: string) {
+    const locate = messageLocator
+    if (!locate) return false
+    const found = await locate(messageID, "auto", partID)
+    if (found && messageLocator === locate) updateHash(messageID)
+    return found
+  }
   const scrollToMessage = (message: UserMessage, behavior: ScrollBehavior = "smooth") => {
     setActiveMessage(message)
+    if (messageLocator) {
+      const locate = messageLocator
+      void locate(message.id, behavior).then((found) => {
+        if (!found || messageLocator !== locate) return
+        updateHash(message.id)
+      })
+      return
+    }
 
     const msgs = visibleUserMessages()
     const index = msgs.findIndex((m) => m.id === message.id)
@@ -1548,7 +1608,7 @@ function SessionPageContent() {
           if (!hash) {
             afterLayoutSettles(() => {
               initialScrollSettled = true
-              autoScroll.forceScrollToBottom()
+              autoScroll.forceScrollToBottom({ untilInteraction: true })
             })
             return
           }
@@ -1563,6 +1623,10 @@ function SessionPageContent() {
 
             const match = hash.match(/^message-(.+)$/)
             if (match) {
+              if (messageLocator) {
+                void locateMessage(match[1])
+                return
+              }
               const anyMessage = messages().find((message) => message.id === match[1])
               if (anyMessage) {
                 const el = document.getElementById(hash)
@@ -1577,7 +1641,7 @@ function SessionPageContent() {
               }
             }
 
-            autoScroll.forceScrollToBottom()
+            autoScroll.forceScrollToBottom({ untilInteraction: true })
           })
         })
       },
@@ -1621,6 +1685,8 @@ function SessionPageContent() {
 
   onCleanup(() => {
     document.removeEventListener("keydown", handleKeyDown)
+    scroller?.removeEventListener("wheel", releaseHistoryLocation)
+    scroller?.removeEventListener("keydown", releaseHistoryLocation)
     if (scrollSpyFrame !== undefined) cancelAnimationFrame(scrollSpyFrame)
     if (initScrollFrame !== undefined) cancelAnimationFrame(initScrollFrame)
     if (historyScrollFrame !== undefined) cancelAnimationFrame(historyScrollFrame)
@@ -1645,16 +1711,18 @@ function SessionPageContent() {
                 !params.id &&
                 !sdk.isHome &&
                 globalSDK.capabilities.has("workbench") &&
-                (!projectDirectories()?.data || projectDirectories.loading || !!projectDirectories()?.error)
+                (!projectDirectorySnapshot()?.data || projectDirectories.loading || !!projectDirectorySnapshot()?.error)
               )
             },
             onValidateLocation: async () => {
               if (params.id || sdk.isHome || !globalSDK.capabilities.has("workbench")) return
-              const expected = projectDirectories()?.data?.revision
-              const result = (await sdk.client.project.directories({ scopeID: sdk.scopeID }, { throwOnError: true }))
-                .data
+              const client = sdk.client
+              const scopeID = sdk.scopeID
+              const expected = projectDirectorySnapshot()?.data?.revision
+              const result = (await client.project.directories({ scopeID }, { throwOnError: true })).data
+              if (sdk.client !== client || sdk.scopeID !== scopeID) throw new Error(i18n._(projectEntryCopy.changed))
               if (expected === result.revision) return
-              updateProjectDirectories({ data: result, error: "" })
+              updateProjectDirectories({ client, scopeID, data: result, error: "" })
               setStore(
                 "newSessionWorkspaceSelection",
                 store.newSessionWorkspaceSelection?.mode === "create" ? { mode: "create" } : undefined,
@@ -1662,13 +1730,14 @@ function SessionPageContent() {
               throw new Error(i18n._(projectEntryCopy.changed))
             },
             get projectDirectories() {
-              return projectDirectories()?.data
+              return projectDirectorySnapshot()?.data
             },
             get projectDirectoryError() {
-              return projectDirectories()?.error
+              return projectDirectorySnapshot()?.error
             },
-            onProjectDirectoriesRefresh: () => {
-              void refreshProjectDirectories()
+            onProjectDirectoriesRefresh: async () => {
+              const result = await refreshProjectDirectories()
+              if (result?.error) throw new Error(result.error)
             },
             get newSessionEnvironmentID() {
               return store.newSessionEnvironment?.scopeID === sdk.scopeID ? store.newSessionEnvironment.id : undefined
@@ -1685,6 +1754,9 @@ function SessionPageContent() {
               setStore("newSessionEnvironment", { scopeID: sdk.scopeID, id: undefined, profile }),
             get newSessionWorkspaceSelection() {
               return newSessionWorkspaceSelection()
+            },
+            get newSessionWorkspaceSelectionKey() {
+              return JSON.stringify(store.newSessionWorkspaceSelection ?? null)
             },
             get newSessionCanonicalDirectory() {
               return scopeRoot() ?? undefined
@@ -1716,62 +1788,6 @@ function SessionPageContent() {
       : undefined,
   )
 
-  let starterDisposed = false
-  onCleanup(() => {
-    starterDisposed = true
-  })
-  const startTask = (text: string) => {
-    const owner = composer()?.input
-    if (!owner || owner.readOnly() || owner.composing() || owner.submitting()) return
-    const request = prepareTaskStarter(
-      owner,
-      () => (starterDisposed || params.id ? undefined : composer()?.input),
-      text,
-    )
-    const focus = () =>
-      requestAnimationFrame(() => {
-        if (!starterDisposed && composer()?.input === owner) inputRef?.focus()
-      })
-    const apply = async () => {
-      const applied = await request.apply()
-      if (!applied)
-        showToast({
-          type: "error",
-          description: i18n._({
-            id: "session.starter.draftChanged",
-            message: "Your draft changed. Choose a task starter again to use the latest draft.",
-          }),
-        })
-      return applied
-    }
-    if (request.requiresConfirmation) {
-      let applied = false
-      confirm.show({
-        title: { id: "session.starter.replaceTitle", message: "Replace the draft text?" },
-        description: {
-          id: "session.starter.replaceDescription",
-          message: "Your attachments and working location will stay the same. Nothing will be sent.",
-        },
-        confirmLabel: { id: "session.starter.replaceAction", message: "Use task starter" },
-        tone: "neutral",
-        onConfirm: async () => {
-          applied = await apply()
-        },
-        onConfirmed: () => {
-          if (applied) focus()
-        },
-      })
-      return
-    }
-    void apply()
-      .then((applied) => {
-        if (applied) focus()
-      })
-      .catch((error) =>
-        showToast({ type: "error", description: error instanceof Error ? error.message : String(error) }),
-      )
-  }
-
   const session: PluginSessionService = {
     current: currentSession,
     messages,
@@ -1792,6 +1808,26 @@ function SessionPageContent() {
     fork: openForkConfirm,
   }
   const conversation: PluginConversationService = {
+    content: {
+      summaries: (messageID) => sync.data.partSummary[messageID] ?? [],
+      page: (messageID) => sync.data.partPage[messageID],
+      load: (messageID, more, force) => sync.session.content.summaries(params.id!, messageID, more, force),
+      retain: (summary) => sync.session.content.retain(summary),
+      text: (messageID) => sync.session.content.text(params.id!, messageID),
+      loadWindow: async (messageID, partID) => {
+        setHistoryLocationPinned(true)
+        autoScroll.handleInteraction()
+        setStore("turnStart", 0)
+        return sync.session.history.locate(params.id!, messageID, partID)
+      },
+      loadEarlier: (messageID) => sync.session.content.earlier(params.id!, messageID),
+    },
+    registerMessageLocator(locate) {
+      messageLocator = locate
+      return () => {
+        if (messageLocator === locate) messageLocator = undefined
+      }
+    },
     get sessionID() {
       return params.id!
     },
@@ -1803,6 +1839,19 @@ function SessionPageContent() {
     },
     get activityDisplay() {
       return activityDisplay
+    },
+    activityView: {
+      getExpanded: (key) => view().activity.getExpanded(key),
+      setExpanded(key, expanded) {
+        const owner = sessionKey()
+        const detached = scrolledUp() || autoScroll.userScrolled()
+        if (detached) autoScroll.preserveReadingAnchor()
+        view().activity.setExpanded(key, expanded)
+        requestAnimationFrame(() => {
+          if (owner !== sessionKey()) return
+          if (!detached) autoScroll.forceScrollToBottom()
+        })
+      },
     },
     get pendingTimeline() {
       return pendingTimeline
@@ -1853,13 +1902,13 @@ function SessionPageContent() {
       return () => void returnToLatestMessages()
     },
     get scrolledUp() {
-      return scrolledUp
+      return () => scrolledUp() || autoScroll.userScrolled()
     },
     get onScrolledUpChange() {
       return setScrolledUp
     },
     get autoScroll() {
-      return autoScroll
+      return conversationAutoScroll
     },
     get onClearHash() {
       return clearHash
@@ -1902,6 +1951,7 @@ function SessionPageContent() {
           setStore({
             mobileReviewOpen: true,
             mobileReviewSelectedFile: input.file,
+            mobileReviewMessageID: input.messageID,
           })
         }
       }
@@ -1921,16 +1971,24 @@ function SessionPageContent() {
     onFirstTurnMounted: () => navMark({ dir: params.dir!, to: params.id!, name: "session:first-turn-mounted" }),
     canRewind: messageAllowsCanonicalActions,
     transition: () => (
-      <Show when={visibleSessionTransition()}>
-        {(progress) => (
-          <div class="w-full min-w-0 px-3 md:px-1">
-            <SessionTransitionCard
-              progress={progress()}
-              onRetry={visibleSessionTransitionActions()?.retry}
-              onDismiss={visibleSessionTransitionActions()?.dismiss}
-            />
-          </div>
-        )}
+      <Show when={visibleSessionTransitionEntry()}>
+        {(entry) => {
+          const rootID = () => entry().handoff?.messageID ?? entry().draft?.messageID
+          return (
+            <div class="w-full min-w-0 px-3 md:px-1">
+              <SessionSubmissionStatus
+                entry={entry()}
+                hideLoading={rootMessages().some((root) => root.id === rootID())}
+                hideError={messages().some(
+                  (message) =>
+                    message.role === "assistant" &&
+                    (message.rootID ?? message.parentID) === rootID() &&
+                    !!message.error,
+                )}
+              />
+            </div>
+          )
+        }}
       </Show>
     ),
   }
@@ -1987,6 +2045,7 @@ function SessionPageContent() {
         return (
           <>
             <NewSessionGreeting
+              interactive={!params.id}
               disabled={
                 !composer()?.input.ready() ||
                 composer()?.input.readOnly() ||
@@ -1994,14 +2053,12 @@ function SessionPageContent() {
                 composer()?.input.composing() ||
                 composer()?.input.current().mode !== "normal"
               }
-              onStart={startTask}
               onProject={() => command.trigger("project.select")}
               onFiles={() => composer()?.pickFiles()}
             />
             <SlotOutlet slot="session.empty" sessionId={params.id} />
           </>
         )
-      if (part === "status") return <StatusBar />
       if (part === "inbox")
         return (
           <Show when={params.id}>
@@ -2037,11 +2094,23 @@ function SessionPageContent() {
     conversation: () => (
       <div data-ui-part="conversation" class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
         <SessionTopBar
+          hasCanonicalRoot={rootMessages().length > 0}
+          inboxFrozen={rollbackActive()}
           onWorkspaceTransition={startWorkspaceTransition}
           sessionTransitionPending={sessionTransitionPending}
         />
         <div class="flex-1 min-h-0 min-w-0 overflow-hidden">
           <Switch>
+            <Match
+              when={
+                visibleSessionTransitionEntry()?.draft &&
+                visibleSessionTransition()?.phase !== "success" &&
+                messages().length === 0 &&
+                pendingTimeline().length === 0
+              }
+            >
+              <SessionSubmissionPreview entry={visibleSessionTransitionEntry()!} />
+            </Match>
             <Match when={!isNewSession()}>
               <Switch>
                 <Match when={conversationLoadView().type === "conversation"}>
@@ -2107,8 +2176,10 @@ function SessionPageContent() {
               </Switch>
             </Match>
             <Match when={true}>
-              <div class="session-empty-view">
-                <div class="session-content-column">{composerLayout.render("greeting")}</div>
+              <div class="session-empty-view" data-interactive={!params.id ? "" : undefined}>
+                <div class={!params.id ? "session-welcome-region" : "session-content-column"}>
+                  {composerLayout.render("greeting")}
+                </div>
               </div>
             </Match>
           </Switch>
@@ -2127,7 +2198,7 @@ function SessionPageContent() {
         {/* Mobile side workspace overlay */}
         <Show when={sideWorkspaceMounts().mobile}>
           <MobileWorkspaceDialog onClose={() => sideSurface().close()}>
-            <WorkbenchSurface surface="side" />
+            <WorkbenchSurface surface="side" modalHost />
           </MobileWorkspaceDialog>
         </Show>
       </>
@@ -2138,49 +2209,97 @@ function SessionPageContent() {
           <WorkbenchSurface surface="bottom" />
         </Show>
         <Show when={!isDesktop() && store.mobileReviewOpen}>
-          <div
-            class="md:hidden absolute inset-x-0 bottom-0 z-40 flex flex-col bg-background-stronger border-t border-border-weak-base rounded-t-xl shadow-lg"
-            style={{ height: "50vh" }}
-          >
-            <div class="flex items-center justify-between px-4 h-11 shrink-0">
-              <span class="text-13-medium text-text-strong">
-                {i18n._(AP.sessionFilesChanged.id, { count: reviewCount() })}
-              </span>
-              <button
-                type="button"
-                class="flex items-center justify-center size-7 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
-                aria-label={i18n._(AP.sessionCloseReview.id)}
-                onClick={() => setStore("mobileReviewOpen", false)}
-              >
-                <Icon name={getSemanticIcon("action.close")} size="small" />
-              </button>
+          <MobileWorkspaceDialog onClose={() => setStore("mobileReviewOpen", false)}>
+            <div class="flex h-full min-h-0 flex-col">
+              <div class="flex-1 min-h-0 overflow-auto">
+                <Show
+                  // Explicit exemption: undefined session_diff shows the
+                  // "loading changes" fallback; the view layer's shared empty
+                  // array (truthy) would flip that loading semantics.
+                  when={
+                    params.id &&
+                    (store.mobileReviewMessageID
+                      ? (
+                          dataView()
+                            .messagesFor(params.id)
+                            .find((message) => message.id === store.mobileReviewMessageID) as UserMessage | undefined
+                        )?.summary?.diffs
+                      : sync.data.session_diff[params.id])
+                  }
+                  fallback={
+                    <div class="px-4 py-4 text-13-regular text-text-weak">{i18n._(AP.sessionLoadingChanges.id)}</div>
+                  }
+                >
+                  {(rawDiffs) => {
+                    const diffsArr = () => (Array.isArray(rawDiffs()) ? (rawDiffs() as FileDiff[]) : ([] as FileDiff[]))
+                    return (
+                      <SessionReviewTab
+                        workspace={() => file.workspace}
+                        diffs={diffsArr}
+                        title={
+                          store.mobileReviewMessageID
+                            ? i18n._({ id: "session.review.turnTitle", message: "Turn changes" })
+                            : i18n._({ id: "session.review.sessionTitle", message: "Session changes" })
+                        }
+                        diffState={() =>
+                          store.mobileReviewMessageID
+                            ? (
+                                dataView()
+                                  .messagesFor(params.id!)
+                                  .find((message) => message.id === store.mobileReviewMessageID) as
+                                  | UserMessage
+                                  | undefined
+                              )?.summary?.diffState
+                            : info()?.summary?.diffState
+                        }
+                        actions={
+                          <Button
+                            variant="ghost"
+                            onClick={() => void restoreFiles({ messageID: store.mobileReviewMessageID })}
+                          >
+                            {i18n._({ id: "session.review.undo", message: "Undo changes" })}
+                          </Button>
+                        }
+                        onRestoreFile={(diff) =>
+                          diff.workspace &&
+                          void restoreFiles({
+                            messageID: store.mobileReviewMessageID,
+                            selectedFiles: [
+                              {
+                                workspaceID: diff.workspace!.id,
+                                generation: diff.workspace!.generation,
+                                file: diff.file,
+                              },
+                            ],
+                          })
+                        }
+                        loadDiff={async (diff, signal) =>
+                          diff.workspace
+                            ? (
+                                await sdk.client.session.files.diff(
+                                  {
+                                    sessionID: params.id!,
+                                    messageID: store.mobileReviewMessageID,
+                                    workspaceID: diff.workspace.id,
+                                    generation: diff.workspace.generation,
+                                    file: diff.file,
+                                  },
+                                  { signal, throwOnError: true },
+                                )
+                              ).data!
+                            : diff
+                        }
+                        view={view}
+                        diffStyle="unified"
+                        selectedFile={() => store.mobileReviewSelectedFile}
+                        onViewFile={(path) => void file.openWorkspaceFile(path)}
+                      />
+                    )
+                  }}
+                </Show>
+              </div>
             </div>
-            <div class="flex-1 min-h-0 overflow-auto">
-              <Show
-                // Explicit exemption: undefined session_diff shows the
-                // "loading changes" fallback; the view layer's shared empty
-                // array (truthy) would flip that loading semantics.
-                when={params.id && sync.data.session_diff[params.id]}
-                fallback={
-                  <div class="px-4 py-4 text-13-regular text-text-weak">{i18n._(AP.sessionLoadingChanges.id)}</div>
-                }
-              >
-                {(rawDiffs) => {
-                  const diffsArr = Array.isArray(rawDiffs()) ? (rawDiffs() as FileDiff[]) : ([] as FileDiff[])
-                  return (
-                    <SessionReviewTab
-                      workspace={() => file.workspace}
-                      diffs={() => diffsArr}
-                      view={view}
-                      diffStyle="unified"
-                      selectedFile={() => store.mobileReviewSelectedFile}
-                      onViewFile={(path) => void file.openWorkspaceFile(path)}
-                    />
-                  )
-                }}
-              </Show>
-            </div>
-          </div>
+          </MobileWorkspaceDialog>
         </Show>
       </>
     ),
@@ -2192,9 +2311,16 @@ function SessionPageContent() {
   }
   return (
     <>
-      <BrowserViewEffects timeline={timeline} />
+      <WorkspaceOutputEffects />
       <Show when={composer()}>{(controller) => controller().extensions()}</Show>
-      <SessionDecisionHost sessionId={params.id}>
+      <SessionDecisionHost
+        sessionId={params.id}
+        onReturnFocus={() => {
+          if (sessionMeta().isReadOnly || !inputRef?.isConnected) return false
+          inputRef.focus({ preventScroll: true })
+          return true
+        }}
+      >
         <PluginPageOutlet
           page="session"
           sessionId={params.id}

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import { Channel } from "@ericsanchezok/synergy-connections/channel"
 import { ChannelHost } from "@ericsanchezok/synergy-connections/channel/host"
@@ -26,7 +27,7 @@ test("Clarus result tool rejects ordinary Sessions before provider access", () =
         const context = {
           sessionID: `ses_${crypto.randomUUID()}`,
           messageID: `msg_${crypto.randomUUID()}`,
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           abort: new AbortController().signal,
           metadata() {},
           async ask() {},
@@ -90,7 +91,7 @@ test("Clarus result tool sanitizes rejected upstream codes", () =>
           const context = {
             sessionID: created.assignment.sessionID,
             messageID: `msg_${crypto.randomUUID()}`,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             abort: new AbortController().signal,
             metadata() {},
             async ask() {},

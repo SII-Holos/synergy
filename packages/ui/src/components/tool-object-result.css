@@ -1,0 +1,54 @@
+[data-component="tool-object-result"] {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+[data-slot="tool-object-fields"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 12px 16px;
+  margin: 0;
+}
+[data-slot="tool-object-fields"] dt {
+  color: var(--text-weak);
+}
+[data-slot="tool-object-fields"] dd {
+  margin: 0;
+  white-space: pre-wrap;
+  min-width: 0;
+}
+[data-slot="tool-object-item"] + [data-slot="tool-object-item"] {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-weak);
+}
+[data-slot="tool-object-pages"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+  font-size: 12px;
+  color: var(--text-weak);
+}
+[data-component="tool-object-result"] button {
+  border: 0;
+  padding: 6px 0;
+  font: inherit;
+  color: var(--text-base);
+  background: transparent;
+  cursor: pointer;
+}
+[data-component="tool-object-result"] button:disabled {
+  color: var(--text-weak);
+  cursor: default;
+}
+[data-component="tool-object-result"] button:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+[data-component="tool-object-result"] pre {
+  margin: 0;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

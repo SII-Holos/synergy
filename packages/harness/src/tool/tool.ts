@@ -1,4 +1,7 @@
+import { MigrationRegistry } from "../migration/registry"
 import { randomUUID } from "node:crypto"
+import { RuntimeContext } from "../lifecycle/context"
+import type { ToolActivityEvidence, ToolActivityCapture } from "../session/activity-evidence"
 import { EnvironmentResources } from "../environment/resources"
 import { WorkspaceState } from "../workspace/state"
 import { ScopeContext } from "../scope/context"
@@ -15,6 +18,57 @@ import type { SettingCondition as PluginSettingCondition } from "@ericsanchezok/
 type PluginJsonSchema = Record<string, unknown>
 
 export namespace Tool {
+  const historyOwners = RuntimeContext.state(() => new Set<string>())
+  const histories = RuntimeContext.state(
+    () => new Map<string, Readonly<Record<string, string | { name: string; scale: number }>>>(),
+  )
+
+  export function registerInputHistory(
+    owner: string,
+    mappings: Record<string, Readonly<Record<string, string | { name: string; scale: number }>>>,
+  ) {
+    if (historyOwners().has(owner)) return
+    for (const [id, mapping] of Object.entries(mappings)) {
+      const existing = histories().get(id)
+      if (existing && JSON.stringify(existing) === JSON.stringify(mapping)) continue
+      RuntimeContext.assertCompositionOpen("tool input history")
+      if (existing) throw new Error(`Tool input history for ${id} is already registered`)
+      histories().set(id, Object.freeze({ ...mapping }))
+    }
+    const tools = new Set(Object.keys(mappings))
+    const up = async (progress: (current: number, total: number) => void) => {
+      const { migrateToolInputSemantics } = await import("../session/migration")
+      await migrateToolInputSemantics(progress, tools)
+    }
+    MigrationRegistry.register(`tool-input-${owner}`, [
+      {
+        id: `20261001-${owner}-tool-input-semantics`,
+        scope: "session",
+        description: "Clarify agent tool fields and retain invocation intent",
+        up,
+        async upSession(target, progress) {
+          const { SessionMigrationTarget } = await import("../migration/session-target")
+          return SessionMigrationTarget.provide(target, () => up(progress))
+        },
+      },
+    ])
+    historyOwners().add(owner)
+  }
+
+  export function upgradeInput(id: string, input: Record<string, unknown>): Record<string, unknown> {
+    const upgraded = { ...input }
+    for (const [previous, target] of Object.entries(histories().get(id) ?? {})) {
+      const current = typeof target === "string" ? target : target.name
+      if (!Object.hasOwn(upgraded, previous)) continue
+      if (!Object.hasOwn(upgraded, current))
+        upgraded[current] =
+          typeof target === "object" && typeof upgraded[previous] === "number"
+            ? upgraded[previous] * target.scale
+            : upgraded[previous]
+      delete upgraded[previous]
+    }
+    return upgraded
+  }
   interface Metadata {
     [key: string]: any
   }
@@ -23,6 +77,7 @@ export namespace Tool {
     title: string
     metadata: M
     output: string
+    activityEvidence?: ToolActivityEvidence
     attachments?: MessageV2.AttachmentPart[]
   }
 
@@ -48,11 +103,13 @@ export namespace Tool {
     agent: string
     abort: AbortSignal
     callID?: string
+    workBrief?: string
     environmentID?: string | null
     resources?: import("../environment/resources").EnvironmentResources.Resolved
     inputImages?(): Promise<import("../session/rollout/input-images").InputImages.Receipt | undefined>
     captureResult?(result: unknown): Promise<void>
     openProcessEvidence?(id: string): Promise<RolloutProcess.Writer>
+    recordActivity?(input: ToolActivityCapture): Promise<ToolActivityEvidence>
     extra?: { [key: string]: any }
     metadata(input: { title?: string; metadata?: M }): void
     ask(input: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">): Promise<void>
@@ -151,6 +208,7 @@ export namespace Tool {
       requiresExecution?: "exec" | "pty"
       exposure?: ToolExposure.Info
       display?: ToolDisplay
+      activityKind?: ToolActivityEvidence["kind"]
     },
   ): Info<Parameters, Result> {
     // When `init` is a plain object (not a factory function), the same object
@@ -193,6 +251,12 @@ export namespace Tool {
             )
           }
           const result = await withWorkspace(options?.requiresWorkspace, ctx, () => execute(parsed, ctx))
+          if (!result.activityEvidence && options?.activityKind && ctx.recordActivity)
+            result.activityEvidence = await ctx.recordActivity({
+              kind: options.activityKind,
+              text: result.output,
+              mediaType: "text/plain",
+            })
           await ctx.captureResult?.(result)
           validateAttachmentResult(id, result)
           if (result.metadata.truncated !== undefined) {

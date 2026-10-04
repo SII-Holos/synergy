@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import PLAN from "../../src/session/prompt/plan.txt"
-import PLAN_SYNERGY from "../../src/session/prompt/plan-synergy.txt"
-import PLAN_SYNERGY_MAX from "../../src/session/prompt/plan-synergy-max.txt"
+import PLAN_GENERAL from "../../src/session/prompt/plan-general.txt"
+import PLAN_CODING from "../../src/session/prompt/plan-coding.txt"
 import LATTICE_BASE from "@ericsanchezok/synergy-workflows/lattice/prompt/base.txt"
 import LATTICE_AWAITING_EXECUTION from "@ericsanchezok/synergy-workflows/lattice/prompt/state-awaiting-execution.txt"
 import LATTICE_CLARIFYING from "@ericsanchezok/synergy-workflows/lattice/prompt/state-clarifying.txt"
@@ -33,10 +33,10 @@ describe("Plan Blueprint prompt contract", () => {
   })
 
   test("does not encourage iterative clarification", () => {
-    expect(PLAN_SYNERGY_MAX).not.toContain("continue, and ask again")
-    expect(PLAN_SYNERGY).toContain("single clarification checkpoint")
-    expect(PLAN_SYNERGY_MAX).toContain("single clarification checkpoint")
-    expect(PLAN_SYNERGY_MAX).toContain("mutually exclusive")
+    expect(PLAN_CODING).not.toContain("continue, and ask again")
+    expect(PLAN_GENERAL).toContain("single clarification checkpoint")
+    expect(PLAN_CODING).toContain("single clarification checkpoint")
+    expect(PLAN_CODING).toContain("mutually exclusive")
   })
 
   test("requires the shared eight-section Blueprint structure", () => {
@@ -45,11 +45,11 @@ describe("Plan Blueprint prompt contract", () => {
     }
   })
 
-  test("keeps synergy domain-general and synergy-max coding-specific", () => {
-    expect(PLAN_SYNERGY).toContain("audience, structure, methodology")
-    expect(PLAN_SYNERGY).toContain("routine production details")
-    expect(PLAN_SYNERGY_MAX).toContain("existing owner or abstraction to extend")
-    expect(PLAN_SYNERGY_MAX).toContain("parallel state or duplicate ownership")
+  test("keeps general planning domain-general and coding planning code-specific", () => {
+    expect(PLAN_GENERAL).toContain("audience, structure, methodology")
+    expect(PLAN_GENERAL).toContain("routine production details")
+    expect(PLAN_CODING).toContain("existing owner or abstraction to extend")
+    expect(PLAN_CODING).toContain("parallel state or duplicate ownership")
   })
 
   test("keeps the Blueprint quality bar that makes a plan detailed and professional", () => {
@@ -61,11 +61,11 @@ describe("Plan Blueprint prompt contract", () => {
     expect(PLAN).toContain("Every Blueprint must contain these sections in this order.")
     expect(PLAN).toContain("cannot substitute a materially different route while claiming compliance")
     expect(PLAN).toContain("could two competent executors follow the Blueprint")
-    expect(PLAN_SYNERGY).toContain("Producing a Blueprint that a downstream agent can follow autonomously")
-    expect(PLAN_SYNERGY).toContain('explain what to do, why, what to avoid, and what "done" looks like')
-    expect(PLAN_SYNERGY).toContain("Finalizing only decision-complete Blueprints with one material delivery route")
-    expect(PLAN_SYNERGY_MAX).toContain("strong enough for autonomous implementation")
-    expect(PLAN_SYNERGY_MAX).toContain("Explicitly reject plausible alternatives")
+    expect(PLAN_GENERAL).toContain("Producing a Blueprint that a downstream agent can follow autonomously")
+    expect(PLAN_GENERAL).toContain('explain what to do, why, what to avoid, and what "done" looks like')
+    expect(PLAN_GENERAL).toContain("Finalizing only decision-complete Blueprints with one material delivery route")
+    expect(PLAN_CODING).toContain("strong enough for autonomous implementation")
+    expect(PLAN_CODING).toContain("Explicitly reject plausible alternatives")
   })
 
   test("frames Plan as deliverable guidance rather than an enforced toolkit boundary", () => {

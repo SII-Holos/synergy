@@ -16,6 +16,10 @@ test("a browser-only isolated suite runs once with browser conditions and separa
     for (const [file, mode] of [
       ["browser", "browser"],
       ["server", "server"],
+      ["browser-shared-a", "browser"],
+      ["browser-shared-b", "browser"],
+      ["isolated", "server"],
+      ["extra", "server"],
     ]) {
       await Bun.write(
         path.join(root, `test/${file}.test.ts`),
@@ -25,7 +29,7 @@ test("a browser-only isolated suite runs once with browser conditions and separa
     const runner = path.resolve(import.meta.dirname, "../../script/shared/test-runner.ts")
     await Bun.write(
       path.join(root, "run.ts"),
-      `import {runBatchedTests} from ${JSON.stringify(runner)};await runBatchedTests({root:import.meta.dirname,timeoutMs:10000,isolated:["test/browser.test.ts"],browserOnly:["test/browser.test.ts"]})`,
+      `import {runBatchedTests} from ${JSON.stringify(runner)};await runBatchedTests({root:import.meta.dirname,timeoutMs:10000,isolated:["test/browser.test.ts","test/isolated.test.ts"],browserOnly:["test/browser.test.ts","test/browser-shared-a.test.ts","test/browser-shared-b.test.ts"],extraSerial:["test/extra.test.ts"]})`,
     )
     const child = Bun.spawn([process.execPath, "run", "run.ts", "--coverage"], {
       cwd: root,
@@ -44,6 +48,20 @@ test("a browser-only isolated suite runs once with browser conditions and separa
     expect(await Bun.file(path.join(root, "coverage/shards/1/lcov.info")).exists()).toBe(true)
     expect(await Bun.file(path.join(root, "coverage/shards/0/junit.xml")).text()).toContain("<testcase")
     expect(await Bun.file(path.join(root, "coverage/shards/1/junit.xml")).text()).toContain("<testcase")
+    const expected = [
+      ["test/server.test.ts"],
+      ["test/browser.test.ts"],
+      ["test/isolated.test.ts"],
+      ["test/browser-shared-a.test.ts", "test/browser-shared-b.test.ts"],
+      ["test/extra.test.ts"],
+    ]
+    for (const [index, files] of expected.entries()) {
+      expect((await Bun.file(path.join(root, `coverage/shards/${index}/timing.json`)).json()).files).toEqual(files)
+      for (const file of files)
+        expect(await Bun.file(path.join(root, file.replace("test/", "").replace(".test.ts", ".runs"))).text()).toBe(
+          "run\n",
+        )
+    }
   } finally {
     await rm(root, { recursive: true, force: true })
   }

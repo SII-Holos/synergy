@@ -70,8 +70,13 @@ export function mcpStatusCopy(status: McpStatus | undefined, _: McpStatusTransla
     case "disabled":
       return { label: _(dialog.mcpStatusDisabled.id), description: _(dialog.mcpStatusDisabledDesc.id), tone: "neutral" }
     case "uninitialized":
-    default:
       return { label: _(dialog.mcpStatusReady.id), description: _(dialog.mcpStatusReadyDesc.id), tone: "neutral" }
+    default:
+      return {
+        label: _(dialog.mcpStatusUnavailable.id),
+        description: _(dialog.mcpStatusUnavailableDesc.id),
+        tone: "neutral",
+      }
   }
 }
 

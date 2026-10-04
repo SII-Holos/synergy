@@ -7,6 +7,7 @@ import { ScopedState } from "./scoped-state"
 import { ScopeStartup } from "./startup"
 import { WorkspaceRuntime } from "../workspace/runtime"
 import { WorkspaceState } from "../workspace/state"
+import { withStorageQueueOptions } from "../storage/queue"
 
 export namespace ScopeRuntime {
   type StartingListener = (scope: Scope.Project) => void
@@ -72,14 +73,18 @@ export namespace ScopeRuntime {
     scope: Scope
     fn: () => R | Promise<R>
     workspace?: import("../session/types").Workspace | null
-    ensure?: boolean
+    ensure?: boolean | "background"
   }): Promise<Awaited<R>> {
-    if (input.ensure !== false) await ensure(input.scope)
+    if (input.ensure !== false && input.ensure !== "background") await ensure(input.scope)
     return ScopeContext.provide({
       ...input,
       fn: async () => {
         const workspace = WorkspaceState.current()
         if (input.ensure !== false && workspace) await WorkspaceRuntime.ensure(input.scope, workspace)
+        if (input.ensure === "background")
+          void withStorageQueueOptions({ priority: "background" }, () => ensure(input.scope)).catch((error) =>
+            log.warn("background Scope startup failed", { scopeID: input.scope.id, error }),
+          )
         return input.fn()
       },
     })

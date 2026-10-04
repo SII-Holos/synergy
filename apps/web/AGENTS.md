@@ -18,7 +18,7 @@ Read [Frontend data sync](../../docs/architecture/frontend-data-sync.md) before 
 - Preserve composer resolution layers: explicit draft → session default → fallback. A derived/historical value must not write back into the user's draft. Existing-session selector choices persist through revisioned `modelSelection`; `modelOverride` is its legacy projection.
 - Preserve `seq`/`epoch` watermarks, reconnect replay, fail-open resync, unsequenced streaming deltas, write-behind behavior, and LRU protection of the active session. Do not add per-event REST refetches.
 - Keep the event queue visibility-aware: hidden pages relax to a 1 s cadence and merge streaming deltas per part (server checkpoints converge), visible pages return to 16 ms with per-delta telemetry; never drop sequenced state events.
-- Keep the rendered turn tree bounded: while pinned at the bottom in latest mode, `turnStart` auto-advances (trim from the top, re-pin the scroller after layout) so the DOM does not grow with session length; parts stay fine-grained store reads and must not move into the turn projection.
+- Keep conversation rows and large Markdown blocks virtualized, preserving prepend anchors, focused controls, selections and full-history operations. Parts stay fine-grained store reads and must not move into the turn projection.
 - Reconcile single messages into the sorted window incrementally (binary-search insertion) rather than re-merging and re-sorting the whole window; window order and eviction semantics stay canonical.
 
 Discover active components through the generated capabilities API before optional API calls. Keep startup requests, settings, navigation, composer controls and workbench registrations consistent with that selection; reconnect discards the previous selection and never assumes a full product.
@@ -52,6 +52,8 @@ Read [PRODUCT.md](PRODUCT.md) before changing interaction structure, visual hier
 ## Verification
 
 Keep App tests under `test/`, mirroring the relevant `src/` or `script/` domain. Never colocate `*.test.*` or `*.spec.*` files with App implementation files.
+
+Keep browser conditions, isolation lists and batch timeouts in `script/test-options.ts`; the package runner and CI planner share that executable batch definition.
 
 Run the narrow UI/context test first, then:
 

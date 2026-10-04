@@ -71,9 +71,9 @@ export function isMicSilenceReason(error: unknown): boolean {
   return errorReason(error) === "voice_mic_silence"
 }
 
-export function isSttConfigured(config: { voice?: { stt?: { model?: string } } }): boolean {
+export function isSttConfigured(config: { voice?: { stt?: { model?: string; enabled?: boolean } } }): boolean {
   const model = config.voice?.stt?.model
-  return typeof model === "string" && model.trim().length > 0
+  return config.voice?.stt?.enabled !== false && typeof model === "string" && model.trim().length > 0
 }
 
 export interface VoiceDictationTrack {

@@ -23,12 +23,19 @@ export namespace SnapshotRecords {
       value.type === "patch" && value.operation && typeof value.operation === "object"
         ? (value.operation as Record<string, unknown>)
         : undefined
+    const checkpoint =
+      value.type === "patch" && value.checkpoint && typeof value.checkpoint === "object"
+        ? (value.checkpoint as Record<string, unknown>)
+        : undefined
     const empty =
       hash === "" &&
       (["step-start", "step-finish"].includes(String(value.type)) ||
         operation?.status === "pending" ||
-        operation?.status === "incomplete")
-    const hashes = [empty ? undefined : hash, operation?.afterHash].filter((item) => item !== undefined)
+        operation?.status === "incomplete" ||
+        checkpoint !== undefined)
+    const hashes = [empty ? undefined : hash, operation?.afterHash, checkpoint?.afterHash].filter(
+      (item) => item !== undefined,
+    )
     if (hashes.some((item) => typeof item !== "string" || !SnapshotStore.OID.test(item)))
       throw new SnapshotStore.StorageError("Invalid historical snapshot reference")
     return [...new Set(hashes)] as string[]

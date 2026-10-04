@@ -1,5 +1,6 @@
-import { createEffect, createMemo, Show } from "solid-js"
+import { createEffect, createMemo, For, Show } from "solid-js"
 import type { StatsSnapshot } from "@ericsanchezok/synergy-sdk"
+import { formatCost } from "./format"
 import { useStats } from "./use-stats"
 import { useLocale } from "@/context/locale"
 import { S } from "./stats-i18n"
@@ -9,7 +10,8 @@ import { TokenRing } from "./token-ring"
 import { RankList } from "./rank-list"
 import { CodeSummary } from "./code-summary"
 import { ActivityHeatmap } from "./hourly-heatmap"
-import { Milestones } from "./milestones"
+import "./stats.css"
+import { CostBreakdown } from "../execution/overview"
 import {
   buildOverviewMetrics,
   buildModelRows,
@@ -78,7 +80,7 @@ function StatsSyncStatus(props: {
         <Show when={props.syncing && props.progress}>
           <div class="library-sync-progress">
             <div
-              class="h-full rounded-full bg-text-strong/60 transition-[width] duration-300"
+              class="h-full rounded-full bg-text-strong/60 transition-[width] duration-180"
               style={{ width: `${percent()}%` }}
             />
           </div>
@@ -112,7 +114,7 @@ export function StatsSection(props: { registerSync?: (handle: WorkspaceStatsSync
       </Show>
       <Show when={data() && syncError()}>
         <div class="library-sync-row">
-          <span class="text-12-regular text-text-weak">{i18n._(S.stale.id)}</span>
+          <span class="app-panel-caption text-text-weak">{i18n._(S.stale.id)}</span>
           <button type="button" class="library-plain-action" disabled={syncing()} onClick={() => void refresh()}>
             {i18n._(S.loadButtonRetry.id)}
           </button>
@@ -123,16 +125,16 @@ export function StatsSection(props: { registerSync?: (handle: WorkspaceStatsSync
         fallback={
           <div class="flex items-center justify-center py-12">
             <div class="flex max-w-sm flex-col items-center gap-2 text-center">
-              <div class="text-12-medium text-text-base">
+              <div class="app-panel-caption font-medium text-text-base">
                 {loading() ? i18n._(S.loadLoading.id) : i18n._(S.loadUnavailable.id)}
               </div>
               <Show when={error() && !loading()}>
-                <div class="text-11-regular text-text-weak">{error()}</div>
+                <div class="app-panel-caption text-text-weak">{error()}</div>
               </Show>
               <div class="flex items-center gap-2">
                 <button
                   type="button"
-                  class="rounded-full bg-surface-inset-base/70 px-3 py-1.5 text-12-medium text-text-interactive-base transition hover:bg-surface-inset-base hover:text-text-interactive-base"
+                  class="rounded-full bg-surface-inset-base/70 px-3 py-1.5 app-panel-caption font-medium text-text-interactive-base transition hover:bg-surface-inset-base hover:text-text-interactive-base"
                   disabled={loading() || syncing()}
                   onClick={() => void refresh()}
                 >
@@ -160,65 +162,90 @@ function StatsContent(props: {
   const modelRows = createMemo(() => buildModelRows(snapshot(), i18n))
   const agentRows = createMemo(() => buildAgentRows(snapshot(), i18n))
   const toolRows = createMemo(() => buildToolRows(snapshot(), fmt.number, i18n))
+  const sections = () => [
+    { id: "overview", label: i18n._({ id: "stats.section.overview", message: "Overview" }) },
+    { id: "trends", label: i18n._({ id: "stats.section.trends", message: "Trends" }) },
+    { id: "models", label: i18n._(S.rankTitleModels.id) },
+    { id: "agents", label: i18n._(S.rankTitleAgents.id) },
+    { id: "tools", label: i18n._(S.rankTitleTools.id) },
+    { id: "code", label: i18n._({ id: "stats.section.code", message: "Code" }) },
+  ]
 
   return (
-    <div class="library-stats-content flex flex-col gap-5 pb-5">
-      <OverviewCards
-        metrics={overviewMetrics()}
-        streak={{
-          current: snapshot().overview.currentStreak,
-          longest: snapshot().overview.longestStreak,
-        }}
-      />
-      <Show when={snapshot().tokenCost.accounting}>
-        {(accounting) => (
-          <p class="text-small text-text-weak">
-            {i18n._(S.accountingDetail.id, {
-              api: fmt.currency(accounting().apiEstimate.known, "USD"),
-              subscription: fmt.currency(accounting().subscriptionEquivalent.known, "USD"),
-              unknown: accounting().subscriptionEquivalent.unknown,
-              legacy: fmt.currency(accounting().legacy.cost, "USD"),
-            })}
-          </p>
-        )}
-      </Show>
-      <DailyTrend days={snapshot().timeSeries.days} computedAt={snapshot().computedAt} />
-      <ActivityHeatmap
-        computedAt={snapshot().computedAt}
-        days={snapshot().timeSeries.days}
-        hours={
-          (snapshot().timeSeries as StatsSnapshot["timeSeries"] & { hours?: Array<{ hour: string; turns: number }> })
-            .hours
-        }
-      />
-      <TokenRing tokens={snapshot().tokenCost.tokens} cacheHitRate={snapshot().tokenCost.cacheHitRate} />
-
-      <RankList
-        title={i18n._(S.rankTitleModels.id)}
-        description={i18n._(S.rankDescModels.id)}
-        metrics={MODEL_METRICS}
-        rows={modelRows()}
-        defaultMetric="messages"
-      />
-
-      <RankList
-        title={i18n._(S.rankTitleAgents.id)}
-        description={i18n._(S.rankDescAgents.id)}
-        metrics={AGENT_METRICS}
-        rows={agentRows()}
-        defaultMetric="messages"
-      />
-
-      <RankList
-        title={i18n._(S.rankTitleTools.id)}
-        description={i18n._(S.rankDescTools.id)}
-        metrics={TOOL_METRICS}
-        rows={toolRows()}
-        defaultMetric="calls"
-      />
-
-      <CodeSummary codeChanges={snapshot().codeChanges} />
-      <Milestones snapshot={snapshot()} />
+    <div class="library-stats-content stats-content flex flex-col gap-5 pb-5">
+      <nav class="stats-section-nav" aria-label={i18n._({ id: "stats.section.navigation", message: "Usage sections" })}>
+        <For each={sections()}>{(section) => <a href={`#usage-${section.id}`}>{section.label}</a>}</For>
+      </nav>
+      <section id="usage-overview" class="stats-section-anchor">
+        <OverviewCards
+          metrics={overviewMetrics()}
+          streak={{
+            current: snapshot().overview.currentStreak,
+            longest: snapshot().overview.longestStreak,
+          }}
+        />
+        <Show
+          when={snapshot().tokenCost.costPresentation}
+          fallback={
+            <Show when={snapshot().tokenCost.accounting}>
+              {(accounting) => (
+                <p class="text-small text-text-weak">
+                  {i18n._(S.accountingDetail.id, {
+                    api: formatCost(accounting().apiEstimate.known),
+                    subscription: formatCost(accounting().subscriptionEquivalent.known),
+                    unknown: accounting().subscriptionEquivalent.unknown,
+                    legacy: formatCost(accounting().legacy.cost),
+                  })}
+                </p>
+              )}
+            </Show>
+          }
+        >
+          {(cost) => <CostBreakdown cost={cost()} />}
+        </Show>
+      </section>
+      <section id="usage-trends" class="stats-section-anchor">
+        <DailyTrend days={snapshot().timeSeries.days} computedAt={snapshot().computedAt} />
+        <ActivityHeatmap
+          computedAt={snapshot().computedAt}
+          days={snapshot().timeSeries.days}
+          hours={
+            (snapshot().timeSeries as StatsSnapshot["timeSeries"] & { hours?: Array<{ hour: string; turns: number }> })
+              .hours
+          }
+        />
+        <TokenRing tokens={snapshot().tokenCost.tokens} cacheHitRate={snapshot().tokenCost.cacheHitRate} />
+      </section>
+      <section id="usage-models" class="stats-section-anchor">
+        <RankList
+          title={i18n._(S.rankTitleModels.id)}
+          description={i18n._(S.rankDescModels.id)}
+          metrics={MODEL_METRICS}
+          rows={modelRows()}
+          defaultMetric="messages"
+        />
+      </section>
+      <section id="usage-agents" class="stats-section-anchor">
+        <RankList
+          title={i18n._(S.rankTitleAgents.id)}
+          description={i18n._(S.rankDescAgents.id)}
+          metrics={AGENT_METRICS}
+          rows={agentRows()}
+          defaultMetric="messages"
+        />
+      </section>
+      <section id="usage-tools" class="stats-section-anchor">
+        <RankList
+          title={i18n._(S.rankTitleTools.id)}
+          description={i18n._(S.rankDescTools.id)}
+          metrics={TOOL_METRICS}
+          rows={toolRows()}
+          defaultMetric="calls"
+        />
+      </section>
+      <section id="usage-code" class="stats-section-anchor">
+        <CodeSummary codeChanges={snapshot().codeChanges} />
+      </section>
     </div>
   )
 }

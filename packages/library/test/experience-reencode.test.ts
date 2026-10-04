@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import * as LibraryConfigSchema from "@ericsanchezok/synergy-library/config-schema"
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test"
 import { AgentCall } from "@ericsanchezok/synergy-harness/agent/call"
@@ -123,7 +124,7 @@ async function createTurn(sessionID: string, userText: string, assistantText: st
     sessionID,
     role: "user",
     time: { created: Date.now() },
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test-provider", modelID: "test-model" },
   })) as MessageV2.User
   await Session.updatePart({
@@ -142,8 +143,8 @@ async function createTurn(sessionID: string, userText: string, assistantText: st
     modelID: "test-model",
     providerID: "test-provider",
     time: { created: Date.now(), completed: Date.now() },
-    mode: "synergy",
-    agent: "synergy",
+    mode: PrimaryAgentIdentity.names.general,
+    agent: PrimaryAgentIdentity.names.general,
     path: { cwd: process.cwd(), root: process.cwd() },
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -275,7 +276,7 @@ describe.serial("ExperienceReencode repair integration", () => {
             sessionID: session.id,
             role: "user",
             time: { created: Date.now() },
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test-provider", modelID: "test-model" },
           })) as MessageV2.User
           await Session.updatePart({
@@ -295,8 +296,8 @@ describe.serial("ExperienceReencode repair integration", () => {
             modelID: "test-model",
             providerID: "test-provider",
             time: { created: Date.now(), completed: Date.now() },
-            mode: "synergy",
-            agent: "synergy",
+            mode: PrimaryAgentIdentity.names.general,
+            agent: PrimaryAgentIdentity.names.general,
             path: { cwd: tmp.path, root: tmp.path },
             cost: 0,
             tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

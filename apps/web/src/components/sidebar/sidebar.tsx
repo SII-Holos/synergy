@@ -1,4 +1,6 @@
 import { runtimeFeatureAvailable } from "../runtime-features"
+import { useNewTaskNavigation } from "../session/welcome/context"
+import { navStart } from "@/utils/perf"
 import { SidebarNavigation } from "./sidebar-navigation"
 import { SidebarSectionButton } from "./sidebar-section-button"
 import { useExtensionOutlet } from "@ericsanchezok/synergy-ui/context/extension-outlet"
@@ -91,6 +93,7 @@ export function Sidebar(props: SidebarProps) {
   const confirm = useConfirm()
   const theme = useTheme()
   const navigate = useNavigate()
+  const newTask = useNewTaskNavigation(navigate)
   const location = useLocation()
   const params = useParams()
   const command = useCommand()
@@ -356,7 +359,7 @@ export function Sidebar(props: SidebarProps) {
   const currentDirectory = createMemo(() => (dir() === "home" ? undefined : dir()))
 
   const handleNewSession = () => {
-    navigate(`/${base64Encode("home")}/session`)
+    newTask(base64Encode("home"))
   }
 
   const handleProjectClick = (worktree: string) => {
@@ -404,7 +407,7 @@ export function Sidebar(props: SidebarProps) {
 
   const handleProjectPlus = (e: MouseEvent, scope: LocalScope) => {
     e.stopPropagation()
-    navigate(`/${base64Encode(scope.id)}/session`)
+    newTask(base64Encode(scope.id))
   }
   const handleProjectPin = (scope: LocalScope) => {
     layout.scopes.pinScope(scope)
@@ -413,6 +416,7 @@ export function Sidebar(props: SidebarProps) {
   const handleAddProject = () => command.trigger("project.create")
 
   const handleSessionClick = (scope: LocalScope, entry: NavEntry) => {
+    navStart({ dir: base64Encode(scope.id), to: entry.id, scopeID: scope.id, trigger: "sidebar" })
     navigate(`/${base64Encode(scope.id)}/session/${entry.id}`)
   }
 
@@ -424,10 +428,17 @@ export function Sidebar(props: SidebarProps) {
   }
 
   const handleNavEntryClick = (entry: NavEntry) => {
+    navStart({
+      dir: base64Encode(resolveEntryRouteDirectory(entry)),
+      to: entry.id,
+      scopeID: entry.scopeID,
+      trigger: "sidebar",
+    })
     navigate(`/${base64Encode(resolveEntryRouteDirectory(entry))}/session/${entry.id}`)
   }
 
   const handleFlyoutSessionClick = (entry: NavEntry, worktree: string) => {
+    navStart({ dir: base64Encode(worktree), to: entry.id, scopeID: entry.scopeID, trigger: "sidebar-flyout" })
     setProjectsFlyoutOpen(false)
     navigate(`/${base64Encode(worktree === "home" ? "home" : worktree)}/session/${entry.id}`)
   }
@@ -1522,6 +1533,15 @@ function SidebarSessionRow(props: {
       <span class={props.flyout ? "sb-flyout-session-title" : "sb-session-title"}>
         <span class="sb-session-title-text">{props.entry.title || _(sidebar.untitled)}</span>
       </span>
+      <Show when={visual().worktree}>
+        <span
+          class="sb-session-worktree"
+          title={_({ id: "session.state.worktree", message: "Worktree session" })}
+          aria-label={_({ id: "session.state.worktree", message: "Worktree session" })}
+        >
+          <Icon name={getSemanticIcon("workspace.worktree")} size="small" />
+        </span>
+      </Show>
       <Show when={props.entry.tags?.length}>
         <span class="sb-session-tags" title={props.entry.tags?.map((tag) => `#${tag}`).join(" ")}>
           {props.entry.tags?.map((tag) => `#${tag}`).join(" ")}

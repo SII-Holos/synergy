@@ -1,5 +1,5 @@
 import { createStore } from "solid-js/store"
-import { batch, createMemo, createRoot, onCleanup } from "solid-js"
+import { batch, createEffect, createMemo, createRoot, onCleanup } from "solid-js"
 import { uniqueBy } from "remeda"
 import type {
   ProviderListResponse,
@@ -104,8 +104,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         const available = list()
         if (available.length === 0) return undefined
         return (
-          ComposerIntent.resolveAgent([store.draft[intentKey()], sessionDefault(), store.global], isSelectable) ??
-          available[0].name
+          ComposerIntent.resolveAgent(
+            [store.draft[intentKey()], sessionDefault(), store.global, sync.data.config.default_agent],
+            isSelectable,
+          ) ?? available[0].name
         )
       })
       return {
@@ -397,6 +399,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         const a = agent.current()
         if (!a) return undefined
         const draftModel = params.id && selected() ? undefined : draft.model[intentKey()]
+        const preferred = draftModel ?? sessionDefaultModel()
+        if (preferred && !providers.complete() && !providers.resolved(preferred)) return undefined
         const activeDraft = find(draftModel)
         if (activeDraft) return activeDraft
         const retainedDraft = params.id ? resolveSessionModel(providers.connected(), draftModel) : undefined
@@ -459,6 +463,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       }
 
       const recent = createMemo(() => store.recent.map(find).filter((model): model is LocalModel => !!model))
+      createEffect(() => {
+        const preferred = sessionDefaultModel()
+        const keys = [...store.recent, ...quickSwitcherPreferences(), ...(preferred ? [preferred] : [])]
+        void providers.ensureModels(keys).catch(() => {})
+      })
 
       function inQuickSwitcher(model: ModelKey) {
         return quickSwitcherSet().has(keyOf(model))

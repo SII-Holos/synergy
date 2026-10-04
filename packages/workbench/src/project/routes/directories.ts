@@ -68,6 +68,47 @@ export function ProjectDirectoriesRoute() {
       (c) => result(c, () => ProjectDirectories.update(c.req.valid("param").scopeID, c.req.valid("json"))),
     )
     .get(
+      "/:scopeID/worktree-inventory",
+      describeRoute({
+        summary: "List Worktree identities without computing status or disk usage",
+        operationId: "project.worktreeInventory",
+        responses: { 200: response(ProjectWorktrees.Inventory) },
+      }),
+      validator("param", params),
+      async (c) => {
+        const scope = await Scope.resolve(c.req.valid("param"))
+        const inventory = await ScopeContext.provide({
+          scope,
+          workspace: null,
+          fn: () => ProjectWorktrees.inventory(scope.id),
+        })
+        c.header("x-synergy-epoch", inventory.sync.epoch)
+        c.header("x-synergy-seq", String(inventory.sync.seq))
+        return c.json(inventory)
+      },
+    )
+    .get(
+      "/:scopeID/worktree-details",
+      describeRoute({
+        summary: "Compute status, disk usage and cleanup protection for one Worktree",
+        operationId: "project.worktreeDetails",
+        responses: { 200: response(Worktree.Details), ...failures },
+      }),
+      validator("param", params),
+      validator("query", z.object({ target: z.string().min(1), sourceWorkspaceID: z.string().optional() })),
+      async (c) => {
+        const scope = await Scope.resolve(c.req.valid("param"))
+        const input = c.req.valid("query")
+        return c.json(
+          await ScopeContext.provide({
+            scope,
+            workspace: null,
+            fn: () => Worktree.withSource(input.sourceWorkspaceID, () => Worktree.details(input)),
+          }),
+        )
+      },
+    )
+    .get(
       "/:scopeID/worktrees",
       describeRoute({
         summary: "List project Worktrees with their original repositories",

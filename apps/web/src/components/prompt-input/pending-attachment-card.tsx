@@ -1,5 +1,5 @@
-import { Show } from "solid-js"
-import { formatAttachmentSize } from "@ericsanchezok/synergy-ui/attachment-card"
+import { Show, createEffect, createSignal, onCleanup } from "solid-js"
+import { attachmentKind, formatAttachmentSize } from "@ericsanchezok/synergy-ui/attachment-card"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
@@ -9,33 +9,81 @@ export function PendingAttachmentCard(props: {
   entry: PendingPromptAttachment
   uploadingLabel: string
   uploadedLabel: string
+  failedLabel: string
+  retryLabel: string
+  file?: File
   removeLabel: string
   onRemove: (id: string) => void
+  onRetry: (id: string) => void
 }) {
   const uploading = () => props.entry.status === "uploading"
+  const failed = () => props.entry.status === "failed"
+  const [thumbnail, setThumbnail] = createSignal<string>()
+  createEffect(() => {
+    const file = props.file
+    if (!file || !file.type.startsWith("image/")) {
+      setThumbnail(undefined)
+      return
+    }
+    const url = URL.createObjectURL(file)
+    setThumbnail(url)
+    onCleanup(() => URL.revokeObjectURL(url))
+  })
   const metaLabel = () => {
-    if (!uploading()) return props.uploadedLabel
-    return [formatAttachmentSize(props.entry.size), props.uploadingLabel].filter(Boolean).join(" · ")
+    return [
+      attachmentKind({ mime: props.entry.mime }),
+      formatAttachmentSize(props.entry.size),
+      failed() ? props.failedLabel : uploading() ? props.uploadingLabel : props.uploadedLabel,
+    ]
+      .filter(Boolean)
+      .join(" · ")
   }
 
   return (
-    <div class="relative group w-56 max-w-full">
+    <div class="prompt-attachment-entry relative group" title={props.entry.filename}>
       <div
         data-component="attachment-card"
         data-type="file"
         data-size="small"
+        data-compact="draft"
         data-disabled="true"
         data-upload-state={props.entry.status}
         aria-busy={uploading()}
       >
         <span data-slot="attachment-card-preview">
-          <Show when={!uploading()} fallback={<Spinner class="size-4 text-icon-weak-base" />}>
-            <Icon name={getSemanticIcon("state.success")} size="small" class="text-icon-success-base" />
+          <Show
+            when={thumbnail()}
+            fallback={
+              <Show when={!uploading()} fallback={<Spinner class="size-4 text-icon-weak-base" />}>
+                <Icon name={getSemanticIcon(failed() ? "state.error" : "state.success")} size="small" />
+              </Show>
+            }
+          >
+            <img src={thumbnail()} alt={props.entry.filename} class="size-full object-contain" />
           </Show>
         </span>
         <span data-slot="attachment-card-body">
-          <span data-slot="attachment-card-filename">{props.entry.filename}</span>
+          <span data-slot="attachment-card-filename" class="attachment-compact-filename">
+            <span>
+              {props.entry.filename.includes(".")
+                ? props.entry.filename.slice(0, props.entry.filename.lastIndexOf("."))
+                : props.entry.filename}
+            </span>
+            <span>
+              {props.entry.filename.includes(".")
+                ? props.entry.filename.slice(props.entry.filename.lastIndexOf("."))
+                : ""}
+            </span>
+          </span>
           <span data-slot="attachment-card-meta">{metaLabel()}</span>
+          <Show when={failed()}>
+            <span class="prompt-attachment-error" title={props.entry.error}>
+              {props.entry.error}
+            </span>
+            <button type="button" data-slot="attachment-retry" onClick={() => props.onRetry(props.entry.id)}>
+              {props.retryLabel}
+            </button>
+          </Show>
         </span>
       </div>
       <button
@@ -45,7 +93,7 @@ export function PendingAttachmentCard(props: {
           event.stopPropagation()
           props.onRemove(props.entry.id)
         }}
-        class="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-surface-raised-base-hover"
+        class="prompt-attachment-remove"
       >
         <Icon name={getSemanticIcon("action.close")} class="size-3 text-text-weak" />
       </button>

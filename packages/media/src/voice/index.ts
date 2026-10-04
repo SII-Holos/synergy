@@ -9,6 +9,7 @@ import { RolloutTransport } from "@ericsanchezok/synergy-harness/session/rollout
 import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
 import { RolloutContext } from "@ericsanchezok/synergy-harness/session/rollout/context"
 import { findRecordingError } from "@ericsanchezok/synergy-harness/session/rollout/error"
+import { voiceCapabilityEnabled } from "../config-schema"
 const DEFAULT_BASE_URL = "https://api.openai.com/v1"
 
 type ClientFactory = typeof createOpenAI
@@ -20,8 +21,8 @@ export class VoiceNotConfiguredError extends Error {
   constructor(side: "stt" | "tts") {
     super(
       side === "stt"
-        ? "Voice dictation is disabled: voice.stt.model is not configured. Set it in Settings → Voice (config domain voice, file 125-voice.jsonc)."
-        : "Speech synthesis is disabled: voice.tts.model is not configured. Set it in Settings → Voice (config domain voice, file 125-voice.jsonc).",
+        ? "Voice input is unavailable. Enable it and select a speech recognition model in Settings → Voice."
+        : "Read aloud is unavailable. Enable it and select a speech model in Settings → Voice.",
     )
     this.name = "VoiceNotConfiguredError"
   }
@@ -42,12 +43,12 @@ export namespace Voice {
 
   export async function sttEnabled(): Promise<boolean> {
     const config = await Config.current()
-    return Boolean(config.voice?.stt?.model)
+    return voiceCapabilityEnabled(config.voice?.stt)
   }
 
   export async function ttsEnabled(): Promise<boolean> {
     const config = await Config.current()
-    return Boolean(config.voice?.tts?.model)
+    return voiceCapabilityEnabled(config.voice?.tts)
   }
 
   export async function transcribe(input: {
@@ -60,14 +61,14 @@ export namespace Voice {
 
     const config = await Config.current()
     const stt = config.voice?.stt
-    if (!stt?.model) throw new VoiceNotConfiguredError("stt")
+    if (!stt?.model || !voiceCapabilityEnabled(stt)) throw new VoiceNotConfiguredError("stt")
 
     const signal = AbortSignal.any(
       [input.abortSignal, RolloutContext.current()?.signal].filter((signal): signal is AbortSignal => !!signal),
     )
     const client = instanceState.clientFactory({
       baseURL: stt.baseURL ?? DEFAULT_BASE_URL,
-      apiKey: stt.apiKey,
+      apiKey: stt.apiKey ?? undefined,
       fetch: RolloutTransport.sdkFetch,
     })
     const model = client.transcription(stt.model)
@@ -141,19 +142,19 @@ export namespace Voice {
 
     const config = await Config.current()
     const tts = config.voice?.tts
-    if (!tts?.model) throw new VoiceNotConfiguredError("tts")
+    if (!tts?.model || !voiceCapabilityEnabled(tts)) throw new VoiceNotConfiguredError("tts")
 
     const signal = AbortSignal.any(
       [input.abortSignal, RolloutContext.current()?.signal].filter((signal): signal is AbortSignal => !!signal),
     )
     const client = instanceState.clientFactory({
       baseURL: tts.baseURL ?? DEFAULT_BASE_URL,
-      apiKey: tts.apiKey,
+      apiKey: tts.apiKey ?? undefined,
       fetch: RolloutTransport.sdkFetch,
     })
     const model = client.speech(tts.model)
-    const voice = input.voice ?? tts.voice
-    const instructions = input.instructions ?? tts.instructions
+    const voice = input.voice ?? tts.voice ?? undefined
+    const instructions = input.instructions ?? tts.instructions ?? undefined
 
     // Request uncompressed PCM16 WAV so the clip can be peak-normalized in
     // pure JS before storage: TTS providers master well below full scale and

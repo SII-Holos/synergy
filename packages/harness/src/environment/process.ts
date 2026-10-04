@@ -150,6 +150,11 @@ export namespace EnvironmentProcess {
           running.resolve(false)
           child.emit("exit", child.exitCode, child.signalCode)
         }
+        // Output can advance beyond this status snapshot and block a paused reader before activation resolves.
+        if (!active && !terminal) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 25))
+          continue
+        }
         for (const chunk of await EnvironmentExecution.output(input.id, input.scopeID, cursor)) {
           if (chunk.cursor !== cursor + 1) throw new globalThis.Error("Execution output cursor is discontinuous")
           const target = chunk.stream === "stdout" ? child.stdout : child.stderr
@@ -172,11 +177,29 @@ export namespace EnvironmentProcess {
             throw info.status!.failure
               ? WorkspaceErrors.restore(info.status!.failure)
               : new globalThis.Error(info.status!.error)
+          stdin.destroy()
+          // PassThrough's writable finish can precede consumption of its readable buffer.
+          // https://nodejs.org/api/stream.html#event-end
+          await Promise.all(
+            [child.stdout, child.stderr].map(
+              (stream) =>
+                new Promise<void>((resolve) => {
+                  if (stream.readableEnded || stream.destroyed) return resolve()
+                  const done = () => {
+                    stream.off("end", done)
+                    stream.off("close", done)
+                    resolve()
+                  }
+                  stream.once("end", done)
+                  stream.once("close", done)
+                  stream.end()
+                  // Advance empty streams without consuming a paused reader's bytes.
+                  stream.read(0)
+                }),
+            ),
+          )
           finished = true
           input.signal?.removeEventListener("abort", abort)
-          stdin.destroy()
-          child.stdout.end()
-          child.stderr.end()
           child.emit("close", child.exitCode, child.signalCode)
           completed.resolve()
           return

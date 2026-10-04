@@ -144,7 +144,7 @@ export function DialogCreateProject(props: {
       }
       footer={
         <div data-slot="dialog-actions">
-          <Button variant="secondary" size="large" disabled={pending() || picking()} onClick={() => void close()}>
+          <Button variant="ghost" size="large" disabled={pending() || picking()} onClick={() => void close()}>
             {_(locationCopy.cancel)}
           </Button>
           <Button
@@ -182,7 +182,7 @@ export function DialogCreateProject(props: {
           folders={selected().folders}
           main={selected().main}
           onChange={change}
-          onAdd={() => void add()}
+          onAdd={add}
           disabled={pending() || picking()}
           computer={
             <ComputerMenu

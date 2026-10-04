@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { BrowserWaitTool } from "@ericsanchezok/synergy-browser-runtime/tools/browser-wait"
 import { BrowserToolHelper } from "@ericsanchezok/synergy-browser-runtime/tools/browser-shared"
@@ -31,7 +32,7 @@ function context() {
     sessionID: "ses_browser_wait_test",
     messageID: "msg_browser_wait_test",
     callID: "call_browser_wait_test",
-    agent: "synergy-max",
+    agent: PrimaryAgentIdentity.names.coding,
     abort: new AbortController().signal,
     extra: {},
     metadata() {},

@@ -1,5 +1,6 @@
 import z from "zod"
 import { RolloutAccounting } from "@ericsanchezok/synergy-harness/session/rollout/accounting"
+import { ExecutionPresentation } from "../execution/presentation"
 
 // ---------------------------------------------------------------------------
 // Shared primitives
@@ -50,6 +51,7 @@ export const TokenCostStats = z.object({
   tokens: TokenBreakdown,
   cost: z.number(),
   accounting: RolloutAccounting.Summary.optional(),
+  costPresentation: ExecutionPresentation.Cost.optional(),
   cacheHitRate: z.number(),
   avgCostPerTurn: z.number(),
   avgTokensPerTurn: z.number(),

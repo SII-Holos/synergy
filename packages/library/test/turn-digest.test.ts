@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { TurnDigest } from "../src/turn-digest"
 import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
@@ -21,7 +22,7 @@ function userMsg(id: string, parts: MessageV2.Part[]): MessageV2.WithParts & { i
       sessionID: "ses_1",
       role: "user" as const,
       time: { created: 1 },
-      agent: "synergy",
+      agent: PrimaryAgentIdentity.names.general,
       model: { providerID: "p", modelID: "m" },
     },
     parts,
@@ -39,7 +40,7 @@ function assistantMsg(parentID: string, parts: MessageV2.Part[]): MessageV2.With
       modelID: "m",
       providerID: "p",
       mode: "",
-      agent: "synergy",
+      agent: PrimaryAgentIdentity.names.general,
       path: { cwd: "/", root: "/" },
       cost: 0,
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -180,6 +181,29 @@ describe("TurnDigest.summarizeTurn", () => {
 
     expect(result.user).toBe("What is 1+1?")
     expect(result.assistant).toBe("The answer is 2.")
+  })
+
+  test("retains purpose and native array input in a tool digest", () => {
+    const u = userMsg("u1", [textPart("Inspect labels")])
+    const tool = completedTool("mcp_labels", "labels")
+    tool.inputShape = "envelope"
+    tool.workBrief = "Inspect the task labels"
+    tool.state.input = ["one", "two"]
+    const a = assistantMsg("u1", [tool])
+    const session: Session.Info = {
+      id: "ses_1",
+      title: "Inspect labels",
+      version: "1",
+      scope: { type: "home", id: "home", local: null },
+      workspace: null,
+      tags: [],
+      completionNotice: { unread: false, unreadCount: 0, silent: false },
+      time: { created: 1, updated: 2 },
+    }
+    const result = TurnDigest.extractSingle(session, [u, a], "u1")
+    expect(result?.digest.segments.find((segment) => segment.type === "tool")).toMatchObject({
+      input: { workBrief: "Inspect the task labels", toolInput: ["one", "two"] },
+    })
   })
 
   test("includes completed tool labels", () => {

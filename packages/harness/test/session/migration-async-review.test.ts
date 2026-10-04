@@ -1,4 +1,5 @@
 import { registerSessionMigrations } from "../../src/session/migration"
+import { registerStorageMigrations } from "../../src/storage/migration"
 import { expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -19,6 +20,7 @@ import { afterAll as afterRuntimeTests } from "bun:test"
 import { migrationFixture as testRuntime } from "../migration/fixture"
 const runtime = await testRuntime()
 runtime.run(registerSessionMigrations)
+runtime.run(registerStorageMigrations)
 
 async function fixture() {
   const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "migration-async-review-"))

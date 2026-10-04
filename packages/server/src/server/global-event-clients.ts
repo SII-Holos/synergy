@@ -4,7 +4,7 @@ import { Log } from "@ericsanchezok/synergy-harness/util/log"
 export namespace GlobalEventClients {
   const log = Log.create({ service: "server.global-event-clients" })
 
-  export type Mode = "full" | "delta"
+  export type Mode = "full" | "delta" | "projection"
   export type SendResult = "sent" | "backpressured" | "dropped" | "closed" | "error"
 
   export interface ClientState {
@@ -32,7 +32,10 @@ export namespace GlobalEventClients {
     add(ws: WSContext, mode: Mode): void
     remove(ws: WSContext): boolean
     reply(ws: WSContext, data: string): SendResult
-    broadcast(encode: (mode: Mode) => string): {
+    broadcast(
+      encode: (mode: Mode) => string,
+      project?: (client: ClientState) => string | undefined,
+    ): {
       clients: number
       sent: number
       dropped: number
@@ -183,7 +186,7 @@ export namespace GlobalEventClients {
       return false
     }
 
-    function broadcast(encode: (mode: Mode) => string) {
+    function broadcast(encode: (mode: Mode) => string, project?: (client: ClientState) => string | undefined) {
       let sent = 0
       let dropped = 0
       let removed = 0
@@ -200,7 +203,7 @@ export namespace GlobalEventClients {
       }
 
       for (const [key, client] of clients) {
-        const result = send(client, payloadFor(client.mode))
+        const result = send(client, project?.(client) ?? payloadFor(client.mode))
         if (result === "sent") sent++
         else dropped++
         if (maybeEvict(key, client, result)) removed++

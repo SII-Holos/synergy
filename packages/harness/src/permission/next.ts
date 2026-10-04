@@ -134,52 +134,48 @@ export namespace PermissionNext {
         throw new DOMException("The operation was aborted", "AbortError")
       }
 
-      for (const pattern of request.patterns ?? []) {
-        const rule = evaluate(request.permission, pattern, ruleset)
-        if (rule.action === "deny")
-          throw new DeniedError(ruleset.filter((r: Rule) => Wildcard.match(request.permission, r.permission)))
-        if (rule.action === "ask" || (rule.action === "allow" && isNonBypassable(request))) {
-          const id = input.id ?? Identifier.ascending("permission")
-          const info: Request = { id, ...request }
-          let resolvePending: (() => void) | undefined
-          let rejectPending: ((e: any) => void) | undefined
-          let cleanup: (() => void) | undefined
-          const pendingPromise = new Promise<void>((resolve, reject) => {
-            resolvePending = () => {
-              cleanup?.()
-              resolve()
+      const decisions = request.patterns.map((pattern) => evaluate(request.permission, pattern, ruleset))
+      if (decisions.some((rule) => rule.action === "deny"))
+        throw new DeniedError(ruleset.filter((r: Rule) => Wildcard.match(request.permission, r.permission)))
+      if (decisions.some((rule) => rule.action === "ask" || (rule.action === "allow" && isNonBypassable(request)))) {
+        const id = input.id ?? Identifier.ascending("permission")
+        const info: Request = { id, ...request }
+        let resolvePending: (() => void) | undefined
+        let rejectPending: ((e: any) => void) | undefined
+        let cleanup: (() => void) | undefined
+        const pendingPromise = new Promise<void>((resolve, reject) => {
+          resolvePending = () => {
+            cleanup?.()
+            resolve()
+          }
+          rejectPending = (error) => {
+            cleanup?.()
+            reject(error)
+          }
+          if (signal) {
+            const onAbort = () => {
+              const pending = s.pending[id]
+              if (!pending) return
+              delete s.pending[id]
+              Bus.publish(Event.Replied, {
+                sessionID: pending.info.sessionID,
+                requestID: pending.info.id,
+                reply: "reject",
+              })
+              pending.reject(new DOMException("The operation was aborted", "AbortError"))
             }
-            rejectPending = (error) => {
-              cleanup?.()
-              reject(error)
+            if (signal.aborted) {
+              onAbort()
+              return
             }
-            if (signal) {
-              const onAbort = () => {
-                const pending = s.pending[id]
-                if (!pending) return
-                delete s.pending[id]
-                Bus.publish(Event.Replied, {
-                  sessionID: pending.info.sessionID,
-                  requestID: pending.info.id,
-                  reply: "reject",
-                })
-                pending.reject(new DOMException("The operation was aborted", "AbortError"))
-              }
-              if (signal.aborted) {
-                onAbort()
-                return
-              }
-              signal.addEventListener("abort", onAbort, { once: true })
-              cleanup = () => signal.removeEventListener("abort", onAbort)
-            }
-          })
-          s.pending[id] = { info, resolve: resolvePending!, reject: rejectPending!, cleanup }
+            signal.addEventListener("abort", onAbort, { once: true })
+            cleanup = () => signal.removeEventListener("abort", onAbort)
+          }
+        })
+        s.pending[id] = { info, resolve: resolvePending!, reject: rejectPending!, cleanup }
 
-          Bus.publish(Event.Asked, info)
-          return pendingPromise
-        }
-        // allow and not nonBypassable → auto-resolve; continue to next pattern
-        if (rule.action === "allow") continue
+        Bus.publish(Event.Asked, info)
+        return pendingPromise
       }
     },
   )

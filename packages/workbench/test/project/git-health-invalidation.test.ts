@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 // ---------------------------------------------------------------------------
 // git-health-invalidation.test.ts
 //
@@ -96,7 +97,7 @@ function makeUser(): any {
     role: "user" as const,
     sessionID: "ses_test",
     time: { created: Date.now() },
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test-provider", modelID: "test-model" },
   }
 }
@@ -111,8 +112,8 @@ function makeAssistant(toolParts: any[]): any {
       id: `msg_${Math.random().toString(36).slice(2)}`,
       role: "assistant" as const,
       sessionID: "ses_test",
-      agent: "synergy",
-      mode: "synergy",
+      agent: PrimaryAgentIdentity.names.general,
+      mode: PrimaryAgentIdentity.names.general,
       cost: 0,
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
       modelID: "test-model",

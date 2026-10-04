@@ -82,3 +82,45 @@ test("failed reconciliation keeps the outcome unknown and blocks blind resend", 
   expect(sends).toBe(1)
   expect(action.state("one").status).toBe("unknown")
 })
+
+test("checking an unknown outcome unlocks a confirmed pending request without submitting", async () => {
+  const action = createRoot(() => createRequestSubmission())
+  let sends = 0
+  await action.run("one", {
+    submit: async () => {
+      sends++
+      throw new Error("lost response")
+    },
+    isPending: async () => {
+      throw new Error("offline")
+    },
+  })
+  await action.check("one", async () => true)
+  expect(sends).toBe(1)
+  expect(action.state("one").status).toBe("error")
+  await action.check("one", async () => false)
+  expect(sends).toBe(1)
+  expect(action.state("one").status).toBe("settled")
+})
+
+test("unknown requests cannot resend even when connectivity returns", async () => {
+  const action = createRoot(() => createRequestSubmission())
+  let sends = 0
+  await action.run("one", {
+    submit: async () => {
+      sends++
+      throw new Error("lost response")
+    },
+    isPending: async () => {
+      throw new Error("offline")
+    },
+  })
+  await action.run("one", {
+    submit: async () => {
+      sends++
+    },
+    isPending: async () => true,
+  })
+  expect(sends).toBe(1)
+  expect(action.state("one").status).toBe("unknown")
+})

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { test, expect } from "bun:test"
 import path from "path"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -854,30 +855,18 @@ test("developer agent denies skills by default", () =>
     })
   }))
 
-test("Agent.defaultAgent() returns synergy by default", () =>
-  runtime.run(async () => {
-    await using tmp = await tmpdir()
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const defaultAgent = await Agent.defaultAgent()
-        expect(defaultAgent).toBe("synergy")
-      },
-    })
-  }))
-
 test("Agent.defaultAgent() with default_agent config returns configured agent", () =>
   runtime.run(async () => {
     await using tmp = await tmpdir({
       config: {
-        default_agent: "synergy-max",
+        default_agent: PrimaryAgentIdentity.names.coding,
       },
     })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const defaultAgent = await Agent.defaultAgent()
-        expect(defaultAgent).toBe("synergy-max")
+        expect(defaultAgent).toBe(PrimaryAgentIdentity.names.coding)
       },
     })
   }))
@@ -920,7 +909,7 @@ test("Agent.list() sorts configured default_agent first", () =>
     })
   }))
 
-test("Agent.list() sorts synergy first when no default_agent configured", () =>
+test("Agent.list() sorts the general primary first when no default_agent configured", () =>
   runtime.run(async () => {
     await using tmp = await tmpdir()
     await ScopeContext.provide({
@@ -928,7 +917,7 @@ test("Agent.list() sorts synergy first when no default_agent configured", () =>
       fn: async () => {
         const agents = await Agent.list()
         const firstAgent = agents[0]
-        expect(firstAgent.name).toBe("synergy")
+        expect(firstAgent.name).toBe(PrimaryAgentIdentity.names.general)
       },
     })
   }))

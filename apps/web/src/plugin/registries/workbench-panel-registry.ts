@@ -40,7 +40,12 @@ export interface WorkbenchPanelEntry extends SurfaceEntry {
   loader?: () => Promise<{ default: Component<WorkbenchPanelContentProps> }>
   exportName?: string
   defaultResource?: WorkbenchPanelTabInit
-  createTab?: () => WorkbenchPanelTabInit | void | Promise<WorkbenchPanelTabInit | void>
+  createTab?: (init?: WorkbenchPanelTabInit) => WorkbenchPanelTabInit | void | Promise<WorkbenchPanelTabInit | void>
+  resolveTab?: (
+    init: WorkbenchPanelTabInit,
+  ) => WorkbenchPanelTabInit | undefined | Promise<WorkbenchPanelTabInit | undefined>
+  restoreTab?: () => WorkbenchPanelTabInit | void | Promise<WorkbenchPanelTabInit | void>
+  beforeCloseTab?: (tab: WorkbenchPanelTab) => boolean | Promise<boolean>
   onCloseTab?: (tab: WorkbenchPanelTab) => void | boolean | Promise<void | boolean>
   title?: (tab: WorkbenchPanelTab, siblingTabs: WorkbenchPanelTab[]) => string | undefined
   tabActions?: (

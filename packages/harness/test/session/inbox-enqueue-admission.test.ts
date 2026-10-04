@@ -7,6 +7,7 @@ import { RolloutLifecycle } from "../../src/session/rollout/lifecycle"
 import { Config } from "../../src/config/config"
 import { StorageBusyError } from "../../src/storage/errors"
 import { Storage } from "../../src/storage/storage"
+import { Bus } from "../../src/bus"
 import { tmpdir } from "../support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -33,6 +34,54 @@ function enqueueTask(sessionID: string) {
 }
 
 describe("session inbox enqueue admission", () => {
+  test("passive inputs remain discoverable for recovery without requesting a model reply", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await SessionInbox.enqueueUser(
+            { sessionID: session.id, noReply: true, parts: [{ type: "text", text: "save without replying" }] },
+            { mode: "steer", admission: "idle_no_reply" },
+          )
+          expect(await SessionInbox.hasRunnableItem(session.id)).toBe(true)
+          expect(await SessionInbox.hasRunnableItem(session.id, { allowPassive: false })).toBe(false)
+          await enqueueTask(session.id)
+          expect(await SessionInbox.hasRunnableItem(session.id, { allowPassive: false })).toBe(true)
+        },
+      })
+    }))
+
+  test("accepted inbox notifications already observe their committed navigation activity", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await Session.update(
+            session.id,
+            (draft) => {
+              draft.time.updated = 1
+            },
+            { preserveActivityAt: true },
+          )
+          let observed: number | undefined
+          const release = Bus.subscribe(SessionInbox.Event.Updated, async (event) => {
+            if (event.properties.sessionID !== session.id || !event.properties.items.length) return
+            observed = (await Session.get(session.id)).time.updated
+          })
+          try {
+            await enqueueTask(session.id)
+            expect(observed).toBeGreaterThan(1)
+          } finally {
+            release()
+          }
+        },
+      })
+    }))
+
   test("retrying a cancelled input never resurrects its queued work", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })

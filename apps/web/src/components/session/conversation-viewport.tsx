@@ -38,7 +38,7 @@ export function ConversationViewport(props: {
           class={`absolute right-4 md:right-6 z-20 pointer-events-auto ${props.scrollButtonOffsetClass ?? "bottom-16 md:bottom-[calc(var(--prompt-height,8rem)+16px)]"}`}
         >
           <IconButton
-            icon={getSemanticIcon("navigation.collapse")}
+            icon={getSemanticIcon("navigation.latest")}
             variant="primary"
             size="large"
             class="rounded-full! size-10 transition-colors"

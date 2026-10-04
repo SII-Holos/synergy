@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -31,7 +32,7 @@ describe("BossService", () => {
       await withScope(async () => {
         const { boss, worker } = await bossAndWorker()
         expect(worker.parentID).toBe(boss.id)
-        expect(worker.agentOverride).toBe("synergy")
+        expect(worker.agentOverride).toBe(PrimaryAgentIdentity.names.general)
         expect(worker.interaction?.mode).toBe("unattended")
         expect(worker.workflow).toEqual({
           kind: "boss",

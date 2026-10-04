@@ -295,12 +295,13 @@ describe("session input acceptance", () => {
       })
     }))
 
-  test("preserves direct idle no-reply acceptance", () =>
+  test("durably accepts idle no-reply input before passive materialization without model work", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
-      const originalInvoke = SessionInvoke.invoke
-      ;(SessionInvoke.invoke as any) = mock(async () => undefined)
+      using schedule = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+      using invoke = spyOn(SessionInvoke, "invoke").mockRejectedValue(new Error("Passive input cannot invoke a model"))
+      using loop = spyOn(SessionInvoke, "loop").mockRejectedValue(new Error("Passive input cannot start a model loop"))
 
       let sessionID = ""
       try {
@@ -308,6 +309,9 @@ describe("session input acceptance", () => {
           scope,
           fn: async () => {
             const session = await Session.create({ title: "No Reply Input" })
+            await Session.update(session.id, (draft) => {
+              draft.modelOverride = { providerID: "fixture", modelID: "fixture" }
+            })
             sessionID = session.id
             const response = await Server.App().request(
               `/session/${session.id}/input?directory=${encodeURIComponent(scope.local!.worktree)}`,
@@ -321,14 +325,24 @@ describe("session input acceptance", () => {
               },
             )
 
-            const result = (await response.json()) as { status: string; messageID?: string }
-            expect(result.status).toBe("started")
-            expect(result.messageID).toBeDefined()
+            expect(response.status).toBe(200)
+            const result = (await response.json()) as { status: string; item: { id: string; messageID: string } }
+            expect(result.status).toBe("queued")
+            expect(result.item.messageID).toBeDefined()
+            expect((await SessionInbox.list(session.id)).map((item) => item.id)).toEqual([result.item.id])
+            expect(await Session.messages({ sessionID: session.id })).toHaveLength(0)
+            expect(schedule).toHaveBeenCalledWith(session.id, "durable-no-reply-input")
+            await SessionManager.wake(session.id)
             expect(await SessionInbox.list(session.id)).toHaveLength(0)
+            const messages = await Session.messages({ sessionID: session.id })
+            expect(messages).toHaveLength(1)
+            expect(messages[0].info).toMatchObject({ id: result.item.messageID, isRoot: false })
+            expect(messages[0].parts).toContainEqual(expect.objectContaining({ text: "Record without a reply" }))
+            expect(invoke).not.toHaveBeenCalled()
+            expect(loop).not.toHaveBeenCalled()
           },
         })
       } finally {
-        ;(SessionInvoke.invoke as any) = originalInvoke
         if (sessionID) SessionManager.unregisterRuntime(sessionID)
       }
     }))

@@ -9,6 +9,7 @@ import { recordTokenReceive, stopBrowserPerformanceMetrics } from "@/components/
 import { useServer } from "./server"
 import { streamingTokenReceipt } from "./streaming-token-event"
 import { createRuntimeCapabilities } from "./runtime-capabilities"
+import { createContentSubscriptions } from "./content-subscriptions"
 
 const PING_INTERVAL = 20_000
 const PONG_TIMEOUT = 10_000
@@ -35,6 +36,19 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
     let disposed = false
     let ws: WebSocket | undefined
+    let interestsFrame: number | undefined
+    const contentSubscriptions = createContentSubscriptions(() => {
+      if (interestsFrame !== undefined) return
+      interestsFrame = requestAnimationFrame(() => {
+        interestsFrame = undefined
+        if (ws?.readyState === WebSocket.OPEN)
+          ws.send(
+            JSON.stringify({
+              payload: { type: "client.content.interests", properties: contentSubscriptions.current() },
+            }),
+          )
+      })
+    })
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined
     let reconnectDelay = 1000
     let pingTimer: ReturnType<typeof setInterval> | undefined
@@ -86,6 +100,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     }
 
     const handleVisibilityChange = () => {
+      contentSubscriptions.hidden(document.visibilityState === "hidden")
       if (document.visibilityState === "hidden") {
         clearPingTimers()
       } else {
@@ -103,11 +118,12 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       // Opt into the compact streaming protocol (#350 D1): the server sends
       // `message.part.delta` frames during streaming plus periodic full-part
       // checkpoints, instead of the full accumulated part on every delta.
-      const wsUrl = `${server.url}/global/event/ws?stream=delta`
+      const wsUrl = `${server.url}/global/event/ws?stream=projection`
       const socket = new WebSocket(wsUrl)
       ws = socket
 
       socket.onopen = () => {
+        contentSubscriptions.reconnect()
         reconnectDelay = 1000
         missedPongs = 0
         markConnected()
@@ -134,6 +150,13 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
         if (type === "server.heartbeat") return
 
+        if (payload.type === "message.part.summary") {
+          const summaryAccepted = contentSubscriptions.acceptsSummary(parsed.scopeID ?? "global", payload.properties)
+          if (!contentSubscriptions.accept(parsed.scopeID ?? "global", payload.properties)) {
+            if ((payload as Event & { seq?: number }).seq === undefined && !summaryAccepted) return
+            payload.properties = { summary: payload.properties.summary }
+          }
+        }
         const tokenReceipt = streamingTokenReceipt(payload)
         if (tokenReceipt) recordTokenReceive(tokenReceipt.part, { delta: tokenReceipt.delta })
 
@@ -165,6 +188,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       clearPingTimers()
       if (reconnectTimer) clearTimeout(reconnectTimer)
       ws?.close()
+      if (interestsFrame !== undefined) cancelAnimationFrame(interestsFrame)
       eventQueue.dispose()
       window.removeEventListener("visibilitychange", handleVisibilityChange)
       stopBrowserPerformanceMetrics()
@@ -178,6 +202,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       connected,
       disconnectedAt,
       drafts,
+      content: contentSubscriptions,
       prepareScopeState(scopes: Parameters<typeof server.scopes.prepare>[0]) {
         server.scopes.prepare(scopes)
         drafts.rebuildDraftSessionIndex()

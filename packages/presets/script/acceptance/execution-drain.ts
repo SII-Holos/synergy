@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import path from "node:path"
 import { z } from "zod"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
@@ -263,7 +264,7 @@ export function executionDrain(input: unknown): Driver {
               } else {
                 await shell({
                   sessionID: session.id,
-                  agent: "synergy",
+                  agent: PrimaryAgentIdentity.names.general,
                   model: host.model,
                   command: "cat record.txt; sha256sum output.txt",
                 })

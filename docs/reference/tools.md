@@ -4,6 +4,10 @@
 
 Generated from the builtin tool registry in `packages/harness/src/tool/registry.ts` and the canonical taxonomy in `packages/harness/src/tool/taxonomy.ts`.
 
+## Invocation intent
+
+Every model-visible tool schema includes optional `workBrief`: One short sentence stating this action’s purpose and target, in the task’s language. Tool authors define only business parameters. The common intent is passed through the invocation context and does not affect execution identity or permissions. Conflicting or non-flat third-party schemas use `{ workBrief, toolInput }`, preserving native input.
+
 ## Tools
 
 | Tool | Kind | Description |
@@ -13,7 +17,7 @@ Generated from the builtin tool registry in `packages/harness/src/tool/registry.
 | `agenda_logs` | `orchestration.agenda` | View execution history for an agenda item. Shows recent runs with status, duration, and timing. Each run includes a session ID — use session_read(target=sessionID) to see what the agent did. Use agend |
 | `agenda_schedule` | `orchestration.agenda` | Create a recurring task that runs in its own separate session, isolated from this conversation. Only use for strictly periodic schedules — cron or fixed intervals. Recurring schedules reuse their sepa |
 | `agenda_trigger` | `orchestration.agenda` | Manually trigger an agenda item to execute immediately, regardless of its configured schedule. If the item is pending or paused, it will be activated first. This does NOT change the item's regular sch |
-| `agenda_update` | `orchestration.agenda` | Update an existing agenda item. Only provided fields are changed — omitted fields remain unchanged. Use agenda_list to find the item ID first. Common actions: - Pause: agenda_update(id="agd_xxx", stat |
+| `agenda_update` | `orchestration.agenda` | Update an existing agenda item. Only provided fields are changed — omitted fields remain unchanged. Use agenda_list to find the item ID first. Common actions: - Pause: agenda_update(agendaItemId="agd_ |
 | `agenda_watch` | `orchestration.agenda` | Set a one-time wake-up in THIS session. When the watch fires, you receive the prompt as a message and continue with full conversation history. The watch auto-completes after firing. Pass exactly one o |
 | `agent_config` | `platform.config` | Manage Synergy agent definitions: create, update, disable, delete, inspect, and set the default agent through validated writes. Use this when the user wants to create a custom agent ("make me an agent |
 | `ast_grep` | `search.codebase` | Search code using AST-aware pattern matching. Unlike regex-based grep, ast_grep understands code structure and finds patterns based on syntax, not just text. Supports 25 languages: bash, c, cpp, cshar |
@@ -33,7 +37,7 @@ Generated from the builtin tool registry in `packages/harness/src/tool/registry.
 | `browser_assets` | `browser.inspect` | List a bounded set of page assets or export a real manifest bundle into an authorized workspace directory. |
 | `browser_audit` | `browser.inspect` | Audit the current document for accessibility, semantic HTML, SEO, and frontend best-practice issues. |
 | `browser_clipboard` | `browser.interact` | Read, write, or clear page clipboard text through the dedicated browser clipboard capability. |
-| `browser_console` | `browser.inspect` | Read or clear redacted Chromium console logs and page errors, including source and stack information. For debugging, clear immediately before reproducing, then list entries and get a specific id for f |
+| `browser_console` | `browser.inspect` | Read or clear redacted Chromium console logs and page errors, including source and stack information. For debugging, clear immediately before reproducing, then list entries and get a specific entryId  |
 | `browser_dialog` | `browser.interact` | Inspect, accept, or dismiss the currently open JavaScript dialog, optionally supplying prompt text. |
 | `browser_downloads` | `browser.download` | List downloads across pages. Accept a waiting download, wait for completion, cancel, or export it to the Workspace. |
 | `browser_emulate` | `browser.inspect` | Apply viewport, DPR, mobile/touch, color scheme, motion, forced colors, locale/timezone, CPU, or network emulation. |
@@ -81,7 +85,7 @@ Generated from the builtin tool registry in `packages/harness/src/tool/registry.
 | `note_list` | `knowledge.note` | List notes in the current scope. By default shows only active notes. Use the `archived` parameter to view archived notes or all notes regardless of archive status. Use this to browse available notes b |
 | `note_read` | `knowledge.note` | Read the full content of one or more notes by ID. Blueprint documents are notes with kind:"blueprint" and are read with this same tool. Formats: - "markdown" (default): Human-readable Markdown export. |
 | `note_search` | `search.note` | Search notes using regex patterns. Searches across note titles and content, returning matching notes with context lines around each match — similar to ripgrep output. Blueprint documents are notes wit |
-| `note_write` | `knowledge.note` | Create a new note or overwrite an existing note with complete markdown content. A Blueprint is not a separate document type; it is a note with kind:"blueprint". Content is converted to the internal Pr |
+| `note_write` | `knowledge.note` | Create a new note or overwrite an existing note with complete markdown content. A Blueprint is not a separate document type; it is a note with kind:"blueprint". Choose the write mode: - "create" (defa |
 | `openai_image_edit` | `communication.visual` | Edit or transform existing images with a text prompt and save the result to output_path. Use it when the user wants to modify, restyle, composite, expand, clean up, or create a variation from one or m |
 | `openai_image_gen` | `communication.visual` | Generate a new image from a text prompt and save it to output_path. Use it when the user wants a raster visual such as an illustration, photo, product shot, UI mockup, concept art, texture, sprite, me |
 | `parse_code` | `code.analyze` | Search code with AST-aware patterns and return anchored file blocks. Use this instead of `ast_grep` in the anchored coding harness. Matched files are returned with real `[path#TAG]` headers and the ma |
@@ -90,7 +94,7 @@ Generated from the builtin tool registry in `packages/harness/src/tool/registry.
 | `process` | `code.execute` | Manage background bash processes: list, poll, log, write, send-keys, kill, clear, remove. ## Actions - **list**: List all running and recently finished background processes - **poll**: Check status an |
 | `question` | `communication.question` | Use this tool when you need to ask the user questions during execution. This allows you to: 1. Gather user preferences or requirements 2. Clarify ambiguous instructions 3. Get decisions on execution c |
 | `read` | `code.read` | Reads text and document content from the local filesystem. You can access any text or supported document file directly by using this tool. Assume this tool is able to read files on the machine. If the |
-| `render` | `communication.visual` | Render arbitrary HTML content inline in the conversation. Accepts a complete HTML document or HTML fragment and renders it in a sandboxed iframe. The HTML can contain inline SVG, CSS, and HTML tables  |
+| `render` | `communication.visual` | Create a read-only visual result from an HTML fragment or document. Use for charts, diagrams, comparisons and other results that benefit from visual layout. Include HTML, inline CSS and SVG; omit Java |
 | `resolve_conflicts` | `code.write` | Resolve every merge-conflict marker block in one anchored file as a single guarded write. Use this tool after `view_file` reports conflict ranges and `revise_file` refuses the file. Pass the current ` |
 | `response_card` | `communication.deliver` | Prepare a provider-neutral response card for the current Channel conversation. Use this only when structured presentation or bounded interaction is clearer than plain text. The card supports ordered t |
 | `revise_file` | `code.write` | Name the lines to replace, delete, or insert at, then supply new content. A `:` operation takes `+` body rows; `DEL` has no body. <headers> Every section starts with a real `[path#TAG]` header returne |
@@ -108,9 +112,9 @@ Generated from the builtin tool registry in `packages/harness/src/tool/registry.
 | `skill` | `knowledge.skill` |  |
 | `speak` | `communication.audio` | Synthesize the given text into spoken audio and deliver it as a playable attachment in the conversation. Use this when the user asks you to speak, narrate, or read something aloud, wants a voice reply |
 | `task` | `orchestration.task` | Delegate one coherent deliverable to a specialist agent. Available agent types: {agents} ## Scope and parallelism Use delegation for independent, ready tasks or work that benefits from a specialist. H |
-| `task_cancel` | `orchestration.task` | Cancel visible background tasks. Subagents commonly run 5–30 minutes. Before cancelling, use a one-shot status check with `task_output(task_id="...", mode="summary")` to confirm the task is truly stuc |
+| `task_cancel` | `orchestration.task` | Cancel visible background tasks. Subagents commonly run 5–30 minutes. Before cancelling, use a one-shot status check with `task_output(taskId="...", mode="summary")` to confirm the task is truly stuck |
 | `task_list` | `orchestration.task` | List background tasks visible from the current session. Use this before `task_output` when you need to ground yourself in which background tasks are actually available. ## Usage ``` task_list() ``` |
-| `task_output` | `orchestration.task` | Retrieve output from a visible background task. ## Parameters - **task_id** (optional): Task ID from a visible background task - **mode** (optional): Output mode: - `progress` — live status (health, t |
+| `task_output` | `orchestration.task` | Retrieve output from a visible background task. ## Parameters - **taskId** (optional): Task ID from a visible background task - **mode** (optional): Output mode: - `progress` — live status (health, to |
 | `todoread` | `orchestration.todo` | Use this tool to read your todo list |
 | `todowrite` | `orchestration.todo` | Use this tool to create and manage a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user. It also help |
 | `view_file` | `code.read` | Read a file through the anchored coding harness. Use this instead of `read` when the content may feed `revise_file` or `resolve_conflicts`. The output starts with a real `[path#TAG]` header followed b |
@@ -129,13 +133,13 @@ Cancel an agenda item. The item will no longer fire, but its configuration and e
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id` | string | yes | Agenda item ID to cancel |
+| `agendaItemId` | string | yes | Agenda item ID to cancel |
 
 ## agenda_list
 
 Kind: `orchestration.agenda`
 
-List agenda items visible from the current scope — both watches (one-time) and scheduled tasks (recurring). Use `scope` to filter: "current" (project only), "global" (global only), "all" (both, default). Use this to find item IDs before calling: - agenda_update(id, ...) — change title, prompt, or pause/resume - agenda_cancel(id) — stop an item from firing - agenda_trigger(id) — run immediately regardless of schedule - agenda_logs(id) — view execution history
+List agenda items visible from the current scope — both watches (one-time) and scheduled tasks (recurring). Use `scope` to filter: "current" (project only), "global" (global only), "all" (both, default). Use this to find item IDs before calling: - agenda_update(agendaItemId, ...) — change agendaTitle, executionInstructions, or pause/resume - agenda_cancel(agendaItemId) — stop an item from firing - agenda_trigger(agendaItemId) — run immediately regardless of schedule - agenda_logs(agendaItemId) — view execution history
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -151,7 +155,7 @@ View execution history for an agenda item. Shows recent runs with status, durati
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id` | string | yes | Agenda item ID to get logs for |
+| `agendaItemId` | string | yes | Agenda item ID to get logs for |
 | `offset` | number |  | Number of logs to skip |
 | `limit` | number |  | Maximum number of logs to return |
 
@@ -163,8 +167,9 @@ Create a recurring task that runs in its own separate session, isolated from thi
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | string | yes | Task title |
-| `prompt` | string | yes | Instruction for the agent to execute when triggered. Write as a complete brief — the executing agent has no access to this conversation. |
+| `agendaTitle` | string | yes | Task title |
+| `agendaDescription` | string |  | Description of the scheduled item; omit when its title is sufficient |
+| `executionInstructions` | string | yes | Instruction for the agent to execute when triggered. Write as a complete brief — the executing agent has no access to this conversation. |
 | `trigger` | AgendaTypes.ScheduleTrigger.describe | yes |  |
 | `tags` | array |  | Tags for organization and filtering |
 | `global` | boolean |  | If true, visible from all scopes. Default: false (current project only) |
@@ -173,7 +178,7 @@ Create a recurring task that runs in its own separate session, isolated from thi
 | `agent` | string |  | Agent to use, defaults to configured default |
 | `model` | object |  | Model override |
 | `controlProfile` | AgendaTypes.ControlProfile.optional |  |  |
-| `timeout` | number |  | Execution timeout in milliseconds |
+| `timeoutSeconds` | number |  | Execution timeout in seconds; omit to use the default |
 | `sessionMode` | "ephemeral" \| "persistent" |  | Session mode override. Recurring triggers (cron, every) default to 'persistent' (reuse session across fires). Set 'ephemeral' to start a fresh session on every fire — useful for tasks that must not carry history from previous runs, such as daily reports. |
 | `sessionRefs` | array |  | Sessions whose content is relevant context for execution |
 | `sessionID` | string | yes | Session ID to reference |
@@ -187,29 +192,29 @@ Manually trigger an agenda item to execute immediately, regardless of its config
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id` | string | yes | Agenda item ID to trigger |
+| `agendaItemId` | string | yes | Agenda item ID to trigger |
 
 ## agenda_update
 
 Kind: `orchestration.agenda`
 
-Update an existing agenda item. Only provided fields are changed — omitted fields remain unchanged. Use agenda_list to find the item ID first. Common actions: - Pause: agenda_update(id="agd_xxx", status="paused") - Resume: agenda_update(id="agd_xxx", status="active") - Mark done: agenda_update(id="agd_xxx", status="done") - Change prompt: agenda_update(id="agd_xxx", prompt="new instructions...") - Change control profile: agenda_update(id="agd_xxx", controlProfile="full_access") To change the trigger/schedule itself, pass a new triggers array: agenda_update(id="agd_xxx", triggers=[{type:"cron", expr:"0 6 * * *", tz:"Asia/Shanghai"}])
+Update an existing agenda item. Only provided fields are changed — omitted fields remain unchanged. Use agenda_list to find the item ID first. Common actions: - Pause: agenda_update(agendaItemId="agd_xxx", status="paused") - Resume: agenda_update(agendaItemId="agd_xxx", status="active") - Mark done: agenda_update(agendaItemId="agd_xxx", status="done") - Change executionInstructions: agenda_update(agendaItemId="agd_xxx", executionInstructions="new instructions...") - Change control profile: agenda_update(agendaItemId="agd_xxx", controlProfile="full_access") To change the trigger/schedule itself, pass a new triggers array: agenda_update(agendaItemId="agd_xxx", triggers=[{type:"cron", expr:"0 6 * * *", tz:"Asia/Shanghai"}])
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id` | string | yes | Agenda item ID to update |
-| `title` | string |  | New title |
-| `description` | string |  | New description |
+| `agendaItemId` | string | yes | Agenda item ID to update |
+| `agendaTitle` | string |  | Replace the agenda item’s title; omit to keep it unchanged. |
+| `agendaDescription` | string |  | Replace the agenda item’s description; omit to keep it unchanged. |
 | `status` | AgendaTypes.ItemStatus.optional |  | New status: pending, active, paused, done, cancelled |
 | `tags` | array |  | New tags (replaces existing) |
 | `triggers` | array |  | New triggers (replaces existing, recomputes nextRunAt) |
-| `prompt` | string |  | New execution prompt |
+| `executionInstructions` | string |  | Replace the instructions executed when this item fires; omit to keep them unchanged. |
 | `wake` | boolean |  | Whether to wake the origin session on completion |
 | `silent` | boolean |  | Whether to suppress result delivery |
 | `agent` | string |  | Agent to use, defaults to configured default |
 | `model` | object |  | Model override |
 | `controlProfile` | AgendaTypes.ControlProfile.optional |  |  |
-| `timeout` | number |  | Execution timeout in milliseconds |
+| `timeoutSeconds` | number |  | Execution timeout in seconds; omit to use the default |
 | `sessionMode` | "ephemeral" \| "persistent" |  | Session mode override. Set 'ephemeral' to create a fresh session on every fire. |
 | `sessionRefs` | array |  | Sessions whose content is relevant context for execution |
 | `sessionID` | string | yes | Session ID to reference |
@@ -219,12 +224,13 @@ Update an existing agenda item. Only provided fields are changed — omitted fie
 
 Kind: `orchestration.agenda`
 
-Set a one-time wake-up in THIS session. When the watch fires, you receive the prompt as a message and continue with full conversation history. The watch auto-completes after firing. Pass exactly one of `delay`, `onSessionEnd`, or `onGithub`. **Prefer managed GitHub watches over repeated shell polling.** When the condition you are waiting for is a GitHub event (PR merged/closed, issue closed, workflow or check run finishing), pass `onGithub: {resource, repository, number?, ref?, states?}` instead of a `delay` plus repeated shell checks. The trigger polls the GitHub REST API with the connected credential on an interval (default 5 minutes, minimum 30 seconds) and wakes you when it next observes a matching state. Intermediate transitions between polls may be missed. `resource` is "pr" | "issue" | "workflow" | "check"; `repository` is owner/repo; `number` targets one PR/issue or workflow run id (omit for the repository's recent items); `ref` targets a branch/tag/commit for workflow/check watches; `states` filters which new state should wake you (e.g. ["merged"], ["failure"], ["completed"]). Requires a connected GitHub credential — without one the watch is rejected with connection steps; ask the user to connect GitHub in Settings → GitHub rather than substituting timed shell polling. Repo-wide watches (no `number`) fire for transitions of the 10 most recently updated items. A states-filtered watch reports new items first observed already in a targeted state; an unfiltered watch baselines first observations silently, so an item created and merged entirely between two polls is not reported. Point watches (`number`) always see transitions. **Wake on another session's turn**: pass `onSessionEnd: {sessionID, agent?, finish?}` to react when the watched session ends a turn, optionally filtered by agent or finish state. Example: `onSessionEnd: {sessionID:"ses_research", finish:"stop"}`. **Timed wake-up** (external processes without an event source): the primary use case is **recursive adaptive monitoring**: - Start with a short delay (3–5min) to check an external process, experiment, or pipeline. - Assess health when woken — if more monitoring is needed, set another `agenda_watch` with an adjusted delay. Stretch as stability is confirmed (e.g. 3min → 10min → 30min). Always include in the prompt whether another watch should follow and under what conditions. Also use for deliberate pauses: wait for a deploy, batch job, or user review before continuing. **Never use `agenda_watch` to wait for subagents dispatched via `task()`.** Subagents auto-notify you on completion — no watch or polling is needed. Use agenda_list to see active watches. Use agenda_cancel(id) to cancel before it fires. If you need a RECURRING task with a strictly periodic schedule (cron, fixed interval), use `agenda_schedule`. If timing needs to adapt based on observed state, recursive `agenda_watch` is the right tool.
+Set a one-time wake-up in THIS session. When the watch fires, you receive the prompt as a message and continue with full conversation history. The watch auto-completes after firing. Pass exactly one of `delay`, `onSessionEnd`, or `onGithub`. **Prefer managed GitHub watches over repeated shell polling.** When the condition you are waiting for is a GitHub event (PR merged/closed, issue closed, workflow or check run finishing), pass `onGithub: {resource, repository, number?, ref?, states?}` instead of a `delay` plus repeated shell checks. The trigger polls the GitHub REST API with the connected credential on an interval (default 5 minutes, minimum 30 seconds) and wakes you when it next observes a matching state. Intermediate transitions between polls may be missed. `resource` is "pr" | "issue" | "workflow" | "check"; `repository` is owner/repo; `number` targets one PR/issue or workflow run id (omit for the repository's recent ites); `ref` targets a branch/tag/commit for workflow/check watches; `states` filters which new state should wake you (e.g. ["merged"], ["failure"], ["completed"]). Requires a connected GitHub credential — without one the watch is rejected with connection steps; ask the user to connect GitHub in Settings → GitHub rather than substituting timed shell polling. Repo-wide watches (no `number`) fire for transitions of the 10 most recently updated items. A states-filtered watch reports new items first observed already in a targeted state; an unfiltered watch baselines first observations silently, so an item created and merged entirely between two polls is not reported. Point watches (`number`) always see transitions. **Wake on another session's turn**: pass `onSessionEnd: {sessionID, agent?, finish?}` to react when the watched session ends a turn, optionally filtered by agent or finish state. Example: `onSessionEnd: {sessionID:"ses_research", finish:"stop"}`. **Timed wake-up** (external processes without an event source): the primary use case is **recursive adaptive monitoring**: - Start with a short delay (3–5min) to check an external process, experiment, or pipeline. - Assess health when woken — if more monitoring is needed, set another `agenda_watch` with an adjusted delay. Stretch as stability is confirmed (e.g. 3min → 10min → 30min). Always include in the prompt whether another watch should follow and under what conditions. Also use for deliberate pauses: wait for a deploy, batch job, or user review before continuing. **Never use `agenda_watch` to wait for subagents dispatched via `task()`.** Subagents auto-notify you on completion — no watch or polling is needed. Use agenda_list to see active watches. Use agenda_cancel(id) to cancel before it fires. If you need a RECURRING task with a strictly periodic schedule (cron, fixed interval), use `agenda_schedule`. If timing needs to adapt based on observed state, recursive `agenda_watch` is the right tool.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | string | yes | Short name, e.g. 'Check pipeline health' |
-| `prompt` | string | yes | Instruction you'll receive when woken up. Write it for yourself — you'll see it with full conversation history. |
+| `agendaTitle` | string | yes | Short name, e.g. 'Check pipeline health' |
+| `agendaDescription` | string |  | Description of this watched item; omit when its title is sufficient |
+| `executionInstructions` | string | yes | Instruction you'll receive when woken up. Write it for yourself — you'll see it with full conversation history. |
 | `delay` | string |  | How long to wait before waking you, e.g. '30m', '2h', '1d' |
 | `onSessionEnd` | object |  | Wake when another session ends a turn instead of after a delay |
 | `sessionID` | string | yes | Session to watch — wake when it ends a turn |
@@ -277,13 +283,12 @@ Deliver files to the user by making them available as conversation attachments. 
 
 Kind: `code.execute`
 
-Executes a bash command in a persistent shell session. All commands run in ${directory} by default. Use the `workdir` parameter to run in a different directory. AVOID `cd <directory> && <command>` patterns — use `workdir` instead. IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) — use the specialized tools for this instead. Before executing the command: - If the command will create new directories or files, first use `ls` to verify the parent directory exists and is the correct location (e.g. check `foo` exists before `mkdir foo/bar`). - Always quote file paths that contain spaces with double quotes: `rm "path with spaces/file.txt"` works; `mkdir /Users/name/My Documents` fails; `mkdir "/Users/name/My Documents"` works. - Capture the output of the command. - For unattended work, use the command's supported non-interactive options or explicit inputs when their values are known and authorized. An acceptance flag may not cover every prompt. Use script entry points for scripts; do not accidentally start a REPL. Keep diagnostic output accessible. - Run validation commands directly when their exit status matters. Filtered or clipped output is useful for diagnosis, but a pipeline's zero exit does not prove an earlier command or test passed. User-visible artifacts: if the command generates a visual or document result the user should inspect (for example .png, .jpg, .svg, .pdf, .html, plots, screenshots, rendered figures, or LaTeX output), call `attach` afterward to show the generated file in the conversation. Prefer attaching final results, not intermediate build artifacts, caches, dependency downloads, logs, or unrelated files. If you need to inspect an image yourself before showing it, use the image-inspection tool (`view_image`, or `look_at` when unavailable). Usage notes: - `command` and `description` are required; describe the action briefly. - If the output exceeds ${maxLines} lines or ${maxBytes} bytes, it is truncated and the full output is written to a file. You can read specific sections with offset/limit or search the file. Because of this, you do NOT need `head`, `tail`, or other truncation commands to limit output — run the command directly. - `background: true` runs the command in the background immediately and returns a processId. `yieldSeconds` delays auto-backgrounding until a command has run that long (default 30); if the command completes first it returns normally. - After backgrounding, continue independent work if available. Otherwise choose a completion wait, readiness check or targeted diagnosis using `process` guidance. Running means alive, not necessarily progressing; do not restart a command merely to refresh its status. - For very long-running commands (experiments, training, large downloads, data processing running for minutes or hours), prefer the tracked background flow so Synergy shows a processId you can later poll, log, or kill. Detached launches (`tmux new-session -d`, `screen -dm`, `nohup`, `setsid`, `disown`, shell `&`) are blocked unless the runtime intentionally permits them (`full_access` control profile or `SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1`). - For outbound text the user should review before it is published (PR body, commit message, channel message), draft it as a Note and let the user edit first; Bash can pass `/synergy/note/<note-id>` as a file argument (e.g. `gh pr create --body-file /synergy/note/<note-id>`). Prefer a command's file-input option over command substitution — the virtual path keeps content out of shell parsing. Prefer the available file, search and editing tools over shell equivalents; output text directly when no command is needed. When issuing multiple commands: independent commands can run in parallel — issue multiple Bash tool calls in one message. Sequential dependencies chain with `&&` in a single call. Use `;` only when the failure of the first command does not matter. DO NOT use newlines to separate commands (newlines are fine inside quoted strings). # Committing changes with git Git Safety Protocol: - NEVER update the git config. - NEVER run destructive/irreversible git commands (like push --force, hard reset, etc.) unless the user explicitly requests them. - NEVER skip hooks (--no-verify, --no-gpg-sign) unless the user explicitly requests it. NEVER force-push to main/master. - Avoid `git commit --amend`. Only use it when ALL conditions hold: the user explicitly requested the amend (or the commit succeeded but a pre-commit hook auto-modified files), the HEAD commit was created by you in this conversation, and the commit was NOT pushed. If a commit FAILED or was REJECTED by a hook, never amend — fix the issue and create a NEW commit. - NEVER commit changes unless the user explicitly asks. Commit flow: run `git status`, `git diff`, and `git log` in parallel first. Stage only files owned by the current task; preserve unrelated dirty and untracked files. Draft a concise conventional-type message focused on the "why". Verify with `git status` after committing. Do not create an empty commit. Never run additional commands to read or explore code besides git commands. Never use the TodoWrite or Task tools. Never push unless the user asks. # Creating pull requests Use the `gh` command for ALL GitHub-related tasks (issues, PRs, checks, releases). When creating a PR: run `git status`, `git diff`, and `git log` plus `git diff [base-branch]...HEAD` in parallel to understand the current branch state and full commit history. Analyze ALL commits and draft a pull request summary. Create the branch if needed, push with `-u` if needed, then `gh pr create` with a HEREDOC or `--body-file` Note for the body. Return the PR URL when done. Never push, open a PR, or mutate external systems unless the user requests it. Never use the TodoWrite or Task tools for PR work.
+Executes a bash command in a persistent shell session. All commands run in ${directory} by default. Use the `workdir` parameter to run in a different directory. AVOID `cd <directory> && <command>` patterns — use `workdir` instead. IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) — use the specialized tools for this instead. Before executing the command: - If the command will create new directories or files, first use `ls` to verify the parent directory exists and is the correct location (e.g. check `foo` exists before `mkdir foo/bar`). - Always quote file paths that contain spaces with double quotes: `rm "path with spaces/file.txt"` works; `mkdir /Users/name/My Documents` fails; `mkdir "/Users/name/My Documents"` works. - Capture the output of the command. - For unattended work, use the command's supported non-interactive options or explicit inputs when their values are known and authorized. An acceptance flag may not cover every prompt. Use script entry points for scripts; do not accidentally start a REPL. Keep diagnostic output accessible. - Run validation commands directly when their exit status matters. Filtered or clipped output is useful for diagnosis, but a pipeline's zero exit does not prove an earlier command or test passed. User-visible artifacts: if the command generates a visual or document result the user should inspect (for example .png, .jpg, .svg, .pdf, .html, plots, screenshots, rendered figures, or LaTeX output), call `attach` afterward to show the generated file in the conversation. Prefer attaching final results, not intermediate build artifacts, caches, dependency downloads, logs, or unrelated files. If you need to inspect an image yourself before showing it, use the image-inspection tool (`view_image`, or `look_at` when unavailable). Usage notes: - `command` is required. Use `workdir` to select the working directory. - If the output exceeds ${maxLines} lines or ${maxBytes} bytes, it is truncated and the full output is written to a file. You can read specific sections with offset/limit or search the file. Because of this, you do NOT need `head`, `tail`, or other truncation commands to limit output — run the command directly. - `background: true` runs the command in the background immediately and returns a processId. `yieldSeconds` delays auto-backgrounding until a command has run that long (default 30); if the command completes first it returns normally. - After backgrounding, continue independent work if available. Otherwise choose a completion wait, readiness check or targeted diagnosis using `process` guidance. Running means alive, not necessarily progressing; do not restart a command merely to refresh its status. - For very long-running commands (experiments, training, large downloads, data processing running for minutes or hours), prefer the tracked background flow so Synergy shows a processId you can later poll, log, or kill. Detached launches (`tmux new-session -d`, `screen -dm`, `nohup`, `setsid`, `disown`, shell `&`) are blocked unless the runtime intentionally permits them (`full_access` control profile or `SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1`). - For outbound text the user should review before it is published (PR body, commit message, channel message), draft it as a Note and let the user edit first; Bash can pass `/synergy/note/<note-id>` as a file argument (e.g. `gh pr create --body-file /synergy/note/<note-id>`). Prefer a command's file-input option over command substitution — the virtual path keeps content out of shell parsing. Prefer the available file, search and editing tools over shell equivalents; output text directly when no command is needed. When issuing multiple commands: independent commands can run in parallel — issue multiple Bash tool calls in one message. Sequential dependencies chain with `&&` in a single call. Use `;` only when the failure of the first command does not matter. DO NOT use newlines to separate commands (newlines are fine inside quoted strings). # Committing changes with git Git Safety Protocol: - NEVER update the git config. - NEVER run destructive/irreversible git commands (like push --force, hard reset, etc.) unless the user explicitly requests them. - NEVER skip hooks (--no-verify, --no-gpg-sign) unless the user explicitly requests it. NEVER force-push to main/master. - Avoid `git commit --amend`. Only use it when ALL conditions hold: the user explicitly requested the amend (or the commit succeeded but a pre-commit hook auto-modified files), the HEAD commit was created by you in this conversation, and the commit was NOT pushed. If a commit FAILED or was REJECTED by a hook, never amend — fix the issue and create a NEW commit. - NEVER commit changes unless the user explicitly asks. Commit flow: run `git status`, `git diff`, and `git log` in parallel first. Stage only files owned by the current task; preserve unrelated dirty and untracked files. Draft a concise conventional-type message focused on the "why". Verify with `git status` after committing. Do not create an empty commit. Never run additional commands to read or explore code besides git commands. Never use the TodoWrite or Task tools. Never push unless the user asks. # Creating pull requests Use the `gh` command for ALL GitHub-related tasks (issues, PRs, checks, releases). When creating a PR: run `git status`, `git diff`, and `git log` plus `git diff [base-branch]...HEAD` in parallel to understand the current branch state and full commit history. Analyze ALL commits and draft a pull request summary. Create the branch if needed, push with `-u` if needed, then `gh pr create` with a HEREDOC or `--body-file` Note for the body. Return the PR URL when done. Never push, open a PR, or mutate external systems unless the user requests it. Never use the TodoWrite or Task tools for PR work.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `command` | string | yes | The command to execute |
 | `workdir` | string |  | The working directory to run the command in. Defaults to the project directory. Use this instead of 'cd' commands. |
-| `description` | string | yes | Clear, concise description of what this command does in 5-10 words. Examples: Input: ls Output: Lists files in current directory Input: git status Output: Shows working tree status Input: npm install Output: Installs package dependencies Input: mkdir foo Output: Creates directory 'foo' |
 | `background` | boolean |  | Run command in background. Returns immediately with processId. Use process tool to monitor/interact with the process. |
 | `yieldSeconds` | number |  | Seconds to wait before auto-backgrounding a long-running command. If the command completes before this time, returns normally. Default: 30 (30 seconds). |
 
@@ -468,13 +473,13 @@ Read, write, or clear page clipboard text through the dedicated browser clipboar
 
 Kind: `browser.inspect`
 
-Read or clear redacted Chromium console logs and page errors, including source and stack information. For debugging, clear immediately before reproducing, then list entries and get a specific id for full details.
+Read or clear redacted Chromium console logs and page errors, including source and stack information. For debugging, clear immediately before reproducing, then list entries and get a specific entryId for full details.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `pageId` | string | yes | Page ID from browser_navigation. |
 | `action` | "list" \| "get" \| "clear" |  |  |
-| `id` | string |  | Required only for get. |
+| `entryId` | string |  | entryId from list; required only for get. |
 | `level` | string |  | Optional console level filter for list. |
 | `filter` | string |  | Optional case-insensitive text filter for list. |
 | `page` | number |  |  |
@@ -501,9 +506,9 @@ List downloads across pages. Accept a waiting download, wait for completion, can
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `action` | "list" \| "accept" \| "wait" \| "cancel" \| "export" | yes |  |
-| `id` | string |  | Required except for list. |
-| `timeoutSeconds` | number |  | Valid only for wait; defaults to 30. |
-| `path` | string |  | Required only for export. |
+| `downloadId` | string |  | Download ID from list; required except for list. |
+| `timeoutSeconds` | number |  | Wait budget in seconds (1–60); valid only for wait; defaults to 30. |
+| `filePath` | string |  | Destination file path in the Workspace; required only for export. |
 | `page` | number |  | Valid only for list; defaults to 0. |
 | `pageSize` | number |  | Valid only for list; defaults to 100. |
 
@@ -565,13 +570,13 @@ List or open browser pages; navigate, inspect or recover a page by pageId. Pages
 
 Kind: `browser.inspect`
 
-Read or clear Chromium network requests, responses, failures, redirects, timing, and resource types. For debugging, clear immediately before reproducing, list failed/status-filtered records, then get a specific id. Sensitive headers and payload data are redacted by default.
+Read or clear Chromium network requests, responses, failures, redirects, timing, and resource types. For debugging, clear immediately before reproducing, list failed/status-filtered records, then get a specific requestId. Sensitive headers and payload data are redacted by default.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `pageId` | string | yes | Page ID from browser_navigation. |
 | `action` | "list" \| "get" \| "clear" |  |  |
-| `id` | string |  | Required only for get. |
+| `requestId` | string |  | requestId from list; required only for get. |
 | `resourceTypes` | array |  |  |
 | `status` | number |  |  |
 | `page` | number |  |  |
@@ -990,22 +995,24 @@ Edit an existing memory by ID. Replaces the title, content, `category`, `recallM
 | `title` | - | yes |  |
 | `output` | - | yes |  |
 | `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `id` | params.id | yes |  |
-| `title` | params.title | yes |  |
-| `content` | params.content | yes |  |
+| `id` | params.memoryId | yes |  |
+| `title` | params.memoryTitle | yes |  |
+| `content` | params.memoryContent | yes |  |
 | `category` | params.category | yes |  |
 | `recallMode` | params.recallMode | yes |  |
 | `title` | - | yes |  |
 | `output` | - | yes |  |
 | `metadata` | - | yes |  |
 | `title` | - | yes |  |
-| `output` | - | yes |  |
+| `output` | JSON.stringify | yes |  |
+| `memoryId` | params.memoryId | yes |  |
+| `memoryTitle` | params.memoryTitle | yes |  |
+| `memoryContent` | params.memoryContent | yes |  |
+| `category` | params.category | yes |  |
+| `recallMode` | params.recallMode | yes |  |
 | `metadata` | - | yes |  |
-| `id` | params.id | yes |  |
-| `title` | params.title | yes |  |
+| `id` | params.memoryId | yes |  |
+| `title` | params.memoryTitle | yes |  |
 | `category` | params.category | yes |  |
 | `recallMode` | params.recallMode | yes |  |
 
@@ -1021,7 +1028,13 @@ Retrieve the full content of one or more memories by their IDs. Returns the titl
 | `output` | - | yes |  |
 | `metadata` | - | yes |  |
 | `title` | - | yes |  |
-| `output` | entries.join | yes |  |
+| `output` | JSON.stringify | yes |  |
+| `memoryId` | r.id | yes |  |
+| `memoryTitle` | r.title | yes |  |
+| `memoryContent` | r.content | yes |  |
+| `category` | r.category | yes |  |
+| `recallMode` | r.recall_mode | yes |  |
+| `createdAt` | formatLocalDateTime | yes |  |
 | `metadata` | - | yes |  |
 
 ## memory_search
@@ -1033,7 +1046,7 @@ Search stored memories by semantic similarity. Returns the top-k most relevant m
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `query` | params.query | yes |  |
-| `topK` | params.top_k | yes |  |
+| `topK` | params.limit | yes |  |
 | `categories` | params.categories | yes |  |
 | `recallModes` | params.recallModes | yes |  |
 | `title` | - | yes |  |
@@ -1042,7 +1055,13 @@ Search stored memories by semantic similarity. Returns the top-k most relevant m
 | `title` | - | yes |  |
 | `metadata` | - | yes |  |
 | `title` | - | yes |  |
-| `output` | - | yes |  |
+| `output` | JSON.stringify | yes |  |
+| `memoryId` | r.id | yes |  |
+| `memoryTitle` | r.title | yes |  |
+| `category` | r.category | yes |  |
+| `recallMode` | r.recallMode | yes |  |
+| `similarity` | r.similarity | yes |  |
+| `createdAt` | formatLocalDateTime | yes |  |
 | `metadata` | - | yes |  |
 
 ## memory_write
@@ -1056,15 +1075,17 @@ Persist a piece of knowledge as long-term memory. Provide a concise title, conte
 | `title` | - | yes |  |
 | `output` | - | yes |  |
 | `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | params.title | yes |  |
-| `content` | params.content | yes |  |
+| `title` | params.memoryTitle | yes |  |
+| `content` | params.memoryContent | yes |  |
 | `category` | params.category | yes |  |
 | `recallMode` | params.recallMode | yes |  |
 | `title` | - | yes |  |
-| `output` | - | yes |  |
+| `output` | JSON.stringify | yes |  |
+| `memoryId` | id | yes |  |
+| `memoryTitle` | params.memoryTitle | yes |  |
+| `memoryContent` | params.memoryContent | yes |  |
+| `category` | params.category | yes |  |
+| `recallMode` | params.recallMode | yes |  |
 | `metadata` | - | yes |  |
 
 ## note_archive
@@ -1075,7 +1096,7 @@ Archive notes by ID. Archived notes are hidden from the active list but preserve
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `ids` | array | yes | IDs of notes to archive. Notes must be archived before they can be deleted. |
+| `noteIds` | array | yes | IDs of notes to archive. Notes must be archived before they can be deleted. |
 | `unarchive` | boolean |  | Set to true to restore archived notes back to active state. |
 
 ## note_delete
@@ -1086,17 +1107,17 @@ Permanently delete one note by ID. Only archived notes can be permanently delete
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id` | string | yes | Note ID to permanently delete. The note must already be archived. |
+| `noteId` | string | yes | Note ID to permanently delete. The note must already be archived. |
 
 ## note_edit
 
 Kind: `knowledge.note`
 
-Performs precise anchored edits to note content. Blueprint notes are editable only in Plan or Lattice. Outside Plan or Lattice, Blueprint notes are read-only; use `note_read`, `note_search`, or `note_list` to inspect them, and use ordinary notes for deliverables. Always read first: - Call note_read({ ids:[...], format:"blocks" }) before editing. - Pass baseVersion from Version. - Pass baseDocHash from DocHash when available. - Pass blockId and expectedHash from the target block line when available. Default stale-anchor recovery: - `freshen:"safe"` is the default. If the note version, docHash, or a low-risk block hash is stale, note_edit re-reads the latest note and replays safe operations against the latest stable block IDs. - Safe replay is limited to insertBefore, insertAfter, setAttrs, replaceText with a `find` string, and updateTableCell by `cellId`. - Unsafe operations such as replaceBlock, deleteBlock, replaceRange, and range-based replaceText still fail on stale anchors; re-read and retry deliberately. - Use `freshen:"never"` when you need strict old behavior: any version, docHash, or expectedHash mismatch fails without writing. Preferred operations: - replaceBlock: Replace one block by stable blockId. The old block is removed. - insertBefore / insertAfter: Insert content adjacent to a stable blockId. - deleteBlock: Delete one block by stable blockId. - setAttrs: Update a block's attributes while preserving its blockId. - replaceText: Replace editable text inside one block using find or range. If find appears more than once, specify occurrence. Ranges use the exact block text shown by note_read, but spans that cross non-editable rendered content such as hard breaks, inline math, images, or generated separators fail without writing; use replaceBlock for those cases. - updateTableCell: Replace the content of one table cell by cellId or by tableId,row,col. - replaceRange: Replace a contiguous sibling range. Content inputs: - { format:"text", text:"..." } creates a paragraph. - { format:"markdown", text:"..." } parses simple Markdown into blocks. - { format:"json", json:{...} } inserts exact ProseMirror/Tiptap JSON. Use this for rich structures. Safety behavior: - Strict failures, unsafe stale operations, missing targets, invalid JSON content, ambiguous text replacements, and replaceText ranges that include non-editable rendered content fail without writing. - On failure, the tool returns current version, current docHash, failed operation index/action when applicable, and current block summaries so you can re-read/retry deliberately. A failed operation means no write occurred. - dryRun:true validates and returns the same semantic operation preview without writing. Result interpretation: - Success output includes one section per operation. Inspect matched text, before/after context, checks, warnings, and changed-block classification before assuming the edit is correct. - `directChangedBlocks` are the operation's target, inserted, or deleted blocks; `ancestorChangedBlocks` are parent list/table/blockquote/container hashes changed by descendants; `unexpectedChangedBlocks` are changes outside that direct/ancestor set. - Warnings are not fatal, but they indicate a possible no-op, unexpected extra change, or semantic mismatch and should usually be followed by re-reading or correcting the note. Use note_write with mode:"replace" instead when rewriting most or all of a note/Blueprint and you have complete desired markdown content.
+Performs precise anchored edits to note content. Blueprint notes are editable only in Plan or Lattice. Outside Plan or Lattice, Blueprint notes are read-only; use `note_read`, `note_search`, or `note_list` to inspect them, and use ordinary notes for deliverables. Always read first: - Call note_read({ noteIds:[...], format:"blocks" }) before editing. - Pass baseVersion from Version. - Pass baseDocHash from DocHash when available. - Pass blockId and expectedHash from the target block line when available. Default stale-anchor recovery: - `freshen:"safe"` is the default. If the note version, docHash, or a low-risk block hash is stale, note_edit re-reads the latest note and replays safe operations against the latest stable block IDs. - Safe replay is limited to insertBefore, insertAfter, setAttrs, replaceText with a `find` string, and updateTableCell by `cellId`. - Unsafe operations such as replaceBlock, deleteBlock, replaceRange, and range-based replaceText still fail on stale anchors; re-read and retry deliberately. - Use `freshen:"never"` when you need strict old behavior: any version, docHash, or expectedHash mismatch fails without writing. Preferred operations: - replaceBlock: Replace one block by stable blockId. The old block is removed. - insertBefore / insertAfter: Insert content adjacent to a stable blockId. - deleteBlock: Delete one block by stable blockId. - setAttrs: Update a block's attributes while preserving its blockId. - replaceText: Replace editable text inside one block using find or range. If find appears more than once, specify occurrence. Ranges use the exact block text shown by note_read, but spans that cross non-editable rendered content such as hard breaks, inline math, images, or generated separators fail without writing; use replaceBlock for those cases. - updateTableCell: Replace the content of one table cell by cellId or by tableId,row,col. - replaceRange: Replace a contiguous sibling range. Content inputs: - { format:"text", text:"..." } creates a paragraph. - { format:"markdown", text:"..." } parses simple Markdown into blocks. - { format:"json", json:{...} } inserts exact ProseMirror/Tiptap JSON. Use this for rich structures. Safety behavior: - Strict failures, unsafe stale operations, missing targets, invalid JSON content, ambiguous text replacements, and replaceText ranges that include non-editable rendered content fail without writing. - On failure, the tool returns current version, current docHash, failed operation index/action when applicable, and current block summaries so you can re-read/retry deliberately. A failed operation means no write occurred. - dryRun:true validates and returns the same semantic operation preview without writing. Result interpretation: - Success output includes one section per operation. Inspect matched text, before/after context, checks, warnings, and changed-block classification before assuming the edit is correct. - `directChangedBlocks` are the operation's target, inserted, or deleted blocks; `ancestorChangedBlocks` are parent list/table/blockquote/container hashes changed by descendants; `unexpectedChangedBlocks` are changes outside that direct/ancestor set. - Warnings are not fatal, but they indicate a possible no-op, unexpected extra change, or semantic mismatch and should usually be followed by re-reading or correcting the note. Use note_write with mode:"replace" instead when rewriting most or all of a note/Blueprint and you have complete desired markdown content.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id` | string | yes | The note ID to edit. |
+| `noteId` | string | yes | The note ID to edit. |
 | `baseVersion` | number | yes | Note version returned by note_read(format:'blocks'\|'json'). |
 | `baseDocHash` | string |  | DocHash returned by note_read. If provided, mismatches fail safely. |
 | `freshen` | "safe" \| "never" |  | How to handle stale anchors. 'safe' re-reads and replays low-risk operations; 'never' preserves strict version/hash guards. |
@@ -1123,11 +1144,11 @@ List notes in the current scope. By default shows only active notes. Use the `ar
 
 Kind: `knowledge.note`
 
-Read the full content of one or more notes by ID. Blueprint documents are notes with kind:"blueprint" and are read with this same tool. Formats: - "markdown" (default): Human-readable Markdown export. Useful for reading, not for precise edits. - "blocks": Editable block anchor listing for note_edit. Each block includes the note Version, DocHash, stable block id, type, path, hash, summary, text preview, and table row/cell coordinates where relevant. - "json": Structured note data. Use detail:"json" when exact node JSON is needed. Precise edit workflow: 1. Call note_read with format:"blocks" before note_edit. 2. Copy Version, DocHash, target block id, and target block hash into note_edit. 3. Use blockId operations in note_edit. Do not use block numbers as edit targets. 4. Re-read after conflicts or hash mismatches. Do not guess a new target from stale block numbers. Use this after `note_list` or `note_search` to read the full details of specific notes or Blueprint notes. For BlueprintLoop execution, read the Blueprint note with `note_read({ ids: [...] })` before carrying out the Blueprint. Pagination: - markdown pagination is line-based. - blocks pagination is block-based, so multi-line code blocks and tables are not split across output slices.
+Read the full content of one or more notes by ID. Blueprint documents are notes with kind:"blueprint" and are read with this same tool. Formats: - "markdown" (default): Human-readable Markdown export. Useful for reading, not for precise edits. - "blocks": Editable block anchor listing for note_edit. Each block includes the note Version, DocHash, stable block id, type, path, hash, summary, text preview, and table row/cell coordinates where relevant. - "json": Structured note data. Use detail:"json" when exact node JSON is needed. Precise edit workflow: 1. Call note_read with format:"blocks" before note_edit. 2. Copy Version, DocHash, target block id, and target block hash into note_edit. 3. Use blockId operations in note_edit. Do not use block numbers as edit targets. 4. Re-read after conflicts or hash mismatches. Do not guess a new target from stale block numbers. Use this after `note_list` or `note_search` to read the full details of specific notes or Blueprint notes. For BlueprintLoop execution, read the Blueprint note with `note_read({ noteIds: [...] })` before carrying out the Blueprint. Pagination: - markdown pagination is line-based. - blocks pagination is block-based, so multi-line code blocks and tables are not split across output slices.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `ids` | array | yes | List of note IDs to read (max 10) |
+| `noteIds` | array | yes | List of note IDs to read (max 10) |
 | `offset` | number |  | Line or block offset to start reading from (0-based) |
 | `limit` | number |  | Maximum number of lines or blocks to return per note (max 2000) |
 | `format` | "markdown" \| "blocks" \| "json" |  | Output format. 'markdown': content as markdown (default). 'blocks': editable block anchors for note_edit. 'json': structured note data. |
@@ -1155,17 +1176,17 @@ Search notes using regex patterns. Searches across note titles and content, retu
 
 Kind: `knowledge.note`
 
-Create a new note or overwrite an existing note with complete markdown content. A Blueprint is not a separate document type; it is a note with kind:"blueprint". Content is converted to the internal ProseMirror JSON format for storage. Modes are retained for compatibility: - "create" (default): Creates a new note. Requires `title` and `content`. - "append": Adds content to the end of an existing note. Requires `id` and `content`. This is an optimistic update and may report a conflict if the note changes while appending. - "replace": Overwrites the entire existing note content. Requires `id` and `content`. This is the reliable full-document write path, analogous to file write; use it when you have generated the complete desired note from the latest content or when rewriting most of a Blueprint. Prefer `note_edit` for targeted changes to a few blocks. Prefer `note_write` with `mode:"replace"` for broad rewrites, large Blueprint reshaping, or recovery after local edit structure is no longer useful. Do not use append/replace as a blind fallback after a failed edit unless the replacement content is intentionally complete. The `scope` parameter controls where new notes are created: - "current" (default): Creates in the current project scope - "home": Creates in the home scope (visible from all projects) Blueprint creation and editing is only available in Plan or Lattice. Outside Plan or Lattice, use `kind:"note"` for deliverables and do not pass Blueprint fields. Attempts to create, replace, append to, or convert a Blueprint outside Plan or Lattice will be rejected with a semantic error. Use `kind:"blueprint"` in Plan or Lattice when the note should become executable through BlueprintLoop. Blueprint content must be decision-complete and directly executable. Do not create or replace a Blueprint that contains Open Decisions, Open Questions, TBDs, unresolved alternatives, or instructions for the execution session to ask the user later. If blocking ambiguity remains, ask the user first and wait for the answer. In Plan or Lattice, use `kind:"note"` to convert a Blueprint note back to a plain note. Blueprint notes may include `description` metadata; Blueprint run state lives on BlueprintLoop, not on the note itself. Execution-agent and audit-reviewer selection are host-owned: reviewers are host-selected and not available through this tool. When updating (append/replace), the note is found automatically regardless of scope. The `tags` parameter can be provided to set or update tags on any mode.
+Create a new note or overwrite an existing note with complete markdown content. A Blueprint is not a separate document type; it is a note with kind:"blueprint". Choose the write mode: - "create" (default): Creates a new note. Requires `noteTitle` and `noteContent`. - "append": Adds content to the end of an existing note. Requires `noteId` and `noteContent`. This is an optimistic update and may report a conflict if the note changes while appending. - "replace": Overwrites the entire existing note content. Requires `noteId` and `noteContent`. This is the reliable full-document write path, analogous to file write; use it when you have generated the complete desired note from the latest content or when rewriting most of a Blueprint. Prefer `note_edit` for targeted changes to a few blocks. Prefer `note_write` with `mode:"replace"` for broad rewrites, large Blueprint reshaping, or recovery after local edit structure is no longer useful. Do not use append/replace as a blind fallback after a failed edit unless the replacement content is intentionally complete. The `scope` parameter controls where new notes are created: - "current" (default): Creates in the current project scope - "home": Creates in the home scope (visible from all projects) Blueprint creation and editing is only available in Plan or Lattice. Outside Plan or Lattice, use `kind:"note"` for deliverables and do not pass Blueprint fields. Attempts to create, replace, append to, or convert a Blueprint outside Plan or Lattice will be rejected with a semantic error. Use `kind:"blueprint"` in Plan or Lattice when the note should become executable through BlueprintLoop. Blueprint content must be decision-complete and directly executable. Do not create or replace a Blueprint that contains Open Decisions, Open Questions, TBDs, unresolved alternatives, or instructions for the execution session to ask the user later. If blocking ambiguity remains, ask the user first and wait for the answer. In Plan or Lattice, use `kind:"note"` to convert a Blueprint note back to a plain note. Blueprint notes may include `blueprintDescription` metadata; Blueprint run state lives on BlueprintLoop, not on the note itself. Execution-agent and audit-reviewer selection are host-owned: reviewers are host-selected and not available through this tool. When updating (append/replace), the note is found automatically regardless of scope. The `tags` parameter can be provided to set or update tags on any mode.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id` | string |  | Note ID to update. If omitted, creates a new note. |
-| `title` | string |  | Note title. Required when creating a new note. |
-| `content` | string | yes | Note content in markdown format. |
+| `noteId` | string |  | Note ID to update. If omitted, creates a new note. |
+| `noteTitle` | string |  | Note title. Required when creating a new note. |
+| `noteContent` | string | yes | Note content in markdown format. |
 | `mode` | "create" \| "append" \| "replace" |  | 'create': new note, 'append': add content to end of existing note, 'replace': overwrite content. |
 | `tags` | array |  | Tags for the note. |
 | `kind` | "note" \| "blueprint" |  | Document kind. Use 'blueprint' when this note should be executable as a BlueprintLoop. |
-| `description` | string |  | Short blueprint description. Only used when kind is 'blueprint'. |
+| `blueprintDescription` | string |  | Short blueprint description. Only used when kind is 'blueprint'. |
 | `scope` | "current" \| "home" |  | Which scope to create the note in. Only used for create mode. |
 
 ## openai_image_edit
@@ -1290,12 +1311,12 @@ Reads text and document content from the local filesystem. You can access any te
 
 Kind: `communication.visual`
 
-Render arbitrary HTML content inline in the conversation. Accepts a complete HTML document or HTML fragment and renders it in a sandboxed iframe. The HTML can contain inline SVG, CSS, and HTML tables — anything that doesn't require JavaScript execution. Use this to display: - Rich data visualizations (charts, graphs, diagrams — using inline SVG) - Comparison tables with custom formatting - Timelines, trees, and flow charts - Any structured information that benefits from visual layout Rendering behavior: - The renderer injects a polished default theme: dark gradient background, readable system font, table styling, code styling, and sensible spacing - You may pass a small HTML fragment; you do not need to include <html>, <head>, <body>, or boilerplate styles - Add your own <style> block when you need custom layout, colors, SVG sizing, or animation - Use data-render-fullbleed on a single root element when you want to opt out of default body padding - The iframe uses a strict CSP and no script execution. External network resources are blocked; use inline SVG/CSS and data/blob images only.
+Create a read-only visual result from an HTML fragment or document. Use for charts, diagrams, comparisons and other results that benefit from visual layout. Include HTML, inline CSS and SVG; omit JavaScript and external resources. Small fragments are sufficient. Use data-render-fullbleed on a single root element to remove outer padding. Returns the rendered content and its artifact title.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `html` | string | yes | HTML fragment or document to render. Can include inline <style>, <svg>, <table>, and other HTML elements. JavaScript and external network resources are not executed or loaded. |
-| `title` | string |  | Optional title displayed in the tool card header |
+| `artifactTitle` | string |  | Short name for the visual result; omit to use the default name |
 
 ## resolve_conflicts
 
@@ -1523,17 +1544,17 @@ Synthesize the given text into spoken audio and deliver it as a playable attachm
 
 Kind: `orchestration.task`
 
-Delegate one coherent deliverable to a specialist agent. Available agent types: {agents} ## Scope and parallelism Use delegation for independent, ready tasks or work that benefits from a specialist. Handle a single quick action directly; do not delegate a task requiring immediate user back-and-forth. Launch independent tasks concurrently when their inputs are ready and write/resource ownership is compatible; continue useful independent parent work. Scope each assignment around one coherent, independently verifiable deliverable. Include the steps needed to produce and verify it: do not bundle separately decidable goals, and do not split tightly coupled work by file, step count, or duration just to create parallelism. Start dependent tasks after the inputs they need exist; do not serialize unrelated ready work while waiting for eventual integration. Resolve material design decisions before dispatching dependent implementation, or delegate a clearly bounded investigation first. State clearly whether the agent should implement or investigate. Do not disguise an open-ended planning problem as an implementation task. The parent composes the handoff (goal, settled decisions, evidence, scope, deliverable, verification and escalation conditions) and owns decomposition, integration, and acceptance. Do not ask the user to write a task contract. Subagent results are not directly visible to the user; integrate and summarize them. ## Execution and results - `background: true` returns a `task_id` immediately. Use it when independent parent or sibling work can proceed. - `background: false` or omitted waits up to 300 seconds. It returns the full result if finished, otherwise auto-backgrounds and returns a `task_id`. - Completion sends a lightweight notification that wakes you automatically; it does NOT contain the final result. Retrieve it once with `task_output(task_id="...", mode="full")`. - Reading full/default output acknowledges the completion and clears its notification. Diagnostic modes do not acknowledge completion. - `task_output` diagnostic modes are `summary` (status, health, elapsed time), `progress` (tool activity, health, duration), and `tail` (recent conversation). Use them for one-shot diagnosis when evidence, a stale health signal or a cancellation decision warrants it. Do not poll or loop to refresh progress. Use `task_list()` for an overview when needed. - `task_output(..., block: true)` is only valid with `mode="full"` or the default mode; it waits up to 300 seconds. Diagnostic modes with blocking are rejected. - Do NOT use `agenda_watch` or `agenda_schedule` for subagent completion; automatic notifications already handle it. Provide `session_id` to continue an idle session owned by this parent. Its prior context is retained, so focus on new information. A busy or differently owned session is rejected. Use `output` to request `{ mode: "summary" }`, `{ mode: "final_response" }`, or `{ mode: "structured", schema, maxRepairTurns }`. Structured schemas accept objects, arrays, primitives, `anyOf` and `oneOf`; results appear as rendered JSON and structured metadata. When executing a DAG node, pass `dag_node_id`; the node automatically completes or fails with the task, so no manual status update is needed. ## Dependency examples Reviewing an existing trust boundary is independent of unrelated implementation when ownership and inputs allow it. Review of new implementation waits until the implementation produces a reviewable artifact. ``` task(background: true, subagent_type: "code-cartographer", description: "Map relevant data flow", prompt: "<bounded investigation and expected evidence>") ``` Continue a separate ready branch while that investigation runs. Dispatch work that depends on its findings only after retrieving and assessing the result.
+Delegate one coherent deliverable to a specialist agent. Available agent types: {agents} ## Scope and parallelism Use delegation for independent, ready tasks or work that benefits from a specialist. Handle a single quick action directly; do not delegate a task requiring immediate user back-and-forth. Launch independent tasks concurrently when their inputs are ready and write/resource ownership is compatible; continue useful independent parent work. Scope each assignment around one coherent, independently verifiable deliverable. Include the steps needed to produce and verify it: do not bundle separately decidable goals, and do not split tightly coupled work by file, step count, or duration just to create parallelism. Start dependent tasks after the inputs they need exist; do not serialize unrelated ready work while waiting for eventual integration. Resolve material design decisions before dispatching dependent implementation, or delegate a clearly bounded investigation first. State clearly whether the agent should implement or investigate. Do not disguise an open-ended planning problem as an implementation task. The parent composes the handoff (goal, settled decisions, evidence, scope, deliverable, verification and escalation conditions) and owns decomposition, integration, and acceptance. Do not ask the user to write a task contract. Subagent results are not directly visible to the user; integrate and summarize them. ## Execution and results - `background: true` returns a `taskId` immediately. Use it when independent parent or sibling work can proceed. - `background: false` or omitted waits up to 300 seconds. It returns the full result if finished, otherwise auto-backgrounds and returns a `taskId`. - Completion sends a lightweight notification that wakes you automatically; it does NOT contain the final result. Retrieve it once with `task_output(taskId="...", mode="full")`. - Reading full/default output acknowledges the completion and clears its notification. Diagnostic modes do not acknowledge completion. - `task_output` diagnostic modes are `summary` (status, health, elapsed time), `progress` (tool activity, health, duration), and `tail` (recent conversation). Use them for one-shot diagnosis when evidence, a stale health signal or a cancellation decision warrants it. Do not poll or loop to refresh progress. Use `task_list()` for an overview when needed. - `task_output(..., block: true)` is only valid with `mode="full"` or the default mode; it waits up to 300 seconds. Diagnostic modes with blocking are rejected. - Do NOT use `agenda_watch` or `agenda_schedule` for subagent completion; automatic notifications already handle it. Provide `session_id` to continue an idle session owned by this parent. Its prior context is retained, so focus on new information. A busy or differently owned session is rejected. Use `output` to request `{ mode: "summary" }`, `{ mode: "final_response" }`, or `{ mode: "structured", schema, maxRepairTurns }`. Structured schemas accept objects, arrays, primitives, `anyOf` and `oneOf`; results appear as rendered JSON and structured metadata. When executing a DAG node, pass `dag_node_id`; the node automatically completes or fails with the task, so no manual status update is needed. ## Dependency examples Reviewing an existing trust boundary is independent of unrelated implementation when ownership and inputs allow it. Review of new implementation waits until the implementation produces a reviewable artifact. ``` task(background: true, subagent_type: "code-cartographer", taskTitle: "Map relevant data flow", taskInstructions: "<bounded investigation and expected evidence>") ``` Continue a separate ready branch while that investigation runs. Dispatch work that depends on its findings only after retrieving and assessing the result.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `description` | string | yes | A short (3-5 words) description of the task |
-| `prompt` | string | yes | The task for the agent to perform. Include: what to do, expected outcome, context. Recommend also specifying what NOT to do (scope boundaries, forbidden actions) to prevent scope creep. |
+| `taskTitle` | string | yes | A short (3-5 words) description of the task |
+| `taskInstructions` | string | yes | The task for the agent to perform. Include: what to do, expected outcome, context. Recommend also specifying what NOT to do (scope boundaries, forbidden actions) to prevent scope creep. |
 | `subagent_type` | string | yes | The type of specialized agent to use for this task |
 | `session_id` | string |  | Reuse an existing session for this task instead of creating a new one. The session must be idle (not currently running) and must have been created by the same parent. If the session is busy, the call will fail with an error — wait or use a different session. Omit to create a new session (default). |
 | `command` | string |  | The command that triggered this task |
 | `dag_node_id` | string |  | DAG node ID to auto-update when this task completes |
-| `background` | boolean |  | Run task in background (async). Returns immediately with task_id. Use for parallel exploration or long-running tasks. Default: false (sync) |
+| `background` | boolean |  | Run task in background (async). Returns immediately with taskId. Use for parallel exploration or long-running tasks. Default: false (sync) |
 | `category` | string |  | Category preset to override model and inject context: Default: none (uses subagent's original model and prompt) |
 | `output` | CortexTypes.OutputConfig.optional |  |  |
 | `worktree` | object |  |  |
@@ -1545,11 +1566,11 @@ Delegate one coherent deliverable to a specialist agent. Available agent types: 
 
 Kind: `orchestration.task`
 
-Cancel visible background tasks. Subagents commonly run 5–30 minutes. Before cancelling, use a one-shot status check with `task_output(task_id="...", mode="summary")` to confirm the task is truly stuck, not just running. Do not poll — one check before the cancel decision is sufficient. ## Parameters - **task_id** (optional): Specific task ID visible from this session - **all** (optional): Cancel all running tasks launched from this session and descendant subagents ## Usage Cancel a specific visible task: ``` task_cancel(task_id: "ctx_abc123") ``` Cancel all running descendant tasks: ``` task_cancel(all: true) ```
+Cancel visible background tasks. Subagents commonly run 5–30 minutes. Before cancelling, use a one-shot status check with `task_output(taskId="...", mode="summary")` to confirm the task is truly stuck, not just running. Do not poll — one check before the cancel decision is sufficient. ## Parameters - **taskId** (optional): Specific task ID visible from this session - **all** (optional): Cancel all running tasks launched from this session and descendant subagents ## Usage Cancel a specific visible task: ``` task_cancel(taskId: "ctx_abc123") ``` Cancel all running descendant tasks: ``` task_cancel(all: true) ```
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `task_id` | string |  | Specific task ID to cancel |
+| `taskId` | string |  | Specific task ID to cancel |
 | `all` | boolean |  | Cancel all running tasks for this session |
 
 ## task_list
@@ -1563,11 +1584,11 @@ List background tasks visible from the current session. Use this before `task_ou
 
 Kind: `orchestration.task`
 
-Retrieve output from a visible background task. ## Parameters - **task_id** (optional): Task ID from a visible background task - **mode** (optional): Output mode: - `progress` — live status (health, tool calls, duration) - `tail` — recent session activity from the subagent - `full` — final result with progress summary, including structured output as rendered JSON (default) - `summary` — compact one-liner (status, health, elapsed) - **block** (optional): Wait for completion if still running. Valid only with `mode="full"` or the default mode - **timeoutSeconds** (optional): Maximum seconds to wait (default: 300) Subagents commonly run 5–30 minutes. Do not repeatedly call `task_output` while a task is running. Continue independent work, or wait for the automatic completion notification. Use progress, tail, or summary only for a one-shot diagnostic check. The completion notification does not contain the final result; retrieve it once with `mode="full"`. ## Usage List visible tasks first: ``` task_output() ``` Check live progress without waiting: ``` task_output(task_id: "ctx_abc123", mode: "progress") ``` Inspect recent activity: ``` task_output(task_id: "ctx_abc123", mode: "tail") ``` Compact status check: ``` task_output(task_id: "ctx_abc123", mode: "summary") ``` Wait once for the final result when the next action depends on completion (up to 300s): ``` task_output(task_id: "ctx_abc123", mode: "full", block: true) ``` If the task is still running after this wait, continue other work or use a later one-shot diagnostic only when new evidence is needed. Do not start a polling loop.
+Retrieve output from a visible background task. ## Parameters - **taskId** (optional): Task ID from a visible background task - **mode** (optional): Output mode: - `progress` — live status (health, tool calls, duration) - `tail` — recent session activity from the subagent - `full` — final result with progress summary, including structured output as rendered JSON (default) - `summary` — compact one-liner (status, health, elapsed) - **block** (optional): Wait for completion if still running. Valid only with `mode="full"` or the default mode - **timeoutSeconds** (optional): Maximum seconds to wait (default: 300) Subagents commonly run 5–30 minutes. Do not repeatedly call `task_output` while a task is running. Continue independent work, or wait for the automatic completion notification. Use progress, tail, or summary only for a one-shot diagnostic check. The completion notification does not contain the final result; retrieve it once with `mode="full"`. ## Usage List visible tasks first: ``` task_output() ``` Check live progress without waiting: ``` task_output(taskId: "ctx_abc123", mode: "progress") ``` Inspect recent activity: ``` task_output(taskId: "ctx_abc123", mode: "tail") ``` Compact status check: ``` task_output(taskId: "ctx_abc123", mode: "summary") ``` Wait once for the final result when the next action depends on completion (up to 300s): ``` task_output(taskId: "ctx_abc123", mode: "full", block: true) ``` If the task is still running after this wait, continue other work or use a later one-shot diagnostic only when new evidence is needed. Do not start a polling loop.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `task_id` | string |  | Task ID from a visible background task |
+| `taskId` | string |  | Task ID from a visible background task |
 | `mode` | "summary" \| "progress" \| "tail" \| "full" |  | Output mode: progress for live status, tail for recent session activity, full for final output. Default: full |
 | `block` | boolean |  | Wait for completion if still running |
 | `timeoutSeconds` | number |  | Max seconds to wait (default: ${DEFAULT_WAIT_S}) |

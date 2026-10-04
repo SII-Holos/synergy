@@ -418,7 +418,7 @@ export namespace WorkflowRecovery {
 
     const result: Record<string, StatusInfo> = {}
     for (const session of candidates.values()) {
-      const working = await resolve(session.id).catch(() => undefined)
+      const working = await resolve(session.id, session).catch(() => undefined)
       if (working) {
         result[session.id] = toStatus(working)
         continue

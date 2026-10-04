@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { SessionUserMessageMaterialization } from "../../src/session/user-message-materialization"
 import type { MessageV2 } from "../../src/session/message-v2"
@@ -12,7 +13,7 @@ function message(input?: {
     id: "message_1",
     sessionID: "session_1",
     role: "user",
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test", modelID: "test" },
     time: { created: 123 },
     origin: input?.origin ?? { type: "user" },

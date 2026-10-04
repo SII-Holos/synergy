@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionToolInput } from "@ericsanchezok/synergy-harness/session/tool-input"
@@ -152,7 +153,7 @@ function fixtureMessages(turns: number, outputBytes: number): MessageV2.WithPart
         sessionID,
         role: "user",
         time: { created: index * 2 },
-        agent: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
         model: { providerID: "benchmark", modelID: "benchmark" },
       },
       parts: [
@@ -173,8 +174,8 @@ function fixtureMessages(turns: number, outputBytes: number): MessageV2.WithPart
         parentID: userID,
         rootID: userID,
         time: { created: index * 2 + 1, completed: index * 2 + 1 },
-        agent: "synergy",
-        mode: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
+        mode: PrimaryAgentIdentity.names.general,
         modelID: "benchmark",
         providerID: "benchmark",
         path: { cwd: "/benchmark", root: "/benchmark" },

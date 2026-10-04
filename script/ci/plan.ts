@@ -1,4 +1,4 @@
-import { selectAffected, taskSelected } from "./selection"
+import { selectAffected, taskSelected, type SelectionChanges } from "./selection"
 export { documentation, selectAffected } from "./selection"
 import { createHash } from "node:crypto"
 
@@ -95,6 +95,7 @@ export interface Plan {
   tasks: Task[]
   units: Unit[]
   digest: string
+  timings?: string
 }
 
 export const LIMITS: Record<Pool, number> = { linux: 12, docker: 8, postgres: 1, windows: 1, macos: 1 }
@@ -125,6 +126,23 @@ export function hash(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex")
 }
 
+export function unitWorkers(pool: Pool, mode: Mode, contracts = false) {
+  return mode !== "diagnostic" && !contracts && (pool === "linux" || pool === "docker") ? 2 : 1
+}
+
+export function taskOrder(a: Task, b: Task) {
+  return Number(b.kind === "policy") - Number(a.kind === "policy") || b.seconds - a.seconds || a.id.localeCompare(b.id)
+}
+
+function finishTime(tasks: Task[], workers: number) {
+  const lanes = Array.from({ length: workers }, () => 0)
+  for (const task of tasks.toSorted(taskOrder)) {
+    lanes.sort((a, b) => a - b)
+    lanes[0]! += task.seconds
+  }
+  return Math.max(...lanes)
+}
+
 export function buildUnits(tasks: Task[], mode: Mode): Unit[] {
   const units: Unit[] = []
   for (const pool of Object.keys(LIMITS) as Pool[]) {
@@ -135,7 +153,7 @@ export function buildUnits(tasks: Task[], mode: Mode): Unit[] {
       units.push({
         id: "linux-contracts",
         pool,
-        tasks: contracts.map((task) => task.id),
+        tasks: contracts.toSorted(taskOrder).map((task) => task.id),
         seconds: contracts.reduce((sum, task) => sum + task.seconds, 0),
         browser: false,
         desktop: false,
@@ -216,9 +234,17 @@ export function buildUnits(tasks: Task[], mode: Mode): Unit[] {
                 bin.tasks.every((id) => tasks.find((entry) => entry.id === id)!.package !== task.package),
               )
             : bins
-        const target = eligible.toSorted((a, b) => a.seconds - b.seconds || a.id.localeCompare(b.id))[0]!
+        const assigned = (bin: Unit) => bin.tasks.map((id) => tasks.find((entry) => entry.id === id)!)
+        const predicted = (bin: Unit) => finishTime([...assigned(bin), task], unitWorkers(pool, mode))
+        const target = eligible.toSorted(
+          (a, b) =>
+            predicted(a) - predicted(b) ||
+            assigned(a).reduce((sum, entry) => sum + entry.seconds, 0) -
+              assigned(b).reduce((sum, entry) => sum + entry.seconds, 0) ||
+            a.id.localeCompare(b.id),
+        )[0]!
+        target.seconds = predicted(target)
         target.tasks.push(task.id)
-        target.seconds += task.seconds
         target.browser ||= task.prerequisites?.includes("browser") ?? false
         target.desktop ||= task.prerequisites?.includes("desktop") ?? false
         target.sandbox ||= task.prerequisites?.includes("sandbox") ?? false
@@ -228,7 +254,8 @@ export function buildUnits(tasks: Task[], mode: Mode): Unit[] {
         target.core ||= task.profile === "core"
         target.full ||= task.profile === "full"
       }
-      for (const bin of bins) bin.tasks.sort((a, b) => Number(b === "policy") - Number(a === "policy"))
+      for (const bin of bins)
+        bin.tasks.sort((a, b) => taskOrder(tasks.find((task) => task.id === a)!, tasks.find((task) => task.id === b)!))
       if (pool !== "linux" && pool !== "docker") for (const bin of bins) bin.id = bin.tasks[0]!
       units.push(...bins.toSorted((a, b) => b.seconds - a.seconds || a.id.localeCompare(b.id)))
     }
@@ -250,6 +277,8 @@ export function createPlan(input: {
   headInputs?: Record<string, TaskInputs>
   tasks: Task[]
   only?: string[]
+  timings?: string
+  selectionChanges?: SelectionChanges
 }): Plan {
   const ids = new Set(input.tasks.map((task) => task.id))
   if (ids.size !== input.tasks.length) throw new Error("Duplicate CI task ID")
@@ -269,7 +298,13 @@ export function createPlan(input: {
   const knownTests = input.tasks
     .flatMap((task) => task.files ?? [])
     .filter((file) => file.startsWith("test/script/") && file.endsWith(".test.ts"))
-  const impact = selectAffected(input.changed, input.baseWorkspaces, input.headWorkspaces, knownTests)
+  const impact = selectAffected(
+    input.changed,
+    input.baseWorkspaces,
+    input.headWorkspaces,
+    knownTests,
+    input.selectionChanges,
+  )
   const affected = new Set(impact.packages)
   const proposed = new Set(
     input.tasks
@@ -283,6 +318,7 @@ export function createPlan(input: {
             impact.documentationOnly,
             input.baseInputs?.[task.id],
             input.headInputs?.[task.id],
+            { ...input.selectionChanges, runtimePackages: impact.runtimePackages },
           ),
       )
       .map((task) => task.id),
@@ -307,6 +343,7 @@ export function createPlan(input: {
     sha: input.sha,
     run: input.run,
     attempt: input.attempt ?? "1",
+    ...(input.timings ? { timings: input.timings } : {}),
     mode: input.mode,
     changed: [...new Set(input.changed)].sort(),
     selected: [...selected].sort(),

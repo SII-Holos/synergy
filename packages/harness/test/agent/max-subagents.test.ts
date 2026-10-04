@@ -17,7 +17,7 @@ function action(agent: ReturnType<typeof createBuiltinMaxSubagents>[string], per
   return PermissionNext.evaluate(permission, "*", agent.permission).action
 }
 
-describe("synergy-max subagents", () => {
+describe("coding subagents", () => {
   const agents = runtime.run(() => createBuiltinMaxSubagents(ctx))
 
   test("does not expose workflow-designer", () =>

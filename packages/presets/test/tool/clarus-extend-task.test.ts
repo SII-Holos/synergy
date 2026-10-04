@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
@@ -69,7 +70,7 @@ function makeToolContext(overrides: Partial<Tool.Context> = {}): Tool.Context {
   return {
     sessionID: `ses_${crypto.randomUUID()}`,
     messageID: `msg_${crypto.randomUUID()}`,
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     abort: new AbortController().signal,
     metadata() {},
     async ask() {},

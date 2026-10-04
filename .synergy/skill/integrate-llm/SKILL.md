@@ -38,9 +38,13 @@ Control Plane operations that consume non-streaming results use `RolloutCall.exe
 
 A sessionless call does not create session history, Cortex progress, completion notices, or Experience lineage. Do not imply those properties in UI or events.
 
+For optional model-backed prompt preparation, choose a domain-owned interactive deadline through the context contribution contract. Share prerequisite results across parallel consumers, propagate cancellation, and do not retry the same failed prerequisite independently in each branch. Verify that timeout preserves required non-model context and does not change explicit tool execution budgets.
+
 ## Session and Cortex Calls
 
 Use `SessionInvoke` when the caller already owns the target session: direct user/API input, Channel or Agenda execution, workflow continuation, or an in-place loop operation such as compaction.
+
+Key loop-stable context collection to the current task root's first model preparation, including an empty result; numerical steps also count pre-model jobs. Reuse context across root and child continuations, replace it for a new Inbox root, and preserve collection cancellation and loop-exit eviction. Verify actual SDK inputs through tool continuations, compaction before and after the first request, empty contributions and cancellation during collection; count commitment separately from model requests.
 
 When an in-place internal operation reuses a root user message only for task identity or attribution while selecting a different model, strip root-owned execution settings that do not belong to the target call. Compaction keeps the persisted root unchanged but clears both `variant` and `thinking` from the ephemeral processor envelope. Keep small-call bypass tests for valid and invalid source selections.
 
@@ -140,3 +144,7 @@ Verify SDK output inclusion against the locked adapter: Google and Vertex expose
 When adding model statistics, follow [Usage accounting](../../../docs/architecture/usage-accounting.md). Capture monotonic model timing at transport arrival before IPC/coalescing/archival acknowledgement; retain wall timestamps separately. Test slow recording, cancellation, retries, hidden reasoning and recovery without fabricating speed. Resolve billing from explicit model/connection/profile metadata and preserve the call-time price snapshot; never infer API billing from authentication or a model name. Verify missing cache fields remain unknown even when input totals are exact.
 
 Record conversation, compaction and auxiliary usage roles at their invocation boundaries, independently of agent names. Test custom conversation agents and queries that include descendants: a child's request or compaction must not replace or invalidate the selected parent's context.
+
+## Common tool intent
+
+Freeze native schemas and public intent bindings with each model request, including deferred tools. The facade adds optional `workBrief`; conflicting or composed schemas preserve native input beneath `toolInput`. Strip only common intent before native execution. Reconstruct model history from the persisted input shape and intent without modifying raw audit evidence. Mask registered secrets in persisted intent and retain provider masking for renamed entity text fields; test these boundaries with real Vault entries and unchanged binary data. Test missing/blank intent, conflicts, arrays, root references, definition refresh, failed calls and repeated-call protection. Agent guidance explains purpose, target and when to state outcomes; it does not explain presentation, persistence or scheduling internals.

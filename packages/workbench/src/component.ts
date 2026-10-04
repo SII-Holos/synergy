@@ -8,6 +8,7 @@ import { registerProjectStartup } from "./project/startup"
 import { registerProjectSessionHealth } from "./project/session-health"
 import { registerConfig } from "./config-schema"
 import { Usage } from "@ericsanchezok/synergy-harness/usage"
+import { ExecutionService } from "./execution/service"
 
 export function workbench(): RuntimeComponent {
   return {
@@ -19,14 +20,17 @@ export function workbench(): RuntimeComponent {
     services() {
       let dispose: (() => void) | undefined
       let stopUsage: (() => Promise<void>) | undefined
+      let stopExecution: (() => void) | undefined
       return {
         resident: {
           async start() {
             dispose = PushBridge.init()
             stopUsage = Usage.service()
+            stopExecution = ExecutionService.init()
           },
           async stop() {
             await stopUsage?.()
+            stopExecution?.()
             stopUsage = undefined
             dispose?.()
             dispose = undefined

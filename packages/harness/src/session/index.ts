@@ -76,6 +76,9 @@ import { SessionSchemaRegistry } from "./schema-registry"
 import { SessionMutation } from "./mutation"
 import { SessionWorkspaceRuntime } from "./workspace-runtime"
 import { SessionSearchIndex } from "./search-index"
+import { SessionHistoryDisplay } from "./history-display"
+
+import { SecretMask } from "../secrets/mask"
 
 export namespace Session {
   export const ModelSelectionInput = ModelSelection.Input
@@ -477,7 +480,7 @@ export namespace Session {
     session = await SessionRecords.hydrate(session)
     const storedRollback = session.history?.rollback
     const [working, history] = await Promise.all([
-      SessionWorking.resolve(session.id),
+      SessionWorking.resolve(session.id, session),
       storedRollback?.canUnrollback === true
         ? SessionHistory.storedInfo(session.id).catch(() => session.history)
         : session.history,
@@ -658,6 +661,7 @@ export namespace Session {
         SessionRecords.serialize(result),
       )
       await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
+      await SessionHistoryDisplay.initialize(scope.id, result.id)
       await writeEndpointIndex(result)
       await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
       if (result.parentID) await upsertChildIndexEntry(scope.id, result.parentID, toChildIndexEntry(result))
@@ -817,9 +821,18 @@ export namespace Session {
             part.type === "attachment" && part.artifact
               ? await RolloutArtifact.copy(from, to, part.artifact)
               : undefined
+          const evidence = SnapshotEvidence.interrupt(part)
           return preparePart(
             {
-              ...SnapshotEvidence.interrupt(part),
+              ...evidence,
+              ...(evidence.type === "patch" && evidence.checkpoint
+                ? {
+                    checkpoint: {
+                      ...evidence.checkpoint,
+                      rootID: messageMap.get(evidence.checkpoint.rootID) ?? evidence.checkpoint.rootID,
+                    },
+                  }
+                : {}),
               ...(artifact ? { artifact } : {}),
               ...(state ? { state } : {}),
               id,
@@ -1781,6 +1794,7 @@ export namespace Session {
             asPartID(input.partID),
           ),
         )
+        await SessionHistoryDisplay.partRemoved(scopeID, input.sessionID, input.messageID, input.partID)
         SessionMessageCache.invalidate(input.sessionID)
         Bus.publish(MessageV2.Event.PartRemoved, {
           sessionID: input.sessionID,
@@ -1819,6 +1833,7 @@ export namespace Session {
         Storage.transaction(async (tx) => {
           await assertPartOwner(tx, key)
           await tx.write(key, value)
+          await SessionHistoryDisplay.partWritten(key[1], value)
         }),
       ),
     )
@@ -1848,6 +1863,9 @@ export namespace Session {
 
   export async function preparePart(input: MessageV2.Part, ownerScopeID?: string): Promise<MessageV2.Part> {
     let part = input
+    if (part.type === "tool" && part.workBrief) {
+      part = { ...part, workBrief: await SecretMask.apply(part.workBrief) }
+    }
     const scopeID = asScopeID(ownerScopeID ?? (await SessionManager.resolveScopeID(part.sessionID)))
     try {
       const owner = { kind: "session" as const, scopeID, sessionID: part.sessionID }
@@ -1920,6 +1938,7 @@ export namespace Session {
         Storage.transaction(async (tx) => {
           await assertPartOwner(tx, key)
           await Storage.write(key, value)
+          await SessionHistoryDisplay.partWritten(scopeID, value)
           if (value.type === "text" || value.type === "tool" || value.type === "attachment")
             await SessionSearchIndex.markDirty(scopeID, asSessionID(value.sessionID))
           SessionMessageCache.upsertPart(value.sessionID, value)

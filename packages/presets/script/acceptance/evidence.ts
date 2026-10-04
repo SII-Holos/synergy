@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { createHash } from "node:crypto"
 import { isDeepStrictEqual } from "node:util"
 import fs from "node:fs/promises"
@@ -29,7 +30,7 @@ export const AcceptanceCase = z
     expected: z.array(z.string().min(1)).min(1),
     verification: z.string().min(1),
     live: z.boolean(),
-    agent: z.enum(["synergy", "synergy-max", "synergy-flash"]).optional(),
+    agent: z.enum(PrimaryAgentIdentity.names).optional(),
     barriers: z.array(name).min(1),
     factors: z.array(z.string().min(1)).min(2),
     checks: z.array(Oracle).min(1),

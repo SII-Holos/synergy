@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from fixtures.resources import fixture_resources
+from fixtures.resources import fixture_resources, healthy_docker_snapshot
 
 from synergy_bench.catalog import tree_digest
 from synergy_bench.prepare import BENCHMARK
@@ -89,7 +89,7 @@ async def test_admission_preserves_native_network_topology_and_removes_only_owne
             assert network["Internal"] is (topology == "restricted")
             if topology == "restricted":
                 assert len(services["egress"]["NetworkSettings"]["Networks"]) == 2
-        snapshot = await DockerStats().snapshot()
+        snapshot = await healthy_docker_snapshot(DockerStats(), timeout_seconds=pool.pressure_timeout_seconds)
         assert snapshot.healthy
         assert len([row for row in snapshot.containers if row["project"] == project]) == len(services)
     finally:
@@ -102,7 +102,7 @@ async def test_admission_preserves_native_network_topology_and_removes_only_owne
 
 
 @pytest.fixture(scope="module")
-def prepared_fixture(tmp_path_factory: pytest.TempPathFactory):
+def experiment_fixture(tmp_path_factory: pytest.TempPathFactory):
     tmp_path = tmp_path_factory.mktemp("docker-benchmark")
     spec = importlib.util.spec_from_file_location(
         "benchmark_fixture_provider", BENCHMARK / "test/fixtures/task/environment/provider.py"
@@ -236,18 +236,18 @@ def prepared_fixture(tmp_path_factory: pytest.TempPathFactory):
     path.write_text(yaml.safe_dump(config))
     with pytest.MonkeyPatch.context() as monkeypatch:
         monkeypatch.setenv("BENCH_FIXTURE_KEY", "deterministic-local-fixture")
-        root = initialize(path)
-        print(f"Integration evidence: {root}", flush=True)
         try:
-            yield root, path, module.Handler.artifacts
+            yield path, module.Handler.artifacts
         finally:
             provider.shutdown()
             provider.server_close()
             thread.join(timeout=5)
 
 
-def test_real_synergy_paired_rollout(prepared_fixture) -> None:
-    root, _, _ = prepared_fixture
+def test_real_synergy_paired_rollout(experiment_fixture) -> None:
+    path, _ = experiment_fixture
+    root = initialize(path)
+    print(f"Integration evidence: {root}", flush=True)
     asyncio.run(resume(root))
     evidence = [read_json(file) for file in root.glob("trials/*/attempt-*/evidence.json")]
     assert len(evidence) == 8
@@ -280,21 +280,19 @@ def primary_attempts(root: Path):
             manifest = json.loads(archive.read("manifest.json"))
         assert manifest["format"] == "synergy-rollout" and manifest["version"] == 1
         for snapshot in manifest["snapshots"]:
-            calls = {call["id"] for call in snapshot["calls"] if call["purpose"] == "synergy"}
+            calls = {call["id"] for call in snapshot["calls"] if call.get("usageRole") == "conversation"}
             yield from (attempt for attempt in snapshot["attempts"] if attempt["callID"] in calls)
 
 
 @pytest.mark.parametrize("mode", ["long", "disconnect", "timeout", "cancel", "docker-stop"])
-def test_faults_preserve_terminal_evidence_and_cleanup(prepared_fixture, mode: str, monkeypatch) -> None:
+def test_faults_preserve_terminal_evidence_and_cleanup(experiment_fixture, mode: str, monkeypatch) -> None:
     from synergy_bench.prepare import command
 
-    original, path, provider_artifacts = prepared_fixture
+    path, provider_artifacts = experiment_fixture
     for marker in provider_artifacts.iterdir():
         marker.unlink()
     config = yaml.safe_load(path.read_text())
-    artifact = read_json(original / "plan.json")["variants"]["A__m"]["artifact"]
     variant = config["harnesses"]["A"]
-    variant["source"] = {"artifact": artifact}
     config["models"]["m"]["model"] = "hang" if mode in {"timeout", "cancel", "docker-stop"} else mode
     config["harnesses"] = {mode: variant}
     config["selection"] = {"tasks": ["fixture/marker"]}

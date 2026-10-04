@@ -64,30 +64,56 @@ export namespace UsageLedger {
       await Storage.write(StoragePath.usageState(), { version: 1, revision: (await revision()) + 1 })
     })
   }
+  export function parentKey(value: UsageSchema.Link) {
+    const parent = value.parent?.owner ?? value.parentOwner
+    return (
+      parent &&
+      StoragePath.usageParent(
+        parent.scopeID,
+        ownerKey(parent),
+        value.parent?.runID ?? "_",
+        value.owner.scopeID,
+        ownerKey(value.owner),
+        value.runID,
+      )
+    )
+  }
+  export async function indexLink(value: UsageSchema.Link, tx?: StoreTransaction) {
+    const key = parentKey(value)
+    if (key) await (tx ?? Storage).write(key, value)
+  }
   export async function link(
     owner: UsageSchema.Owner,
     runID: string,
     parent?: z.infer<typeof UsageSchema.Run>["parent"],
   ) {
-    const session =
-      owner.kind === "session"
-        ? await optional<{ parentID?: string }>(
-            StoragePath.sessionInfo(Identifier.asScopeID(owner.scopeID), Identifier.asSessionID(owner.sessionID)),
-          )
-        : undefined
-    const path = StoragePath.usageLink(owner.scopeID, ownerKey(owner), runID)
-    const previous = await optional<UsageSchema.Link>(path)
-    const value = UsageSchema.Link.parse({
-      owner,
-      runID,
-      parent: parent ?? previous?.parent,
-      parentOwner: session?.parentID
-        ? { kind: "session", scopeID: owner.scopeID, sessionID: session.parentID }
-        : previous?.parentOwner,
+    return Storage.transaction(async () => {
+      const session =
+        owner.kind === "session"
+          ? await optional<{ parentID?: string }>(
+              StoragePath.sessionInfo(Identifier.asScopeID(owner.scopeID), Identifier.asSessionID(owner.sessionID)),
+            )
+          : undefined
+      const path = StoragePath.usageLink(owner.scopeID, ownerKey(owner), runID)
+      const previous = await optional<UsageSchema.Link>(path)
+      const value = UsageSchema.Link.parse({
+        owner,
+        runID,
+        parent: parent ?? previous?.parent,
+        parentOwner: session?.parentID
+          ? { kind: "session", scopeID: owner.scopeID, sessionID: session.parentID }
+          : previous?.parentOwner,
+      })
+      if (JSON.stringify(previous) !== JSON.stringify(value)) {
+        const oldKey = previous && parentKey(previous)
+        if (oldKey && JSON.stringify(oldKey) !== JSON.stringify(parentKey(value))) await Storage.remove(oldKey)
+        await Storage.write(path, value)
+        await indexLink(value)
+      }
+      return value
     })
-    if (JSON.stringify(previous) !== JSON.stringify(value)) await Storage.write(path, value)
-    return value
   }
+
   async function optional<T>(key: string[]): Promise<T | undefined> {
     return Storage.read<T>(key, { silentNotFound: true }).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined
@@ -340,6 +366,7 @@ export namespace UsageLedger {
         estimate: value.estimate,
         timing: value.timing,
         usageFinal: value.usageFinal ?? value.status === "completed",
+        pricingEvidence: value.pricingEvidence,
         httpStatus: value.httpStatus,
         responseModel: value.responseModel,
       },
@@ -397,9 +424,10 @@ export namespace UsageLedger {
             attempt.usageFinal =
               capture.hasFinalUsage() || (attempt.status === "completed" && attempt.response.status === "complete")
             attempt.estimate ??= ProviderPricing.estimate(
-              call.model.pricing,
+              attempt.pricingEvidence ? attempt.pricingEvidence.pricing : call.model.pricing,
               usage,
               call.model.billingMode ?? "unknown",
+              attempt.ended,
             )
             event.value = JSON.parse(JSON.stringify(attempt))
           }
@@ -522,18 +550,32 @@ export namespace UsageLedger {
           continue
         }
         await tx.write(timeKey(record), { key: row.key })
-        if (record.kind === "run")
-          await tx.write(
-            StoragePath.usageLink(record.owner.scopeID, ownerKey(record.owner), record.runID),
-            UsageSchema.Link.parse({
-              owner: record.owner,
-              runID: record.runID,
-              parent: record.parent,
-              parentOwner: record.parentOwner,
-            }),
-          )
+        if (record.kind === "run") {
+          const key = StoragePath.usageLink(record.owner.scopeID, ownerKey(record.owner), record.runID)
+          const [previous] = await tx.readMany<UsageSchema.Link>([key])
+          const value = UsageSchema.Link.parse({
+            owner: record.owner,
+            runID: record.runID,
+            parent: record.parent,
+            parentOwner: record.parentOwner,
+          })
+          const oldKey = previous && parentKey(previous)
+          if (oldKey && JSON.stringify(oldKey) !== JSON.stringify(parentKey(value))) await tx.remove(oldKey)
+          await tx.write(key, value)
+        }
       }
       after = page.at(-1)!.key
+    }
+    after = undefined
+    for (;;) {
+      const links: { key: string[]; value: UsageSchema.Link }[] = await tx.query<UsageSchema.Link>({
+        kind: "usage_link",
+        after,
+        limit: 128,
+      })
+      if (!links.length) break
+      for (const row of links) await indexLink(UsageSchema.Link.parse(row.value), tx)
+      after = links.at(-1)!.key
     }
     await tx.write(StoragePath.usageState(), { version: 1, revision: revision + 1 })
     await tx.write(StoragePath.usageRebuild(), {

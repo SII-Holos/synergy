@@ -1,4 +1,5 @@
-import z from "zod"
+import { z } from "zod"
+import { ToolIntent } from "@ericsanchezok/synergy-harness/session/tool-intent"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import type { Session } from "@ericsanchezok/synergy-harness/session"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -324,7 +325,7 @@ export namespace TurnDigest {
         tool: part.tool,
         title: part.state.title,
         status: "completed",
-        input: part.state.input,
+        input: ToolIntent.encode(part.state.input, part.workBrief, part.inputShape),
         output: truncate(part.state.output, toolOutputBudget, modelID),
       }
     }
@@ -335,7 +336,7 @@ export namespace TurnDigest {
         tool: part.tool,
         title: "",
         status: "error",
-        input: part.state.input,
+        input: ToolIntent.encode(part.state.input, part.workBrief, part.inputShape),
         output: part.state.error,
       }
     }

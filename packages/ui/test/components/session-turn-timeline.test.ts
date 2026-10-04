@@ -1,3 +1,5 @@
+import { sessionActivityLabel } from "../../src/components/session-status"
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, mock, test } from "bun:test"
 import type {
   AssistantMessage,
@@ -88,10 +90,9 @@ const {
   formatTurnCost,
   formatTurnTokenCount,
   providerPreludeElapsedLabel,
-  providerPreludeText,
   resolveSessionTurnError,
   resolveTurnWorking,
-  shouldShowProviderPrelude,
+  shouldShowCurrentActivity,
   turnCompletionStats,
   timelineItemStableKey,
   timelineVisualKind,
@@ -107,7 +108,7 @@ function user(
     sessionID: "session",
     role: "user",
     time: { created: 1 },
-    agent: "synergy",
+    agent: TEST_AGENT_NAME,
     model: { providerID: "provider", modelID: "model" },
     isRoot,
     rootID: opts?.rootID ?? id,
@@ -128,7 +129,7 @@ function assistantFor(id: string, parentID: string): AssistantMessage {
     parentID,
     rootID: parentID,
     mode: "test",
-    agent: "synergy",
+    agent: TEST_AGENT_NAME,
     path: { cwd: "/tmp", root: "/tmp" },
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -640,6 +641,18 @@ describe("session turn working state", () => {
     ).toBe(false)
   })
 
+  test("missing and paused runtime states never manufacture live work", () => {
+    const messages = [assistant("assistant-running")]
+    expect(resolveTurnWorking({ isLastUserMessage: true, messages })).toBe(false)
+    expect(
+      resolveTurnWorking({
+        isLastUserMessage: true,
+        messages,
+        sessionStatus: { type: "paused", reason: "aborted", since: 10 },
+      }),
+    ).toBe(false)
+  })
+
   test("never marks an older turn as working", () => {
     expect(
       resolveTurnWorking({
@@ -692,95 +705,22 @@ describe("session turn timeline", () => {
       values: { availability: "none", availableVariants: "" },
     })
   })
-  test("shows provider prelude while the first assistant response has no visible part", () => {
-    expect(
-      shouldShowProviderPrelude({
-        working: true,
-        hasError: false,
-        latestAssistant: undefined,
-        latestAssistantTimelineItems: [],
-      }),
-    ).toBe(true)
+  test("keeps the current activity visible throughout active execution", () => {
+    expect(shouldShowCurrentActivity({ working: true, hasError: false })).toBe(true)
+    expect(shouldShowCurrentActivity({ working: false, hasError: false })).toBe(false)
+    expect(shouldShowCurrentActivity({ working: true, hasError: true })).toBe(false)
   })
 
-  test("shows provider prelude after prior visible work when the latest assistant response is empty", () => {
-    const previous = completedAssistant("assistant-a")
-    const latest = assistant("assistant-b")
-    const previousItems = collectSessionTurnTimelineItems(
-      [previous],
-      { [previous.id]: [ordinaryTool({ id: "tool-a", messageID: previous.id, status: "completed" })] },
-      true,
-    )
-    const latestItems = collectSessionTurnTimelineItems([latest], {}, true)
-
-    expect(previousItems).toHaveLength(1)
-    expect(latestItems).toHaveLength(0)
-    expect(
-      shouldShowProviderPrelude({
-        working: true,
-        hasError: false,
-        latestAssistant: latest,
-        latestAssistantTimelineItems: latestItems,
-      }),
-    ).toBe(true)
-  })
-
-  test("hides provider prelude once the latest assistant response has a visible part", () => {
-    const latest = assistant("assistant-a")
-    const latestItems = collectSessionTurnTimelineItems(
-      [latest],
-      { [latest.id]: [textPart("text-a", latest.id)] },
-      true,
-    )
-
-    expect(latestItems).toHaveLength(1)
-    expect(
-      shouldShowProviderPrelude({
-        working: true,
-        hasError: false,
-        latestAssistant: latest,
-        latestAssistantTimelineItems: latestItems,
-      }),
-    ).toBe(false)
-  })
-
-  test("hides provider prelude when the turn is not actively waiting", () => {
-    const latest = assistant("assistant-a")
-
-    expect(
-      shouldShowProviderPrelude({
-        working: false,
-        hasError: false,
-        latestAssistant: latest,
-        latestAssistantTimelineItems: [],
-      }),
-    ).toBe(false)
-    expect(
-      shouldShowProviderPrelude({
-        working: true,
-        hasError: true,
-        latestAssistant: latest,
-        latestAssistantTimelineItems: [],
-      }),
-    ).toBe(false)
-    expect(
-      shouldShowProviderPrelude({
-        working: true,
-        hasError: false,
-        latestAssistant: completedAssistant("assistant-b"),
-        latestAssistantTimelineItems: [],
-      }),
-    ).toBe(false)
-  })
-
-  test("keeps backend provider prelude status text verbatim", () => {
+  test("uses canonical activity labels while waiting for provider content", () => {
     const status = {
       type: "busy",
       description: "Awaiting response…",
     } satisfies SessionStatus
 
-    expect(providerPreludeText(status)).toBe("Awaiting response…")
-    expect(providerPreludeText({ type: "busy" })).toBe("Awaiting response…")
+    expect(sessionActivityLabel(status)).toBe("Processing task")
+    expect(sessionActivityLabel({ type: "busy", activity: { phase: "waiting_model", startedAt: 1 } })).toBe(
+      "Waiting for model response",
+    )
   })
 
   test("formats provider prelude elapsed time as a quiet timer label", () => {

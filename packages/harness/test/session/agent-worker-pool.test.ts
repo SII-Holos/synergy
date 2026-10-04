@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, spyOn, test } from "bun:test"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
@@ -126,7 +127,7 @@ function input(abort: AbortSignal) {
     sessionID: "ses_test",
     user: { id: "msg_user" },
     model: { id: "model", providerID: "provider" },
-    agent: { name: "synergy" },
+    agent: { name: TEST_AGENT_NAME },
     toolDefinitions: [],
     messages: [],
     system: [],
@@ -512,7 +513,7 @@ describe("AgentWorkerPool", () => {
       pool.run({
         ...input(new AbortController().signal),
         user: { id: "msg_user", system: "control-plane-only" },
-        agent: { name: "synergy", prompt: "control-plane-only", permission: [] },
+        agent: { name: TEST_AGENT_NAME, prompt: "control-plane-only", permission: [] },
         system: ["already folded into prepared.system"],
         prepared: {
           system: ["prepared"],
@@ -536,7 +537,7 @@ describe("AgentWorkerPool", () => {
     const envelope = AgentTurnProtocol.deserializeTurn(Buffer.concat(chunks))
 
     expect(envelope.input.user).toEqual({ id: "msg_user" })
-    expect(envelope.input.agent).toEqual({ name: "synergy" })
+    expect(envelope.input.agent).toEqual({ name: TEST_AGENT_NAME })
     expect(envelope.input.system).toEqual([])
     expect(envelope.input.prepared.system).toEqual(["prepared"])
 

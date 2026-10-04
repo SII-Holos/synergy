@@ -1,12 +1,14 @@
 import { Usage } from "@ericsanchezok/synergy-harness/usage"
 import { RolloutAccounting } from "@ericsanchezok/synergy-harness/session/rollout/accounting"
 import type { StatsSnapshot, DailyBucket } from "./types"
+import { ExecutionPresentation } from "../execution/presentation"
 
 export namespace CanonicalStats {
   function projection(accounting: RolloutAccounting.Summary) {
     return {
       ...RolloutAccounting.project(accounting),
-      cost: accounting.apiEstimate.known + accounting.legacy.cost,
+      cost: RolloutAccounting.knownExpense(accounting),
+      costPresentation: ExecutionPresentation.cost(accounting),
       accounting,
     }
   }

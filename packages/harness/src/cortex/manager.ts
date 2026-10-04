@@ -1178,7 +1178,7 @@ export namespace Cortex {
       `**Description:** ${task.description}`,
       `**Duration:** ${formatDuration(task)}`,
       task.status === "error" && task.error ? `**Error:** ${task.error}` : "",
-      `Retrieve the final result once with \`task_output(task_id="${task.id}", mode="full")\`.`,
+      `Retrieve the final result once with \`task_output(taskId="${task.id}", mode="full")\`.`,
     ]
       .filter(Boolean)
       .join("\n")
@@ -1214,6 +1214,8 @@ export namespace Cortex {
         metadata: {
           source: "cortex",
           sourceSessionID: task.sessionID,
+          sourceTaskID: task.id,
+          sourceTitle: task.description,
           ...(replyToChannel ? { channelPush: true, channelReply: true, channelReplyToMessageId } : {}),
         },
         parts: [{ type: "text", text: notification }],

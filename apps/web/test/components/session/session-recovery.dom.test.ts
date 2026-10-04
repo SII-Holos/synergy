@@ -36,7 +36,7 @@ beforeAll(async () => {
     import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
     import { SessionInbox } from ${JSON.stringify(`/@fs/${source}/components/session/session-inbox.tsx`)}
     import { PendingTimelineItem } from ${JSON.stringify(`/@fs/${source}/components/session/pending-timeline-item.tsx`)}
-    import { SessionTransitionCard } from ${JSON.stringify(`/@fs/${source}/components/session/session-transition-card.tsx`)}
+    import { SessionSubmissionPreview } from ${JSON.stringify(`/@fs/${source}/components/session/session-submission-preview.tsx`)}
     import { createNewSessionTransitionAcceptedProgress, createSessionTransitionHandoffErrorProgress } from ${JSON.stringify(`/@fs/${source}/components/session/session-transition-progress.ts`)}
     import { i18n } from "./locale"
     import "@ericsanchezok/synergy-ui/styles"
@@ -54,10 +54,10 @@ beforeAll(async () => {
     } }
     const sync = { data, session: { refresh: async () => setData("inbox", "s1", window.activeItems) } }
     const accepted = createNewSessionTransitionAcceptedProgress()
-    const failed = createSessionTransitionHandoffErrorProgress({ kind:accepted.kind,steps:accepted.steps,error:{code:"ProviderUnavailable",message:"Diagnostic preserved"} })
+    const failed = createSessionTransitionHandoffErrorProgress({ kind:accepted.kind,error:{code:"ProviderUnavailable",message:"Diagnostic preserved"} })
     const mode = new URLSearchParams(location.search).get("mode")
     render(() => <I18nProvider i18n={i18n}><MarkedProvider><DialogProvider>
-      {mode === "pending" ? <PendingTimelineItem item={{...item,mode:"task",status:"failed",failReason:"Attachment invalid"}} rollbackActive={false} hasCanonicalRoot={false} onRemove={async () => {window.removeCalls++; await new Promise(resolve => setTimeout(resolve, 150)); if (window.failRemove) throw new Error("Removal offline")}} /> : mode === "transition" ? <SessionTransitionCard progress={failed} onRetry={() => {window.retryCount = (window.retryCount ?? 0)+1}} /> : <SessionInbox sessionID="s1" sdk={{client}} sync={sync} />}
+      {mode === "pending" ? <PendingTimelineItem item={{...item,mode:"task",status:"failed",failReason:"Attachment invalid"}} rollbackActive={false} hasCanonicalRoot={false} onRemove={async () => {window.removeCalls++; await new Promise(resolve => setTimeout(resolve, 150)); if (window.failRemove) throw new Error("Removal offline")}} /> : mode === "transition" ? <SessionSubmissionPreview entry={{ progress: failed, draft: {intent: 1, text: "Original draft **preserved**"}, actions: {retry: () => {window.retryCount = (window.retryCount ?? 0)+1}} }} /> : <SessionInbox sessionID="s1" sdk={{client}} sync={sync} />}
     </DialogProvider></MarkedProvider></I18nProvider>, document.querySelector("#root"))
   `,
   )
@@ -98,7 +98,6 @@ interface RecoveryWindow extends Window {
 
 test("failed removal retains the message and restoration is visible and retryable", async () => {
   await page.goto(url)
-  await page.getByRole("button", { name: "Session inbox", exact: true }).click()
   await page.evaluate(() => ((window as unknown as RecoveryWindow).failRemove = true))
   await page.getByRole("button", { name: "Queued message actions", exact: true }).click()
   await page.getByRole("button", { name: "Delete", exact: true }).click()
@@ -121,7 +120,6 @@ test("failed removal retains the message and restoration is visible and retryabl
 
 test("lost restore response is checked before another restore request", async () => {
   await page.goto(url)
-  await page.getByRole("button", { name: "Session inbox", exact: true }).click()
   await page.getByRole("button", { name: "Queued message actions", exact: true }).click()
   await page.getByRole("button", { name: "Delete", exact: true }).click()
   await page.getByRole("heading", { name: "Removed messages" }).waitFor()
@@ -136,12 +134,13 @@ test("lost restore response is checked before another restore request", async ()
 test("failed initialization stops spinners and exposes one recovery action with diagnostics at 375px", async () => {
   await page.setViewportSize({ width: 375, height: 812 })
   await page.goto(`${url}?mode=transition`)
+  expect(await page.locator(".session-submission-prompt").textContent()).toBe("Original draft **preserved**")
   await page.getByRole("alert").waitFor()
-  expect(await page.locator(".session-transition-step-spinner").count()).toBe(0)
-  expect(await page.getByText("Failed", { exact: true }).count()).toBe(1)
-  await page.getByText("Error details", { exact: true }).click()
+  expect(await page.getByRole("status").count()).toBe(0)
+  expect(await page.locator('[data-component="error-card"]').count()).toBe(1)
+  await page.getByRole("button", { name: "Unable to start execution" }).click()
   await page.getByText("ProviderUnavailable: Diagnostic preserved").waitFor()
-  await page.getByRole("button", { name: "Retry initialization" }).click()
+  await page.getByRole("button", { name: "Retry", exact: true }).click()
   expect(await page.evaluate(() => (window as unknown as RecoveryWindow).retryCount)).toBe(1)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   expect(errors).toEqual([])

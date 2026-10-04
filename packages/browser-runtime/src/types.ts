@@ -27,6 +27,8 @@ export interface BrowserAnnotationInput {
 }
 
 export interface BrowserAgentActivity {
+  sessionID: string
+  operationID: string
   pageId: string
   url: string
   title?: string

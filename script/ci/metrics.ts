@@ -14,6 +14,7 @@ interface Job {
   started_at: string | null
   completed_at: string | null
   runner_name: string
+  steps?: Array<{ started_at?: string | null }>
   labels: string[]
   run_attempt?: number
 }
@@ -31,8 +32,11 @@ export function summarize(created: string, input: Job[], now = Date.now(), attem
         .map((job) => [job.id, job]),
     ).values(),
   ]
+  const executed = (job: Job) => !!job.runner_name || job.steps?.some((step) => !!step.started_at)
   const elapsed = (job: Job) =>
-    job.started_at ? Math.max(0, (Date.parse(job.completed_at ?? "") || now) - Date.parse(job.started_at)) / 1000 : 0
+    job.started_at && executed(job)
+      ? Math.max(0, (Date.parse(job.completed_at ?? "") || now) - Date.parse(job.started_at)) / 1000
+      : 0
   return {
     endToEndSeconds: (Math.max(first, ...jobs.map((job) => Date.parse(job.completed_at ?? "") || now)) - first) / 1000,
     runnerSeconds: jobs.reduce((sum, job) => sum + elapsed(job), 0),
@@ -43,7 +47,11 @@ export function summarize(created: string, input: Job[], now = Date.now(), attem
       status: job.status,
       conclusion: job.conclusion,
       queueSeconds:
-        Math.max(0, (job.started_at ? Date.parse(job.started_at) : now) - Date.parse(job.created_at)) / 1000,
+        Math.max(
+          0,
+          (executed(job) && job.started_at ? Date.parse(job.started_at) : Date.parse(job.completed_at ?? "") || now) -
+            Date.parse(job.created_at),
+        ) / 1000,
       runSeconds: elapsed(job),
     })),
   }

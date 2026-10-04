@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
+import { once } from "node:events"
 import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { EnvironmentExecution } from "@ericsanchezok/synergy-harness/environment/execution"
+import { ExecutionProtocol } from "@ericsanchezok/synergy-harness/environment/executor"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceBlobs, WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
@@ -13,6 +15,177 @@ import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { registerNativeEnvironment } from "../../src/environment/native"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
+
+test("activation observes native readiness before paused output applies backpressure", async () => {
+  await using tmp = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") })
+  await using runtime = await testRuntime({
+    register() {
+      WorkspaceAccess.register(coordinator)
+      registerNativeEnvironment({ coordinator })
+    },
+  })
+  await runtime.run(async () => {
+    const environment = await Environment.bind({ scopeID: "scope", ownerID: "owner", provider: "native", spec: {} })
+    await using resources = await EnvironmentResources.resolve({
+      scopeID: "scope",
+      environmentID: environment.id,
+      needs: { execution: "exec" },
+    })
+    const executor = resources.executor!
+    const start = executor.start.bind(executor)
+    const status = executor.status.bind(executor)
+    const deadline = Date.now() + 20_000
+    let accepted: ExecutionProtocol.Status | undefined
+    let delayed = false
+    executor.start = async (request) => {
+      const result = await start(request)
+      expect(result.state).toBe("accepted")
+      accepted = result
+      return result
+    }
+    executor.status = async (id) => {
+      if (accepted && !delayed) {
+        delayed = true
+        while (Date.now() < deadline) {
+          const physical = await status(id)
+          if (physical && ExecutionProtocol.terminal(physical)) {
+            expect(physical).toMatchObject({ state: "exited", exitCode: 0, treeDrained: true, streamsDrained: true })
+            return accepted
+          }
+          await Bun.sleep(10)
+        }
+        throw new Error("Native output did not finish before the fixture cleanup deadline")
+      }
+      return status(id)
+    }
+    const expected = Buffer.from("activation-保存\n".repeat(16_384))
+    const execution = await EnvironmentProcess.prepare({
+      id: "activation-before-output",
+      scopeID: "scope",
+      resources,
+      command: {
+        command: process.execPath,
+        args: ["-e", 'await Bun.write(Bun.stdout, "activation-保存\\n".repeat(16_384))'],
+        cwd: resources.directory!,
+        env: {},
+        useRoots: [],
+      },
+    })
+    const chunks: Buffer[] = []
+    execution.child.stdout.pause()
+    execution.child.stderr.resume()
+    const readable = once(execution.child.stdout, "readable")
+    let completed = false
+    void execution.completion.then(
+      () => (completed = true),
+      () => {},
+    )
+    const timeout = Promise.withResolvers<never>()
+    const timer = setTimeout(
+      () => timeout.reject(new Error("Activation remained blocked while native output was paused")),
+      Math.max(1, deadline - Date.now()),
+    )
+    try {
+      await Promise.race([execution.activate(), timeout.promise])
+      await Promise.race([readable, timeout.promise])
+      expect(delayed).toBe(true)
+      expect(execution.child.stdout.readableLength).toBeGreaterThan(0)
+      expect(completed).toBe(false)
+      execution.child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk))
+      execution.child.stdout.resume()
+      await Promise.race([execution.completion, timeout.promise])
+      expect(Buffer.concat(chunks)).toEqual(expected)
+      expect((await EnvironmentExecution.get(execution.executionID, "scope")).state).toBe("completed")
+      expect(execution.child.exitCode).toBe(0)
+      expect(await coordinator.inspect()).toEqual([])
+    } finally {
+      clearTimeout(timer)
+      execution.child.stdout.resume()
+      execution.child.stderr.resume()
+      try {
+        await execution.stop()
+      } finally {
+        executor.start = start
+        executor.status = status
+      }
+    }
+  })
+}, 30_000)
+
+test.each(["resume", "stop", "abort"])(
+  "process close waits for paused output before %s",
+  async (action) => {
+    await using tmp = await tmpdir()
+    const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") })
+    await using runtime = await testRuntime({
+      register() {
+        WorkspaceAccess.register(coordinator)
+        registerNativeEnvironment({ coordinator })
+      },
+    })
+    await runtime.run(async () => {
+      const environment = await Environment.bind({ scopeID: "scope", ownerID: "owner", provider: "native", spec: {} })
+      await using resources = await EnvironmentResources.resolve({
+        scopeID: "scope",
+        environmentID: environment.id,
+        needs: { execution: "exec" },
+      })
+      const controller = new AbortController()
+      const execution = await EnvironmentProcess.prepare({
+        id: "paused-output",
+        scopeID: "scope",
+        resources,
+        signal: controller.signal,
+        command: {
+          command: process.execPath,
+          args: [
+            "-e",
+            'await Bun.write(Bun.stdout, "x".repeat(48000)); await Bun.write(Bun.stderr, "y".repeat(32000))',
+          ],
+          cwd: resources.directory!,
+          env: {},
+          useRoots: [],
+        },
+      })
+      const output: Buffer[] = []
+      const errors: Buffer[] = []
+      execution.child.stdout.on("data", (chunk: Buffer) => output.push(chunk)).pause()
+      execution.child.stderr.on("data", (chunk: Buffer) => errors.push(chunk)).pause()
+      const written = Promise.all([once(execution.child.stdout, "finish"), once(execution.child.stderr, "finish")])
+      const stdoutEnded = once(execution.child.stdout, "end")
+      const stderrEnded = once(execution.child.stderr, "end")
+      let closed = false
+      let completed = false
+      execution.child.once("close", () => (closed = true))
+      void execution.completion.then(() => (completed = true))
+      try {
+        await execution.activate()
+        execution.child.stdin.end()
+        await written
+        expect((await EnvironmentExecution.get("paused-output", "scope")).state).toBe("completed")
+        expect(closed).toBe(false)
+        expect(completed).toBe(false)
+        execution.child.stdout.resume()
+        await stdoutEnded
+        expect(closed).toBe(false)
+        if (action === "resume") execution.child.stderr.resume()
+        if (action === "stop") await execution.stop()
+        if (action === "abort") controller.abort()
+        await stderrEnded
+        await execution.completion
+        expect(closed).toBe(true)
+        expect(Buffer.concat(output)).toEqual(Buffer.alloc(48000, "x"))
+        expect(Buffer.concat(errors)).toEqual(Buffer.alloc(32000, "y"))
+      } finally {
+        execution.child.stdout.resume()
+        execution.child.stderr.resume()
+        await execution.stop()
+      }
+    })
+  },
+  15_000,
+)
 
 test("process streams finish only after checkpoint publication and reuse operation identity", async () => {
   await using tmp = await tmpdir()

@@ -4,6 +4,7 @@ import type {
   WorkbenchPanelTab,
   WorkbenchPanelTabInit,
 } from "@/plugin/registries/workbench-panel-registry"
+import type { WorkspaceRevealState } from "./reveal-policy"
 
 export interface WorkbenchSurfaceState {
   opened?: boolean
@@ -11,6 +12,15 @@ export interface WorkbenchSurfaceState {
   tabs?: WorkbenchPanelTab[]
   size?: number
   resized?: boolean
+  fullscreen?: boolean
+  reveal?: WorkspaceRevealState
+}
+
+export function workbenchForNewSession(source: { side?: WorkbenchSurfaceState; bottom?: WorkbenchSurfaceState }) {
+  return {
+    ...(source.side ? { side: { ...source.side, opened: false } } : {}),
+    ...(source.bottom ? { bottom: { ...source.bottom, opened: false } } : {}),
+  }
 }
 
 export interface OpenWorkbenchPanelInput {
@@ -21,6 +31,37 @@ export interface OpenWorkbenchPanelInput {
   createId: () => string
   reuseExisting?: boolean
   replaceEmpty?: boolean
+  replaceCurrent?: boolean
+  replaceTab?: string
+  active?: string
+}
+
+export function sameWorkbenchResource(tab: WorkbenchPanelTab, panelId: string, init?: WorkbenchPanelTabInit) {
+  return (
+    tab.panelId === panelId &&
+    tab.resourceId === init?.resourceId &&
+    (!(panelId === "notes" || panelId === "browser") || tab.source === init?.source)
+  )
+}
+
+export function workbenchReplacementTab(
+  input: Pick<
+    OpenWorkbenchPanelInput,
+    "tabs" | "panelId" | "init" | "active" | "replaceCurrent" | "replaceEmpty" | "replaceTab"
+  >,
+) {
+  if (
+    input.init?.resourceId !== undefined &&
+    input.tabs.some((tab) => sameWorkbenchResource(tab, input.panelId, input.init))
+  )
+    return
+  if (input.replaceTab) return input.tabs.find((tab) => tab.id === input.replaceTab && tab.panelId === "resource-home")
+  if (input.replaceCurrent)
+    return (
+      input.tabs.find((tab) => tab.id === input.active && tab.panelId === input.panelId) ??
+      input.tabs.findLast((tab) => tab.panelId === input.panelId)
+    )
+  if (input.replaceEmpty) return input.tabs.find((tab) => tab.panelId === input.panelId && tab.resourceId === undefined)
 }
 
 export function isWorkbenchPanelAvailable(entry: WorkbenchPanelEntry, hasSession: boolean) {
@@ -29,6 +70,13 @@ export function isWorkbenchPanelAvailable(entry: WorkbenchPanelEntry, hasSession
 
 export function isWorkbenchPanelLaunchable(entry: WorkbenchPanelEntry) {
   return entry.launchable !== false
+}
+
+export function workbenchAddablePanels(panels: WorkbenchPanelEntry[], tabs: WorkbenchPanelTab[]) {
+  const openPanelIds = new Set(tabs.map((tab) => tab.panelId))
+  return panels.filter(
+    (panel) => isWorkbenchPanelLaunchable(panel) && (panel.cardinality === "multi" || !openPanelIds.has(panel.id)),
+  )
 }
 
 export type WorkbenchEscapeAction = "none" | "close-surface"
@@ -127,14 +175,19 @@ export function openWorkbenchPanelTab(input: OpenWorkbenchPanelInput): {
 } {
   const resource = input.init?.resourceId
   const resourceMatch =
-    resource === undefined
-      ? undefined
-      : input.tabs.find((tab) => tab.panelId === input.panelId && tab.resourceId === resource)
-  const emptyMatch = input.replaceEmpty
-    ? input.tabs.find((tab) => tab.panelId === input.panelId && tab.resourceId === undefined)
-    : undefined
+    resource === undefined ? undefined : input.tabs.find((tab) => sameWorkbenchResource(tab, input.panelId, input.init))
+  const emptyMatch = workbenchReplacementTab(input)
   const panelMatch = input.tabs.find((tab) => tab.panelId === input.panelId)
   const existing = resourceMatch ?? emptyMatch ?? panelMatch
+
+  if (!resourceMatch && emptyMatch?.panelId === "resource-home") {
+    const tab = createWorkbenchTab({
+      panelId: input.panelId,
+      init: { ...input.init, id: emptyMatch.id },
+      createId: input.createId,
+    })
+    return { tabs: input.tabs.map((item) => (item.id === emptyMatch.id ? tab : item)), active: tab.id, created: tab }
+  }
 
   if (input.cardinality === "exclusive") {
     const tab = createWorkbenchTab({ panelId: input.panelId, init: input.init ?? existing, createId: input.createId })
@@ -236,7 +289,7 @@ export function closeOtherWorkbenchPanelTabs(
 }
 
 export function workbenchPanelMountKey(tab?: WorkbenchPanelTab) {
-  return tab?.id
+  return tab ? JSON.stringify([tab.id, tab.panelId]) : undefined
 }
 
 /**

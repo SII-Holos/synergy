@@ -77,7 +77,7 @@ export namespace RolloutRecovery {
       if (identity.kind === "session")
         await SnapshotEvidence.recover(
           identity,
-          snapshot.tools.map((tool) => tool.messageID),
+          [...snapshot.tools.map((tool) => tool.messageID), ...snapshot.runs.map((run) => run.id)],
           onProgress,
         )
       for (const run of snapshot.runs) {

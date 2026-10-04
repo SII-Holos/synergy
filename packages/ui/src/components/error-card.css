@@ -1,3 +1,11 @@
+[data-slot="tool-result-error"] {
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
 [data-component="error-card"] {
   width: 100%;
   min-width: 0;
@@ -25,6 +33,24 @@
   box-sizing: border-box;
   cursor: pointer;
   transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+[data-slot="error-card-recovery"] {
+  padding: 0 12px 12px;
+  color: var(--text-weak);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+[data-slot="error-card-recovery"] p {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+
+[data-slot="error-card-recovery-actions"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 [data-slot="error-card-header"]:focus-visible {

@@ -110,6 +110,7 @@ beforeAll(async () => {
     configFile: false,
     logLevel: "silent",
     plugins: [solidPlugin()],
+    worker: { format: "es" },
     resolve: {
       // Vite resolves @ericsanchezok/synergy-plugin/* through the exports map's
       // "import" condition, which points at dist/ artifacts that only exist

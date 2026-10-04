@@ -121,7 +121,7 @@ PR 的直接产品改进是减少不必要的工具输出、删除重复的固�
 
 早期 pilot 曾因委派任务退化而恢复双份目录；最终方案经过后续诊断再次实施单一归属。两者属于不同候选和组合，不能把早期“已回退”当成最终实现，也不能用后续成功样本证明早期退化只有一个原因。
 
-权威说明：[工具说明单一归属决策](../../decisions/implemented/simplification/2026-09-24-single-owner-tool-guidance.md)。代码与验证：[主提示组装](../../../packages/harness/src/agent/prompt/synergy-max/builder.ts)、[task 说明](../../../packages/harness/src/cortex/tools/task.txt)、[目录权限测试](../../../packages/harness/test/agent/synergy-max-catalog.test.ts)、[prompt 预算测试](../../../packages/presets/test/agent/prompt-size-budget.test.ts)。
+权威说明：[工具说明单一归属决策](../../decisions/implemented/simplification/2026-09-24-single-owner-tool-guidance.md)。代码与验证：[主提示组装](https://github.com/SII-Holos/synergy/blob/dc1d7aa86865c8433a2d7858df5e9e46ebd02393/packages/harness/src/agent/prompt/synergy-max/builder.ts)、[task 说明](../../../packages/harness/src/cortex/tools/task.txt)、[目录权限测试](https://github.com/SII-Holos/synergy/blob/dc1d7aa86865c8433a2d7858df5e9e46ebd02393/packages/harness/test/agent/synergy-max-catalog.test.ts)、[prompt 预算测试](../../../packages/presets/test/agent/prompt-size-budget.test.ts)。
 
 ### 3.2 等待取决于下一步所需证据
 
@@ -140,7 +140,7 @@ process 仍默认非阻塞，默认等待窗口和远程最多 25 秒的限制�
 
 通用截断恢复也从“必须交给子代理”改为可定向搜索或补读，只有独立分析工作有价值时才委派。减少被截断输出触发的机械委派，并不削弱 task 工具和委派权限检查。
 
-代码入口：[主提示](../../../packages/harness/src/agent/prompt/synergy-max/base.txt)、[process](../../../packages/local-runtime/src/tools/process.txt)、[Bash](../../../packages/local-runtime/src/tools/bash.txt)、[本地后台返回](../../../packages/local-runtime/src/tools/bash/local.ts)、[截断恢复](../../../packages/harness/src/tool/truncation.ts)。Link 后台返回的历史路径为 `packages/synergy-link/src/exec/process-registry.ts`，实现随 [Link 退役](../../decisions/implemented/simplification/2026-09-29-retire-synergy-link.md)移除。机制取舍见[按证据选择等待](../../decisions/implemented/bug-fix/2026-09-24-evidence-based-process-guidance.md)。
+代码入口：[主提示](https://github.com/SII-Holos/synergy/blob/dc1d7aa86865c8433a2d7858df5e9e46ebd02393/packages/harness/src/agent/prompt/synergy-max/base.txt)、[process](../../../packages/local-runtime/src/tools/process.txt)、[Bash](../../../packages/local-runtime/src/tools/bash.txt)、[本地后台返回](../../../packages/local-runtime/src/tools/bash/local.ts)、[截断恢复](../../../packages/harness/src/tool/truncation.ts)。Link 后台返回的历史路径为 `packages/synergy-link/src/exec/process-registry.ts`，实现随 [Link 退役](../../decisions/implemented/simplification/2026-09-29-retire-synergy-link.md)移除。机制取舍见[按证据选择等待](../../decisions/implemented/bug-fix/2026-09-24-evidence-based-process-guidance.md)。
 
 ## 四、benchmark 改善的是测量条件与执行可靠性
 

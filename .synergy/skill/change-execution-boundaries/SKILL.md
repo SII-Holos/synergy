@@ -7,6 +7,8 @@ description: Add, modify, or review Synergy capability classification, control p
 
 For Environment execution, retain selected Workspace use until checkpoint publication. Verify Linux completion evidence before supervisor cleanup removes its receipt, then persist that proof in the coordinator. Test container destruction and reallocation after a failed upload, cancellation before activation, and file-host shutdown while writes are queued. Native provider tests must inject an isolated coordinator into both Workspace access and the Environment provider; never migrate the host-wide coordination ledger from a test fixture.
 
+For unavailable directory recovery, distinguish receipt release from filesystem effects. Direct-directory detachment may release its watcher and receipt after immutable reference validation and lifecycle exclusion; materialized detachment must verify physical identity before deletion. Test replacement preservation, rejected stale references, retained active users and canonical rebinding. Never weaken file-access identity validation to make recovery succeed.
+
 Declare execution needs separately from Workspace needs. Resolve the target before requesting its containment verdict, and use the common process completion promise through saving. Test queued cancellation before activation and background ownership after foreground abort listeners detach. Real Bash resolver fixtures must carry the execution declaration so they exercise target-side preparation. Local Runtime's fixture supplies one private coordinator to both file admission and native execution.
 
 Native stream greetings do not prove cancellation readiness. Wait for the worker's prepared acknowledgement before binding its process claim, and send it only after cancellation and activation handlers are installed. Exercise a binding failure with a real worker delayed after its greetings; verify the original cause, no command effects and released ownership.
@@ -14,6 +16,8 @@ Native stream greetings do not prove cancellation readiness. Wait for the worker
 Do not forward a queued stdin EOF after the native worker confirms whole-tree drainage. Exercise a late EOF against a real drained worker, retaining output bytes, exit status and lease release; keep pre-completion transport failures observable and preserve byte-counted EOF for live readers.
 
 ## Trace the Whole Decision
+
+For multi-target approvals, exercise both ask/deny target orders before publication of any pending event, including mandatory confirmation and persisted rules. Verify that multiple ask targets produce one complete request, cancellation removes it, and all-allow requests still resolve without prompting.
 
 1. Read [Execution boundaries](../../../docs/architecture/execution-boundaries.md) and `packages/presets/AGENTS.md`.
 2. Start at `session/tool-resolver.ts`, then trace the operation through capability classification, the enforcement gate, profile compilation, saved/session permission layers, SmartAllow, approval side effects, sandbox policy, and the tool implementation.

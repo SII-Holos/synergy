@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/solid"
-import { createMemo, Show, type Component } from "solid-js"
+import { createMemo, onMount, Show, type Component } from "solid-js"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { Tag } from "@ericsanchezok/synergy-ui/tag"
@@ -67,6 +67,10 @@ export const QuickSwitcherList: Component<{
 }> = (props) => {
   const local = useLocal()
   const globalSync = useGlobalSync()
+  const providers = useProviders()
+  onMount(() => {
+    void providers.ensureCatalog().catch(() => {})
+  })
 
   const models = createMemo<QuickSwitcherEntry[]>(() =>
     listQuickSwitcherEntries(local.model.quickSwitcher(), local.model.recent(), props.provider),
@@ -151,6 +155,9 @@ export const ConnectedModelManager: Component<{
 }> = (props) => {
   const globalSync = useGlobalSync()
   const providers = useProviders()
+  onMount(() => {
+    void providers.ensureCatalog().catch(() => {})
+  })
 
   const models = createMemo(() =>
     listSelectableConnectedModels(
@@ -195,7 +202,7 @@ export const ConnectedModelManager: Component<{
       search={{ placeholder: _(searchModelsPlaceholder), autofocus: props.searchAutofocus }}
       emptyMessage={_(noConnectedLabel)}
       key={(x) => `${x.provider.id}:${x.id}`}
-      items={models}
+      items={models()}
       current={currentModel()}
       interactive={selectable()}
       filterKeys={["provider.name", "name", "id"]}
@@ -216,6 +223,11 @@ export const ConnectedModelManager: Component<{
           <ModelManagerRow model={model} />
           <div class="model-manager-actions flex items-center gap-x-3 shrink-0" onClick={(e) => e.stopPropagation()}>
             <Switch
+              aria-label={_({
+                id: "settings.models.quickSwitcher.toggle",
+                message: "Include {model} in quick switcher",
+                values: { model: model.name },
+              })}
               checked={inQuickSwitcher({ modelID: model.id, providerID: model.provider.id })}
               onChange={(checked) => {
                 setQuickSwitcher({ modelID: model.id, providerID: model.provider.id }, checked)

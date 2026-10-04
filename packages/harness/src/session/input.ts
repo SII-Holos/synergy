@@ -233,6 +233,7 @@ async function materializeUserMessage(
     }
   }
   const agent = await Agent.get(agentName ?? (await Agent.defaultAgent()))
+  if (!agent) throw new Error(`Agent not found: ${agentName}`)
   const workflowMetadata = WorkflowUserWrapper.metadataForUserMessage({
     session,
     metadata: input.metadata,

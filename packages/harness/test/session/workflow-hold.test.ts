@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -24,7 +25,7 @@ function cortexDelegation() {
     parentSessionID: "ses_parent",
     parentMessageID: "msg_parent",
     description: "delegated work",
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     startedAt: Date.now(),
     status: "running" as const,
   }

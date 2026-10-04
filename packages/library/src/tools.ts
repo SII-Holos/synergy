@@ -1,3 +1,4 @@
+import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { registerToolGroup } from "./tool-group-memory"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
@@ -11,6 +12,24 @@ const runtimeState = RuntimeContext.state(() => ({
 }))
 
 export function registerLibraryTools(): void {
+  Tool.registerInputHistory("library", {
+    memory_write: {
+      title: "memoryTitle",
+      content: "memoryContent",
+    },
+    memory_edit: {
+      id: "memoryId",
+      title: "memoryTitle",
+      content: "memoryContent",
+    },
+    memory_get: {
+      ids: "memoryIds",
+    },
+    memory_search: {
+      top_k: "limit",
+    },
+  })
+
   const instanceState = runtimeState()
 
   registerToolGroup()

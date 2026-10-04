@@ -126,6 +126,7 @@
     "zod": ">=4.0.0"
   },
   "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
     "@tsconfig/node22": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",

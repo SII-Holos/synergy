@@ -6,7 +6,11 @@ import { retry } from "@ericsanchezok/synergy-util/retry"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
-import type { Message, Session } from "@ericsanchezok/synergy-sdk/client"
+import type { Message, Part, Session, SessionPartSummary } from "@ericsanchezok/synergy-sdk/client"
+import { createPartMaterializer } from "./part-materializer"
+import { createPartSummaryLoader, planPartSummaryPage } from "./part-summary-loader"
+import { contentBudgetKey } from "./content-budget"
+import { clearConversationContent } from "./conversation-content-state"
 import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState } from "./global-sync"
 import { createSessionMessageLoader, type SessionMessageLoadState } from "./session-message-loader"
 import { requestErrorMessage } from "@/utils/error"
@@ -19,7 +23,8 @@ import {
   type TrackedSessionSync,
   type SessionSyncTrigger,
 } from "./session-sync-plan"
-import { hasMessageWindowSnapshot, type MessageWindowState } from "./session-message-window"
+import { compareByTimeThenId, hasMessageWindowSnapshot, type MessageWindowState } from "./session-message-window"
+import { findLatestSessionContextUsageMessage } from "./session-context-usage"
 import { planMessagePageApply } from "./session-message-page"
 import { loadOlderOrRecoverLatest } from "./session-message-page-recovery"
 import type { SyncResourceRequest } from "./sync-resource-freshness"
@@ -37,6 +42,120 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const scope = globalSync.retainScopeState(sdk.scopeKey)
     onCleanup(scope.release)
     const [store, setStore] = scope.state
+    const contentLifetime = new AbortController()
+    const partPages = createPartSummaryLoader({
+      page: (messageID) => store.partPage[messageID],
+      summaries: (messageID) => store.partSummary[messageID] ?? [],
+      read: async (request, cursor, signal) => {
+        const freshness = globalSync.capturePartSnapshotRequest(sdk.scopeKey, request.sessionID)
+        const response = await sdk.client.session.partPage(
+          {
+            sessionID: request.sessionID,
+            messageID: request.messageID,
+            cursor,
+            partID: request.partID,
+            older: request.older,
+            limit: 100,
+          },
+          { signal, throwOnError: true },
+        )
+        if (!response.data) throw new Error("Missing conversation summary")
+        return {
+          page: response.data,
+          action: globalSync.partSnapshotAction(sdk.scopeKey, request.sessionID, request.messageID, freshness),
+        }
+      },
+      apply: (request, page, action) => {
+        const planned = planPartSummaryPage(
+          store.partSummary[request.messageID] ?? [],
+          store.partPage[request.messageID],
+          page,
+          request,
+          action,
+        )
+        batch(() => {
+          setStore("partSummary", request.messageID, reconcile(planned.items, { key: "id" }))
+          setStore("partPage", request.messageID, reconcile(planned.page))
+        })
+      },
+    })
+    const retainedContent = globalSync.retainContentCache(sdk.scopeKey, () =>
+      createPartMaterializer({
+        memory: globalSync.contentBudget,
+        memoryKey: (summary) => contentBudgetKey(sdk.scopeKey, summary.messageID, summary.id),
+        read: async (summary, signal) => {
+          const cached = store.part[summary.messageID]?.find((part) => part.id === summary.id)
+          if (cached && store.partVersion[summary.id] === summary.content.version)
+            return { part: cached, version: summary.content.version }
+          const response = await sdk.client.session.partContent(
+            {
+              sessionID: summary.sessionID,
+              messageID: summary.messageID,
+              partID: summary.id,
+              version: summary.content.version,
+            },
+            { signal, throwOnError: true },
+          )
+          if (!response.data) throw new Error("Missing conversation content")
+          return response.data
+        },
+        refresh: async (summary, signal) => {
+          const current = store.partSummary[summary.messageID]?.find((part) => part.id === summary.id)
+          if (!current || current.content.version !== summary.content.version) return current
+          await loadPartSummaries(summary.sessionID, summary.messageID, false, true, {
+            partID: summary.id,
+            version: summary.content.version,
+            signal,
+          })
+          return store.partSummary[summary.messageID]?.find((part) => part.id === summary.id)
+        },
+        isCurrent: (summary) => {
+          const current = store.partSummary[summary.messageID]?.find((item) => item.id === summary.id)
+          return current?.content.version === summary.content.version
+        },
+        apply: (part, summary) => {
+          setStore("partVersion", part.id, summary.content.version)
+          const parts = store.part[part.messageID] ?? []
+          const index = parts.findIndex((item) => item.id === part.id)
+          if (index >= 0) setStore("part", part.messageID, index, reconcile(part))
+          else
+            setStore(
+              "part",
+              part.messageID,
+              [...parts, part].sort((a, b) => a.id.localeCompare(b.id)),
+            )
+        },
+        evict: (summary) => {
+          if (store.partVersion[summary.id] && store.partVersion[summary.id] !== summary.content.version) return
+          setStore("part", summary.messageID, (parts) => (parts ?? []).filter((part) => part.id !== summary.id))
+        },
+        subscribe: (summary) => sdk.content.retain(sdk.scopeKey, summary),
+      }),
+    )
+    const materializer = retainedContent.cache
+    onCleanup(() => {
+      contentLifetime.abort()
+      retainedContent.release()
+    })
+    const loadPartSummaries = (
+      sessionID: string,
+      messageID: string,
+      more = false,
+      force = false,
+      options?: { partID?: string; older?: boolean; version?: string; signal?: AbortSignal },
+    ): Promise<void> =>
+      partPages.load(
+        {
+          sessionID,
+          messageID,
+          more,
+          force,
+          partID: options?.partID,
+          older: options?.older,
+          version: options?.version,
+        },
+        options?.signal ?? contentLifetime.signal,
+      )
     const absolute = (path: string) => (store.path.directory + "/" + path).replace("//", "/")
     const chunk = 200
 
@@ -49,8 +168,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const inflightInbox = new Map<string, Promise<void>>()
     const inflightTodo = new Map<string, Promise<void>>()
     const inflightDag = new Map<string, Promise<void>>()
+    const navigation = new Map<string, { key: string; promise: Promise<unknown> }>()
     const [meta, setMeta] = createStore({
       messageLoad: {} as Record<string, SessionMessageLoadState>,
+      messageNavigation: {} as Record<string, string | undefined>,
     })
     // Track the reconnectVersion at the time of each session's last successful
     // message/part snapshot load. After reconnect, force both session metadata
@@ -107,11 +228,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       if (reconnectVersion > current) sessionReconnectVersions.set(sessionID, reconnectVersion)
     }
 
-    type SessionMessagePageResponse = Awaited<ReturnType<(typeof sdk.client.session)["messagePage"]>>
+    type SessionMessagePageResponse = Awaited<ReturnType<(typeof sdk.client.session)["timelinePage"]>>
     type SessionMessagePageLoadResult = {
       response: SessionMessagePageResponse
       request?: SyncResourceRequest
       contextProjectionRevision?: number
+      latestContextMessage?: Message | null
       partSnapshotRequest: ReturnType<typeof globalSync.capturePartSnapshotRequest>
     }
     type MessagePageLoadInput = {
@@ -119,25 +241,66 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       cursor?: string
       reconnectVersion?: number
       limit: number
+      targetMessageID?: string
+      retainedWindow?: { first: Message; last: Message; count: number }
     }
     const messageLoader = createSessionMessageLoader<SessionMessagePageLoadResult, MessagePageLoadInput>({
       request: async (sessionID, signal, input) => {
         const request =
-          input?.mode === "latest" ? globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "message") : undefined
+          input?.mode === "latest" || input?.retainedWindow
+            ? globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "message")
+            : undefined
         const contextProjectionRevision =
-          input?.mode === "latest" ? globalSync.beginContextProjection(sdk.scopeKey, sessionID) : undefined
+          input?.mode === "latest" || input?.retainedWindow
+            ? globalSync.beginContextProjection(sdk.scopeKey, sessionID)
+            : undefined
         const partSnapshotRequest = globalSync.capturePartSnapshotRequest(sdk.scopeKey, sessionID)
-        const response = await retry(() =>
-          sdk.client.session.messagePage(
-            {
-              sessionID,
-              cursor: input?.cursor,
-              limit: input?.limit ?? chunk,
-            },
-            { signal, throwOnError: true },
-          ),
+        const read = (cursor?: string, limit = 100, messageID?: string) =>
+          retry(() =>
+            sdk.client.session.timelinePage(
+              {
+                sessionID,
+                cursor,
+                limit,
+                messageID,
+              },
+              { signal, throwOnError: true },
+            ),
+          )
+        const retained = input?.retainedWindow
+        let response = await read(
+          input?.cursor,
+          Math.min(100, retained?.count ?? input?.limit ?? chunk),
+          retained?.last.id ?? input?.targetMessageID,
         )
-        return { response, request, contextProjectionRevision, partSnapshotRequest }
+        const initial = response
+        let latestContextMessage: Message | null | undefined
+        if (retained && response.data) {
+          const items = [...response.data.items]
+          const roots = new Map(response.data.referencedRoots.map((entry) => [entry.info.id, entry]))
+          while (
+            response.data.hasMore &&
+            response.data.nextCursor &&
+            items.length < retained.count &&
+            items[0] &&
+            compareByTimeThenId(items[0].info, retained.first) > 0
+          ) {
+            response = await read(response.data.nextCursor, Math.min(100, retained.count - items.length))
+            if (!response.data?.items.length) break
+            items.unshift(...response.data.items)
+            for (const entry of response.data.referencedRoots) roots.set(entry.info.id, entry)
+          }
+          if (response.data)
+            response = {
+              ...initial,
+              data: { ...response.data, items, referencedRoots: [...roots.values()] },
+            }
+          const latest = await read()
+          latestContextMessage = findLatestSessionContextUsageMessage(
+            latest.data?.items.map((entry) => entry.info) ?? [],
+          )
+        }
+        return { response, request, contextProjectionRevision, partSnapshotRequest, latestContextMessage }
       },
       apply: (sessionID, result, input) => {
         const page = result.response.data
@@ -150,7 +313,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           pendingLatestIds: currentMetadata?.pendingLatestIds ?? [],
           tailMissingLatest: currentMetadata?.tailMissingLatest ?? false,
         }
-        const plan = planMessagePageApply({ page, current, mode: input?.mode })
+        const plan = planMessagePageApply<Message, Part>({
+          page,
+          current,
+          mode: input?.mode,
+          replace: !!input?.targetMessageID || !!input?.retainedWindow,
+        })
         const partActions = new Map(
           Object.keys(plan.parts).map((messageID) => [
             messageID,
@@ -160,18 +328,23 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         if ([...partActions.values()].some((action) => action === "retry")) return "superseded"
         const apply = () => {
           batch(() => {
+            for (const messageID of plan.droppedIds) materializer.invalidate(messageID)
             setStore(
               produce((draft) => {
-                for (const messageID of plan.droppedIds) delete draft.part[messageID]
+                for (const messageID of plan.droppedIds) {
+                  clearConversationContent(draft, messageID)
+                }
               }),
             )
             setStore("message", sessionID, reconcile(internMessages(plan.window.messages), { key: "id" }))
             setStore("messageWindow", sessionID, reconcile(plan.metadata))
-            if (plan.latestContextMessage !== undefined) {
+            const latestContextMessage =
+              result.latestContextMessage !== undefined ? result.latestContextMessage : plan.latestContextMessage
+            if (latestContextMessage !== undefined) {
               globalSync.setLatestContextMessage(
                 sdk.scopeKey,
                 sessionID,
-                plan.latestContextMessage,
+                latestContextMessage,
                 result.contextProjectionRevision,
               )
             }
@@ -184,7 +357,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           refreshPlanBlueprintOfferFromLoadedParts(store, setStore, sessionID)
         }
 
-        if (input?.mode === "latest" && result.request) {
+        if (result.request) {
           const accepted = globalSync.applyResourceResponse(
             sdk.scopeKey,
             sessionID,
@@ -193,7 +366,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             result.response.response?.headers,
             apply,
           )
-          if (accepted && input.reconnectVersion !== undefined) {
+          if (accepted && input?.reconnectVersion !== undefined) {
             markSessionSynced(sessionID, input.reconnectVersion)
           }
           return accepted ? "applied" : "superseded"
@@ -208,7 +381,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       onState: (sessionID, state) => setMeta("messageLoad", sessionID, state),
     })
 
-    onCleanup(messageLoader.dispose)
+    onCleanup(() => {
+      navigation.clear()
+      messageLoader.dispose()
+    })
 
     const loadMessagePage = (
       sessionID: string,
@@ -227,6 +403,26 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         { mode: "latest", limit: hasMessageSnapshot(sessionID) ? chunk : INITIAL_LATEST_PAGE_LIMIT },
         options,
       )
+
+    const navigateMessages = <T,>(sessionID: string, key: string, run: () => Promise<T>): Promise<T> => {
+      const previous = navigation.get(sessionID)
+      if (previous?.key === key) return previous.promise as Promise<T>
+      const promise: Promise<T> = Promise.resolve()
+        .then(async () => {
+          await previous?.promise.catch(() => {})
+          await messageLoader.pending(sessionID)?.catch(() => {})
+          contentLifetime.signal.throwIfAborted()
+          return run()
+        })
+        .finally(() => {
+          if (navigation.get(sessionID)?.promise !== promise) return
+          navigation.delete(sessionID)
+          setMeta("messageNavigation", sessionID, undefined)
+        })
+      navigation.set(sessionID, { key, promise })
+      setMeta("messageNavigation", sessionID, key)
+      return promise
+    }
 
     const loadInbox = (sessionID: string, options?: RefreshOptions) => {
       if (!options?.force && store.inbox[sessionID] !== undefined) return
@@ -378,6 +574,23 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       },
       session: {
         get: getSession,
+        content: {
+          summaries: loadPartSummaries,
+          earlier: (sessionID: string, messageID: string) =>
+            loadPartSummaries(sessionID, messageID, true, false, { older: true }),
+          retain: (summary: SessionPartSummary) => materializer.retain(summary),
+          async text(sessionID: string, messageID: string) {
+            const response = await sdk.client.session.historyText(
+              { sessionID, messageID },
+              { throwOnError: true, signal: contentLifetime.signal },
+            )
+            return response.data?.text ?? ""
+          },
+          invalidate: (messageID: string, partID?: string) => materializer.invalidate(messageID, partID),
+          get bytes() {
+            return materializer.bytes
+          },
+        },
         latestContextMessage(sessionID: string) {
           return store.latestContextMessage[sessionID]
         },
@@ -388,13 +601,16 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           return { phase: "idle", generation: 0, hasSnapshot: false }
         },
         async sync(sessionID: string, options?: SessionSyncOptions) {
-          // The permission route is cross-Scope; the sessionID filter keeps
-          // the payload bounded while the response still seeds the global
+          // The Scope's permission response is session-filtered to keep
+          // the payload bounded while the response seeds the global
           // index. `seedSessionPermissions` replaces this session's slice and
           // keeps any request whose event write postdates the response stamp.
           const syncPermissions = () =>
             retry(() => sdk.client.permission.list({ sessionID }))
-              .then((res) => globalSync.seedSessionPermissions(sessionID, res.data ?? [], res.response?.headers))
+              .then((res) => {
+                if (!res.data) throw new Error("Permission snapshot returned no data")
+                globalSync.seedSessionPermissions(sessionID, res.data, res.response?.headers, sdk.scopeID)
+              })
               .catch(() => {})
           // Force session/message reloads after reconnect or backend restart.
           // Session metadata alone is not enough: tool parts publish as
@@ -415,12 +631,31 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             forceSession: plan.forceSession,
             forceMessages: plan.forceMessages,
           }
+          const reloadMessages = async () => {
+            while (navigation.has(sessionID)) await navigation.get(sessionID)!.promise.catch(() => {})
+            contentLifetime.signal.throwIfAborted()
+            const messages = store.message[sessionID]
+            if (
+              store.messageWindow[sessionID]?.mode === "history" &&
+              messages?.length &&
+              !plan.needsDerivedHistoryRefresh &&
+              options?.trigger?.type !== "history-transition"
+            )
+              return loadMessagePage(
+                sessionID,
+                {
+                  mode: "history",
+                  limit: 100,
+                  retainedWindow: { first: messages[0], last: messages.at(-1)!, count: messages.length },
+                },
+                { force: true, reconnectVersion: currentReconnectVersion },
+              )
+            return loadLatestMessages(sessionID, { force: true, reconnectVersion: currentReconnectVersion })
+          }
           const runBaseSync = async () => {
             await Promise.all([
               plan.forceSession ? loadSession(sessionID, { force: true }) : Promise.resolve(),
-              plan.forceMessages
-                ? loadLatestMessages(sessionID, { force: true, reconnectVersion: currentReconnectVersion })
-                : Promise.resolve(),
+              plan.forceMessages ? reloadMessages() : Promise.resolve(),
             ])
             if (!plan.forceMessages) markSessionSynced(sessionID, currentReconnectVersion)
           }
@@ -447,13 +682,15 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         // empty-state Refresh button to recover if the initial load missed
         // messages or session metadata such as derived rollback state (issue
         // #328 / #316).
-        async refresh(sessionID: string) {
-          const reconnectVersion = globalSync.scopeReconnectVersion(sdk.scopeKey)
-          await Promise.all([
-            loadSession(sessionID, { force: true }).catch(() => {}),
-            loadLatestMessages(sessionID, { force: true, reconnectVersion }),
-            refreshVolatile(sessionID),
-          ])
+        refresh(sessionID: string) {
+          return navigateMessages(sessionID, "refresh", async () => {
+            const reconnectVersion = globalSync.scopeReconnectVersion(sdk.scopeKey)
+            await Promise.all([
+              loadSession(sessionID, { force: true }).catch(() => {}),
+              loadLatestMessages(sessionID, { force: true, reconnectVersion }),
+              refreshVolatile(sessionID),
+            ])
+          })
         },
         async diff(sessionID: string) {
           if (store.session_diff[sessionID] !== undefined) return
@@ -477,12 +714,27 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         dag: loadDag,
         refreshVolatile,
         history: {
+          locate(sessionID: string, messageID: string, partID?: string) {
+            return navigateMessages(sessionID, JSON.stringify(["locate", messageID, partID]), async () => {
+              if (!store.message[sessionID]?.some((message) => message.id === messageID))
+                await loadMessagePage(
+                  sessionID,
+                  { mode: "history", targetMessageID: messageID, limit: 50 },
+                  { force: true },
+                )
+              if (!store.message[sessionID]?.some((message) => message.id === messageID)) return false
+              if (partID && !store.partSummary[messageID]?.some((part) => part.id === partID))
+                await loadPartSummaries(sessionID, messageID, false, true, { partID })
+              else await loadPartSummaries(sessionID, messageID)
+              return !partID || store.partSummary[messageID]?.some((part) => part.id === partID) === true
+            })
+          },
           more(sessionID: string) {
             return store.messageWindow[sessionID]?.hasMore ?? false
           },
           loading(sessionID: string) {
             const phase = meta.messageLoad[sessionID]?.phase
-            return phase === "loading" || phase === "refreshing"
+            return !!meta.messageNavigation[sessionID] || phase === "loading" || phase === "refreshing"
           },
           mode(sessionID: string) {
             return store.messageWindow[sessionID]?.mode ?? "latest"
@@ -493,29 +745,32 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           tailMissingLatest(sessionID: string) {
             return store.messageWindow[sessionID]?.tailMissingLatest ?? false
           },
-          async loadMore(sessionID: string, count = chunk) {
-            if (this.loading(sessionID)) return
-            const metadata = store.messageWindow[sessionID]
-            if (!metadata?.hasMore || !metadata.nextCursor) return
-            return loadOlderOrRecoverLatest({
-              loadOlder: () =>
-                loadMessagePage(sessionID, {
-                  mode: "history",
-                  cursor: metadata.nextCursor!,
-                  limit: count,
-                }),
-              loadLatest: () =>
-                loadLatestMessages(sessionID, {
-                  force: true,
-                  reconnectVersion: globalSync.scopeReconnectVersion(sdk.scopeKey),
-                }),
+          loadMore(sessionID: string, count = chunk) {
+            return navigateMessages(sessionID, "earlier", async () => {
+              const metadata = store.messageWindow[sessionID]
+              if (!metadata?.hasMore || !metadata.nextCursor) return
+              return loadOlderOrRecoverLatest({
+                loadOlder: () =>
+                  loadMessagePage(
+                    sessionID,
+                    { mode: "history", cursor: metadata.nextCursor!, limit: count },
+                    { force: true },
+                  ),
+                loadLatest: () =>
+                  loadLatestMessages(sessionID, {
+                    force: true,
+                    reconnectVersion: globalSync.scopeReconnectVersion(sdk.scopeKey),
+                  }),
+              })
             })
           },
-          async returnLatest(sessionID: string) {
-            await loadLatestMessages(sessionID, {
-              force: true,
-              reconnectVersion: globalSync.scopeReconnectVersion(sdk.scopeKey),
-            })
+          returnLatest(sessionID: string) {
+            return navigateMessages(sessionID, "latest", () =>
+              loadLatestMessages(sessionID, {
+                force: true,
+                reconnectVersion: globalSync.scopeReconnectVersion(sdk.scopeKey),
+              }),
+            )
           },
         },
       },

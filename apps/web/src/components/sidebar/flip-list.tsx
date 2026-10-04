@@ -1,35 +1,58 @@
-import { createRenderEffect, on, onMount, type JSX } from "solid-js"
-import { createFlipRunner } from "./flip-list-model"
+import { createComputed, createMemo, on, onCleanup, onMount, type JSX } from "solid-js"
+import { createFlipRunner, type FlipSnapshot } from "./flip-list-model"
 
 export function FlipList(props: {
-  entries: readonly unknown[]
+  entries: readonly string[]
   children: JSX.Element
   class?: string
   selector?: string
   dataKey?: string
 }) {
   let container: HTMLDivElement | undefined
-  const reduceMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  let mounted = false
+  let frame: number | undefined
+  let snapshot: FlipSnapshot | undefined
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)")
   const runFlip = createFlipRunner({
     selector: props.selector,
     dataKey: props.dataKey,
-    reduceMotion,
+    reduceMotion: () => reduced.matches,
   })
-
-  // The render effect fires once at mount before the container ref is
-  // assigned, so that pass is skipped by the runner (see flip-list-model).
-  // Seed the baseline from onMount instead, once the ref and its rows are in
-  // the DOM, so the first genuine entries change animates new or repositioned
-  // rows instead of being absorbed as a silent baseline.
+  const identity = createMemo(() => props.entries, undefined, {
+    equals: (previous, next) => previous.length === next.length && previous.every((id, index) => id === next[index]),
+  })
+  const cancel = () => {
+    if (frame !== undefined) cancelAnimationFrame(frame)
+    frame = undefined
+    snapshot = undefined
+    runFlip.cancel()
+  }
+  const changedPreference = () => {
+    if (reduced.matches) cancel()
+  }
+  reduced.addEventListener("change", changedPreference)
   onMount(() => {
-    runFlip(container)
+    mounted = true
+  })
+  onCleanup(() => {
+    cancel()
+    reduced.removeEventListener("change", changedPreference)
   })
 
-  createRenderEffect(
-    on(
-      () => props.entries,
-      () => runFlip(container),
-    ),
+  // Capture before the keyed children update; viewport scrolling cancels out
+  // because both measurements use the list's current origin.
+  createComputed(
+    on(identity, () => {
+      if (!mounted || !container || reduced.matches) return
+      snapshot ??= runFlip.capture(container)
+      if (frame !== undefined) cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const before = snapshot
+        frame = undefined
+        snapshot = undefined
+        if (container?.isConnected && before) runFlip.play(container, before)
+      })
+    }),
   )
 
   return (

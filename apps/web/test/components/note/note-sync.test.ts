@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, test } from "bun:test"
 import type { BlueprintLoopInfo, NoteInfo, NoteMetaInfo, NoteMetaScopeGroup } from "@ericsanchezok/synergy-sdk/client"
 import {
@@ -50,7 +51,7 @@ function loop(input: Partial<BlueprintLoopInfo> = {}): BlueprintLoopInfo {
     noteID: input.noteID ?? "note_1",
     title: input.title ?? "Loop",
     sessionID: input.sessionID ?? "ses_1",
-    auditAgent: input.auditAgent ?? "synergy-max",
+    auditAgent: input.auditAgent ?? TEST_AGENT_NAME,
     scopeID: input.scopeID ?? "scope_1",
     status: input.status ?? "running",
     runMode: input.runMode,

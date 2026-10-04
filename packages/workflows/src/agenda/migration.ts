@@ -1,3 +1,4 @@
+import { PrimaryAgentUpgrade } from "@ericsanchezok/synergy-harness/agent/primary-identity-upgrade"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { AgendaStore } from "./store"
@@ -10,6 +11,16 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 
 const log = Log.create({ service: "agenda.migration" })
+
+const upgradePrimaryAgentRecord: NonNullable<Migration["upgradeRecord"]> = (key, value) => {
+  if (key[0] !== "agenda" || key[1] !== "items" || key.length !== 4) return
+  PrimaryAgentUpgrade.fields(value, ["agent"])
+  PrimaryAgentUpgrade.fields(value.task, ["agent"])
+  if (Array.isArray(value.triggers))
+    for (const trigger of value.triggers) {
+      if (PrimaryAgentUpgrade.record(trigger)?.type === "session") PrimaryAgentUpgrade.fields(trigger, ["agent"])
+    }
+}
 
 export const migrations: Migration[] = [
   {
@@ -185,6 +196,22 @@ export const migrations: Migration[] = [
           progress(++done, done)
         }
       }
+    },
+  },
+  {
+    id: "20261002-agenda-primary-agent-identities",
+    description: "Upgrade scheduled executors and Session trigger identity filters",
+    scope: "global",
+    upgradeRecord: upgradePrimaryAgentRecord,
+    async up(progress) {
+      let done = 0
+      for await (const { key, value } of Storage.records<Record<string, unknown>>({ kind: "agenda" })) {
+        const before = JSON.stringify(value)
+        upgradePrimaryAgentRecord(key, value)
+        if (before !== JSON.stringify(value)) await Storage.write(key, value)
+        progress(++done, 0)
+      }
+      progress(done, done)
     },
   },
 ]

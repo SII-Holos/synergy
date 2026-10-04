@@ -1,492 +1,227 @@
-import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
-import { createStore } from "solid-js/store"
-import type { QuestionRequest, QuestionAnswer } from "@ericsanchezok/synergy-sdk/client"
+import { createMemo, For, Show } from "solid-js"
+import type { QuestionRequest } from "@ericsanchezok/synergy-sdk/client"
 import { Button } from "@ericsanchezok/synergy-ui/button"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
-import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { Countdown } from "@ericsanchezok/synergy-ui/countdown"
-import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { useSDK } from "@/context/sdk"
 import { useLocale } from "@/context/locale"
-import { S } from "./session-i18n"
-import { questionCountdown, questionOptionShortcutIndex } from "./question-prompt-model"
-import { createRequestSubmission, requestSubmissionLocked } from "./request-submission"
-import { RequestSubmissionNotice } from "./request-submission-notice"
+import { useSessionDecision } from "@/context/session-decision"
+import { questionAnswers, questionCountdown, questionOptionShortcutIndex } from "./question-prompt-model"
+import { requestSubmissionLocked } from "./request-submission"
 import "./question-prompt.css"
 
-export interface QuestionPromptProps {
-  request: QuestionRequest
+const copy = {
+  other: { id: "session.question.customAnswer", message: "Other answer" },
+  supplement: { id: "session.question.supplement", message: "Additional context (optional)" },
+  placeholder: { id: "session.question.answerPlaceholder", message: "Write your answer…" },
+  previous: { id: "session.question.previous", message: "Previous" },
+  next: { id: "session.question.next", message: "Next" },
+  send: { id: "session.question.send", message: "Send" },
+  sending: { id: "session.decision.submitting", message: "Submitting…" },
+  step: { id: "session.question.step", message: "Question {index}/{count}" },
+  directAnswer: { id: "session.question.directAnswer", message: "Answer: {option}. {description}" },
 }
 
-export function QuestionPrompt(props: QuestionPromptProps) {
-  const actions = createRequestSubmission()
-  const key = () => JSON.stringify([props.request.sessionID, props.request.id])
-  return (
-    <Show when={key()} keyed>
-      {(requestKey) => <QuestionPromptForm request={props.request} actions={actions} requestKey={requestKey} />}
-    </Show>
-  )
-}
-
-function QuestionPromptForm(
-  props: QuestionPromptProps & {
-    actions: ReturnType<typeof createRequestSubmission>
-    requestKey: string
-  },
-) {
-  const sdk = useSDK()
-  const state = () => props.actions.state(props.requestKey)
-  const locked = () => requestSubmissionLocked(state())
-  let lastAction: "reply" | "reject" = "reply"
-  const respond = (action: "reply" | "reject", answers?: QuestionAnswer[]) => {
-    const requestID = props.request.id
-    const sessionID = props.request.sessionID
-    const client = sdk.client
-    lastAction = action
-    return props.actions.run(props.requestKey, {
-      submit: () =>
-        action === "reply"
-          ? client.question.reply({ requestID, answers: answers! }, { throwOnError: true })
-          : client.question.reject({ requestID }, { throwOnError: true }),
-      isPending: async () =>
-        (await client.question.list(undefined, { throwOnError: true })).data.some(
-          (request) => request.id === requestID && request.sessionID === sessionID,
-        ),
-    })
-  }
+export function QuestionPrompt(props: { request: QuestionRequest }) {
+  const decisions = useSessionDecision()
   const { i18n } = useLocale()
-  const _ = (d: { id: string; message: string }) => i18n._(d)
-  const [collapsed, setCollapsed] = createSignal(false)
-  const [menuOpen, setMenuOpen] = createSignal(false)
-  let root: HTMLElement | undefined
+  const state = () => decisions.state(decisions.key("question", props.request))
+  const locked = () => !decisions.draftsReady() || requestSubmissionLocked(state())
+  const draft = createMemo(() => decisions.draft(props.request))
+  const question = createMemo(() => props.request.questions[draft().step])
+  const direct = () => props.request.questions.length === 1 && !question()?.multiple
+  const answers = createMemo(() => questionAnswers(props.request, draft()))
+  const answered = () => (answers()[draft().step]?.length ?? 0) > 0
+  const last = () => draft().step === props.request.questions.length - 1
+  const clock = createMemo(() => questionCountdown(props.request))
+  const fieldName = () => "question-" + props.request.id + "-" + draft().step
+  let root: HTMLDivElement | undefined
 
-  const questions = createMemo(() => props.request.questions)
-  const single = createMemo(() => questions().length === 1 && questions()[0]?.multiple !== true)
-  const countdown = createMemo(() => questionCountdown(props.request))
-
-  const [store, setStore] = createStore({
-    tab: 0,
-    answers: [] as QuestionAnswer[],
-    custom: [] as string[],
-    otherOpen: false,
-  })
-
-  const question = createMemo(() => questions()[store.tab])
-  const confirm = createMemo(() => !single() && store.tab === questions().length)
-  const options = createMemo(() => question()?.options ?? [])
-  const multi = createMemo(() => question()?.multiple === true)
-  const input = createMemo(() => store.custom[store.tab] ?? "")
-  const currentAnswer = createMemo(() => store.answers[store.tab] ?? [])
-  const currentAnswered = createMemo(() => currentAnswer().length > 0)
-  const allAnswered = createMemo(() => questions().every((_, i) => (store.answers[i]?.length ?? 0) > 0))
-  const customPicked = createMemo(() => {
-    const v = input()
-    return v ? (store.answers[store.tab]?.includes(v) ?? false) : false
-  })
-  const questionID = createMemo(() => `${props.request.id}-question-${store.tab}`)
-  const choiceHintID = createMemo(() => `${props.request.id}-choice-hint-${store.tab}`)
-  const currentStepLabel = createMemo(() => {
-    if (confirm()) return _(S.questionReview)
-    return question()?.header || i18n._({ ...S.questionStepLabel, values: { index: store.tab + 1 } })
-  })
-
-  function submit() {
-    if (!allAnswered()) return
-    const answers = questions().map((_, i) => store.answers[i] ?? [])
-    void respond("reply", answers)
-  }
-  function reject() {
-    void respond("reject")
-  }
-
-  function pick(answer: string, custom = false) {
+  const select = (label: string) => {
     if (locked()) return
-    const answers = [...store.answers]
-    answers[store.tab] = [answer]
-    setStore("answers", answers)
-    if (custom) {
-      const inputs = [...store.custom]
-      inputs[store.tab] = answer
-      setStore("custom", inputs)
-    }
-    if (single()) {
-      void respond("reply", [[answer]])
+    decisions.updateDraft(props.request, (previous) => {
+      const selections = [...previous.selections]
+      const source = [...previous.source]
+      if (question()?.multiple) {
+        const chosen = selections[previous.step] ?? []
+        selections[previous.step] = chosen.includes(label)
+          ? chosen.filter((item) => item !== label)
+          : [...chosen, label]
+      } else {
+        selections[previous.step] = [label]
+        source[previous.step] = "option"
+      }
+      return { ...previous, selections, source }
+    })
+    if (direct()) void decisions.respondQuestion(props.request, [[label]])
+  }
+  const customSource = () =>
+    decisions.updateDraft(props.request, (previous) => {
+      const source = [...previous.source]
+      source[previous.step] = "custom"
+      return { ...previous, source }
+    })
+  const advance = () => {
+    if (locked()) return
+    if (direct()) {
+      const answer = draft().custom[0]?.trim()
+      if (!answer) return
+      customSource()
+      void decisions.respondQuestion(props.request, [[answer]])
       return
     }
-    setStore("tab", store.tab + 1)
-    setStore("otherOpen", false)
-  }
-
-  function toggle(answer: string) {
-    if (locked()) return
-    const existing = store.answers[store.tab] ?? []
-    const next = [...existing]
-    const idx = next.indexOf(answer)
-    if (idx === -1) next.push(answer)
-    else next.splice(idx, 1)
-    const answers = [...store.answers]
-    answers[store.tab] = next
-    setStore("answers", answers)
-  }
-
-  function handleCustomSubmit() {
-    if (locked()) return
-    const text = input().trim()
-    if (!text) return
-    if (multi()) {
-      const inputs = [...store.custom]
-      inputs[store.tab] = text
-      setStore("custom", inputs)
-      const exist = store.answers[store.tab] ?? []
-      const next = [...exist]
-      if (!next.includes(text)) next.push(text)
-      const answers = [...store.answers]
-      answers[store.tab] = next
-      setStore("answers", answers)
+    if (!answered()) return
+    if (!last()) {
+      decisions.updateDraft(props.request, (previous) => ({ ...previous, step: previous.step + 1 }))
       return
     }
-    pick(text, true)
+    const values = answers()
+    if (values.every((answer) => answer.length > 0)) void decisions.respondQuestion(props.request, values)
   }
-
-  function goToTab(index: number) {
-    if (locked()) return
-    setStore("tab", index)
-    setStore("otherOpen", false)
-  }
-
-  onMount(() => {
-    const handleShortcut = (event: KeyboardEvent) => {
-      const target = event.target
-      const editable =
-        target instanceof Element &&
-        Boolean(target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])'))
-      const activeElement = document.activeElement
-      const scopeActive =
-        activeElement == null ||
-        activeElement === document.body ||
-        activeElement === document.documentElement ||
-        Boolean(root?.contains(activeElement))
-      const index = questionOptionShortcutIndex({
-        key: event.key,
-        optionCount: options().length,
-        scopeActive,
-        modified: event.altKey || event.ctrlKey || event.metaKey || event.shiftKey,
-        editable,
-      })
-      if (locked() || index == null || collapsed() || confirm() || store.otherOpen || menuOpen()) return
-      const option = options()[index]
-      if (!option) return
+  const keyDown = (event: KeyboardEvent) => {
+    if (event.isComposing || event.keyCode === 229 || locked()) return
+    if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
       event.preventDefault()
-      if (multi()) toggle(option.label)
-      else pick(option.label)
+      event.stopPropagation()
+      advance()
+      return
     }
-    document.addEventListener("keydown", handleShortcut)
-    onCleanup(() => document.removeEventListener("keydown", handleShortcut))
-  })
+    const target = event.target instanceof HTMLElement ? event.target : undefined
+    const index = questionOptionShortcutIndex({
+      key: event.key,
+      optionCount: question()?.options.length ?? 0,
+      scopeActive: !!root?.contains(target ?? null),
+      modified: event.ctrlKey || event.metaKey || event.altKey || event.shiftKey,
+      editable: !!target?.closest('input, textarea, [contenteditable="true"]'),
+    })
+    if (index === undefined) return
+    event.preventDefault()
+    select(question()!.options[index].label)
+  }
 
   return (
-    <section
-      ref={root}
-      aria-busy={state().status === "pending"}
-      class="question-prompt-shell"
-      aria-label={_(S.questionAria)}
-    >
+    <div ref={root} class="decision-content question-prompt" onKeyDown={keyDown}>
       <div
-        class="question-prompt-collapsed-shell"
-        classList={{ "is-open": collapsed() }}
-        aria-hidden={!collapsed()}
-        inert={!collapsed()}
+        class="decision-body"
+        role={!direct() && !question()?.multiple ? "radiogroup" : undefined}
+        aria-label={question()?.question}
       >
-        <button
-          type="button"
-          disabled={locked()}
-          class="question-prompt-collapsed"
-          aria-expanded="false"
-          onClick={() => setCollapsed(false)}
-        >
-          <span class="question-prompt-collapsed-main">
-            <Icon name={getSemanticIcon("navigation.expand")} size="small" class="question-prompt-muted-icon" />
-            <span class="question-prompt-collapsed-title">{currentStepLabel()}</span>
-          </span>
-          <span class="question-prompt-collapsed-meta">
-            <Show when={countdown()}>
-              <Countdown seconds={countdown()!.seconds} startedAt={countdown()!.startedAt} active={true} />
-            </Show>
-            <span>{_(S.questionOpen)}</span>
-          </span>
-        </button>
-      </div>
-      <div
-        class="question-prompt-expanded-shell"
-        classList={{ "is-open": !collapsed() }}
-        aria-hidden={collapsed()}
-        inert={collapsed()}
-      >
-        <div class="question-prompt-expanded">
-          <header class="question-prompt-meta">
-            <div class="question-prompt-meta-summary">
-              <span class="question-prompt-kicker">{_(S.questionNeedsInput)}</span>
-              <span class="question-prompt-meta-separator" aria-hidden="true">
-                ·
-              </span>
-              <span class="question-prompt-current-step">{currentStepLabel()}</span>
-              <Show when={!single()}>
-                <span class="question-prompt-meta-separator" aria-hidden="true">
-                  ·
-                </span>
-                <span class="question-prompt-step-count">
-                  {Math.min(store.tab + 1, questions().length)} / {questions().length}
-                </span>
-              </Show>
-              <Show when={countdown()}>
-                <span class="question-prompt-meta-separator" aria-hidden="true">
-                  ·
-                </span>
-                <Countdown seconds={countdown()!.seconds} startedAt={countdown()!.startedAt} active={true} />
-              </Show>
-            </div>
-            <div class="question-prompt-meta-actions">
-              <Popover
-                open={menuOpen()}
-                onOpenChange={setMenuOpen}
-                placement="bottom-end"
-                class="question-prompt-menu-popover"
-                trigger={
-                  <button
-                    type="button"
-                    disabled={locked()}
-                    class="question-prompt-more-button"
-                    aria-label={_(S.questionMoreActions)}
-                    aria-expanded={menuOpen()}
-                    aria-haspopup="menu"
-                  >
-                    <Icon name={getSemanticIcon("action.more")} size="small" />
-                  </button>
-                }
-              >
-                <div class="question-prompt-menu-list" role="menu">
-                  <button
-                    type="button"
-                    disabled={locked()}
-                    role="menuitem"
-                    class="question-prompt-menu-item question-prompt-skip"
-                    title={_(S.questionSkipTitle)}
-                    onClick={() => {
-                      setMenuOpen(false)
-                      reject()
-                    }}
-                  >
-                    {_(S.questionSkip)}
-                  </button>
-                </div>
-              </Popover>
-              <button
-                type="button"
-                disabled={locked()}
-                class="question-prompt-collapse-button"
-                aria-expanded="true"
-                onClick={() => {
-                  setMenuOpen(false)
-                  setCollapsed(true)
-                }}
-                title={_(S.questionCollapseTitle)}
-              >
-                <Icon name={getSemanticIcon("navigation.collapse")} size="small" />
-              </button>
-            </div>
-          </header>
-          <Show when={!single()}>
-            <nav class="question-prompt-steps" aria-label={_(S.questionStepsAria)}>
-              <For each={questions()}>
-                {(q, idx) => {
-                  const isActive = () => idx() === store.tab
-                  const isAnswered = () => (store.answers[idx()]?.length ?? 0) > 0
-                  return (
-                    <button
-                      type="button"
-                      disabled={locked()}
-                      class="question-prompt-step"
-                      classList={{ "is-active": isActive(), "is-answered": isAnswered() }}
-                      onClick={() => goToTab(idx())}
-                    >
-                      <span>{q.header}</span>
-                      <Show when={isAnswered()}>
-                        <Icon name={getSemanticIcon("state.success")} size="small" />
-                      </Show>
-                    </button>
-                  )
-                }}
-              </For>
-              <button
-                type="button"
-                disabled={locked()}
-                class="question-prompt-step"
-                classList={{ "is-active": confirm(), "is-answered": allAnswered() }}
-                onClick={() => goToTab(questions().length)}
-              >
-                <span>{_(S.questionReview)}</span>
-              </button>
-            </nav>
+        <p class="question-text">{question()?.question}</p>
+        <div class="question-meta">
+          <Show when={props.request.questions.length > 1}>
+            <span>
+              {i18n._({ ...copy.step, values: { index: draft().step + 1, count: props.request.questions.length } })}
+            </span>
           </Show>
-          <div class="question-prompt-content">
-            <Show when={!confirm()}>
-              <div class="question-prompt-question" id={questionID()}>
-                <Markdown text={question()?.question ?? ""} />
-              </div>
-              <div class="question-prompt-choice-hint" id={choiceHintID()}>
-                {multi() ? _(S.questionMultiHint) : _(S.questionSingleHint)}
-              </div>
-              <div
-                class="question-prompt-options"
-                role={multi() ? "group" : "radiogroup"}
-                aria-labelledby={questionID()}
-                aria-describedby={choiceHintID()}
-              >
-                <For each={options()}>
-                  {(opt, idx) => {
-                    const picked = () => store.answers[store.tab]?.includes(opt.label) ?? false
-                    return (
-                      <button
-                        type="button"
-                        disabled={locked()}
-                        role={multi() ? "checkbox" : "radio"}
-                        aria-checked={picked()}
-                        aria-keyshortcuts={idx() < 9 ? String(idx() + 1) : undefined}
-                        class="question-prompt-option"
-                        classList={{ "is-picked": picked() }}
-                        onClick={() => (multi() ? toggle(opt.label) : pick(opt.label))}
-                      >
-                        <span class="question-prompt-option-mark question-prompt-option-shortcut" aria-hidden="true">
-                          <Show when={picked()} fallback={<Show when={idx() < 9}>{idx() + 1}</Show>}>
-                            <Icon name={getSemanticIcon("state.success")} size="small" />
-                          </Show>
-                        </span>
-                        <span class="question-prompt-option-copy">
-                          <span class="question-prompt-option-label">{opt.label}</span>
-                          <span class="question-prompt-option-description">{opt.description}</span>
-                        </span>
-                      </button>
-                    )
-                  }}
-                </For>
-                <Show
-                  when={store.otherOpen}
-                  fallback={
-                    <button
-                      type="button"
-                      disabled={locked()}
-                      class="question-prompt-option question-prompt-other-trigger"
-                      onClick={() => setStore("otherOpen", true)}
-                    >
-                      <span class="question-prompt-option-mark question-prompt-other-mark">
-                        <Icon name={getSemanticIcon("action.add")} size="small" />
-                      </span>
-                      <span class="question-prompt-option-copy">
-                        <span class="question-prompt-option-label">{_(S.questionOtherAnswer)}</span>
-                        <span class="question-prompt-option-description">{_(S.questionOtherDesc)}</span>
-                      </span>
-                    </button>
-                  }
-                >
-                  <div class="question-prompt-other">
-                    <div class="question-prompt-other-label">
-                      <span>{_(S.questionOtherAnswer)}</span>
-                      <Show when={customPicked()}>
-                        <Icon name={getSemanticIcon("state.success")} size="small" />
-                      </Show>
-                    </div>
-                    <div class="question-prompt-other-row">
-                      <TextField
-                        disabled={locked()}
-                        placeholder={_(S.questionCustomPlaceholder)}
-                        value={input()}
-                        onInput={(e: InputEvent & { currentTarget: HTMLInputElement }) => {
-                          const inputs = [...store.custom]
-                          inputs[store.tab] = e.currentTarget.value
-                          setStore("custom", inputs)
-                        }}
-                        onKeyDown={(e: KeyboardEvent) => {
-                          if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) {
-                            e.preventDefault()
-                            handleCustomSubmit()
-                          }
-                        }}
-                        class="question-prompt-other-input"
-                      />
-                      <Button
-                        variant="secondary"
-                        size="large"
-                        onClick={handleCustomSubmit}
-                        disabled={locked() || !input().trim()}
-                        class="question-prompt-other-button"
-                      >
-                        {multi() ? _(S.questionAdd) : _(S.questionSubmit)}
-                      </Button>
-                    </div>
-                  </div>
-                </Show>
-              </div>
-            </Show>
-            <Show when={confirm() && !single()}>
-              <div class="question-prompt-review">
-                <div class="question-prompt-review-title">{_(S.questionReviewTitle)}</div>
-                <div class="question-prompt-review-list">
-                  <For each={questions()}>
-                    {(q, idx) => {
-                      const val = () => store.answers[idx()]?.join(", ") ?? ""
-                      const answered = () => Boolean(val())
-                      return (
-                        <button
-                          type="button"
-                          disabled={locked()}
-                          class="question-prompt-review-row"
-                          classList={{ "is-missing": !answered() }}
-                          onClick={() => goToTab(idx())}
-                        >
-                          <span class="question-prompt-review-label">{q.header}</span>
-                          <span class="question-prompt-review-value">
-                            {answered() ? val() : _(S.questionNotAnswered)}
-                          </span>
-                          <span class="question-prompt-review-edit">{_(S.questionEdit)}</span>
-                        </button>
-                      )
-                    }}
-                  </For>
-                </div>
-              </div>
-            </Show>
-          </div>
-          <RequestSubmissionNotice state={state()} onRetry={() => (lastAction === "reject" ? reject() : submit())} />
-          <Show when={!single()}>
-            <footer class="question-prompt-footer">
-              <div class="question-prompt-footer-actions">
-                <Show when={store.tab > 0}>
-                  <Button variant="ghost" size="large" disabled={locked()} onClick={() => goToTab(store.tab - 1)}>
-                    {_(S.questionPrevious)}
-                  </Button>
-                </Show>
-                <Show when={!confirm()}>
-                  <Button
-                    variant="secondary"
-                    size="large"
-                    onClick={() => goToTab(store.tab + 1)}
-                    disabled={locked() || !currentAnswered()}
-                  >
-                    {_(S.questionNext)}
-                  </Button>
-                </Show>
-                <Show when={confirm()}>
-                  <Button variant="primary" size="large" onClick={submit} disabled={locked() || !allAnswered()}>
-                    {_(S.questionSubmit)}
-                  </Button>
-                </Show>
-              </div>
-            </footer>
+          <Show when={clock()}>
+            {(value) => <Countdown seconds={value().seconds} startedAt={value().startedAt} active />}
           </Show>
         </div>
+        <div
+          class="question-options"
+          role={direct() || question()?.multiple ? "group" : undefined}
+          aria-label={question()?.question}
+        >
+          <For each={question()?.options}>
+            {(option) => {
+              const selected = () =>
+                draft().selections[draft().step]?.includes(option.label) &&
+                (question()?.multiple || draft().source[draft().step] === "option")
+              const contents = () => (
+                <span class="question-option-text">
+                  <span class="question-option-label">{option.label}</span>
+                  <Show when={option.description}>
+                    <span class="question-option-description">{option.description}</span>
+                  </Show>
+                </span>
+              )
+              return (
+                <Show
+                  when={direct()}
+                  fallback={
+                    <label class="question-option" data-selected={selected() ? "true" : undefined}>
+                      <input
+                        type={question()?.multiple ? "checkbox" : "radio"}
+                        name={fieldName()}
+                        checked={!!selected()}
+                        disabled={locked()}
+                        onChange={() => select(option.label)}
+                      />
+                      {contents()}
+                    </label>
+                  }
+                >
+                  <button
+                    type="button"
+                    class="question-option"
+                    aria-label={i18n._({
+                      ...copy.directAnswer,
+                      values: { option: option.label, description: option.description },
+                    })}
+                    disabled={locked()}
+                    data-selected={selected() ? "true" : undefined}
+                    onClick={() => select(option.label)}
+                  >
+                    {contents()}
+                    <Icon name={getSemanticIcon("prompt.submit")} size="small" />
+                  </button>
+                </Show>
+              )
+            }}
+          </For>
+        </div>
+        <Show when={!direct() && !question()?.multiple}>
+          <label class="question-custom-source">
+            <input
+              type="radio"
+              name={fieldName()}
+              checked={draft().source[draft().step] === "custom"}
+              disabled={locked()}
+              onChange={customSource}
+            />
+            {i18n._(copy.other)}
+          </label>
+        </Show>
+        <TextField
+          multiline
+          label={i18n._(question()?.multiple ? copy.supplement : copy.other)}
+          hideLabel={!direct() && !question()?.multiple}
+          value={draft().custom[draft().step] ?? ""}
+          placeholder={i18n._(copy.placeholder)}
+          disabled={locked()}
+          onChange={(value) =>
+            decisions.updateDraft(props.request, (previous) => {
+              const custom = [...previous.custom]
+              const source = [...previous.source]
+              custom[previous.step] = value
+              if (!question()?.multiple) source[previous.step] = "custom"
+              return { ...previous, custom, source }
+            })
+          }
+        />
       </div>
-    </section>
+      <div class="decision-footer">
+        <Show when={draft().step > 0}>
+          <Button
+            variant="ghost"
+            disabled={locked()}
+            onClick={() =>
+              decisions.updateDraft(props.request, (previous) => ({ ...previous, step: previous.step - 1 }))
+            }
+          >
+            {i18n._(copy.previous)}
+          </Button>
+        </Show>
+        <Button
+          variant="primary"
+          disabled={locked() || (direct() ? !draft().custom[0]?.trim() : !answered())}
+          aria-busy={state().status === "pending"}
+          onClick={advance}
+        >
+          {i18n._(state().status === "pending" ? copy.sending : last() ? copy.send : copy.next)}
+        </Button>
+      </div>
+    </div>
   )
 }

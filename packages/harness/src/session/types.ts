@@ -142,11 +142,43 @@ export const PausedInfo = z
   .meta({ ref: "SessionPaused" })
 export type PausedInfo = z.infer<typeof PausedInfo>
 
+export const Activity = z
+  .object({
+    phase: z.enum([
+      "checking_submission",
+      "preparing_session",
+      "preparing_workspace",
+      "submitting_input",
+      "checking_receipt",
+      "reconnecting",
+      "queued_storage",
+      "retrying_input",
+      "materializing_input",
+      "preparing_files",
+      "preparing_context",
+      "queued_agent",
+      "waiting_model",
+      "responding",
+      "queued_tools",
+      "running_tools",
+      "waiting_background",
+      "finalizing",
+      "stopping",
+    ]),
+    startedAt: z.number(),
+    rootID: z.string().optional(),
+    workspaceOperation: z.enum(["create", "bind", "enter", "leave"]).optional(),
+    tool: z.object({ id: z.string().optional(), count: z.number().int().positive() }).optional(),
+  })
+  .meta({ ref: "SessionActivity" })
+export type Activity = z.infer<typeof Activity>
+
 export const WorkingInfo = z
   .union([
     z.object({
       status: z.literal("busy"),
       description: z.string().optional(),
+      activity: Activity.optional(),
     }),
     z.object({
       status: z.literal("retry"),
@@ -218,6 +250,8 @@ const BaseInfo = z.preprocess(
         deletions: z.number(),
         files: z.number(),
         diffs: SnapshotSchema.FileDiff.array().optional(),
+        diffState: SnapshotSchema.DiffState.optional(),
+        diffIssues: SnapshotSchema.Issue.array().optional(),
       })
       .optional(),
     title: z.string(),
@@ -298,6 +332,7 @@ export const StatusInfo = z
     z.object({
       type: z.literal("busy"),
       description: z.string().optional(),
+      activity: Activity.optional(),
     }),
     z.object({
       type: z.literal("paused"),

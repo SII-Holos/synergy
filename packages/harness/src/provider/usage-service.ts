@@ -17,7 +17,9 @@ export namespace ProviderUsage {
     const resolvedProfileID = profileID ?? configured?.profile
     const profile = ProviderProfile.resolve(providerID, resolvedProfileID)
     if (!profile?.fetchUsage) {
-      return AccountUsage.unavailable(providerID, "This provider does not expose account usage through Synergy.")
+      return AccountUsage.unavailable(providerID, "This provider does not expose account usage through Synergy.", {
+        source: "unsupported",
+      })
     }
     const inlineKey =
       typeof configured?.options?.apiKey === "string" && configured.options.apiKey

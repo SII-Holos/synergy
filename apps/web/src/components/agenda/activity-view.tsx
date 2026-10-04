@@ -1,44 +1,11 @@
-import { createMemo, createSignal, For, Show } from "solid-js"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
-import { relativeTime, absoluteDate } from "@/utils/time"
+import { createMemo, For, Show } from "solid-js"
 import type { AgendaActivityEntry } from "@ericsanchezok/synergy-sdk/client"
-import { agendaRunDotTone, agendaStatusTone, formatAgendaDuration } from "./shared"
-import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { useLocale } from "@/context/locale"
+import { translateDescriptor } from "@/locales/translate"
+import { agendaRunStatusLabel, agendaRunStatusTone, agendaRunTriggerLabel, formatAgendaDuration } from "./shared"
+import { groupAgendaActivity } from "./activity-state"
 import { A } from "./agenda-i18n"
-import "./activity-view.css"
-
-export type AgendaActivityGroup = {
-  agendaID: string
-  title: string
-  status: string
-  tags?: string[]
-  entries: AgendaActivityEntry[]
-}
-
-export function groupAgendaActivity(items: AgendaActivityEntry[]): AgendaActivityGroup[] {
-  const map = new Map<string, AgendaActivityGroup>()
-  for (const entry of items) {
-    const id = entry.agenda.id
-    const existing = map.get(id)
-    if (existing) {
-      existing.entries.push(entry)
-    } else {
-      map.set(id, {
-        agendaID: id,
-        title: entry.agenda.title,
-        status: entry.agenda.status,
-        tags: entry.agenda.tags,
-        entries: [entry],
-      })
-    }
-  }
-  return [...map.values()].map((group) => ({
-    ...group,
-    entries: group.entries.sort((a, b) => b.run.time.started - a.run.time.started),
-  }))
-}
 
 export function ActivityView(props: {
   items: AgendaActivityEntry[]
@@ -48,208 +15,175 @@ export function ActivityView(props: {
   query: string
   error?: string | null
   onQueryChange: (value: string) => void
+  onRetry?: () => void
+  onRefresh?: () => void
   onLoadMore: () => void
   onNavigate: (sessionID: string, scopeID: string) => void
   onItemClick: (itemId: string) => void
 }) {
-  const { i18n } = useLocale()
-  const _ = (d: { id: string; message: string }, values?: Record<string, unknown>) =>
-    i18n._(values ? { ...d, values } : d)
-  const grouped = createMemo(() => groupAgendaActivity(props.items))
-
-  return (
-    <div class="agenda-activity-surface flex min-h-0 flex-1 flex-col px-3 pb-3">
-      <div class="workbench-control-surface mb-2.5 flex items-center gap-2 rounded-[1rem] bg-surface-inset-base p-2.5 ring-1 ring-inset ring-border-base/30">
-        <div class="relative min-w-0 flex-1">
-          <input
-            value={props.query}
-            onInput={(e) => props.onQueryChange(e.currentTarget.value)}
-            placeholder={_(A.activitySearchPlaceholder)}
-            class="workbench-input-surface h-9 w-full rounded-[0.9rem] border border-border-base/30 bg-surface-raised-base pl-3 pr-3 text-12-regular text-text-strong outline-none placeholder:text-text-weaker"
-          />
-        </div>
-        <div class="shrink-0 rounded-full bg-surface-raised-stronger-non-alpha px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/45">
-          {_(A.activityRuns, { count: props.total })}
-        </div>
-      </div>
-
-      <div class="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <Show
-          when={!props.loading || props.items.length > 0}
-          fallback={
-            <div class="flex items-center justify-center py-16">
-              <Spinner class="size-4" />
-            </div>
-          }
-        >
-          <Show
-            when={grouped().length > 0}
-            fallback={
-              <div class="flex flex-col items-center justify-center py-16 gap-2 rounded-[1.05rem] bg-surface-inset-base ring-1 ring-inset ring-border-base/35">
-                <Icon name={getSemanticIcon("agenda.main")} size="large" class="text-icon-weak-base" />
-                <span class="text-12-regular text-text-weaker">{props.error ?? _(A.activityNoHistory)}</span>
-              </div>
-            }
-          >
-            <div class="flex flex-col gap-2.5">
-              <For each={grouped()}>
-                {(group) => (
-                  <ActivityGroupCard group={group} onNavigate={props.onNavigate} onItemClick={props.onItemClick} />
-                )}
-              </For>
-            </div>
-          </Show>
-
-          <Show when={props.hasMore}>
-            <div class="flex justify-center pt-3">
-              <button
-                type="button"
-                class="workbench-control-surface inline-flex h-9 items-center justify-center rounded-full bg-surface-raised-base px-4 text-11-medium text-text-strong ring-1 ring-inset ring-border-base/30 transition-colors hover:bg-surface-raised-base-hover"
-                onClick={props.onLoadMore}
-              >
-                {_(A.activityLoadMore)}
-              </button>
-            </div>
-          </Show>
-        </Show>
-      </div>
-    </div>
-  )
-}
-
-function ActivityGroupCard(props: {
-  group: AgendaActivityGroup
-  onNavigate: (sessionID: string, scopeID: string) => void
-  onItemClick: (itemId: string) => void
-}) {
-  const [expanded, setExpanded] = createSignal(true)
-
-  return (
-    <div class="workbench-control-surface overflow-hidden rounded-[1.1rem] bg-surface-inset-base ring-1 ring-inset ring-border-base/30">
-      <div
-        role="button"
-        tabindex={0}
-        aria-expanded={expanded()}
-        class="flex w-full items-center gap-2 px-3.5 py-3 text-left transition-colors hover:bg-surface-raised-base-hover"
-        onClick={() => setExpanded((v) => !v)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault()
-            setExpanded((v) => !v)
-          }
-        }}
-      >
-        <Icon
-          name={getSemanticIcon("navigation.expand")}
-          size="small"
-          class={`shrink-0 text-icon-weak-base transition-transform duration-150 ${expanded() ? "rotate-90" : ""}`}
-        />
-        <div class="min-w-0 flex-1">
-          <div class="flex items-center gap-2 min-w-0">
-            <span class="truncate text-11-medium text-text-strong">{props.group.title}</span>
-            <span
-              class={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-medium ${agendaStatusTone(props.group.status)}`}
-            >
-              {props.group.status}
-            </span>
-          </div>
-          <Show when={(props.group.tags?.length ?? 0) > 0}>
-            <div class="mt-1 flex flex-wrap gap-1">
-              <For each={props.group.tags?.slice(0, 3) ?? []}>
-                {(tag) => (
-                  <span class="rounded-full bg-surface-raised-base px-2 py-0.5 text-[9px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
-                    {tag}
-                  </span>
-                )}
-              </For>
-            </div>
-          </Show>
-        </div>
-        <button
-          type="button"
-          class="shrink-0 rounded-full bg-surface-raised-stronger-non-alpha px-2 py-0.5 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/45"
-          onClick={(e) => {
-            e.stopPropagation()
-            props.onItemClick(props.group.agendaID)
-          }}
-        >
-          {props.group.entries.length}
-        </button>
-      </div>
-
-      <div
-        class="activity-group-content"
-        classList={{ "is-open": expanded() }}
-        aria-hidden={!expanded()}
-        inert={!expanded()}
-      >
-        <div class="activity-group-content-inner">
-          <div class="flex flex-col gap-1.5 px-2.5 pb-2.5">
-            <For each={props.group.entries}>
-              {(entry) => <ActivityRunRow entry={entry} onNavigate={props.onNavigate} />}
-            </For>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ActivityRunRow(props: {
-  entry: AgendaActivityEntry
-  onNavigate: (sessionID: string, scopeID: string) => void
-}) {
   const { i18n, fmt } = useLocale()
-  const _ = (d: { id: string; message: string }) => i18n._(d)
-  const session = () => props.entry.session
-  const title = () => {
-    const sessionTitle = session()?.title
-    if (sessionTitle) return sessionTitle
-    if (props.entry.run.status === "error") return props.entry.run.error ?? _(A.activityRunError)
-    return props.entry.run.id
-  }
-
+  const _ = (d: { id: string; message: string }, values?: Record<string, unknown>) => i18n._({ ...d, values })
+  let search: HTMLInputElement | undefined
+  const grouped = createMemo(() => groupAgendaActivity(props.items))
   return (
-    <div
-      class="workbench-card-surface flex items-start gap-2.5 rounded-[0.95rem] bg-surface-raised-base px-3.5 py-2.5 transition-colors hover:bg-surface-raised-base-hover"
-      onClick={() => {
-        const s = session()
-        if (s) props.onNavigate(s.id, s.scopeID)
-      }}
-    >
-      <span class={`mt-1 shrink-0 h-1.5 w-1.5 rounded-full ${agendaRunDotTone(props.entry.run.status)}`} />
-      <div class="min-w-0 flex-1">
-        <div class="flex items-center gap-2">
-          <span class="truncate text-11-regular text-text-strong">{title()}</span>
-          <span
-            class={`shrink-0 text-[10px] font-medium ${props.entry.run.status === "error" ? "text-text-diff-delete-base" : props.entry.run.status === "ok" ? "text-icon-success-base" : "text-text-weaker"}`}
-          >
-            {props.entry.run.status}
-          </span>
-        </div>
-        <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-text-weaker">
-          <span>{absoluteDate(fmt, props.entry.run.time.started)}</span>
-          <span>·</span>
-          <span>{relativeTime(fmt, props.entry.run.time.started)}</span>
-          <Show when={props.entry.run.duration != null}>
-            <>
-              <span>·</span>
-              <span>{formatAgendaDuration(props.entry.run.duration!)}</span>
-            </>
-          </Show>
-          <Show when={session()}>
-            <>
-              <span>·</span>
-              <span class="truncate">{_(A.activitySessionReady)}</span>
-            </>
+    <div class="agenda-activity-surface">
+      <div class="agenda-page-tools">
+        <div class="agenda-search">
+          <input
+            ref={search}
+            value={props.query}
+            aria-label={_(A.activitySearchPlaceholder)}
+            placeholder={_(A.activitySearchPlaceholder)}
+            onInput={(e) => props.onQueryChange(e.currentTarget.value)}
+          />
+          <Show when={props.query}>
+            <button
+              type="button"
+              class="agenda-secondary-action"
+              onClick={() => {
+                props.onQueryChange("")
+                search?.focus()
+              }}
+            >
+              {_({ id: "app.agenda.search.clear", message: "Clear search" })}
+            </button>
           </Show>
         </div>
-        <Show when={props.entry.run.error}>
-          <div class="mt-1 line-clamp-2 text-[10px] leading-relaxed text-text-diff-delete-base">
-            {props.entry.run.error}
-          </div>
+        <span class="app-panel-caption text-text-weak">
+          {_(
+            { id: "app.agenda.activity.loaded", message: "{shown} of {total} executions loaded" },
+            { shown: props.items.length, total: props.total },
+          )}
+        </span>
+        <Show when={props.onRefresh}>
+          <button type="button" class="agenda-secondary-action" disabled={props.loading} onClick={props.onRefresh}>
+            {props.loading
+              ? _({ id: "app.agenda.activity.refreshing", message: "Refreshing…" })
+              : _({ id: "app.agenda.activity.refresh", message: "Refresh" })}
+          </button>
         </Show>
       </div>
+      <Show when={props.error}>
+        <div class="agenda-history-error py-4" role="alert">
+          <span>{props.error}</span>
+          <Show when={props.onRetry}>
+            <button type="button" class="agenda-secondary-action" onClick={props.onRetry}>
+              {_({ id: "app.agenda.activity.retry", message: "Retry" })}
+            </button>
+          </Show>
+        </div>
+      </Show>
+      <Show
+        when={!props.loading || props.items.length}
+        fallback={
+          <div class="agenda-arrangement-empty">
+            <Spinner class="size-4" />
+          </div>
+        }
+      >
+        <Show
+          when={props.items.length}
+          fallback={
+            !props.error ? (
+              <div class="agenda-arrangement-empty">
+                <p class="app-panel-row-title">
+                  {props.query
+                    ? _({ id: "app.agenda.activity.noMatch", message: "No matching executions" })
+                    : _(A.activityNoHistory)}
+                </p>
+                <Show when={props.query}>
+                  <button
+                    type="button"
+                    class="agenda-secondary-action"
+                    onClick={() => {
+                      props.onQueryChange("")
+                      search?.focus()
+                    }}
+                  >
+                    {_({ id: "app.agenda.filters.clear", message: "Clear filters" })}
+                  </button>
+                </Show>
+              </div>
+            ) : undefined
+          }
+        >
+          <For each={grouped()}>
+            {(group) => (
+              <section class="agenda-date-section">
+                <h2 class="app-panel-section-title">{fmt.date(group.day, { dateStyle: "full" })}</h2>
+                <For each={group.entries}>
+                  {(entry) => (
+                    <article class="agenda-execution-row" data-panel-item={entry.run.id}>
+                      <time
+                        class="app-panel-control text-text-weak"
+                        dateTime={new Date(entry.run.time.started).toISOString()}
+                      >
+                        {fmt.time(entry.run.time.started, { hour: "2-digit", minute: "2-digit", hour12: false })}
+                      </time>
+                      <div class="agenda-execution-copy">
+                        <button
+                          type="button"
+                          class="app-panel-row-title text-text-strong text-left line-clamp-2"
+                          data-panel-focus-entry
+                          aria-haspopup="dialog"
+                          onClick={() => props.onItemClick(entry.agenda.id)}
+                        >
+                          {entry.agenda.title}
+                        </button>
+                        <div class="agenda-execution-meta app-panel-caption">
+                          <span class={agendaRunStatusTone(entry.run.status)}>
+                            {translateDescriptor(agendaRunStatusLabel(entry.run.status), i18n)}
+                          </span>
+                          <span>{translateDescriptor(agendaRunTriggerLabel(entry.run.trigger.type), i18n)}</span>
+                          <Show when={entry.run.duration != null}>
+                            <span>{formatAgendaDuration(entry.run.duration!)}</span>
+                          </Show>
+                        </div>
+                        <Show when={entry.run.error}>
+                          <p class="app-panel-caption text-text-on-critical-base whitespace-pre-wrap">
+                            {entry.run.error}
+                          </p>
+                        </Show>
+                        <Show when={!entry.session}>
+                          <p class="app-panel-caption text-text-weak">
+                            {_({ id: "app.agenda.activity.noSession", message: "No related conversation available" })}
+                          </p>
+                        </Show>
+                      </div>
+                      <Show when={entry.session}>
+                        {(session) => (
+                          <button
+                            type="button"
+                            class="agenda-secondary-action"
+                            onClick={() => props.onNavigate(session().id, session().scopeID)}
+                          >
+                            {_({ id: "app.agenda.activity.openSession", message: "Open conversation" })}
+                          </button>
+                        )}
+                      </Show>
+                    </article>
+                  )}
+                </For>
+              </section>
+            )}
+          </For>
+        </Show>
+        <Show when={props.hasMore}>
+          <div class="agenda-history-paging">
+            <p class="app-panel-caption text-text-weak">
+              {_({
+                id: "app.agenda.activity.moreHint",
+                message: "More executions are available beyond the loaded records.",
+              })}
+            </p>
+            <button type="button" class="agenda-secondary-action" disabled={props.loading} onClick={props.onLoadMore}>
+              {props.loading
+                ? _({ id: "app.agenda.activity.loadingMore", message: "Loading…" })
+                : _(A.activityLoadMore)}
+            </button>
+          </div>
+        </Show>
+      </Show>
     </div>
   )
 }

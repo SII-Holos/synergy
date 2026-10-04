@@ -1,3 +1,4 @@
+import { useSettingRow } from "@ericsanchezok/synergy-ui/setting-row"
 import { useLingui } from "@lingui/solid"
 import { For, Show } from "solid-js"
 
@@ -24,11 +25,12 @@ export function SettingsStepScale(props: {
   highLabel?: string
 }) {
   const { _ } = useLingui()
+  const row = useSettingRow()
   const currentIndex = () => {
     const index = props.options.findIndex((option) => option.value === props.value)
     return index >= 0 ? index : 0
   }
-  const current = () => props.options[currentIndex()]
+  const current = () => props.options.find((option) => option.value === props.value)
   const currentSummary = () => {
     const option = current()
     if (!option) return props.value ? _(customValueLabel(props.value)) : _(customLabel)
@@ -48,6 +50,7 @@ export function SettingsStepScale(props: {
         step="1"
         value={currentIndex()}
         aria-label={props.ariaLabel}
+        aria-describedby={row?.descriptionId || undefined}
         aria-valuetext={currentSummary()}
         onInput={(event) => {
           const index = Number(event.currentTarget.value)

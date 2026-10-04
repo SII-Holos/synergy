@@ -192,6 +192,7 @@ test("selection follows stable keys across refreshed objects and search", async 
   expect(await selected.locator('[data-slot="list-item-selected-icon"]').count()).toBe(1)
   await page.getByPlaceholder("Find item").fill("Target")
   await settleFrames()
+  expect(await page.getByRole("button", { name: "Clear search", exact: true }).count()).toBe(1)
   expect(await selected.getAttribute("data-key")).toBe("target")
   await page.getByPlaceholder("Find item").fill("")
   await page.evaluate(() => (window as FixtureWindow).listKeyFixture.selectFirst())

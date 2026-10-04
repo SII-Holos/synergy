@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, expect, spyOn, test } from "bun:test"
 import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { AgentCall } from "@ericsanchezok/synergy-harness/agent/call"
@@ -44,7 +45,7 @@ async function fixture(config: object, run: (ctx: FixtureContext) => Promise<voi
         role: "user",
         isRoot: true,
         time: { created: Date.now() },
-        agent: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
         model: { providerID: "test", modelID: "test" },
       })
       if (user.role !== "user") throw new Error("expected user")
@@ -81,8 +82,8 @@ async function fixture(config: object, run: (ctx: FixtureContext) => Promise<voi
         rootID: user.id,
         visible: true,
         finish: "stop",
-        agent: "synergy",
-        mode: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
+        mode: PrimaryAgentIdentity.names.general,
         cost: 0,
         tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
         modelID: "test",
@@ -356,7 +357,7 @@ test(
           role: "user",
           isRoot: true,
           time: { created: Date.now() },
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           model: { providerID: "test", modelID: "test" },
         })
         if (secondUser.role !== "user") throw new Error("expected user")
@@ -368,8 +369,8 @@ test(
           rootID: secondUser.id,
           visible: true,
           finish: "stop",
-          agent: "synergy",
-          mode: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
+          mode: PrimaryAgentIdentity.names.general,
           cost: 0,
           tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
           modelID: "test",

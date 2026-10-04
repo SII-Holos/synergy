@@ -9,25 +9,32 @@ export interface AutoScrollOptions {
   onMeasure?: (distanceFromBottom: number) => void
   /** How long a forced pin keeps re-pinning through late content growth (images, code blocks) before follow releases. Default 1000. */
   settleMs?: number
+  captureReadingAnchor?: () => (() => void) | undefined
 }
 
 export function createAutoScroll(options: AutoScrollOptions) {
   let scroll: HTMLElement | undefined
   let settling = false
   let forcedSettling = false
+  let followingLatest = false
   let settleTimer: ReturnType<typeof setTimeout> | undefined
   let scrollFrame: number | undefined
   let measureFrame: number | undefined
   let forceNextScroll = false
   let down = false
   let cleanup: (() => void) | undefined
+  let restoreReadingAnchor: (() => void) | undefined
+  let anchoredScrollTop: number | undefined
 
   const [store, setStore] = createStore({
     contentRef: undefined as HTMLElement | undefined,
     userScrolled: false,
   })
 
-  const active = () => options.working() || settling
+  const active = () => options.working() || settling || followingLatest
+  const preserveReadingAnchor = () => {
+    restoreReadingAnchor = options.captureReadingAnchor?.()
+  }
 
   const distanceFromBottom = () => {
     const el = scroll
@@ -78,6 +85,10 @@ export function createAutoScroll(options: AutoScrollOptions) {
     if (!force && !active()) return
     if (!scroll) return
     if (!force && store.userScrolled) return
+    if (force) {
+      restoreReadingAnchor = undefined
+      anchoredScrollTop = undefined
+    }
 
     // A forced pin lands on whatever layout exists right now; open the settle
     // window immediately so late content growth keeps re-pinning underneath.
@@ -89,6 +100,10 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
   const stop = () => {
     if (!active()) return
+    followingLatest = false
+    forceNextScroll = false
+    if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
+    scrollFrame = undefined
     if (store.userScrolled) return
 
     setStore("userScrolled", true)
@@ -96,6 +111,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const handleWheel = (e: WheelEvent) => {
+    anchoredScrollTop = undefined
     if (e.deltaY >= 0) return
     stop()
   }
@@ -106,6 +122,8 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const handlePointerDown = () => {
+    anchoredScrollTop = undefined
+    if (followingLatest) stop()
     if (down) return
     down = true
     window.addEventListener("pointerup", handlePointerUp)
@@ -117,20 +135,31 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const handleTouchStart = () => {
+    anchoredScrollTop = undefined
+    if (followingLatest) stop()
     if (down) return
     down = true
     window.addEventListener("touchend", handleTouchEnd)
   }
 
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (!["ArrowUp", "PageUp", "Home"].includes(event.key)) return
+    if (event.target instanceof Element && event.target.closest("input, textarea, [contenteditable]")) return
+    stop()
+  }
+
   const handleScroll = () => {
-    if (!active()) return
     if (!scroll) return
+    const compensated = anchoredScrollTop !== undefined && Math.abs(scroll.scrollTop - anchoredScrollTop) < 1
+    anchoredScrollTop = undefined
+    if (!compensated) preserveReadingAnchor()
 
     if (distanceFromBottom() < 10) {
       if (store.userScrolled) setStore("userScrolled", false)
       return
     }
 
+    if (!active()) return
     if (down) stop()
   }
 
@@ -149,6 +178,9 @@ export function createAutoScroll(options: AutoScrollOptions) {
         scrollToBottom(false)
         return
       }
+      const previousTop = scroll?.scrollTop
+      restoreReadingAnchor?.()
+      if (scroll && previousTop !== scroll.scrollTop) anchoredScrollTop = scroll.scrollTop
       scheduleMeasure()
     },
   )
@@ -169,6 +201,9 @@ export function createAutoScroll(options: AutoScrollOptions) {
   )
 
   onCleanup(() => {
+    followingLatest = false
+    restoreReadingAnchor = undefined
+    anchoredScrollTop = undefined
     if (settleTimer) clearTimeout(settleTimer)
     if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
     if (measureFrame !== undefined) cancelAnimationFrame(measureFrame)
@@ -187,10 +222,13 @@ export function createAutoScroll(options: AutoScrollOptions) {
       }
 
       if (scroll !== el) {
+        restoreReadingAnchor = undefined
+        anchoredScrollTop = undefined
         if (settleTimer) clearTimeout(settleTimer)
         settleTimer = undefined
         settling = false
         forcedSettling = false
+        followingLatest = false
         if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
         if (measureFrame !== undefined) cancelAnimationFrame(measureFrame)
         scrollFrame = undefined
@@ -207,11 +245,13 @@ export function createAutoScroll(options: AutoScrollOptions) {
       el.addEventListener("wheel", handleWheel, { passive: true })
       el.addEventListener("pointerdown", handlePointerDown)
       el.addEventListener("touchstart", handleTouchStart, { passive: true })
+      el.addEventListener("keydown", handleKeyDown)
 
       cleanup = () => {
         el.removeEventListener("wheel", handleWheel)
         el.removeEventListener("pointerdown", handlePointerDown)
         el.removeEventListener("touchstart", handleTouchStart)
+        el.removeEventListener("keydown", handleKeyDown)
         window.removeEventListener("pointerup", handlePointerUp)
         window.removeEventListener("touchend", handleTouchEnd)
       }
@@ -222,8 +262,12 @@ export function createAutoScroll(options: AutoScrollOptions) {
     },
     handleScroll,
     handleInteraction,
+    preserveReadingAnchor,
     scrollToBottom: () => scrollToBottom(false),
-    forceScrollToBottom: () => scrollToBottom(true),
+    forceScrollToBottom: (input?: { untilInteraction?: boolean }) => {
+      if (scroll && input?.untilInteraction) followingLatest = true
+      scrollToBottom(true)
+    },
     userScrolled: () => store.userScrolled,
   }
 }

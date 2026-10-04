@@ -33,12 +33,12 @@ beforeAll(async () => {
     import { handleComposerTypingAutofocus } from ${JSON.stringify(`/@fs/${components}/prompt-input/typing-autofocus.ts`)}
     import { setupI18n } from "@lingui/core"
     import { I18nProvider } from "@lingui/solid"
-    import { WorkspaceLocationButton } from ${JSON.stringify(`/@fs/${components}/top-bar/workspace-location-button.tsx`)}
     import { RequestSubmissionNotice } from ${JSON.stringify(`/@fs/${components}/session/request-submission-notice.tsx`)}
     import { PromptAddMenu } from ${JSON.stringify(`/@fs/${components}/prompt-input/add-menu.tsx`)}
     import { PromptStartModeSelector } from ${JSON.stringify(`/@fs/${components}/prompt-input/start-options.tsx`)}
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${components}/../index.css`)}
+    import ${JSON.stringify(`/@fs/${components}/top-bar/session-top-bar.css`)}
     import { render } from "solid-js/web"
     import { ToolbarSelectorPopover } from ${JSON.stringify(`/@fs/${components}/toolbar-selector.tsx`)}
     import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
@@ -48,7 +48,6 @@ beforeAll(async () => {
       onMount(()=>{ const handle=event=>handleComposerTypingAutofocus(event,input,false); document.addEventListener("keydown",handle); onCleanup(()=>document.removeEventListener("keydown",handle)) })
       const [submission, setSubmission] = createSignal({status:"idle"})
       const [retries, setRetries] = createSignal(0)
-      const [chosen, setChosen] = createSignal(0)
       const [expanded, setExpanded] = createSignal(false)
       const [selected, setSelected] = createSignal("None")
       const item = (id, label, extra={}) => ({id,label,icon:"plus",onSelect:()=>setSelected(id),...extra})
@@ -70,10 +69,17 @@ beforeAll(async () => {
         <SidebarSectionButton open={expanded()} onClick={() => setExpanded(!expanded())}>Projects</SidebarSectionButton>
         <div ref={input} contentEditable="true" aria-label="Composer"/>
         <div data-testid="reading-area" style="height:80px">Read content</div>
-        <WorkspaceLocationButton project="Demo" location={{state:"bound",path:"/fixture/project",isolated:false}} onChoose={()=>setChosen(value=>value+1)}/>
-        <span data-testid="chosen">{chosen()}</span>
+        <div class="stb-root" data-testid="mobile-toolbar">
+          <div class="flex w-full items-center justify-between">
+            <div class="flex items-center gap-1"><button class="stb-icon-btn">Nav</button><button class="stb-icon-btn">Tools</button></div>
+            <div class="stb-center flex min-w-0 flex-1 items-center justify-center">
+              <Tooltip value="Choose model"><button class="stb-selector-btn"><span class="stb-selector-label">Very long model display name</span><span class="stb-chevron">⌄</span></button></Tooltip>
+            </div>
+            <div class="flex items-center gap-1"><button class="stb-icon-btn">Info</button><button class="stb-icon-btn">New</button><button class="stb-icon-btn">More</button></div>
+          </div>
+        </div>
         {["pending","error","unknown","settled","idle"].map(status=><button onClick={()=>setSubmission({status,...(["error","unknown"].includes(status)?{error:new Error("Offline")}: {})})}>State {status}</button>)}
-        <RequestSubmissionNotice state={submission()} onRetry={()=>setRetries(value=>value+1)}/>
+        <div data-testid="submission-notice"><RequestSubmissionNotice state={submission()} onRetry={()=>setRetries(value=>value+1)}/></div>
         <span data-testid="retries">{retries()}</span>
       </>
     }
@@ -262,40 +268,53 @@ test("typing outside controls focuses the composer while sidebar keys retain the
   expect(errors).toEqual([])
 })
 
-test("working location popover returns keyboard focus and opens its existing chooser", async () => {
-  const trigger = page.getByRole("button", { name: "Working location: Demo, Local directory" })
-  await trigger.press("Enter")
-  await page.getByText("/fixture/project", { exact: true }).waitFor()
-  await page.keyboard.press("Escape")
-  await page.getByText("/fixture/project", { exact: true }).waitFor({ state: "detached" })
-  await page.waitForFunction(
-    () => document.activeElement?.getAttribute("aria-label") === "Working location: Demo, Local directory",
-  )
-  expect(await trigger.evaluate((element) => element === document.activeElement)).toBe(true)
-  await trigger.click()
-  await page.getByRole("button", { name: "Choose Workspace", exact: true }).click()
-  expect(await page.getByTestId("chosen").textContent()).toBe("1")
-  await page.getByRole("button", { name: "Choose Workspace", exact: true }).waitFor({ state: "detached" })
-  expect(await page.getByRole("button", { name: "Choose Workspace", exact: true }).count()).toBe(0)
+test("long model names cannot overlap adjacent mobile toolbar controls", async () => {
+  for (const width of [320, 375]) {
+    await page.setViewportSize({ width, height: 460 })
+    const toolbar = page.getByTestId("mobile-toolbar")
+    const buttons = await toolbar.getByRole("button").evaluateAll((elements) =>
+      elements.map((element) => {
+        const rect = element.getBoundingClientRect()
+        return { left: rect.left, right: rect.right, width: rect.width }
+      }),
+    )
+    expect(buttons).toHaveLength(6)
+    for (let index = 1; index < buttons.length; index++) {
+      expect(buttons[index]!.left).toBeGreaterThanOrEqual(buttons[index - 1]!.right)
+      expect(buttons[index]!.right).toBeLessThanOrEqual(width)
+    }
+    const model = toolbar.getByRole("button", { name: "Very long model display name" })
+    await model.focus()
+    expect(await model.evaluate((element) => element === document.activeElement)).toBe(true)
+  }
+  expect(errors).toEqual([])
 })
 
-test("submission notices distinguish pending, failed, unknown and settled decisions", async () => {
+test("submission notices expose recoverable errors without duplicate pending or settled banners", async () => {
+  const notice = page.getByTestId("submission-notice")
   await page.getByRole("button", { name: "State pending", exact: true }).click()
-  expect(await page.locator('div[role="status"]').textContent()).toContain("Submitting your decision")
+  expect(await notice.getByRole("status").count()).toBe(0)
+  expect(await notice.getByRole("alert").count()).toBe(0)
   await page.getByRole("button", { name: "State error", exact: true }).click()
-  expect(await page.getByRole("alert").textContent()).toContain("Your selection is preserved")
-  await page.getByText("Error details", { exact: true }).click()
-  expect(await page.getByText("Offline", { exact: true }).isVisible()).toBe(true)
-  await page.getByRole("button", { name: "Retry submission", exact: true }).click()
+  expect(await notice.getByRole("alert").count()).toBe(1)
+  expect(await notice.getByRole("alert").textContent()).toContain("Submission failed.")
+  expect(await notice.getByText("Offline", { exact: true }).isVisible()).toBe(false)
+  await notice.getByText("Error details", { exact: true }).click()
+  expect(await notice.getByText("Offline", { exact: true }).isVisible()).toBe(true)
+  await notice.getByRole("button", { name: "Retry submission", exact: true }).click()
   expect(await page.getByTestId("retries").textContent()).toBe("1")
   await page.getByRole("button", { name: "State unknown", exact: true }).click()
-  await page.getByRole("button", { name: "Check and retry", exact: true }).click()
+  expect(await notice.getByRole("alert").textContent()).toContain("The result could not be confirmed.")
+  expect(await notice.getByRole("button", { name: "Retry submission", exact: true }).count()).toBe(0)
+  await notice.getByRole("button", { name: "Check status", exact: true }).click()
   expect(await page.getByTestId("retries").textContent()).toBe("2")
   await page.getByRole("button", { name: "State settled", exact: true }).click()
-  expect(await page.locator('div[role="status"]').textContent()).toContain("no longer pending")
+  expect(await notice.getByRole("status").count()).toBe(0)
+  expect(await notice.getByRole("alert").count()).toBe(0)
   await page.getByRole("button", { name: "State idle", exact: true }).click()
-  expect(await page.locator('div[role="status"]').count()).toBe(0)
-  expect(await page.getByRole("alert").count()).toBe(0)
+  expect(await notice.getByRole("status").count()).toBe(0)
+  expect(await notice.getByRole("alert").count()).toBe(0)
+  expect(errors).toEqual([])
 })
 
 test("Add is a circular standalone control with stable geometry", async () => {

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import path from "path"
 import { describe, expect, mock, test } from "bun:test"
 import {
@@ -90,7 +91,12 @@ function context(
       scopeId: "scope-one",
       sessionId: "parent-session",
       directory: "/workspace",
-      actor: { type: "agent", agent: "synergy", messageId: "parent-message", callId: "call-one" },
+      actor: {
+        type: "agent",
+        agent: PrimaryAgentIdentity.names.general,
+        messageId: "parent-message",
+        callId: "call-one",
+      },
     },
     signal: input.signal ?? AbortSignal.any([]),
     capabilities: new Set(input.capabilities ?? ["task.delegate"]),
@@ -180,7 +186,12 @@ describe("plugin task.run Host Service", () => {
                   scopeId: scope.id,
                   sessionId: parent.id,
                   directory: tmp.path,
-                  actor: { type: "agent", agent: "synergy", messageId: "msg_parent", callId: "call-one" },
+                  actor: {
+                    type: "agent",
+                    agent: PrimaryAgentIdentity.names.general,
+                    messageId: "msg_parent",
+                    callId: "call-one",
+                  },
                 },
                 method: "task.run" as never,
                 params: { ...request, subagent: "supervisor" },
@@ -249,7 +260,12 @@ describe("plugin task.run Host Service", () => {
                 scopeId: scope.id,
                 sessionId: parent.id,
                 directory: tmp.path,
-                actor: { type: "agent", agent: "synergy", messageId: "msg_parent", callId: "call-one" },
+                actor: {
+                  type: "agent",
+                  agent: PrimaryAgentIdentity.names.general,
+                  messageId: "msg_parent",
+                  callId: "call-one",
+                },
               },
               method: "task.start",
               params: {
@@ -319,7 +335,12 @@ describe("plugin task.run Host Service", () => {
                 scopeId: scope.id,
                 sessionId: parent.id,
                 directory: tmp.path,
-                actor: { type: "agent", agent: "synergy", messageId: "msg_parent", callId: "call-one" },
+                actor: {
+                  type: "agent",
+                  agent: PrimaryAgentIdentity.names.general,
+                  messageId: "msg_parent",
+                  callId: "call-one",
+                },
               },
               method: "task.run" as never,
               params: {
@@ -432,7 +453,12 @@ test("task.run wait ceiling uses the configured taskRunWaitTimeoutMs when the ta
               scopeId: scope.id,
               sessionId: parent.id,
               directory: tmp.path,
-              actor: { type: "agent", agent: "synergy", messageId: "msg_parent", callId: "call-one" },
+              actor: {
+                type: "agent",
+                agent: PrimaryAgentIdentity.names.general,
+                messageId: "msg_parent",
+                callId: "call-one",
+              },
             },
             method: "task.run" as never,
             params: {
@@ -515,7 +541,12 @@ test("task.run wait ceiling clamps to taskRunWaitTimeoutMs even when the active 
               scopeId: scope.id,
               sessionId: parent.id,
               directory: tmp.path,
-              actor: { type: "agent", agent: "synergy", messageId: "msg_parent", callId: "call-one" },
+              actor: {
+                type: "agent",
+                agent: PrimaryAgentIdentity.names.general,
+                messageId: "msg_parent",
+                callId: "call-one",
+              },
             },
             method: "task.run" as never,
             params: {

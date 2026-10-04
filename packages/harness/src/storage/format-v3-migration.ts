@@ -19,6 +19,7 @@ import { StorageFormatV3State } from "./format-v3-state"
 import { UpgradeWork } from "./upgrade-work"
 import { Log } from "../util/log"
 import { ObservabilityIssues } from "../observability/issues"
+import { textProjectionSchema } from "./text-projection"
 
 const log = Log.create({ service: "storage.format-v3" })
 
@@ -824,6 +825,22 @@ export namespace StorageFormatV3Migration {
         // gives it the ceiling budget rather than a chunk budget a store this size
         // cannot meet.
         ...storageRecordsIndexes("sqlite").map((statement) => ({ statement })),
+        {
+          statement:
+            "UPDATE storage_evidence_owners SET ready = 0, generation = generation + 1, scan_generation = -1, cursor_key = NULL WHERE namespace = ?",
+          values: [namespace],
+        },
+        {
+          statement:
+            "UPDATE storage_evidence_preparation SET cursor_key = NULL, cursor_order = '' WHERE namespace = ? AND phase <> 'ready'",
+          values: [namespace],
+        },
+        ...textProjectionSchema("sqlite").map((statement) => ({ statement })),
+        {
+          statement:
+            "INSERT INTO storage_text_gc(namespace, source_key) SELECT namespace, source_key FROM storage_text_sources WHERE namespace = ? ON CONFLICT(namespace, source_key) DO NOTHING",
+          values: [namespace],
+        },
         { statement: STORAGE_NODES_PARENT_INDEX },
         ...storageArtifactsIndexes.map((statement) => ({ statement })),
         // The recorded format, the namespace version and the terminal phase all

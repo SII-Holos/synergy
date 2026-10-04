@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test"
 import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { buildMemoryContext, buildAlwaysOnlyMemoryResult } from "../src/recall"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
+import { SessionContextContributions } from "@ericsanchezok/synergy-harness/session/context-contributions"
 import { SessionLibraryRecall } from "../src/library-recall"
 import { Embedding } from "../src/vector/embedding"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -191,7 +194,10 @@ test("context contribution combines filtered semantic memory with attributed exp
 test("failed semantic retrieval retains always-memory context and cancellation still propagates", () =>
   runtime.run(async () => {
     const original = Embedding.generate
+    let embeddingCalls = 0
+    let experienceCalls = 0
     Embedding.generate = async () => {
+      embeddingCalls++
       throw new Error("embedding unavailable")
     }
     const unregister = SessionLibraryRecall.register({
@@ -200,6 +206,7 @@ test("failed semantic retrieval retains always-memory context and cancellation s
         { id: "always", title: "Evidence", content: "Preserve observations", category: "knowledge" },
       ],
       retrieveExperiences: async () => {
+        experienceCalls++
         throw new Error("retrieval unavailable")
       },
     })
@@ -208,11 +215,53 @@ test("failed semantic retrieval retains always-memory context and cancellation s
         { info: { role: "user" }, parts: [{ type: "text", text: "research query" }] },
       ] as MessageV2.WithParts[]
       const result = await buildMemoryContext("session", "scope", messages)
+      expect(embeddingCalls).toBe(1)
+      expect(experienceCalls).toBe(0)
       expect(result?.injection.memory).toContain("Preserve observations")
       expect(result?.injection.experience).toBeUndefined()
       await expect(
         buildMemoryContext("session", "scope", messages, undefined, AbortSignal.abort(new Error("research cancelled"))),
       ).rejects.toThrow("research cancelled")
+    } finally {
+      Embedding.generate = original
+      unregister()
+    }
+  }))
+
+test("automatic Library recall cancels slow embeddings and retains always-memory within the interactive budget", () =>
+  runtime.run(async () => {
+    const original = Embedding.generate
+    let observed: AbortSignal | undefined
+    let calls = 0
+    Embedding.generate = async ({ signal }) => {
+      calls++
+      observed = signal
+      return new Promise((_, reject) => signal?.addEventListener("abort", () => reject(signal.reason), { once: true }))
+    }
+    const unregister = SessionLibraryRecall.register({
+      ...emptyProvider(),
+      listAlwaysMemories: () => [
+        { id: "always", title: "Evidence", content: "Preserve observations", category: "knowledge" },
+      ],
+    })
+    try {
+      const result = await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: () =>
+          SessionContextContributions.collect({
+            sessionID: "slow-recall",
+            scopeID: "home",
+            messages: [
+              { info: { role: "user" }, parts: [{ type: "text", text: "slow query" }] },
+            ] as MessageV2.WithParts[],
+            isTopSession: true,
+            signal: AbortSignal.timeout(4_500),
+          }),
+      })
+      expect(observed?.aborted).toBe(true)
+      expect(calls).toBe(1)
+      expect(result?.injection.memory).toContain("Preserve observations")
+      expect(result?.injection.experience).toBeUndefined()
     } finally {
       Embedding.generate = original
       unregister()

@@ -1,3 +1,4 @@
+import { ToolIntent } from "./tool-intent"
 import { readImageInputReceipt, publishImageInputReceipt, type ImageAttachmentSource } from "./rollout/image-receipt"
 import type { RolloutSchema } from "./rollout/schema"
 import { RolloutLedger } from "./rollout/ledger"
@@ -43,6 +44,8 @@ import { ToolScheduler } from "./tool-scheduler"
 import type { ToolResolver } from "./tool-resolver"
 import { SecretMask } from "../secrets/mask"
 import { PausedTurnAbort } from "./error"
+import type { Activity } from "./types"
+import { RuntimeContext } from "../lifecycle/context"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -55,6 +58,7 @@ export namespace SessionProcessor {
         input: any
         result: {
           output: string
+          activityEvidence?: import("./activity-evidence").ToolActivityEvidence
           title: string
           metadata: Record<string, any>
           attachments?: MessageV2.AttachmentPart[]
@@ -127,6 +131,7 @@ export namespace SessionProcessor {
     memoryTurn?: LLMTurnMemory.Handle
     autoExpandable?: Set<string>
     resolverInput?: Omit<ToolResolver.Input, "processor">
+    intentBindings?: ReadonlyMap<string, ToolIntent.Binding>
   }
 
   export function shouldAskDoomLoop(parts: MessageV2.Part[], toolName: string, input: unknown) {
@@ -204,7 +209,20 @@ export namespace SessionProcessor {
     generation?: number
     toolDisplay?: (toolName: string) => ToolDisplay | undefined
   }) {
+    const runtime = RuntimeContext.current()
+    const activity = (phase: Activity["phase"], tool?: Activity["tool"]) => {
+      if (input.generation === undefined) return
+      SessionManager.setActivity(
+        input.sessionID,
+        { phase, tool },
+        {
+          generation: input.generation,
+          rootID: input.assistantMessage.rootID ?? input.assistantMessage.parentID,
+        },
+      )
+    }
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
+    const modelInputs = new Map<string, Record<string, unknown>>()
     const modelCalls = new Map<string, { owner: RolloutSchema.Owner; runID: string; callID: string }>()
     const executions = new Map<string, ToolExecutionSlotInternal>()
     const executionCallbacks = new Map<string, Promise<unknown>>()
@@ -308,9 +326,10 @@ export namespace SessionProcessor {
         if (outcome.status === "completed") {
           const updated = await Session.updatePart({
             ...live,
+            activityEvidence: outcome.result.activityEvidence ?? live.activityEvidence,
             state: {
               status: "completed",
-              input: SessionToolInput.normalize(outcome.input),
+              input: SessionToolInput.canonical(outcome.input),
               output: outcome.result.output,
               metadata: ToolTimeout.mergeMetadata(
                 live.state.status === "running" ? live.state.metadata : undefined,
@@ -328,7 +347,7 @@ export namespace SessionProcessor {
             ...live,
             state: {
               status: "error",
-              input: SessionToolInput.normalize(outcome.input),
+              input: SessionToolInput.canonical(outcome.input),
               error: outcome.error,
               metadata: ToolTimeout.mergeMetadata(streamingToolMetadata(live), outcome.metadata),
               time: { start: startTime, end: Date.now() },
@@ -824,6 +843,7 @@ export namespace SessionProcessor {
     function dispose(reason = "manual") {
       const before = toolSettlementSnapshot(undefined, true)
       for (const callID of Object.keys(toolcalls)) delete toolcalls[callID]
+      modelInputs.clear()
       executions.clear()
       pendingToolCallStates.clear()
       toolCallStateUpdates.clear()
@@ -850,6 +870,9 @@ export namespace SessionProcessor {
         const identity = modelCalls.get(toolCallID)
         return identity ? readImageInputReceipt(identity) : undefined
       },
+      modelInputFromToolCall(toolCallID: string) {
+        return modelInputs.get(toolCallID)
+      },
       partFromToolCall(toolCallID: string) {
         return toolcalls[toolCallID]
       },
@@ -864,6 +887,7 @@ export namespace SessionProcessor {
         tool: AITool
         executor?: import("./tool-scheduler").ToolExecutorKind
         parentCallID?: string
+        workBrief?: string
       }): Promise<ToolOutcomeCompletedResult> {
         const part = MessageV2.ToolPart.parse(
           await Session.updatePart({
@@ -873,6 +897,7 @@ export namespace SessionProcessor {
             type: "tool",
             tool: call.toolName,
             callID: call.callID,
+            workBrief: call.workBrief,
             state: { status: "running", input: call.args, time: { start: Date.now() } },
           }),
         )
@@ -921,6 +946,14 @@ export namespace SessionProcessor {
       },
       async process(streamInput: ProcessInput) {
         log.info("process")
+        const inputBindings =
+          streamInput.intentBindings ??
+          new Map(
+            streamInput.toolDefinitions.map((definition) => [
+              definition.id,
+              ToolIntent.snapshot(definition.inputSchema),
+            ]),
+          )
         let recordingFailure: InstanceType<typeof RolloutRecordingError> | undefined
         const turnTraceId = ObservabilityContext.current().traceId ?? Observability.traceId("turn")
         const autoExpandedByTool = new Map<string, ToolResolver.AutoExpandedTool>()
@@ -1045,19 +1078,21 @@ export namespace SessionProcessor {
               const deferredToolCalls: Array<{
                 callID: string
                 toolName: string
-                input: Record<string, unknown>
+                input: ReturnType<typeof SessionToolInput.canonical>
               }> = []
               SessionMemoryPressure.probe("processor.before_llm_stream", {
                 sessionID: input.sessionID,
                 messageID: input.assistantMessage.id,
               })
               SessionManager.setExecutionPhase(input.sessionID, "queued_agent")
+              activity("preparing_context")
               const {
                 executionTools: _executionTools,
                 executorKinds: _executorKinds,
                 memoryTurn: _memoryTurn,
                 autoExpandable: _autoExpandable,
                 resolverInput: _resolverInput,
+                intentBindings: _intentBindings,
                 ...agentTurnInput
               } = streamInput
               retryEligible = true
@@ -1071,6 +1106,7 @@ export namespace SessionProcessor {
                 ...agentTurnInput,
                 usageRole: streamInput.usageRole ?? "conversation",
                 retryIndex: attempt,
+                onPhase: runtime.bind((phase) => activity(phase)),
               })
               const rollout = stream.rollout
               const stepFinishes: MessageV2.StepFinishPart[] = []
@@ -1151,7 +1187,6 @@ export namespace SessionProcessor {
                   input.abort.throwIfAborted()
                   switch (value.type) {
                     case "start":
-                      SessionManager.setStatus(input.sessionID, { type: "busy" })
                       ObservabilityMetrics.record({
                         name: "llm.stream.start",
                         value: Date.now() - llmStartedAt,
@@ -1181,6 +1216,7 @@ export namespace SessionProcessor {
                       break
 
                     case "reasoning-delta":
+                      activity("responding")
                       if (!firstTokenSeen) {
                         firstTokenSeen = true
                         ObservabilityMetrics.record({
@@ -1230,6 +1266,7 @@ export namespace SessionProcessor {
                       break
 
                     case "tool-input-start": {
+                      activity("responding")
                       if (shouldIgnoreSettledStreamEvent(value.id, "tool-input-start", value.toolName)) break
                       const part = await Session.updatePart({
                         id: toolcalls[value.id]?.id ?? Identifier.ascending("part"),
@@ -1335,8 +1372,19 @@ export namespace SessionProcessor {
                       const pendingState = pendingToolCallStates.get(value.toolCallId)
                       pendingToolCallStates.delete(value.toolCallId)
                       const streamedRaw = generatingAccum[value.toolCallId]
-                      const toolInput = SessionToolInput.normalize(value.input)
-                      const toolInputBytes = SessionBounds.toolInputByteLength(toolInput)
+                      const rawInput = SessionToolInput.normalize(value.input)
+                      modelInputs.set(value.toolCallId, structuredClone(rawInput))
+                      const expanded = streamInput.autoExpandable?.has(value.toolName)
+                        ? await resolveAutoExpand(value.toolName)
+                        : undefined
+                      const binding =
+                        inputBindings.get(value.toolName) ??
+                        (expanded?.inputSchema ? ToolIntent.snapshot(expanded.inputSchema) : undefined)
+                      const intent = binding
+                        ? ToolIntent.decode(binding, rawInput)
+                        : { input: rawInput, workBrief: undefined, inputShape: undefined }
+                      const toolInput = SessionToolInput.canonical(intent.input)
+                      const toolInputBytes = SessionBounds.toolInputByteLength(rawInput)
                       log.info("tool.stream.tool_call.input_ready", {
                         sessionID: input.sessionID,
                         messageID: input.assistantMessage.id,
@@ -1403,6 +1451,8 @@ export namespace SessionProcessor {
                           callID: value.toolCallId,
                         }),
                         tool: value.toolName,
+                        workBrief: intent.workBrief,
+                        inputShape: intent.inputShape,
                         state: {
                           status: "running",
                           input: toolInput,
@@ -1616,6 +1666,7 @@ export namespace SessionProcessor {
                       break
 
                     case "text-delta":
+                      activity("responding")
                       if (!firstTokenSeen) {
                         firstTokenSeen = true
                         ObservabilityMetrics.record({
@@ -1753,7 +1804,10 @@ export namespace SessionProcessor {
               }
               if (deferredToolCalls.length > 0) {
                 SessionManager.setExecutionPhase(input.sessionID, "queued_tools")
+                activity("queued_tools")
               }
+              const runningTools = new Map<string, string>()
+              const queuedTools = new Set(deferredToolCalls.map((call) => call.callID))
               await Promise.all(
                 deferredToolCalls.map(async (call) => {
                   if (!streamInput.executionTools) return
@@ -1766,15 +1820,11 @@ export namespace SessionProcessor {
                       await markAutoExpanded(call, expanded)
                     }
                   }
-                  // Deferred tools are absent from toolDefinitions, so the AI
-                  // SDK never validated these arguments, and MCP/plugin
-                  // execution paths do not revalidate. Validate against the
-                  // freshly resolved schema before dispatching the real tool.
                   if (expanded) {
                     const { ToolResolver: DynamicToolResolver } = await import("./tool-resolver")
                     const invalid = DynamicToolResolver.validateToolInput(
                       call.toolName,
-                      expanded.inputSchema,
+                      inputBindings.get(call.toolName)?.nativeSchema ?? expanded.inputSchema,
                       call.input,
                     )
                     if (invalid) {
@@ -1799,6 +1849,17 @@ export namespace SessionProcessor {
                     signal: input.abort,
                     onState(state) {
                       if (state === "running") SessionManager.setExecutionPhase(input.sessionID, "running_tools")
+                      if (state === "running") {
+                        queuedTools.delete(call.callID)
+                        runningTools.set(call.callID, call.toolName)
+                      } else if (state !== "queued") {
+                        queuedTools.delete(call.callID)
+                        runningTools.delete(call.callID)
+                      }
+                      if (runningTools.size)
+                        activity("running_tools", { id: runningTools.values().next().value, count: runningTools.size })
+                      else if (queuedTools.size) activity("queued_tools")
+                      else activity("finalizing")
                     },
                   })
                   await settleTrackedExecution(call.callID)

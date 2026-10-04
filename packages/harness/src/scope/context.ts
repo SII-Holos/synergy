@@ -15,7 +15,10 @@ export namespace ScopeContext {
   }): Promise<Awaited<R>> {
     let workspace = input.workspace === undefined ? ScopeContext.defaultWorkspace(input.scope) : input.workspace
     if (workspace && !workspace.id && RuntimeContext.tryCurrent()?.storage)
-      workspace = await WorkspaceBinding.migrate(workspace, input.scope.id)
+      workspace =
+        input.workspace === undefined
+          ? await WorkspaceBinding.describeDefault(input.scope)
+          : await WorkspaceBinding.migrate(workspace, input.scope.id)
     return (await scopeContext.provide(input.scope, () => workspaceContext.provide(workspace, input.fn))) as Awaited<R>
   }
 

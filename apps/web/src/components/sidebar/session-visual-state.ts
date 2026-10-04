@@ -67,7 +67,11 @@ export function scopeKeyForNavEntry(entry: Pick<NavEntry, "scopeID" | "scopeType
   return scopes.find((scope) => scope.id === entry.scopeID)?.worktree
 }
 
-export function resolveSessionVisualState(input: SessionVisualInput): SessionVisualState {
+export function resolveSessionVisualState(input: SessionVisualInput) {
+  return { ...primaryVisualState(input), worktree: input.entry.workspaceType === "git_worktree" }
+}
+
+function primaryVisualState(input: SessionVisualInput): SessionVisualState {
   const { entry } = input
   const unread = entry.completionNotice?.unread
   const activity = classifySessionActivity({ status: input.status, waiting: input.waiting })
@@ -181,17 +185,6 @@ export function resolveSessionVisualState(input: SessionVisualInput): SessionVis
       tone: "active",
       pulse: true,
     }
-
-  if (entry.workspaceType === "git_worktree") {
-    return {
-      icon: getSemanticIcon("workspace.worktree"),
-      label: unread
-        ? { id: "session.state.worktree.unread", message: "Worktree session; response ready" }
-        : { id: "session.state.worktree", message: "Worktree session" },
-      tone: "worktree",
-      completionUnread: unread || undefined,
-    }
-  }
 
   if (entry.parentID) {
     return {

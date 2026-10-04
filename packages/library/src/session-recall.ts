@@ -5,7 +5,7 @@ import { LibraryDB } from "./database"
 import { MemoryRecall } from "./memory-recall"
 import { readConfig } from "./config-schema"
 import { SessionContextContributions } from "@ericsanchezok/synergy-harness/session/context-contributions"
-import { buildMemoryContext, buildAlwaysOnlyMemoryResult } from "./recall"
+import { buildMemoryContext, buildAlwaysOnlyMemoryResult, RECALL_TIMEOUT_MS } from "./recall"
 
 export function registerLibrarySessionRecall() {
   ExperienceEncoder.register()
@@ -26,6 +26,7 @@ export function registerLibrarySessionRecall() {
       ExperienceRecall.writeDebugLog(sessionID, scopeID, query, results as ExperienceRecall.Result[], injected),
   })
   return SessionContextContributions.register("library", {
+    timeoutMs: RECALL_TIMEOUT_MS,
     async enabled({ isTopSession }) {
       const { library } = await readConfig()
       return library?.memory?.enabled !== false || (isTopSession && library?.experience?.retrieve !== false)

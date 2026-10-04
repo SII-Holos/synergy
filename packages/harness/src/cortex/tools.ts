@@ -1,3 +1,4 @@
+import { Tool } from "../tool/tool"
 import { RuntimeContext } from "../lifecycle/context"
 import { ToolRegistry } from "../tool/registry"
 import { TaskTool } from "./tools/task"
@@ -13,6 +14,15 @@ const runtimeState = RuntimeContext.state(() => ({
 }))
 
 export function registerCortexTools(): void {
+  Tool.registerInputHistory("cortex", {
+    task: {
+      description: "taskTitle",
+      prompt: "taskInstructions",
+    },
+    task_output: { task_id: "taskId" },
+    task_cancel: { task_id: "taskId" },
+  })
+
   const instanceState = runtimeState()
 
   if (instanceState.registered) return

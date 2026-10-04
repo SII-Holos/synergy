@@ -1,3 +1,4 @@
+import { SECONDARY_TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, test } from "bun:test"
 import type { Agent } from "@ericsanchezok/synergy-sdk/client"
 import {
@@ -17,7 +18,7 @@ const scopes = [
 
 const agents: Agent[] = [
   {
-    name: "synergy-max",
+    name: SECONDARY_TEST_AGENT_NAME,
     mode: "primary",
     permission: [],
     options: {},
@@ -53,12 +54,12 @@ describe("Blueprint run session helpers", () => {
 
   test("offers user-visible execution agents and preserves an unavailable stored selection", () => {
     expect(blueprintExecutionAgentOptions(agents)).toEqual([
-      { name: "synergy-max", description: undefined, available: true },
+      { name: SECONDARY_TEST_AGENT_NAME, description: undefined, available: true },
       { name: "implementation-engineer", description: undefined, available: true },
     ])
     expect(blueprintExecutionAgentOptions(agents, "legacy-agent")).toEqual([
       { name: "legacy-agent", description: undefined, available: false },
-      { name: "synergy-max", description: undefined, available: true },
+      { name: SECONDARY_TEST_AGENT_NAME, description: undefined, available: true },
       { name: "implementation-engineer", description: undefined, available: true },
     ])
     expect(blueprintExecutionAgentOptions(agents, "internal-reviewer")[0]).toEqual({

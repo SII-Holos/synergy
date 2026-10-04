@@ -84,6 +84,8 @@ The Web composer uses the same intent layering:
 
 An explicit selector choice saves model and thinking together through `session.setModelSelection`. Provider authentication remains provider-specific; the `openai-codex` native Codex path does not receive the normal OpenAI API-key/base-URL override.
 
+Catalog providers may rely on their SDK's built-in endpoint. Their client model metadata represents an absent endpoint as an empty string, while SDK construction omits the endpoint override. Explicit model and provider connection options retain precedence over a catalog endpoint. Navigation validates this same model metadata even when another provider handles the selected conversation.
+
 ### Model variants and reasoning options
 
 Model capability metadata from catalogs such as models.dev describes what a model advertises, but it does not prove that a service reusing another provider's AI SDK package accepts the same provider option semantics. Automatic reasoning variants are derived from model identity (`model.id`, API model ID, or model family) combined with the direct transport. They are not selected from provider IDs, and a shared npm package alone does not establish option compatibility, so custom provider aliases retain correct behavior.
@@ -150,7 +152,7 @@ Historical reasoning replay for `openai-codex` is conditional: `MessageV2.projec
 
 ## Library Recall
 
-The harness requests optional context through `SessionContextContributions`. It owns the contribution deadline, cancellation signal, fallback boundary, and loop cache; Library owns retrieval, embedding, prompt rendering, injection metadata, and experience completion callbacks. With no registered contributor, or when Library retrieval is disabled, context collection performs no Library retrieval or embedding work. `registerLibrary()` installs the Library contribution for hosts that need it.
+The harness requests optional context through `SessionContextContributions`. It owns the contribution deadline, cancellation signal, fallback boundary, and loop cache; Library owns retrieval, embedding, prompt rendering, injection metadata, and experience completion callbacks. With no registered contributor, or when Library retrieval is disabled, context collection performs no Library retrieval or embedding work. `registerLibrary()` installs the Library contribution for hosts that need it. That contribution selects a three-second automatic-recall deadline and shares one query embedding between semantic Memory and Experience retrieval. Failure or timeout retains always-memory context without duplicate embedding retries; explicit searches retain their own execution policy.
 
 Top-level sessions build memory and experience context in parallel from the current task text.
 
@@ -160,7 +162,7 @@ Top-level sessions build memory and experience context in parallel from the curr
 - experiences are retrieved within the current Scope.
 - child sessions receive lightweight always-only memory context.
 
-Recall has a bounded timeout and a loop-level cache. The context remains available across steps and compaction boundaries. The root message records which memory or experience context was injected so the durable task can be inspected later.
+Recall has a bounded timeout and a loop-level cache. Each task root collects context at its first model preparation, even when a pre-model job has already compacted the history. The context remains available to root and child sessions across steps and compaction boundaries; a newly materialized Inbox root replaces the previous task's cached context. The root message records which memory or experience context was injected so the durable task can be inspected later.
 
 ## Tool Resolution and Execution
 
@@ -193,6 +195,8 @@ Current loop-level behavior includes:
 - repeated successful tool-call warnings
 - repeated same-class tool-error stopping
 - tool-category failure analysis and escalation
+
+Each registered tool-failure analyzer owns its declared tool set. Completed and errored parts from that set enter the analyzer even when their tool names are absent from the built-in search category. Classification preserves explicit failure metadata and errored-part diagnostics.
 
 A blocking job can return `continue` to restart the loop after changing history or `stop` to finish without another model call. Non-blocking jobs capture detached payloads and cannot hold the critical execution path. By default every captured payload runs independently; a job opts into latest-pending coalescing only by defining a stable `key()`. Each background execution receives an abort signal and a finite timeout, so consumers must propagate cancellation through history reads, model calls, child-session work, and other long-running operations.
 
@@ -351,6 +355,8 @@ When the inner loop reaches a terminal assistant:
 - when no runnable work remains, the loop yields and the session resolves to idle unless a pause latch is set;
 - completion notification state is updated;
 - waiters receive the selected terminal assistant.
+
+Run reconciliation also revisits earlier roots owning settled delegations. A later terminal reply can consume their materialized child continuation, allowing the earlier root with its own terminal reply to close once segments, calls, children and pending inputs are settled. A later root without a terminal reply cannot close it. Persisted lifecycle remains the execution-detail completion source; presentation does not infer completion from session idle.
 
 Provider, auth, output-length, timeout, abort, and unknown failures are persisted on the assistant message with terminal timing and canonical `finish: "error"`. A terminal assistant error is then propagated to callers such as Cortex so a failed task cannot be reported as completed.
 

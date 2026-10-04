@@ -99,13 +99,13 @@ describe("full Runtime source composition", () => {
             expect(tool).toBeDefined()
             expect(
               tool!.parameters.safeParse({
-                ...(name === "bash" ? { command: "pwd", description: "Print directory" } : { action: "list" }),
+                ...(name === "bash" ? { command: "pwd" } : { action: "list" }),
                 targetID: "old-target",
               }).success,
             ).toBe(false)
             expect(
               tool!.parameters.safeParse({
-                ...(name === "bash" ? { command: "pwd", description: "Print directory" } : { action: "list" }),
+                ...(name === "bash" ? { command: "pwd" } : { action: "list" }),
                 linkID: "link_old",
               }).success,
             ).toBe(false)

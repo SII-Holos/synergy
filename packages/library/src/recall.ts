@@ -12,7 +12,7 @@ export type InjectionInfo = {
   experience?: string
 }
 
-export const RECALL_TIMEOUT_MS = 15_000
+export const RECALL_TIMEOUT_MS = 3_000
 
 export async function buildMemoryContext(
   sessionID: string,
@@ -183,15 +183,14 @@ async function buildActiveMemoryContext(
     groupedEntries.set(category, items)
   }
 
-  if (activeRetrieval.enabled && userText) {
+  if (activeRetrieval.enabled && userText && queryVector) {
     try {
-      const vector = queryVector ?? (await Embedding.generate({ id: "search-query", text: userText, signal })).vector
       const contextualResults = await Promise.all(
         categories.map(async (category) => {
           const config = activeRetrieval.categories[category]
           const results = await SessionLibraryRecall.searchMemories({
             query: userText,
-            vector,
+            vector: queryVector,
             topK: config.topK,
             categories: [category],
             recallModes: ["contextual"],
@@ -235,7 +234,7 @@ async function buildExperienceContext(
   queryVector?: number[],
   signal?: AbortSignal,
 ): Promise<{ context: string | undefined }> {
-  if (!userText) return { context: undefined }
+  if (!userText || !queryVector) return { context: undefined }
 
   try {
     const results = await SessionLibraryRecall.retrieveExperiences(scopeID, userText, {

@@ -228,7 +228,7 @@ describe("event matching", () => {
       expect(calls).toHaveLength(0)
     }))
 
-  test("agent filter rejects non-matching agent", () =>
+  test("agent filter only accepts the matching agent", () =>
     runtime.run(async () => {
       const calls: Array<{ signal: AgendaTypes.FiredSignal; scopeID: string }> = []
       AgendaSessionTrigger.start(async (signal, scopeID) => {
@@ -239,6 +239,9 @@ describe("event matching", () => {
       await publishTurnEnd({ sessionID: "ses_research", messageID: "msg_1", agent: "boss" })
       await Bun.sleep(50)
       expect(calls).toHaveLength(0)
+      await publishTurnEnd({ sessionID: "ses_research", messageID: "msg_2", agent: "research" })
+      await waitUntil(() => calls.length === 1)
+      expect(calls[0]!.signal.source).toBe("item-5")
     }))
 
   test("finish filter rejects non-matching finish", () =>

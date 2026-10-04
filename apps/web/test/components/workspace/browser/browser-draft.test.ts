@@ -1,7 +1,7 @@
 import { beforeEach, expect, mock, test } from "bun:test"
 import type { Prompt, UploadedAttachmentPart } from "../../../../src/context/prompt"
 
-let sessionID = "task-one"
+let sessionID: string | undefined = "task-one"
 let ready = true
 let current = true
 let parts: Prompt = []
@@ -44,6 +44,23 @@ mock.module("../../../../src/context/sdk", () => ({
 
 const { useBrowserDraft } = await import("../../../../src/components/workspace/browser/browser-draft")
 const artifact = { filename: "page.pdf", mime: "application/pdf", url: "asset://page" }
+
+test("a screenshot destination is captured before capture and cannot follow later navigation", async () => {
+  const destination = useBrowserDraft(() => sessionID).capture()
+  sessionID = "task-two"
+  current = false
+  await expect(destination.attach(new File(["image"], "capture.png"))).rejects.toThrow("conversation changed")
+  expect(uploads).toEqual([])
+  expect(writes).toEqual([])
+  destination.release()
+})
+
+test("a shared browser result attaches to the new-task draft without creating a conversation", async () => {
+  sessionID = undefined
+  await useBrowserDraft(undefined).artifact(async () => artifact)
+  expect(parts).toEqual([{ ...artifact, type: "attachment", id: expect.any(String) }])
+  expect(capture).toHaveBeenCalledTimes(1)
+})
 
 beforeEach(() => {
   sessionID = "task-one"

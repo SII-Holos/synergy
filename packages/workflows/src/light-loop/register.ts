@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { isActiveLightLoopWorkflow } from "../session/light-loop-state"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -41,13 +42,13 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
 
 function wrapperText(agentName: string, query: string): string {
   const who =
-    agentName === "synergy"
-      ? "You are synergy in the Light Loop workflow."
-      : agentName === "synergy-max"
-        ? "You are synergy-max in the Light Loop workflow."
+    agentName === PrimaryAgentIdentity.names.general
+      ? `You are ${PrimaryAgentIdentity.names.general} in the Light Loop workflow.`
+      : agentName === PrimaryAgentIdentity.names.coding
+        ? `You are ${PrimaryAgentIdentity.names.coding} in the Light Loop workflow.`
         : "You are in the Light Loop workflow."
   const iterating =
-    agentName === "synergy" || agentName === "synergy-max"
+    agentName === PrimaryAgentIdentity.names.general || agentName === PrimaryAgentIdentity.names.coding
       ? "Complete the work thoroughly. Keep working and iterating until the task is fully done, then call loop_stop() to request a completion review."
       : "Complete the work thoroughly. Keep working until the task is fully done, then call loop_stop() to request a completion review."
   return ["<lightloop-user-request>", who, iterating, "", "User request:", query, "</lightloop-user-request>"].join(

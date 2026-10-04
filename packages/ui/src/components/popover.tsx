@@ -13,6 +13,15 @@ import {
 } from "solid-js"
 import { Icon } from "./icon"
 
+export async function restorePopoverFocus(trigger: HTMLElement | undefined, content: HTMLElement | undefined) {
+  await Promise.allSettled((content?.getAnimations?.() ?? []).map((animation) => animation.finished))
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  if (!trigger?.isConnected) return
+  const active = trigger.ownerDocument.activeElement
+  if (active === trigger.ownerDocument.body || content?.contains(active) || active === trigger)
+    trigger.focus({ preventScroll: true })
+}
+
 export interface PopoverProps extends ParentProps, Omit<ComponentProps<typeof Kobalte>, "children"> {
   trigger?: JSXElement
   triggerAs?: Component<JSX.ButtonHTMLAttributes<HTMLButtonElement>>
@@ -22,11 +31,13 @@ export interface PopoverProps extends ParentProps, Omit<ComponentProps<typeof Ko
   portalMount?: HTMLElement
   class?: ComponentProps<"div">["class"]
   classList?: ComponentProps<"div">["classList"]
+  contentProps?: Omit<ComponentProps<typeof Kobalte.Content>, "children" | "ref" | "class" | "classList">
 }
 
 export function Popover(props: PopoverProps) {
   const parentLayer = useOverlayLayer()
   const [layer, setLayer] = createSignal<HTMLElement>()
+  let triggerElement: HTMLElement | undefined
   const [local, rest] = splitProps(props, [
     "trigger",
     "triggerAs",
@@ -36,6 +47,7 @@ export function Popover(props: PopoverProps) {
     "portalMount",
     "class",
     "classList",
+    "contentProps",
     "children",
   ])
 
@@ -44,18 +56,31 @@ export function Popover(props: PopoverProps) {
       <Show
         when={local.triggerAs}
         fallback={
-          <Kobalte.Trigger as="div" data-slot="popover-trigger">
-            {local.trigger}
-          </Kobalte.Trigger>
+          <Show when={local.trigger !== undefined}>
+            <Kobalte.Trigger ref={triggerElement} as="div" data-slot="popover-trigger">
+              {local.trigger}
+            </Kobalte.Trigger>
+          </Show>
         }
       >
-        {(trigger) => <Kobalte.Trigger as={trigger()} data-slot="popover-trigger" />}
+        {(trigger) => <Kobalte.Trigger ref={triggerElement} as={trigger()} data-slot="popover-trigger" />}
       </Show>
       <Kobalte.Portal mount={local.portalMount ?? parentLayer()}>
         <PortalStyleOwner>
           <OverlayLayerProvider layer={layer}>
             <Kobalte.Content
+              {...local.contentProps}
               ref={setLayer}
+              onCloseAutoFocus={(event) => {
+                local.contentProps?.onCloseAutoFocus?.(event)
+                if (event.defaultPrevented) return
+                event.preventDefault()
+                void restorePopoverFocus(triggerElement, layer())
+              }}
+              onEscapeKeyDown={(event) => {
+                local.contentProps?.onEscapeKeyDown?.(event)
+                event.stopPropagation()
+              }}
               data-component="popover-content"
               data-variant={local.variant ?? "default"}
               classList={{
@@ -63,7 +88,6 @@ export function Popover(props: PopoverProps) {
                 [local.class ?? ""]: !!local.class,
               }}
             >
-              {/* <Kobalte.Arrow data-slot="popover-arrow" /> */}
               <Show when={local.title}>
                 <div data-slot="popover-header" classList={{ "sr-only": local.variant === "menu" }}>
                   <Kobalte.Title data-slot="popover-title">{local.title}</Kobalte.Title>

@@ -25,8 +25,16 @@ export interface ResourceOpenOptions {
 }
 
 export type ToolReviewTarget = { sessionID: string; messageID: string; partID: string; path?: string }
+export type ToolActivityTarget = { sessionID: string; messageID: string; partID: string; callID?: string }
+export type ActivityDetailTarget =
+  | (ToolActivityTarget & { kind: "tool" })
+  | { kind: "agent-delivery" | "compaction"; sessionID: string; messageID: string }
 
 export interface ResourceOpenController {
+  openActivityDetail?(target: ActivityDetailTarget): boolean
+  isActivityDetailSelected?(target: ActivityDetailTarget): boolean
+  openToolActivity?(target: ToolActivityTarget): boolean
+  isToolActivitySelected?(target: ToolActivityTarget): boolean
   openToolReview?(target: ToolReviewTarget): boolean
   open(resource: OpenableResource, options?: ResourceOpenOptions): boolean
   openAttachment(file: AttachmentFile, options?: ResourceOpenOptions & { serverUrl?: string }): boolean

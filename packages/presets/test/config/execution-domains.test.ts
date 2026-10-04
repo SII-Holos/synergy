@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import "../../src/configuration"
 import { expect, test } from "bun:test"
 import path from "node:path"
@@ -17,7 +18,10 @@ test("domain migration preserves legacy timeout priority and moves prompts witho
       path.join(tmp.path, "40-mcp.jsonc"),
       JSON.stringify({ mcpDefaults: { callTimeout: 10, connectTimeout: 20 } }),
     )
-    await Bun.write(path.join(tmp.path, "60-agents.jsonc"), JSON.stringify({ default_agent: "synergy" }))
+    await Bun.write(
+      path.join(tmp.path, "60-agents.jsonc"),
+      JSON.stringify({ default_agent: PrimaryAgentIdentity.names.general }),
+    )
     await Bun.write(
       file,
       JSON.stringify({
@@ -30,7 +34,7 @@ test("domain migration preserves legacy timeout priority and moves prompts witho
       mcpDefaults: { callTimeout: 99, connectTimeout: 20 },
     })
     expect(await Bun.file(path.join(tmp.path, "60-agents.jsonc")).json()).toEqual({
-      default_agent: "synergy",
+      default_agent: PrimaryAgentIdentity.names.general,
       prompt: { coauthorReminder: false },
     })
     expect(await migrateExecutionConfigFile(file)).toBe(false)

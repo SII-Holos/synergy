@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { Command } from "@ericsanchezok/synergy-local-runtime/command/command"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -18,7 +19,7 @@ function userMessage(id: string, text: string, metadata?: Record<string, unknown
       sessionID: "ses_test",
       role: "user",
       time: { created: Date.now() },
-      agent: "synergy",
+      agent: PrimaryAgentIdentity.names.general,
       model: { providerID: "system", modelID: "test" },
       metadata,
     },
@@ -47,8 +48,8 @@ function assistantMessage(
       role: "assistant",
       parentID,
       time: { created: Date.now(), completed: Date.now() },
-      mode: "synergy",
-      agent: "synergy",
+      mode: PrimaryAgentIdentity.names.general,
+      agent: PrimaryAgentIdentity.names.general,
       path: { cwd: "/repo", root: "/repo" },
       cost: 0,
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

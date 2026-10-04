@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import z from "zod"
+import { z } from "zod"
 import { Identifier } from "../id/id"
 import { SecretMask } from "../secrets/mask"
 import { Storage } from "../storage/storage"

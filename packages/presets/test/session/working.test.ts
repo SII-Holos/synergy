@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { describe, expect, mock, test } from "bun:test"
@@ -562,7 +563,7 @@ describe("SessionWorking", () => {
               id: completedRootID,
               sessionID: session.id,
               role: "user",
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               time: { created: Date.now() - 2_000 },
               isRoot: true,
@@ -578,8 +579,8 @@ describe("SessionWorking", () => {
               modelID: "test-model",
               providerID: "test-provider",
               path: { cwd: tmp.path, root: tmp.path },
-              mode: "synergy",
-              agent: "synergy",
+              mode: PrimaryAgentIdentity.names.general,
+              agent: PrimaryAgentIdentity.names.general,
               cost: 0,
               tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
               finish: "stop",
@@ -589,7 +590,7 @@ describe("SessionWorking", () => {
               id: rootID,
               sessionID: session.id,
               role: "user",
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               time: { created: Date.now() },
               isRoot: true,
@@ -656,7 +657,9 @@ describe("SessionWorking", () => {
 
             const lease = SessionManager.acquire(session.id)
             expect(lease).toBeDefined()
-            const statuses: Array<{ type: string }> = []
+            expect(SessionManager.bindRootTask(lease!, userMsg.id)).toBe(true)
+            expect(SessionManager.signalAbort(session.id)).toBe("signaled")
+            const statuses: Array<ReturnType<typeof SessionWorking.toStatus>> = []
             const unsubscribe = Bus.subscribe(SessionEvent.Status, (event) => {
               if (event.properties.sessionID === session.id) statuses.push(event.properties.status)
             })
@@ -667,7 +670,13 @@ describe("SessionWorking", () => {
               // the published status: it must follow the live runtime rather than
               // announce an idle session that is still stopping.
               expect(await SessionInvoke.repairAfterAbort(session.id)).toBe(false)
-              expect(statuses).toEqual([{ type: "busy" }])
+              expect(statuses).toEqual([
+                {
+                  type: "busy",
+                  description: undefined,
+                  activity: { phase: "stopping", rootID: userMsg.id, startedAt: expect.any(Number) },
+                },
+              ])
             } finally {
               unsubscribe()
               await SessionManager.release(lease!)

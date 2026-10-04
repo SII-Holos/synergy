@@ -1,23 +1,8 @@
-import { createMemo, createSignal, onMount } from "solid-js"
+import { createMemo } from "solid-js"
 import type { StatsSnapshot } from "@ericsanchezok/synergy-sdk"
 import { useLocale } from "@/context/locale"
 import { formatCompact } from "./use-stats"
 import { S } from "./stats-i18n"
-
-function useCountUp(target: number, duration = 1600) {
-  const [value, setValue] = createSignal(0)
-  onMount(() => {
-    const start = performance.now()
-    const step = (now: number) => {
-      const t = Math.min((now - start) / duration, 1)
-      const eased = 1 - Math.pow(1 - t, 3)
-      setValue(Math.round(eased * target))
-      if (t < 1) requestAnimationFrame(step)
-    }
-    requestAnimationFrame(step)
-  })
-  return value
-}
 
 function formatSignedCompact(value: number) {
   if (value > 0) return `+${formatCompact(value)}`
@@ -32,57 +17,35 @@ function ratio(value: number, total: number) {
 
 function CompactStat(props: { label: string; value: string; hint: string }) {
   return (
-    <div class="rounded-[1.05rem] bg-surface-base/34 px-3.5 py-3 ring-1 ring-inset ring-border-weaker-base">
-      <div class="text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker">{props.label}</div>
-      <div class="mt-1 text-16-semibold tabular-nums tracking-tight text-text-base">{props.value}</div>
-      <div class="mt-1 text-10-regular leading-4 text-text-weak">{props.hint}</div>
+    <div class="stats-code-detail">
+      <div class="app-panel-caption font-medium text-text-weaker">{props.label}</div>
+      <div class="mt-1 app-panel-section-title tabular-nums tracking-tight text-text-base">{props.value}</div>
+      <div class="mt-1 app-panel-caption leading-4 text-text-weak">{props.hint}</div>
     </div>
   )
 }
 
-function CompositionRow(props: { label: string; value: string; share: number; tone: "emerald" | "rose" }) {
+function CompositionRow(props: { label: string; value: string; share: number; tone: "add" | "delete" }) {
   const { i18n } = useLocale()
-  const toneClasses = () =>
-    props.tone === "emerald"
-      ? {
-          text: "text-text-diff-add-base",
-          dot: "bg-text-diff-add-base",
-          bar: "bg-surface-diff-add-strong",
-        }
-      : {
-          text: "text-text-diff-delete-base",
-          dot: "bg-text-diff-delete-base",
-          bar: "bg-surface-diff-delete-strong",
-        }
-
+  const tone = () => (props.tone === "add" ? "text-text-diff-add-base" : "text-text-diff-delete-base")
   return (
-    <div class="rounded-[1rem] bg-surface-base/38 px-3.5 py-3 ring-1 ring-inset ring-border-weaker-base">
+    <div class="stats-code-detail">
       <div class="flex items-center justify-between gap-3">
-        <div class="flex min-w-0 items-center gap-2">
-          <span class={`size-2 rounded-full ${toneClasses().dot}`} />
-          <span class="text-11-medium text-text-base">{props.label}</span>
-        </div>
-        <div class={`text-13-semibold tabular-nums tracking-tight ${toneClasses().text}`}>{props.value}</div>
+        <span class="app-panel-caption font-medium text-text-base">{props.label}</span>
+        <span class={`app-panel-control tabular-nums ${tone()}`}>{props.value}</span>
       </div>
-      <div class="mt-2 flex items-center justify-between gap-3 text-[10px] font-medium text-text-weaker">
-        <span>{i18n._(S.codeShareTotal.id, { pct: String(Math.round(props.share)) })}</span>
-        <span>{props.share > 0 ? `${Math.round(props.share)}%` : "0%"}</span>
-      </div>
-      <div class="mt-2 h-2 rounded-full bg-surface-inset-base/70 p-0.5">
-        <div
-          class={`h-full rounded-full transition-[width] duration-700 ${toneClasses().bar}`}
-          style={{ width: `${Math.max(props.share, props.share > 0 ? 8 : 0)}%` }}
-        />
-      </div>
+      <p class="mt-1 app-panel-caption text-text-weak">
+        {i18n._(S.codeShareTotal.id, { pct: String(Math.round(props.share)) })}
+      </p>
     </div>
   )
 }
 
 export function CodeSummary(props: { codeChanges: StatsSnapshot["codeChanges"] }) {
   const { i18n } = useLocale()
-  const added = useCountUp(props.codeChanges.totalAdditions)
-  const removed = useCountUp(props.codeChanges.totalDeletions)
-  const net = useCountUp(Math.abs(props.codeChanges.netLines))
+  const added = () => props.codeChanges.totalAdditions
+  const removed = () => props.codeChanges.totalDeletions
+  const net = () => Math.abs(props.codeChanges.netLines)
 
   const totalChanged = createMemo(() => props.codeChanges.totalAdditions + props.codeChanges.totalDeletions)
   const addShare = createMemo(() => ratio(props.codeChanges.totalAdditions, totalChanged()))
@@ -105,101 +68,74 @@ export function CodeSummary(props: { codeChanges: StatsSnapshot["codeChanges"] }
   })
 
   return (
-    <>
-      <div class="mb-3 px-1 text-12-medium text-text-weak">{i18n._(S.codeHeader.id)}</div>
-      <section
-        class="rounded-2xl bg-surface-raised-base px-4 py-4"
-        style={{ animation: "fadeUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both" }}
-      >
-        <div class="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
-          <div class="rounded-[1.35rem] bg-surface-inset-base p-px ring-1 ring-inset ring-border-weaker-base">
-            <div class="rounded-[calc(1.35rem-1px)] bg-surface-base/74 px-4 py-4 backdrop-blur-sm">
-              <div class="flex flex-wrap items-start justify-between gap-4">
-                <div class="min-w-0 flex-1">
-                  <div class="text-[10px] font-medium uppercase tracking-[0.18em] text-text-weaker">
-                    {i18n._(S.codeNetGrowth.id)}
-                  </div>
-                  <div class="mt-2 text-32-semibold tracking-tight tabular-nums text-text-strong">
-                    {props.codeChanges.netLines >= 0 ? "+" : "-"}
-                    {formatCompact(net())}
-                  </div>
-                  <div class="mt-1 text-11-regular text-text-weak">{growthLine()}</div>
-                </div>
-                <div class="rounded-[1rem] bg-surface-base/55 px-3.5 py-2.5 text-right ring-1 ring-inset ring-border-weaker-base">
-                  <div class="text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker">
-                    {i18n._(S.codeFlow.id)}
-                  </div>
-                  <div class="mt-1 text-15-semibold tabular-nums tracking-tight text-text-base">
-                    {formatSignedCompact(props.codeChanges.netLines)}
-                  </div>
-                  <div class="text-10-regular text-text-weak">{compositionLine()}</div>
-                </div>
+    <section class="stats-code-summary">
+      <h3 class="app-panel-section-title text-text-strong">{i18n._(S.codeHeader.id)}</h3>
+      <div class="stats-code-layout">
+        <div class="stats-code-main">
+          <div class="stats-code-growth">
+            <div class="min-w-0">
+              <div class="app-panel-caption font-medium text-text-weak">{i18n._(S.codeNetGrowth.id)}</div>
+              <div class="mt-2 app-panel-value tabular-nums text-text-strong">
+                {props.codeChanges.netLines >= 0 ? "+" : "-"}
+                {formatCompact(net())}
               </div>
-
-              <div class="mt-5 rounded-[1.05rem] bg-surface-base/34 px-3.5 py-3 ring-1 ring-inset ring-border-weaker-base">
-                <div class="flex items-center justify-between gap-3">
-                  <div>
-                    <div class="text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker">
-                      {i18n._(S.codeAddedVsRemoved.id)}
-                    </div>
-                    <div class="mt-1 text-11-regular text-text-weak">{i18n._(S.codeBreakdownSubtitle.id)}</div>
-                  </div>
-                  <div class="text-right text-[10px] font-medium text-text-weaker">
-                    <div>{i18n._(S.codeSharePct.id, { pct: String(Math.round(addShare())) })}</div>
-                    <div>{i18n._(S.codeRemovePct.id, { pct: String(Math.round(removeShare())) })}</div>
-                  </div>
-                </div>
-                <div class="mt-3 h-3 overflow-hidden rounded-full bg-surface-inset-base/72 p-0.5">
-                  <div class="flex h-full gap-0.5">
-                    <div
-                      class="h-full rounded-full bg-surface-diff-add-strong"
-                      style={{ width: `${Math.max(addShare(), addShare() > 0 ? 6 : 0)}%` }}
-                    />
-                    <div
-                      class="h-full rounded-full bg-surface-diff-delete-strong"
-                      style={{ width: `${Math.max(removeShare(), removeShare() > 0 ? 6 : 0)}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div class="mt-4 grid gap-3 md:grid-cols-2">
-                <CompositionRow
-                  label={i18n._(S.codeLinesAdded.id)}
-                  tone="emerald"
-                  value={`+${formatCompact(added())}`}
-                  share={addShare()}
-                />
-                <CompositionRow
-                  label={i18n._(S.codeLinesRemoved.id)}
-                  tone="rose"
-                  value={`-${formatCompact(removed())}`}
-                  share={removeShare()}
-                />
-              </div>
+              <p class="mt-1 app-panel-caption text-text-weak">{growthLine()}</p>
+            </div>
+            <div class="min-w-0">
+              <div class="app-panel-caption font-medium text-text-weak">{i18n._(S.codeFlow.id)}</div>
+              <p class="mt-1 app-panel-copy text-text-base">{compositionLine()}</p>
             </div>
           </div>
-
-          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-2">
-            <CompactStat
-              label={i18n._(S.codeFilesTouched.id)}
-              value={formatCompact(props.codeChanges.totalFiles)}
-              hint={i18n._(S.codeFilesHint.id)}
+          <div class="stats-code-composition">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="app-panel-caption font-medium text-text-weak">{i18n._(S.codeAddedVsRemoved.id)}</div>
+                <p class="mt-1 app-panel-caption text-text-weak">{i18n._(S.codeBreakdownSubtitle.id)}</p>
+              </div>
+              <div class="app-panel-caption text-text-weak">
+                <div>{i18n._(S.codeSharePct.id, { pct: String(Math.round(addShare())) })}</div>
+                <div>{i18n._(S.codeRemovePct.id, { pct: String(Math.round(removeShare())) })}</div>
+              </div>
+            </div>
+            <div class="stats-code-composition-track">
+              <div class="bg-surface-diff-add-strong" style={{ width: `${addShare()}%` }} />
+              <div class="bg-surface-diff-delete-strong" style={{ width: `${removeShare()}%` }} />
+            </div>
+          </div>
+          <div class="stats-code-breakdown">
+            <CompositionRow
+              label={i18n._(S.codeLinesAdded.id)}
+              tone="add"
+              value={`+${formatCompact(added())}`}
+              share={addShare()}
             />
-            <CompactStat label={i18n._(S.codeAddsPerDay.id)} value={averagePerDay()} hint={i18n._(S.codeAddsHint.id)} />
-            <CompactStat
-              label={i18n._(S.codeRemovalsPerDay.id)}
-              value={averageRemovedPerDay()}
-              hint={i18n._(S.codeRemovalsHint.id)}
-            />
-            <CompactStat
-              label={i18n._(S.codeLinesPerFile.id)}
-              value={throughput()}
-              hint={i18n._(S.codeLinesPerFileHint.id)}
+            <CompositionRow
+              label={i18n._(S.codeLinesRemoved.id)}
+              tone="delete"
+              value={`-${formatCompact(removed())}`}
+              share={removeShare()}
             />
           </div>
         </div>
-      </section>
-    </>
+        <div class="stats-code-detail-grid">
+          <CompactStat
+            label={i18n._(S.codeFilesTouched.id)}
+            value={formatCompact(props.codeChanges.totalFiles)}
+            hint={i18n._(S.codeFilesHint.id)}
+          />
+          <CompactStat label={i18n._(S.codeAddsPerDay.id)} value={averagePerDay()} hint={i18n._(S.codeAddsHint.id)} />
+          <CompactStat
+            label={i18n._(S.codeRemovalsPerDay.id)}
+            value={averageRemovedPerDay()}
+            hint={i18n._(S.codeRemovalsHint.id)}
+          />
+          <CompactStat
+            label={i18n._(S.codeLinesPerFile.id)}
+            value={throughput()}
+            hint={i18n._(S.codeLinesPerFileHint.id)}
+          />
+        </div>
+      </div>
+    </section>
   )
 }

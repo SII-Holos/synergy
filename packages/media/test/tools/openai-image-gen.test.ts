@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import path from "path"
 import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
@@ -24,7 +25,7 @@ const ctx = {
   sessionID: "ses_image_gen_test",
   messageID: "msg_image_gen_test",
   callID: "call_image_gen_test",
-  agent: "synergy-max",
+  agent: PrimaryAgentIdentity.names.coding,
   abort: new AbortController().signal,
   metadata() {},
   async ask() {},

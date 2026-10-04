@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { jsonSchema } from "ai"
 import z from "zod"
@@ -109,7 +110,7 @@ function toolContext(sessionID: string): Tool.Context {
   return {
     sessionID,
     messageID: "message_test",
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     abort: new AbortController().signal,
     extra: { model },
     metadata() {},
@@ -122,6 +123,7 @@ function runtimeProcessor() {
   return {
     message: { id: "message_test", parentID: "msg_root", rootID: "msg_root" },
     partFromToolCall: () => undefined,
+    modelInputFromToolCall: () => undefined,
     updateToolCallState: async () => {},
     executeOnce<T>(callID: string, execute: () => Promise<T>) {
       const existing = callbacks.get(callID)
@@ -469,6 +471,7 @@ describe("tool exposure", () => {
           const processor = {
             message: { id: "message_test", parentID: "msg_root", rootID: "msg_root" },
             partFromToolCall: () => undefined,
+            modelInputFromToolCall: () => undefined,
             updateToolCallState: async () => {},
             executeOnce: <T>(callID: string, execute: () => Promise<T>) => {
               const existing = callbacks.get(callID)
@@ -1273,6 +1276,7 @@ describe("tool exposure", () => {
           const processor = {
             message: { id: "message_test", parentID: "msg_root", rootID: "msg_root" },
             partFromToolCall: () => undefined,
+            modelInputFromToolCall: () => undefined,
             executeOnce: <T>(id: string, execute: () => Promise<T>) => {
               const existing = callbacks.get(id)
               if (existing) return existing as Promise<T>

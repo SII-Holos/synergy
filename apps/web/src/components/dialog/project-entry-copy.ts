@@ -4,6 +4,8 @@ export const projectEntryCopy = {
     message: "Project folders changed. Review the selected main folder, then start the task again.",
   },
   computer: { id: "project.entry.computer", message: "Computer" },
+  computerName: { id: "project.entry.computerName", message: "Computer: {name}" },
+  locationOptions: { id: "project.entry.locationOptions", message: "Location options" },
   manageComputers: { id: "project.entry.manageComputers", message: "Manage computers" },
   connected: { id: "project.entry.connected", message: "Connected" },
   unavailable: { id: "project.entry.unavailable", message: "Unavailable" },
@@ -32,6 +34,35 @@ export const projectEntryCopy = {
   manageWorktrees: { id: "project.entry.manageWorktrees", message: "Manage Worktrees" },
   shared: { id: "project.entry.shared", message: "Based on {folder}; {count} other folders stay shared." },
   onSend: { id: "project.entry.onSend", message: "Created when you start the task." },
+  notGit: { id: "project.entry.notGit", message: "The main folder is not a Git repository." },
+  confirmFolder: { id: "project.entry.confirmFolder", message: "Confirm the project folders to restore access." },
+  recoverTitle: { id: "project.entry.recoverTitle", message: "Confirm project folders" },
+  recoverDescription: {
+    id: "project.entry.recoverDescription",
+    message: "Confirm the folders you want to use. This also restores access for tasks using these folders.",
+  },
+  recoverAction: { id: "project.entry.recoverAction", message: "Confirm and restore" },
+  recovering: { id: "project.entry.recovering", message: "Restoring…" },
+  recovered: { id: "project.entry.recovered", message: "Ready" },
+  recoverFailed: {
+    id: "project.entry.recoverFailed",
+    message: "Could not restore all project folders. Restored folders are kept; retry the remaining folders.",
+  },
+  recoverUnavailable: {
+    id: "project.entry.recoverUnavailable",
+    message: "A project folder is unavailable. Review its location in project settings.",
+  },
+  folderMissing: {
+    id: "project.entry.folderMissing",
+    message: "This folder cannot be opened. Check its location or choose another folder.",
+  },
+  folderUnbound: {
+    id: "project.entry.folderUnbound",
+    message: "This folder is unavailable on this computer. Choose its location here.",
+  },
+  additionalFolder: { id: "project.entry.additionalFolder", message: "Shared folder" },
+  chooseFolder: { id: "project.entry.chooseFolder", message: "Choose folder" },
+  cancel: { id: "project.entry.cancel", message: "Cancel" },
   folderImpact: {
     id: "project.entry.folderImpact",
     message:
@@ -48,6 +79,11 @@ export const projectEntryCopy = {
   use: { id: "project.entry.use", message: "Use Worktree" },
   retry: { id: "project.entry.retry", message: "Retry" },
   loading: { id: "project.entry.loading", message: "Loading…" },
+  details: { id: "project.entry.details", message: "Details" },
+  clean: { id: "project.entry.clean", message: "No uncommitted changes" },
+  dirty: { id: "project.entry.dirty", message: "Uncommitted changes" },
+  checked: { id: "project.entry.checked", message: "Checked {time}" },
+  diskSize: { id: "project.entry.diskSize", message: "{size} MiB" },
   unsupported: {
     id: "project.entry.unsupported",
     message: "This task uses a custom location. Manage it in developer settings.",

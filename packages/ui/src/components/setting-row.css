@@ -23,3 +23,13 @@
   font-size: var(--settings-type-body-size, 13px);
   line-height: var(--settings-type-body-line-height, 1.5);
 }
+
+.settings-row-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.ds-setting-row[data-control-layout="compact"] .settings-row-control {
+  flex: 0 0 auto;
+}

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises"
 import os from "node:os"
@@ -33,20 +34,31 @@ async function inspect(runtime: string, config: Record<string, unknown> = {}, mo
   try {
     const file = path.join(home, "config.json")
     await Bun.write(file, JSON.stringify(config))
-    const child = Bun.spawn([process.execPath, "test/fixtures/inspect.ts", runtime, file, "", model ?? "", "synergy"], {
-      cwd: path.resolve(import.meta.dir, ".."),
-      env: {
-        PATH: process.env.PATH,
-        SYNERGY_HOME: home,
-        SYNERGY_CONFIG: file,
-        SYNERGY_CONFIG_CONTENT: "{}",
-        SYNERGY_DISABLE_MODELS_FETCH: "1",
-        SYNERGY_DISABLE_DEFAULT_PLUGINS: "1",
-        MODELS_DEV_API_JSON: path.resolve(import.meta.dir, "../../packages/testing/fixtures/models-api.json"),
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        "test/fixtures/inspect.ts",
+        runtime,
+        file,
+        "",
+        model ?? "",
+        PrimaryAgentIdentity.names.general,
+      ],
+      {
+        cwd: path.resolve(import.meta.dir, ".."),
+        env: {
+          PATH: process.env.PATH,
+          SYNERGY_HOME: home,
+          SYNERGY_CONFIG: file,
+          SYNERGY_CONFIG_CONTENT: "{}",
+          SYNERGY_DISABLE_MODELS_FETCH: "1",
+          SYNERGY_DISABLE_DEFAULT_PLUGINS: "1",
+          MODELS_DEV_API_JSON: path.resolve(import.meta.dir, "../../packages/testing/fixtures/models-api.json"),
+        },
+        stdout: "pipe",
+        stderr: "pipe",
       },
-      stdout: "pipe",
-      stderr: "pipe",
-    })
+    )
     const [code, stdout, stderr] = await Promise.all([
       child.exited,
       new Response(child.stdout).text(),
@@ -93,7 +105,15 @@ test("runtime contract rejects an unavailable measured model before inference", 
     const config = path.join(home, "config.json")
     await Bun.write(config, "{}")
     const child = Bun.spawn(
-      [process.execPath, "test/fixtures/inspect.ts", "core", config, "", "missing/model", "synergy"],
+      [
+        process.execPath,
+        "test/fixtures/inspect.ts",
+        "core",
+        config,
+        "",
+        "missing/model",
+        PrimaryAgentIdentity.names.general,
+      ],
       {
         cwd: path.resolve(import.meta.dir, ".."),
         env: {

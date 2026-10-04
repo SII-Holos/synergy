@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { createLocalHost } from "@ericsanchezok/synergy-local-runtime"
@@ -55,7 +56,7 @@ async function prompt(text: string) {
   const input = await createUserMessage({
     sessionID: current.sessionID,
     model: { providerID: settings.providerID, modelID: settings.modelID },
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     parts: [{ type: "text", text }],
   })
   await SessionInvoke.loop.force(current.sessionID)

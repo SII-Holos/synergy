@@ -1,4 +1,5 @@
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 
@@ -12,7 +13,7 @@ export function VerifiedBadge(props: VerifiedBadgeProps) {
   return (
     <Show when={props.verified}>
       <span
-        class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-11-medium bg-surface-success-weak text-text-on-success-base"
+        class="inline-flex items-center gap-1 app-panel-caption text-text-weak"
         role="status"
         aria-label={
           props.official
@@ -20,7 +21,7 @@ export function VerifiedBadge(props: VerifiedBadgeProps) {
             : _({ id: "app.plugin.verified.ariaLabel", message: "Verified plugin" })
         }
       >
-        <Icon name={props.official ? "badge-check" : "check-circle"} size="small" class="text-icon-success-base" />
+        <Icon name={getSemanticIcon("plugin.sourceVerified")} size="small" class="text-icon-base" />
         {props.official
           ? _({ id: "app.plugin.verified.official", message: "Official" })
           : _({ id: "app.plugin.verified.label", message: "Verified" })}

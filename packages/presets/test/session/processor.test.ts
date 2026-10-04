@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { APICallError } from "ai"
 import { TimeoutConfig } from "@ericsanchezok/synergy-harness/util/timeout-config"
@@ -250,7 +251,7 @@ async function runSettlementScenario(scenario: SettlementScenario) {
         modelID: "test-model",
         providerID: "test-provider",
         mode: "build",
-        agent: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
         path: { cwd: "/tmp", root: "/tmp" },
         cost: 0,
         tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -728,7 +729,7 @@ describe("SessionProcessor context usage persistence", () => {
 describe("SessionProcessor tool input bounds", () => {
   test("persists the canonical AI SDK input when streamed JSON differs", () =>
     runtime.run(async () => {
-      let runningInput: Record<string, unknown> | undefined
+      let runningInput: MessageV2.ToolPart["state"]["input"] | undefined
       const canonicalInput = {
         command: "git status",
         workdir: "/workspace",

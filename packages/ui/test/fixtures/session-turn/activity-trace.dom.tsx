@@ -37,6 +37,9 @@ const group = {
     {
       part: {
         id: "p1",
+        sessionID: "s",
+        messageID: "m1",
+        callID: "approval-call",
         tool: "save_file",
         state: {
           status: "completed",
@@ -177,7 +180,7 @@ const delegateGroup = {
         tool: "task",
         state: {
           status: "completed",
-          input: { subagent_type: "explore", description: "Inspect the registry" },
+          input: { subagent_type: "explore", taskTitle: "Inspect the registry" },
           output: "done",
           metadata: {
             sessionId: "child-1",
@@ -238,7 +241,7 @@ const taskReceipt = {
           id: "p-task-err",
           state: {
             status: "error",
-            input: { subagent_type: "explore", description: "Inspect the registry" },
+            input: { subagent_type: "explore", taskTitle: "Inspect the registry" },
             error: "Agent type scout is not visible to synergy",
             metadata: { sessionId: "child-3", background: false, summary: [] },
           },
@@ -299,10 +302,30 @@ const data = {
 }
 // Session runtime state lives outside the Scope store; the view resolves
 // it from this accessor bag.
+const [hasApproval, setApproval] = createSignal(false)
+const permissionCalls: unknown[] = []
+let permissionReply: ReturnType<typeof Promise.withResolvers<void>> | undefined
+const respondToPermission = (input: unknown) => {
+  permissionCalls.push(input)
+  permissionReply = Promise.withResolvers<void>()
+  return permissionReply.promise
+}
 const NO_REQUESTS = []
 const runtime = {
   statusFor: () => undefined,
-  permissionsFor: () => NO_REQUESTS,
+  permissionsFor: () =>
+    hasApproval()
+      ? [
+          {
+            id: "approval-request",
+            sessionID: "s",
+            permission: "write",
+            patterns: ["fixture"],
+            metadata: {},
+            tool: { messageID: "m1", callID: "approval-call" },
+          },
+        ]
+      : NO_REQUESTS,
   questionsFor: () => NO_REQUESTS,
 }
 const root = document.querySelector("#root")!
@@ -314,6 +337,7 @@ render(
         runtime={runtime}
         directory="/workspace"
         serverUrl="http://localhost"
+        onPermissionRespond={respondToPermission}
         onNavigateToSession={(id) => navigateCalls.push(id)}
       >
         <CodeComponentProvider component={CodeFixture}>
@@ -409,6 +433,10 @@ render(
   root,
 )
 ;(globalThis as unknown as { __activityDomHarness: unknown }).__activityDomHarness = {
+  setApproval,
+  getPermissionCalls: () => permissionCalls,
+  finishPermission: (failed: boolean) =>
+    failed ? permissionReply?.reject(new Error("Approval unavailable")) : permissionReply?.resolve(),
   resetCount: (identity: string, value: number) => resetCount(identity, value),
   setCountValue: (value: number) => setCountValue(value),
   setSummaryCompleted: (completed: boolean) => setSummaryCompleted(completed),

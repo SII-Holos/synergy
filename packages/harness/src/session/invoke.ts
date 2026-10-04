@@ -1,3 +1,6 @@
+import { PrimaryAgentIdentity } from "../agent/primary-identity"
+
+import { ToolIntent } from "./tool-intent"
 import { RuntimeContext } from "../lifecycle/context"
 import { SessionModelSelection } from "./model-selection"
 import { SessionExecutionContributions } from "./execution-contributions"
@@ -411,14 +414,15 @@ export namespace SessionInvoke {
   }
 
   async function recallMemory(
-    step: number,
+    firstModelPreparation: boolean,
     sessionID: string,
     scopeID: string,
     messages: MessageV2.WithParts[],
     isTopSession: boolean,
     signal: AbortSignal,
   ): Promise<SessionContextContributions.Collected | undefined> {
-    if (step > 1) return isTopSession ? getCachedResult(sessionID) : undefined
+    if (!firstModelPreparation) return getCachedResult(sessionID)
+    evictRecallCache(sessionID)
     return SessionContextContributions.collect({ sessionID, scopeID, messages, isTopSession, signal })
   }
 
@@ -462,15 +466,28 @@ export namespace SessionInvoke {
       throw error
     } finally {
       const errors: unknown[] = []
+      SessionManager.setActivity(sessionID, { phase: "waiting_background" }, { generation: lease.generation })
       try {
         await LoopJob.drain(sessionID)
       } catch (error) {
         errors.push(error)
       }
-      const outcome = lease.signal.aborted ? "cancelled" : failure || errors.length ? "failed" : undefined
+      const paused = lease.signal.aborted && PausedTurnAbort.is(lease.signal.reason)
+      const outcome = paused
+        ? undefined
+        : lease.signal.aborted
+          ? "cancelled"
+          : failure || errors.length
+            ? "failed"
+            : undefined
       for (const segment of segments) {
         try {
-          await RolloutLedger.finishSegment(segment, outcome ?? "completed")
+          SessionManager.setActivity(
+            sessionID,
+            { phase: "finalizing" },
+            { generation: lease.generation, rootID: segment.runID },
+          )
+          await RolloutLifecycle.finishSegment(segment, paused ? "interrupted" : (outcome ?? "completed"))
         } catch (error) {
           errors.push(error)
         }
@@ -495,6 +512,9 @@ export namespace SessionInvoke {
                 log.error("rollout run reconcile failed after release", { sessionID, runID, error })
               }
             }
+            await RolloutLifecycle.reconcileDelegatedRuns(sessionID, runIDs).catch((error) => {
+              log.error("delegated rollout run reconcile failed after release", { sessionID, error })
+            })
           },
           (error) => {
             log.error("detached turn work failed to settle", { sessionID, error })
@@ -548,6 +568,7 @@ export namespace SessionInvoke {
 
     const runtime = SessionManager.registerRuntime(sessionID)
     let step = 0
+    let recalledRootID: string | undefined
     let emergencyCompactionTriggered = false
     let hardOverflowCompactionRootID: string | undefined
     let session = await Session.get(sessionID)
@@ -586,7 +607,7 @@ export namespace SessionInvoke {
             let segment: RolloutSchema.ExecutionSegment | undefined
             let previousTerminalReplyID: string | undefined
             while (true) {
-              SessionManager.setStatus(sessionID, { type: "busy" })
+              SessionManager.setActivity(sessionID, { phase: "preparing_context" }, { generation: lease.generation })
               log.info("loop", { step, sessionID })
               if (abort.aborted) break
               session = await Session.get(sessionID)
@@ -655,10 +676,20 @@ export namespace SessionInvoke {
                 }
                 processedRootID = R.id
                 if (!segment) {
+                  SessionManager.setActivity(
+                    sessionID,
+                    { phase: "preparing_files" },
+                    { generation: lease.generation, rootID: R.id },
+                  )
                   segment = await RolloutLifecycle.start(session, R, RParts ?? [])
                   segments.push(segment)
                 }
               }
+              SessionManager.setActivity(
+                sessionID,
+                { phase: "preparing_context" },
+                { generation: lease.generation, rootID: R.id },
+              )
               previousTerminalReplyID = SessionProgress.findTerminalReply(msgs, R.id)?.info.id
               const modelSelection = await SessionModelSelection.capture(
                 sessionID,
@@ -922,6 +953,7 @@ export namespace SessionInvoke {
               // prompt assembly, cortex context, and memory recall (flashback) all
               // run concurrently to minimise time-to-first-token.
               const isTopSession = !session.parentID
+              const firstModelPreparation = recalledRootID !== R.id
 
               const turnPreparation = await Promise.all([
                 ToolResolver.availability({
@@ -940,12 +972,13 @@ export namespace SessionInvoke {
                 buildCortexExecutionContext(sessionID),
                 buildCortexReminder(sessionID),
                 SessionExecutionContributions.advisory(sessionID, scopeID, lease.signal),
-                recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession, lease.signal),
+                recallMemory(firstModelPreparation, sessionID, scopeID, sessionMessages, isTopSession, lease.signal),
               ]).catch(async (error) => {
                 await completeAssistantWithError({ sessionID, processor, model, error, abort })
                 return undefined
               })
               if (!turnPreparation) break
+              recalledRootID = R.id
 
               let [
                 toolAvailability,
@@ -975,6 +1008,7 @@ export namespace SessionInvoke {
                 if (text) lateSystemParts.push(text)
                 contextSections.push({ id, text, ...options })
               }
+              advisory("tool-intent", ToolIntent.guidance)
 
               // Layer 1: Static — AGENTS.md instructions (stable within session)
               systemParts.push(...customParts)
@@ -1020,9 +1054,9 @@ export namespace SessionInvoke {
               // Layer 3: Dynamic advisory context — loop-stable memory/experience, volatile across turns
               advisory("memory", memoryResult?.context, { rootScoped: true })
               if (memoryResult) {
-                if (step === 1) cacheResult(sessionID, memoryResult)
+                if (firstModelPreparation) cacheResult(sessionID, memoryResult)
                 const { injection } = memoryResult
-                if (step === 1) SessionContextContributions.committed(sessionID, memoryResult)
+                if (firstModelPreparation) SessionContextContributions.committed(sessionID, memoryResult)
                 if (Object.keys(injection).length > 0 && !R.metadata?.injectedContext) {
                   const updated = await Session.mergeMessageMetadata({
                     sessionID,
@@ -1341,7 +1375,6 @@ export namespace SessionInvoke {
                 streamInput = undefined
               }
 
-              SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response…" })
               // Count LLM calls for registered workflow kinds in memory; flushed to
               // the durable domain state at turn boundaries / policy entry.
               const activeKind = WorkflowKindRegistry.effectiveKind(session?.workflow)
@@ -1407,6 +1440,7 @@ export namespace SessionInvoke {
                 activeToolIDs: resolvedTools.activeToolIDs,
                 codexReplay,
                 autoExpandable: resolvedTools.autoExpandable,
+                intentBindings: resolvedTools.intentBindings,
                 resolverInput: {
                   agent,
                   model,
@@ -1560,9 +1594,15 @@ export namespace SessionInvoke {
                   processedRootID,
                 )
                 const failed = terminal?.info.role === "assistant" && terminal.info.error
-                await RolloutLedger.finishSegment(
+                await RolloutLifecycle.finishSegment(
                   segment,
-                  abort.aborted ? "cancelled" : failed ? "failed" : "completed",
+                  abort.aborted
+                    ? PausedTurnAbort.is(abort.reason)
+                      ? "interrupted"
+                      : "cancelled"
+                    : failed
+                      ? "failed"
+                      : "completed",
                 )
               }
             }
@@ -2154,7 +2194,7 @@ export namespace SessionInvoke {
     agent: { name: string; mode?: string },
     sessionMessages: MessageV2.WithParts[],
   ): Promise<string | undefined> {
-    if (agent.name !== "synergy-max") return undefined
+    if (agent.name !== PrimaryAgentIdentity.names.coding) return undefined
 
     const lastUserIdx = MessageV2.lastUserInputIndex(sessionMessages)
     if (lastUserIdx < 0) return undefined
@@ -2403,7 +2443,7 @@ export namespace SessionInvoke {
       status = "completed"
       return result
     } finally {
-      await RolloutLedger.finishSegment(segment, status)
+      await RolloutLifecycle.finishSegment(segment, status)
       // Detached turn work (titles, summaries) keeps writing ledger records
       // after its segment closes, and finalizing first refuses a call this
       // process has not observed yet — stranding the run as permanently

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { WorkflowSessionService, WorkflowConflictError } from "@ericsanchezok/synergy-workflows/session/workflow"
@@ -132,7 +133,7 @@ describe("workflow kind registry (H3 test-only kind)", () => {
         expect(
           WorkflowUserWrapper.metadataForUserMessage({
             session: await Session.get(session.id),
-            agentName: "synergy",
+            agentName: PrimaryAgentIdentity.names.general,
           }),
         ).toEqual({})
       })

@@ -166,6 +166,8 @@ export namespace RuntimeReload {
       configChange: options.configChange,
       files: options.files,
       includePrerequisites: options.includePrerequisites !== false,
+      pending: new Map(),
+      scheduled: new Set(),
     }
 
     const targetsToExecute = requested.includes("all")
@@ -186,7 +188,12 @@ export namespace RuntimeReload {
         ]).filter(availableTarget)
       : requested
 
-    await Promise.all(targetsToExecute.map((target) => executeTarget(target, ctx)))
+    for (const target of targetsToExecute) ctx.scheduled.add(target)
+    while (ctx.scheduled.size) {
+      const batch = [...ctx.scheduled]
+      ctx.scheduled.clear()
+      await Promise.all(batch.map((target) => executeTarget(target, ctx)))
+    }
 
     const executedSet = new Set(executed)
     const cascaded = executed.filter((target) => !requested.includes(target))
@@ -225,7 +232,10 @@ export namespace RuntimeReload {
 
   // ─── Execution context ───────────────────────────────────────────────
 
-  type ExecuteContext = RuntimeReloadContributions.Context
+  type ExecuteContext = RuntimeReloadContributions.Context & {
+    pending: Map<Target, Promise<void>>
+    scheduled: Set<Target>
+  }
 
   // ─── Target executor ─────────────────────────────────────────────────
 
@@ -238,13 +248,24 @@ export namespace RuntimeReload {
 
   async function executeTarget(target: Target, ctx: ExecuteContext) {
     if (target === "all") return
-    if (ctx.executed.includes(target)) return
+    const previous = ctx.pending.get(target)
+    if (previous) return previous
+    const pending = Promise.resolve().then(() => runTarget(target, ctx))
+    ctx.pending.set(target, pending)
+    return pending
+  }
 
+  async function runTarget(target: Target, ctx: ExecuteContext) {
     if (ctx.includePrerequisites) {
       const prerequisites = TARGET_PREREQUISITES[target]
       if (prerequisites) {
         for (const prereq of prerequisites) {
           await executeTarget(prereq, ctx)
+          if (ctx.failed.includes(prereq)) {
+            ctx.failed.push(target)
+            ctx.failures.push({ target, message: `Prerequisite ${prereq} failed`, code: `${target}.reload_blocked` })
+            return
+          }
         }
       }
     }
@@ -256,9 +277,7 @@ export namespace RuntimeReload {
 
       // Execute inline cascades (e.g. provider → agent)
       const cascades = unique([...(TARGET_CASCADES[target] ?? []), ...(inferredCascades ?? [])])
-      for (const cascade of cascades.filter(availableTarget)) {
-        await executeTarget(cascade, ctx)
-      }
+      for (const cascade of cascades.filter(availableTarget)) if (!ctx.pending.has(cascade)) ctx.scheduled.add(cascade)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       ctx.failed.push(target)
@@ -443,15 +462,17 @@ export namespace RuntimeReload {
   }
 
   function hasProjectConfig() {
+    const directory = ScopeContext.tryWorkspace()?.path
+    if (!directory) return false
     return (
       [
         "synergy.jsonc",
         "synergy.json",
         path.join(".synergy", "synergy.jsonc"),
         path.join(".synergy", "synergy.json"),
-      ].some((file) => existsSync(path.join(ScopeContext.current.directory, file))) ||
+      ].some((file) => existsSync(path.join(directory, file))) ||
       ConfigDomain.definitions().some((domain) =>
-        existsSync(path.join(ScopeContext.current.directory, ".synergy", "synergy.d", domain.filename)),
+        existsSync(path.join(directory, ".synergy", "synergy.d", domain.filename)),
       )
     )
   }

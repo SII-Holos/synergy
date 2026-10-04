@@ -1,7 +1,9 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, test } from "bun:test"
 import { createRoot } from "solid-js"
 import {
   createNewSessionTransitionProgress,
+  createNewSessionTransitionErrorProgress,
   createNewSessionTransitionSuccessProgress,
 } from "@/components/session/session-transition-progress"
 import type { NewSessionRecovery } from "@/components/session/new-session-recovery"
@@ -9,6 +11,35 @@ import type { SessionTransitionHandoff } from "@/components/session/session-tran
 import { createSessionTransitionState } from "../../src/context/session-transition"
 
 describe("session transition state", () => {
+  test("publishes preparation before an ID exists and atomically hands it to the session", () => {
+    createRoot((dispose) => {
+      const state = createSessionTransitionState()
+      const lease = state.prepareDraft("draft:connection/scope")
+      expect(state.get("draft:connection/scope")?.progress.phase).toBe("loading")
+      lease.setText("Inspect the project")
+      expect(state.get("draft:connection/scope")?.draft?.text).toBe("Inspect the project")
+      expect(lease.handoff("session-1", createNewSessionTransitionProgress())).toBe(true)
+      expect(state.get("draft:connection/scope")).toBeUndefined()
+      expect(state.get("session-1")?.draft?.text).toBe("Inspect the project")
+      lease.clear()
+      expect(state.get("session-1")).toBeDefined()
+      dispose()
+    })
+  })
+  test("stale preparation cannot replace or clear a newer submission", () => {
+    createRoot((dispose) => {
+      const state = createSessionTransitionState()
+      const stale = state.prepareDraft("draft:scope")
+      const current = state.prepareDraft("draft:scope")
+      stale.setText("stale")
+      stale.clear()
+      expect(stale.handoff("wrong", createNewSessionTransitionProgress())).toBe(false)
+      current.setText("current")
+      expect(state.get("draft:scope")?.draft?.text).toBe("current")
+      expect(state.get("wrong")).toBeUndefined()
+      dispose()
+    })
+  })
   test("retains a transition for a remounted session route consumer", () => {
     createRoot((dispose) => {
       const state = createSessionTransitionState()
@@ -17,7 +48,7 @@ describe("session transition state", () => {
       state.set("session-1", progress)
 
       const readAfterRouteRemount = () => state.get("session-1")
-      expect(readAfterRouteRemount()?.progress).toBe(progress)
+      expect(readAfterRouteRemount()?.progress).toEqual(progress)
       dispose()
     })
   })
@@ -53,7 +84,7 @@ describe("session transition state", () => {
     })
   })
 
-  test("dismisses a completed handoff after its loading entry is replaced", () => {
+  test("releases a canonical handoff immediately without a success card lifecycle", () => {
     createRoot((dispose) => {
       const state = createSessionTransitionState()
       const handoff = {
@@ -63,10 +94,59 @@ describe("session transition state", () => {
       state.set("session-1", createNewSessionTransitionProgress(), undefined, handoff)
 
       expect(state.completeHandoff("session-1", "msg_first")).toBe(true)
+      expect(state.get("session-1")).toBeUndefined()
       expect(() => state.get("session-1")?.actions?.dismiss?.()).not.toThrow()
       expect(state.get("session-1")).toBeUndefined()
       expect(state.isHandoffDismissed("session-1", "msg_first")).toBe(true)
       expect(state.completeHandoff("session-1", "msg_first")).toBe(false)
+      dispose()
+    })
+  })
+
+  test("canonical completion confirms a lost receipt once and cannot confirm a newer input", () => {
+    createRoot((dispose) => {
+      const state = createSessionTransitionState()
+      let accepted = 0
+      const handoff = {
+        messageID: "msg_first",
+        success: createNewSessionTransitionSuccessProgress(),
+        unconfirmed: {
+          missing() {},
+          accepted() {
+            accepted++
+          },
+        },
+      } satisfies SessionTransitionHandoff
+      state.set("session-1", createNewSessionTransitionProgress(), undefined, handoff)
+      expect(state.completeHandoff("session-1", "stale")).toBe(false)
+      expect(accepted).toBe(0)
+      expect(state.completeHandoff("session-1", "msg_first")).toBe(true)
+      expect(accepted).toBe(1)
+      expect(state.completeHandoff("session-1", "msg_first")).toBe(false)
+      expect(accepted).toBe(1)
+      dispose()
+    })
+  })
+
+  test("durable confirmation and canonical completion share one acceptance callback", () => {
+    createRoot((dispose) => {
+      const state = createSessionTransitionState()
+      let accepted = 0
+      state.set("session-1", createNewSessionTransitionProgress(), undefined, {
+        messageID: "msg_first",
+        success: createNewSessionTransitionSuccessProgress(),
+        unconfirmed: {
+          missing() {},
+          accepted() {
+            accepted++
+          },
+        },
+      })
+      expect(state.confirmHandoff("session-1", "stale")).toBe(false)
+      expect(state.confirmHandoff("session-1", "msg_first")).toBe(true)
+      expect(state.confirmHandoff("session-1", "msg_first")).toBe(false)
+      expect(state.completeHandoff("session-1", "msg_first")).toBe(true)
+      expect(accepted).toBe(1)
       dispose()
     })
   })
@@ -82,7 +162,7 @@ describe("session transition state", () => {
       state.set("session-1", loading, undefined, handoff)
 
       expect(state.completeHandoff("session-1", "msg_first")).toBe(false)
-      expect(state.get("session-1")?.progress).toBe(loading)
+      expect(state.get("session-1")?.progress).toEqual(loading)
       expect(state.get("session-1")?.handoff?.messageID).toBe("msg_second")
       dispose()
     })
@@ -91,8 +171,8 @@ describe("session transition state", () => {
   test("ignores a stale dismiss after a newer transition replaces the entry", () => {
     createRoot((dispose) => {
       const state = createSessionTransitionState()
-      const success = createNewSessionTransitionSuccessProgress()
-      state.set("session-1", success, {
+      const failure = createNewSessionTransitionErrorProgress({ title: "Failed", message: "Retry" })
+      state.set("session-1", failure, {
         dismiss: () => state.clear("session-1"),
       })
       const staleDismiss = state.get("session-1")?.actions?.dismiss
@@ -101,7 +181,7 @@ describe("session transition state", () => {
       state.set("session-1", loading)
       staleDismiss?.()
 
-      expect(state.get("session-1")?.progress).toBe(loading)
+      expect(state.get("session-1")?.progress).toEqual(loading)
       dispose()
     })
   })
@@ -123,13 +203,13 @@ describe("session transition state", () => {
         lightLoop: false,
         boss: false,
         blueprintSlot: null,
-        agent: "synergy",
+        agent: TEST_AGENT_NAME,
         model: { providerID: "provider", modelID: "model" },
         autoSubmit: true,
       }
 
       state.setRecovery("/repo", recovery)
-      expect(state.getRecovery("/repo")).toBe(recovery)
+      expect(state.getRecovery("/repo")).toEqual(recovery)
       state.clearRecovery("/repo")
       expect(state.getRecovery("/repo")).toBeUndefined()
       dispose()
@@ -141,7 +221,7 @@ describe("session transition state", () => {
       const state = createSessionTransitionState()
       let retries = 0
       let dismissals = 0
-      state.set("session-1", createNewSessionTransitionSuccessProgress(), {
+      state.set("session-1", createNewSessionTransitionErrorProgress({ title: "Failed", message: "Retry" }), {
         retry: () => retries++,
         dismiss: () => dismissals++,
       })

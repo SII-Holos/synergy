@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -89,7 +90,7 @@ async function run(
         modelID: "test-model",
         providerID: "test",
         mode: "test",
-        agent: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
         path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
         cost: 0,
         tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

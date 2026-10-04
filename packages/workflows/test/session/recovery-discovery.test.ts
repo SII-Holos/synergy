@@ -26,4 +26,32 @@ test("workflow status discovery does not traverse historical session trees", () 
     })
   }))
 
+test("persisted pauses are projected from the indexed batch without individual session hydration", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const sessions = await Promise.all(
+          Array.from({ length: 12 }, () => Session.create({ title: "Paused history" })),
+        )
+        for (const session of sessions)
+          await Session.update(session.id, (draft) => {
+            draft.paused = { reason: "interrupted", since: 123 }
+          })
+        try {
+          using reads = spyOn(Storage, "readMany")
+          const statuses = await WorkflowRecovery.recoverableStatuses(sessions[0].scope.id)
+          expect(Object.keys(statuses).sort()).toEqual(sessions.map((session) => session.id).sort())
+          expect(Object.values(statuses).every((status) => status.type === "paused" && status.since === 123)).toBe(true)
+          expect(
+            reads.mock.calls.flatMap(([keys]) => keys).filter((key) => key[0] === "sessions" && key[3] === "info"),
+          ).toHaveLength(0)
+        } finally {
+          for (const session of sessions) await Session.remove(session.id)
+        }
+      },
+    })
+  }))
+
 afterRuntimeTests(() => runtime.close())
