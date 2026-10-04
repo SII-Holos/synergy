@@ -8,6 +8,8 @@ An embedded runtime needs an authoritative configuration and a model-readable ou
 
 ## Decision
 
+The output-provider portion of this decision is superseded by [the bounded extension decision](2026-10-05-bound-embedded-host-extension-surface.md). Its registration API is removed; the configuration source remains active. The original output-provider decision below records its rationale.
+
 Register a Runtime-scoped ConfigSource before composition seals. Its schema-validated JSON snapshot replaces file, inline, remote and experiment configuration reads. Host-owned configuration is read-only through Config's mutation APIs; source errors do not select a last-good fallback. Register ToolOutputSource to save complete tool output and return its model-readable reference, with optional exact tool origin. Truncate retains one algorithm and the default native file behavior when no source is selected.
 
 ## Alternatives considered
@@ -19,5 +21,3 @@ Register a Runtime-scoped ConfigSource before composition seals. Its schema-vali
 ## Consequences
 
 Default product behavior remains unchanged. Hosts own snapshot availability and output durability, and must reject unavailable storage. Public source tests cover isolation, sealed composition, activation validation, failure propagation, exact output bytes and tool origin; existing truncation tests retain native coverage.
-
-The unused output provider is retired by [the bounded extension decision](2026-10-05-bound-embedded-host-extension-surface.md); the configuration source remains active.

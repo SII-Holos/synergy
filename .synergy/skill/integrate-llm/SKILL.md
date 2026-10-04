@@ -133,7 +133,7 @@ Never relax TLS verification to work around an endpoint failure — no `rejectUn
 
 ## Handoff
 
-Embedded hosts select ConfigSource for authoritative JSON configuration and ToolOutputSource for model-readable long-output storage before sealing composition. Verify schema failure and save failure stop the boundary, and retain default product behavior tests. Do not copy the configuration loader or truncation algorithm into an adapter.
+Embedded hosts register ConfigSource for authoritative JSON configuration before sealing composition. Verify invalid snapshots reject startup and host-owned configuration rejects mutation. Keep long tool output with Harness truncation's native artifact storage and retain its failure-propagation tests; follow the [embedded extension decision](../../../docs/decisions/implemented/architecture/2026-10-05-bound-embedded-host-extension-surface.md).
 
 Report why the operation is sessionless, existing-session, Cortex, or bootstrap; the agent/model role; timeout/retry/tool/output policy; persistence and visibility; redaction; and verification.
 
