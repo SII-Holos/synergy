@@ -188,9 +188,12 @@ export function BrowserImportForm(props: { resolveTarget: BrowserImportTargetRes
   })
   createEffect(() => {
     const destination = target()
-    if (!destination || destination.current()) return
+    if (props.resolveTarget.current() && (!destination || destination.current())) return
+    loadRevision++
     const requestId = job()
-    if (requestId) void destination.action({ type: "cancelImport", requestId }).catch(() => undefined)
+    if (requestId && destination) void destination.action({ type: "cancelImport", requestId }).catch(() => undefined)
+    setLoading(false)
+    setPreparing(false)
     setSources([])
     setPrepareError(_(importTargetClosed))
     setError(true)

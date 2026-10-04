@@ -112,9 +112,9 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         run(): Promise<WorkbenchPanelTab | undefined>
       }
     >()
-    let disposed = false
+    const [disposed, setDisposed] = createSignal(false)
     onCleanup(() => {
-      disposed = true
+      setDisposed(true)
       for (const task of openingTasks.values()) task.abandoned = true
       openingTasks.clear()
     })
@@ -281,7 +281,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         run() {
           if (task.pending) return task.pending
           if (task.result) return Promise.resolve(task.result)
-          if (task.cancelled || task.abandoned || disposed) return Promise.resolve(undefined)
+          if (task.cancelled || task.abandoned || disposed()) return Promise.resolve(undefined)
           setOpenings(id, { phase: "preparing", error: undefined })
           const requestKey = JSON.stringify([boundSession, panelId, id])
           let timer: ReturnType<typeof setTimeout> | undefined
@@ -309,7 +309,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
               return tab
             })
             .catch((error: unknown) => {
-              if (!task.cancelled && !task.abandoned && !disposed) setOpenings(id, { phase: "error", error })
+              if (!task.cancelled && !task.abandoned && !disposed()) setOpenings(id, { phase: "error", error })
               return undefined
             })
             .finally(() => {
@@ -390,7 +390,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         init = created
       }
       if (
-        disposed ||
+        disposed() ||
         opening?.task.cancelled ||
         opening?.task.abandoned ||
         sessionKey() !== boundSession ||
@@ -603,6 +603,9 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
 
     return {
       sessionKey,
+      isCurrent(boundSession: string) {
+        return !disposed() && sessionKey() === boundSession
+      },
       surface,
       panels(surfaceName: WorkbenchPanelSurface) {
         return surfaceName === "side" ? sideEntries() : bottomEntries()
@@ -621,7 +624,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
           retry: task.run,
           resolve: async () => {
             const result = await task.run()
-            if (task.cancelled || task.abandoned || disposed)
+            if (task.cancelled || task.abandoned || disposed())
               throw new Error(
                 i18n._({
                   id: "browser.prepare.closed",

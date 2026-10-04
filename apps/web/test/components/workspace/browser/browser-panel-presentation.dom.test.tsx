@@ -61,7 +61,7 @@ beforeAll(async () => {
     path.join(directory, "workbench.ts"),
     `
     import {useDialog} from "@ericsanchezok/synergy-ui/context/dialog"
-    export const useWorkbenchPanels = () => ({sessionKey:() => "fixture",showDialog:useDialog().show,openingForTab:() => undefined,surface:() => ({active:() => window.activeTabId}),openPanel:() => {}})
+    export const useWorkbenchPanels = () => ({sessionKey:() => "fixture",isCurrent:session => session==="fixture",showDialog:useDialog().show,openingForTab:() => undefined,surface:() => ({active:() => window.activeTabId}),openPanel:() => {}})
   `,
   )
   await Bun.write(path.join(directory, "draft.ts"), "export const useBrowserDraft = () => ({})")

@@ -3,7 +3,7 @@ import { useLingui } from "@lingui/solid"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { browser as B } from "@/locales/messages"
 import { usePlatform } from "@/context/platform"
-import type { BrowserImportTargetResolver } from "./browser-import-target"
+import type { BrowserImportTarget, BrowserImportTargetResolver } from "./browser-import-target"
 import "./browser-import-dialog.css"
 
 const Form = lazy(() => import("./browser-import-dialog").then((module) => ({ default: module.BrowserImportForm })))
@@ -25,26 +25,29 @@ export function BrowserImportDialog(
   const controller = new AbortController()
   const fixed = "resolveTarget" in props ? undefined : { ownerKey: props.ownerKey, pageId: props.pageId }
   onCleanup(() => controller.abort())
-  const resolveTarget: BrowserImportTargetResolver = async (signal) => {
-    if ("resolveTarget" in props) return props.resolveTarget(signal)
-    const bridge = platform.browserNative
-    if (!bridge?.dataAction) throw new Error(_(importUnavailable))
-    const native = bridge.dataAction.bind(bridge)
-    const { BROWSER_PROTOCOL_VERSION } = await import("@ericsanchezok/synergy-browser-core")
-    signal.throwIfAborted()
-    return {
-      current: () => !signal.aborted,
-      action: (action) => {
-        if (action.type !== "cancelImport") signal.throwIfAborted()
-        return native({
-          protocolVersion: BROWSER_PROTOCOL_VERSION,
-          ownerKey: fixed!.ownerKey,
-          pageId: fixed!.pageId,
-          action,
-        })
-      },
-    }
-  }
+  const resolveTarget: BrowserImportTargetResolver = Object.assign(
+    async (signal: AbortSignal): Promise<BrowserImportTarget> => {
+      if ("resolveTarget" in props) return props.resolveTarget(signal)
+      const bridge = platform.browserNative
+      if (!bridge?.dataAction) throw new Error(_(importUnavailable))
+      const native = bridge.dataAction.bind(bridge)
+      const { BROWSER_PROTOCOL_VERSION } = await import("@ericsanchezok/synergy-browser-core")
+      signal.throwIfAborted()
+      return {
+        current: () => !signal.aborted,
+        action: (action) => {
+          if (action.type !== "cancelImport") signal.throwIfAborted()
+          return native({
+            protocolVersion: BROWSER_PROTOCOL_VERSION,
+            ownerKey: fixed!.ownerKey,
+            pageId: fixed!.pageId,
+            action,
+          })
+        },
+      }
+    },
+    { current: () => ("resolveTarget" in props ? props.resolveTarget.current() : !controller.signal.aborted) },
+  )
   return (
     <Dialog
       title={_(B.importData)}

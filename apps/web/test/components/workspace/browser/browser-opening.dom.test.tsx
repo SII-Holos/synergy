@@ -27,6 +27,7 @@ interface Fixture extends Window {
     dataRequests: Array<{ pageId: string; action: { type: string } }>
     collapse(): void
     session(): void
+    scope(): void
     tabs(): WorkbenchPanelTab[]
     saved(): WorkbenchPanelTab[]
     active(): string | undefined
@@ -93,13 +94,13 @@ beforeAll(async () => {
       window.fixture={attempts,cancelled,dataRequests:window.dataRequests,
         finish:() => {const item=pending.shift();const init={resourceId:item.index===1 ? "page-one" : "page-"+item.index,title:"Ready browser"};window.pages.push({id:init.resourceId,title:init.title,url:"about:blank",status:"active",profileId:"personal"});item.operation?.onCancel(() => {cancelled.push(init.resourceId)});item.resolve(init)},
         fail:structured => pending.shift().reject(structured ? {code:"browser_native_ticket_rejected",message:"Desktop ticket unavailable",retryable:true} : new Error("Browser unavailable")),
-        open:forceNew => workbench.openPanel("browser",{forceNew}),close:id => workbench.closeTab(id),collapse:() => workbench.surface("side").close(),session:() => navigate("/home/session/other"),
+        open:forceNew => workbench.openPanel("browser",{forceNew}),close:id => workbench.closeTab(id),collapse:() => workbench.surface("side").close(),session:() => navigate("/home/session/other"),scope:() => navigate("/other"),
         publish:pages => {window.pages=pages.map(page => ({status:"active",profileId:"personal",...page}));window.deliverPages(window.pages)},tabs:() => workbench.surface("side").tabs(),saved:() => surface(workbench.sessionKey(),"side").tabs(),active:() => workbench.surface("side").active(),opened:() => workbench.surface("side").opened()
       }
       return <div style="height:600px"><button onClick={() => workbench.surface("side").toggle()}>Workspace</button><button onClick={() => workbench.openPanel("resource-home")}>Other resource</button><WorkbenchSurface surface="side" />{location.search==="?sync" && <BrowserWorkbenchSync route={{mode:"scope",scopeID:"home",path_directory:"home"}} />}</div>
     }
     const history=createMemoryHistory();history.set({value:"/home/session/one"})
-    render(() => <I18nProvider i18n={i18n}><DialogProvider><MemoryRouter history={history}><Route path="/:dir/session/:id" component={() => <WorkbenchPanelsProvider><BrowserCatalogProvider><Harness /></BrowserCatalogProvider></WorkbenchPanelsProvider>} /></MemoryRouter></DialogProvider></I18nProvider>,document.querySelector("#root"))
+    render(() => <I18nProvider i18n={i18n}><DialogProvider><MemoryRouter history={history}><Route path="/:dir/session/:id" component={() => <WorkbenchPanelsProvider><BrowserCatalogProvider><Harness /></BrowserCatalogProvider></WorkbenchPanelsProvider>} /><Route path="/other" component={() => <div>Other Scope</div>} /></MemoryRouter></DialogProvider></I18nProvider>,document.querySelector("#root"))
   `,
   )
   await Bun.write(
@@ -341,5 +342,29 @@ test("preparation has a bounded deadline and a late result cannot silently repla
   await page.getByRole("button", { name: "Close Browser", exact: true }).click()
   await page.waitForFunction(() => (window as unknown as Fixture).fixture.cancelled.length === 1)
   expect(await page.evaluate(() => (window as unknown as Fixture).fixture.opened())).toBe(false)
+  expect(errors).toEqual([])
+})
+
+test("changing Scope invalidates a ready import dialog when its Workspace owner is disposed", async () => {
+  await page.getByRole("button", { name: "Workspace", exact: true }).click()
+  await page.getByRole("button", { name: "Import browser data", exact: true }).click()
+  await page.evaluate(() => (window as unknown as Fixture).fixture.finish())
+  await page.getByRole("button", { name: "Choose file and import", exact: true }).waitFor()
+  await page.evaluate(() => (window as unknown as Fixture).fixture.scope())
+  await page.getByRole("alert").filter({ hasText: "The browser target changed or closed" }).waitFor()
+  expect(
+    await page.evaluate(() => (window as unknown as Fixture).fixture.dataRequests.map((input) => input.action.type)),
+  ).toEqual(["importSources", "state"])
+  expect(errors).toEqual([])
+})
+
+test("changing Scope ends pending import preparation immediately and ignores its late result", async () => {
+  await page.getByRole("button", { name: "Workspace", exact: true }).click()
+  await page.getByRole("button", { name: "Import browser data", exact: true }).click()
+  await page.getByRole("dialog", { name: "Import browser data", exact: true }).waitFor()
+  await page.evaluate(() => (window as unknown as Fixture).fixture.scope())
+  await page.getByRole("alert").filter({ hasText: "The browser target changed or closed" }).waitFor()
+  await page.evaluate(() => (window as unknown as Fixture).fixture.finish())
+  expect(await page.evaluate(() => (window as unknown as Fixture).fixture.dataRequests)).toEqual([])
   expect(errors).toEqual([])
 })

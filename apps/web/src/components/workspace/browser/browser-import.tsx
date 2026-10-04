@@ -32,7 +32,7 @@ export function useBrowserImportEntry(tab: () => WorkbenchPanelTab) {
       serverUrl,
       catalog,
       bridge: () => platform.browserNative,
-      current: () => sdk.url === serverUrl && workbench.sessionKey() === session,
+      current: () => sdk.url === serverUrl && workbench.isCurrent(session),
       resolveTab: opening?.resolve,
       unavailable: _(importUnavailable),
       closed: _(importTargetClosed),
