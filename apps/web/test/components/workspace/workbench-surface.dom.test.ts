@@ -1,17 +1,13 @@
-import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright"
-import { createServer, type ViteDevServer } from "vite"
-import solidPlugin from "vite-plugin-solid"
-import tailwindcss from "@tailwindcss/vite"
-import { lingui } from "@lingui/vite-plugin"
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 
 let browser: Browser
 let context: BrowserContext
 let page: Page
-let server: ViteDevServer
+let server: BrowserFixture
 let directory: string
 let baseUrl: string
 const errors: string[] = []
@@ -177,49 +173,28 @@ beforeAll(async () => {
     render(() => <I18nProvider i18n={i18n}><DialogProvider><Fixture /></DialogProvider></I18nProvider>, document.querySelector("#root"))
   `,
   )
-  server = await createServer({
-    configFile: false,
+  server = await createBrowserFixture({
     root: directory,
-    cacheDir: path.join(directory, "vite-cache"),
-    plugins: [solidPlugin(), tailwindcss(), ...lingui()],
-    resolve: {
-      alias: [
-        { find: /^@\/context\/(workbench|layout)$/, replacement: path.join(directory, "state.tsx") },
-        {
-          find: /^@\/context\/(global-sdk|sdk|execution|local|command|sync|session-data-view|locale)$/,
-          replacement: path.join(directory, "topbar-services.ts"),
-        },
-        { find: /^@\/components\/dialog$/, replacement: path.join(directory, "topbar-dialogs.tsx") },
-        {
-          find: /^@\/components\/dialog\/dialog-session-(export|import)$/,
-          replacement: path.join(directory, "topbar-dialogs.tsx"),
-        },
-        {
-          find: "@/components/session/worktree-transition-dialog",
-          replacement: path.join(directory, "topbar-dialogs.tsx"),
-        },
-        { find: "@", replacement: source },
-      ],
-    },
-    optimizeDeps: {
-      noDiscovery: true,
-      include: [
-        "solid-js",
-        "solid-js/web",
-        "@lingui/core",
-        "@lingui/solid",
-        "fuzzysort",
-        "lucide-solid",
-        "@kobalte/core/dialog",
-        "@kobalte/core/popover",
-        "@kobalte/core/tooltip",
-      ],
-    },
-    server: { host: "127.0.0.1", port: await fixturePort(), fs: { allow: [path.resolve(source, "../../..")] } },
+    styled: true,
+    aliases: [
+      { find: /^@\/context\/(workbench|layout)$/, replacement: path.join(directory, "state.tsx") },
+      {
+        find: /^@\/context\/(global-sdk|sdk|execution|local|command|sync|session-data-view|locale)$/,
+        replacement: path.join(directory, "topbar-services.ts"),
+      },
+      { find: /^@\/components\/dialog$/, replacement: path.join(directory, "topbar-dialogs.tsx") },
+      {
+        find: /^@\/components\/dialog\/dialog-session-(export|import)$/,
+        replacement: path.join(directory, "topbar-dialogs.tsx"),
+      },
+      {
+        find: "@/components/session/worktree-transition-dialog",
+        replacement: path.join(directory, "topbar-dialogs.tsx"),
+      },
+      { find: "@", replacement: source },
+    ],
   })
-  await server.listen()
-  baseUrl = server.resolvedUrls!.local[0]!
-  await server.warmupRequest("/main.tsx")
+  baseUrl = server.url
   browser = await chromium.launch({ headless: true })
 }, 60000)
 
@@ -391,7 +366,7 @@ test("mobile session toolbar keeps compact glyphs and reachable controls", async
   expect(errors).toEqual([])
 })
 
-test("the closed workspace entry and open collapse control share the same bounds", async () => {
+test("workspace controls preserve their bounds while closed, open, and throughout the reveal", async () => {
   await page.goto(baseUrl + "?composed")
   const opener = page.getByRole("button", { name: "Open side", exact: true })
   const closed = (await opener.boundingBox())!
@@ -405,17 +380,7 @@ test("the closed workspace entry and open collapse control share the same bounds
   }
   await page.getByRole("button", { name: "Collapse workspace", exact: true }).click()
   expect(await opener.boundingBox()).toEqual(closed)
-  expect(errors).toEqual([])
-})
-
-test("opening a workspace keeps its collapse control at the right edge throughout the reveal", async () => {
-  await page.goto(baseUrl + "?composed")
-  await page.getByRole("button", { name: "Open side", exact: true }).click()
-  await page.waitForFunction(
-    () => document.querySelector(".workbench-surface--side")!.getBoundingClientRect().width === 360,
-  )
-  const expected = (await page.getByRole("button", { name: "Collapse workspace", exact: true }).boundingBox())!.x
-  await page.getByRole("button", { name: "Collapse workspace", exact: true }).click()
+  const expected = opened.x
   await page.waitForFunction(
     () => document.querySelector(".workbench-surface--side")!.getBoundingClientRect().width === 0,
   )

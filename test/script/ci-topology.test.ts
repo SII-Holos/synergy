@@ -38,12 +38,11 @@ describe("required CI topology", () => {
     expect(executionQueue(unit)).toBe("contracts")
     expect(tasks.filter((task) => unit.tasks.includes(task.id)).some((task) => task.kind === "suite")).toBe(false)
   })
-  test("independent task-home scenarios can complete on separate workers", async () => {
+  test("task-home stopping remains independent of the successful native semantics matrix", async () => {
     const tasks = await catalog()
     const controls = tasks.filter((task) => task.id.startsWith("native-synergy-task-home-"))
     expect(controls.flatMap((task) => task.scenarios ?? []).sort()).toEqual([
-      "test_synergy_preserves_task_home_and_native_stopping[empty-provider-stop]",
-      "test_synergy_preserves_task_home_and_native_stopping[tool-roundtrip]",
+      "test_synergy_preserves_task_home_and_native_stopping",
     ])
     const plan = createPlan({
       base: "base",
@@ -56,8 +55,9 @@ describe("required CI topology", () => {
       headWorkspaces: [],
       tasks,
     })
-    const workers = controls.map((task) => plan.units.find((unit) => unit.tasks.includes(task.id))!.id)
-    expect(new Set(workers).size).toBe(2)
+    const scenarios = [...controls, ...tasks.filter((task) => task.id.startsWith("native-synergy-semantics-"))]
+    expect(scenarios).toHaveLength(5)
+    for (const task of scenarios) expect(plan.units.filter((unit) => unit.tasks.includes(task.id))).toHaveLength(1)
   })
   test("package partitions occupy different runners even when historical weights are uneven", async () => {
     const tasks = await catalog()
