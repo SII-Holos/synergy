@@ -416,75 +416,20 @@ export const S = {
   subagentFooterParent: { id: "session.subagent.footer.parent", message: "Parent" },
   subagentFooterRetry: { id: "session.subagent.footer.retry", message: "Retry #{attempt}" },
 
-  // worktree-progress-components.tsx
-  worktreeStepActive: { id: "session.worktree.step.active", message: "In progress" },
-  worktreeStepComplete: { id: "session.worktree.step.complete", message: "Done" },
-  worktreeStepPending: { id: "session.worktree.step.pending", message: "Pending" },
-
-  // worktree-transition-card.tsx
-  worktreeCardMainCheckout: { id: "session.worktree.card.mainCheckout", message: "Main folder" },
-  worktreeCardSessionWorktree: { id: "session.worktree.card.sessionWorktree", message: "Worktree" },
-  worktreeCardWorktreeSession: { id: "session.worktree.card.worktreeSession", message: "Worktree session" },
-  worktreeCardDismissAria: { id: "session.worktree.card.dismissAria", message: "Dismiss copy status" },
-  worktreeCardDismissTitle: { id: "session.worktree.card.dismissTitle", message: "Dismiss" },
-  worktreeCardRetry: { id: "session.worktree.card.retry", message: "Retry" },
-
-  // session-transition-card.tsx — generic transition card
-  transitionCardDismissAria: { id: "session.transition.card.dismissAria", message: "Dismiss session progress" },
-  transitionCardDismissTitle: { id: "session.transition.card.dismissTitle", message: "Dismiss" },
-  transitionStepInitialize: { id: "session.transition.step.initialize", message: "Initialize execution" },
-  transitionStepFailed: { id: "session.transition.step.failed", message: "Failed" },
-  transitionRetryInitialization: { id: "session.transition.retryInitialization", message: "Retry initialization" },
+  submissionDismiss: { id: "session.submission.dismiss", message: "Dismiss" },
+  submissionRestoreDraft: { id: "session.submission.restoreDraft", message: "Restore draft" },
   transitionContinue: { id: "session.transition.continue", message: "Continue task" },
   transitionErrorDetails: { id: "session.transition.errorDetails", message: "Error details" },
   transitionRecoveryFailed: {
     id: "session.transition.recoveryFailed",
     message: "Recovery could not be confirmed. Check the connection and retry.",
   },
-  transitionCardRetry: { id: "session.transition.card.retry", message: "Retry" },
+  submissionRetry: { id: "session.submission.retryAction", message: "Retry" },
 
-  // session-transition-progress.ts — general session startup factory
-  transitionStepPrepareSession: { id: "session.transition.step.prepareSession", message: "Prepare session" },
-  transitionStepSubmitMessage: { id: "session.transition.step.submitMessage", message: "Submit message" },
-  transitionTitleStarting: { id: "session.transition.title.starting", message: "Starting session" },
-  transitionDescSubmitting: { id: "session.transition.desc.submitting", message: "Submitting your first message." },
-  transitionDetailMessageQueued: { id: "session.transition.detail.messageQueued", message: "First message queued." },
-  transitionTitleAccepted: { id: "session.transition.title.accepted", message: "Session request accepted" },
-  transitionDescInitializing: {
-    id: "session.transition.desc.initializing",
-    message: "Your first message is saved. Initializing the conversation.",
-  },
-  transitionDescQueued: {
-    id: "session.transition.desc.queued",
-    message: "Your first message is queued for processing.",
-  },
-  transitionTitleStalled: { id: "session.transition.title.stalled", message: "Conversation setup needs attention" },
-  transitionDescDelayed: {
-    id: "session.transition.desc.delayed",
-    message: "Your message is saved. Preparation is taking longer than usual; processing will continue automatically.",
-  },
-  transitionDescStorage: {
-    id: "session.transition.desc.storage",
-    message: "Your message is saved and waiting for storage to become available.",
-  },
-  transitionDescRetrying: {
-    id: "session.transition.desc.retrying",
-    message: "Your message is saved. Retrying preparation automatically.",
-  },
-  transitionDescReconnecting: {
-    id: "session.transition.desc.reconnecting",
-    message: "Your message was saved. Reconnecting to check its progress.",
-  },
   transitionDescCancelled: {
     id: "session.transition.desc.cancelled",
     message: "This message was cancelled. You can dismiss this notice.",
   },
-  transitionDescStalled: {
-    id: "session.transition.desc.stalled",
-    message: "Your first message is still saved, but initialization did not finish. Retry to resume processing.",
-  },
-
-  // worktree-transition-dialog.tsx
   worktreeDialogTitle: { id: "session.worktree.dialog.title", message: "Move session to worktree?" },
   worktreeDialogDesc: {
     id: "session.worktree.dialog.desc",
@@ -495,87 +440,6 @@ export const S = {
   worktreeDialogCancel: { id: "session.worktree.dialog.cancel", message: "Cancel" },
   worktreeDialogCreate: { id: "session.worktree.dialog.create", message: "Create worktree" },
 
-  // worktree-session.ts — factory step labels
-  worktreeStepCreateCheckout: { id: "session.worktree.step.createCheckout", message: "Create Worktree" },
-  worktreeStepBindWorktree: { id: "session.worktree.step.bindWorktree", message: "Use existing copy" },
-  worktreeStepPrepareSession: { id: "session.worktree.step.prepareSession", message: "Prepare session" },
-  worktreeStepSendPrompt: { id: "session.worktree.step.sendPrompt", message: "Send prompt" },
-  worktreeStepReturnCheckout: { id: "session.worktree.step.returnCheckout", message: "Return to project files" },
-  worktreeStepCreateBind: { id: "session.worktree.step.createBind", message: "Create and use copy" },
-  worktreeStepRefreshStatus: { id: "session.worktree.step.refreshStatus", message: "Refresh file location" },
-
-  // worktree-session.ts — factory detail strings
-  worktreeDetailPreparingWorktree: {
-    id: "session.worktree.detail.preparingWorktree",
-    message: "Preparing a Worktree of the project files.",
-  },
-  worktreeDetailUsingCheckout: { id: "session.worktree.detail.usingCheckout", message: "Using the selected copy." },
-  worktreeDetailUpdatingWorkspace: {
-    id: "session.worktree.detail.updatingWorkspace",
-    message: "Updating the files used by this task.",
-  },
-  worktreeDetailPreparingWorktreeBind: {
-    id: "session.worktree.detail.preparingWorktreeBind",
-    message: "Preparing the copy for this task.",
-  },
-  worktreeDetailWorkspaceUpdated: {
-    id: "session.worktree.detail.workspaceUpdated",
-    message: "The task’s file location has been updated.",
-  },
-  worktreeDetailRefreshingStatus: {
-    id: "session.worktree.detail.refreshingStatus",
-    message: "Loading the task’s updated file location.",
-  },
-  worktreeDetailCreatingConversation: {
-    id: "session.worktree.detail.creatingConversation",
-    message: "Creating the conversation state.",
-  },
-  worktreeDetailDispatchingPrompt: {
-    id: "session.worktree.detail.dispatchingPrompt",
-    message: "Dispatching your first message.",
-  },
-  worktreeDetailConversationReady: {
-    id: "session.worktree.detail.conversationReady",
-    message: "Conversation state is ready.",
-  },
-  worktreeDetailWorkspaceSetupComplete: {
-    id: "session.worktree.detail.workspaceSetupComplete",
-    message: "Worktree is ready.",
-  },
-  worktreeDetailPromptDispatched: {
-    id: "session.worktree.detail.promptDispatched",
-    message: "First prompt dispatched.",
-  },
-
-  // worktree-session.ts — factory title/description strings
-  worktreeTitleLeaving: { id: "session.worktree.title.leaving", message: "Returning to project files" },
-  worktreeDescLeaving: {
-    id: "session.worktree.desc.leaving",
-    message: "Returning this task to the project files.",
-  },
-  worktreeTitleMoving: { id: "session.worktree.title.moving", message: "Preparing a Worktree" },
-  worktreeDescMoving: {
-    id: "session.worktree.desc.moving",
-    message: "Creating a Worktree for this task.",
-  },
-  worktreeTitleMainActive: { id: "session.worktree.title.mainActive", message: "Using project files" },
-  worktreeDescMainActive: {
-    id: "session.worktree.desc.mainActive",
-    message: "This task now uses the project files. The Worktree remains available.",
-  },
-  worktreeTitleWorktreeActive: { id: "session.worktree.title.worktreeActive", message: "Using a Worktree" },
-  worktreeDescWorktreeActive: {
-    id: "session.worktree.desc.worktreeActive",
-    message: "This task now uses the Worktree.",
-  },
-  worktreeTitleRefreshing: {
-    id: "session.worktree.title.refreshing",
-    message: "Refreshing file location",
-  },
-  worktreeDescRefreshing: {
-    id: "session.worktree.desc.refreshing",
-    message: "The file location changed. Updating the task status.",
-  },
   worktreeTitleRefreshFailed: {
     id: "session.worktree.title.refreshFailed",
     message: "Could not refresh file location",
@@ -586,20 +450,9 @@ export const S = {
   },
   worktreeTitleLeaveFailed: { id: "session.worktree.title.leaveFailed", message: "Could not return to project files" },
   worktreeTitleMoveFailed: { id: "session.worktree.title.moveFailed", message: "Could not use the Worktree" },
-  worktreeTitleSetupFailed: { id: "session.worktree.title.setupFailed", message: "Worktree setup failed" },
   worktreeSetupCommandFailed: {
     id: "session.worktree.setupCommandFailed",
     message: "The Worktree setup command failed.",
-  },
-  worktreeTitleStarting: { id: "session.worktree.title.starting", message: "Starting task in a Worktree" },
-  worktreeDescStarting: {
-    id: "session.worktree.desc.starting",
-    message: "Preparing the Worktree and sending your first message.",
-  },
-  worktreeTitleStarted: { id: "session.worktree.title.started", message: "Worktree task accepted" },
-  worktreeDescStarted: {
-    id: "session.worktree.desc.started",
-    message: "The Worktree is ready and your first message is queued.",
   },
   scopesNewSession: { id: "scopes.newSession", message: "New session" },
   scopesTasksRunning: { id: "scopes.tasksRunning", message: "{running}/{count} tasks running" },

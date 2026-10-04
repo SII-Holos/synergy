@@ -1,0 +1,58 @@
+[data-component="process-window"] {
+  container: process-window / inline-size;
+  min-width: 0;
+  position: relative;
+}
+[data-component="process-viewport"] {
+  max-height: min(20rem, var(--process-viewport-limit, 45dvh));
+  overflow: auto;
+  overflow-anchor: none;
+  min-width: 0;
+  padding-inline: 3px;
+  margin-inline: -3px;
+  scrollbar-width: thin;
+  /* The virtual parent suspends pointer events while scrolling; nested scroll regions keep their own input. */
+  pointer-events: auto;
+}
+[data-component="process-viewport"][data-overflow] {
+  overscroll-behavior: contain;
+}
+[data-component="process-viewport"]:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}
+[data-slot="process-latest"] {
+  position: absolute;
+  inset-block-end: 6px;
+  inset-inline-end: 6px;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-weaker-base);
+  border-radius: 50%;
+  background: var(--surface-base);
+  color: var(--text-base);
+  cursor: pointer;
+  pointer-events: auto;
+}
+[data-slot="process-latest"]:focus-visible {
+  outline: 2px solid var(--border-focus);
+}
+@container process-window (width <= 480px) {
+  [data-component="process-viewport"] {
+    max-height: min(15rem, var(--process-viewport-limit, 45dvh));
+  }
+}
+[data-component="process-viewport"] [data-slot="process-reasoning-detail"] {
+  max-height: none;
+  overflow: visible;
+}
+[data-component="process-viewport"]
+  [data-component="session-turn"][data-activity-body]
+  [data-slot="session-turn-timeline-item"]:not([hidden])
+  ~ [data-slot="session-turn-timeline-item"]:not([hidden]) {
+  margin-block-start: 2px;
+}

@@ -10,6 +10,7 @@ import { useData } from "../context/data"
 import { createDisclosureMotionRef } from "../utils/disclosure-motion"
 import type { ActivityReasoningSummaryItem } from "./session-turn-activity"
 import "./activity-batch.css"
+import { useProcessViewport } from "./process-viewport"
 
 export function ActivityReasoning(props: {
   item: ActivityReasoningSummaryItem
@@ -47,6 +48,7 @@ export function ProcessReasoning(props: {
   onInspect?: () => void
 }) {
   const { _ } = useLingui()
+  const contained = useProcessViewport()
   const [explicit, setExplicit] = createSignal<boolean>()
   const open = createMemo(() => props.view?.getExpanded(props.identity) ?? explicit() ?? props.defaultOpen === true)
   const text = () => props.entries.map((part) => part.text).join("\n\n")
@@ -59,10 +61,10 @@ export function ProcessReasoning(props: {
     }
     return result
   })
-  const scroll = createAutoScroll({ working: () => open() })
+  const scroll = createAutoScroll({ working: () => open() && !contained })
   createEffect(
     on(open, (value) => {
-      if (value) scroll.forceScrollToBottom()
+      if (value && !contained) scroll.forceScrollToBottom()
     }),
   )
   createEffect(() => {
@@ -130,13 +132,15 @@ export function ProcessReasoning(props: {
         </Show>
         <div
           id={`${props.identity}:detail`}
-          ref={scroll.scrollRef}
+          ref={(element) => {
+            if (!contained) scroll.scrollRef(element)
+          }}
           onScroll={scroll.handleScroll}
           onKeyDown={(event) => {
             if (["ArrowUp", "PageUp", "Home"].includes(event.key)) scroll.handleInteraction()
           }}
           data-slot="process-reasoning-detail"
-          tabindex="0"
+          tabindex={contained ? undefined : "0"}
           role="region"
           aria-label={_({ id: "session.process.viewReasoning", message: "View reasoning" })}
         >

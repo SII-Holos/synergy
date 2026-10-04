@@ -862,31 +862,30 @@ describe("app production build contract", () => {
         expectRootRule(fileWorkbenchCss, contract)
       }
 
-      const expandedCompactionBodies = collectRootRuleBodies(
-        css,
-        "[data-component=compaction-card] [data-slot=collapsible-content][data-expanded]",
+      expectRootRule(css, {
+        selector: "[data-slot=process-event-trigger]",
+        declarations: ["min-height:28px", "width:100%", "font-size:14px", "line-height:20px"],
+      })
+      expectRootRule(css, {
+        selector: "[data-component=process-viewport]",
+        declarations: ["overflow:auto", "overflow-anchor:none", "pointer-events:auto"],
+      })
+      expect(collectRootRuleBodies(css, "[data-component=process-viewport]").join(";")).toMatch(
+        /max-height:min\(20rem,var\(--process-viewport-limit,\s*45dvh\)\)/,
       )
-      expect(expandedCompactionBodies.length, "Missing expanded compaction card CSS rule").toBeGreaterThan(0)
-      expect(expandedCompactionBodies.join(";")).not.toContain(" both")
-      const shimmerSelectors = [
-        "[data-component=compaction-card][data-status=running]:before",
-        "[data-component=compaction-card][data-status=running]::before",
-      ]
-      const runningCompactionShimmerRules = shimmerSelectors.flatMap((selector) => collectRuleMatches(css, selector))
-      const rootShimmer = runningCompactionShimmerRules
+      const runningProcessRules = collectRuleMatches(css, "[data-slot=process-event-icon][data-running]")
+      const rootMotion = runningProcessRules
         .filter((rule) => !rule.ancestors.some((ancestor) => ancestor.startsWith("@media")))
         .map((rule) => rule.body)
         .join(";")
-      expect(rootShimmer, "Missing running compaction shimmer CSS rule").toContain("animation:compaction-card-shimmer")
-      expect(rootShimmer).toContain("will-change:transform,opacity")
+      expect(rootMotion, "Missing running process icon animation").toContain("animation:process-event-spin")
 
-      const reducedMotionShimmer = runningCompactionShimmerRules
+      const reducedMotion = runningProcessRules
         .filter((rule) => rule.ancestors.some(isReducedMotionAtRule))
         .map((rule) => rule.body)
         .join(";")
-      expect(reducedMotionShimmer, "Missing reduced-motion compaction shimmer override").toContain("animation:none")
-      expect(reducedMotionShimmer).toContain("will-change:auto")
-      expect(css).toContain("@keyframes compaction-card-shimmer{")
+      expect(reducedMotion, "Missing reduced-motion process icon override").toContain("animation:none")
+      expect(css).toContain("@keyframes process-event-spin{")
 
       expect(index).not.toMatch(/rel="modulepreload"[^>]+vendor-(?:mermaid|tiptap)/)
       const initialAssets = initialJavaScriptAssets(index)
