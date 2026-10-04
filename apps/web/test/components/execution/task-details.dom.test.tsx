@@ -377,10 +377,10 @@ test("leaving inbox history or closing task details cancels pending history read
     await page.locator(".execution-compact-identity").hover()
     await page.locator(".execution-identity-action").click()
     await page.getByRole("button", { name: "Inbox history", exact: true }).click()
-    expect(await page.evaluate("window.removedRequests.at(-1).aborted")).toBe(false)
+    expect(await page.evaluate<boolean>("window.removedRequests.at(-1).aborted")).toBe(false)
     if (close) await page.locator('[data-slot="popover-close-button"]').click()
     else await page.locator(".execution-inbox-back").click()
-    expect(await page.evaluate("window.removedRequests.at(-1).aborted")).toBe(true)
+    expect(await page.evaluate<boolean>("window.removedRequests.at(-1).aborted")).toBe(true)
     expect(await page.getByText("App loading", { exact: true }).count()).toBe(0)
   }
   expect(errors).toEqual([])
