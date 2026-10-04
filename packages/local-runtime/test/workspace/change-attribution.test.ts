@@ -163,9 +163,23 @@ test(
             )
             await Bun.write(file, "at checkpoint\n")
             await SessionFileChanges.finish(a.input)
-            await expect(
-              WorkspaceAccess.exclusive([tmp.path], async () => {}, AbortSignal.timeout(100)),
-            ).rejects.toBeInstanceOf(WorkspaceAccess.BusyError)
+            const signal = AbortSignal.timeout(100)
+            let admitted = false
+            const [admission] = await Promise.allSettled([
+              WorkspaceAccess.exclusive(
+                [tmp.path],
+                async () => {
+                  admitted = true
+                },
+                signal,
+              ),
+            ])
+            expect(admission!.status).toBe("rejected")
+            if (admission!.status === "rejected")
+              expect(admission.reason === signal.reason || admission.reason instanceof WorkspaceAccess.BusyError).toBe(
+                true,
+              )
+            expect(admitted).toBe(false)
             const frozen = await Session.diff(a.session.id)
             await Bun.write(file, "late output\n")
             owned!.child.stdin!.end()
