@@ -10,7 +10,8 @@ await assertInstalledPackageBoundaries()
 const mode = process.argv[2]!
 const prefix = "@ericsanchezok/synergy-"
 const full = mode === "full"
-const enabled = (domain: string) => (domain === "browser" ? mode === "browser" : full || mode === domain)
+const enabled = (domain: string) =>
+  domain === "browser" ? mode === "browser" : full || mode === domain || (domain === "plugin-host" && mode === "mcp")
 const { createLocalHost } = await import("@ericsanchezok/synergy-local-runtime")
 const { openAgentRuntime } = await import("@ericsanchezok/synergy-agent-runtime")
 const host = createLocalHost()
@@ -25,6 +26,7 @@ const factories: Record<string, [string, string]> = {
 const selected = factories[mode]
 const components = [
   (await import("@ericsanchezok/synergy-local-runtime/component")).localRuntime({ workers: false }),
+  ...(mode === "mcp" ? [(await import("@ericsanchezok/synergy-plugin-host/component")).plugins()] : []),
   ...(selected ? [(await import(`${prefix}${selected[0]}/component`))[selected[1]]()] : []),
 ]
 const runtime = full
