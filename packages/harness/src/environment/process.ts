@@ -150,6 +150,11 @@ export namespace EnvironmentProcess {
           running.resolve(false)
           child.emit("exit", child.exitCode, child.signalCode)
         }
+        // Output can advance beyond this status snapshot and block a paused reader before activation resolves.
+        if (!active && !terminal) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 25))
+          continue
+        }
         for (const chunk of await EnvironmentExecution.output(input.id, input.scopeID, cursor)) {
           if (chunk.cursor !== cursor + 1) throw new globalThis.Error("Execution output cursor is discontinuous")
           const target = chunk.stream === "stdout" ? child.stdout : child.stderr
