@@ -12094,6 +12094,10 @@ msgid "execution.callsTruncated"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "execution.cancelFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "execution.cancelled"
 msgstr ""
 
@@ -12102,15 +12106,7 @@ msgid "execution.cancelRead"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "execution.changes.diagnostics"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "execution.changes.incomplete"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "execution.changes.incompleteDescription"
+msgid "execution.cancelTask"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12135,10 +12131,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.completed"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "execution.connected"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12210,10 +12202,6 @@ msgid "execution.diagnostics"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "execution.disconnected"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "execution.download"
 msgstr ""
 
@@ -12231,10 +12219,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.end"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "execution.environment"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12299,6 +12283,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.idle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.inboxHistory"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12490,6 +12478,10 @@ msgid "execution.purpose"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "execution.queued"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "execution.raw"
 msgstr ""
 
@@ -12663,6 +12655,18 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.view"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.workspace.copyPath"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.workspace.pathCopied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.workspace.worktree"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -15951,8 +15955,28 @@ msgstr "⟦reasoning⟧"
 msgid "session.activity.operations"
 msgstr ""
 
-#. js-lingui-explicit-id
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.actionFailed"
+msgstr ""
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.more"
+msgstr ""
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
 msgid "session.agenda.retry"
+msgstr ""
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.tasks.title"
 msgstr ""
 
 #. Runtime translation descriptors for all wake-indicator UI strings.
@@ -16854,6 +16878,10 @@ msgid "session.inbox.queued"
 msgstr "⟦Queued by you⟧"
 
 #. js-lingui-explicit-id
+msgid "session.inbox.remove"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.inbox.removed"
 msgstr "⟦Removed queued message⟧"
 
@@ -17218,58 +17246,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.restore.truncated"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.review.issue.baseline"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.review.issue.capture"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.review.issue.comparison"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.review.issue.interrupted"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.review.issue.legacy"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.review.issue.read"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.review.issue.size"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.review.recording.failed"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.review.recording.gitFailure"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.review.recording.incomplete"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.review.recording.limits"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.review.recording.pending"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.review.recording.timeout"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -26019,14 +25995,6 @@ msgstr ""
 #. js-lingui-explicit-id
 msgid "workspace.home.unavailable"
 msgstr ""
-
-#. js-lingui-explicit-id
-msgid "workspace.location.isolated"
-msgstr "⟦Isolated worktree⟧"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.stored"
-msgstr "⟦Stored Workspace⟧"
 
 #. js-lingui-explicit-id
 msgid "workspace.navigation.close"

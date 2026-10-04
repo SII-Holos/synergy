@@ -298,6 +298,7 @@ export const S = {
   inboxGuideAllFailed: { id: "session.inbox.guideAllFailed", message: "Failed to send queued messages now" },
   inboxRequestFailed: { id: "session.inbox.requestFailed", message: "Request failed" },
   inboxDelete: { id: "session.inbox.delete", message: "Delete" },
+  inboxRemove: { id: "session.inbox.remove", message: "Remove message" },
   inboxOperationPending: { id: "session.inbox.operationPending", message: "Updating message…" },
   inboxRemoveFailed: {
     id: "session.inbox.removeFailed",

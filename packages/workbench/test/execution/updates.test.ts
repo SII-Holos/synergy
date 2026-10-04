@@ -36,6 +36,42 @@ function nextUpdate(sessionID: string, predicate: (event: ExecutionSchema.Summar
   return { result, dispose: () => dispose() }
 }
 
+test("persisted delegation status updates the parent's cancellation controls without rollout changes", () =>
+  runtime.run(() =>
+    fixture(async ({ session, rootID }) => {
+      const child = await Session.create({
+        parentID: session.id,
+        cortex: {
+          taskID: Identifier.ascending("cortex"),
+          parentSessionID: session.id,
+          parentMessageID: rootID,
+          description: "Review",
+          agent: "reviewer",
+          status: "queued",
+          startedAt: Date.now(),
+          visibility: "hidden",
+        },
+      })
+      const initial = await ExecutionService.summary(session.id)
+      expect(initial.tasks.find((task) => task.sessionID === child.id)?.cortex?.status).toBe("queued")
+      const updated = nextUpdate(session.id, (summary) =>
+        summary.tasks.some((task) => task.sessionID === child.id && task.cortex?.status === "cancelled"),
+      )
+      try {
+        await Session.update(child.id, (info) => {
+          if (info.cortex) info.cortex.status = "cancelled"
+        })
+        const event = await updated.result
+        expect(event.properties.revision).toBeGreaterThan(initial.revision)
+        expect(event.properties.summary.tasks.find((task) => task.sessionID === child.id)?.cortex?.visibility).toBe(
+          "hidden",
+        )
+      } finally {
+        updated.dispose()
+      }
+    }),
+  ))
+
 test(
   "a missed call notification recovers committed evidence and keeps child completion live",
   () =>

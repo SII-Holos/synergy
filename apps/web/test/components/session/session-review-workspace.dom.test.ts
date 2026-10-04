@@ -130,21 +130,21 @@ test("separate writes to the same bound file remain independently expandable", a
   expect(await rows.nth(1).textContent()).toContain("+last")
 }, 30_000)
 
-test("incomplete recording preserves file rows while Review explains the limits", async () => {
+test("recording gaps preserve confirmed file rows without diagnostics in Review", async () => {
   await page.goto(base)
   await page.locator('[data-component="turn-change-summary-panel"]').waitFor()
   await page.evaluate(() => (window as unknown as { fixture: { incomplete(): void } }).fixture.incomplete())
-  const entry = page.locator('[data-slot="turn-change-summary-entry"]')
   expect(await page.locator('[data-component="turn-change-summary-panel"]').count()).toBe(1)
   expect(await page.locator('[data-slot="turn-change-summary-row"]').count()).toBe(2)
-  const notice = page.locator('[data-slot="review-recording-notice"]')
-  expect(await notice.textContent()).toContain("This does not mean no files changed")
+  const review = page.locator('[data-component="session-review"]')
+  expect(await review.locator('[data-slot="review-recording-notice"]').count()).toBe(0)
+  expect(await review.getByText(/incomplete|restoration|no files changed/i).count()).toBe(0)
   expect(await page.locator('[data-slot="session-review-view-button"]').count()).toBe(2)
   await page.evaluate(() => (window as unknown as { fixture: { empty(): void } }).fixture.empty())
-  expect(await notice.textContent()).toContain("restoration")
-  expect(await notice.textContent()).not.toContain("No changes")
+  expect(await review.locator('[data-slot="accordion-item"][data-file]').count()).toBe(0)
+  expect(await review.getByText(/incomplete|restoration|no files changed/i).count()).toBe(0)
   await page.evaluate(() => (window as unknown as { fixture: { locale(value: string): void } }).fixture.locale("zh-CN"))
-  expect(await entry.getAttribute("title")).toContain("文件改动记录尚不完整")
+  expect(await review.getByText(/记录.*不完整/).count()).toBe(0)
   expect(errors).toEqual([])
 })
 

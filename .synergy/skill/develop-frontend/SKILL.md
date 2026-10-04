@@ -14,6 +14,12 @@ description: Implement or review Synergy Web and shared UI changes across apps/w
 
 ## Message process and execution details
 
+Compact task surfaces retain independent resource ownership when statistics fail or the Workbench capability is absent. Keep recovery/history reads lazy; preserve accepted rows during refresh errors and guard pagination against changed Scope, Session and client. Hover actions reserve space and also reveal on focus or touch. Filter auxiliary children only by canonical source, preserve explicitly delegated reviewers, and keep totals independent of presentation filters. File recording diagnostics remain internal; missing evidence never produces a zero measurement or a user-facing completeness warning.
+
+Keep container-query containment and transforms off portal hosts whose descendants use viewport-positioned overlays. Place containment on the measured content region instead. Verify focused tooltips and nested popovers while resizing an already open surface; opening only after resize can conceal incorrect positioning and clipping.
+
+Wide row overlays need an above/below fallback on narrow viewports; left/right placements can overflow both sides even with automatic flipping. A detail dialog may outlive its originating popover: bind its requests and actions to the captured client and Scope, keep its pending state independent, and settle retained action locks after the origin unmounts. Read optional resource snapshots without suspending the app shell and test slow history reads plus sequential dialog actions after closing the origin.
+
 In conditional JSX children, wrap callbacks that can change reactively in a stable event handler and read the current callback at activation. A direct callback prop read can subscribe the child factory and replace the button on focus-driven updates. Exercise pointer down through click, retained focus and keyboard activation with the real control inside the virtual row; a substitute button can conceal this failure.
 
 Mount real Workbench content in mobile modal fixtures. Modal presentation must not inherit desktop width constraints, inert state or resize controls; test reachable controls, focus containment and Escape return at 320px and 375px. A visible modal shell with substitute children cannot detect an inaccessible nested surface.

@@ -12094,6 +12094,10 @@ msgid "execution.callsTruncated"
 msgstr "Showing {shown} of {total} calls. All records are available in the trajectory."
 
 #. js-lingui-explicit-id
+msgid "execution.cancelFailed"
+msgstr "Could not cancel the subtask. Try again."
+
+#. js-lingui-explicit-id
 msgid "execution.cancelled"
 msgstr "Cancelled"
 
@@ -12102,16 +12106,8 @@ msgid "execution.cancelRead"
 msgstr "Cancel reading"
 
 #. js-lingui-explicit-id
-msgid "execution.changes.diagnostics"
-msgstr "View recording details"
-
-#. js-lingui-explicit-id
-msgid "execution.changes.incomplete"
-msgstr "Change recording incomplete"
-
-#. js-lingui-explicit-id
-msgid "execution.changes.incompleteDescription"
-msgstr "Some file changes could not be recorded. This does not indicate a task failure."
+msgid "execution.cancelTask"
+msgstr "Cancel subtask"
 
 #. js-lingui-explicit-id
 msgid "execution.chartEvents"
@@ -12136,10 +12132,6 @@ msgstr "Collapse task details"
 #. js-lingui-explicit-id
 msgid "execution.completed"
 msgstr "Completed"
-
-#. js-lingui-explicit-id
-msgid "execution.connected"
-msgstr "Connected"
 
 #. js-lingui-explicit-id
 msgid "execution.contentActions"
@@ -12210,10 +12202,6 @@ msgid "execution.diagnostics"
 msgstr "Parameters and diagnostics"
 
 #. js-lingui-explicit-id
-msgid "execution.disconnected"
-msgstr "Reconnecting…"
-
-#. js-lingui-explicit-id
 msgid "execution.download"
 msgstr "Download complete content"
 
@@ -12232,10 +12220,6 @@ msgstr "No recorded events match these filters."
 #. js-lingui-explicit-id
 msgid "execution.end"
 msgstr "Ended"
-
-#. js-lingui-explicit-id
-msgid "execution.environment"
-msgstr "Connection"
 
 #. js-lingui-explicit-id
 msgid "execution.error"
@@ -12300,6 +12284,10 @@ msgstr "{count} user inputs"
 #. js-lingui-explicit-id
 msgid "execution.idle"
 msgstr "{duration} without recorded activity"
+
+#. js-lingui-explicit-id
+msgid "execution.inboxHistory"
+msgstr "Inbox history"
 
 #. js-lingui-explicit-id
 msgid "execution.input"
@@ -12490,6 +12478,10 @@ msgid "execution.purpose"
 msgstr "Purpose"
 
 #. js-lingui-explicit-id
+msgid "execution.queued"
+msgstr "Queued"
+
+#. js-lingui-explicit-id
 msgid "execution.raw"
 msgstr "Raw result"
 
@@ -12664,6 +12656,18 @@ msgstr "This content version is no longer available. Read the latest version."
 #. js-lingui-explicit-id
 msgid "execution.view"
 msgstr "View"
+
+#. js-lingui-explicit-id
+msgid "execution.workspace.copyPath"
+msgstr "Copy workspace path"
+
+#. js-lingui-explicit-id
+msgid "execution.workspace.pathCopied"
+msgstr "Workspace path copied"
+
+#. js-lingui-explicit-id
+msgid "execution.workspace.worktree"
+msgstr "Isolated worktree"
 
 #. js-lingui-explicit-id
 msgid "execution.wrap"
@@ -15951,9 +15955,29 @@ msgstr "reasoning"
 msgid "session.activity.operations"
 msgstr "{count, plural, one {# action} other {# actions}}"
 
-#. js-lingui-explicit-id
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.actionFailed"
+msgstr "Could not update the scheduled task. Try again."
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.more"
+msgstr "Load more scheduled tasks"
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
 msgid "session.agenda.retry"
 msgstr "Could not load scheduled activity. Retry"
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.tasks.title"
+msgstr "Scheduled tasks"
 
 #. Runtime translation descriptors for all wake-indicator UI strings.
  *  Each is a base MessageDescriptor with `id` + English `message`.
@@ -16854,6 +16878,10 @@ msgid "session.inbox.queued"
 msgstr "Queued by you"
 
 #. js-lingui-explicit-id
+msgid "session.inbox.remove"
+msgstr "Remove message"
+
+#. js-lingui-explicit-id
 msgid "session.inbox.removed"
 msgstr "Removed queued message"
 
@@ -17219,58 +17247,6 @@ msgstr "Undo file changes"
 #. js-lingui-explicit-id
 msgid "session.restore.truncated"
 msgstr "Preview shortened. Restoration uses the complete saved file."
-
-#. js-lingui-explicit-id
-msgid "session.review.issue.baseline"
-msgstr "The starting snapshot could not be saved."
-
-#. js-lingui-explicit-id
-msgid "session.review.issue.capture"
-msgstr "The ending snapshot could not be saved."
-
-#. js-lingui-explicit-id
-msgid "session.review.issue.comparison"
-msgstr "Saved file versions could not be compared."
-
-#. js-lingui-explicit-id
-msgid "session.review.issue.interrupted"
-msgstr "Recording was interrupted before a checkpoint was saved."
-
-#. js-lingui-explicit-id
-msgid "session.review.issue.legacy"
-msgstr "This history retains operation snapshots, but has no complete turn baseline."
-
-#. js-lingui-explicit-id
-msgid "session.review.issue.read"
-msgstr "This file could not be read consistently."
-
-#. js-lingui-explicit-id
-msgid "session.review.issue.size"
-msgstr "This file exceeded the snapshot size limit."
-
-#. js-lingui-explicit-id
-msgid "session.review.recording.failed"
-msgstr "File change recording failed."
-
-#. js-lingui-explicit-id
-msgid "session.review.recording.gitFailure"
-msgstr "File change recording could not read the repository."
-
-#. js-lingui-explicit-id
-msgid "session.review.recording.incomplete"
-msgstr "File change recording is incomplete."
-
-#. js-lingui-explicit-id
-msgid "session.review.recording.limits"
-msgstr "This does not mean no files changed. Available changes are shown below; unrecorded changes cannot be reviewed or used for file restoration."
-
-#. js-lingui-explicit-id
-msgid "session.review.recording.pending"
-msgstr "Recording file changes…"
-
-#. js-lingui-explicit-id
-msgid "session.review.recording.timeout"
-msgstr "File change recording timed out."
 
 #. js-lingui-explicit-id
 msgid "session.review.sessionTitle"
@@ -26019,14 +25995,6 @@ msgstr "New tab"
 #. js-lingui-explicit-id
 msgid "workspace.home.unavailable"
 msgstr "No resources are available in this project."
-
-#. js-lingui-explicit-id
-msgid "workspace.location.isolated"
-msgstr "Isolated worktree"
-
-#. js-lingui-explicit-id
-msgid "workspace.location.stored"
-msgstr "Stored Workspace"
 
 #. js-lingui-explicit-id
 msgid "workspace.navigation.close"

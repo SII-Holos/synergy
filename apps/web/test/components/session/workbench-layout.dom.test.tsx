@@ -29,6 +29,7 @@ beforeAll(async () => {
   await Bun.write(
     path.join(directory, "execution.ts"),
     `export const useExecution = () => ({ available: () => false, state: {} });
+     export const useSDK = () => ({ client: {} });
      export const useParams = () => ({ id: "fixture" })`,
   )
   await Bun.write(
@@ -102,6 +103,7 @@ beforeAll(async () => {
         { find: /^\.\/decision-surface$/, replacement: path.join(directory, "decision.tsx") },
         { find: "@/context/platform", replacement: path.join(directory, "platform.ts") },
         { find: "@/context/execution", replacement: path.join(directory, "execution.ts") },
+        { find: "@/context/sdk", replacement: path.join(directory, "execution.ts") },
         { find: "@solidjs/router", replacement: path.join(directory, "execution.ts") },
         { find: "@", replacement: source },
       ],
@@ -192,7 +194,9 @@ test("task details contain the inbox on narrow panes and touch actions retain th
     await open(width, 812)
     await page.locator("[data-send]").click()
     await page.getByRole("button", { name: "Task details", exact: true }).click()
-    await page.locator(".execution-inbox-entry").click()
+    await page.locator(".execution-compact-identity").hover()
+    await page.locator(".execution-identity-action").click()
+    await page.getByRole("button", { name: "Inbox history", exact: true }).click()
     await page.locator("[data-inbox]").waitFor()
     const popover = await bounds(".execution-popover")
     const inbox = await bounds("[data-inbox]")
@@ -201,9 +205,7 @@ test("task details contain the inbox on narrow panes and touch actions retain th
     expect(inbox.left).toBeGreaterThanOrEqual(popover.left)
     expect(inbox.right).toBeLessThanOrEqual(popover.right)
     await page.locator(".execution-inbox-back").click()
-    expect(await page.locator(".execution-inbox-entry").evaluate((element) => element === document.activeElement)).toBe(
-      true,
-    )
+    await page.waitForFunction(() => document.activeElement?.classList.contains("execution-identity-action"))
     await page.keyboard.press("Escape")
     await page.waitForFunction(() => document.activeElement?.classList.contains("execution-trigger"))
     if (width === 375) {

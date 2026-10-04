@@ -58627,6 +58627,30 @@
             "items": {
               "type": "string"
             }
+          },
+          "interaction": {
+            "$ref": "#/components/schemas/SessionInteraction"
+          },
+          "cortex": {
+            "type": "object",
+            "properties": {
+              "taskID": {
+                "type": "string",
+                "pattern": "^ctx.*"
+              },
+              "agent": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["queued", "running", "completed", "error", "cancelled", "interrupted"]
+              },
+              "visibility": {
+                "type": "string",
+                "enum": ["visible", "hidden"]
+              }
+            },
+            "required": ["taskID", "agent", "status"]
           }
         },
         "required": [
