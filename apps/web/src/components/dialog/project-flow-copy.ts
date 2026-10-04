@@ -8,6 +8,7 @@ export const projectFlowCopy = {
   noneDescription: { id: "project.flow.noneDescription", message: "Start a task without project files." },
   open: { id: "project.flow.open", message: "Open folder" },
   empty: { id: "project.flow.empty", message: "No matching projects" },
+  directoryUnavailable: { id: "project.flow.directoryUnavailable", message: "Directory unavailable" },
   merge: { id: "project.flow.merge", message: "Merge and switch" },
   mergeTitle: { id: "project.flow.mergeTitle", message: "This project already has a draft" },
   mergeDescription: {

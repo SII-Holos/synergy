@@ -13246,6 +13246,10 @@ msgid "project.flow.description"
 msgstr "⟦Keep your draft and choose where this task belongs.⟧"
 
 #. js-lingui-explicit-id
+msgid "project.flow.directoryUnavailable"
+msgstr "⟦Directory unavailable⟧"
+
+#. js-lingui-explicit-id
 msgid "project.flow.empty"
 msgstr "⟦No matching projects⟧"
 

@@ -7,6 +7,7 @@ import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solid from "vite-plugin-solid"
 import tailwind from "@tailwindcss/vite"
+import { lingui } from "@lingui/vite-plugin"
 
 let server: ViteDevServer
 let browser: Browser
@@ -26,52 +27,67 @@ beforeAll(async () => {
     `
     import {createStore} from "solid-js/store"
     export const [state,patch]=createStore({id:undefined,running:false,status:"idle",empty:false,disabled:false,width:700,home:false,git:true,available:true,extraAvailable:true,shared:false,deriveSelection:false,mainRev:1,extraRev:1,gen:1,extraGen:1,failExtra:false,holdExtra:false,emptyTrees:false,holdInventory:false,url:"http://fixture.example",scopeID:"project",profile:"native",error:"",extras:false,selection:{mode:"workspace",workspaceID:"main",workspaceGeneration:1}})
-    const h=window.fixture={patch,requests:[],selection:undefined}
+    const h=window.fixture={patch,requests:[],selection:undefined,healthPending:0,directoryPending:0,releaseHealth:[],releaseDirectories:[],menuRequests:[]}
     const folder=id=>({workspaceID:id,generation:id==="main"?state.gen:state.extraGen,path:id==="main"?"/projects/main-folder":"/projects/shared-folder",git:id==="main"&&state.git&&state.available,available:id==="main"?state.available:state.extraAvailable,...((id==="main"?state.available:state.extraAvailable)?{}:{unavailable:{name:"WorkspaceUnavailable",data:{workspaceID:id,reason:"identity_changed",message:"Identity changed"}}})})
     export const directories=()=>({version:1,scopeID:state.scopeID,revision:1,mainWorkspaceID:"main",additionalWorkspaceIDs:state.shared?["extra"]:[],folders:[folder("main"),...(state.shared?[folder("extra")]:[])]})
     const record=id=>({id,scopeID:state.scopeID,type:"directory",revision:id==="main"?state.mainRev:state.extraRev,binding:{generation:id==="main"?state.gen:state.extraGen,state:"bound",path:folder(id).path,hostID:"host",physicalID:"identity"},lifecycle:"active",metadata:{},sharedWritableWorkspaceIDs:[],createdAt:1,updatedAt:1})
     const trees=[{id:"tree",name:"Existing Worktree",branch:"feature/long-existing-worktree-branch",path:"/projects/worktrees/existing",sourceWorkspaceID:"main",bindings:[]}]
-    const scope={id:"project",name:${JSON.stringify(project)},local:{worktree:"/projects/main-folder",directory:"/projects/main-folder",sandboxes:[],vcs:"git"}}
+    const scope={id:"project",type:"project",time:{updated:1},name:${JSON.stringify(project)},local:{worktree:"/projects/main-folder",directory:"/projects/main-folder",sandboxes:[],vcs:"git"}}
     const client={project:{async worktreeInventory(input,options){
       h.requests.push("worktrees");const scopeID=input.scopeID;const url=state.url
       if(state.holdInventory){h.inventoryPending=true;await new Promise(resolve=>h.releaseInventory=resolve);h.inventoryPending=false}
       options.signal?.throwIfAborted()
       return {data:{items:state.emptyTrees?[]:trees.map(tree=>({...tree,branch:scopeID==="project"&&url==="http://fixture.example"?tree.branch:"feature/new-project-worktree"}))}}
-    },async directories(){return {data:directories()}}},workspace:{async list(){return {data:[record("main"),...(state.shared?[record("extra")]:[])]}},async rebind(input,options){h.requests.push("rebind:"+input.workspaceID);if(input.workspaceID==="extra"&&state.holdExtra)await new Promise(resolve=>h.release=resolve);options.signal?.throwIfAborted();if(input.workspaceID==="extra"&&state.failExtra)throw {name:"WorkspaceBusy",data:{message:"Folder busy"}};if(input.workspaceID==="main")patch({available:true,gen:state.gen+1,mainRev:state.mainRev+1});else patch({extraAvailable:true,extraGen:state.extraGen+1,extraRev:state.extraRev+1});return {data:record(input.workspaceID)}}},session:{async selectWorkspace(){h.requests.push("selectWorkspace")}}}
+    },async directories({scopeID}){
+      const url=state.url
+      h.menuRequests.push({url,scopeID})
+      const value=directories()
+      if(url!=="http://fixture.example")value.folders[0].path="/projects/new-connection"
+      if(h.holdDirectories){h.directoryPending++;await new Promise(resolve=>h.releaseDirectories.push(resolve));h.directoryPending--}
+      if(h.failedDirectory===scopeID)throw Error("Directory unavailable")
+      return {data:value}
+    }},workspace:{async list(){return {data:[record("main"),...(state.shared?[record("extra")]:[])]}},async rebind(input,options){h.requests.push("rebind:"+input.workspaceID);if(input.workspaceID==="extra"&&state.holdExtra)await new Promise(resolve=>h.release=resolve);options.signal?.throwIfAborted();if(input.workspaceID==="extra"&&state.failExtra)throw {name:"WorkspaceBusy",data:{message:"Folder busy"}};if(input.workspaceID==="main")patch({available:true,gen:state.gen+1,mainRev:state.mainRev+1});else patch({extraAvailable:true,extraGen:state.extraGen+1,extraRev:state.extraRev+1});return {data:record(input.workspaceID)}}},session:{async selectWorkspace(){h.requests.push("selectWorkspace")}}}
     export const useParams=()=>({get id(){return state.id}})
     export const useNavigate=()=>()=>{}
     export const useSDK=()=>({get isHome(){return state.home},get scopeID(){return state.home?"home":state.scopeID},get scopeKey(){return state.home?"home":state.scopeID},client})
-    export const useGlobalSDK=()=>({get url(){return state.url},capabilities:{has:()=>true}})
+    export const useGlobalSDK=()=>({get url(){return state.url},capabilities:{has:()=>true},client})
     export const useSync=()=>({scope,data:{get workspaces(){return [record("main"),{id:"other",scopeID:state.scopeID,type:"git_worktree",binding:{path:"/projects/worktrees/selected",generation:2,state:"bound"},metadata:{name:"Selected copy",branch:"feature/selected"}}]},path:{workspace:{path:"/projects/main-folder"}}},session:{get:()=>state.empty?undefined:{id:state.id,status:state.status,workspaceID:"main",workspace:{path:"/projects/main-folder",type:"git"}},sync:async()=>{}}})
     export const useLayout=()=>({scopes:{list:()=>[scope]}})
-    export const useGlobalSync=()=>({refreshScopes:async()=>{}})
+    export const useGlobalSync=()=>({data:{get scope(){return [scope,...(h.failedProject?[{id:"unavailable-project",type:"project",name:"Unavailable project",time:{updated:0}}]:[])]}},refreshScopes:async()=>{}})
     export const useServer=()=>({url:"http://${computer}",list:["http://offline.example:4322"],setActive:()=>{},scopes:{open:()=>{}}})
     export const normalizeServerUrl=url=>url
     export const serverDisplayName=url=>url.replace(/^https?:\\/\\//,"")
-    export const usePlatform=()=>({platform:"web",fetch:async url=>new Response(JSON.stringify({healthy:!(url instanceof Request?url.url:String(url)).includes("offline")}),{headers:{"content-type":"application/json"}})})
+    export const usePlatform=()=>({platform:"web",fetch:async url=>{if(h.holdHealth){h.healthPending++;await new Promise(resolve=>h.releaseHealth.push(resolve));h.healthPending--}if(h.failHealth)throw Error("Computer unavailable");return new Response(JSON.stringify({healthy:!(url instanceof Request?url.url:String(url)).includes("offline")}),{headers:{"content-type":"application/json"}})}})
     export const useCommand=()=>({register:()=>{}})
     export const usePrompt=()=>({prepareProjectTransfer:()=>({commit:()=>true,release:()=>{}})})
     export const useConfirm=()=>({ask:async()=>true})
     export const useProjectDirectoryPicker=()=>({pickProjectDirectories:async()=>null})
+    export const SessionDecisionOutlet=()=>null
     export const DialogScopeEdit=()=>null
     export const DialogWorktrees=()=>null
     export const DialogWorkingLocation=()=>null
     export const DialogCreateProject=()=>null
     export const DialogSelectServer=()=>null
-    export const DialogSelectProject=()=>null
-    export const ProjectMenuContent=()=>null
   `,
   )
   await Bun.write(
     path.join(fixture, "index.html"),
-    '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+    '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module" src="/main.tsx"></script>',
   )
   await Bun.write(
     path.join(fixture, "main.tsx"),
     `
+    import {createSignal} from "solid-js"
     import {render} from "solid-js/web"
-    import {setupI18n} from "@lingui/core"
-    import {I18nProvider} from "@lingui/solid"
+    import {LocaleProvider} from "${source}/context/locale"
+    import {ThemeProvider} from "@ericsanchezok/synergy-ui/theme"
+    import {WelcomeStage} from "${source}/components/session/welcome/stage"
+    import {welcomeScenes} from "${source}/components/session/welcome/registry"
+    import {createWelcomeMemory} from "${source}/components/session/welcome/types"
+    import {DefaultSession} from "${source}/plugin/default-session"
+    import {PromptDock} from "${source}/components/session/prompt-dock"
+    import {createPromptDockHeight} from "${source}/components/session/prompt-dock-height"
+    import "@ericsanchezok/synergy-ui/styles"
     import {DialogProvider,useDialog} from "@ericsanchezok/synergy-ui/context/dialog"
     import {Dialog} from "@ericsanchezok/synergy-ui/dialog"
     import {SessionWorkContext} from ${JSON.stringify(`/@fs/${source}/components/session/work-context.tsx`)}
@@ -82,12 +98,22 @@ beforeAll(async () => {
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
     function App(){
       const dialog=useDialog()
+      const memory=createWelcomeMemory()
+      const [height,setHeight]=createSignal(0)
+      const dock=createPromptDockHeight(setHeight)
       const input={readOnly:()=>false,primaryAction:()=>"send",submit:async()=>{},stop:async()=>{},dragging:()=>false,className:()=>"",current:()=>({mode:"normal"}),setComposing:()=>{},dragOver:()=>{},dragLeave:()=>{},drop:async()=>{},
         editor:{label:()=>"Message",completion:()=>undefined,placeholder:()=>undefined,mount:()=>()=>{},beforeInput:()=>{},input:()=>{},paste:async()=>{},keyDown:()=>{}},
         render:part=>part==="leading"?<><div data-extension>Composer extension</div><SessionWorkContext directories={directories()} directoryError={state.error} onRefresh={()=>patch("error","")} workspaceSelection={state.deriveSelection&&state.selection.mode==="workspace"?{...state.selection,workspaceGeneration:state.gen}:state.selection} workspaceSelectionKey={JSON.stringify(state.selection)} running={state.running} disabled={state.disabled} environmentProfile={state.profile} startOptions={[]} onSelect={selection=>{window.fixture.selection=selection;patch("selection",selection)}}>{state.extras&&<><button data-shortcuts>Quick actions</button><span data-agenda>Scheduled wake</span></>}</SessionWorkContext></>:part==="context"?<><button data-attachment>Attachment</button><p data-permission>Permission request</p><p role="alert" data-error>Request failed</p></>:part==="toolbar"?<button type="submit" data-send>Send</button>:null}
+      if(new URLSearchParams(location.search).has("welcome")) {
+        const composer={input:()=>input,mount:dock.mount,ready:()=>true,readOnly:()=>false,links:()=>[],render:()=>null}
+        return <div data-pane style={{width:state.width+"px",height:"100dvh","max-width":"100%"}}><DefaultSession context={{layout:{
+          minimumWidth:()=>undefined,promptHeight:height,
+          render:part=>part==="composer"?<PromptDock context={composer}/>:part==="conversation"?<div class="flex-1 min-h-0"><div class="session-empty-view" data-interactive><div class="session-welcome-region"><WelcomeStage definition={welcomeScenes.find(scene=>scene.id==="flight")} seed={8} memory={memory} blocked={!!dialog.active}/></div></div></div>:null
+        }}}/></div>
+      }
       return <><div data-pane style={{width:state.width+"px","max-width":"100%"}}><DefaultComposer context={{input}}/></div><button data-open-form onClick={()=>dialog.show(()=><Dialog title="Folder form"><div data-folder-form style={{width:"200px","max-width":"100%"}}><ProjectFolderFields folders={[]} main="" onChange={()=>{}} onAdd={()=>{}} computer={<ComputerMenu/>}/></div></Dialog>)}>Open form</button></>
     }
-    render(()=> <I18nProvider i18n={setupI18n({locale:"en",messages:{en:{}}})}><DialogProvider><App/></DialogProvider></I18nProvider>,document.getElementById("root"))
+    render(()=> <LocaleProvider><ThemeProvider><DialogProvider><App/></DialogProvider></ThemeProvider></LocaleProvider>,document.getElementById("root"))
   `,
   )
   server = await createServer({
@@ -101,10 +127,11 @@ beforeAll(async () => {
         resolveId(id) {
           if (
             id === "@solidjs/router" ||
+            id.endsWith("/session/decision-surface") ||
             /(?:^@\/|\/src\/)context\/(sdk|global-sdk|sync|global-sync|layout|server|platform|command|prompt)(\.tsx)?$/.test(
               id,
             ) ||
-            /(?:^\.\/|^\.\.\/dialog\/|\/dialog\/)(dialog-scope-edit|dialog-worktrees|dialog-working-location|dialog-create-project|dialog-select-server|dialog-select-project|confirm-dialog|project-directory-picker)(\.tsx)?$/.test(
+            /(?:^\.\/|^\.\.\/dialog\/|\/dialog\/)(dialog-scope-edit|dialog-worktrees|dialog-working-location|dialog-create-project|dialog-select-server|confirm-dialog|project-directory-picker)(\.tsx)?$/.test(
               id,
             )
           )
@@ -113,11 +140,12 @@ beforeAll(async () => {
       },
       solid(),
       tailwind(),
+      ...lingui(),
     ],
     resolve: { alias: { "@": source } },
     optimizeDeps: {
       noDiscovery: true,
-      include: ["solid-js", "solid-js/web", "solid-js/store", "@lingui/core", "@lingui/solid", "zod"],
+      include: ["solid-js", "solid-js/web", "solid-js/store", "@lingui/core", "@lingui/solid", "zod", "fuzzysort"],
     },
     server: {
       host: "127.0.0.1",
@@ -141,14 +169,14 @@ afterAll(async () => {
   if (fixture) await rm(fixture, { recursive: true, force: true })
 })
 
-async function open() {
+async function open(welcome = false) {
   errors.length = 0
   const previous = page
   page = await previous.context().newPage()
   await page.setViewportSize(previous.viewportSize()!)
   await previous.close()
   page.on("pageerror", (error) => errors.push(error.message))
-  await page.goto(base)
+  await page.goto(welcome ? `${base}?welcome` : base)
   await page.locator("[data-worktree-task-selector]").waitFor()
   expect(errors).toEqual([])
 }
@@ -536,3 +564,166 @@ test("failed initialization retains setup and the draft; accepting a session rem
   expect(await page.getByRole("textbox", { name: "Message", exact: true }).innerText()).toBe("Keep the task draft")
   expect(errors).toEqual([])
 }, 20_000)
+
+test("computer and project metadata keep the composer and welcome canvas stable while loading", async () => {
+  await page.setViewportSize({ width: 1024, height: 920 })
+  for (const kind of ["computer", "project"] as const) {
+    await open(true)
+    const editor = page.getByRole("textbox", { name: "Message", exact: true })
+    await editor.fill("Keep the draft while menus load")
+    await page.locator(".welcome-game-canvas").press("Space")
+    await page.locator(".welcome-game-canvas").press("Escape")
+    await page.locator(".welcome-stage").evaluate(async (element) => {
+      await Promise.all(element.getAnimations().map((animation) => animation.finished))
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    })
+    await page.evaluate(() => {
+      const fixture = (window as unknown as { fixture: Record<string, unknown> }).fixture
+      fixture.holdHealth = true
+      fixture.holdDirectories = true
+      fixture.nodes = [
+        ".session-work-context",
+        ".session-composer",
+        ".welcome-game-canvas",
+        "[data-component=prompt-input]",
+      ].map((selector) => document.querySelector(selector))
+    })
+    const measure = () =>
+      page.evaluate(() => {
+        const fixture = (window as unknown as { fixture: { nodes: Element[] } }).fixture
+        return fixture.nodes.map((element) => {
+          const { x, y, width, height } = element.getBoundingClientRect()
+          return { x, y, width, height, connected: element.isConnected }
+        })
+      })
+    const before = await measure()
+    const position = await page.locator(".welcome-game-canvas").getAttribute("aria-description")
+    const unchanged = async () => {
+      const after = await measure()
+      for (const [index, bounds] of after.entries()) {
+        expect(bounds.connected).toBe(true)
+        for (const dimension of ["x", "y", "width", "height"] as const)
+          expect(Math.abs(bounds[dimension] - before[index]![dimension])).toBeLessThanOrEqual(1)
+      }
+      expect(await editor.innerText()).toBe("Keep the draft while menus load")
+      expect(await page.locator(".welcome-flight").getAttribute("data-phase")).toBe("playing")
+      expect(await page.locator(".welcome-game-canvas").getAttribute("aria-description")).toBe(position)
+    }
+    await page.locator(kind === "computer" ? "[data-computer-selector]" : "[data-project-task-selector]").click()
+    await page.waitForFunction(
+      (kind) =>
+        (window as unknown as { fixture: Record<string, number> }).fixture[
+          kind === "computer" ? "healthPending" : "directoryPending"
+        ] > 0,
+      kind,
+    )
+    expect(await page.locator(".session-work-context").isVisible()).toBe(true)
+    await unchanged()
+    await page.evaluate(() => {
+      const fixture = (
+        window as unknown as {
+          fixture: {
+            holdHealth: boolean
+            holdDirectories: boolean
+            releaseHealth: (() => void)[]
+            releaseDirectories: (() => void)[]
+          }
+        }
+      ).fixture
+      fixture.holdHealth = fixture.holdDirectories = false
+      for (const release of [...fixture.releaseHealth, ...fixture.releaseDirectories]) release()
+    })
+    await page.waitForFunction(() => {
+      const fixture = (window as unknown as { fixture: { healthPending: number; directoryPending: number } }).fixture
+      return !fixture.healthPending && !fixture.directoryPending
+    })
+    await unchanged()
+    await page.keyboard.press("Escape")
+    await page.waitForFunction(
+      (kind) =>
+        document.activeElement?.hasAttribute(
+          kind === "computer" ? "data-computer-selector" : "data-project-task-selector",
+        ),
+      kind,
+    )
+    await page.evaluate(() => {
+      const fixture = (window as unknown as { fixture: Record<string, unknown> }).fixture
+      fixture.holdHealth = true
+      fixture.holdDirectories = true
+      fixture.failHealth = true
+      fixture.failedDirectory = "project"
+    })
+    await page.locator(kind === "computer" ? "[data-computer-selector]" : "[data-project-task-selector]").click()
+    await page.waitForFunction(
+      (kind) =>
+        (window as unknown as { fixture: Record<string, number> }).fixture[
+          kind === "computer" ? "healthPending" : "directoryPending"
+        ] > 0,
+      kind,
+    )
+    await unchanged()
+    await page.keyboard.press("Escape")
+    await page.waitForFunction(
+      (kind) =>
+        document.activeElement?.hasAttribute(
+          kind === "computer" ? "data-computer-selector" : "data-project-task-selector",
+        ),
+      kind,
+    )
+    await page.evaluate(() => {
+      const fixture = (
+        window as unknown as { fixture: { releaseHealth: (() => void)[]; releaseDirectories: (() => void)[] } }
+      ).fixture
+      for (const release of [...fixture.releaseHealth, ...fixture.releaseDirectories]) release()
+    })
+    await page.waitForFunction(() => {
+      const fixture = (window as unknown as { fixture: { healthPending: number; directoryPending: number } }).fixture
+      return !fixture.healthPending && !fixture.directoryPending
+    })
+    await unchanged()
+    expect(errors).toEqual([])
+  }
+}, 30_000)
+
+test("project directory failures stay local and a late connection response cannot replace current paths", async () => {
+  await open()
+  await page.evaluate(() => {
+    const fixture = (window as unknown as { fixture: Record<string, unknown> }).fixture
+    fixture.failedProject = true
+    fixture.failedDirectory = "unavailable-project"
+  })
+  await page.locator("[data-project-task-selector]").click()
+  const menu = page.getByRole("dialog", { name: "Choose project", exact: true })
+  await menu.getByText("Directory unavailable", { exact: true }).waitFor()
+  expect(await menu.getByRole("button").filter({ hasText: "Unavailable project" }).isEnabled()).toBe(true)
+  expect(await menu.getByText("projects/main-folder", { exact: true }).isVisible()).toBe(true)
+  await page.keyboard.press("Escape")
+  await page.waitForFunction(() => document.activeElement?.hasAttribute("data-project-task-selector"))
+  await page.evaluate(() => {
+    const fixture = (window as unknown as { fixture: Record<string, unknown> }).fixture
+    fixture.holdDirectories = true
+  })
+  await page.locator("[data-project-task-selector]").click()
+  await page.waitForFunction(
+    () => (window as unknown as { fixture: { directoryPending: number } }).fixture.directoryPending > 0,
+  )
+  await page.evaluate(() => {
+    const fixture = (
+      window as unknown as { fixture: { holdDirectories: boolean; patch(value: { url: string }): void } }
+    ).fixture
+    fixture.holdDirectories = false
+    fixture.patch({ url: "http://next-fixture.example" })
+  })
+  await menu.getByText("projects/new-connection", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    for (const release of (window as unknown as { fixture: { releaseDirectories: (() => void)[] } }).fixture
+      .releaseDirectories)
+      release()
+  })
+  await page.waitForFunction(
+    () => !(window as unknown as { fixture: { directoryPending: number } }).fixture.directoryPending,
+  )
+  expect(await menu.getByText("projects/new-connection", { exact: true }).isVisible()).toBe(true)
+  expect(await menu.getByText("projects/main-folder", { exact: true }).count()).toBe(0)
+  expect(errors).toEqual([])
+}, 30_000)
