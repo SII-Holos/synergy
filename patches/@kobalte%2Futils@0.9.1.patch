@@ -1,0 +1,70 @@
+diff --git a/node_modules/@kobalte/utils/.bun-tag-385e9ddea9768221 b/.bun-tag-385e9ddea9768221
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/node_modules/@kobalte/utils/.bun-tag-b1f46f3b77c55c9c b/.bun-tag-b1f46f3b77c55c9c
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 448eaa2d02a217c009672cc2030bc10041b178bb..b35b93e5b152cdb6e279249650dcce7649067ce8 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -81,7 +81,7 @@ function getActiveElement(node, activeDescendant = false) {
+   if (!activeElement?.nodeName) {
+     return null;
+   }
+-  if (isFrame(activeElement) && activeElement.contentDocument) {
++  if (isFrame(activeElement) && activeElement.contentDocument?.body) {
+     return getActiveElement(
+       activeElement.contentDocument.body,
+       activeDescendant
+@@ -289,7 +289,7 @@ function getAllTabbableIn(container, includeContainer) {
+     tabbableElements2.unshift(container);
+   }
+   tabbableElements2.forEach((element, i) => {
+-    if (isFrame(element) && element.contentDocument) {
++    if (isFrame(element) && element.contentDocument?.body) {
+       const frameBody = element.contentDocument.body;
+       const allFrameTabbable = getAllTabbableIn(frameBody, false);
+       tabbableElements2.splice(i, 1, ...allFrameTabbable);
+@@ -311,7 +311,8 @@ function isElementVisible(element, childElement) {
+   return element.nodeName !== "#comment" && isStyleVisible(element) && isAttributeVisible(element, childElement) && (!element.parentElement || isElementVisible(element.parentElement, element));
+ }
+ function isStyleVisible(element) {
+-  if (!(element instanceof HTMLElement) && !(element instanceof SVGElement)) {
++  const view = element.ownerDocument.defaultView || window;
++  if (!(element instanceof view.HTMLElement) && !(element instanceof view.SVGElement)) {
+     return false;
+   }
+   const { display, visibility } = element.style;
+diff --git a/dist/index.js b/dist/index.js
+index 669bd3bf44fcd88f374046b5ecab5a204253d7fb..c62fc9c468f3cdcf852bccbb499824b177a11fe1 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -79,7 +79,7 @@ function getActiveElement(node, activeDescendant = false) {
+   if (!activeElement?.nodeName) {
+     return null;
+   }
+-  if (isFrame(activeElement) && activeElement.contentDocument) {
++  if (isFrame(activeElement) && activeElement.contentDocument?.body) {
+     return getActiveElement(
+       activeElement.contentDocument.body,
+       activeDescendant
+@@ -287,7 +287,7 @@ function getAllTabbableIn(container, includeContainer) {
+     tabbableElements2.unshift(container);
+   }
+   tabbableElements2.forEach((element, i) => {
+-    if (isFrame(element) && element.contentDocument) {
++    if (isFrame(element) && element.contentDocument?.body) {
+       const frameBody = element.contentDocument.body;
+       const allFrameTabbable = getAllTabbableIn(frameBody, false);
+       tabbableElements2.splice(i, 1, ...allFrameTabbable);
+@@ -309,7 +309,8 @@ function isElementVisible(element, childElement) {
+   return element.nodeName !== "#comment" && isStyleVisible(element) && isAttributeVisible(element, childElement) && (!element.parentElement || isElementVisible(element.parentElement, element));
+ }
+ function isStyleVisible(element) {
+-  if (!(element instanceof HTMLElement) && !(element instanceof SVGElement)) {
++  const view = element.ownerDocument.defaultView || window;
++  if (!(element instanceof view.HTMLElement) && !(element instanceof view.SVGElement)) {
+     return false;
+   }
+   const { display, visibility } = element.style;

@@ -8,6 +8,7 @@
     "./tool-registry-lazy": "./src/components/tool-registry-lazy.ts",
     "./plugin/*": "./src/plugin/*.ts",
     "./pierre": "./src/pierre/index.ts",
+    "./diff-patch-utils": "./src/components/diff-patch-utils.ts",
     "./pierre/*": "./src/pierre/*.ts",
     "./hooks": "./src/hooks/index.ts",
     "./context": "./src/context/index.ts",

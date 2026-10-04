@@ -1976,7 +1976,43 @@ export const SessionRoute = () =>
       async (c) => {
         try {
           return c.json(
-            await SessionHistory.fileDiff({ sessionID: c.req.valid("param").sessionID, ...c.req.valid("query") }),
+            await SessionHistory.fileDiffWithSignal(
+              { sessionID: c.req.valid("param").sessionID, ...c.req.valid("query") },
+              c.req.raw.signal,
+            ),
+          )
+        } catch (error) {
+          return fileHistoryFailure(error)
+        }
+      },
+    )
+    .get(
+      "/:sessionID/files/versions",
+      describeRoute({
+        summary: "Read captured before and after file versions",
+        operationId: "session.files.versions",
+        responses: {
+          200: {
+            description: "Captured file versions",
+            content: { "application/json": { schema: resolver(SnapshotSchema.FileVersions) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("param", z.object({ sessionID: Session.restoreFiles.schema.shape.sessionID })),
+      validator(
+        "query",
+        SessionHistory.FileDiffInput.omit({ sessionID: true }).extend({
+          generation: z.coerce.number().int().positive(),
+        }),
+      ),
+      async (c) => {
+        try {
+          return c.json(
+            await SessionHistory.fileVersions(
+              { sessionID: c.req.valid("param").sessionID, ...c.req.valid("query") },
+              c.req.raw.signal,
+            ),
           )
         } catch (error) {
           return fileHistoryFailure(error)

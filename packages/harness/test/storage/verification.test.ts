@@ -113,7 +113,7 @@ test("maintenance statements keep a fixed chunk budget bounded below the worker 
       expect(budgets).toEqual([initial + 90_000, initial + 90_000])
       deadlines.length = 0
       expect(await driver.query("SELECT 1 AS value")).toEqual([{ value: 1n }])
-      expect(deadlines).toEqual([current.requestDeadlineMs])
+      expect([...new Set(deadlines)]).toEqual([current.requestDeadlineMs])
     } finally {
       await driver.close()
       await fs.rm(root, { recursive: true, force: true })

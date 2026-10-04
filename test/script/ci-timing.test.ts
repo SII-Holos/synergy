@@ -38,6 +38,7 @@ test.each([
     ],
   ],
 ] as const)("%s estimates the actual isolated frontend batches", async (owner, files) => {
+  const profile = timingProfile("linux", "x64", Bun.version)
   const root = await mkdtemp(path.join(os.tmpdir(), "ci-frontend-batches-"))
   try {
     const timings = empty()

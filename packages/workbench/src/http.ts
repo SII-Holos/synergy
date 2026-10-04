@@ -10,6 +10,7 @@ import { Hono } from "hono"
 import { describeRoute } from "hono-openapi"
 import { resolver } from "hono-openapi"
 import { ExecutionRoute } from "./execution/routes"
+import { ReviewRoutes } from "./review/routes"
 
 export function registerHttp() {
   Server.registerContributions(
@@ -22,6 +23,7 @@ export function registerHttp() {
         "global-performance": new Hono().route("/global", PerformanceRoute()),
         "global-services": new Hono().route("/push", PushRoute()),
         "scoped-version-control": new Hono()
+          .route("/review", ReviewRoutes())
           .route("/session", ExecutionRoute())
           .route("/project/task-defaults", ProjectTaskDefaultsRoute())
           .get(
@@ -57,7 +59,7 @@ export function registerHttp() {
           projectOnly: true,
         },
       },
-      isScopeRequiredRoute: (pathname) => matchesPath(pathname, ["/vcs", "/project/task-defaults"]),
+      isScopeRequiredRoute: (pathname) => matchesPath(pathname, ["/vcs", "/review", "/project/task-defaults"]),
     },
     "workbench",
   )
