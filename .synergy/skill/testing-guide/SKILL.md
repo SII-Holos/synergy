@@ -154,6 +154,8 @@ For localized UI behavior, use a real Lingui `I18nProvider` with minimal English
 
 ## Use Real Isolation
 
+Create controllable deferreds before starting work that can emit observable progress. Verify release-before-wait ordering with a barrier; an optional callback assigned after publishing can discard an early signal and leave a fixture waiting until timeout.
+
 Vite fixtures pass a nonzero loopback port from the shared `fixturePort()` helper; Vite's `port: 0` selects its default port and collides across otherwise isolated package processes. Verify port-isolation changes with the default and former fixed ports occupied while running the actual affected browser suites; hold and release only task-owned listeners. Close the owning server before deleting its fixture. Keep correctness waits tied to the configured behavior and observable settlement; the test framework bounds a hung test, while an additional short race can reject valid completion under instrumentation.
 
 Per-session recovery tests must migrate only their owned session fixture. Exercise the global migration runner separately with a dedicated home; a process-wide migration scan can encounter intentionally incomplete records from unrelated suites or earlier shards.
