@@ -648,19 +648,12 @@ async function readPromptDockLayoutTokens(): Promise<PromptDockLayoutTokens> {
   const floatLine = floatLayer.split("\n").find((line) => line.includes('class="prompt-dock-float-layer'))
   const floatMatch = floatLine?.match(/class="([^"]+)"/)
   const floatLayerClass = floatMatch?.[1]
-  if (
-    !floatLayerClass ||
-    !floatLayerClass.includes("relative") ||
-    !floatLayerClass.includes("md:absolute") ||
-    !floatLayerClass.includes("md:bottom-full")
-  ) {
-    throw new Error("prompt-dock-float-layer.tsx must flow in normal mode on mobile and overlay on desktop")
-  }
+  if (!floatLayerClass) throw new Error("Missing prompt dock activity fixture classes")
 
   return { clearanceClass: clearanceMatch[1]!, floatLayerClass }
 }
 
-async function expectPromptDockAndMobileFloatFlow(css: string) {
+async function expectPromptDockActivityFlow(css: string) {
   const { clearanceClass, floatLayerClass } = await readPromptDockLayoutTokens()
   const browserType = process.env.SYNERGY_APP_LAYOUT_BROWSER === "webkit" ? webkit : chromium
   const browser = await browserType.launch({ headless: true })
@@ -668,7 +661,7 @@ async function expectPromptDockAndMobileFloatFlow(css: string) {
     const page = await browser.newPage({ viewport: { width: 1200, height: 400 } })
     await page.setContent(`
       <style>*, ::before, ::after { box-sizing: border-box; } ${css}</style>
-      <div data-dock class="session-prompt-dock" style="width: 100%; display: flex; flex-direction: column; background: #111;">
+      <div data-dock class="session-prompt-dock" style="position: absolute; bottom: 0; width: 100%; display: flex; flex-direction: column; background: #111;">
         <div data-float class="${floatLayerClass}">
           <div data-busy style="height: 40px; width: 100%;"></div>
         </div>
@@ -686,36 +679,47 @@ async function expectPromptDockAndMobileFloatFlow(css: string) {
         if (!dock || !float || !composer || !content) throw new Error("Missing prompt dock layout fixture")
         const dockRect = dock.getBoundingClientRect()
         const composerRect = composer.getBoundingClientRect()
+        content.style.setProperty("--prompt-height", `${dockRect.height}px`)
         return {
           dockPaddingTop: getComputedStyle(dock).paddingTop,
-          floatPosition: getComputedStyle(float).position,
+          dockBottom: dockRect.bottom,
+          dockHeight: dockRect.height,
+          composerBottom: composerRect.bottom,
           composerOffset: composerRect.top - dockRect.top,
           contentPaddingBottom: getComputedStyle(content).paddingBottom,
         }
       })
 
-    // Floating desktop controls do not move the stable input anchor.
     const desktop = await measure()
     expect(desktop.dockPaddingTop).toBe("0px")
-    expect(desktop.floatPosition).toBe("absolute")
-    expect(desktop.composerOffset).toBe(0)
-    expect(desktop.contentPaddingBottom).toBe("192px")
+    expect(desktop.dockBottom).toBe(400)
+    expect(desktop.dockHeight).toBe(128)
+    expect(desktop.composerBottom).toBe(392)
+    expect(desktop.composerOffset).toBe(40)
+    expect(desktop.contentPaddingBottom).toBe("160px")
 
-    // Mobile: the band collapses to zero, the float layer flows in normal
-    // document order, so a busy control pushes the composer down instead of
-    // covering the last messages.
     await page.setViewportSize({ width: 390, height: 400 })
     const mobileBusy = await measure()
     expect(mobileBusy.dockPaddingTop).toBe("0px")
-    expect(mobileBusy.floatPosition).toBe("relative")
+    expect(mobileBusy.dockBottom).toBe(400)
+    expect(mobileBusy.dockHeight).toBe(128)
+    expect(mobileBusy.composerBottom).toBe(392)
     expect(mobileBusy.composerOffset).toBe(40)
     expect(mobileBusy.contentPaddingBottom).toBe("24px")
 
-    // Idle mobile: the float layer collapses to zero height - no residual
-    // empty band above the composer.
     await page.evaluate(() => document.querySelector("[data-busy]")?.remove())
     const mobileIdle = await measure()
+    expect(mobileIdle.dockBottom).toBe(400)
+    expect(mobileIdle.dockHeight).toBe(88)
+    expect(mobileIdle.composerBottom).toBe(392)
     expect(mobileIdle.composerOffset).toBe(0)
+    await page.setViewportSize({ width: 1200, height: 400 })
+    const desktopIdle = await measure()
+    expect(desktopIdle.dockBottom).toBe(400)
+    expect(desktopIdle.dockHeight).toBe(88)
+    expect(desktopIdle.composerBottom).toBe(392)
+    expect(desktopIdle.composerOffset).toBe(0)
+    expect(desktopIdle.contentPaddingBottom).toBe("120px")
   } finally {
     await browser.close()
   }
@@ -925,7 +929,7 @@ describe("app production build contract", () => {
       await expectSessionWorkbenchPaneTracksBottomSurface(css)
       await expectTaskDetailsBadgePreservesIconCenter(css)
       await expectPromptDockKeepsReadableWidth(css)
-      await expectPromptDockAndMobileFloatFlow(css)
+      await expectPromptDockActivityFlow(css)
       await expectStatusbarSubsessionContentFillsBody(css)
       await expectFileWorkbenchExplorerResizeMatchesMode(css)
       await expectAttachmentToolbarFitsNarrowPanel(attachmentWorkbenchCss)
