@@ -7,6 +7,7 @@ import { ScopeContext } from "../scope/context"
 import { SnapshotSchema } from "./snapshot-schema"
 import { SnapshotGit } from "./snapshot-git"
 import { SnapshotCapture } from "./snapshot-capture"
+import { SnapshotDurability } from "./snapshot-durability"
 import { SnapshotStore } from "./snapshot-store"
 import { SnapshotLink } from "./snapshot-link"
 import { SnapshotRestore } from "./snapshot-restore"
@@ -33,11 +34,21 @@ export namespace Snapshot {
     if (!source) return
     await WorkspaceBinding.validate(source.id, ScopeContext.current.scope.id, source.generation)
     if ((await Config.current()).snapshot === false) return
+    const started = performance.now()
     try {
       return await SnapshotStore.withSession(sessionID, () => trackImpl(sessionID, signal, onOmissions), signal)
     } catch (error) {
       if (signal?.aborted) return undefined
       throw error
+    } finally {
+      ObservabilityMetrics.record({
+        name: "snapshot.track.total.duration",
+        value: performance.now() - started,
+        unit: "ms",
+        module: "session",
+        sessionID,
+        scopeID: ScopeContext.current.scope.id,
+      })
     }
   }
 
@@ -68,28 +79,58 @@ export namespace Snapshot {
       { ...info, content: { revision: info.content?.revision ?? 0, manifest } },
       store,
     )
+    const started = performance.now()
     return SnapshotStore.withSession(
       sessionID,
       async () => {
         const operation = SnapshotStore.current()
-        await SnapshotStore.initialize(operation)
+        await phase("initialize", () => SnapshotStore.initialize(operation))
         await SnapshotCapture.refresh(operation, signal, { tree, store }, onOmissions)
-        const result = await gitSpawn(
-          ["git", "--git-dir", operation.repository, "write-tree"],
-          path.dirname(operation.repository),
-          undefined,
-          signal,
+        const options = await SnapshotDurability.treeOptions(operation.repository, signal)
+        const result = await phase("tree", () =>
+          gitSpawn(
+            ["git", ...options, "--git-dir", operation.repository, "write-tree"],
+            path.dirname(operation.repository),
+            undefined,
+            signal,
+          ),
         )
         if (result.exitCode !== 0 || !result.text.trim())
           throw new SnapshotStore.StorageError("Snapshot content could not be retained")
         const hash = result.text.trim()
-        if (!(await SnapshotStore.retainCurrent(hash, signal)))
+        if (!(await phase("retain", () => SnapshotStore.retainCurrent(hash, signal))))
           throw new SnapshotStore.StorageError("Snapshot retention failed")
         return hash
       },
       signal,
       { source },
+    ).finally(() =>
+      ObservabilityMetrics.record({
+        name: "snapshot.track.total.duration",
+        value: performance.now() - started,
+        unit: "ms",
+        module: "session",
+        sessionID,
+        scopeID: info.scopeID,
+      }),
     )
+  }
+
+  async function phase<T>(name: string, fn: () => Promise<T>) {
+    const started = performance.now()
+    try {
+      return await fn()
+    } finally {
+      const operation = SnapshotStore.current()
+      ObservabilityMetrics.record({
+        name: `snapshot.track.${name}.duration`,
+        value: performance.now() - started,
+        unit: "ms",
+        module: "storage",
+        sessionID: operation.sessionID,
+        scopeID: operation.scopeID,
+      })
+    }
   }
 
   async function trackImpl(
@@ -101,17 +142,15 @@ export namespace Snapshot {
     const started = Date.now()
     log.debug("track start", { sessionID, cwd: ScopeContext.current.directory })
     const git = gitdir()
-    await SnapshotStore.initialize(SnapshotStore.current())
+    await phase("initialize", () => SnapshotStore.initialize(SnapshotStore.current()))
     const addResult = await refreshIndex(sessionID, signal, onOmissions)
     if (!addResult) {
       log.warn("track add failed", { sessionID, duration: Date.now() - started })
       return undefined
     }
-    const writeResult = await gitSpawn(
-      ["git", "--git-dir", git, "write-tree"],
-      ScopeContext.current.directory,
-      undefined,
-      signal,
+    const options = await SnapshotDurability.treeOptions(git, signal)
+    const writeResult = await phase("tree", () =>
+      gitSpawn(["git", ...options, "--git-dir", git, "write-tree"], ScopeContext.current.directory, undefined, signal),
     )
     if (writeResult.exitCode !== 0 || !writeResult.text.trim()) {
       log.warn("track write-tree failed", { sessionID, exitCode: writeResult.exitCode, duration: Date.now() - started })
@@ -120,7 +159,7 @@ export namespace Snapshot {
     const source = workspace()!
     await WorkspaceBinding.validate(source.id, ScopeContext.current.scope.id, source.generation)
     const hash = writeResult.text.trim()
-    if (!(await SnapshotStore.retainCurrent(hash, signal))) return undefined
+    if (!(await phase("retain", () => SnapshotStore.retainCurrent(hash, signal)))) return undefined
     log.info("tracking", { hash, cwd: ScopeContext.current.directory, git, duration: Date.now() - started })
     ObservabilityMetrics.record({
       name: "snapshot.track.duration",
@@ -128,6 +167,7 @@ export namespace Snapshot {
       unit: "ms",
       module: "session",
       sessionID,
+      scopeID: ScopeContext.current.scope.id,
     })
     return hash
   }

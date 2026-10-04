@@ -64,7 +64,6 @@ export namespace SnapshotPack {
       )
       if (!/^[0-9a-f]{40}$/.test(hash)) throw new Error("Snapshot packing did not return a valid pack identity")
       const staged = path.join(directory, "pack-" + hash)
-      await SnapshotGit.checked(repository, ["verify-pack", staged + ".idx"], options)
       const covered = db.prepare("DELETE FROM missing WHERE oid = ?")
       for await (const line of SnapshotGit.lines(repository, ["verify-pack", "-v", staged + ".idx"], options)) {
         const oid = line.split(" ")[0]
@@ -73,27 +72,7 @@ export namespace SnapshotPack {
       if (db.query("SELECT 1 FROM missing LIMIT 1").get())
         throw new Error("Verified snapshot pack omitted a loose object")
       const pack = path.join(objects, "pack", "pack-" + hash)
-      for (const suffix of [".pack", ".idx"]) {
-        await fs.chmod(staged + suffix, 0o600)
-        const file = await fs.open(staged + suffix, "r+")
-        try {
-          await file.sync()
-        } finally {
-          await file.close()
-        }
-        await fs.link(staged + suffix, pack + suffix).catch((error: NodeJS.ErrnoException) => {
-          if (error.code !== "EEXIST") throw error
-        })
-      }
-      await SnapshotGit.checked(repository, ["verify-pack", pack + ".idx"], options)
-      if (process.platform !== "win32") {
-        const parent = await fs.open(path.dirname(pack), "r")
-        try {
-          await parent.sync()
-        } finally {
-          await parent.close()
-        }
-      }
+      await SnapshotGit.publishPack(repository, staged, options.signal)
       await SnapshotGit.checked(repository, ["prune-packed"], options)
       const stats = await Promise.all([fs.stat(pack + ".pack"), fs.stat(pack + ".idx")])
       const packBytes = stats.reduce((sum, stat) => sum + stat.blocks * 512, 0)
