@@ -20,8 +20,14 @@ inputs:
     description: Cache Rust dependencies and compilation for native builders
     default: "false"
   build-cache:
-    description: Restore Rust compilation caches
+    description: Restore build and immutable benchmark package caches
     default: "true"
+  benchmark-cache:
+    description: Restore verified external benchmark engine objects and indexes
+    default: "false"
+  cache-scope:
+    description: Keep cache writes from independent execution units separate
+    default: "shared"
   workspaces:
     description: Space-separated workspace dependency filters
     default: ""
@@ -42,6 +48,20 @@ runs:
         path: ~/.bun/install/cache
         key: bun-downloads-${{ runner.os }}-${{ runner.arch }}-1.4.2-${{ hashFiles('bun.lock') }}
         restore-keys: bun-downloads-${{ runner.os }}-${{ runner.arch }}-1.4.2-
+    - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      if: inputs.policy == 'true'
+      with:
+        path: node_modules/.cache/prettier
+        key: prettier-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json', '.prettierignore', '.prettierrc*', 'prettier.config.*') }}-${{ github.sha }}
+        restore-keys: prettier-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json', '.prettierignore', '.prettierrc*', 'prettier.config.*') }}-
+    - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      if: inputs.benchmark-cache == 'true' && inputs.build-cache == 'true'
+      with:
+        path: |
+          .artifacts/benchmark/cache/objects
+          .artifacts/benchmark/cache/indexes
+        key: benchmark-engines-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-bun1.4.2-${{ hashFiles('benchmark/src/synergy_bench/engines.py', 'benchmark/src/synergy_bench/cache.py', 'benchmark/uv.lock') }}-${{ inputs.cache-scope }}-${{ github.sha }}
+        restore-keys: benchmark-engines-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-bun1.4.2-${{ hashFiles('benchmark/src/synergy_bench/engines.py', 'benchmark/src/synergy_bench/cache.py', 'benchmark/uv.lock') }}-${{ inputs.cache-scope }}-
     - name: Native compiler identity
       if: inputs.native == 'true' && inputs.build-cache == 'true'
       id: rust-key

@@ -2,14 +2,11 @@ import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:te
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
-import { createServer, type ViteDevServer } from "vite"
-import solid from "vite-plugin-solid"
-import tailwind from "@tailwindcss/vite"
-import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 
 let browser: Browser
 let page: Page
-let server: ViteDevServer
+let server: BrowserFixture
 let fixture: string
 let baseURL: string
 const errors: string[] = []
@@ -113,40 +110,17 @@ beforeAll(async () => {
   `,
   )
   const runtime = path.join(fixture, "runtime.ts")
-  server = await createServer({
-    configFile: false,
+  server = await createBrowserFixture({
     root: fixture,
-    plugins: [solid(), tailwind()],
-    cacheDir: path.join(fixture, ".vite"),
-    optimizeDeps: {
-      include: [
-        "solid-js",
-        "solid-js/web",
-        "solid-js/store",
-        "solid-js/jsx-runtime",
-        "@lingui/core",
-        "@lingui/solid",
-        "zod",
-      ],
-      noDiscovery: true,
-    },
-    resolve: {
-      alias: Object.fromEntries([
-        ...["locale", "sdk", "sync", "session-data-view"].map((name) => ["@/context/" + name, runtime]),
-        ["@/composables/use-navigate-to-session", runtime],
-        ["@solidjs/router", runtime],
-        ["@", path.resolve(import.meta.dir, "../../../src")],
-      ]),
-    },
-    server: {
-      host: "127.0.0.1",
-      port: await fixturePort(),
-      fs: { allow: [path.resolve(import.meta.dir, "../../../..")] },
-    },
+    styled: true,
+    aliases: [
+      ...["locale", "sdk", "sync", "session-data-view"].map((name) => ["@/context/" + name, runtime]),
+      ["@/composables/use-navigate-to-session", runtime],
+      ["@solidjs/router", runtime],
+      ["@", path.resolve(import.meta.dir, "../../../src")],
+    ].map(([find, replacement]) => ({ find, replacement })),
   })
-  await server.listen()
-  await server.warmupRequest("/main.tsx")
-  baseURL = server.resolvedUrls!.local[0]!
+  baseURL = server.url
   browser = await chromium.launch({ headless: true })
 }, 60000)
 

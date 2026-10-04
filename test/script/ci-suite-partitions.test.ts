@@ -2,7 +2,7 @@ import { expect, test } from "bun:test"
 import path from "node:path"
 import { catalog } from "../../script/ci/catalog"
 import { collectTests } from "../../packages/testing/script/batches"
-import { executionBatches } from "../../packages/testing/script/run"
+import { suiteBatches } from "../../script/ci/suites"
 
 test("slow package partitions execute every file once without splitting an isolation batch", async () => {
   const tasks = await catalog()
@@ -22,7 +22,7 @@ test("slow package partitions execute every file once without splitting an isola
     const observed = suites.flatMap((suite) => suite.files!)
     expect(observed.toSorted()).toEqual(expected)
     expect(new Set(observed).size).toBe(observed.length)
-    for (const batch of executionBatches(expected, path.resolve(owner))) {
+    for (const batch of suiteBatches(expected, path.resolve(owner), owner)) {
       expect(suites.filter((suite) => batch.files.some((file) => suite.files!.includes(file)))).toHaveLength(1)
     }
   }

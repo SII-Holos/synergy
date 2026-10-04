@@ -1,15 +1,12 @@
-import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
-import { createServer, type ViteDevServer } from "vite"
-import solidPlugin from "vite-plugin-solid"
-import tailwind from "@tailwindcss/vite"
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 
 let browser: Browser
 let page: Page
-let server: ViteDevServer
+let server: BrowserFixture
 let fixtureDirectory: string
 let baseUrl: string
 let pageErrors: string[] = []
@@ -319,51 +316,24 @@ beforeAll(async () => {
        export const useNavigateToSession = () => () => {}`,
     ),
   ])
-  server = await createServer({
-    configFile: false,
+  server = await createBrowserFixture({
     root: fixtureDirectory,
-    plugins: [solidPlugin(), tailwind()],
-    cacheDir: path.join(fixtureDirectory, ".vite"),
-    optimizeDeps: {
-      include: [
-        "solid-js",
-        "solid-js/web",
-        "solid-js/jsx-runtime",
-        "@solidjs/router",
-        "zod",
-        "@lingui/core",
-        "@lingui/solid",
-        "fuzzysort",
-      ],
-      noDiscovery: true,
-    },
-    resolve: {
-      alias: {
-        "@/context/locale": localeStubPath,
-        "@/context/sdk": sdkStubPath,
-        "@/context/session-data-view": viewStubPath,
-        "@/context/global-sync": path.join(fixtureDirectory, "sync-stub.ts"),
-        "@/context/sync": path.join(fixtureDirectory, "scope-sync-stub.ts"),
-        "@/context/local": path.join(fixtureDirectory, "layout-boundary-stub.ts"),
-        "@/context/file": path.join(fixtureDirectory, "layout-boundary-stub.ts"),
-        "@/context/execution": path.join(fixtureDirectory, "layout-boundary-stub.ts"),
-        "@/components/workspace/browser/browser-catalog": path.join(fixtureDirectory, "layout-boundary-stub.ts"),
-        "@/composables/use-navigate-to-session": path.join(fixtureDirectory, "layout-boundary-stub.ts"),
-        "@": path.resolve(import.meta.dir, "../../../src"),
-      },
-    },
-    server: {
-      host: "127.0.0.1",
-      port: await fixturePort(),
-      fs: { allow: [path.resolve(import.meta.dir, "../../../..")] },
-    },
+    styled: true,
+    aliases: Object.entries({
+      "@/context/locale": localeStubPath,
+      "@/context/sdk": sdkStubPath,
+      "@/context/session-data-view": viewStubPath,
+      "@/context/global-sync": path.join(fixtureDirectory, "sync-stub.ts"),
+      "@/context/sync": path.join(fixtureDirectory, "scope-sync-stub.ts"),
+      "@/context/local": path.join(fixtureDirectory, "layout-boundary-stub.ts"),
+      "@/context/file": path.join(fixtureDirectory, "layout-boundary-stub.ts"),
+      "@/context/execution": path.join(fixtureDirectory, "layout-boundary-stub.ts"),
+      "@/components/workspace/browser/browser-catalog": path.join(fixtureDirectory, "layout-boundary-stub.ts"),
+      "@/composables/use-navigate-to-session": path.join(fixtureDirectory, "layout-boundary-stub.ts"),
+      "@": path.resolve(import.meta.dir, "../../../src"),
+    }).map(([find, replacement]) => ({ find, replacement })),
   })
-  await server.listen()
-  await server.warmupRequest("/main.tsx")
-
-  const url = server.resolvedUrls?.local[0]
-  if (!url) throw new Error("Expected Vite test server URL")
-  baseUrl = url
+  baseUrl = server.url
 
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 800, height: 600 } })
