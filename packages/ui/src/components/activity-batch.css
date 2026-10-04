@@ -63,6 +63,17 @@
   transform: rotate(90deg);
 }
 
+@media (hover: hover) and (pointer: fine) {
+  [data-slot="process-reasoning-trigger"] > [data-component="icon"]:last-child {
+    opacity: 0;
+  }
+
+  [data-slot="process-reasoning-trigger"]:is(:hover, :focus-visible, [aria-expanded="true"])
+    > [data-component="icon"]:last-child {
+    opacity: 1;
+  }
+}
+
 [data-slot="activity-batch-trigger"][hidden],
 [data-slot="activity-reasoning"][hidden] {
   display: none;

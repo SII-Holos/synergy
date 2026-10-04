@@ -4,8 +4,6 @@ import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createDisclosureMotionRef } from "@ericsanchezok/synergy-ui/hooks"
 import "./conversation-rows.css"
 import { Dynamic } from "solid-js/web"
@@ -46,22 +44,14 @@ export function VirtualConversationRows(
   const [located, setLocated] = createSignal<{ messageID: string; partID?: string }>()
   const [margin, setMargin] = createSignal(0)
   const [retained, setRetained] = createSignal<string[]>([])
-  const [interactionBlocks, setInteractionBlocks] = createSignal<string[]>([])
   const [readingBlocks, setReadingBlocks] = createSignal<string[]>([])
   const [interactionRoots, setInteractionRoots] = createSignal<string[]>([])
   const [expanded, setExpanded] = createSignal<ReadonlyMap<string, boolean>>(new Map())
   const activityView = {
     getExpanded: (key: string) => props.activityView?.getExpanded(key) ?? expanded().get(key),
     setExpanded: (key: string, value: boolean) => {
-      const set = (id: string, open: boolean) => {
-        if (props.activityView) props.activityView.setExpanded(id, open)
-        else setExpanded((previous) => new Map(previous).set(id, open))
-      }
-      if (!value && key.startsWith("turn-process:")) {
-        for (const row of requestedRows())
-          if (row.kind === "activity" && `turn-process:${row.root.id}` === key) set(row.activity.key, false)
-      }
-      set(key, value)
+      if (props.activityView) props.activityView.setExpanded(key, value)
+      else setExpanded((previous) => new Map(previous).set(key, value))
     },
   }
   const processState = createMemo((previous: Map<string, { working: boolean; held: boolean }> | undefined) => {
@@ -96,14 +86,6 @@ export function VirtualConversationRows(
       messagesFor: (root) => props.turnProjection().turnMessagesFor(root as UserMessage),
       summaries: content.summaries,
       page: content.page,
-      activity: (block) =>
-        activityView.getExpanded(block.key) ??
-        (props.activityDisplay() === "full" ||
-          ((interactionBlocks().includes(block.key) || readingBlocks().includes(block.key)) &&
-            !!previous?.find((row) => row.key === block.key)?.activity?.open) ||
-          (props.activityDisplay() !== "minimal" &&
-            (block.active ||
-              (props.scrolledUp() && !!previous?.find((row) => row.key === block.key)?.activity?.open)))),
       process: (root) => {
         const state = processState().get(root.id)!
         return {
@@ -279,7 +261,6 @@ export function VirtualConversationRows(
   const pinInteraction = () => {
     const ids = new Set<string>()
     const roots = new Set<string>()
-    const blocks = new Set<string>()
     const add = (node: Node | null) => {
       const element = node instanceof Element ? node : node?.parentElement
       const row = element?.closest<HTMLElement>("[data-display-row]")
@@ -289,7 +270,6 @@ export function VirtualConversationRows(
           ?.parentElement?.closest<HTMLElement>("[data-display-row]")
         ids.add(owner?.dataset.displayRow ?? row.dataset.displayRow!)
         roots.add(row.dataset.turnRoot!)
-        if (row.dataset.activityBlock) blocks.add(row.dataset.activityBlock)
       }
     }
     add(document.activeElement)
@@ -309,7 +289,6 @@ export function VirtualConversationRows(
     }
     setRetained([...ids])
     setInteractionRoots([...roots])
-    setInteractionBlocks([...blocks])
   }
   onMount(() => {
     const measure = () => {
@@ -348,18 +327,6 @@ export function VirtualConversationRows(
               .some((message) => message.id === messageID)),
       )
       if (root && root.id !== messageID) activityView.setExpanded(`turn-process:${root.id}`, true)
-      if (partID || root?.id !== messageID) {
-        const block = requestedRows().find(
-          (row) =>
-            row.kind === "activity" &&
-            row.activity.entries.some(
-              (entry) =>
-                entry.message.id === messageID &&
-                (!partID || (entry.kind === "body" && entry.parts.some((part) => part.id === partID))),
-            ),
-        )
-        if (block?.activity) activityView.setExpanded(block.activity.key, true)
-      }
       const location = { messageID, partID }
       const owns = (row: ConversationRow) => ownsLocation(row, location)
       let index = rows().findIndex(owns)
@@ -779,15 +746,7 @@ function ConversationDisplayRow(
           }
         >
           <div data-component="conversation-activity">
-            <button
-              type="button"
-              data-slot="activity-batch-trigger"
-              aria-expanded={row().activity?.open}
-              onClick={() => {
-                const block = row().activity
-                if (block) input.activityView.setExpanded(block.key, !block.open)
-              }}
-            >
+            <div data-slot="activity-batch-summary">
               <span>
                 {row().activity?.tools
                   ? _({
@@ -799,19 +758,16 @@ function ConversationDisplayRow(
                     ? _({ id: "session.process.records", message: "Process history" })
                     : _({ id: "session.reasoning.title", message: "Reasoning" })}
               </span>
-              <Icon name={getSemanticIcon("navigation.expand")} size="small" />
-            </button>
-            <Show when={row().activity?.open}>
-              <ConversationActivityBody
-                context={props}
-                row={row}
-                activityView={input.activityView}
-                onReading={input.onReading}
-                submissionFor={input.submissionFor}
-                executionFor={input.executionFor}
-                onRestoreChanges={input.onRestoreChanges}
-              />
-            </Show>
+            </div>
+            <ConversationActivityBody
+              context={props}
+              row={row}
+              activityView={input.activityView}
+              onReading={input.onReading}
+              submissionFor={input.submissionFor}
+              executionFor={input.executionFor}
+              onRestoreChanges={input.onRestoreChanges}
+            />
           </div>
         </Show>
       </Show>

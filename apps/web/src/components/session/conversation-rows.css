@@ -13,8 +13,11 @@
 .conversation-display-row[data-row-kind="activity"] {
   padding-block-end: 16px;
 }
-[data-component="conversation-activity"] > [data-slot="activity-batch-trigger"] {
+[data-slot="activity-batch-summary"] {
   margin-block-end: 4px;
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 20px;
 }
 .conversation-display-row[data-row-kind="footer"] {
   padding-block-end: 28px;

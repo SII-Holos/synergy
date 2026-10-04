@@ -119,8 +119,7 @@ test("a history locator retains its Part through late preceding summaries and re
       const item = part?.getBoundingClientRect()
       return item && item.bottom > bounds.top && item.top < bounds.bottom
     })
-    const scroller = page.locator("[data-scroller]")
-    await scroller.hover()
+    await page.getByText("Final answer stays mounted.", { exact: true }).hover()
     await page.mouse.wheel(0, -1000)
     await page.waitForFunction(() => {
       const part = document.querySelector('[data-part-id="answer"]')
@@ -164,6 +163,55 @@ test("a late child delivery has one chronological process row and opens the righ
   })
   expect(await page.getByText("Captured child result", { exact: true }).count()).toBe(0)
 })
+
+test("one process activation reveals actions without another disclosure", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.grow(20)
+    window.__conversationProcess.stream()
+    window.__conversationProcess.complete()
+  })
+  await page.waitForFunction(() => !document.querySelector('[data-row-kind="activity"]'))
+  const trigger = page.locator('[data-slot="turn-process-trigger"]')
+  await trigger.press("Enter")
+  await frames()
+  expect(await page.locator('[data-component="conversation-activity"] > button').count()).toBe(0)
+  await page.locator('[data-slot="activity-step-trigger"]').last().waitFor()
+  expect(await page.locator('[data-component="process-viewport"]').count()).toBeGreaterThan(0)
+  await trigger.press("Enter")
+  await page.waitForFunction(() => !document.querySelector('[data-row-kind="activity"]'))
+}, 30000)
+
+test("reasoning chevrons appear on hover and focus and remain visible on touch", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => window.__conversationProcess.mode("full"))
+  const trigger = page.locator('[data-slot="process-reasoning-trigger"]').first()
+  await trigger.waitFor()
+  const arrow = trigger.locator('[data-component="icon"]').last()
+  await page.mouse.move(0, 0)
+  expect(await arrow.evaluate((element) => getComputedStyle(element).opacity)).toBe("0")
+  await trigger.hover()
+  expect(await arrow.evaluate((element) => getComputedStyle(element).opacity)).toBe("1")
+  await page.mouse.move(0, 0)
+  await trigger.focus()
+  expect(await arrow.evaluate((element) => getComputedStyle(element).opacity)).toBe("1")
+  const touch = await browser.newPage({ hasTouch: true, viewport: { width: 375, height: 812 } })
+  try {
+    await touch.goto(url)
+    await touch.getByText("I will check the project first.", { exact: true }).waitFor()
+    await touch.evaluate(() => window.__conversationProcess.mode("full"))
+    const arrow = touch
+      .locator('[data-slot="process-reasoning-trigger"]')
+      .first()
+      .locator('[data-component="icon"]')
+      .last()
+    expect(await arrow.evaluate((element) => getComputedStyle(element).opacity)).toBe("1")
+  } finally {
+    await touch.close()
+  }
+}, 30000)
 
 test("tools and reasoning share compact spacing across virtual chunks", async () => {
   await page.goto(url)
@@ -315,14 +363,17 @@ test("local reading survives new actions, history prepend and reopening without 
   expect(Math.abs((await part.evaluate((el) => el.getBoundingClientRect().top)) - before)).toBeLessThan(2)
   expect(await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)).toBe(outer)
   await page.locator('[data-slot="process-latest"]').last().waitFor()
-  const header = page.locator('[data-slot="activity-batch-trigger"]').last()
+  const header = page.locator('[data-slot="turn-process-trigger"]')
   const relative = await part.evaluate(
     (el) =>
       el.getBoundingClientRect().top - el.closest('[data-component="process-viewport"]')!.getBoundingClientRect().top,
   )
   await header.click()
+  await page.waitForFunction(() => !document.querySelector('[data-row-kind="activity"]'))
   await header.click()
   await frames()
+  await frames()
+  await page.locator("[data-scroller]").evaluate((element, offset) => (element.scrollTop = offset), outer)
   await frames()
   expect(
     Math.abs(
@@ -345,7 +396,6 @@ test("compaction has one compact lifecycle row and exposes running status while 
   })
   expect(await page.locator('[data-slot="turn-process-trigger"]').textContent()).toContain("Compressing context")
   await page.locator('[data-slot="turn-process-trigger"]').click()
-  await page.locator('[data-slot="activity-batch-trigger"]').last().click()
   const card = page.locator('[data-component="compaction-card"]')
   await card.waitFor()
   expect(await card.count()).toBe(1)
@@ -397,7 +447,8 @@ test("logical execution folds across messages, preserves prose and retains the f
       throw new Error(JSON.stringify({ url: page.url(), errors, html: await page.content() }), { cause: error })
     })
   expect(await page.locator('[data-row-kind="activity"]').count()).toBe(2)
-  expect(await page.locator('[data-slot="activity-batch-trigger"][aria-expanded="true"]').count()).toBe(1)
+  expect(await page.locator('[data-component="conversation-activity"] > button').count()).toBe(0)
+  expect(await page.locator('[data-component="process-viewport"]').count()).toBe(2)
   await page.evaluate(() => window.__conversationProcess.stream())
   await frames()
   await page.locator("[data-scroller]").evaluate((el) => (el.scrollTop = el.scrollHeight))
@@ -429,8 +480,7 @@ test("logical execution folds across messages, preserves prose and retains the f
     .catch(async (error) => {
       throw new Error(JSON.stringify({ errors, html: await page.locator("#root").innerHTML() }), { cause: error })
     })
-  expect(await page.locator('[data-slot="activity-batch-trigger"][aria-expanded="true"]').count()).toBe(0)
-  await page.locator('[data-slot="activity-batch-trigger"]').last().click()
+  expect(await page.locator('[data-component="conversation-activity"] > button').count()).toBe(0)
   await page.locator('[data-slot="activity-step"]').nth(1).waitFor()
   expect(errors).toEqual([])
 }, 60000)
@@ -477,9 +527,11 @@ test("preparing a turn reports submission without a premature Details-only foote
   expect(errors).toEqual([])
 }, 30000)
 
-test("focusing a closed activity header preserves its state until the first explicit activation", async () => {
+test("focusing a closed process header preserves its state until the first explicit activation", async () => {
   await page.goto(url)
-  const trigger = page.locator('[data-slot="activity-batch-trigger"]').first()
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => window.__conversationProcess.mode("minimal"))
+  const trigger = page.locator('[data-slot="turn-process-trigger"]')
   await trigger.waitFor()
   expect(await trigger.getAttribute("aria-expanded")).toBe("false")
   await trigger.focus()
