@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, expect, test } from "bun:test"
-import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
