@@ -7,6 +7,7 @@ import ignore, { type Ignore } from "ignore"
 import { RuntimeContext } from "../lifecycle/context"
 import { SnapshotLink } from "./snapshot-link"
 import { SnapshotGit } from "./snapshot-git"
+import { SnapshotObjects } from "./snapshot-objects"
 import type { SnapshotStore } from "./snapshot-store"
 import { WorkspaceTree } from "../workspace/tree"
 import type { BlobStore } from "../workspace/content"
@@ -18,6 +19,7 @@ export namespace SnapshotCapture {
   const MAX_ENTRIES = 100_000
   const MAX_DEPTH = 256
   const CAPTURE_CONCURRENCY = 16
+  const CAPTURE_BYTES = 32 * 1024 * 1024
   const EXCLUDED_DIRS = new Set([
     ".git",
     ".synergy",
@@ -101,18 +103,6 @@ export namespace SnapshotCapture {
     }
   }
 
-  function quote(filename: string) {
-    return (
-      '"' +
-      filename.replace(/[\x00-\x1f\x7f"\\]/g, (character) =>
-        character === '"' || character === "\\"
-          ? "\\" + character
-          : "\\" + character.charCodeAt(0).toString(8).padStart(3, "0"),
-      ) +
-      '"'
-    )
-  }
-
   export type Content = { tree: WorkspaceTree.Manifest; store: BlobStore }
   export async function refresh(
     operation: SnapshotStore.Operation,
@@ -143,6 +133,7 @@ export namespace SnapshotCapture {
     onOmissions?: (omissions: SnapshotSchema.Omission[]) => void,
   ) {
     abort.throwIfAborted()
+    const captureStarted = performance.now()
     const omissions: SnapshotSchema.Omission[] = []
     const omit = (file: string, reason: SnapshotSchema.Omission["reason"]) => {
       if (!onOmissions) throw new Error(`Snapshot file could not be captured: ${file}`)
@@ -197,47 +188,24 @@ export namespace SnapshotCapture {
       if (!globalRules) throw new Error("Snapshot global ignore file exceeds limit")
       initial.push({ prefix: "", matcher: ignore({ ignorecase }).add(globalRules.toString("utf8")) })
     }
-    const directory = await fs.mkdtemp(path.join(operation.temporary, "capture-"))
     const current = new Map<string, Entry>()
     const available = new Set([...previous.values()].map((entry) => entry.hash))
-    const pending = new Map<string, string>()
-    let pendingBytes = 0
+    await using objects = SnapshotObjects.create(operation, abort, available)
     let count = 0
-    const timing = { read: 0, objects: 0 }
-    const flush = async () => {
-      if (!pending.size) return
-      const started = performance.now()
-      // Provenance: https://git-scm.com/docs/git-hash-object (--no-filters).
-      // Immutable native bytes bypass attributes, clean filters and timestamp
-      // shortcuts; no Git command enters the user's working directory.
-      const result = await run(
-        ["hash-object", "-w", "--no-filters", "--stdin-paths"],
-        [...pending.values()].map(quote).join("\n") + "\n",
-      )
-      if (result.exitCode !== 0 || result.text.trim() !== [...pending.keys()].join("\n"))
-        throw new Error(`Snapshot object write failed: ${result.stderr}`)
-      for (const hash of pending.keys()) available.add(hash)
-      await Promise.all([...pending.values()].map((filename) => fs.unlink(filename)))
-      pending.clear()
-      pendingBytes = 0
-      timing.objects += performance.now() - started
-    }
+    let peak = 0
+    let bytesRead = 0
+    const timing = { read: 0, objects: 0, hash: 0, index: 0 }
     const retainMany = async (entries: Captured[]) => {
       const started = performance.now()
-      const writes: Promise<void>[] = []
       for (const { name, mode, bytes } of entries) {
+        bytesRead += bytes.length
+        const hashStarted = performance.now()
         const hash = createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex")
+        timing.hash += performance.now() - hashStarted
         current.set(name, { mode, hash })
-        if (available.has(hash) || pending.has(hash)) continue
-        const filename = path.join(directory, hash)
-        pending.set(hash, filename)
-        pendingBytes += bytes.length
-        writes.push(fs.writeFile(filename, bytes, { flag: "wx", mode: 0o600 }))
+        await objects.add({ hash, bytes })
       }
-      const settled = await Promise.allSettled(writes)
-      for (const result of settled) if (result.status === "rejected") throw result.reason
       timing.objects += performance.now() - started
-      if (pending.size >= 512 || pendingBytes >= 16 * 1024 * 1024) await flush()
     }
     const retain = (name: string, mode: string, bytes: Uint8Array) => retainMany([{ name, mode, bytes }])
     const visit = async (relative: string, inherited: Rule[], ignoredParent: boolean, depth: number): Promise<void> => {
@@ -264,12 +232,14 @@ export namespace SnapshotCapture {
       }
       const entries = await fs.opendir(absolute)
       let captures: Array<Promise<PromiseSettledResult<Captured | undefined>>> = []
+      let admittedBytes = 0
       let started = 0
       const finishBatch = async () => {
         const batch = captures
         captures = []
         if (!batch.length) return
         const settled = await Promise.all(batch)
+        admittedBytes = 0
         timing.read += performance.now() - started
         const retained: Captured[] = []
         for (const result of settled) {
@@ -299,6 +269,14 @@ export namespace SnapshotCapture {
             continue
           }
           if (ignored && !previous.has(name)) continue
+          const size = stat.isSymbolicLink()
+            ? SnapshotLink.maximumBytes
+            : stat.size <= MAX_FILE_BYTES
+              ? stat.size + 1
+              : 0
+          if (objects.bufferedBytes + admittedBytes + size > CAPTURE_BYTES) await finishBatch()
+          admittedBytes += size
+          peak = Math.max(peak, objects.bufferedBytes + admittedBytes)
           if (!captures.length) started = performance.now()
           captures.push(
             (async (): Promise<Captured | undefined> => {
@@ -385,16 +363,22 @@ export namespace SnapshotCapture {
           if (entry.kind === "symlink")
             await retain(entry.path, "120000", SnapshotLink.encode({ target: entry.target }))
           else {
+            let bytes: Buffer | undefined
             try {
-              const bytes = await readContent(entry)
-              if (bytes) await retain(entry.path, entry.mode & 0o111 ? "100755" : "100644", bytes)
-              else if (onOmissions) omit(entry.path, "size_limit")
-              else if (previous.has(entry.path)) throw new Error("A recorded file exceeds the snapshot size limit")
+              const started = performance.now()
+              peak = Math.max(peak, objects.bufferedBytes + 2 * Math.min(entry.size, MAX_FILE_BYTES))
+              bytes = await readContent(entry)
+              timing.read += performance.now() - started
+              if (!bytes) {
+                if (onOmissions) omit(entry.path, "size_limit")
+                else if (previous.has(entry.path)) throw new Error("A recorded file exceeds the snapshot size limit")
+              }
             } catch (error) {
               abort.throwIfAborted()
               if (!onOmissions) throw error
               omit(entry.path, "read_failed")
             }
+            if (bytes) await retain(entry.path, entry.mode & 0o111 ? "100755" : "100644", bytes)
           }
         }
       }
@@ -403,7 +387,9 @@ export namespace SnapshotCapture {
       if (content) await visitContent("", [], false, 0)
       else await visit("", initial, false, 0)
       onOmissions?.(omissions)
-      await flush()
+      const finished = performance.now()
+      await objects.finish()
+      timing.objects += performance.now() - finished
       const updates: string[] = []
       for (const name of previous.keys()) if (!current.has(name)) updates.push(`0 ${"0".repeat(40)}\t${name}\0`)
       for (const [name, entry] of current) {
@@ -414,19 +400,47 @@ export namespace SnapshotCapture {
       if (!updates.length) return true
       // Provenance: https://git-scm.com/docs/git-update-index#_using_index_info
       // NUL records preserve literal names and apply removals before D/F changes.
+      const indexStarted = performance.now()
       const result = await run(["update-index", "-z", "--index-info"], updates.join(""))
+      timing.index += performance.now() - indexStarted
       if (result.exitCode !== 0) throw new Error(`Snapshot index write failed: ${result.stderr}`)
       return true
     } finally {
-      for (const [phase, value] of Object.entries(timing))
+      const labels = { files: current.size, visited: count, concurrency: CAPTURE_CONCURRENCY }
+      const enumerate = Math.max(0, performance.now() - captureStarted - timing.read - timing.objects - timing.index)
+      for (const [phase, value] of Object.entries({
+        ...timing,
+        enumerate,
+        lookup: objects.stats.lookup,
+        write: objects.stats.write,
+        finalize: objects.stats.finalize,
+        import_wait: objects.stats.wait,
+      }))
         ObservabilityMetrics.record({
           name: `snapshot.capture.${phase}.duration`,
           value,
           unit: "ms",
           module: "storage",
-          labels: { files: current.size, visited: count, concurrency: CAPTURE_CONCURRENCY },
+          scopeID: operation.scopeID,
+          sessionID: operation.sessionID,
+          labels,
         })
-      await fs.rm(directory, { recursive: true, force: true })
+      for (const [name, value, unit] of [
+        ["objects.new", objects.stats.new, "count"],
+        ["objects.reused", objects.stats.reused, "count"],
+        ["objects.bytes", objects.stats.bytes, "bytes"],
+        ["read.bytes", bytesRead, "bytes"],
+        ["buffer.peak", peak, "bytes"],
+      ] as const)
+        ObservabilityMetrics.record({
+          name: `snapshot.capture.${name}`,
+          value,
+          unit,
+          module: "storage",
+          scopeID: operation.scopeID,
+          sessionID: operation.sessionID,
+          labels,
+        })
     }
   }
 }

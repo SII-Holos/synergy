@@ -5,6 +5,12 @@ import { createBrowserCommandId } from "./browser-command"
 import { browserPageTab, type BrowserWorkbenchRoute } from "./browser-workbench-model"
 
 type Client = ReturnType<typeof useSDK>["client"]
+export interface BrowserWorkbenchOpenSelection {
+  ownerKey?: string
+  epoch?: string
+  newPage?: boolean
+  pageId?: string
+}
 async function loadAccess(input: {
   client: Client
   serverUrl: string
@@ -30,12 +36,35 @@ export async function browserWorkbenchAccess(input: Parameters<typeof loadAccess
   return (await loadAccess(input)).query
 }
 export async function openBrowserWorkbenchPage(
-  input: Parameters<typeof browserWorkbenchAccess>[0] & { restore?: boolean; url?: string },
+  input: Parameters<typeof browserWorkbenchAccess>[0] & {
+    restore?: boolean
+    url?: string
+    pageId?: string
+    requestId?: string
+    selection?: BrowserWorkbenchOpenSelection
+    onCreated?(tab: ReturnType<typeof browserPageTab>): void | Promise<void>
+  },
 ) {
   const access = await loadAccess(input)
-  const latest = input.restore
-    ? [...(access.state.pages ?? [])].sort((a, b) => (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0))[0]
-    : undefined
+  const selection = input.selection
+  if (
+    selection?.ownerKey &&
+    (selection.ownerKey !== access.state.ownerKey || (selection.epoch && selection.epoch !== access.state.epoch))
+  )
+    throw new Error("Browser availability changed. Reopen the browser page.")
+  const pageId = input.pageId ?? selection?.pageId
+  const latest = pageId
+    ? access.state.pages?.find((page) => page.id === pageId)
+    : input.restore && !selection?.newPage
+      ? [...(access.state.pages ?? [])].sort((a, b) => (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0))[0]
+      : undefined
+  if (pageId && !latest) throw new Error("The browser page has closed. Reopen the browser page.")
+  if (selection) {
+    selection.ownerKey = access.state.ownerKey
+    selection.epoch = access.state.epoch
+    if (latest) selection.pageId = latest.id
+    else selection.newPage = true
+  }
   if (latest) {
     if (latest.status === "active") return browserPageTab(latest, access.route)
     const resumed = await input.client.browser.control(
@@ -44,7 +73,7 @@ export async function openBrowserWorkbenchPage(
         browserControlRequest: {
           protocolVersion: BROWSER_PROTOCOL_VERSION,
           pageId: latest.id,
-          commandId: createBrowserCommandId(),
+          commandId: input.requestId ?? createBrowserCommandId(),
           command: { type: "resume" },
         },
       },
@@ -56,12 +85,15 @@ export async function openBrowserWorkbenchPage(
   const response = await input.client.browser.openPage(
     {
       ...access.query,
-      browserOpenPage: { requestId: createBrowserCommandId(), url: input.url ?? "about:blank" },
+      browserOpenPage: { requestId: input.requestId ?? createBrowserCommandId(), url: input.url ?? "about:blank" },
     },
     { throwOnError: true },
   )
   if (!response.data) throw new Error("Page could not be opened. Retry.")
-  return browserPageTab(response.data, access.route)
+  const tab = browserPageTab(response.data, access.route)
+  if (selection) selection.pageId = response.data.id
+  await input.onCreated?.(tab)
+  return tab
 }
 export async function closeBrowserWorkbenchPage(
   input: Parameters<typeof browserWorkbenchAccess>[0] & { pageId: string },

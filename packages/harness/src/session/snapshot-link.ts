@@ -2,6 +2,7 @@ import { z } from "zod"
 import { RuntimeContext } from "../lifecycle/context"
 
 export namespace SnapshotLink {
+  export const maximumBytes = 256 * 1024
   const prefix = Buffer.from("\0SynergySnapshotLink\0")
   const target = z
     .string()
@@ -44,7 +45,7 @@ export namespace SnapshotLink {
   }
 
   export function decode(bytes: Uint8Array): Link {
-    if (bytes.byteLength > 256 * 1024) throw new Error("Snapshot link exceeds its size limit")
+    if (bytes.byteLength > maximumBytes) throw new Error("Snapshot link exceeds its size limit")
     const input = Buffer.from(bytes)
     const encoded = input.subarray(0, prefix.length).equals(prefix)
     const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(

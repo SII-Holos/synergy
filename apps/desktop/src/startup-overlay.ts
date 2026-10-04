@@ -3,9 +3,11 @@ import {
   desktopStartupPage,
   startupStatusScript,
   startupThemeScript,
+  startupWindowStateScript,
   type DesktopStartupStatus,
 } from "./startup-page.js"
 import type { DesktopThemeSnapshot } from "./theme.js"
+import type { DesktopWindowState } from "./window-chrome.js"
 
 export interface DesktopStartupOverlayOptions {
   window: BrowserWindow
@@ -80,6 +82,12 @@ export class DesktopStartupOverlay {
     const view = this.view
     if (!view || this.dismissed || view.webContents.isDestroyed()) return
     view.webContents.executeJavaScript(startupThemeScript(theme)).catch(() => {})
+  }
+
+  setWindowState(state: DesktopWindowState): void {
+    const view = this.view
+    if (!view || this.dismissed || view.webContents.isDestroyed()) return
+    view.webContents.executeJavaScript(startupWindowStateScript(state)).catch(() => {})
   }
 
   async dismiss(): Promise<void> {

@@ -1233,6 +1233,19 @@ a {
   flex: none;
 }
 
+.synergy-workbench-canvas .browser-preparing-status {
+  position: absolute;
+  top: calc(50% + 24px);
+  left: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-weak);
+  font-size: 12px;
+}
+
 .synergy-workbench-canvas [data-component="button"].browser-import-entry {
   height: 32px;
   gap: 8px;

@@ -431,6 +431,13 @@ export namespace ExecutionService {
           elapsedActive: snapshots[index + 1].runs.some((run) => run.status === "running" && run.ended == null),
           tokens: accounting[index + 1].tokens.total,
           runs: snapshots[index + 1].runs.map((run) => run.id),
+          interaction: session.interaction,
+          cortex: session.cortex && {
+            taskID: session.cortex.taskID,
+            agent: session.cortex.agent,
+            status: session.cortex.status,
+            visibility: session.cortex.visibility,
+          },
         }))
         .filter((task) => !runID || task.runs.length),
       rounds: [

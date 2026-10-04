@@ -28,6 +28,8 @@ import { browser as B } from "@/locales/messages"
 import { resolveBrowserClientPresentation, type BrowserClientPresentationMode } from "./native-presentation-coordinator"
 import type { WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
 import { resolvePendingBrowserNavigation } from "./browser-view-command"
+import { BrowserPreparingPanel } from "./browser-preparing"
+import { useBrowserImportEntry } from "./browser-import"
 const ConsolePanel = lazy(() => import("./console-panel").then((module) => ({ default: module.ConsolePanel })))
 const NetworkPanel = lazy(() => import("./network-panel").then((module) => ({ default: module.NetworkPanel })))
 const ElementsPanel = lazy(() => import("./elements-panel").then((module) => ({ default: module.ElementsPanel })))
@@ -61,21 +63,13 @@ export function BrowserPanel(props: { tab: WorkbenchPanelTab }) {
       keyed
       when={!initial.loading ? initial() : undefined}
       fallback={
-        <div class="browser-workspace flex h-full flex-col items-center justify-center gap-3 p-4 text-text-weak">
-          <div class="browser-empty-mark">
-            <Icon name={getSemanticIcon("browser.main")} class="size-4" />
-          </div>
-          <span class="text-14-medium text-text-strong">
-            {initial.error
-              ? normalizeBrowserError(initial.error, lingui._(B.bootstrapFailed.id)).message
-              : lingui._(B.connecting.id)}
-          </span>
-          <Show when={initial.error}>
-            <Button size="small" variant="primary" onClick={() => void refetch()}>
-              <Trans id={B.retry.id} message={B.retry.message} />
-            </Button>
-          </Show>
-        </div>
+        <BrowserPreparingPanel
+          tab={props.tab}
+          error={
+            initial.error ? normalizeBrowserError(initial.error, lingui._(B.bootstrapFailed.id)).message : undefined
+          }
+          onRetry={() => void refetch()}
+        />
       }
     >
       {(state) => (
@@ -101,7 +95,12 @@ function BrowserPanelInner(props: {
   const draft = useBrowserDraft(() => params.id)
   const ownerKey = props.catalog.initial.ownerKey
   const ws = props.catalog.transport
+  const openImport = useBrowserImportEntry(() => props.tab)
   const openData = (section: "import" | "passwords") => {
+    if (section === "import") {
+      openImport()
+      return
+    }
     const page = browser.page()
     if (!page || !platform.browserNative?.dataAction) return
     dialog.show(() => <BrowserDataDialog ownerKey={ownerKey} pageId={page.id} url={page.url} section={section} />)

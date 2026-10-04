@@ -16,7 +16,7 @@ import { Icon } from "./icon"
 export async function restorePopoverFocus(trigger: HTMLElement | undefined, content: HTMLElement | undefined) {
   await Promise.allSettled((content?.getAnimations?.() ?? []).map((animation) => animation.finished))
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-  if (!trigger?.isConnected) return
+  if (!trigger?.isConnected || trigger.getAttribute("aria-expanded") === "true") return
   const active = trigger.ownerDocument.activeElement
   if (active === trigger.ownerDocument.body || content?.contains(active) || active === trigger)
     trigger.focus({ preventScroll: true })
