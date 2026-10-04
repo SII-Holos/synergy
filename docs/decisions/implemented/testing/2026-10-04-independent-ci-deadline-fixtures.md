@@ -14,6 +14,8 @@ Production-host conversation history and preference persistence use separate tes
 
 The activity layout acceptance asserts the adopted 32px desktop row geometry from the [semantic process disclosure decision](../feature/2026-10-04-semantic-process-disclosure.md), preserving all spacing and keyboard checks.
 
+Browser fixture bootstrap completes under its setup deadline before short interaction deadlines begin. Markdown identity acceptance acquires the actual mounted Markdown element, waits for the final visible state and still requires the same connected node after disclosure exit. CPU throttling and separate captured, connected and identity assertions retain diagnostic evidence for transient failures.
+
 ## Alternatives considered
 
 **Allow extra timeout metrics.** This would weaken the observed guarantee and hide fixture scheduling races.

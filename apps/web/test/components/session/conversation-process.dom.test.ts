@@ -474,51 +474,61 @@ test("a manual compaction request is replaced by one completed event inside its 
 }, 30000)
 
 test("logical execution folds across messages, preserves prose and retains the final Markdown through exit", async () => {
-  await page.goto(url)
-  await page
-    .getByText("I will check the project first.", { exact: true })
-    .waitFor()
-    .catch(async (error) => {
-      throw new Error(JSON.stringify({ url: page.url(), errors, html: await page.content() }), { cause: error })
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 })
+  try {
+    await page.goto(url)
+    await page
+      .getByText("I will check the project first.", { exact: true })
+      .waitFor()
+      .catch(async (error) => {
+        throw new Error(JSON.stringify({ url: page.url(), errors, html: await page.content() }), { cause: error })
+      })
+    expect(await page.locator('[data-row-kind="activity"]').count()).toBe(2)
+    expect(await page.locator('[data-component="conversation-activity"] > button').count()).toBe(2)
+    expect(await page.locator('[data-component="process-viewport"]').count()).toBe(1)
+    await page.evaluate(() => window.__conversationProcess.stream())
+    await frames()
+    await page.locator("[data-scroller]").evaluate((el) => (el.scrollTop = el.scrollHeight))
+    await page
+      .getByText("Final answer stays mounted.", { exact: true })
+      .waitFor()
+      .catch(async (error) => {
+        throw new Error(await page.locator("#root").innerHTML(), { cause: error })
+      })
+    const answer = page.locator('[data-part-id="answer"] [data-component="markdown"]')
+    await answer.waitFor()
+    await answer.evaluate((element) => {
+      window.answerNode = element
+      window.__conversationProcess.terminal()
     })
-  expect(await page.locator('[data-row-kind="activity"]').count()).toBe(2)
-  expect(await page.locator('[data-component="conversation-activity"] > button').count()).toBe(2)
-  expect(await page.locator('[data-component="process-viewport"]').count()).toBe(1)
-  await page.evaluate(() => window.__conversationProcess.stream())
-  await frames()
-  await page.locator("[data-scroller]").evaluate((el) => (el.scrollTop = el.scrollHeight))
-  await page
-    .getByText("Final answer stays mounted.", { exact: true })
-    .waitFor()
-    .catch(async (error) => {
-      throw new Error(await page.locator("#root").innerHTML(), { cause: error })
-    })
-  await page.evaluate(() => {
-    window.answerNode = document.querySelector('[data-part-id="answer"] [data-component="markdown"]')
-    window.__conversationProcess.terminal()
-  })
-  await frames()
-  expect(await page.getByText("I will check the project first.", { exact: true }).count()).toBe(1)
-  await page.evaluate(() => window.__conversationProcess.complete())
-  await page.waitForFunction(() => !document.querySelector('[data-row-kind="activity"]'))
-  expect(
-    await page.evaluate(
-      () =>
-        !!window.answerNode &&
-        window.answerNode === document.querySelector('[data-part-id="answer"] [data-component="markdown"]'),
-    ),
-  ).toBe(true)
-  await page.locator('[data-slot="turn-process-trigger"]').click()
-  await page
-    .getByText("I will check the project first.", { exact: true })
-    .waitFor()
-    .catch(async (error) => {
-      throw new Error(JSON.stringify({ errors, html: await page.locator("#root").innerHTML() }), { cause: error })
-    })
-  expect(await page.locator('[data-component="conversation-activity"] > button').count()).toBe(2)
-  await page.locator('[data-component="conversation-activity"] > button').last().click()
-  await page.locator('[data-slot="activity-step"]').nth(1).waitFor()
-  expect(errors).toEqual([])
+    await frames()
+    expect(await page.getByText("I will check the project first.", { exact: true }).count()).toBe(1)
+    await page.evaluate(() => window.__conversationProcess.complete())
+    await page.waitForFunction(() => !document.querySelector('[data-row-kind="activity"]'))
+    await answer.waitFor()
+    expect(
+      await page.evaluate(() => ({
+        captured: !!window.answerNode,
+        connected: !!window.answerNode?.isConnected,
+        same: window.answerNode === document.querySelector('[data-part-id="answer"] [data-component="markdown"]'),
+      })),
+    ).toEqual({ captured: true, connected: true, same: true })
+    await page.locator('[data-slot="turn-process-trigger"]').click()
+    await page
+      .getByText("I will check the project first.", { exact: true })
+      .waitFor()
+      .catch(async (error) => {
+        throw new Error(JSON.stringify({ errors, html: await page.locator("#root").innerHTML() }), { cause: error })
+      })
+    expect(await page.locator('[data-component="conversation-activity"] > button').count()).toBe(2)
+    await page.locator('[data-component="conversation-activity"] > button').last().click()
+    await page.locator('[data-slot="activity-step"]').nth(1).waitFor()
+    expect(errors).toEqual([])
+  } finally {
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 })
+    await cdp.detach()
+  }
 }, 60000)
 
 test("detached reading holds the process and large blocks retain bounded mounted content", async () => {
