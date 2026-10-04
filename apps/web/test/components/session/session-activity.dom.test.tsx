@@ -173,7 +173,7 @@ test("short activation opens the child while queued agents remain waiting", asyn
   expect(await cancellations()).toEqual([])
 })
 
-test("pointer and keyboard holds cancel once without also opening the child", async () => {
+test("pointer and keyboard holds cancel once and preserve focus without opening the child", async () => {
   await page.clock.install()
   await holdPointer()
   await page.clock.runFor(2100)
@@ -186,6 +186,9 @@ test("pointer and keyboard holds cancel once without also opening the child", as
   expect(await page.locator(".subagent-dock-avatar").count()).toBe(2)
   await change("child-ended")
   expect(await page.locator(".subagent-dock-avatar").count()).toBe(1)
+  expect(
+    await page.getByRole("textbox", { name: "Composer" }).evaluate((element) => element === document.activeElement),
+  ).toBe(true)
   await page.reload()
   await avatar().focus()
   await page.keyboard.down("Space")
@@ -193,6 +196,16 @@ test("pointer and keyboard holds cancel once without also opening the child", as
   await page.keyboard.up("Space")
   expect(await cancellations()).toEqual(["task-a"])
   expect(await navigation()).toEqual([])
+  await change("child-ended")
+  expect(
+    await page.getByRole("textbox", { name: "Composer" }).evaluate((element) => element === document.activeElement),
+  ).toBe(true)
+  await page.reload()
+  await page.locator(".session-progress-island-header").focus()
+  await change("child-ended")
+  expect(
+    await page.locator(".session-progress-island-header").evaluate((element) => element === document.activeElement),
+  ).toBe(true)
 })
 
 test("movement, pointer cancellation, blur and Escape abort hold activation", async () => {

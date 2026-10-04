@@ -13,6 +13,7 @@ import { translateDescriptor } from "@/locales/translate"
 import { requestErrorMessage } from "@/utils/error"
 import { S } from "./session-i18n"
 import { sharedSecondTick } from "./second-tick"
+import { useSessionSurfaceFocus } from "./session-surface-focus"
 import "./subagent-dock.css"
 
 const HOLD_MS = 2000
@@ -22,6 +23,7 @@ function SubagentAvatar(props: { task: CortexTask; suppressed?: boolean }) {
   const view = useSessionDataView()
   const sdk = useSDK()
   const openSession = useNavigateToSession()
+  const returnFocus = useSessionSurfaceFocus()
   const { i18n } = useLingui()
   const visual = createMemo(() => getAgentVisual(props.task.agent))
   const status = () => view().statusFor(props.task.sessionID)
@@ -31,6 +33,7 @@ function SubagentAvatar(props: { task: CortexTask; suppressed?: boolean }) {
   const [holding, setHolding] = createSignal(false)
   const [pending, setPending] = createSignal(false)
   let live = true
+  let button: HTMLButtonElement | undefined
   let frame = 0
   let pointer: { id: number; x: number; y: number; valid: boolean; completed: boolean } | undefined
   let spaceHeld = false
@@ -102,10 +105,15 @@ function SubagentAvatar(props: { task: CortexTask; suppressed?: boolean }) {
   }
   document.addEventListener("visibilitychange", visibility)
   onCleanup(() => {
+    const focused = button === document.activeElement
     live = false
     abort()
     window.removeEventListener("blur", abort)
     document.removeEventListener("visibilitychange", visibility)
+    if (focused)
+      queueMicrotask(() => {
+        if (document.activeElement === document.body) returnFocus()
+      })
   })
   const ariaLabel = () =>
     i18n()._({
@@ -144,6 +152,7 @@ function SubagentAvatar(props: { task: CortexTask; suppressed?: boolean }) {
       }
     >
       <button
+        ref={button}
         type="button"
         class="subagent-dock-avatar"
         aria-label={ariaLabel()}
