@@ -21,7 +21,6 @@ import { ScopeContext } from "../scope/context"
 import { Info, type StatusInfo, type Activity } from "./types"
 import { SessionEndpoint } from "./endpoint"
 import { SessionMemoryPressure } from "./memory-pressure"
-import { SessionInbox } from "./inbox"
 import { SessionLifecycle } from "./lifecycle"
 import { ObservabilityMetrics } from "../observability/metrics"
 import { SessionWorkspaceRuntime } from "./workspace-runtime"
@@ -483,7 +482,11 @@ export namespace SessionManager {
           const fenceQueuedBefore = owner?.fenceQueuedBefore
           const postFenceWork =
             fenced && fenceQueuedBefore !== undefined
-              ? await SessionInbox.hasRunnableItem(sessionID, { createdAfter: fenceQueuedBefore }).catch(() => false)
+              ? await (
+                  await import("./inbox")
+                ).SessionInbox.hasRunnableItem(sessionID, {
+                  createdAfter: fenceQueuedBefore,
+                }).catch(() => false)
               : false
           await finish(lease, {
             requestNextWork:
@@ -670,6 +673,7 @@ export namespace SessionManager {
             log.warn("host declined session wake", { sessionID, reason })
             return
           }
+          const { SessionInbox } = await import("./inbox")
           const terminal = isPermanentWakeFailure(error) || WAKE_RETRY_DELAYS_MS[failureCount] === undefined
           const failedInput = SessionInputProgress.schedulingFailure(sessionID, error, terminal)
           const parked =
@@ -716,6 +720,7 @@ export namespace SessionManager {
   export async function wake(sessionID: string, options: { force?: boolean } = {}): Promise<void> {
     if (!runtimeState().accepting) return
     if (isRunning(sessionID)) return
+    const { SessionInbox } = await import("./inbox")
     const session = await getSession(sessionID).catch(() => undefined)
     if (session && (await SessionInbox.peekIdleNoReply(sessionID)).length) {
       await run(
@@ -934,6 +939,7 @@ export namespace SessionManager {
     mail: SessionMail
     waitForProcessing?: boolean
   }): Promise<void> {
+    const { SessionInbox } = await import("./inbox")
     const session = await getSession(input.target)
     if (!session) {
       log.warn("deliver: session not found, skipping", {

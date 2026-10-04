@@ -5,6 +5,8 @@ test.each([
   ["session/rollout/schema", "RolloutSchema"],
   ["session/rollout/snapshot", "RolloutSnapshot"],
   ["session/message-v2", "MessageV2"],
+  ["session/history", "SessionHistory"],
+  ["session", "Session"],
   ["workspace", "WorkspaceCatalog"],
 ])("public %s loads independently of product import order", async (entry, namespace) => {
   const child = Bun.spawn(
