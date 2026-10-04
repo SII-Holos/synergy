@@ -28,6 +28,8 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
   const sdk = useSDK()
+  const takeUserArrival = (messageID: string) =>
+    transitions.messageArrival.take([sdk.url, sdk.scopeKey, props.sessionID], messageID)
   const restoreFiles = useFileRestore(() => props.sessionID)
   const data = useSessionDataView()
   let stateRequest: AbortController | undefined
@@ -242,6 +244,7 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
                   class="min-w-0 w-full max-w-full"
                 >
                   <SessionTurn
+                    takeUserArrival={takeUserArrival}
                     sessionID={props.sessionID}
                     messageID={key}
                     rootMessage={rootMessage()}
@@ -274,6 +277,7 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
         }
       >
         <VirtualConversationRows
+          takeUserArrival={takeUserArrival}
           context={props}
           scrollRef={scrollRef()}
           submissionFor={submissionFor}

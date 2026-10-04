@@ -248,7 +248,7 @@ function ActivityStep(props: {
   const motionRef = createDisclosureMotionRef({
     visible: () => props.hidden !== true,
     animate: () => props.motion === true,
-    appear: () => props.current === true && props.step.state === "running",
+    appear: () => props.current === true,
   })
   return (
     <li
