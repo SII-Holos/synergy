@@ -38,17 +38,21 @@ test("shared download cache preserves fresh installations and current same-versi
   const archive = path.join(root, "package.tgz")
   const directories: string[] = []
   const caches: string[] = []
+  let archivedValue: string | undefined
   try {
     for (const value of ["first", "first", "second"]) {
-      await Bun.write(
-        archive,
-        Bun.gzipSync(
-          await new Bun.Archive({
-            "package/package.json": JSON.stringify(manifest),
-            "package/value.txt": value,
-          }).bytes(),
-        ),
-      )
+      if (value !== archivedValue) {
+        await Bun.write(
+          archive,
+          Bun.gzipSync(
+            await new Bun.Archive({
+              "package/package.json": JSON.stringify(manifest),
+              "package/value.txt": value,
+            }).bytes(),
+          ),
+        )
+        archivedValue = value
+      }
       await withInstalledPackages(
         [{ ...manifest, manifest, archive }],
         [manifest.name],
