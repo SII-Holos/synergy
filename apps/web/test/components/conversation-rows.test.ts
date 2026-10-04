@@ -26,6 +26,13 @@ test("a manual compaction request yields to its canonical attempt without a stal
     process: () => ({ open: true, working: true }),
   }
   const pending = buildConversationRows({ ...input, messagesFor: () => [] })
+  const unhydrated = buildConversationRows({ ...input, messagesFor: () => [], summaries: () => [] })
+  expect(unhydrated.filter((row) => row.kind === "body").map((row) => [row.message.id, row.event])).toEqual([
+    [root.id, "compaction"],
+  ])
+  expect(unhydrated.find((row) => row.kind === "activity")?.key).toBe(
+    pending.find((row) => row.kind === "activity")?.key,
+  )
   expect(pending.filter((row) => row.kind === "body").map((row) => [row.message.id, row.event])).toEqual([
     [root.id, "compaction"],
   ])

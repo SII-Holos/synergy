@@ -12,7 +12,7 @@ Each continuous process group owns one bounded scrolling window. Its inner virtu
 
 Tools, reasoning, Agent deliveries and compaction join their canonical order within the same logical group. Only tool Parts contribute to its operation count. Metadata and footer segments cannot emit another segment's Agent delivery or compaction. Running compaction uses a compact status row; its animation respects reduced motion.
 
-An event-first group uses the event's message identity, including before any body Part is hydrated. Loading or replacing its detail content cannot rename the group, and an unloaded preceding span cannot make the event depend on an earlier tool Part.
+An event-first group uses the event's message identity, including before any body Part is hydrated. Canonical manual-compaction metadata also establishes a pending event before its request Parts load. Loading or replacing detail content cannot rename the group, and an unloaded preceding span cannot make the event depend on an earlier tool Part.
 
 A manual compaction request owns a pending process event only until its canonical attempt arrives. The attempt replaces the request's presentation across running, completed, failed and empty outcomes, so segmented rendering cannot retain a request spinner after completion. Detached execution reconciliation reads effective transcript history, including rollback visibility, rather than the compacted model working set; compaction cannot remove a previous root's durable completion evidence.
 

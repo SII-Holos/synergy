@@ -68,10 +68,7 @@ export function buildConversationRows(input: {
         return "agent-delivery" as const
       if (
         isCompaction(message) ||
-        (message.role === "user" &&
-          message.metadata?.compactionBoundary === true &&
-          !hasCompaction &&
-          input.summaries(message.id).some((part) => part.type === "compaction"))
+        (message.role === "user" && message.metadata?.compactionBoundary === true && !hasCompaction)
       )
         return "compaction" as const
     }

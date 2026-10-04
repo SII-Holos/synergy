@@ -288,9 +288,7 @@ window.__conversationProcess = {
   },
   manualCompaction() {
     setData("message", "session", 0, "metadata", { compactionBoundary: true })
-    setData("part", "root", [
-      { id: "compact-request", sessionID: "session", messageID: "root", type: "compaction", auto: false },
-    ])
+    setData("part", "root", [])
     setData("message", "session", (messages) => [messages[0]])
   },
   compaction(state: "running" | "committed" | "failed") {
