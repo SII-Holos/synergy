@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import { testRuntime } from "../support/runtime"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -22,7 +23,7 @@ test("Bash uses the selected Environment without requiring a Workspace", async (
           sessionID: session.id,
           messageID: "message",
           callID: "call",
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           abort: new AbortController().signal,
           environmentID: session.environmentID,
           extra: { shellAuthorizationResolved: true, shellBypassSandbox: true, controlProfile: "full_access" },
@@ -32,8 +33,8 @@ test("Bash uses the selected Environment without requiring a Workspace", async (
           },
         }
         const result = await tool.execute(
-          { command: "printf environment", description: "Execute without files" },
-          context,
+          { command: "printf environment" },
+          { ...context, workBrief: "Execute without files" },
         )
         expect(result.output).toBe("environment\n\nShell exited with code 0.")
         expect(result.metadata.output).toBe("environment")
@@ -43,8 +44,8 @@ test("Bash uses the selected Environment without requiring a Workspace", async (
         expect((await Storage.read<{ state: string }>(keys[0]!)).state).toBe("completed")
         await expect(
           tool.execute(
-            { command: "printf refused", description: "No execution authority" },
-            { ...context, callID: "other", environmentID: null },
+            { command: "printf refused" },
+            { ...{ ...context, callID: "other", environmentID: null }, workBrief: "No execution authority" },
           ),
         ).rejects.toMatchObject({ name: "EnvironmentUnavailable" })
         expect(await Environment.uses(session.environmentID!)).toHaveLength(0)
@@ -77,19 +78,22 @@ test.skipIf(process.platform === "win32")(
           const result = await (
             await BashTool.init()
           ).execute(
-            { command: `"${process.execPath}" output.js`, description: "Read split text" },
+            { command: `"${process.execPath}" output.js` },
             {
-              sessionID: session.id,
-              messageID: "message",
-              callID: "utf8",
-              agent: "synergy",
-              abort: new AbortController().signal,
-              environmentID: session.environmentID,
-              extra: { shellAuthorizationResolved: true, shellBypassSandbox: true, controlProfile: "full_access" },
-              metadata() {},
-              async ask() {
-                throw new Error("unexpected permission")
+              ...{
+                sessionID: session.id,
+                messageID: "message",
+                callID: "utf8",
+                agent: PrimaryAgentIdentity.names.general,
+                abort: new AbortController().signal,
+                environmentID: session.environmentID,
+                extra: { shellAuthorizationResolved: true, shellBypassSandbox: true, controlProfile: "full_access" },
+                metadata() {},
+                async ask() {
+                  throw new Error("unexpected permission")
+                },
               },
+              workBrief: "Read split text",
             },
           )
           expect(result.output).toContain("中")

@@ -13,21 +13,21 @@ test("CommandProvider unregisters disposed pages across nested transitions", asy
   const stub = path.join(dir, "stub.tsx")
   await Bun.write(
     stub,
-    "export const useDialog=()=>({active:false,show(){}}); export const Dialog=()=>null; export const List=()=>null; export const useLocale=()=>({i18n:{_:x=>x}}); export const AP={};",
+    "export const useDialog=()=>({active:false,show(){globalThis.commandPaletteShows=(globalThis.commandPaletteShows??0)+1}}); export const Dialog=()=>null; export const List=()=>null; export const useLocale=()=>({i18n:{_:x=>x}}); export const AP={};",
   )
   await Bun.write(
     entry,
     `
 import {createSignal, createResource, Suspense, Show, startTransition, onCleanup} from "solid-js";
 import {render} from "solid-js/web";
-import {CommandProvider,useCommand} from ${JSON.stringify(command)};
+import {CommandProvider,useCommand,parseKeybind} from ${JSON.stringify(command)};
 let api,setPage,setTitle,release,started,cleaned=[];
 let ready;const entered=new Promise(resolve=>ready=resolve);
 const [title,updateTitle]=createSignal("Page");setTitle=updateTitle;
 function Page(props){api.register(()=>[{id:'page.'+props.id,title:title()+' '+props.id},{id:'shared',title:'Shared '+props.id}]);onCleanup(()=>cleaned.push(props.id));const [resource]=createResource(()=>props.id===102?new Promise(resolve=>{release=()=>resolve('ready');ready()}):'ready');return <div>{resource()}{props.id}</div>}
-function Probe(){api=useCommand();const [page,set]=createSignal(1);setPage=set;return <Suspense><Show when={page()} keyed>{id=><Show when={true}><Page id={id}/></Show>}</Show></Suspense>}
+function Probe(){api=useCommand();const [page,set]=createSignal(1);setPage=set;return <><textarea data-terminal on:keydown={event=>{globalThis.terminalKeys=(globalThis.terminalKeys??0)+1;event.preventDefault()}}/><Suspense><Show when={page()} keyed>{id=><Show when={true}><Page id={id}/></Show>}</Show></Suspense></>}
 const dispose=render(()=><CommandProvider><Probe/></CommandProvider>,document.getElementById('root'));
-globalThis.commandMemoryProbe={step:id=>startTransition(()=>setPage(id)),options:()=>api.options.map(x=>({id:x.id,title:x.title})),entered,setTitle,release:()=>release(),cleaned,dispose};
+globalThis.commandMemoryProbe={step:id=>startTransition(()=>setPage(id)),options:()=>api.options.map(x=>({id:x.id,title:x.title})),entered,setTitle,release:()=>release(),cleaned,dispose,palette:()=>{const keybind=parseKeybind('mod+shift+p')[0];const event=new KeyboardEvent('keydown',{key:'P',ctrlKey:keybind.ctrl,metaKey:keybind.meta,shiftKey:true,bubbles:true,cancelable:true});(document.querySelector('[data-terminal]')??document.body).dispatchEvent(event);return {shown:globalThis.commandPaletteShows??0,terminalKeys:globalThis.terminalKeys??0,prevented:event.defaultPrevented}}};
 `,
   )
 
@@ -67,6 +67,7 @@ globalThis.commandMemoryProbe={step:id=>startTransition(()=>setPage(id)),options
           release: () => void
           cleaned: number[]
           dispose: () => void
+          palette: () => { shown: number; terminalKeys: number; prevented: boolean }
         }
       }
     ).commandMemoryProbe
@@ -79,6 +80,7 @@ globalThis.commandMemoryProbe={step:id=>startTransition(()=>setPage(id)),options
       ])
       h.setTitle("Renamed")
       expect(h.options()[0]?.title).toBe("Renamed 101")
+      expect(h.palette()).toEqual({ shown: 1, terminalKeys: 0, prevented: true })
       const pending = h.step(102)
       await h.entered
       try {
@@ -94,10 +96,13 @@ globalThis.commandMemoryProbe={step:id=>startTransition(()=>setPage(id)),options
       expect(h.cleaned.length).toBe(101)
       h.dispose()
       expect(h.cleaned.length).toBe(102)
+      expect(h.palette()).toEqual({ shown: 1, terminalKeys: 0, prevented: false })
     } finally {
       h.dispose()
       root.remove()
       delete (globalThis as { commandMemoryProbe?: unknown }).commandMemoryProbe
+      delete (globalThis as { commandPaletteShows?: number }).commandPaletteShows
+      delete (globalThis as { terminalKeys?: number }).terminalKeys
     }
   } finally {
     await rm(dir, { recursive: true, force: true })

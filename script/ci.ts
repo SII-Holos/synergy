@@ -19,13 +19,14 @@ import { downloadInput, workflowExecutions } from "./ci/github"
 import { createPlan, executionQueue, needsBuild, QUEUES, validatePlan, type Mode, type Plan } from "./ci/plan"
 import { executeUnit } from "./ci/run"
 import { policyIdentity, shadowEvidence } from "./ci/rollout"
+import { collectTimings, validateTimings } from "./ci/timing"
 
 const HELP = `Usage: bun script/ci.ts <plan|run|verify|prepare|restore|build-key|distribution-key|prepare-distributions> [options]
 plan --base SHA --head SHA --sha SHA --mode full|shadow|affected|diagnostic --only task[,task] --package workspace --file package/test/file.test.ts
 run --plan FILE --unit ID
 verify --plan FILE --results DIRECTORY --jobs JSON
-prepare / restore: produce or validate the input-addressed Linux build bundle.
-build-key: resolve the cache identity on the runner that will build the bundle.
+prepare [--intermediate-cache [--cached]] / restore: produce or validate the input-addressed Linux build bundle.
+build-key [--bundle build|intermediate]: resolve the cache identity on the runner that will build the bundle.
 prepare-distributions --profile core|full: produce only the selected distribution.
 distribution-key --profile core|full: resolve the distribution cache identity.
 Diagnostic plans never satisfy All checks passed. PRs default to affected mode; shared or unknown inputs select full verification.`
@@ -33,9 +34,13 @@ Diagnostic plans never satisfy All checks passed. PRs default to affected mode; 
 export async function policyDigest(root = ROOT) {
   return policyIdentity(
     await Promise.all(
-      ["script/ci/selection.ts", "script/ci/inputs.ts", "script/workspace-dependencies.ts"].map((file) =>
-        readFile(path.join(root, file), "utf8"),
-      ),
+      [
+        "script/ci/selection.ts",
+        "script/ci/coverage-selection.ts",
+        "script/ci/selection-inputs.ts",
+        "script/ci/inputs.ts",
+        "script/workspace-dependencies.ts",
+      ].map((file) => readFile(path.join(root, file), "utf8")),
     ),
   )
 }
@@ -60,6 +65,14 @@ async function readPlan(file: string): Promise<Plan> {
 
 export function requiresBuild(plan: Plan) {
   return plan.tasks.some((task) => plan.selected.includes(task.id) && needsBuild(task))
+}
+
+export function requiresSandbox(plan: Plan) {
+  return plan.tasks.some(
+    (task) =>
+      plan.selected.includes(task.id) &&
+      (!!task.profile || ["sandbox", "artifacts"].includes(task.kind) || task.prerequisites?.includes("sandbox")),
+  )
 }
 
 async function command(args: string[], cwd = ROOT) {
@@ -88,6 +101,8 @@ async function main() {
       jobs: { type: "string" },
       profile: { type: "string" },
       cached: { type: "boolean" },
+      bundle: { type: "string" },
+      "intermediate-cache": { type: "boolean" },
     },
   })
   if (values.help || !positionals.length) {
@@ -147,19 +162,24 @@ async function main() {
       workspaceInputs(ROOT, base),
       workspaceInputs(ROOT, head),
     ])
-    const { taskInputs } = await import("./ci/inputs")
+    const { taskInputs, selectionInputs } = await import("./ci/inputs")
+    const changed = changedFiles(ROOT, base, head)
     const [baseInputs, headInputs] = await Promise.all([
       taskInputs(ROOT, base, tasks, baseWorkspaces),
       taskInputs(ROOT, head, tasks, headWorkspaces),
     ])
     const plan = createPlan({
+      timings: await Bun.file(path.join(ROOT, "script/ci/timings.json"))
+        .text()
+        .then((source) => new Bun.CryptoHasher("sha256").update(source).digest("hex")),
       base,
       head,
       sha,
       run: process.env.GITHUB_RUN_ID ?? "local",
       attempt: process.env.GITHUB_RUN_ATTEMPT ?? "1",
       mode,
-      changed: changedFiles(ROOT, base, head),
+      changed,
+      selectionChanges: await selectionInputs(ROOT, base, head, changed, baseWorkspaces, headWorkspaces),
       baseWorkspaces,
       headWorkspaces,
       baseInputs,
@@ -169,9 +189,7 @@ async function main() {
     })
     const output = values.output ?? path.join(ROOT, OUTPUT, "plan.json")
     await Bun.write(output, JSON.stringify(plan, null, 2))
-    const sandbox = plan.tasks.some(
-      (task) => plan.selected.includes(task.id) && ["sandbox", "artifacts"].includes(task.kind),
-    )
+    const sandbox = requiresSandbox(plan)
     process.env.SYNERGY_CI_SANDBOX_BUNDLE = sandbox ? "1" : "0"
     const outputs: Record<string, string> = {
       sha,
@@ -227,13 +245,19 @@ async function main() {
     return
   }
   if (operation === "build-key") {
-    const key = await buildCacheIdentity()
+    const bundle = values.bundle ?? "build"
+    if (bundle !== "build" && bundle !== "intermediate") throw new Error("Unknown build bundle")
+    const key = await buildCacheIdentity(ROOT, bundle)
     if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `key=${key}\n`)
     console.log(key)
     return
   }
   if (operation === "prepare") {
+    if (values.cached && !values["intermediate-cache"])
+      throw new Error("Cached preparation requires an intermediate cache")
+    if (values.cached) await restoreBuild(ROOT, "intermediate")
     const native = async () => {
+      if (values.cached) return
       await Promise.all([
         command([process.execPath, "packages/local-runtime/script/build-watcher.ts"]),
         command([process.execPath, "packages/local-runtime/script/build-pty.ts"]),
@@ -258,13 +282,14 @@ async function main() {
       }
     }
     const web = async () => {
-      for (const recipe of buildCommands()) await command(recipe.args, recipe.cwd)
+      if (!values.cached) for (const recipe of buildCommands()) await command(recipe.args, recipe.cwd)
       if (process.env.SYNERGY_CI_WEB_BUILD === "true")
         await command([process.execPath, "run", "--cwd", "apps/web", "build", "--manifest"])
     }
     const prepared = await Promise.allSettled([native(), web()])
     const failed = prepared.find((result) => result.status === "rejected")
     if (failed?.status === "rejected") throw failed.reason
+    if (values["intermediate-cache"] && !values.cached) await publishBuild(ROOT, "intermediate")
     await publishBuild()
     return
   }
@@ -397,6 +422,14 @@ async function main() {
       `### Verification: ${errors.length ? "failed" : "passed"}\n\nRunner task time: ${(evidence.taskSeconds / 60).toFixed(1)} minutes.\n\n${errors.map((error) => `- ${error}`).join("\n")}\n`,
     )
   if (errors.length) throw new Error(errors.join("\n"))
+  const timings = await collectTimings(
+    validateTimings(await Bun.file(path.join(ROOT, "script/ci/timings.json")).json()),
+    ROOT,
+    resultsRoot,
+    plan,
+    results,
+  )
+  await Bun.write(path.join(ROOT, OUTPUT, "timings.json"), JSON.stringify(timings, null, 2) + "\n")
   console.log("All planned checks passed, with verified report identities and coverage")
 }
 

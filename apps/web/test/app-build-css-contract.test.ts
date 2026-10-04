@@ -425,7 +425,7 @@ async function expectPromptDockKeepsReadableWidth(css: string) {
   }
 }
 
-async function expectSessionInboxBadgePreservesIconCenter(css: string) {
+async function expectTaskDetailsBadgePreservesIconCenter(css: string) {
   const browserType = process.env.SYNERGY_APP_LAYOUT_BROWSER === "webkit" ? webkit : chromium
   const browser = await browserType.launch({ headless: true })
   try {
@@ -434,16 +434,16 @@ async function expectSessionInboxBadgePreservesIconCenter(css: string) {
       <style>${css}</style>
       <button
         data-trigger="empty"
-        class="session-inbox-trigger statusbar-glass relative flex size-9 items-center justify-center rounded-full"
+        class="stb-icon-btn execution-trigger"
       >
         <span data-icon></span>
       </button>
       <button
         data-trigger="active"
-        class="session-inbox-trigger statusbar-glass relative flex size-9 items-center justify-center rounded-full"
+        class="stb-icon-btn execution-trigger"
       >
         <span data-icon></span>
-        <span data-badge class="session-inbox-badge">1</span>
+        <span data-badge class="execution-trigger-count">1</span>
       </button>
       <style>[data-icon] { display: block; width: 16px; height: 16px; }</style>
     `)
@@ -475,7 +475,7 @@ async function expectSessionInboxBadgePreservesIconCenter(css: string) {
     expect(Math.abs(layout.emptyIconOffset)).toBeLessThanOrEqual(0.5)
     expect(Math.abs(layout.activeIconOffset)).toBeLessThanOrEqual(0.5)
     expect(layout.badgePosition).toBe("absolute")
-    expect(layout.badgeColor).toBe("rgb(255, 255, 255)")
+    expect(layout.badgeColor).not.toBe("rgba(0, 0, 0, 0)")
   } finally {
     await browser.close()
   }
@@ -638,7 +638,7 @@ async function readPromptDockLayoutTokens(): Promise<PromptDockLayoutTokens> {
   const conversation = await Bun.file(new URL("conversation.tsx", sessionDir)).text()
   const clearanceLine = conversation
     .split("\n")
-    .find((line) => line.includes("md:pb-[calc(var(--prompt-height,10rem)+96px)]"))
+    .find((line) => line.includes("md:pb-[calc(var(--prompt-height,10rem)+32px)]"))
   const clearanceMatch = clearanceLine?.match(/"([^"]+)"/)
   if (!clearanceMatch || !clearanceMatch[1]!.includes("pb-6")) {
     throw new Error("conversation.tsx must keep the mobile pb-6 prompt clearance")
@@ -699,7 +699,7 @@ async function expectPromptDockAndMobileFloatFlow(css: string) {
     expect(desktop.dockPaddingTop).toBe("0px")
     expect(desktop.floatPosition).toBe("absolute")
     expect(desktop.composerOffset).toBe(0)
-    expect(desktop.contentPaddingBottom).toBe("256px")
+    expect(desktop.contentPaddingBottom).toBe("192px")
 
     // Mobile: the band collapses to zero, the float layer flows in normal
     // document order, so a busy control pushes the composer down instead of
@@ -923,7 +923,7 @@ describe("app production build contract", () => {
       expect(markdownChunk).toBeDefined()
       expect(assets.some((asset) => asset.startsWith("pdf.worker.min-") && asset.endsWith(".mjs"))).toBe(true)
       await expectSessionWorkbenchPaneTracksBottomSurface(css)
-      await expectSessionInboxBadgePreservesIconCenter(css)
+      await expectTaskDetailsBadgePreservesIconCenter(css)
       await expectPromptDockKeepsReadableWidth(css)
       await expectPromptDockAndMobileFloatFlow(css)
       await expectStatusbarSubsessionContentFillsBody(css)

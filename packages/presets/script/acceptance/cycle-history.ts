@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import path from "node:path"
 import { z } from "zod"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
@@ -44,7 +45,12 @@ export async function cycleHistory(
   )
   const model = { providerID: settings.providerID, modelID: settings.modelID }
   async function invoke(input: Omit<Parameters<typeof createUserMessage>[0], "sessionID" | "model" | "agent">) {
-    const request = await createUserMessage({ ...input, sessionID: identity.sessionID, model, agent: "synergy-max" })
+    const request = await createUserMessage({
+      ...input,
+      sessionID: identity.sessionID,
+      model,
+      agent: PrimaryAgentIdentity.names.coding,
+    })
     await SessionInvoke.loop.force(identity.sessionID)
     const messages = await Session.messages({ sessionID: identity.sessionID })
     await atomicJSON(path.join(directory, `cycle-messages-${request.info.id}.json`), messages)

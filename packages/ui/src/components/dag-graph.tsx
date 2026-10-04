@@ -1,7 +1,7 @@
 import type { I18n } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
 import { For, Show, createEffect, createMemo, createSignal, createUniqueId, on, onCleanup, onMount } from "solid-js"
-import { Portal } from "solid-js/web"
+import { Popover } from "./popover"
 import { Icon, type IconName } from "./icon"
 import { Markdown } from "./markdown"
 import "./dag-graph.css"
@@ -199,7 +199,6 @@ function statusCounts(nodes: DagNode[]) {
     pending: nodes.filter((n) => n.status === "pending").length,
   }
 }
-const NODE_INSPECTOR_HOVER_DELAY_MS = 2400
 
 interface NodeBadge {
   kind: "worktree" | "session" | "result"
@@ -255,24 +254,17 @@ export function DagGraph(props: {
   let ref: HTMLDivElement | undefined
   let viewport: HTMLDivElement | undefined
   let dragStart: { pointer: { x: number; y: number }; pan: { x: number; y: number } } | undefined
-  let clickNodeId: string | undefined
-  const [hoveredNodeId, setHoveredNodeId] = createSignal<string | undefined>(undefined)
-  const [inspectorNode, setInspectorNode] = createSignal<DagNode | undefined>(undefined)
-  const [inspectorPosition, setInspectorPosition] = createSignal({ x: 0, y: 0 })
-  let inspectorTimer: ReturnType<typeof setTimeout> | undefined
-
-  const clearInspectorTimer = () => {
-    clearTimeout(inspectorTimer)
-    inspectorTimer = undefined
-    setHoveredNodeId(undefined)
+  let dragCapture: HTMLElement | undefined
+  const [inspectorID, setInspectorID] = createSignal<string>()
+  const [inspectorAnchor, setInspectorAnchor] = createSignal<HTMLButtonElement>()
+  const closeNodeInspector = () => setInspectorID(undefined)
+  const activateNode = (node: DagNode, anchor: HTMLButtonElement) => {
+    if (props.frozen) return
+    props.onSelectNode?.(node)
+    if (props.enableInspector === false) return
+    setInspectorAnchor(anchor)
+    setInspectorID(node.id)
   }
-
-  const closeNodeInspector = () => {
-    clearInspectorTimer()
-    setInspectorNode(undefined)
-  }
-
-  const inspectorIsPinned = () => inspectorNode() !== undefined
 
   onMount(() => {
     if (!ref) return
@@ -283,16 +275,15 @@ export function DagGraph(props: {
     })
     observer.observe(ref)
     onCleanup(() => observer.disconnect())
-    onCleanup(closeNodeInspector)
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && inspectorNode()) closeNodeInspector()
-    }
-    document.addEventListener("keydown", handleKeyDown)
-    onCleanup(() => document.removeEventListener("keydown", handleKeyDown))
   })
 
   const nodes = createMemo(() => props.nodes ?? [])
+  const inspectorNode = createMemo(() => nodes().find((node) => node.id === inspectorID()))
+  createEffect(() => {
+    if (props.frozen || props.enableInspector === false || !inspectorNode()) closeNodeInspector()
+  })
   const layout = createMemo(() => computeLayout(nodes(), containerWidth()))
+  const layoutByID = createMemo(() => new Map(layout().laid.map((item) => [item.node.id, item])))
   const readySet = createMemo(() => new Set(props.ready ?? []))
   const counts = createMemo(() => statusCounts(nodes()))
 
@@ -329,7 +320,7 @@ export function DagGraph(props: {
 
   createEffect(() => {
     const focusId = props.focusNodeId
-    if (!focusId || hasUserMoved() || nodes().length > 200) return
+    if (props.frozen || !focusId || hasUserMoved() || nodes().length > 200) return
     const laid = layout().laid
     if (laid.length === 0) return
     const target = laid.find((ln) => ln.node.id === focusId)
@@ -407,49 +398,17 @@ export function DagGraph(props: {
     zoomAt(scale() * factor, event.clientX, event.clientY)
   }
 
-  function updateInspectorPosition(event: PointerEvent) {
-    const inspectorWidth = 380
-    const inspectorHeight = 440
-    const maxX = window.innerWidth - inspectorWidth
-    const maxY = window.innerHeight - inspectorHeight
-    setInspectorPosition({
-      x: Math.max(16, Math.min(event.clientX + 18, maxX)),
-      y: Math.max(16, Math.min(event.clientY + 18, maxY)),
-    })
-  }
-
-  function handleNodePointerEnter(node: DagNode, event: PointerEvent) {
-    if (props.enableInspector === false || inspectorIsPinned()) return
-    clearInspectorTimer()
-    setHoveredNodeId(node.id)
-    updateInspectorPosition(event)
-    inspectorTimer = setTimeout(() => {
-      setInspectorNode(node)
-      setHoveredNodeId(undefined)
-      inspectorTimer = undefined
-    }, NODE_INSPECTOR_HOVER_DELAY_MS)
-  }
-
-  function handleNodePointerMove(event: PointerEvent) {
-    if (hoveredNodeId() && !inspectorIsPinned()) updateInspectorPosition(event)
-  }
-
-  function handleNodePointerLeave() {
-    clearInspectorTimer()
-  }
   function handlePointerDown(event: PointerEvent) {
     if (event.button !== 0) return
     const target = event.target as HTMLElement | undefined
-    if (target?.closest("button")) return
-    clearInspectorTimer()
+    if (props.frozen || target?.closest('button:not([data-slot="dag-graph-node-action"])')) return
     setDragging(true)
     setHasUserMoved(true)
     props.onViewportInteraction?.()
     setPointerMoved(false)
-    const card = target?.closest('[data-slot="dag-graph-card"]')
-    clickNodeId = (card as HTMLElement | undefined)?.dataset.id ?? undefined
     dragStart = { pointer: { x: event.clientX, y: event.clientY }, pan: pan() }
-    viewport?.setPointerCapture(event.pointerId)
+    dragCapture = target?.closest<HTMLButtonElement>('[data-slot="dag-graph-node-action"]') ?? viewport
+    dragCapture?.setPointerCapture(event.pointerId)
   }
 
   function handlePointerMove(event: PointerEvent) {
@@ -466,14 +425,10 @@ export function DagGraph(props: {
   }
 
   function handlePointerUp(event: PointerEvent) {
-    if (!pointerMoved() && clickNodeId && props.onSelectNode) {
-      const node = nodes().find((n) => n.id === clickNodeId)
-      if (node) props.onSelectNode(node)
-    }
     setDragging(false)
     dragStart = undefined
-    clickNodeId = undefined
-    viewport?.releasePointerCapture(event.pointerId)
+    if (dragCapture?.hasPointerCapture(event.pointerId)) dragCapture.releasePointerCapture(event.pointerId)
+    dragCapture = undefined
   }
 
   return (
@@ -515,11 +470,11 @@ export function DagGraph(props: {
             <button type="button" onClick={fitView}>
               {_(DAG_CHROME_DESC.fit)}
             </button>
-            <button type="button" onClick={() => zoomAt(scale() * 0.86)}>
+            <button type="button" aria-label={_(DAG_CHROME_DESC.zoomOut)} onClick={() => zoomAt(scale() * 0.86)}>
               −
             </button>
             <span>{Math.round(scale() * 100)}%</span>
-            <button type="button" onClick={() => zoomAt(scale() * 1.16)}>
+            <button type="button" aria-label={_(DAG_CHROME_DESC.zoomIn)} onClick={() => zoomAt(scale() * 1.16)}>
               +
             </button>
           </div>
@@ -533,6 +488,10 @@ export function DagGraph(props: {
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onPointerCancel={(event) => {
+            setPointerMoved(true)
+            handlePointerUp(event)
+          }}
           onDblClick={focusActiveNodes}
         >
           <div
@@ -576,55 +535,62 @@ export function DagGraph(props: {
                 }}
               </For>
             </svg>
-            <For each={layout().laid}>
-              {(ln) => (
-                <div
-                  class="dag-node"
-                  data-slot="dag-graph-card"
-                  data-id={ln.node.id}
-                  data-status={ln.node.status}
-                  data-ready={readySet().has(ln.node.id)}
-                  data-selected={props.selectedNodeId && props.selectedNodeId === ln.node.id ? "true" : undefined}
-                  data-hovering={hoveredNodeId() === ln.node.id ? "true" : undefined}
-                  tabIndex={0}
-                  role="button"
-                  aria-label={props.getNodeAriaLabel?.(ln.node) ?? `DAG node: ${ln.node.content}`}
-                  aria-pressed={props.selectedNodeId === ln.node.id}
-                  onPointerEnter={(event) => handleNodePointerEnter(ln.node, event)}
-                  onPointerMove={handleNodePointerMove}
-                  onPointerLeave={handleNodePointerLeave}
-                  onKeyDown={(e: KeyboardEvent) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault()
-                      props.onSelectNode?.(ln.node)
-                    }
-                  }}
-                  style={{
-                    left: `${ln.x}px`,
-                    top: `${ln.y}px`,
-                    width: `${layout().cardW}px`,
-                    height: `${ln.h}px`,
-                  }}
-                >
-                  <div data-slot="dag-graph-card-header">
-                    <span data-slot="dag-graph-status-dot" />
-                    <span data-slot="dag-graph-status-label">
-                      {props.getStatusLabel?.(ln.node) ?? statusLabel(ln.node.status, linguiI18n())}
-                    </span>
-                    <Show when={nodeBadges(ln.node, _).length > 0}>
+            <For each={layout().laid.map((item) => item.node.id)}>
+              {(nodeID) => {
+                const ln = () => layoutByID().get(nodeID)!
+                return (
+                  <div
+                    class="dag-node"
+                    data-slot="dag-graph-card"
+                    data-id={ln().node.id}
+                    data-status={ln().node.status}
+                    data-ready={readySet().has(ln().node.id)}
+                    data-selected={props.selectedNodeId && props.selectedNodeId === ln().node.id ? "true" : undefined}
+                    style={{
+                      left: `${ln().x}px`,
+                      top: `${ln().y}px`,
+                      width: `${layout().cardW}px`,
+                      height: `${ln().h}px`,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      data-slot="dag-graph-node-action"
+                      aria-label={
+                        props.getNodeAriaLabel?.(ln().node) ??
+                        _({
+                          id: "dag.node.label",
+                          message: "Task: {content}",
+                          values: { content: ln().node.content },
+                        })
+                      }
+                      aria-pressed={props.selectedNodeId === ln().node.id}
+                      aria-haspopup={props.enableInspector !== false ? "dialog" : undefined}
+                      aria-expanded={props.enableInspector !== false ? inspectorID() === ln().node.id : undefined}
+                      onClick={(event) => {
+                        if (event.detail && pointerMoved()) return
+                        activateNode(ln().node, event.currentTarget)
+                      }}
+                    >
+                      <span data-slot="dag-graph-card-header">
+                        <span data-slot="dag-graph-status-dot" aria-hidden="true" />
+                        <span data-slot="dag-graph-status-label">
+                          {props.getStatusLabel?.(ln().node) ?? statusLabel(ln().node.status, linguiI18n())}
+                        </span>
+                      </span>
+                      <span data-slot="dag-graph-card-content">{ln().node.content}</span>
+                    </button>
+                    <Show when={nodeBadges(ln().node, _).length > 0}>
                       <div data-slot="dag-graph-node-badges" aria-label={_(DAG_CHROME_DESC.nodeMetadata)}>
-                        <For each={nodeBadges(ln.node, _)}>
+                        <For each={nodeBadges(ln().node, _)}>
                           {(badge) =>
-                            badge.kind === "session" && ln.node.session_id && props.onOpenSession ? (
+                            badge.kind === "session" && ln().node.session_id && props.onOpenSession ? (
                               <button
                                 type="button"
                                 data-slot="dag-graph-node-badge"
                                 title={`${badge.label}: ${badge.value}`}
                                 aria-label={`${badge.label}: ${badge.value}`}
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  props.onOpenSession?.(ln.node.session_id!)
-                                }}
+                                onClick={() => props.onOpenSession?.(ln().node.session_id!)}
                               >
                                 <Icon name={badge.icon} size="small" />
                               </button>
@@ -637,107 +603,102 @@ export function DagGraph(props: {
                         </For>
                       </div>
                     </Show>
-                    <Show when={hoveredNodeId() === ln.node.id && inspectorNode()?.id !== ln.node.id}>
-                      <span data-slot="dag-graph-hover-hold" aria-hidden="true" />
-                    </Show>
                   </div>
-                  <div data-slot="dag-graph-card-content" title={ln.node.content}>
-                    {ln.node.content}
-                  </div>
-                </div>
-              )}
+                )
+              }}
             </For>
           </div>
         </div>
         <Show when={props.enableInspector !== false}>
-          <Portal>
-            <Show keyed when={inspectorNode()}>
-              {(node) => (
-                <div
-                  data-slot="dag-node-preview"
-                  style={{
-                    left: `${inspectorPosition().x}px`,
-                    top: `${inspectorPosition().y}px`,
-                  }}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <div data-slot="dag-node-preview-header">
-                    <span data-slot="dag-node-preview-status" data-status={node.status}>
-                      {props.getStatusLabel?.(node) ?? statusLabel(node.status, linguiI18n())}
-                    </span>
-                    <Show keyed when={node.assign}>
-                      {(assign) => <span data-slot="dag-node-preview-agent">@{assign}</span>}
-                    </Show>
-                    {node.session_id && props.onOpenSession ? (
-                      <button
-                        type="button"
-                        data-slot="dag-node-preview-open-session"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          props.onOpenSession?.(node.session_id!)
-                        }}
-                      >
-                        <Icon name={getSemanticIcon("action.open")} size="small" />
-                        {_(DAG_CHROME_DESC.openSession)}
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      data-slot="dag-node-preview-close"
-                      aria-label={_(DAG_CHROME_DESC.closeDetails)}
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        closeNodeInspector()
-                      }}
-                    >
-                      <Icon name={getSemanticIcon("action.close")} size="small" />
-                    </button>
-                  </div>
-                  <div data-slot="dag-node-preview-title">{node.content}</div>
-                  <div data-slot="dag-node-preview-meta">
-                    <Show keyed when={node.task_id}>
-                      {(taskID) => (
-                        <span title={taskID}>
-                          {_(DAG_CHROME_DESC.task)}: {displayIdentifier(taskID)}
-                        </span>
-                      )}
-                    </Show>
-                    <Show keyed when={node.session_id}>
-                      {(sessionID) => (
-                        <span title={sessionID}>
-                          {_(DAG_CHROME_DESC.session)}: {displayIdentifier(sessionID)}
-                        </span>
-                      )}
-                    </Show>
-                    <Show keyed when={node.worktree}>
-                      {(worktree) => (
-                        <span>
-                          {_(DAG_CHROME_DESC.worktree)}: {worktree}
-                        </span>
-                      )}
-                    </Show>
-                    <Show when={node.deps.length > 0}>
-                      <span>
-                        {_(DAG_CHROME_DESC.deps)}: {node.deps.join(", ")}
+          <Popover
+            open={!!inspectorNode()}
+            onOpenChange={(open) => {
+              if (!open) closeNodeInspector()
+            }}
+            anchorRef={inspectorAnchor}
+            placement="right-start"
+            class="dag-node-inspector"
+            title={_(DAG_CHROME_DESC.nodeDetails)}
+            translations={{ dismiss: _(DAG_CHROME_DESC.closeDetails) }}
+            contentProps={{
+              onCloseAutoFocus: (event: Event) => {
+                event.preventDefault()
+                const anchor = inspectorAnchor()
+                if (!props.frozen && anchor?.isConnected && !anchor.closest("[inert]"))
+                  anchor.focus({ preventScroll: true })
+              },
+            }}
+          >
+            <Show when={inspectorNode()}>
+              {(current) => {
+                const node = () => current()
+                return (
+                  <div data-slot="dag-node-preview">
+                    <div data-slot="dag-node-preview-header">
+                      <span data-slot="dag-node-preview-status" data-status={node().status}>
+                        {props.getStatusLabel?.(node()) ?? statusLabel(node().status, linguiI18n())}
                       </span>
+                      <Show keyed when={node().assign}>
+                        {(assign) => <span data-slot="dag-node-preview-agent">@{assign}</span>}
+                      </Show>
+                      {node().session_id && props.onOpenSession ? (
+                        <button
+                          type="button"
+                          data-slot="dag-node-preview-open-session"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            props.onOpenSession?.(node().session_id!)
+                          }}
+                        >
+                          <Icon name={getSemanticIcon("action.open")} size="small" />
+                          {_(DAG_CHROME_DESC.openSession)}
+                        </button>
+                      ) : null}
+                    </div>
+                    <div data-slot="dag-node-preview-title">{node().content}</div>
+                    <div data-slot="dag-node-preview-meta">
+                      <Show keyed when={node().task_id}>
+                        {(taskID) => (
+                          <span title={taskID}>
+                            {_(DAG_CHROME_DESC.task)}: {displayIdentifier(taskID)}
+                          </span>
+                        )}
+                      </Show>
+                      <Show keyed when={node().session_id}>
+                        {(sessionID) => (
+                          <span title={sessionID}>
+                            {_(DAG_CHROME_DESC.session)}: {displayIdentifier(sessionID)}
+                          </span>
+                        )}
+                      </Show>
+                      <Show keyed when={node().worktree}>
+                        {(worktree) => (
+                          <span>
+                            {_(DAG_CHROME_DESC.worktree)}: {worktree}
+                          </span>
+                        )}
+                      </Show>
+                      <Show when={node().deps.length > 0}>
+                        <span>
+                          {_(DAG_CHROME_DESC.deps)}: {node().deps.join(", ")}
+                        </span>
+                      </Show>
+                    </div>
+                    <Show keyed when={node().memo}>
+                      {(memo) => <div data-slot="dag-node-preview-note">{memo}</div>}
+                    </Show>
+                    <Show keyed when={node().result}>
+                      {(result) => (
+                        <div data-slot="dag-node-preview-result">
+                          <Markdown text={result} cacheKey={`dag-node-result-${node().id}`} />
+                        </div>
+                      )}
                     </Show>
                   </div>
-                  <Show keyed when={node.memo}>
-                    {(memo) => <div data-slot="dag-node-preview-note">{memo}</div>}
-                  </Show>
-                  <Show keyed when={node.result}>
-                    {(result) => (
-                      <div data-slot="dag-node-preview-result">
-                        <Markdown text={result} cacheKey={`dag-node-result-${node.id}`} />
-                      </div>
-                    )}
-                  </Show>
-                </div>
-              )}
+                )
+              }}
             </Show>
-          </Portal>
+          </Popover>
         </Show>
         <div data-slot="dag-graph-hint">{_(DAG_CHROME_DESC.hint)}</div>
       </Show>

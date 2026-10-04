@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { setupI18n } from "@lingui/core"
 import { pluginMarketplace } from "@/locales/messages"
 import type { InstalledPlugin } from "../../../src/plugin/marketplace/types"
+import { fallbackPluginSummary } from "../../../src/plugin/marketplace/plugin-detail-model"
 import {
   installationLabel,
   installedPluginFromSnapshot,
@@ -31,6 +32,28 @@ function plugin(input: Partial<InstalledPlugin> & Pick<InstalledPlugin, "id" | "
 }
 
 describe("plugin marketplace views", () => {
+  test("local summaries do not invent author descriptions or update times", () => {
+    const installed = plugin({
+      id: "local",
+      installation: { kind: "directory", spec: "file:///local", path: "/local" },
+    })
+    const summary = fallbackPluginSummary({ installed })!
+    expect(summary.description).toBe("")
+    expect(summary.author?.name).toBe("")
+    expect(summary.updatedAt).toBeUndefined()
+  })
+  test("a loaded plugin reports runtime startup and failure rather than claiming to be active", () => {
+    const installed = plugin({ id: "runtime", installation: { kind: "builtin", spec: "builtin:runtime" } })
+    const runtime = { inFlight: 0, mode: "process" as const, state: "crashed" as const }
+    expect(installedPluginStatusView({ ...installed, runtime }, "installed").label.message).toBe("Failed")
+    expect(
+      installedPluginStatusView({ ...installed, runtime: { ...runtime, state: "starting" } }, "installed").label
+        .message,
+    ).toBe("Starting")
+    expect(
+      installedPluginStatusView({ ...installed, runtime: { ...runtime, state: "stopped" } }, "installed").label.message,
+    ).toBe("Stopped")
+  })
   const directory = plugin({
     id: "focus",
     version: "0.1.0",

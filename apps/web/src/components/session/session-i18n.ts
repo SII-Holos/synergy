@@ -1,10 +1,27 @@
-import type { I18n } from "@lingui/core"
-import type { ProgressIslandSnapshot } from "./session-progress-summary"
-
-/** Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`. */
-
 export const S = {
+  historyCopyTitle: { id: "session.history.copyTitle", message: "Copy conversation text" },
+  historyCopyDescription: {
+    id: "session.history.copyDescription",
+    message: "Copy all user and assistant text in this conversation",
+  },
+  historyCopied: { id: "session.history.copied", message: "Conversation copied" },
+  historyExportTitle: { id: "session.history.exportTitle", message: "Export conversation text" },
+  historyExportDescription: {
+    id: "session.history.exportDescription",
+    message: "Download all user and assistant text in this conversation",
+  },
+  historyTextFailed: { id: "session.history.textFailed", message: "Unable to read the conversation. Try again." },
+  historySearchTitle: { id: "session.history.searchTitle", message: "Search conversation" },
+  historySearchPlaceholder: { id: "session.history.searchPlaceholder", message: "Search all conversation history" },
+  historySearchReasoning: { id: "session.history.searchReasoning", message: "Include reasoning" },
+  historySearchTools: { id: "session.history.searchTools", message: "Include tool content" },
+  historySearchPreparing: {
+    id: "session.history.searchPreparing",
+    message: "Preparing history search… {count} parts ready",
+  },
+  historySearchMore: { id: "session.history.searchMore", message: "Continue searching" },
+  historySearchEmpty: { id: "session.history.searchEmpty", message: "No matching content" },
+  historySearchFailed: { id: "session.history.searchFailed", message: "Couldn’t search conversation" },
   lspNoServers: { id: "session.lsp.noServers", message: "No LSP servers" },
 
   // conversation.tsx
@@ -29,18 +46,11 @@ export const S = {
   convRemovePending: { id: "session.conversation.removePending", message: "Remove pending message" },
   convWithdraw: { id: "session.conversation.withdraw", message: "Withdraw" },
 
-  // permission-dock.tsx
-
   // conversation.tsx — pending timeline tooltips (these mirror the conv descriptors above
   // but the checker sees the raw strings in title attributes)
   convMoveToQueueTitle: { id: "session.conversation.moveToQueueTitle", message: "Move back to queue" },
   convGuideRunTitle: { id: "session.conversation.guideRunTitle", message: "Guide current run" },
   convRemovePendingTitle: { id: "session.conversation.removePendingTitle", message: "Remove pending message" },
-  permDeny: { id: "session.permission.deny", message: "Deny" },
-  permAllowForSession: { id: "session.permission.allowForSession", message: "Allow for session" },
-  permAlwaysAllow: { id: "session.permission.alwaysAllow", message: "Always allow" },
-  permAllowOnce: { id: "session.permission.allowOnce", message: "Allow once" },
-  permFrom: { id: "session.permission.from", message: "from" },
 
   // prompt-dock.tsx
   dockBackToParent: { id: "session.dock.backToParent", message: "Back to parent" },
@@ -229,60 +239,6 @@ export const S = {
   forkConfirmFailed: { id: "session.fork.confirm.failed", message: "Fork failed" },
   forkConfirmRequestFailed: { id: "session.fork.confirm.requestFailed", message: "Request failed" },
 
-  // session-progress summary labels
-  progressDone: { id: "session.progress.done", message: "Done · {count, plural, one {# task} other {# tasks}}" },
-  progressNeedsAttention: {
-    id: "session.progress.needsAttention",
-    message: "Needs attention · {count, plural, one {# failed} other {# failed}}",
-  },
-  progressNeedsAttentionBlocked: {
-    id: "session.progress.needsAttentionBlocked",
-    message: "Needs attention · {count, plural, one {# blocked} other {# blocked}}",
-  },
-  progressReady: { id: "session.progress.ready", message: "Ready · {fraction}" },
-  progressWorkingLabel: {
-    id: "session.progress.workingLabel",
-    message: "Working {count, plural, one {# task} other {# tasks}}",
-  },
-  progressWorking: { id: "session.progress.working", message: "Working" },
-
-  // session-progress-island
-  progressSessionLabel: { id: "session.progress.sessionLabel", message: "Session progress" },
-  progressCompleteAria: {
-    id: "session.progress.completeAria",
-    message: "Session progress complete, {count, plural, one {# task} other {# tasks}} done",
-  },
-  progressAttentionAria: {
-    id: "session.progress.attentionAria",
-    message: "Session progress needs attention, {count} failed",
-  },
-  progressBlockedAria: {
-    id: "session.progress.blockedAria",
-    message: "Session progress needs attention, {count} blocked",
-  },
-  progressActiveAria: {
-    id: "session.progress.activeAria",
-    message: "Session progress, {completed} of {total} tasks complete",
-  },
-  progressDagTab: { id: "session.progress.dagTab", message: "DAG" },
-  progressTodoTab: { id: "session.progress.todoTab", message: "To-do" },
-  progressCurrentWork: { id: "session.progress.currentWork", message: "Current work" },
-  progressCompleteFraction: { id: "session.progress.completeFraction", message: "{completed}/{total} complete" },
-  progressActiveCount: { id: "session.progress.activeCount", message: "{count} active" },
-  progressWaitingCount: { id: "session.progress.waitingCount", message: "{count} waiting" },
-  progressViewLabel: { id: "session.progress.viewLabel", message: "Progress view" },
-  progressExpand: { id: "session.progress.expand", message: "Expand" },
-  progressCollapse: { id: "session.progress.collapse", message: "Collapse" },
-  progressNoActivePlan: { id: "session.progress.noActivePlan", message: "No active plan" },
-  progressNoActiveTasks: { id: "session.progress.noActiveTasks", message: "No active tasks" },
-  progressTodoActive: { id: "session.progress.todoActive", message: "active" },
-  progressTodoDone: { id: "session.progress.todoDone", message: "done" },
-  progressTodoSkipped: { id: "session.progress.todoSkipped", message: "skipped" },
-  progressCompleted: { id: "session.progress.completed", message: "{count} completed" },
-  progressActiveCountLabel: { id: "session.progress.activeCountLabel", message: "{count} active" },
-  progressPendingCount: { id: "session.progress.pendingCount", message: "{count} pending" },
-  progressTodoCompleted: { id: "session.progress.todoCompleted", message: "{count} completed" },
-
   // session-inbox
   inboxQueued: { id: "session.inbox.queued", message: "Queued by you" },
   inboxGuiding: { id: "session.inbox.guiding", message: "Guiding current run" },
@@ -370,33 +326,6 @@ export const S = {
   inboxFailed: { id: "session.inbox.failed", message: "Failed to deliver" },
   inboxRetry: { id: "session.inbox.retry", message: "Retry delivery" },
   inboxRetryFailed: { id: "session.inbox.retryFailed", message: "Failed to retry message" },
-
-  // question-prompt
-  questionNeedsInput: { id: "session.question.needsInput", message: "Choose how to proceed" },
-  questionOpen: { id: "session.question.open", message: "Open" },
-  questionCollapseTitle: { id: "session.question.collapse", message: "Collapse" },
-  questionSkip: { id: "session.question.skip", message: "Skip" },
-  questionSkipTitle: { id: "session.question.skipTitle", message: "Skip question" },
-  questionMoreActions: { id: "session.question.moreActions", message: "More question actions" },
-  questionReview: { id: "session.question.review", message: "Review" },
-  questionOtherAnswer: { id: "session.question.otherAnswer", message: "None of these?" },
-  questionOtherDesc: { id: "session.question.otherDesc", message: "Tell Synergy how to proceed" },
-  questionReviewTitle: { id: "session.question.reviewTitle", message: "Review your answers" },
-  questionNotAnswered: { id: "session.question.notAnswered", message: "Not answered" },
-  questionEdit: { id: "session.question.edit", message: "Edit" },
-  questionPrevious: { id: "session.question.previous", message: "Previous" },
-  questionNext: { id: "session.question.next", message: "Next" },
-  questionSubmit: { id: "session.question.submit", message: "Submit" },
-  questionAdd: { id: "session.question.add", message: "Add" },
-  questionStepsAria: { id: "session.question.stepsAria", message: "Question steps" },
-  questionAria: { id: "session.question.aria", message: "Question awaiting your input" },
-  questionCustomPlaceholder: {
-    id: "session.question.customPlaceholder",
-    message: "Tell Synergy what to do instead...",
-  },
-  questionSingleHint: { id: "session.question.singleHint", message: "Choose one option to continue" },
-  questionMultiHint: { id: "session.question.multiHint", message: "Choose one or more options to continue" },
-  questionStepLabel: { id: "session.question.stepLabel", message: "Question {index}" },
 
   // session-new-view
   newSessionSubtitle: { id: "session.new.subtitle", message: "What are we building today?" },
@@ -623,36 +552,4 @@ export const S = {
   scopesNewSession: { id: "scopes.newSession", message: "New session" },
   scopesTasksRunning: { id: "scopes.tasksRunning", message: "{running}/{count} tasks running" },
   scopesTasksCount: { id: "scopes.tasksCount", message: "{count} tasks" },
-}
-
-/** Stateless formatting helpers that accept i18n + snapshot. */
-export function describeProgress(snapshot: ProgressIslandSnapshot, i18n: I18n): string {
-  if (snapshot.status === "hidden") return i18n._(S.progressSessionLabel)
-  if (snapshot.status === "complete") return i18n._({ ...S.progressCompleteAria, values: { count: snapshot.total } })
-  if (snapshot.tone === "failed") return i18n._({ ...S.progressAttentionAria, values: { count: snapshot.failed } })
-  if (snapshot.tone === "blocked") return i18n._({ ...S.progressBlockedAria, values: { count: snapshot.blocked } })
-  return i18n._({ ...S.progressActiveAria, values: { completed: snapshot.completed, total: snapshot.total } })
-}
-
-export function progressExpandCollapse(expanded: boolean, i18n: I18n): string {
-  return expanded ? i18n._(S.progressCollapse) : i18n._(S.progressExpand)
-}
-
-export function formatProgressLabel(
-  snapshot: ProgressIslandSnapshot,
-  activeLabel: string | undefined,
-  i18n: I18n,
-): string {
-  if (snapshot.status === "hidden") return ""
-  if (snapshot.status === "complete") return i18n._({ ...S.progressDone, values: { count: snapshot.total } })
-  if (snapshot.tone === "failed") return i18n._({ ...S.progressNeedsAttention, values: { count: snapshot.failed } })
-  if (snapshot.tone === "blocked")
-    return i18n._({ ...S.progressNeedsAttentionBlocked, values: { count: snapshot.blocked } })
-  const fraction = `${snapshot.completed}/${snapshot.total}`
-  const label = activeLabel?.trim()
-  if (label) return `${label} · ${fraction}`
-  if (snapshot.tone === "ready") return i18n._({ ...S.progressReady, values: { fraction } })
-  if (snapshot.active > 1)
-    return `${i18n._({ ...S.progressWorkingLabel, values: { count: snapshot.active } })} · ${fraction}`
-  return `${i18n._(S.progressWorking)} · ${fraction}`
 }

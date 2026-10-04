@@ -10,6 +10,8 @@ import {
   ToolListChangedNotificationSchema,
   PromptListChangedNotificationSchema,
   ResourceListChangedNotificationSchema,
+  McpError,
+  ErrorCode,
 } from "@modelcontextprotocol/sdk/types.js"
 import { mergeDeep } from "remeda"
 import z from "zod"
@@ -300,6 +302,7 @@ export interface McpHandle {
   toolDefs: MCPToolDef[]
   prompts: PromptCache
   resources: ResourceCache
+  unsupportedDiscovery?: Set<"prompts" | "resources">
   retryCount: number
   generation: number
   lastError?: string
@@ -1124,6 +1127,7 @@ class McpSupervisorImpl {
     }
 
     handle.client = client
+    handle.unsupportedDiscovery = new Set()
     handle.toolDefs = toolsResult.tools
     handle.state = HS.Connected
     handle.retryCount = 0
@@ -1148,7 +1152,7 @@ class McpSupervisorImpl {
     if (handle.retryCount >= maxAttempts) {
       handle.state = HS.Failed
       const error = handle.lastError ?? "unknown error"
-      log.warn("MCP server permanently failed", {
+      log.warn("MCP server connection attempts exhausted", {
         name: handle.name,
         error,
         attempts: handle.retryCount,
@@ -1191,7 +1195,9 @@ class McpSupervisorImpl {
 
   private scheduleFailedRetry(handle: McpHandle): void {
     this.clearFailedRetry(handle)
-    const delay = handle.config.retry?.cooldownMs ?? DEFAULT_FAILED_RETRY_COOLDOWN_MS
+    const cooldown = handle.config.retry?.cooldownMs ?? DEFAULT_FAILED_RETRY_COOLDOWN_MS
+    const failures = Math.max(0, handle.retryCount - (handle.config.retry?.maxAttempts ?? 3))
+    const delay = Math.min(cooldown * 2 ** Math.min(failures, 10), Math.max(cooldown, 15 * 60_000))
     const timer = setTimeout(() => {
       handle.failedRetryTimer = undefined
       if (!this.isCurrent(handle) || handle.state !== HS.Failed) return
@@ -1200,7 +1206,6 @@ class McpSupervisorImpl {
         this.scheduleFailedRetry(handle)
         return
       }
-      handle.retryCount = 0
       this.scheduleStart(handle)
     }, delay)
     if (typeof timer === "object" && "unref" in timer) timer.unref()
@@ -1271,8 +1276,14 @@ function registerNotificationHandlers(
 // ---------------------------------------------------------------------------
 
 async function fetchPromptsForHandle(handle: McpHandle, client: Client): Promise<PromptCache> {
+  if (!client.getServerCapabilities()?.prompts || handle.unsupportedDiscovery?.has("prompts")) return {}
   const timeout = handle.config.listTimeout ?? handle.config.timeout ?? DEFAULT_TIMEOUT
   const prompts = await withTimeout(client.listPrompts(), timeout).catch((e) => {
+    if (e instanceof McpError && e.code === ErrorCode.MethodNotFound) {
+      handle.unsupportedDiscovery?.add("prompts")
+      log.warn("advertised MCP discovery method is unavailable", { clientName: handle.name, method: "prompts/list" })
+      return undefined
+    }
     log.error("failed to get prompts", { clientName: handle.name, error: e })
     return undefined
   })
@@ -1288,8 +1299,14 @@ async function fetchPromptsForHandle(handle: McpHandle, client: Client): Promise
 }
 
 async function fetchResourcesForHandle(handle: McpHandle, client: Client): Promise<ResourceCache> {
+  if (!client.getServerCapabilities()?.resources || handle.unsupportedDiscovery?.has("resources")) return {}
   const timeout = handle.config.listTimeout ?? handle.config.timeout ?? DEFAULT_TIMEOUT
   const resources = await withTimeout(client.listResources(), timeout).catch((e) => {
+    if (e instanceof McpError && e.code === ErrorCode.MethodNotFound) {
+      handle.unsupportedDiscovery?.add("resources")
+      log.warn("advertised MCP discovery method is unavailable", { clientName: handle.name, method: "resources/list" })
+      return undefined
+    }
     log.error("failed to get resources", { clientName: handle.name, error: e })
     return undefined
   })

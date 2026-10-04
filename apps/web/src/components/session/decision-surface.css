@@ -1,0 +1,268 @@
+.decision-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: min(50dvh, 32rem);
+  min-height: 0;
+  margin-bottom: 12px;
+  overflow: hidden;
+  border: 1px solid var(--workbench-border, var(--border-weak-base));
+  border-radius: 12px;
+  background: var(--workbench-card-bg, var(--surface-raised-base));
+  color: var(--text-base);
+}
+.decision-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 12px 8px;
+  flex: none;
+}
+.decision-header > [data-component="icon"] {
+  margin-top: 3px;
+  color: var(--icon-weak-base);
+  flex: none;
+}
+.decision-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.decision-card[data-collapsed="true"] .decision-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.decision-card[data-collapsed="true"] .decision-header {
+  padding-bottom: 12px;
+}
+.decision-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.decision-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 16px 12px;
+  overflow: auto;
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+.decision-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px 12px;
+  flex: none;
+}
+.decision-footer [data-component="button"] {
+  min-height: 36px;
+}
+.decision-icon-button,
+.decision-secondary-button,
+.decision-menu-row,
+.decision-origin {
+  border: 0;
+  background: transparent;
+  color: var(--text-weak);
+  cursor: pointer;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+  &:hover {
+    background: var(--workbench-control-bg-hover, var(--surface-inset-base-hover));
+    color: var(--text-base);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--border-interactive-base);
+    outline-offset: 2px;
+  }
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+}
+.decision-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+.decision-secondary-button {
+  padding: 6px 8px;
+  min-height: 32px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 18px;
+}
+.decision-menu-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  text-align: start;
+  font-size: 14px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.decision-menu-row[aria-current] {
+  background: var(--workbench-selected-bg, var(--surface-interactive-selected));
+  color: var(--text-base);
+}
+.decision-secondary {
+  margin: 0;
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 18px;
+}
+.decision-origin {
+  align-self: flex-start;
+  margin: 0 12px 4px;
+  padding: 4px;
+  font-size: 12px;
+  line-height: 18px;
+  border-radius: 4px;
+}
+.permission-targets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-family: var(--font-family-mono);
+  font-size: 14px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.permission-prompt > .decision-body > .permission-targets li {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.permission-raw-details {
+  display: grid;
+  gap: 12px;
+  & pre {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font: 14px/20px var(--font-family-mono);
+  }
+}
+.permission-command {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: 14px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.permission-reason {
+  margin: 0;
+  color: var(--text-weak);
+  font-size: 14px;
+  line-height: 20px;
+}
+.decision-grant-scope {
+  display: grid;
+  gap: 8px;
+  padding: 8px 10px 12px;
+}
+.permission-details {
+  font-size: 12px;
+  line-height: 18px;
+}
+.permission-details summary {
+  color: var(--text-weak);
+  cursor: pointer;
+  width: fit-content;
+  padding: 4px 0;
+}
+.permission-details[open] summary {
+  margin-bottom: 8px;
+}
+.decision-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 8px 16px;
+  flex-shrink: 1;
+  min-height: 0;
+  overflow: auto;
+  max-height: min(25dvh, 9rem);
+}
+@media (pointer: coarse) {
+  .decision-icon-button {
+    width: 44px;
+    height: 44px;
+  }
+  .decision-secondary-button,
+  .decision-menu-row,
+  .decision-footer [data-component="button"],
+  .decision-notice [data-component="button"],
+  .decision-origin {
+    min-height: 44px;
+  }
+  .permission-details summary,
+  .decision-notice summary {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}
+@media (max-width: 480px) {
+  .decision-body {
+    padding-inline: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .decision-icon-button,
+  .decision-secondary-button,
+  .decision-menu-row,
+  .decision-origin {
+    transition: none;
+  }
+}
+
+.session-prompt-dock-content:has([data-session-decision-stack]) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: calc(100dvh - 48px);
+}
+.session-prompt-dock-content [data-session-decision-outlet],
+[data-session-decision-outlet] > div,
+[data-session-decision-host] {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+[data-session-decision-outlet] > div,
+[data-session-decision-outlet] [data-session-decision-host] {
+  flex: 1 1 auto;
+}
+@container (max-width: 56rem) {
+  .session-prompt-dock-content .decision-footer {
+    /* Keep actions clear of the Composer inbox in its compact placement. */
+    padding-inline-end: 7.5rem;
+  }
+}

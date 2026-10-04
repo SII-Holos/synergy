@@ -234,7 +234,7 @@ describe("WorkspaceFileService", () => {
       )
     }))
 
-  test("attaches git status metadata to nodes and status summaries", () =>
+  test("reads direct children independently and attaches explicitly requested git status to nodes", () =>
     runtime.run(async () => {
       await withWorkspace(
         async (dir) => {
@@ -251,11 +251,12 @@ describe("WorkspaceFileService", () => {
           expect(summary.files.find((file) => file.path === "tracked.txt")?.status).toBe("modified")
           expect(summary.files.find((file) => file.path === "untracked.txt")?.status).toBe("untracked")
 
-          const tracked = await WorkspaceFileService.node("tracked.txt")
+          const tracked = await WorkspaceFileService.node("tracked.txt", { resolveGitStatus: true })
           expect(tracked.gitStatus).toBe("modified")
 
           const children = await WorkspaceFileService.children({ path: "" })
-          expect(children.children.find((node) => node.path === "untracked.txt")?.gitStatus).toBe("untracked")
+          expect(children.children.find((node) => node.path === "untracked.txt")).toMatchObject({ type: "file" })
+          expect(children.children.find((node) => node.path === "untracked.txt")?.gitStatus).toBeUndefined()
         },
       )
     }))

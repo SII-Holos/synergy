@@ -9,6 +9,14 @@ export const P = {
     message: "Runtime resource usage, trace latency, browser metrics, and performance issues at the last snapshot.",
   },
 
+  groupResources: { id: "app.performance.group.resources", message: "Resource usage" },
+  groupResourcePressure: { id: "app.performance.group.resourcePressure", message: "Resource pressure" },
+  groupRequests: { id: "app.performance.group.requests", message: "Requests and sessions" },
+  groupStorage: { id: "app.performance.group.storage", message: "Storage" },
+  groupDiagnostics: { id: "app.performance.group.diagnostics", message: "Diagnostics" },
+  groupBrowser: { id: "app.performance.group.browser", message: "Browser performance" },
+  resourceDetails: { id: "app.performance.resources.details", message: "Resource ownership" },
+
   // PerformanceDashboard.tsx
   snapshotLabel: { id: "app.performance.snapshot.label", message: "Performance snapshot" },
   snapshotFrom: { id: "app.performance.snapshot.from", message: "Snapshot from {time}" },
@@ -47,7 +55,7 @@ export const P = {
   tracesLoading: { id: "app.performance.traces.loading", message: "Loading traces…" },
 
   // performance analysis
-  analysisAnalyze: { id: "app.performance.analysis.action.analyze", message: "Analyze" },
+  analysisAnalyze: { id: "app.performance.analysis.action.analyze", message: "Generate diagnosis" },
   analysisAnalyzing: { id: "app.performance.analysis.action.analyzing", message: "Analyzing…" },
   analysisCancel: { id: "app.performance.analysis.action.cancel", message: "Cancel" },
   analysisOpenSession: { id: "app.performance.analysis.action.openSession", message: "Open session" },
@@ -73,6 +81,9 @@ export const P = {
 
   // summary cards
   summaryHealth: { id: "app.performance.summary.health", message: "Health" },
+  summaryHealthy: { id: "app.performance.summary.healthy", message: "Healthy" },
+  summaryDegraded: { id: "app.performance.summary.degraded", message: "Degraded" },
+  summaryCritical: { id: "app.performance.summary.critical", message: "Critical" },
   summaryUnknown: { id: "app.performance.summary.unknown", message: "Unknown" },
   summaryHttpP95: { id: "app.performance.summary.httpP95", message: "HTTP p95" },
   summarySessions: { id: "app.performance.summary.sessions", message: "Sessions" },
@@ -213,7 +224,7 @@ export const P = {
   chartMemory: { id: "app.performance.chart.memory.title", message: "Memory" },
   chartMemoryDesc: {
     id: "app.performance.chart.memory.desc",
-    message: "RSS, heap, external, and ArrayBuffer memory gauges in MB",
+    message: "RSS, heap, external, and ArrayBuffer memory gauges in MiB",
   },
   datasetRss: { id: "app.performance.dataset.rss", message: "RSS" },
   datasetHeapUsed: { id: "app.performance.dataset.heapUsed", message: "Heap used" },
@@ -276,7 +287,7 @@ export const P = {
   // axis titles
   axisPercent: { id: "app.performance.axis.percent", message: "Percent" },
   axisMilliseconds: { id: "app.performance.axis.milliseconds", message: "Milliseconds" },
-  axisMemory: { id: "app.performance.axis.memory", message: "Memory (MB)" },
+  axisMemory: { id: "app.performance.axis.memory", message: "Memory (MiB)" },
   axisCount: { id: "app.performance.axis.count", message: "Count" },
   axisBytes: { id: "app.performance.axis.bytes", message: "Bytes" },
 
@@ -289,7 +300,7 @@ export const P = {
   issuesNoIssues: { id: "app.performance.issues.noIssues", message: "No recent issues" },
   issuesNoActive: { id: "app.performance.issues.noActive", message: "No active performance issues" },
   issuesFallbackName: { id: "app.performance.issues.fallbackName", message: "Performance issue" },
-  severityInfo: { id: "app.performance.severity.info", message: "info" },
+  severityInfo: { id: "app.performance.severity.info", message: "Information" },
   issueTraceAvailable: {
     id: "app.performance.issue.traceAvailable",
     message: "trace available",

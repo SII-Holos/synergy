@@ -17,7 +17,7 @@ interface DialogRewindConfirmProps {
   /** All messages in canonical session order */
   allMessages: { id: string; role: string }[]
   partsByMessage: Record<string, PartType[] | undefined>
-  onConfirm: (action: "rewind" | "retry", cutMessageID: string, restoreFiles: boolean) => Promise<string | undefined>
+  onConfirm: (action: "rewind" | "retry", cutMessageID: string) => Promise<string | undefined>
   canRetry: boolean
 }
 
@@ -82,7 +82,7 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
   const dialog = useDialog()
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
-  const [state, setState] = createStore({ pending: undefined as "rewind" | "retry" | undefined, restoreFiles: false })
+  const [state, setState] = createStore({ pending: undefined as "rewind" | "retry" | undefined })
 
   const summary = createMemo(() =>
     displaySummary((props.cutMessage as { summary?: { title?: string } }).summary?.title),
@@ -98,13 +98,13 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
     return _(S.rewindBeforeUntitled)
   })
 
-  const confirmLabel = createMemo(() => (state.restoreFiles ? _(S.rewindConfirmRestore) : _(S.rewindConfirm)))
+  const confirmLabel = createMemo(() => _(S.rewindConfirm))
 
   const handleConfirm = async (action: "rewind" | "retry") => {
     if (state.pending) return
     setState("pending", action)
     try {
-      const retryError = await props.onConfirm(action, props.cutMessage.id, state.restoreFiles)
+      const retryError = await props.onConfirm(action, props.cutMessage.id)
       dialog.close()
       if (retryError) {
         showToast({ type: "error", title: _(S.rewindRetryFailed), description: retryError })
@@ -151,29 +151,6 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
           </span>
         </Show>
       </div>
-      <Show when={counts().affectedFiles > 0}>
-        <div class="rewind-confirm-option-group">
-          <div class="rewind-confirm-section-label">{_(S.rewindOptional)}</div>
-          <label
-            class="rewind-confirm-file-option"
-            data-selected={state.restoreFiles ? "true" : "false"}
-            data-disabled={state.pending ? "true" : "false"}
-          >
-            <input
-              type="checkbox"
-              checked={state.restoreFiles}
-              onChange={(event) => setState("restoreFiles", event.currentTarget.checked)}
-              disabled={state.pending !== undefined}
-            />
-            <span class="rewind-confirm-file-option-copy">
-              <span class="rewind-confirm-file-option-title">{_(S.rewindAlsoRestore)}</span>
-              <span class="rewind-confirm-file-option-hint">
-                {i18n._({ ...S.rewindAlsoRestoreHint, values: { files: fileChangeText(counts().affectedFiles) } })}
-              </span>
-            </span>
-          </label>
-        </div>
-      </Show>
       <div data-slot="dialog-actions" class="rewind-confirm-actions">
         <Button
           type="button"

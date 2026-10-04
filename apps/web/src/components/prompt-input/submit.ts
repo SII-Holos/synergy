@@ -1,22 +1,23 @@
 import { resolveSessionReference } from "@/utils/session-reference"
-import { type Accessor, Setter } from "solid-js"
+import { type Accessor, Setter, onCleanup } from "solid-js"
 import { produce, reconcile, type SetStoreFunction } from "solid-js/store"
 import { useNavigate, useParams } from "@solidjs/router"
 import { createSynergyClient, type Message, type Part } from "@ericsanchezok/synergy-sdk/client"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
-import { base64Encode, base64EncodeStandard } from "@ericsanchezok/synergy-util/encode"
+import { base64Decode, base64Encode, base64EncodeStandard } from "@ericsanchezok/synergy-util/encode"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useLocal } from "@/context/local"
 import { thinkingSelection } from "@/context/prompt/model-selection"
 import { useSDK } from "@/context/sdk"
+import { useServer } from "@/context/server"
 import { useSync } from "@/context/sync"
 import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
 import { usePrompt } from "@/context/prompt"
 import { projectFlowCopy } from "../dialog/project-flow-copy"
 import { resolveTaskEnvironment } from "../session/task-location"
-import { useSessionTransition } from "@/context/session-transition"
+import { draftTransitionKey, useSessionTransition } from "@/context/session-transition"
 import type {
   FileAttachmentPart,
   NoteAttachmentPart,
@@ -72,8 +73,11 @@ import { useLocale } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
 import { reconcileMessage, removeMessageFromWindow, type MessageWindowState } from "@/context/session-message-window"
+import { clearConversationContent } from "@/context/conversation-content-state"
 import { nextMessageWindowTotal, nextMessageWindowTotalAfterRemoval } from "@/context/session-message-total"
 import { promptSubmitFailure } from "./submit-failure"
+import type { WorkspaceRecoveryRequest } from "../dialog/workspace-dialog-model"
+import { recoverSessionInputReceipt } from "./input-receipt"
 import { runComposerPreflight } from "./composer-preflight"
 import { createOptimisticUserMessage } from "./optimistic-user-message"
 import { handoffOptimisticMessage, isOptimisticMessagePending } from "@/context/session-optimistic-message"
@@ -93,6 +97,7 @@ type PromptSubmitInput = {
   noteAttachments: Accessor<NoteAttachmentPart[]>
   sessionAttachments: Accessor<SessionAttachmentPart[]>
   attachmentsUploading: Accessor<boolean>
+  attachmentsFailed?: Accessor<boolean>
   selectedControlProfile: Accessor<ControlProfileId>
   pendingPlan: Accessor<boolean>
   clearPendingPlan: () => void
@@ -116,13 +121,16 @@ type PromptSubmitInput = {
   abort: () => void
   editor: () => HTMLDivElement | undefined
   queueScroll: () => void
+  onWorkspaceUnavailable: (request: WorkspaceRecoveryRequest) => void
   onWorktreeUnavailable: () => void
   beforeSubmit: () => Promise<void>
+  onAccepted?: (unchanged: boolean) => void
 }
 
 export function usePromptSubmit(input: PromptSubmitInput) {
   const navigate = useNavigate()
   const sdk = useSDK()
+  const server = useServer()
   const sync = useSync()
   const globalSync = useGlobalSync()
   const platform = usePlatform()
@@ -131,6 +139,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
   const sessionTransition = useSessionTransition()
   const params = useParams()
   const { i18n } = useLocale()
+  let disposed = false
+  onCleanup(() => (disposed = true))
 
   return async (event: Event) => {
     event.preventDefault()
@@ -138,6 +148,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     const prompt = binding.draft
     const initialSessionId = params.id
     let releaseSubmit: (() => void) | undefined
+    let preparation: ReturnType<typeof sessionTransition.prepareDraft> | undefined
     try {
       const isNewSession = !params.id
 
@@ -199,6 +210,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       let restoreRevision = prompt.revision()
       const restoreInput = (options?: { focus?: boolean }) => {
         if (!prompt.restoreIfUnchanged(restoreRevision, failureRestoreSnapshot)) return
+        restoreRevision = prompt.revision()
         if (!binding.isCurrent()) return
         input.setStore("mode", mode)
         input.setStore("popover", null)
@@ -237,6 +249,17 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         return
       }
       if (shouldBlockSubmitForUploadingAttachments({ uploading: input.attachmentsUploading(), intent: submitIntent })) {
+        if (input.attachmentsFailed?.()) {
+          showToast({
+            type: "warning",
+            title: i18n._({ id: "prompt.attachments.resolveFailed", message: "Review failed attachments" }),
+            description: i18n._({
+              id: "prompt.attachments.blocked",
+              message: "Retry or remove failed attachments above the editor before sending.",
+            }),
+          })
+          return
+        }
         showToast({
           type: "warning",
           title: i18n._(PI.submitWaitUploadsTitle),
@@ -286,6 +309,9 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         })
         return
       }
+
+      if (isNewSession && submitIntent === "message" && mode === "normal" && !blueprintSlot)
+        preparation = sessionTransition.prepareDraft(draftTransitionKey(sdk.url, sdk.scopeKey))
 
       const runsBeforeSubmit = shouldRunComposerBeforeSubmit({
         intent: submitIntent,
@@ -366,6 +392,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         modelID: currentModel.id,
         providerID: currentModel.provider.id,
       }
+      preparation?.setText(text)
       input.addToHistory(currentPrompt, mode)
       input.setStore("historyIndex", -1)
       input.setStore("savedPrompt", null)
@@ -447,12 +474,14 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       }
       const sessionScopeKey = currentScopeKey
       const client = sdk.client
+      const connection = sdk.url
+      const currentLocation = () =>
+        server.url === connection && !!params.dir && base64Decode(params.dir) === sessionScopeKey
 
       let createdSessionForSubmit = false
-      const persistCreatedSessionFailure = (sessionID: string, title: string, message: string) => {
-        if (!createdSessionForSubmit || !newSessionRecovery) return false
-        const actions = createNewSessionRecoveryActions({
-          recovery: newSessionRecovery,
+      const newSessionFailureActions = (sessionID: string, recovery: NewSessionRecovery) =>
+        createNewSessionRecoveryActions({
+          recovery,
           setRecovery: (recovery) => sessionTransition.setRecovery(currentScopeKey, recovery),
           deleteSession: async () => {
             await client.session.delete({ sessionID }).catch(() => undefined)
@@ -460,6 +489,9 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           clearTransition: () => publishNewSessionTransition(sessionID, null),
           navigateToComposer: () => navigate(`/${base64Encode(currentScopeKey)}/session`, { replace: true }),
         })
+      const persistCreatedSessionFailure = (sessionID: string, title: string, message: string) => {
+        if (!createdSessionForSubmit || !newSessionRecovery) return false
+        const actions = newSessionFailureActions(sessionID, newSessionRecovery)
         const progress = worktreeWorkspaceSelection
           ? createNewSessionWorkspaceErrorProgress({ title, message })
           : createNewSessionTransitionErrorProgress({ title, message })
@@ -484,6 +516,15 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           })
           .then((x) => x.data ?? undefined)
           .catch((err) => {
+            const failure = promptSubmitFailure(err)
+            const isCurrent = () => currentLocation() && !disposed && binding.isCurrent()
+            if (failure.kind === "workspace-unavailable" && isCurrent())
+              input.onWorkspaceUnavailable({
+                kind: "draft",
+                workspaceID: failure.workspaceID,
+                reason: failure.reason,
+                isCurrent,
+              })
             showToast({
               type: "error",
               title: i18n._(PI.submitFailedStart),
@@ -495,6 +536,12 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         if (session) {
           createdSessionForSubmit = true
           local.handoffNewSessionIntent(session.id)
+          const initialProgress = worktreeWorkspaceSelection
+            ? createNewSessionWorkspaceProgress({ selection: worktreeWorkspaceSelection, stage: "workspace" })
+            : createNewSessionTransitionProgress()
+          preparation?.handoff(session.id, initialProgress)
+          publishNewSessionTransition(session.id, initialProgress)
+          if (binding.isCurrent()) navigate(`/${base64Encode(sessionScopeKey)}/session/${session.id}`)
           try {
             const saved = await client.session.setModelSelection(
               {
@@ -519,8 +566,6 @@ export function usePromptSubmit(input: PromptSubmitInput) {
               ? createNewSessionWorkspaceProgress({ selection: worktreeWorkspaceSelection, stage: "workspace" })
               : createNewSessionTransitionProgress(),
           )
-          if (binding.isCurrent()) navigate(`/${base64Encode(sessionScopeKey)}/session/${session.id}`)
-
           if (worktreeWorkspaceSelection) updateNewSessionWorktreeProgress(session.id, "message")
         }
       }
@@ -670,6 +715,14 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         input.setLocalArmedLoop(null)
       }
 
+      const acknowledgeInput = () => {
+        clearInput()
+        input.onAccepted?.(
+          prompt.revision() === restoreRevision && (binding.isCurrent() || params.id === activeSession.id),
+        )
+        if (armedLightLoop) input.clearPendingLightLoop()
+      }
+
       const failActiveSessionSubmit = (title: string, message: string, options?: { focus?: boolean }) => {
         const persisted = persistCreatedSessionFailure(activeSession.id, title, message)
         if (!persisted) restoreInput(options)
@@ -686,6 +739,9 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       }
 
       const finishNewSessionTransition = () => {
+        input.onAccepted?.(
+          prompt.revision() === restoreRevision && (binding.isCurrent() || params.id === activeSession.id),
+        )
         if (!createdSessionForSubmit) return
         const progress = worktreeWorkspaceSelection
           ? createNewSessionWorkspaceSuccessProgress({ selection: worktreeWorkspaceSelection })
@@ -695,11 +751,16 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         })
       }
 
-      const handoffNewSessionMessage = (input: { messageID: string; itemID?: string; acceptedAt: number }) => {
-        if (!createdSessionForSubmit) return
+      const handoffNewSessionMessage = (
+        input: { messageID: string; itemID?: string; acceptedAt: number },
+        confirmed = true,
+      ) => {
+        if (!createdSessionForSubmit && confirmed) return
         const accepted = worktreeWorkspaceSelection
           ? createNewSessionWorkspaceAcceptedProgress({ selection: worktreeWorkspaceSelection })
           : createNewSessionTransitionAcceptedProgress()
+        if (!confirmed)
+          accepted.title = { id: "session.submission.checkingReceipt", message: "Checking message receipt…" }
         const success = worktreeWorkspaceSelection
           ? createNewSessionWorkspaceSuccessProgress({ selection: worktreeWorkspaceSelection })
           : createNewSessionTransitionSuccessProgress()
@@ -708,6 +769,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           accepted,
           workspaceSelection,
           success,
+          ...(!confirmed ? { unconfirmed: { missing: recoverUnacceptedInput, accepted: acknowledgeInput } } : {}),
         })
       }
 
@@ -951,7 +1013,23 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       }))
 
       const queueing = input.working() || !!activeSession.paused
-      const messageID = queueing ? undefined : Identifier.ascending("message")
+      const messageID = prompt.admissionIdentity(
+        JSON.stringify({
+          sessionID: activeSession.id,
+          agent,
+          model,
+          variant,
+          parts: [
+            inlineText(currentPrompt),
+            ...fileAttachmentParts,
+            ...contextFileParts,
+            ...uploadedAttachmentParts,
+            ...noteAttachmentParts,
+            ...sessionAttachmentParts,
+          ].map((part) => (typeof part === "string" ? part : { ...part, id: undefined })),
+        }),
+        () => Identifier.ascending("message"),
+      )
       const textPart = {
         id: Identifier.ascending("part"),
         type: "text" as const,
@@ -1009,7 +1087,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         globalSync.invalidateResource(sessionScopeKey, activeSession.id, "message")
         setSyncStore(
           produce((draft) => {
-            for (const droppedID of result.droppedIds) delete draft.part[droppedID]
+            for (const droppedID of result.droppedIds) clearConversationContent(draft, droppedID)
             draft.message[activeSession.id] = result.window.messages
             draft.messageWindow[activeSession.id] = {
               nextCursor: metadata?.nextCursor ?? null,
@@ -1025,6 +1103,16 @@ export function usePromptSubmit(input: PromptSubmitInput) {
               tailMissingLatest: result.window.tailMissingLatest,
             }
             if (visible) {
+              draft.partSummary[messageID] = optimisticParts.map((part) => ({
+                id: part.id,
+                messageID,
+                sessionID: activeSession.id,
+                type: part.type,
+                preview: "text" in part ? part.text.slice(0, 256) : "",
+                content: { version: `optimistic:${part.id}`, bytes: JSON.stringify(part).length * 2 },
+              }))
+              for (const part of optimisticParts) draft.partVersion[part.id] = `optimistic:${part.id}`
+              draft.partPage[messageID] = { hasMore: false, hasEarlier: false, nextCursor: null, previousCursor: null }
               draft.part[messageID] = optimisticParts
                 .filter((part) => !!part?.id)
                 .slice()
@@ -1036,6 +1124,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
 
       const handoffAcceptedOptimisticMessage = (canonicalID: string) => {
         if (!messageID) return
+        if (canonicalID === messageID) return
         const messages = syncStore.message[activeSession.id]
         if (!messages) return
         const metadata = syncStore.messageWindow[activeSession.id]
@@ -1057,7 +1146,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         setSyncStore(
           produce((draft) => {
             draft.message[activeSession.id] = result.window.messages
-            delete draft.part[messageID]
+            clearConversationContent(draft, messageID)
             if (result.canonicalParts) draft.part[canonicalID] = result.canonicalParts
             if (metadata) {
               draft.messageWindow[activeSession.id] = {
@@ -1075,6 +1164,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         if (!messageID) return
         const messages = syncStore.message[activeSession.id]
         if (!messages) return
+        const currentMessage = messages.find((message) => message.id === messageID)
+        if (currentMessage && !isOptimisticMessagePending(currentMessage)) return
         const metadata = syncStore.messageWindow[activeSession.id]
         const current: MessageWindowState<Message> = {
           messages,
@@ -1090,7 +1181,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         setSyncStore(
           produce((draft) => {
             draft.message[activeSession.id] = result.messages
-            delete draft.part[messageID]
+            clearConversationContent(draft, messageID)
             if (metadata) {
               draft.messageWindow[activeSession.id] = {
                 ...metadata,
@@ -1105,103 +1196,180 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         )
       }
 
-      clearInput()
       let optimisticAdded = false
       if (!queueing) {
         addOptimisticMessage()
         optimisticAdded = true
       }
 
-      const wsConnected = sdk.connected()
-      const inboxRequest = globalSync.captureResourceRequest(sessionScopeKey, activeSession.id, "inbox")
-
-      await client.session
-        .input({
-          sessionID: activeSession.id,
-          agent,
-          ...(messageID ? { messageID } : {}),
-          parts: requestParts,
-          metadata: {
-            promptDraft: draftSnapshot,
-            ...(createdSessionForSubmit ? { sessionTransition: { workspaceSelection } } : {}),
-          },
-        })
-        .then((result) => {
-          const accepted = result.data
-          if (!accepted) throw new Error("Session input returned no acceptance result")
-          if (accepted.status === "queued") {
-            const item = accepted.item
-            // Guard the mutation upsert: the backend may have already consumed
-            // this item (and materialized its message) before the acceptance
-            // response lands, e.g. when the session went idle between enqueue
-            // and response. Re-inserting would resurrect a ghost inbox row.
-            // History-mode windows track unseen canonical arrivals in
-            // pendingLatestIds rather than the messages array, so both count.
-            if (
-              !isInboxItemMaterialized(
-                syncStore.message[activeSession.id],
-                item,
-                isOptimisticMessagePending,
-                syncStore.messageWindow[activeSession.id]?.pendingLatestIds,
-              )
-            ) {
-              globalSync.applyResourceMutationResponse(
-                sessionScopeKey,
-                activeSession.id,
-                "inbox",
-                inboxRequest,
-                result.response?.headers,
-                () => {
-                  setSyncStore(
-                    "inbox",
-                    activeSession.id,
-                    reconcile(upsertSessionInboxItem(syncStore.inbox[activeSession.id], item), { key: "id" }),
-                  )
-                },
-              )
-            }
-          }
-          if (armedLightLoop) input.clearPendingLightLoop()
-          if (accepted.status === "queued" && optimisticAdded) {
-            handoffAcceptedOptimisticMessage(accepted.item.messageID)
-            optimisticAdded = false
-          }
-          handoffNewSessionMessage(
-            accepted.status === "queued"
-              ? {
-                  messageID: accepted.item.messageID,
-                  itemID: accepted.item.id,
-                  acceptedAt: accepted.item.time.created,
-                }
-              : { messageID: accepted.messageID, acceptedAt: Date.now() },
-          )
-          if (!wsConnected) {
-            showToast({
-              type: "warning",
-              title: i18n._(PI.submitQueued),
-              description: i18n._(PI.submitSentDesc),
-            })
-          }
-        })
-        .catch(async (err) => {
-          const failure = promptSubmitFailure(err)
-          await rollbackLightLoopForSubmit()
-          if (optimisticAdded) removeOptimisticMessage()
-          const worktreeUnavailable = failure.kind === "worktree-unavailable"
-          failActiveSessionSubmit(i18n._(PI.submitFailedSend), failure.message, {
-            focus: !worktreeUnavailable,
-          })
-          if (worktreeUnavailable) {
-            input.onWorktreeUnavailable()
-            return
-          }
-          showToast({
-            type: "error",
+      let inputInFlight = false
+      const recoverUnacceptedInput = () => {
+        removeOptimisticMessage()
+        restoreInput({ focus: false })
+        publishNewSessionTransition(
+          activeSession.id,
+          createNewSessionTransitionErrorProgress({
             title: i18n._(PI.submitFailedSend),
-            description: sessionStartFailureMessage(failure.message),
+            message: i18n._(PI.submitSessionNotStarted),
+          }),
+          {
+            retry: () => {
+              if (inputInFlight) return
+              publishNewSessionTransition(activeSession.id, createNewSessionTransitionProgress())
+              addOptimisticMessage()
+              optimisticAdded = true
+              void sendInput()
+            },
+            dismiss: () => {
+              publishNewSessionTransition(activeSession.id, null)
+              void rollbackLightLoopForSubmit()
+              if (!newSessionRecovery) return
+              sessionTransition.setRecovery(currentScopeKey, { ...newSessionRecovery, autoSubmit: false })
+              navigate(`/${base64Encode(currentScopeKey)}/session`)
+            },
+          },
+        )
+      }
+      const sendInput = async () => {
+        if (inputInFlight) return
+        inputInFlight = true
+        const wsConnected = sdk.connected()
+        const inboxRequest = globalSync.captureResourceRequest(sessionScopeKey, activeSession.id, "inbox")
+        return client.session
+          .input(
+            {
+              sessionID: activeSession.id,
+              agent,
+              ...(messageID ? { messageID } : {}),
+              parts: requestParts,
+              metadata: {
+                promptDraft: draftSnapshot,
+                ...(createdSessionForSubmit ? { sessionTransition: { workspaceSelection } } : {}),
+              },
+            },
+            { throwOnError: true },
+          )
+          .then((result) => {
+            const accepted = result.data
+            if (!accepted) throw new Error("Session input returned no acceptance result")
+            acknowledgeInput()
+            if (accepted.status === "queued") {
+              const item = accepted.item
+              // Guard the mutation upsert: the backend may have already consumed
+              // this item (and materialized its message) before the acceptance
+              // response lands, e.g. when the session went idle between enqueue
+              // and response. Re-inserting would resurrect a ghost inbox row.
+              // History-mode windows track unseen canonical arrivals in
+              // pendingLatestIds rather than the messages array, so both count.
+              if (
+                !isInboxItemMaterialized(
+                  syncStore.message[activeSession.id],
+                  item,
+                  isOptimisticMessagePending,
+                  syncStore.messageWindow[activeSession.id]?.pendingLatestIds,
+                )
+              ) {
+                globalSync.applyResourceMutationResponse(
+                  sessionScopeKey,
+                  activeSession.id,
+                  "inbox",
+                  inboxRequest,
+                  result.response?.headers,
+                  () => {
+                    setSyncStore(
+                      "inbox",
+                      activeSession.id,
+                      reconcile(upsertSessionInboxItem(syncStore.inbox[activeSession.id], item), { key: "id" }),
+                    )
+                  },
+                )
+              }
+            }
+            if (accepted.status === "queued" && optimisticAdded) {
+              handoffAcceptedOptimisticMessage(accepted.item.messageID)
+              optimisticAdded = false
+            }
+            handoffNewSessionMessage(
+              accepted.status === "queued"
+                ? {
+                    messageID: accepted.item.messageID,
+                    itemID: accepted.item.id,
+                    acceptedAt: accepted.item.time.created,
+                  }
+                : { messageID: accepted.messageID, acceptedAt: Date.now() },
+            )
+            if (!wsConnected) {
+              showToast({
+                type: "warning",
+                title: i18n._(PI.submitQueued),
+                description: i18n._(PI.submitSentDesc),
+              })
+            }
           })
-        })
+          .catch(async (err) => {
+            const failure = promptSubmitFailure(err)
+            const directoryUnavailable =
+              failure.kind === "worktree-unavailable" || failure.kind === "workspace-unavailable"
+            if (messageID) {
+              const receipt = await recoverSessionInputReceipt(client, { sessionID: activeSession.id, messageID })
+              if (receipt.kind !== "missing") {
+                const progress = receipt.kind === "accepted" ? receipt.progress : undefined
+                if (progress) acknowledgeInput()
+                handoffNewSessionMessage({ messageID, itemID: progress?.itemID, acceptedAt: Date.now() }, !!progress)
+                return
+              }
+              if (!directoryUnavailable) {
+                recoverUnacceptedInput()
+                return
+              }
+            }
+            await rollbackLightLoopForSubmit()
+            if (optimisticAdded) removeOptimisticMessage()
+            const worktreeUnavailable = failure.kind === "worktree-unavailable"
+            failActiveSessionSubmit(i18n._(PI.submitFailedSend), failure.message, {
+              focus: !directoryUnavailable,
+            })
+            if (failure.kind === "workspace-unavailable") {
+              const isCurrent = () =>
+                currentLocation() && (params.id === activeSession.id || (!disposed && binding.isCurrent()))
+              if (isCurrent())
+                input.onWorkspaceUnavailable({
+                  kind: "session",
+                  sessionID: activeSession.id,
+                  workspaceID: failure.workspaceID,
+                  reason: failure.reason,
+                  isCurrent,
+                  onRecovered:
+                    createdSessionForSubmit && newSessionRecovery
+                      ? async (selection) => {
+                          if (!isCurrent() || params.id !== activeSession.id) return
+                          await newSessionFailureActions(activeSession.id, {
+                            ...newSessionRecovery,
+                            workspaceSelection: selection,
+                            autoSubmit: false,
+                          }).dismiss()
+                        }
+                      : undefined,
+                })
+              return
+            }
+            if (worktreeUnavailable) {
+              input.onWorktreeUnavailable()
+              return
+            }
+            showToast({
+              type: "error",
+              title: i18n._(PI.submitFailedSend),
+              description: sessionStartFailureMessage(failure.message),
+            })
+          })
+          .finally(() => {
+            inputInFlight = false
+          })
+      }
+      await sendInput()
     } finally {
+      preparation?.clear()
       releaseSubmit?.()
       binding.release()
     }

@@ -148,6 +148,7 @@
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-plugin": "workspace:*",
     "@ericsanchezok/synergy-sdk": "workspace:*",
+    "@ericsanchezok/synergy-testing": "workspace:*",
     "@ericsanchezok/synergy-workbench": "workspace:*",
     "@napi-rs/canvas": "1.0.0",
     "@tsconfig/bun": "catalog:",

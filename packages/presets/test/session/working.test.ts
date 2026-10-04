@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { describe, expect, mock, test } from "bun:test"
@@ -562,7 +563,7 @@ describe("SessionWorking", () => {
               id: completedRootID,
               sessionID: session.id,
               role: "user",
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               time: { created: Date.now() - 2_000 },
               isRoot: true,
@@ -578,8 +579,8 @@ describe("SessionWorking", () => {
               modelID: "test-model",
               providerID: "test-provider",
               path: { cwd: tmp.path, root: tmp.path },
-              mode: "synergy",
-              agent: "synergy",
+              mode: PrimaryAgentIdentity.names.general,
+              agent: PrimaryAgentIdentity.names.general,
               cost: 0,
               tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
               finish: "stop",
@@ -589,7 +590,7 @@ describe("SessionWorking", () => {
               id: rootID,
               sessionID: session.id,
               role: "user",
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               time: { created: Date.now() },
               isRoot: true,

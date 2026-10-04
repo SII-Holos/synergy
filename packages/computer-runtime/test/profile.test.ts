@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
 import { afterAll, expect, test } from "bun:test"
@@ -39,7 +40,7 @@ test("native dispatch rechecks a profile downgraded after tool initialization", 
                 {
                   sessionID: session.id,
                   messageID: "msg_not_dispatched",
-                  agent: "synergy",
+                  agent: PrimaryAgentIdentity.names.general,
                   abort: new AbortController().signal,
                   metadata() {},
                   async ask() {
@@ -85,7 +86,7 @@ test("successful observation stores screenshots as durable attachments for a tex
             sessionID: session.id,
             role: "user",
             time: { created: Date.now() },
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test" },
           })
           const tool = await ComputerObserveTool.init()
@@ -94,7 +95,7 @@ test("successful observation stores screenshots as durable attachments for a tex
             {
               sessionID: session.id,
               messageID,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               abort: new AbortController().signal,
               metadata() {},
               async ask() {
@@ -147,7 +148,7 @@ test("Full Access cannot redirect a remote Environment Computer operation to the
               {
                 sessionID: session.id,
                 messageID: "msg_missing",
-                agent: "synergy",
+                agent: PrimaryAgentIdentity.names.general,
                 abort: new AbortController().signal,
                 metadata() {},
                 async ask() {

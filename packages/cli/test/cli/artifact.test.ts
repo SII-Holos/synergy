@@ -110,7 +110,7 @@ for (const mode of scenarios)
                                       // boundary, not a permission decision.
                                       // Privilege escalation stays a gate decision.
                                       command: `${responseMode === "permission" ? "sudo " : ""}touch ${sideEffect}`,
-                                      description: "Create test marker",
+                                      workBrief: "Create test marker",
                                     },
                               ),
                             },

@@ -33,11 +33,25 @@ describe("session navigation completion", () => {
     while (restore.length > 0) restore.pop()!()
   })
 
-  test("resolves complete on session data readiness without any panel mark", () => {
+  test("keeps the click timestamp while an uncached session resolves its Scope", () => {
+    let time = 100
+    using clock = spyOn(performance, "now").mockImplementation(() => time)
+    const to = "resolve-scope"
+    const id = navStart({ to, trigger: "session-link" })
+    time += 5_000
+    expect(navParams({ dir: "resolved-scope", scopeID: "scope", to })).toBe(id)
+    navMark({ dir: "resolved-scope", to, name: "session:data-ready" })
+    navMark({ dir: "resolved-scope", to, name: "session:interactive" })
+    expect(recorded[0]?.marks["navigate:start"]).toBe(100)
+    expect(recorded[0]?.marks["session:params"]).toBe(5_100)
+  })
+
+  test("resolves complete after conversation and composer are ready without optional panel marks", () => {
     const to = "ses_ready"
     navStart({ to })
     navParams({ to })
     navMark({ to, name: "session:data-ready" })
+    navMark({ to, name: "session:interactive" })
 
     expect(reasons()).toEqual(["complete"])
     expect(recorded[0]!.sessionID).toBe(to)
@@ -84,6 +98,7 @@ describe("session navigation completion", () => {
     timers[0]!()
     for (const name of [
       "session:data-ready",
+      "session:interactive",
       "session:first-turn-mounted",
       "storage:prompt-ready",
       "storage:terminal-ready",
@@ -100,6 +115,7 @@ describe("session navigation completion", () => {
     navStart({ to })
     navParams({ to })
     navMark({ to, name: "session:data-ready" })
+    navMark({ to, name: "session:interactive" })
     navMark({ to, name: "storage:prompt-ready" })
 
     expect(reasons()).toEqual(["complete"])

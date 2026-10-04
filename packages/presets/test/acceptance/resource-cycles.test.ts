@@ -34,16 +34,16 @@ test.skipIf(!labFile)(
         if (results.length < commands.length && tools.includes("bash"))
           calls.push({
             name: "bash",
-            arguments: JSON.stringify({ command: commands[results.length], description: "Read actual long history" }),
+            arguments: JSON.stringify({ command: commands[results.length], workBrief: "Read actual long history" }),
           })
         if (results.length === commands.length && tools.includes("task") && prompt.includes("<delegate>"))
           calls.push({
             name: "task",
             arguments: JSON.stringify({
-              description: "cycle-child",
+              taskTitle: "cycle-child",
               subagent_type: "implementation-engineer",
               output: { mode: "final_response" },
-              prompt: "Run exactly once: <command>cat record.txt</command> Return the observed identifier.",
+              taskInstructions: "Run exactly once: <command>cat record.txt</command> Return the observed identifier.",
             }),
           })
         const markers = [...new Set(JSON.stringify(body.messages).match(/\b[a-f0-9]{32}\b/g) ?? [])]

@@ -21,6 +21,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function streamingTokenReceipt(event: StreamingEvent): StreamingTokenReceipt | undefined {
   if (!isRecord(event.properties)) return
+  if (event.type === "message.part.summary") {
+    const { summary, content } = event.properties
+    if (!isRecord(summary) || typeof summary.id !== "string" || !isRecord(content)) return
+    const delta = content.kind === "delta" ? content.delta : event.properties.delta
+    if (typeof delta !== "string") return
+    return {
+      part: {
+        id: summary.id,
+        sessionID: typeof summary.sessionID === "string" ? summary.sessionID : undefined,
+        messageID: typeof summary.messageID === "string" ? summary.messageID : undefined,
+        type: typeof summary.type === "string" ? summary.type : undefined,
+      },
+      delta,
+    }
+  }
 
   if (event.type === "message.part.delta") {
     const { partID, sessionID, messageID, kind, delta } = event.properties

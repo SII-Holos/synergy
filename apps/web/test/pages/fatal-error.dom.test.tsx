@@ -58,6 +58,8 @@ beforeAll(async () => {
       `
         import { createComponent } from "solid-js"
         import { render } from "solid-js/web"
+        import { I18nProvider } from "@lingui/solid"
+        import { useLocale } from "@/context/locale"
         import { FatalErrorPage } from ${JSON.stringify(`/@fs/${componentPath}`)}
         import { ErrorPage } from ${JSON.stringify(`/@fs/${initErrorComponentPath}`)}
 
@@ -66,8 +68,13 @@ beforeAll(async () => {
 
         render(
           () =>
-            createComponent(component, {
-              error: new Error("Version rendering probe"),
+            createComponent(I18nProvider, {
+              i18n: useLocale().i18n,
+              get children() {
+                return createComponent(component, {
+                  error: new Error("Version rendering probe"),
+                })
+              },
             }),
           document.querySelector("#root")!,
         )
@@ -113,21 +120,24 @@ afterAll(async () => {
 describe("fatal error page version footer", () => {
   test("renders the platform version string, not the Show accessor", async () => {
     await page.goto(baseUrl)
-    const versionLine = page.locator("p.text-xs")
+    const versionLine = page.getByText("Version: 9.9.9-test", { exact: true })
+    await versionLine.waitFor()
     await expect(versionLine.count()).resolves.toBe(1)
     await expect(versionLine.textContent()).resolves.toBe("Version: 9.9.9-test")
   })
 
   test("prefers the build label over the version when present", async () => {
     await page.goto(`${baseUrl}?build=1.1.26%2Babc123`)
-    const versionLine = page.locator("p.text-xs")
+    const versionLine = page.getByText("Version: 1.1.26+abc123", { exact: true })
+    await versionLine.waitFor()
     await expect(versionLine.count()).resolves.toBe(1)
     await expect(versionLine.textContent()).resolves.toBe("Version: 1.1.26+abc123")
   })
 
   test("init error page renders the version string too", async () => {
     await page.goto(`${baseUrl}?page=init`)
-    const versionLine = page.locator("p.text-xs")
+    const versionLine = page.getByText("Version: 9.9.9-test", { exact: true })
+    await versionLine.waitFor()
     await expect(versionLine.count()).resolves.toBe(1)
     await expect(versionLine.textContent()).resolves.toBe("Version: 9.9.9-test")
   })

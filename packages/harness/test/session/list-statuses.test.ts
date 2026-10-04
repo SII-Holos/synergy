@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import { tmpdir } from "../support/fixture"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
@@ -84,6 +84,14 @@ describe("SessionManager.listStatuses without a scope", () => {
             const otherScope = await SessionManager.listStatuses(project.id)
             expect(otherScope[pausedID]).toEqual({ type: "paused", reason: "aborted", since: pausedSince })
             expect(otherScope[runningID]).toEqual({ type: "busy", description: "working" })
+            const selected = await Promise.all([Session.get(pausedID), Session.get(runningID)])
+            using lookup = spyOn(SessionManager, "getSession").mockImplementation(async () => {
+              throw new Error("Hydrated lookup is unavailable")
+            })
+            expect(await SessionManager.statusesFor(selected)).toEqual({
+              [pausedID]: { type: "paused", reason: "aborted", since: pausedSince },
+              [runningID]: { type: "busy", description: "working" },
+            })
           },
         })
       } finally {
@@ -127,6 +135,28 @@ describe("SessionManager.listStatuses without a scope", () => {
         SessionManager.unregisterRuntime(sessionID)
         await Session.remove(sessionID)
       }
+    }))
+
+  test("persisted pause status does not require a second hydrated read of every session", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const project = await tmp.scope()
+      await ScopeContext.provide({
+        scope: project,
+        fn: async () => {
+          const paused = await createPausedSession("Paused status")
+          try {
+            using lookup = spyOn(SessionManager, "getSession").mockImplementation(async () => {
+              throw new Error("Hydrated session lookup is unavailable")
+            })
+            expect(await SessionManager.listStatuses(project.id)).toEqual({
+              [paused.session.id]: { type: "paused", reason: "aborted", since: paused.paused.since },
+            })
+          } finally {
+            await Session.remove(paused.session.id)
+          }
+        },
+      })
     }))
 })
 

@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, test } from "bun:test"
 import { Rollup } from "../../src/stats/rollup"
 import type { SessionDigest } from "../../src/stats/types"
@@ -25,7 +26,7 @@ function digest(overrides: Partial<SessionDigest> = {}): SessionDigest {
       },
     },
     agentUsage: {
-      synergy: {
+      [TEST_AGENT_NAME]: {
         messages: 6,
         tokens: { input: 100, output: 50, reasoning: 10, cache: { read: 20, write: 5 } },
         cost: 0.25,
@@ -126,7 +127,7 @@ describe("stats rollup", () => {
       const child = digest({ sessionID: "ses-child", parentID: "ses-1" })
       const snapshot = Rollup.snapshot([parent, child], 0)
       expect(snapshot.agents.totalSubagentCalls).toBe(1)
-      const agent = snapshot.agents.agents.find((a) => a.agent === "synergy")!
+      const agent = snapshot.agents.agents.find((a) => a.agent === TEST_AGENT_NAME)!
       expect(agent.messages).toBe(12)
       expect(agent.sessions).toBe(2)
       expect(agent.subagentInvocations).toBe(1)

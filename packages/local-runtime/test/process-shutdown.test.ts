@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import { ProcessRegistry } from "@ericsanchezok/synergy-harness/process/registry"
 import { ProcessInspection } from "@ericsanchezok/synergy-harness/process/inspection"
@@ -53,11 +54,11 @@ test("closing a Runtime drains a background child even after its history entry i
           phase = "starting shell"
           controller.signal.throwIfAborted()
           execution = LocalBashBackend.execute(
-            { command, description: "owned shutdown probe", yieldSeconds: 0.01 },
+            { command, yieldSeconds: 0.01 },
             {
               sessionID: "process-owner",
               messageID: "message",
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               abort: controller.signal,
               metadata({ metadata }) {
                 const match = /^ready:(\d+)\r?\n/.exec(metadata?.output ?? "")

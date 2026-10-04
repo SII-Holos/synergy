@@ -6,6 +6,7 @@ export interface ProviderConnectionClient {
   create(
     input: {
       providerConnectionCreateInput: {
+        id?: string
         profileID: string
         name: string
         endpoint?: string
@@ -31,6 +32,7 @@ export interface ProviderConnectionClient {
 export type SaveProviderAccountInput =
   | {
       mode: "create"
+      id?: string
       profileID: string
       name: string
       endpoint?: string
@@ -46,6 +48,36 @@ export type SaveProviderAccountInput =
 
 export function canAddProviderAccount(connection: Pick<ProviderConnection, "canCreateSibling">) {
   return connection.canCreateSibling
+}
+
+export function createProviderAccountCommand(
+  write: () => Promise<ProviderConnection>,
+  refresh: (connection: ProviderConnection) => Promise<void>,
+  recover?: () => Promise<ProviderConnection | undefined>,
+) {
+  let receipt: ProviderConnection | undefined
+  let pending: Promise<ProviderConnection> | undefined
+  async function run() {
+    if (!receipt) {
+      try {
+        receipt = await write()
+      } catch (error) {
+        receipt = await recover?.()
+        if (!receipt) throw error
+      }
+    }
+    await refresh(receipt)
+    return receipt
+  }
+  return {
+    persisted: () => Boolean(receipt),
+    run() {
+      pending ??= run().finally(() => {
+        pending = undefined
+      })
+      return pending
+    },
+  }
 }
 
 export async function saveProviderAccount(
@@ -68,6 +100,7 @@ export async function saveProviderAccount(
       : await client.create(
           {
             providerConnectionCreateInput: {
+              ...(input.id ? { id: input.id } : {}),
               profileID: input.profileID,
               name: input.name,
               ...(input.endpoint ? { endpoint: input.endpoint } : {}),

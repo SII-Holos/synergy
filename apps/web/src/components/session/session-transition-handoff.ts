@@ -38,6 +38,7 @@ export type SessionTransitionHandoff = {
   accepted?: SessionTransitionProgress
   workspaceSelection?: NewSessionWorkspaceSelection
   refreshAttempted?: boolean
+  unconfirmed?: { missing(): void; accepted(): void }
   success: SessionTransitionProgress
 }
 

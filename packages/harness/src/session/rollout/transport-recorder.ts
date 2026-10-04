@@ -28,6 +28,7 @@ export namespace RolloutTransportRecorder {
       if (event.type === "attempt-start") {
         if (active.has(event.attemptID)) throw new Error("Duplicate rollout attempt")
         const request = await RolloutArtifact.open(call.owner, event.mediaType)
+        const started = event.timing?.sentAt ?? Date.now()
         const value: RolloutSchema.AttemptRecord = {
           version: 1,
           id: event.attemptID,
@@ -37,7 +38,12 @@ export namespace RolloutTransportRecorder {
           index: count++,
           url: event.url,
           method: event.method,
-          started: Date.now(),
+          started,
+          pricingEvidence: {
+            version: 1,
+            source: "attempt",
+            pricing: ProviderPricing.capture(call.model.pricing, event.url, started, call.model.modelID),
+          },
           timing: event.timing,
           inputImages: event.inputImages,
           status: "running",
@@ -52,7 +58,19 @@ export namespace RolloutTransportRecorder {
       if ("timing" in event && event.timing) {
         attempt.value.timing = event.timing
       }
-      if (event.type === "attempt-sent") attempt.value.requestImages = event.requestImages
+      if (event.type === "attempt-sent") {
+        attempt.value.requestImages = event.requestImages
+        attempt.value.pricingEvidence = {
+          version: 1,
+          source: "attempt",
+          pricing: ProviderPricing.capture(
+            call.model.pricing,
+            attempt.value.url,
+            event.timing?.sentAt ?? attempt.value.started,
+            call.model.modelID,
+          ),
+        }
+      }
       if (event.type === "response") {
         if (attempt.response) throw new Error("Duplicate rollout response")
         attempt.response = await RolloutArtifact.open(call.owner, event.mediaType)
@@ -72,8 +90,10 @@ export namespace RolloutTransportRecorder {
             attempt.value.usageFinal = false
           }
           await writer.append(event.data)
-          attempt.value[event.channel] = await writer.checkpoint()
-          await RolloutLedger.writeAttempt(attempt.value)
+          await writer.checkpoint(async (ref, publish) => {
+            attempt.value[event.channel] = ref
+            await RolloutLedger.writeAttempt(attempt.value, publish)
+          })
           return
         }
         attempt.value[event.channel] = await writer.finish(event.complete ? "complete" : "partial")
@@ -89,9 +109,10 @@ export namespace RolloutTransportRecorder {
             !!attempt.usage?.hasUsage() &&
             (event.status === "completed" || !attempt.usage.streaming))
         attempt.value.estimate = ProviderPricing.estimate(
-          call.model.pricing,
+          attempt.value.pricingEvidence!.pricing,
           attempt.value.usage,
           call.model.billingMode ?? "unknown",
+          event.timing?.endedAt ?? Date.now(),
         )
         attempt.value.status = event.status
         attempt.value.error = event.error
@@ -122,9 +143,10 @@ export namespace RolloutTransportRecorder {
             attempt.value.response = await attempt.response?.finish("partial")
             attempt.value.usage = attempt.usage?.finish()
             attempt.value.estimate = ProviderPricing.estimate(
-              call.model.pricing,
+              attempt.value.pricingEvidence!.pricing,
               attempt.value.usage,
               call.model.billingMode ?? "unknown",
+              Date.now(),
             )
             attempt.value.status = "interrupted"
             if (attempt.value.timing) attempt.value.timing.detectedAt = Date.now()

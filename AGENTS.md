@@ -1,6 +1,6 @@
 # Synergy Repository Rules
 
-These rules apply to the Bun/TypeScript monorepo. Read the nearest package `AGENTS.md` before editing package code. Each rule links the document holding its rationale. Placement and budgets follow [docs/AGENTS.md](docs/AGENTS.md).
+Bun/TypeScript monorepo rules. Read the nearest package `AGENTS.md` before editing code. Rules link their rationale. Placement and budgets follow [docs/AGENTS.md](docs/AGENTS.md).
 
 ## Work from Current Evidence
 
@@ -98,7 +98,7 @@ Do not create compatibility paths that violate those contracts. In particular:
 
 - Load `add-tool`, `add-agent`, or `add-cli-command` for their complete implementation and verification workflows.
 - A first-party tool requires backend registration, taxonomy, and all Web presentation/classifier registrations described by `add-tool`.
-- Built-in primary agents are `synergy`, `synergy-max`, and `synergy-flash`; visibility masks and delegation groups define each subagent catalog. BlueprintLoop and Light Loop reviewers remain host-selected, while their Cortex tasks are visible in the execution session's Subagent Dock.
+- Built-in primary agents are Atlas (`general`), Forge (`coding`), and Pico (`lightweight`); use Harness `agent/primary-identity`. Visibility masks and delegation groups define subagent catalogs. BlueprintLoop and Light Loop reviewers stay host-selected; Workbench-enabled sessions show their recorded Cortex tasks in Task details; minimal servers retain installed Cortex interfaces.
 - Plugins use the public definition, generated manifest, capability-gated Host Services, process runtime, operation/event/hook, approval, and trusted UI contracts in [Plugin documentation](docs/plugins/README.md). Do not import private runtime modules into plugins.
 
 ## Testing and Quality

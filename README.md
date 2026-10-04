@@ -33,6 +33,8 @@
 
 AI agent work often outlives a single conversation. Synergy treats it as durable workspace state. A task can move between Web, Desktop, CLI, background execution, and specialist agents while preserving its project, history, files, tools, and operating context.
 
+Choose **Atlas** for general assistance, **Forge** for coding, or **Pico** for lightweight work. Their CLI names are `atlas`, `forge`, and `pico`; for example, `synergy send --agent forge "Fix the failing test"`. Existing configurations and conversations [upgrade automatically](docs/migrations/primary-agent-identities.md).
+
 Synergy runs as a standalone local workspace. Connecting a Holos agent adds account identity, messaging, and presence without replacing local projects, providers, sessions, or data.
 
 ## What makes Synergy different
@@ -57,15 +59,15 @@ Read the [product overview](docs/product/overview.md) for the complete product m
 
 ## Benchmarks
 
-On the [DeepSWE v1.1](https://deepswe.datacurve.ai) benchmark — 113 real repository engineering tasks — the same model completes far more work under Synergy than under its stock harness. Running deepseek-v4-flash with the **synergy-max** agent lifts Pass@1 from **53% to 67.3%** (+14.3pp, 1.27×) at **$0.54/task**, landing on the cost-performance Pareto front.
+On the [DeepSWE v1.1](https://deepswe.datacurve.ai) benchmark — 113 real repository engineering tasks — the same model completes far more work under Synergy than under its stock harness. Running deepseek-v4-flash with the coding agent **Forge** lifts Pass@1 from **53% to 67.3%** (+14.3pp, 1.27×) at **$0.54/task**, landing on the cost-performance Pareto front.
 
 <p align="center">
   <img src=".github/assets/readme/benchmark-deepswe-pass1.png" alt="DeepSWE v1.1 Pass@1 across 19 leaderboard configurations" width="48.5%" />
   &nbsp;
-  <img src=".github/assets/readme/benchmark-deepswe-cost-frontier.png" alt="Cost-performance frontier: synergy-max vs official leaderboard" width="48.5%" />
+  <img src=".github/assets/readme/benchmark-deepswe-cost-frontier.png" alt="Cost-performance frontier: coding agent vs official leaderboard" width="48.5%" />
 </p>
 
-<p align="center"><sub>Pass@1 across 19 leaderboard configurations (left) and the cost-performance frontier (right): synergy-max (orange) vs the official mini-swe-agent run of the same model (yellow).</sub></p>
+<p align="center"><sub>Pass@1 across 19 leaderboard configurations (left) and the cost-performance frontier (right): the coding agent (orange) vs the official mini-swe-agent run of the same model (yellow).</sub></p>
 
 <p align="center">
   <img src=".github/assets/readme/benchmark-deepswe-failure-anatomy.png" alt="DeepSWE v1.1 failure anatomy" width="100%" />
@@ -164,6 +166,8 @@ Install Rust with Cargo for the native PTY and Linux process ownership library, 
 ```bash
 bun dev prepare
 ```
+
+See the [development reference](docs/reference/development.md#requirements-and-preparation) for preparation requirements and macOS Desktop native-driver build status.
 
 Common development flows:
 

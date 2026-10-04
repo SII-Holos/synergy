@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { afterEach, describe, expect, mock, test } from "bun:test"
 import { plugin } from "bun"
 import { transformAsync } from "@babel/core"
@@ -87,6 +88,12 @@ mock.module("../../../src/context/locale", () => ({
   useLocale: () => ({ controller: { activeLocale: () => "en" }, i18n, fmt: { relative: () => "now" } }),
 }))
 
+mock.module("../../../src/context/server", () => ({
+  useServer: () => ({ url: "http://127.0.0.1:0" }),
+  serverDisplayName: (url: string) => url,
+  normalizeServerUrl: (url: string) => url,
+}))
+
 mock.module("@solidjs/router", () => ({
   useParams: () => ({ dir: "home", id: "ses_prompt" }),
   useNavigate: () => () => {},
@@ -133,7 +140,7 @@ mock.module("../../../src/context/local", () => ({
   useLocal: () => ({
     agent: {
       list: () => [],
-      current: () => ({ name: "synergy" }),
+      current: () => ({ name: TEST_AGENT_NAME }),
       set: () => {},
       ready: () => true,
     },
@@ -205,6 +212,7 @@ mock.module("../../../src/context/workbench", () => ({
 }))
 
 mock.module("../../../src/context/session-transition", () => ({
+  draftTransitionKey: () => "draft:fixture",
   useSessionTransition: () => ({ getRecovery: () => undefined, clearRecovery: () => {} }),
 }))
 mock.module("../../../src/context/platform", () => ({

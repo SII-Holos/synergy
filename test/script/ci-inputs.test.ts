@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process"
 import { cp, mkdtemp, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { taskInputs } from "../../script/ci/inputs"
+import { selectionInputs, taskInputs } from "../../script/ci/inputs"
 import { changedFiles, workspaceInputs } from "../../script/ci/catalog"
 import { createPlan, type Task, type WorkspaceInput } from "../../script/ci/plan"
 
@@ -234,8 +234,12 @@ test("the execution CLI can start on Docker workers without node_modules", async
         recursive: true,
         filter: (file) => !["node_modules", ".artifacts", ".turbo", "coverage"].includes(path.basename(file)),
       })
-    const backendFixture = "packages/harness/test/support/storage-backends.ts"
-    await Bun.write(path.join(root, backendFixture), Bun.file(path.join(repository, backendFixture)))
+    for (const file of [
+      "packages/harness/test/support/storage-backends.ts",
+      "apps/web/script/test-options.ts",
+      "packages/ui/script/test-options.ts",
+    ])
+      await Bun.write(path.join(root, file), Bun.file(path.join(repository, file)))
     const child = Bun.spawn([process.execPath, "--no-install", "script/ci.ts", "--help"], {
       cwd: root,
       env: { ...process.env, HOME: root, XDG_CONFIG_HOME: path.join(root, "config") },
@@ -285,6 +289,102 @@ test("a PR behind its base excludes unrelated base updates from its changed path
     git("commit", "--quiet", "-m", "PR renames an input")
     const head = git("rev-parse", "HEAD")
     expect(changedFiles(root, base, head)).toEqual(["packages/core/src/renamed.ts", "packages/core/src/value.ts"])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("leaf test classification checks imports, exports and unresolved consumers in both revisions", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ci-leaf-inputs-"))
+  const git = (...args: string[]) =>
+    execFileSync("git", args, {
+      cwd: root,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "CI Fixture",
+        GIT_AUTHOR_EMAIL: "ci@fixture.test",
+        GIT_COMMITTER_NAME: "CI Fixture",
+        GIT_COMMITTER_EMAIL: "ci@fixture.test",
+      },
+    }).trim()
+  const workspaces: WorkspaceInput[] = [
+    { directory: "packages/core", name: "core", dependencies: [], testDependencies: [] },
+    { directory: "packages/consumer", name: "consumer", dependencies: ["core"], testDependencies: [] },
+  ]
+  const file = "packages/core/test/value.test.ts"
+  const commit = () => {
+    git("add", ".")
+    git("commit", "--quiet", "-m", "fixture inputs")
+    return git("rev-parse", "HEAD")
+  }
+  try {
+    git("init", "--quiet")
+    await Bun.write(
+      path.join(root, "packages/core/package.json"),
+      JSON.stringify({ name: "core", exports: { ".": "./src/value.ts" } }),
+    )
+    await Bun.write(path.join(root, "packages/consumer/package.json"), JSON.stringify({ name: "consumer" }))
+    await Bun.write(
+      path.join(root, file),
+      'import { test, expect } from "bun:test"; test("value", () => expect(1).toBe(1))',
+    )
+    await Bun.write(path.join(root, "packages/core/test/support/helper.ts"), "export const value = 1")
+    await Bun.write(path.join(root, "packages/core/src/value.ts"), "export const value = 1")
+    const base = commit()
+    expect(
+      (await selectionInputs(root, base, base, [file, "packages/core/test/support/helper.ts"], workspaces, workspaces))
+        .leafTests,
+    ).toEqual([file])
+    await Bun.write(path.join(root, "packages/consumer/test/aggregate.test.ts"), 'import "../../core/test/value.test"')
+    const imported = commit()
+    expect((await selectionInputs(root, base, imported, [file], workspaces, workspaces)).leafTests).toEqual([])
+    await Bun.write(path.join(root, "packages/consumer/test/aggregate.test.ts"), "export {}")
+    const removed = commit()
+    expect((await selectionInputs(root, imported, removed, [file], workspaces, workspaces)).leafTests).toEqual([])
+    await Bun.write(
+      path.join(root, "packages/core/src/value.ts"),
+      "export async function load() { await import(process.env.FIXTURE_MODULE!) }",
+    )
+    const dynamicOwner = commit()
+    expect((await selectionInputs(root, removed, dynamicOwner, [file], workspaces, workspaces)).leafTests).toEqual([])
+    await Bun.write(path.join(root, "packages/core/src/value.ts"), "export const value = 1")
+    await Bun.write(
+      path.join(root, "packages/consumer/test/aggregate.test.ts"),
+      "await import(process.env.FIXTURE_MODULE!)",
+    )
+    const dynamic = commit()
+    expect((await selectionInputs(root, removed, dynamic, [file], workspaces, workspaces)).leafTests).toEqual([])
+    await Bun.write(path.join(root, "packages/consumer/test/aggregate.test.ts"), "export {}")
+    await Bun.write(
+      path.join(root, "packages/core/package.json"),
+      JSON.stringify({ name: "core", exports: { "./test/*": "./test/*.ts" } }),
+    )
+    const exported = commit()
+    expect((await selectionInputs(root, removed, exported, [file], workspaces, workspaces)).leafTests).toEqual([])
+    await Bun.write(
+      path.join(root, "packages/core/package.json"),
+      JSON.stringify({ name: "core", exports: { "./test/*": ["./test/*.ts"] } }),
+    )
+    const conditional = commit()
+    expect((await selectionInputs(root, removed, conditional, [file], workspaces, workspaces)).leafTests).toEqual([])
+    await Bun.write(
+      path.join(root, "packages/core/package.json"),
+      JSON.stringify({ name: "core", main: "test/value.test.ts" }),
+    )
+    const main = commit()
+    expect((await selectionInputs(root, removed, main, [file], workspaces, workspaces)).leafTests).toEqual([])
+    await Bun.write(
+      path.join(root, "packages/core/package.json"),
+      JSON.stringify({ name: "core", exports: { ".": "./src/value.ts" } }),
+    )
+    await Bun.write(
+      path.join(root, "packages/consumer/tsconfig.json"),
+      JSON.stringify({ compilerOptions: { paths: { "fixture/*": ["../core/test/*"] } } }),
+    )
+    await Bun.write(path.join(root, "packages/consumer/test/aggregate.test.ts"), 'import "fixture/value.test"')
+    const alias = commit()
+    expect((await selectionInputs(root, removed, alias, [file], workspaces, workspaces)).leafTests).toEqual([])
   } finally {
     await rm(root, { recursive: true, force: true })
   }

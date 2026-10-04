@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test, mock, spyOn } from "bun:test"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
@@ -53,7 +54,7 @@ function userMessage(id: string, noReply?: boolean): MessageV2.WithParts {
       sessionID,
       role: "user",
       time: { created: 0 },
-      agent: "synergy",
+      agent: PrimaryAgentIdentity.names.general,
       model: { providerID: "test", modelID: "test" },
       metadata: noReply ? { noReply: true } : undefined,
     } as MessageV2.User,
@@ -180,6 +181,7 @@ function installBasicLoopMocks(options?: {
   ;(SessionProcessor.create as any) = mock((input: Parameters<typeof SessionProcessor.create>[0]) => ({
     message: input.assistantMessage,
     partFromToolCall: () => undefined,
+    modelInputFromToolCall: () => undefined,
     trackExecution: () => {},
     process: mock(async (processInput: any) => {
       callIndex++
@@ -221,7 +223,7 @@ async function createSessionWithUser(options?: { silent?: boolean }) {
     id: Identifier.ascending("message"),
     role: "user",
     sessionID: session.id,
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test-provider", modelID: "test-model" },
     time: { created: Date.now() },
   })
@@ -247,7 +249,7 @@ async function createWorktreeSessionWithUser(name: string) {
     id: Identifier.ascending("message"),
     role: "user",
     sessionID: session.id,
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test-provider", modelID: "test-model" },
     time: { created: Date.now() },
   })
@@ -279,7 +281,7 @@ describe("SessionInvoke internal message origins", () => {
           try {
             const system = await SessionInvoke.invokeInternal({
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               noReply: true,
               parts: [{ type: "text", text: "internal prompt" }],
@@ -288,7 +290,7 @@ describe("SessionInvoke internal message origins", () => {
 
             const plugin = await SessionInvoke.invokeInternal({
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               noReply: true,
               origin: { type: "plugin", pluginID: "example" },
@@ -351,7 +353,7 @@ describe("SessionInvoke Skill command rendering", () => {
             )
             expect(users).toHaveLength(1)
             expect(users[0].info.isRoot).toBe(true)
-            expect(users[0].parts).toMatchObject([
+            expect(users[0].parts.filter((part) => part.type !== "patch")).toMatchObject([
               { type: "text", text: "Follow the Skill instructions." },
               { type: "text", text: "Inspect the attached diagram" },
               { type: "attachment", filename: "diagram.png" },
@@ -454,7 +456,7 @@ describe("SessionInvoke workspace execution context", () => {
             waitForProcessing: false,
             mail: {
               type: "user",
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               metadata: { source: "blueprint" },
               parts: [
@@ -522,7 +524,7 @@ describe("SessionInvoke workspace execution context", () => {
                 sessionID,
                 mail: {
                   type: "user",
-                  agent: "synergy",
+                  agent: PrimaryAgentIdentity.names.general,
                   model: { providerID: "test-provider", modelID: "test-model" },
                   parts: [
                     {
@@ -733,6 +735,7 @@ describe("SessionInvoke system prompt assembly", () => {
         ;(SessionProcessor.create as any) = mock((input: Parameters<typeof SessionProcessor.create>[0]) => ({
           message: input.assistantMessage,
           partFromToolCall: () => undefined,
+          modelInputFromToolCall: () => undefined,
           trackExecution: () => {},
           process: mock(async () => "stop" as const),
         }))
@@ -754,7 +757,7 @@ describe("SessionInvoke system prompt assembly", () => {
               id: Identifier.ascending("message"),
               role: "user",
               sessionID: promptSessionID,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: {
                 providerID: "test-provider",
                 modelID: "test-model",
@@ -1055,6 +1058,7 @@ describe("SessionInvoke pre-stream error handling", () => {
       ;(SessionProcessor.create as any) = mock((input: Parameters<typeof SessionProcessor.create>[0]) => ({
         message: input.assistantMessage,
         partFromToolCall: () => undefined,
+        modelInputFromToolCall: () => undefined,
         trackExecution: () => {},
         process: processCalled,
       }))
@@ -1109,7 +1113,7 @@ describe("SessionInvoke inbox boundaries", () => {
             activeSessionID = session.id
             const queued = await SessionInbox.enqueueUser({
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               parts: [
                 { type: "text", text: "Keep me durable" },
@@ -1157,7 +1161,7 @@ describe("SessionInvoke inbox boundaries", () => {
               id: rootID,
               role: "user",
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               isRoot: true,
               rootID,
@@ -1176,8 +1180,8 @@ describe("SessionInvoke inbox boundaries", () => {
               sessionID: session.id,
               parentID: root.id,
               rootID: root.id,
-              mode: "synergy",
-              agent: "synergy",
+              mode: PrimaryAgentIdentity.names.general,
+              agent: PrimaryAgentIdentity.names.general,
               path: { cwd: tmp.path, root: tmp.path },
               cost: 0,
               tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -1201,7 +1205,7 @@ describe("SessionInvoke inbox boundaries", () => {
             })
             const queued = await SessionInbox.enqueueUser({
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               parts: [{ type: "text", text: "new queued root" }],
             })
@@ -1239,7 +1243,7 @@ describe("SessionInvoke inbox boundaries", () => {
             id: Identifier.ascending("message"),
             role: "user",
             sessionID: session.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test-provider", modelID: "test-model" },
             isRoot: true,
             rootID: "",
@@ -1260,8 +1264,8 @@ describe("SessionInvoke inbox boundaries", () => {
             sessionID: session.id,
             parentID: root.id,
             rootID: root.id,
-            mode: "synergy",
-            agent: "synergy",
+            mode: PrimaryAgentIdentity.names.general,
+            agent: PrimaryAgentIdentity.names.general,
             path: { cwd: tmp.path, root: tmp.path },
             cost: 0,
             tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -1324,7 +1328,7 @@ describe("SessionInvoke inbox boundaries", () => {
               id: Identifier.ascending("message"),
               role: "user",
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               time: { created: Date.now() },
             })
@@ -1358,7 +1362,7 @@ describe("SessionInvoke inbox boundaries", () => {
             expect(messages.findIndex((message) => message.info.id === queued!.info.id)).toBeGreaterThan(
               messages.findIndex((message) => message.info.id === firstReply!.info.id),
             )
-            expect(queued!.info.agent).toBe("synergy")
+            expect(queued!.info.agent).toBe(PrimaryAgentIdentity.names.general)
             expect(queued!.info.model).toEqual({ providerID: "test-provider", modelID: "test-model" })
             expect(promptPayloads[0]).not.toContain("queued while running")
             expect(promptPayloads[1]).toContain("queued while running")
@@ -1393,7 +1397,7 @@ describe("SessionInvoke inbox boundaries", () => {
               id: oldRootID,
               role: "user",
               sessionID,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               isRoot: true,
               rootID: oldRootID,
@@ -1412,8 +1416,8 @@ describe("SessionInvoke inbox boundaries", () => {
               sessionID,
               parentID: oldRootID,
               rootID: oldRootID,
-              mode: "synergy",
-              agent: "synergy",
+              mode: PrimaryAgentIdentity.names.general,
+              agent: PrimaryAgentIdentity.names.general,
               path: { cwd: tmp.path, root: tmp.path },
               cost: 0,
               tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -1462,7 +1466,7 @@ describe("SessionInvoke inbox boundaries", () => {
             id: legacySteerID,
             role: "user",
             sessionID: activeSessionID,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test-provider", modelID: "test-model" },
             isRoot: false,
             rootID: activeRootID,
@@ -1491,7 +1495,7 @@ describe("SessionInvoke inbox boundaries", () => {
               id: completedRootID,
               role: "user",
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               isRoot: true,
               rootID: completedRootID,
@@ -1503,8 +1507,8 @@ describe("SessionInvoke inbox boundaries", () => {
               sessionID: session.id,
               parentID: completedRootID,
               rootID: completedRootID,
-              mode: "synergy",
-              agent: "synergy",
+              mode: PrimaryAgentIdentity.names.general,
+              agent: PrimaryAgentIdentity.names.general,
               path: { cwd: tmp.path, root: tmp.path },
               cost: 0,
               tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -1518,7 +1522,7 @@ describe("SessionInvoke inbox boundaries", () => {
               id: activeRootID,
               role: "user",
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               isRoot: true,
               rootID: activeRootID,
@@ -1570,7 +1574,7 @@ describe("SessionInvoke inbox boundaries", () => {
               id: Identifier.ascending("message"),
               role: "user",
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               time: { created: Date.now() },
             })
@@ -1584,7 +1588,7 @@ describe("SessionInvoke inbox boundaries", () => {
             const clientMessageID = Identifier.ascending("message")
             const queued = await SessionInbox.enqueueUser({
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               messageID: clientMessageID,
               parts: [{ type: "text", text: "steer sooner" }],
@@ -1637,7 +1641,7 @@ describe("SessionInvoke inbox boundaries", () => {
               id: rootID,
               role: "user",
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               isRoot: true,
               rootID,
@@ -1657,8 +1661,8 @@ describe("SessionInvoke inbox boundaries", () => {
               sessionID: session.id,
               parentID: rootID,
               rootID,
-              mode: "synergy",
-              agent: "synergy",
+              mode: PrimaryAgentIdentity.names.general,
+              agent: PrimaryAgentIdentity.names.general,
               path: { cwd: tmp.path, root: tmp.path },
               cost: 0,
               tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -1698,7 +1702,7 @@ describe("SessionInvoke inbox boundaries", () => {
               id: nextRootID,
               role: "user",
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               isRoot: true,
               rootID: nextRootID,
@@ -1748,7 +1752,7 @@ describe("SessionInvoke inbox boundaries", () => {
               id: rootID,
               role: "user",
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               isRoot: true,
               rootID,
@@ -1767,8 +1771,8 @@ describe("SessionInvoke inbox boundaries", () => {
               sessionID: session.id,
               parentID: rootID,
               rootID,
-              mode: "synergy",
-              agent: "synergy",
+              mode: PrimaryAgentIdentity.names.general,
+              agent: PrimaryAgentIdentity.names.general,
               path: { cwd: tmp.path, root: tmp.path },
               cost: 0,
               tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -1971,7 +1975,7 @@ describe("SessionInvoke completion notices", () => {
               id: Identifier.ascending("message"),
               role: "user",
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               time: { created: Date.now() },
             })
@@ -2363,7 +2367,7 @@ describe("SessionInvoke abort with queued inbox work", () => {
           if (callIndex > 1) return
           await SessionInbox.enqueueUser({
             sessionID: activeSessionID,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test-provider", modelID: "test-model" },
             parts: [{ type: "text", text: "queued while the run is active" }],
           })
@@ -2418,7 +2422,7 @@ describe("SessionInvoke abort with queued inbox work", () => {
           if (callIndex > 1) return
           await SessionInbox.enqueueUser({
             sessionID: activeSessionID,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test-provider", modelID: "test-model" },
             parts: [{ type: "text", text: "queued while the run is cancelled internally" }],
           })
@@ -2793,7 +2797,7 @@ test("startup reconciliation records the pause without driving the stuck continu
               mode: "task",
               message: {
                 role: "user",
-                agent: "synergy",
+                agent: PrimaryAgentIdentity.names.general,
                 model: { providerID: "test-provider", modelID: "test-model" },
                 parts: [{ type: "text", text: "Interrupted task" }],
               },
@@ -2882,7 +2886,7 @@ for (const stoppedBy of ["abandonment", "run cancellation"] as const)
 
               const submitted = await submitInput({
                 sessionID: session.id,
-                agent: "synergy",
+                agent: PrimaryAgentIdentity.names.general,
                 model: { providerID: "test-provider", modelID: "test-model" },
                 parts: [{ type: "text", text: "Start a different task" }],
               })
@@ -2956,7 +2960,7 @@ test("paused input steers the original task before its first resumed model call"
 
             const submitted = await submitInput({
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               parts: [{ type: "text", text: "Continue after cancellation" }],
             })

@@ -43,13 +43,30 @@ export namespace RolloutLifecycle {
       hash.update(Experiment.fingerprint(message))
       messages++
     }
-    return RolloutLedger.beginSegment({
+    const segment = await RolloutLedger.beginSegment({
       owner: owner(session),
       runID: root.id,
       input: JSON.parse(JSON.stringify({ message: root, parts })),
       parent: await parent(session),
       initialHistory: { messages, sha256: hash.digest("hex") },
     })
+    const { SessionFileChanges } = await import("../file-changes")
+    await SessionFileChanges.begin({ sessionID: session.id, rootID: root.id, segmentID: segment.id })
+    return segment
+  }
+
+  export async function finishSegment(
+    segment: RolloutSchema.ExecutionSegment,
+    status: Parameters<typeof RolloutLedger.finishSegment>[1],
+  ) {
+    if (segment.owner.kind === "session") {
+      const { SessionFileChanges } = await import("../file-changes")
+      await SessionFileChanges.finish(
+        { sessionID: segment.owner.sessionID, rootID: segment.runID, segmentID: segment.id },
+        { deferSummary: true },
+      )
+    }
+    return RolloutLedger.finishSegment(segment, status)
   }
 
   export async function configuration(
@@ -229,8 +246,23 @@ export namespace RolloutLifecycle {
     if (!outcome && (await SessionInbox.list(sessionID)).some((item) => item.mode === "steer")) return run
     const messages = await SessionHistory.modelMessages({ sessionID })
     const terminal = SessionProgress.findTerminalReply(messages, runID)
-    if (!outcome && (!terminal || SessionProgress.needsModelCall(messages, runID))) return run
+    const latestRoot = messages.findLast((message) => message.info.role === "user" && message.info.isRoot)
+    const answeredLater =
+      latestRoot &&
+      latestRoot.info.id !== runID &&
+      SessionProgress.findTerminalReply(messages, latestRoot.info.id) &&
+      !SessionProgress.needsModelCall(messages, latestRoot.info.id)
+    if (!outcome && (!terminal || (SessionProgress.needsModelCall(messages, runID) && !answeredLater))) return run
     const status = outcome ?? (terminal?.info.role === "assistant" && terminal.info.error ? "failed" : "completed")
     return RolloutLedger.finishRun(identity, runID, status)
+  }
+
+  export async function reconcileDelegatedRuns(sessionID: string, excluded: ReadonlySet<string>) {
+    const runs = new Set<string>()
+    for (const child of await Session.children(sessionID)) {
+      const lineage = await parent(child)
+      if (lineage?.runID && !excluded.has(lineage.runID)) runs.add(lineage.runID)
+    }
+    for (const runID of runs) await reconcile(sessionID, runID)
   }
 }

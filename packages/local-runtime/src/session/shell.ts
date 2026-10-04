@@ -378,7 +378,7 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
     throw failure
   } finally {
     try {
-      await RolloutLedger.finishSegment(segment, status)
+      await RolloutLifecycle.finishSegment(segment, status)
       await RolloutLedger.finishRun(owner, userMsg.id, status)
     } catch (error) {
       throw findRecordingError(failure) ?? error

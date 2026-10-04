@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, spyOn, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -20,7 +21,7 @@ const ctx = {
   sessionID: "ses_test123",
   messageID: "msg_test123",
   callID: "call_test123",
-  agent: "synergy-max",
+  agent: PrimaryAgentIdentity.names.coding,
   abort: AbortSignal.any([]),
   metadata: () => {},
   ask: async () => {},
@@ -59,7 +60,7 @@ function userMessage(sessionID: string, id: string, created: number): MessageV2.
     sessionID,
     role: "user",
     time: { created },
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test", modelID: "test" },
   }
 }

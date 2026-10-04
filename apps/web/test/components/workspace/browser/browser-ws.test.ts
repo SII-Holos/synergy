@@ -4,7 +4,7 @@ import {
   browserControlCommandFromMessage,
   shouldResumeBrowserSession,
 } from "../../../../src/components/workspace/browser/browser-command"
-import { createBrowserEventsWebSocketUrl } from "../../../../src/components/workspace/browser/browser-ws"
+import { createBrowserEventsWebSocketUrl } from "../../../../src/components/workspace/browser/browser-route-url"
 
 describe("createBrowserWebSocketUrl", () => {
   test("uses the route directory and scope id for home scope", () => {
@@ -109,7 +109,7 @@ describe("browserControlCommandFromMessage", () => {
 describe("Browser session bootstrap", () => {
   const state = {
     type: "session.state" as const,
-    protocolVersion: 4 as const,
+    protocolVersion: 5 as const,
     ownerKey: "owner-1",
     status: "active" as const,
     pages: [

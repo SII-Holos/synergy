@@ -48,7 +48,7 @@ ToolRegistry.register({
         <TaskSubagentDetail
           info={{
             agentType: typeof props.input.subagent_type === "string" ? props.input.subagent_type : undefined,
-            description: typeof props.input.description === "string" ? props.input.description : undefined,
+            description: typeof props.input.taskTitle === "string" ? props.input.taskTitle : undefined,
             background: isBackground(),
             sessionId: childSessionId(),
             summary: summary(),

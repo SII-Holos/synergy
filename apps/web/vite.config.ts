@@ -78,7 +78,7 @@ export default defineConfig(async ({ command }) => {
       allowedHosts: true,
       port: 3000,
       proxy: {
-        "/plugin": {
+        "^/plugin(?:/|$)": {
           target: synergyServerUrl,
           changeOrigin: true,
         },

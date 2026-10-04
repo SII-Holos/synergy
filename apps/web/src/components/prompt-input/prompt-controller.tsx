@@ -17,8 +17,11 @@ import {
   Match,
   createMemo,
   createSignal,
+  createUniqueId,
   createResource,
   untrack,
+  lazy,
+  Suspense,
 } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { createFocusSignal } from "@solid-primitives/active-element"
@@ -62,10 +65,8 @@ import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
 import { getAgentVisual } from "@/components/agent-visual"
 import type { Message } from "@ericsanchezok/synergy-sdk/client"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import { QuickActions } from "./quick-actions"
 import { isHomeScope } from "@/utils/scope"
 import { computeWorkingPhrase, titlecaseStatusLabel } from "@ericsanchezok/synergy-ui/session-status"
-import { SessionAgendaWakeIndicator } from "@/components/session/wake-indicator"
 import { FILE_INPUT_ACCEPT } from "@/components/prompt-input/files"
 import { permissionModeVisual } from "@/components/prompt-input/permission-modes"
 import type {
@@ -86,7 +87,6 @@ import { SessionWorkContext } from "@/components/session/work-context"
 import { usePromptSubmit } from "@/components/prompt-input/submit"
 import { usePromptAttachments } from "@/components/prompt-input/attachments-hook"
 import { usePromptEditor } from "@/components/prompt-input/editor-hook"
-import { sendSessionCommand } from "@/components/prompt-input/session-command"
 import { inlineLength, inlineText } from "@/components/prompt-input/content"
 import {
   resolvePromptSubmitIntent,
@@ -122,6 +122,7 @@ import { LightLoopSubmitControl } from "./light-loop-submit-control"
 import { resolveLightLoopActivity } from "./light-loop-control"
 import { WorktreeUnavailableDialog } from "./worktree-unavailable-dialog"
 import { ComposerDocumentController } from "./composer-document"
+import { ComposerPresentation, bindComposerPresentation, expandedComposerKeyAction } from "./composer-presentation"
 import { createAbortRequestController } from "./abort-request"
 import { ComposerExtensionOutlet } from "@/plugin/registries/composer-extension-registry"
 import { VoiceDictationButton } from "./use-voice-dictation"
@@ -198,10 +199,20 @@ function WorkflowChip(props: {
   )
 }
 
+const DraftAttachmentPreview = lazy(() =>
+  import("@/components/attachment-workbench/draft-preview").then((module) => ({
+    default: module.DraftAttachmentPreview,
+  })),
+)
+
 export function createPromptInputController(props: PromptInputProps) {
   const sdk = useSDK()
   const { capabilities } = useGlobalSDK()
   const workflowDialog = useDialog()
+  let workspaceRecoveryDialogID: string | undefined
+  onCleanup(() => {
+    if (workspaceRecoveryDialogID) workflowDialog.close(workspaceRecoveryDialogID)
+  })
   const confirm = useConfirm()
   const globalSync = useGlobalSync()
   const fullAccessAck = useFullAccessAcknowledgement()
@@ -240,6 +251,7 @@ export function createPromptInputController(props: PromptInputProps) {
   const idle = { type: "idle" as const }
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const sendShortcut = createMemo(() => input.sendShortcut())
+  const presentation = new ComposerPresentation()
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const activeWorkflow = createMemo(() => (params.id ? info()?.workflow : undefined))
   const backendLightLoopActive = createMemo(() =>
@@ -537,7 +549,8 @@ export function createPromptInputController(props: PromptInputProps) {
   const submitPending = createMemo(() => newSessionSubmitPending() || sessionTransitionPending())
   const pendingUploads = createPendingAttachmentTracker()
   onCleanup(() => pendingUploads.clear())
-  const attachmentsUploading = createMemo(() => pendingUploads.uploading())
+  const attachmentsUploading = createMemo(() => pendingUploads.blocking())
+  const attachmentsFailed = createMemo(() => pendingUploads.pending().some((entry) => entry.status === "failed"))
   const canSubmit = createMemo(() => {
     if (props.readOnly || props.locationPending || submitPending()) return false
     const intent = resolvePromptSubmitIntent({
@@ -584,7 +597,6 @@ export function createPromptInputController(props: PromptInputProps) {
     return !canSubmit()
   })
   const controlLabel = createMemo(() => {
-    if (props.sessionTransitionError) return i18n._(PI.recoveryRequired)
     if (abandonPending()) return i18n._(PI.abandoning)
     if (continuePending() && !working()) return i18n._(PI.startingSession)
     switch (controlState()) {
@@ -593,6 +605,8 @@ export function createPromptInputController(props: PromptInputProps) {
       case "continue":
         return i18n._(PI.continueControl)
       default:
+        if (attachmentsFailed())
+          return i18n._({ id: "prompt.attachments.resolveFailed", message: "Review failed attachments" })
         if (attachmentsUploading()) return i18n._(PI.submitWaitUploadsTitle)
         if (activity() === "paused" && hasDraft()) return i18n._(PI.sendAndContinue)
         if (working() && hasDraft()) return i18n._(PI.queueMessage)
@@ -610,7 +624,6 @@ export function createPromptInputController(props: PromptInputProps) {
     }
   })
   const controlHint = createMemo(() => {
-    if (props.sessionTransitionError) return i18n._(PI.recoveryRequired)
     switch (controlState()) {
       case "pause":
         return i18n._(PI.pauseControlHint)
@@ -619,9 +632,12 @@ export function createPromptInputController(props: PromptInputProps) {
       case "disabled":
         return i18n._(PI.disabledControlHint)
       default:
-        return i18n._(activity() === "paused" ? PI.steerHint : working() ? PI.queueMessage : PI.sendAction)
+        return activity() === "paused" ? i18n._(PI.steerHint) : undefined
     }
   })
+  const recoveryHintID = createUniqueId()
+  const controlTitle = () =>
+    abortStopping() ? i18n._(PI.stopping) : submitPending() ? i18n._(PI.startingSession) : controlLabel()
   /** Pause and Continue are not submits, so they intercept the click; Send lets
    *  the form's submit path run unchanged. */
   const handleControlClick = (event: MouseEvent) => {
@@ -1215,14 +1231,19 @@ export function createPromptInputController(props: PromptInputProps) {
             description: i18n._(workspaceCopy.description),
             icon: getSemanticIcon("workspace.main"),
             selected: workspaceSelection.mode === "workspace" || workspaceSelection.mode === "none",
+            disabled: !props.onNewSessionWorkspaceSelectionChange,
             onSelect: () =>
               workflowDialog.show(() => (
                 <DialogWorkspace
                   environmentProfile={props.newSessionEnvironmentProfile}
                   environmentID={props.newSessionEnvironmentID}
                   mode="select"
-                  selection={workspaceSelection}
-                  onSelect={props.onNewSessionWorkspaceSelectionChange}
+                  mainWorkspaceID={props.projectDirectories?.mainWorkspaceID}
+                  target={{
+                    kind: "draft",
+                    selection: workspaceSelection,
+                    onSelect: props.onNewSessionWorkspaceSelectionChange!,
+                  }}
                 />
               )),
           },
@@ -1247,6 +1268,7 @@ export function createPromptInputController(props: PromptInputProps) {
             id: "workspace.existing",
             label: i18n._(locationCopy.continueCopy),
             icon: getSemanticIcon("workspace.worktree"),
+            disabled: !props.onNewSessionWorkspaceSelectionChange,
             selected:
               workspaceSelection.mode === "existing" ||
               (workspaceSelection.mode === "workspace" &&
@@ -1260,8 +1282,12 @@ export function createPromptInputController(props: PromptInputProps) {
                   environmentID={props.newSessionEnvironmentID}
                   mode="select"
                   copiesOnly
-                  selection={workspaceSelection}
-                  onSelect={props.onNewSessionWorkspaceSelectionChange}
+                  mainWorkspaceID={props.projectDirectories?.mainWorkspaceID}
+                  target={{
+                    kind: "draft",
+                    selection: workspaceSelection,
+                    onSelect: props.onNewSessionWorkspaceSelectionChange!,
+                  }}
                 />
               )),
           },
@@ -1341,7 +1367,9 @@ export function createPromptInputController(props: PromptInputProps) {
   })
   const agentName = createMemo(() => {
     const latestAssistant = assistantMessages().at(-1)
-    return titlecaseStatusLabel(latestAssistant?.agent ?? local.agent.current()?.name ?? "Synergy")
+    return titlecaseStatusLabel(
+      latestAssistant?.agent ?? local.agent.current()?.name ?? translateDescriptor(getAgentVisual().label, i18n),
+    )
   })
   const fallbackWorkingPhrase = createMemo(() =>
     computeWorkingPhrase(
@@ -1385,6 +1413,39 @@ export function createPromptInputController(props: PromptInputProps) {
   const uploadedAttachments = createMemo(
     () => prompt.current().filter((part) => part.type === "attachment") as UploadedAttachmentPart[],
   )
+  let draftPreviewId: string | undefined
+  onCleanup(() => {
+    if (draftPreviewId) workflowDialog.close(draftPreviewId)
+  })
+  const openDraftAttachment = (
+    file: import("@ericsanchezok/synergy-ui/attachment-card").AttachmentFile,
+    id: string,
+  ) => {
+    const owner = sessionKey()
+    const serverUrl = sdk.url
+    if (draftPreviewId) workflowDialog.close(draftPreviewId)
+    draftPreviewId = workflowDialog.push(
+      () => (
+        <Suspense>
+          <DraftAttachmentPreview
+            file={file}
+            serverUrl={serverUrl}
+            isValid={() =>
+              sessionKey() === owner &&
+              sdk.url === serverUrl &&
+              uploadedAttachments().some((part) => part.id === id && part.url === file.url)
+            }
+            onInvalid={() => {
+              if (draftPreviewId) workflowDialog.close(draftPreviewId)
+            }}
+          />
+        </Suspense>
+      ),
+      () => {
+        draftPreviewId = undefined
+      },
+    )
+  }
   const noteAttachments = createMemo(
     () => prompt.current().filter((part) => part.type === "note") as NoteAttachmentPart[],
   )
@@ -1684,6 +1745,7 @@ export function createPromptInputController(props: PromptInputProps) {
       () => {
         composerDocument.abortSubmit(new DOMException("Composer navigation changed", "AbortError"))
         composerDocument.changed()
+        if (!newSessionSubmitPending()) presentation.collapse()
       },
       { defer: true },
     ),
@@ -1691,7 +1753,10 @@ export function createPromptInputController(props: PromptInputProps) {
   createEffect(
     on(
       () => store.mode,
-      () => composerDocument.changed(),
+      () => {
+        composerDocument.changed()
+        if (store.mode === "shell") presentation.collapse()
+      },
       { defer: true },
     ),
   )
@@ -1706,26 +1771,33 @@ export function createPromptInputController(props: PromptInputProps) {
     onCleanup(() => document.removeEventListener("selectionchange", onSelectionChange))
   })
 
-  const { addAttachments, removeAttachment, handlePaste, handleDragOver, handleDragLeave, handleDrop } =
-    usePromptAttachments({
-      editor: editorElement,
-      isFocused,
-      addPart,
-      noteAttachments,
-      sessionAttachments,
-      localArmedLoop,
-      activeLoopID: () => info()?.blueprint?.loopID,
-      working,
-      workflowKind: armedWorkflowKind,
-      clearPendingWorkflows: () => {
-        setPendingPlan(false)
-        setPendingLightLoop(false)
-        setPendingBoss(false)
-      },
-      setLocalArmedLoop,
-      setStore,
-      pendingUploads,
-    })
+  const {
+    addAttachments,
+    retryAttachment,
+    removeAttachment,
+    handlePaste,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+  } = usePromptAttachments({
+    editor: editorElement,
+    isFocused,
+    addPart,
+    noteAttachments,
+    sessionAttachments,
+    localArmedLoop,
+    activeLoopID: () => info()?.blueprint?.loopID,
+    working,
+    workflowKind: armedWorkflowKind,
+    clearPendingWorkflows: () => {
+      setPendingPlan(false)
+      setPendingLightLoop(false)
+      setPendingBoss(false)
+    },
+    setLocalArmedLoop,
+    setStore,
+    pendingUploads,
+  })
 
   const addToHistory = (prompt: Prompt, mode: "normal" | "shell") => {
     const text = inlineText(prompt).trim()
@@ -1880,6 +1952,7 @@ export function createPromptInputController(props: PromptInputProps) {
     }
 
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      if (presentation.expanded && store.mode === "normal") return
       if (event.altKey || event.ctrlKey || event.metaKey) return
       const { collapsed } = getCaretState()
       if (!collapsed) return
@@ -1912,6 +1985,25 @@ export function createPromptInputController(props: PromptInputProps) {
 
     const modEnter = event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
     const plainEnter = event.key === "Enter" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
+
+    if (event.key === "Escape" && store.popover) {
+      setStore("popover", null)
+      event.preventDefault()
+      return
+    }
+    if (presentation.expanded && store.mode === "normal") {
+      const action = expandedComposerKeyAction(event)
+      if (action === "send") handleSubmit(event)
+      if (action === "newline") {
+        addPart({ type: "text", content: "\n", start: 0, end: 0 })
+        event.preventDefault()
+      }
+      if (action === "collapse") {
+        presentation.collapse()
+        event.preventDefault()
+      }
+      return
+    }
 
     if (sendShortcut() === "enter") {
       if (plainEnter) {
@@ -1949,6 +2041,7 @@ export function createPromptInputController(props: PromptInputProps) {
     noteAttachments,
     sessionAttachments,
     attachmentsUploading,
+    attachmentsFailed,
     selectedControlProfile,
     pendingPlan,
     clearPendingPlan: () => setPendingPlan(false),
@@ -1976,11 +2069,40 @@ export function createPromptInputController(props: PromptInputProps) {
     abort,
     editor: editorElement,
     queueScroll,
+    onWorkspaceUnavailable: (request) => {
+      const onSelect = props.onNewSessionWorkspaceSelectionChange
+      if (request.kind === "session") {
+        if (params.id && params.id !== request.sessionID) return
+        workspaceRecoveryDialogID = workflowDialog.show(() => (
+          <DialogWorkspace
+            mode="recover"
+            recovery={request}
+            target={{ kind: "session", sessionID: request.sessionID, onApplied: request.onRecovered }}
+          />
+        ))
+      } else if (onSelect) {
+        workspaceRecoveryDialogID = workflowDialog.show(() => (
+          <DialogWorkspace
+            mode="recover"
+            recovery={request}
+            environmentProfile={props.newSessionEnvironmentProfile}
+            environmentID={props.newSessionEnvironmentID}
+            mainWorkspaceID={props.projectDirectories?.mainWorkspaceID}
+            target={{ kind: "draft", selection: props.newSessionWorkspaceSelection, onSelect }}
+          />
+        ))
+      } else {
+        workspaceRecoveryDialogID = workflowDialog.show(() => (
+          <DialogWorkspace mode="manage" initialID={request.workspaceID} />
+        ))
+      }
+    },
     onWorktreeUnavailable: () => workflowDialog.show(() => <WorktreeUnavailableDialog />),
     beforeSubmit: async () => {
       await props.onValidateLocation?.()
       await composerDocument!.beforeSubmit()
     },
+    onAccepted: (unchanged) => presentation.accepted(unchanged),
   })
   const handleSubmit = (event: Event) => {
     if (props.locationPending || abandonPending() || (continuePending() && !working())) {
@@ -2025,28 +2147,6 @@ export function createPromptInputController(props: PromptInputProps) {
     requestAnimationFrame(() => void handleSubmit(new Event("submit", { cancelable: true })))
   })
 
-  const runRuntimeCommand = (name: string) => {
-    const sessionID = params.id
-    const currentModel = local.model.current()
-    const currentAgent = local.agent.current()
-    if (!sessionID || !currentModel || !currentAgent) return
-
-    sendSessionCommand({
-      client: sdk.client,
-      sessionID,
-      command: name,
-      agent: currentAgent.name,
-      model: { modelID: currentModel.id, providerID: currentModel.provider.id },
-      variant: local.model.variant.current(),
-    }).catch((err) => {
-      showToast({
-        type: "error",
-        title: i18n._(PI.commandSendFailed),
-        description: err instanceof Error ? err.message : i18n._(PI.genericRequestFailed),
-      })
-    })
-  }
-
   const views: Record<PluginInputViewPart, () => import("solid-js").JSX.Element> = {
     leading: () => (
       <>
@@ -2077,24 +2177,11 @@ export function createPromptInputController(props: PromptInputProps) {
           environmentProfile={props.newSessionEnvironmentProfile}
           onEnvironmentProfileChange={props.onNewSessionEnvironmentProfileChange}
           workspaceSelection={props.newSessionWorkspaceSelection}
+          workspaceSelectionKey={props.newSessionWorkspaceSelectionKey}
           onEnvironmentChange={props.onNewSessionEnvironmentChange}
           startOptions={newSessionStartOptions()}
           disabled={!!props.readOnly || composerSubmitting() || !!props.sessionTransitionPending}
-        >
-          {" "}
-          <Show when={params.id}>
-            <div class="relative z-20 ml-auto hidden md:flex items-center gap-1.5">
-              <SessionAgendaWakeIndicator sessionID={params.id!} />
-              <QuickActions
-                class="relative"
-                onCommand={(id) => command.trigger(id)}
-                onRuntimeCommand={runRuntimeCommand}
-                commandsDisabled={working()}
-                commands={command.options}
-              />
-            </div>
-          </Show>
-        </SessionWorkContext>
+        />
       </>
     ),
     context: () => (
@@ -2153,8 +2240,12 @@ export function createPromptInputController(props: PromptInputProps) {
             notes={noteAttachments}
             sessions={sessionAttachments}
             pending={pendingUploads.pending}
+            pendingFile={pendingUploads.file}
+            retryAttachment={retryAttachment}
+            order={() => prompt.current().flatMap((part) => ("id" in part ? [part.id] : []))}
             serverUrl={sdk.url}
             removeAttachment={removeAttachment}
+            onOpen={openDraftAttachment}
           />
         </Show>
       </>
@@ -2196,14 +2287,15 @@ export function createPromptInputController(props: PromptInputProps) {
                         </Tooltip>
                       )}
                       title={i18n._(PI.selectAgent)}
-                      contentClass="w-52 max-h-80"
+                      contentClass="w-72 max-h-80"
                       placement="top-start"
                     >
                       {(close) => (
                         <List
-                          class="p-1"
+                          class="p-1 [&_[data-slot=list-item]]:relative [&_[data-slot=list-item]:focus-visible]:bg-surface-raised-base-hover [&_[data-slot=list-item-selected-icon]]:absolute [&_[data-slot=list-item-selected-icon]]:right-3"
                           items={local.agent.list().filter((a) => !a.hidden)}
                           key={(x) => x.name}
+                          current={local.agent.current()}
                           filterKeys={["name"]}
                           onSelect={(x) => {
                             if (!x) return
@@ -2223,7 +2315,7 @@ export function createPromptInputController(props: PromptInputProps) {
                               >
                                 <div
                                   classList={{
-                                    "flex items-center justify-between gap-3": true,
+                                    "min-w-0 flex-1 pr-6 text-left": true,
                                     "opacity-45": sessionHasMessages() && !!agent.external,
                                   }}
                                 >
@@ -2231,6 +2323,13 @@ export function createPromptInputController(props: PromptInputProps) {
                                     <div class="text-13-medium text-text-base truncate">
                                       {translateDescriptor(visual.label, i18n)}
                                     </div>
+                                    <Show when={visual.description}>
+                                      {(description) => (
+                                        <div class="mt-0.5 text-12-regular text-text-weak leading-snug whitespace-normal">
+                                          {translateDescriptor(description(), i18n)}
+                                        </div>
+                                      )}
+                                    </Show>
                                   </div>
                                 </div>
                               </Tooltip>
@@ -2383,25 +2482,20 @@ export function createPromptInputController(props: PromptInputProps) {
             </Show>
             <div class="relative flex items-center gap-2">
               <Show when={props.sessionTransitionError}>
-                <span class="max-w-40 text-12-regular text-text-weak" role="status">
+                <span id={recoveryHintID} class="max-w-40 text-12-regular text-text-weak" role="status">
                   {i18n._(PI.recoveryRequired)}
                 </span>
               </Show>
               <Tooltip
                 placement="top"
+                inactive={!!props.sessionTransitionError}
                 open={abandonProgress() > 0 || abandonPending() ? false : undefined}
                 value={
                   <div class="flex max-w-72 flex-col gap-1">
-                    <span>
-                      {abortStopping()
-                        ? i18n._(PI.stopping)
-                        : props.sessionTransitionError
-                          ? i18n._(PI.recoveryRequired)
-                          : submitPending()
-                            ? i18n._(PI.startingSession)
-                            : controlLabel()}
-                    </span>
-                    <span class="text-10-regular text-text-weak">{controlHint()}</span>
+                    <span>{controlTitle()}</span>
+                    <Show when={controlHint() && controlHint() !== controlTitle()}>
+                      <span class="text-10-regular text-text-weak">{controlHint()}</span>
+                    </Show>
                     <Show when={canAbandon()}>
                       <span class="text-10-regular text-text-weak">{i18n._(PI.abandonHint)}</span>
                     </Show>
@@ -2411,6 +2505,7 @@ export function createPromptInputController(props: PromptInputProps) {
                 <IconButton
                   type="submit"
                   aria-label={controlLabel()}
+                  aria-describedby={props.sessionTransitionError ? recoveryHintID : undefined}
                   disabled={controlDisabled()}
                   icon={controlIcon()}
                   variant="primary"
@@ -2609,6 +2704,22 @@ export function createPromptInputController(props: PromptInputProps) {
       await handleDrop(event)
     },
   }
+  onCleanup(
+    bindComposerPresentation(composerInput, {
+      state: presentation,
+      preview() {
+        let offset = 0
+        const references: Array<{ start: number; end: number; path: string }> = []
+        for (const part of prompt.current()) {
+          if (part.type !== "text" && part.type !== "file") continue
+          if (part.type === "file")
+            references.push({ start: offset, end: offset + part.content.length, path: part.path })
+          offset += part.content.length
+        }
+        return { text: inlineText(prompt.current()), references }
+      },
+    }),
+  )
   return {
     input: composerInput,
     pickFiles() {

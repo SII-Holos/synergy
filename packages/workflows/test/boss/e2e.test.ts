@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -47,7 +48,7 @@ describe("Boss Mode end-to-end", () => {
 
         // Boss spawns three specialist workers.
         const code = await BossService.spawn(boss.id, { role: "code" })
-        const review = await BossService.spawn(boss.id, { role: "review", agent: "synergy-max" })
+        const review = await BossService.spawn(boss.id, { role: "review", agent: PrimaryAgentIdentity.names.coding })
         const research = await BossService.spawn(boss.id, { role: "research" })
         await using workers = holdWorkers(boss.id, code.id, review.id, research.id)
 
@@ -83,7 +84,7 @@ describe("Boss Mode end-to-end", () => {
         const roles = tree.children.map((child) => child.workerRole).sort()
         expect(roles).toEqual(["code", "research", "review"])
         const reviewNode = tree.children.find((child) => child.sessionID === review.id)
-        expect(reviewNode?.agent).toBe("synergy-max")
+        expect(reviewNode?.agent).toBe(PrimaryAgentIdentity.names.coding)
         expect(reviewNode?.currentTask).toMatchObject({ taskID: "t-2" })
       })
     }))

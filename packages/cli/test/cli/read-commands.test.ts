@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import yargs from "yargs"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -72,8 +73,8 @@ test(
         await invoke(["debug", "file", "status"])
         expect(messages.join("")).toContain("evidence.txt")
         messages.length = 0
-        await invoke(["debug", "agent", "synergy"])
-        expect(messages.join("")).toContain('"name": "synergy"')
+        await invoke(["debug", "agent", PrimaryAgentIdentity.names.general])
+        expect(messages.join("")).toContain(`"name": "${PrimaryAgentIdentity.names.general}"`)
         messages.length = 0
         await Config.domainUpdate(
           "providers",

@@ -25,6 +25,7 @@ export type TurnChangeSummaryPanelProps = {
   incomplete?: boolean
   animateReady?: boolean
   previewLimit?: number
+  onUndoRequested?: () => void
   onReviewRequested: () => void
   onFileSelected: (file: string) => void
 }
@@ -33,6 +34,7 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
   const { _, i18n } = useLingui()
   const [store, setStore] = createStore({ expanded: false })
   const state = () => props.state ?? "ready"
+  const entering = props.animateReady === true
   const previewLimit = () => props.previewLimit ?? 3
   const files = createMemo(() => turnChangeSummaryFiles(props.diffs))
   const hiddenCount = createMemo(() => turnChangeSummaryHiddenCount(files(), previewLimit()))
@@ -53,28 +55,29 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
   )
 
   return (
-    <section
-      data-component="turn-change-summary-panel"
-      data-diff-state={state()}
-      classList={{ "turn-change-summary-entering": state() === "ready" && props.animateReady === true }}
-      aria-label={label()}
-      aria-busy={state() === "pending" ? "true" : undefined}
-      aria-live={state() === "error" ? "polite" : undefined}
+    <Show
+      when={files().length > 0}
+      fallback={
+        <button
+          type="button"
+          data-slot="turn-change-summary-entry"
+          data-diff-state={state()}
+          aria-label={`${_(TURN_CHANGE_DESC.reviewChanges)}: ${statusText()}`}
+          title={statusText()}
+          onClick={props.onReviewRequested}
+        >
+          <Icon name={getSemanticIcon(state() === "pending" ? "command.review" : "state.warning")} size="small" />
+          <span>{_(TURN_CHANGE_DESC.reviewChanges)}</span>
+        </button>
+      }
     >
-      <Show
-        when={state() === "ready" || (props.incomplete && files().length > 0)}
-        fallback={
-          <div data-slot="turn-change-summary-header">
-            <div data-slot="turn-change-summary-title-group">
-              <span data-slot="turn-change-summary-icon" aria-hidden="true">
-                <Icon name={getSemanticIcon("command.review")} size="small" />
-              </span>
-              <div data-slot="turn-change-summary-title-copy">
-                <div data-slot="turn-change-summary-title">{statusText()}</div>
-              </div>
-            </div>
-          </div>
-        }
+      <section
+        data-component="turn-change-summary-panel"
+        data-diff-state={state()}
+        classList={{ "turn-change-summary-entering": entering }}
+        aria-label={label()}
+        aria-busy={state() === "pending" ? "true" : undefined}
+        aria-live={state() === "error" ? "polite" : undefined}
       >
         <div data-slot="turn-change-summary-header">
           <div data-slot="turn-change-summary-title-group">
@@ -83,15 +86,27 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
             </span>
             <div data-slot="turn-change-summary-title-copy">
               <div data-slot="turn-change-summary-title">{title()}</div>
-              <Show when={props.incomplete}>
+              <Show when={state() !== "ready"}>
                 <div role="status">{statusText()}</div>
               </Show>
-              <DiffChanges changes={props.diffs} />
+              <DiffChanges changes={files()} />
             </div>
           </div>
-          <button type="button" data-slot="turn-change-summary-review" onClick={props.onReviewRequested}>
-            {_(TURN_CHANGE_DESC.reviewChanges)}
-          </button>
+          <div data-slot="turn-change-summary-actions">
+            <Show when={props.onUndoRequested}>
+              <button
+                type="button"
+                data-slot="turn-change-summary-review"
+                disabled={state() === "pending"}
+                onClick={props.onUndoRequested}
+              >
+                {_({ id: "ui.turnChangeSummary.undo", message: "Undo" })}
+              </button>
+            </Show>
+            <button type="button" data-slot="turn-change-summary-review" onClick={props.onReviewRequested}>
+              {_(TURN_CHANGE_DESC.reviewChanges)}
+            </button>
+          </div>
         </div>
         <div data-slot="turn-change-summary-list">
           <For each={visibleDiffs()}>
@@ -130,7 +145,7 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
             {toggleLabel()}
           </button>
         </Show>
-      </Show>
-    </section>
+      </section>
+    </Show>
   )
 }

@@ -2,7 +2,7 @@ import { createSignal, onCleanup, onMount, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import type { StorageMaintenanceStatus } from "@ericsanchezok/synergy-sdk"
 import { Button } from "@ericsanchezok/synergy-ui/button"
-import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
+import { SettingRow } from "../components/SettingsSettingRow"
 import type { DesktopServerBridge, DesktopServerStatus } from "@/context/platform"
 import { requestErrorMessage } from "@/utils/error"
 import { SettingsSection } from "../components/SettingsPrimitives"
@@ -52,6 +52,7 @@ export function StorageMaintenance(props: {
   error?: unknown
   bridge?: DesktopServerBridge
   controlBusy: boolean
+  showRefresh?: boolean
   onRefresh(): unknown
   onControl(action: "pause" | "resume"): unknown
 }) {
@@ -119,9 +120,11 @@ export function StorageMaintenance(props: {
               <>
                 <p class="ds-section-hint">{props.error ? _(failed) : _(loading)}</p>
                 <Show when={props.error}>
-                  <Button size="small" disabled={props.loading} onClick={() => props.onRefresh()}>
-                    {_(refreshLabel)}
-                  </Button>
+                  <Show when={props.showRefresh !== false}>
+                    <Button size="small" disabled={props.loading} onClick={() => props.onRefresh()}>
+                      {_(refreshLabel)}
+                    </Button>
+                  </Show>
                 </Show>
               </>
             }
@@ -135,9 +138,11 @@ export function StorageMaintenance(props: {
                     <Show
                       when={status().format.maintenanceRequired && managed()}
                       fallback={
-                        <Button size="small" disabled={props.loading} onClick={() => props.onRefresh()}>
-                          {_(refreshLabel)}
-                        </Button>
+                        <Show when={props.showRefresh !== false}>
+                          <Button size="small" disabled={props.loading} onClick={() => props.onRefresh()}>
+                            {_(refreshLabel)}
+                          </Button>
+                        </Show>
                       }
                     >
                       <Button size="small" disabled={Boolean(action())} onClick={() => void run("maintenance")}>

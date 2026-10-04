@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterAll, expect, test } from "bun:test"
 import { pathToFileURL } from "node:url"
 import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
@@ -232,7 +233,7 @@ test(
           {
             sessionID: session.id,
             messageID: parent.info.id,
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             abort: new AbortController().signal,
             metadata: () => {},
             ask: async () => {},

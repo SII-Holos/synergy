@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Dag } from "@ericsanchezok/synergy-harness/session/dag"
@@ -20,7 +21,7 @@ async function fixture(run: (ctx: Tool.Context, permissions: string[]) => Promis
         {
           sessionID: session.id,
           messageID: "message",
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           abort: new AbortController().signal,
           metadata() {},
           async ask(input) {

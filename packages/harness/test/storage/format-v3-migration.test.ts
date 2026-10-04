@@ -465,3 +465,64 @@ test("reclaim-bounded: a store that cannot reclaim terminates and reports instea
   }))
 
 afterRuntimeTests(() => runtime.close())
+
+test(
+  "format rewrite resets derived text and owner projections and keeps canonical write triggers active",
+  () =>
+    runtime.run(async () => {
+      const directory = await root("format-projections")
+      const filename = path.join(directory, "agent.sqlite")
+      const evidence = ["sessions", "scope", "session", "rollout", "events", "one"]
+      const part = ["sessions", "scope", "session", "messages", "message", "parts", "part"]
+      createV2Store({
+        filename,
+        namespace: NAMESPACE,
+        records: [
+          { key: evidence, body: "1" },
+          { key: part, body: JSON.stringify({ text: "完整历史正文" }) },
+        ],
+      })
+      const store = await TransactionalStore.open({ backend: "sqlite", namespace: NAMESPACE, filename })
+      try {
+        for (let i = 0; i < 20; i++) if ((await store.prepareEvidenceOwners({ maxRows: 1 })).ready) break
+        const source = await store.versioned(part)
+        await store.transaction((tx) =>
+          tx.appendTextProjection({
+            key: part,
+            revision: source.revision,
+            version: "old",
+            category: "text",
+            offset: 0,
+            fragments: [{ offset: 0, text: "完整历史正文" }],
+            complete: true,
+          }),
+        )
+        expect((await store.evidenceOwners())[0]?.records).toBe(1)
+        await StorageFormatV3Migration.run({ store })
+        expect((await store.snapshot((tx) => tx.searchTextProjection({ query: "历史正文" }))).items).toEqual([])
+        expect(await store.evidenceOwners()).toEqual([])
+        for (let i = 0; i < 20; i++) if ((await store.prepareEvidenceOwners({ maxRows: 1 })).ready) break
+        await store.write([...evidence.slice(0, -1), "two"], 2)
+        expect((await store.evidenceOwners())[0]?.records).toBe(2)
+        const current = await store.versioned(part)
+        await store.transaction((tx) =>
+          tx.appendTextProjection({
+            key: part,
+            revision: current.revision,
+            version: "new",
+            category: "text",
+            offset: 0,
+            fragments: [{ offset: 0, text: "完整历史正文" }],
+            complete: true,
+          }),
+        )
+        await store.remove(part)
+        for (let i = 0; i < 20; i++) if ((await store.transaction((tx) => tx.collectTextProjection())).ready) break
+        expect(await store.snapshot((tx) => tx.textProjectionState(part))).toBeUndefined()
+      } finally {
+        await store.close()
+        await fs.rm(directory, { recursive: true, force: true })
+      }
+    }),
+  30000,
+)

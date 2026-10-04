@@ -42,7 +42,7 @@ describe("note_delete", () => {
             content: { type: "doc", content: [paragraph("keep me")] },
           })
 
-          const result = await execute({ id: note.id })
+          const result = await execute({ noteId: note.id })
 
           expect(result.title).toBe("Cannot delete active note")
           expect(result.output).toContain("must be archived")
@@ -73,7 +73,7 @@ describe("note_delete", () => {
 
           const archiveTool = await NoteArchiveTool.init()
           await archiveTool.execute(
-            { ids: [note.id], unarchive: false },
+            { noteIds: [note.id], unarchive: false },
             {
               sessionID: "test-note-delete",
               messageID: "",
@@ -85,7 +85,7 @@ describe("note_delete", () => {
             },
           )
 
-          const result = await execute({ id: note.id })
+          const result = await execute({ noteId: note.id })
 
           expect(result.title).toBe("Deleted note")
           expect(result.output).toContain("Permanently deleted")

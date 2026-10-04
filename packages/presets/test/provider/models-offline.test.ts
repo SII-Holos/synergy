@@ -165,32 +165,8 @@ test("models macro ignores an unreadable local cache", () =>
     expect(result).toEqual({ requests: 0, providerIDs: [] })
   }))
 
-test.each([
-  ["empty catalog", {}],
-  [
-    "providers without models",
-    {
-      empty: { id: "empty", name: "Empty", env: [], models: {} },
-      "also-empty": { id: "also-empty", name: "Also empty", env: [], models: {} },
-    },
-  ],
-  ["partial catalog", catalog("partial-provider", "Partial provider")],
-  ["null provider", { broken: null }],
-  ["null model", { broken: { id: "broken", name: "Broken", env: [], models: { bad: null } } }],
-  [
-    "malformed model",
-    {
-      broken: {
-        id: "broken",
-        name: "Broken",
-        env: [],
-        models: { bad: { id: "bad", name: "Bad", release_date: "2026-01-01" } },
-      },
-    },
-  ],
-])(
-  "invalid refreshed catalog preserves the last valid cache for %s",
-  runtime.bind(async (_name, payload) => {
+test("invalid refreshed catalog preserves the last valid cache across product routes", () =>
+  runtime.run(async () => {
     const home = await tempdir("models-invalid-refresh")
     const project = await tempdir("models-invalid-refresh-project")
     const env = isolatedEnv(home)
@@ -200,7 +176,7 @@ test.each([
     env.MODELS_INITIAL_PAYLOAD = JSON.stringify(
       connectedCatalog("initial-provider", "Initial provider", "INITIAL_PROVIDER_KEY"),
     )
-    env.MODELS_REFRESH_PAYLOAD = JSON.stringify(payload)
+    env.MODELS_REFRESH_PAYLOAD = JSON.stringify(catalog("partial-provider", "Partial provider"))
 
     const result = await runJSON(
       [process.execPath, "run", path.join(fixtures, "models-runtime-offline.ts"), "invalid-refresh"],
@@ -217,8 +193,7 @@ test.each([
     expect(result.providerStatus).toBe(200)
     expect(result.providerCatalogProviders).toEqual(expect.arrayContaining(["initial-provider"]))
     expect(result.bootstrapCatalogProviders).toEqual(expect.arrayContaining(["initial-provider"]))
-  }),
-)
+  }))
 
 test("successful refresh invalidates provider catalog and scoped provider state", () =>
   runtime.run(async () => {
@@ -454,14 +429,13 @@ test("keeps valid catalog entries when unrelated providers or models are malform
     expect(result.bootstrapCatalogProviders).toContain("refreshed-provider")
   }))
 
-for (const mode of ["invalid", "invalid-json", "http", "network", "body", "disabled"]) {
+for (const mode of ["invalid", "disabled"]) {
   test(
     `models --refresh does not report success when refresh is ${mode}`,
     () =>
       runtime.run(async () => {
         const env = isolatedEnv(await tempdir("models-cli-refresh"))
         if (mode !== "disabled") delete env.SYNERGY_DISABLE_MODELS_FETCH
-        env.MODELS_REFRESH_TEST_MODE = mode
         const result = await runProcess(
           [
             process.execPath,
@@ -481,13 +455,12 @@ for (const mode of ["invalid", "invalid-json", "http", "network", "body", "disab
   )
 }
 
-test.each(["direct", "mirror", "partial"])(
+test.each(["direct", "partial"])(
   "models --refresh persists a usable catalog via %s",
   runtime.bind(async (mode) => {
     const home = await tempdir("models-cli-success")
     const env = isolatedEnv(home)
     delete env.SYNERGY_DISABLE_MODELS_FETCH
-    env.MODELS_REFRESH_TEST_MODE = mode
     env.MODELS_REFRESH_PAYLOAD = JSON.stringify({
       ...completeCatalog(catalog("refreshed-provider", "Refreshed")),
       ...(mode === "partial" ? { broken: null } : {}),

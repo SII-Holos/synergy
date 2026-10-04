@@ -7,6 +7,35 @@ import path from "node:path"
 import { stat } from "node:fs/promises"
 import { nativeWorkspaceBatches } from "../../script/native-workspace-coverage"
 
+test("affected native plans retain the complete Local Runtime coverage contributors", async () => {
+  const tasks = await catalog()
+  const workspaces = [
+    { name: "web", directory: "apps/web", dependencies: [], testDependencies: [] },
+    { name: "desktop", directory: "apps/desktop", dependencies: [], testDependencies: ["web"] },
+    { name: "runtime", directory: "packages/local-runtime", dependencies: [], testDependencies: [] },
+  ]
+  const plan = createPlan({
+    base: "base",
+    head: "head",
+    sha: "tested",
+    run: "fixture",
+    mode: "affected",
+    changed: ["packages/local-runtime/src/process/native-pty.ts"],
+    baseWorkspaces: workspaces,
+    headWorkspaces: workspaces,
+    tasks,
+  })
+  expect(plan.selected).toContain("windows-native")
+  for (const owner of ["packages/local-runtime", "packages/cli", "packages/presets"]) {
+    const suites = tasks.filter((task) => task.kind === "suite" && task.package === owner)
+    expect(suites.length).toBeGreaterThan(0)
+    for (const suite of suites) expect(plan.selected).toContain(suite.id)
+    const executed = plan.units.flatMap((unit) => unit.tasks).filter((id) => suites.some((suite) => suite.id === id))
+    expect(executed.toSorted()).toEqual(suites.map((suite) => suite.id).toSorted())
+  }
+  expect(plan.selected).not.toContain("suite-packages-server")
+})
+
 test("native Workspace verification stays in the plan with fresh platform coverage", async () => {
   const tasks = await catalog()
   const plan = createPlan({

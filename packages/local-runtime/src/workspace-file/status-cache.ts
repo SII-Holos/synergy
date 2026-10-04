@@ -1,6 +1,7 @@
 export namespace WorkspaceFileStatusCache {
   export interface Cache<T> {
     get(options?: { force?: boolean }): Promise<T>
+    peek(): T | undefined
     invalidate(): void
   }
 
@@ -31,6 +32,9 @@ export namespace WorkspaceFileStatusCache {
     }
 
     return {
+      peek() {
+        return fresh() ? value : undefined
+      },
       get(options) {
         if (inFlight) return inFlight
         if (!options?.force && fresh()) return Promise.resolve(value as T)

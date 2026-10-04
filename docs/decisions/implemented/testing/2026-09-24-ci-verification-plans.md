@@ -12,6 +12,8 @@ PR 的默认模式与历史样本准入、Docker 队列布局由 [PR 反馈决�
 
 使用统一任务目录自动发现 workspace 与测试，按 base/head 两侧依赖闭包生成计划。任务结果绑定计划摘要、测试提交、run、attempt 和模式，并附带可校验的 JUnit、lcov、逐文件批次清单及耗时。required check 保留 `All checks passed`，核对实际 job 与计划完成性。CI 的类型与 package check 各运行一次；覆盖率和普通测试合并执行，特殊平台与非插桩验证独立保留。
 
+基础构建的 sandbox 资源需求同时来自已选运行验证和 core/full 分发 profile。发行打包要求 Linux helper，因此仅选择 Web 集成验证时也必须准备并校验该资产。CLI 回归用例独立选择该消费者，验证发布的构建前置条件，防止其他任务的选择掩盖缺失资源。
+
 工作流使用标准托管 runner 和有界矩阵。验证后的 watcher、plugin、sandbox helper 产物按输入身份复用；完整列表、字节摘要与权限校验通过后才恢复。Benchmark 正常路径与故障恢复共享只读准备产物，外部 harness 不安装 Synergy workspace。跨 run 不缓存成功结论，冷全量每日执行。
 
 Benchmark 产物消费者由任务对 `benchmark-prepare` 的真实依赖路由到准备队列，队列在执行前统一下载并解包产物；契约测试联结实际任务计划与解析后的工作流，覆盖全部消费路径及步骤顺序。

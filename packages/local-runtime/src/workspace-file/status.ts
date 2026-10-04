@@ -5,6 +5,7 @@ import { FileView } from "../file/view"
 import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 import { WorkspaceFile } from "./types"
 import { WorkspaceFileStatusCache } from "./status-cache"
+import { Bus } from "@ericsanchezok/synergy-harness/bus"
 
 type StatusEntry = {
   summary: WorkspaceFile.StatusSummary
@@ -128,7 +129,8 @@ export namespace WorkspaceFileStatus {
     WorkspaceFileStatusCache.create<StatusEntry>({
       ttlMs: STATUS_TTL_MS,
       build: async () => {
-        const summary = await build()
+        const sync = { epoch: Bus.epoch(), seq: Bus.currentSeq() }
+        const summary = { ...(await build()), sync, generatedAt: Date.now() }
         return {
           summary,
           byPath: new Map(summary.files.map((file) => [file.path, file.status])),
@@ -152,5 +154,9 @@ export namespace WorkspaceFileStatus {
 
   export async function statusMap(): Promise<ReadonlyMap<string, WorkspaceFile.GitStatus>> {
     return (await state().get()).byPath
+  }
+
+  export function cachedStatusMap(): ReadonlyMap<string, WorkspaceFile.GitStatus> | undefined {
+    return state().peek()?.byPath
   }
 }

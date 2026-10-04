@@ -1,4 +1,8 @@
-import { createMemo, createResource, createSignal, For, Show } from "solid-js"
+import { Dynamic } from "solid-js/web"
+import { createEffect, createMemo, createSignal, on, onCleanup, For, Show } from "solid-js"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
+import { createLibraryCollection } from "./library-collection"
 import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
@@ -7,7 +11,7 @@ import { useLingui } from "@lingui/solid"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { deleteLibraryItemsConfirm } from "@/components/dialog/confirm-copy"
-import { AppPanel } from "@/components/app-panel"
+import { AppPanel, capturePanelFocusReturn } from "@/components/app-panel"
 import { useLocale } from "@/context/locale"
 import { relativeTime, absoluteDate } from "@/utils/time"
 import type { MemoryInfo, MemorySearchResult } from "@ericsanchezok/synergy-sdk/client"
@@ -16,8 +20,6 @@ import {
   type MemoryRecallMode,
   type MemorySortKey,
   MEMORY_CATEGORIES,
-  categoryColors,
-  recallModeColors,
   getCategoryLabel,
   getRecallModeLabel,
   getMemorySortLabel,
@@ -41,12 +43,18 @@ function memorySimilarity(item: MemoryItem): number | undefined {
 export function MemoryView(props: {
   sdk: ReturnType<typeof useGlobalSDK>
   search: string
+  scopeID?: string
   isSearching: boolean
   setSearchError: (v: boolean) => void
   refetchStats: () => void
 }) {
   const { _ } = useLingui()
   const confirm = useConfirm()
+  const dialog = useDialog()
+  let detailDialog: string | undefined
+  onCleanup(() => {
+    if (detailDialog) dialog.close(detailDialog)
+  })
   const [sort, setSort] = createSignal<MemorySortKey>("newest")
   const [categoryFilter, setCategoryFilter] = createSignal<Set<MemoryCategory>>(new Set())
   const [expandedCards, setExpandedCards] = createSignal<Set<string>>(new Set())
@@ -54,21 +62,26 @@ export function MemoryView(props: {
   const [selected, setSelected] = createSignal<Set<string>>(new Set())
   const [deleting, setDeleting] = createSignal(false)
 
-  const [memories, { refetch }] = createResource<MemoryItem[], string>(
-    () => props.search,
-    async (query) => {
-      if (query) {
-        try {
-          const result = await props.sdk.client.library.search({ query, topK: 50 })
-          return (result.data ?? []) as MemorySearchItem[]
-        } catch {
-          props.setSearchError(true)
-          return []
-        }
-      }
-      const result = await props.sdk.client.library.list()
+  const collection = createLibraryCollection<MemoryItem>(
+    () => JSON.stringify([props.search, props.scopeID]),
+    async (key, signal) => {
+      const [query, scopeID] = JSON.parse(key) as [string, string | undefined]
+      const result = query
+        ? await props.sdk.client.library.search({ query, topK: 50, scopeID }, { signal, throwOnError: true })
+        : await props.sdk.client.library.list({ scopeID }, { signal, throwOnError: true })
       return result.data ?? []
     },
+  )
+  const memories = collection.items
+  const refetch = collection.refresh
+  createEffect(
+    on(
+      () => [props.search, props.scopeID, categoryFilter()],
+      () => {
+        exitSelection()
+        if (detailDialog) dialog.close(detailDialog)
+      },
+    ),
   )
 
   const filtered = createMemo(() => {
@@ -95,9 +108,6 @@ export function MemoryView(props: {
     return list
   })
 
-  const leftColumn = createMemo(() => sorted().filter((_, i) => i % 2 === 0))
-  const rightColumn = createMemo(() => sorted().filter((_, i) => i % 2 === 1))
-
   const availableSorts = createMemo<MemorySortKey[]>(() => {
     const base: MemorySortKey[] = ["newest", "oldest"]
     if (props.isSearching) base.push("relevance")
@@ -109,12 +119,36 @@ export function MemoryView(props: {
       toggleSelect(id)
       return
     }
-    setExpandedCards((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+    const item = memories().find((entry) => entry.id === id)
+    if (!item) return
+    const restoreFocus = capturePanelFocusReturn()
+    setExpandedCards(new Set([id]))
+    detailDialog = dialog.show(
+      () => (
+        <Dialog
+          size="wide"
+          class="app-panel-detail-dialog library-detail-dialog"
+          title={_({ id: "app.library.nav.memories", message: "Memories" })}
+        >
+          <MemoryCard
+            item={item}
+            detailPresentation
+            expanded={expandedCards().has(id)}
+            similarity={memorySimilarity(item)}
+            searching={props.isSearching}
+            selecting={false}
+            selected={false}
+            onToggle={() => dialog.close(detailDialog)}
+            onDelete={(event) => deleteMemory(id, event)}
+          />
+        </Dialog>
+      ),
+      () => {
+        detailDialog = undefined
+        setExpandedCards(new Set<string>())
+        restoreFocus()
+      },
+    )
   }
 
   function toggleSelect(id: string) {
@@ -143,14 +177,15 @@ export function MemoryView(props: {
   async function performDeleteSelected(ids: string[]) {
     setDeleting(true)
     try {
-      await Promise.all(ids.map((id) => props.sdk.client.library.remove({ id })))
+      await Promise.all(ids.map((id) => props.sdk.client.library.remove({ id }, { throwOnError: true })))
       setExpandedCards((prev) => {
         const next = new Set(prev)
         for (const id of ids) next.delete(id)
         return next
       })
+      collection.discard((item) => ids.includes(item.id))
       exitSelection()
-      refetch()
+      await refetch()
       props.refetchStats()
     } finally {
       setDeleting(false)
@@ -167,17 +202,21 @@ export function MemoryView(props: {
     confirm.show({
       ...deleteLibraryItemsConfirm("memory", 1),
       onConfirm: () => performDeleteMemory(id),
+      onConfirmed: () => {
+        if (detailDialog) dialog.close(detailDialog)
+      },
     })
   }
 
   async function performDeleteMemory(id: string) {
-    await props.sdk.client.library.remove({ id })
+    await props.sdk.client.library.remove({ id }, { throwOnError: true })
+    collection.discard((item) => item.id === id)
     setExpandedCards((prev) => {
       const next = new Set(prev)
       next.delete(id)
       return next
     })
-    refetch()
+    await refetch()
     props.refetchStats()
   }
 
@@ -202,7 +241,7 @@ export function MemoryView(props: {
   })
 
   return (
-    <div class="library-list-pane">
+    <div class="library-list-pane" data-panel-list>
       <Show
         when={!selecting()}
         fallback={
@@ -241,11 +280,23 @@ export function MemoryView(props: {
                     close()
                   }}
                 >
-                  <span>{_({ id: "app.library.memory.allCategories", message: "All categories" })}</span>
+                  <span class="menu-field-item-label">
+                    {_({ id: "app.library.memory.allCategories", message: "All categories" })}
+                  </span>
                   <span class="menu-field-count">{memories()?.length ?? 0}</span>
+                  <span class="menu-field-check" aria-hidden="true">
+                    <Show when={categoryFilter().size === 0}>
+                      <Icon name={getSemanticIcon("state.success")} size="small" />
+                    </Show>
+                  </span>
                 </button>
               )}
             />
+            <Show when={categoryFilter().size > 0}>
+              <button type="button" class={libraryActionButtonClass} onClick={() => setCategoryFilter(new Set())}>
+                {_({ id: "app.library.clearFilters", message: "Clear filters" })}
+              </button>
+            </Show>
             <span class="library-toolbar-summary">
               {_({
                 id: "app.library.memory.count",
@@ -264,7 +315,7 @@ export function MemoryView(props: {
             <MenuField
               value={sort()}
               ariaLabel={_({ id: "app.library.memory.sort.aria", message: "Sort memories" })}
-              triggerClass={libraryActionButtonClass}
+              triggerClass={`menu-field-trigger ${libraryActionButtonClass}`}
               placement="bottom-end"
               options={availableSorts().map((key) => ({ value: key, label: getMemorySortLabel(_, key) }))}
               onChange={(value) => setSort(value as MemorySortKey)}
@@ -273,20 +324,35 @@ export function MemoryView(props: {
         </div>
       </Show>
 
-      <Show when={memories.loading}>
+      <Show when={collection.error()}>
+        <div class="library-home-notice" role="alert">
+          <span>{_({ id: "app.library.memory.loadFailed", message: "Unable to load memories." })}</span>
+          <button type="button" disabled={collection.loading()} onClick={() => void refetch()}>
+            {_({ id: "app.library.stats.retry", message: "Retry" })}
+          </button>
+        </div>
+      </Show>
+      <Show when={collection.loading() && !memories().length}>
         <AppPanel.Loading />
       </Show>
 
-      <Show when={!memories.loading}>
+      <Show when={(!collection.loading() || memories().length > 0) && (!collection.error() || memories().length > 0)}>
         <Show
           when={sorted().length > 0}
           fallback={
             <AppPanel.Empty
               icon={getSemanticIcon("memory.main")}
               title={
-                categoryFilter().size > 0
+                props.isSearching || categoryFilter().size > 0
                   ? _({ id: "app.library.memory.empty.filter", message: "No memories match the filter" })
                   : _({ id: "app.library.memory.empty.none", message: "No memories yet" })
+              }
+              action={
+                categoryFilter().size > 0 ? (
+                  <button type="button" class={libraryActionButtonClass} onClick={() => setCategoryFilter(new Set())}>
+                    {_({ id: "app.library.clearFilters", message: "Clear filters" })}
+                  </button>
+                ) : undefined
               }
               description={_({
                 id: "app.library.memory.empty.hint",
@@ -296,39 +362,21 @@ export function MemoryView(props: {
             />
           }
         >
-          <div class="library-card-grid">
-            <div class="min-w-0 flex flex-col gap-3">
-              <For each={leftColumn()}>
-                {(item) => (
-                  <MemoryCard
-                    item={item}
-                    expanded={expandedCards().has(item.id)}
-                    similarity={memorySimilarity(item)}
-                    searching={props.isSearching}
-                    selecting={selecting()}
-                    selected={selected().has(item.id)}
-                    onToggle={() => toggleCard(item.id)}
-                    onDelete={(e) => deleteMemory(item.id, e)}
-                  />
-                )}
-              </For>
-            </div>
-            <div class="min-w-0 flex flex-col gap-3">
-              <For each={rightColumn()}>
-                {(item) => (
-                  <MemoryCard
-                    item={item}
-                    expanded={expandedCards().has(item.id)}
-                    similarity={memorySimilarity(item)}
-                    searching={props.isSearching}
-                    selecting={selecting()}
-                    selected={selected().has(item.id)}
-                    onToggle={() => toggleCard(item.id)}
-                    onDelete={(e) => deleteMemory(item.id, e)}
-                  />
-                )}
-              </For>
-            </div>
+          <div class="library-result-list">
+            <For each={sorted()}>
+              {(item) => (
+                <MemoryCard
+                  item={item}
+                  expanded={false}
+                  similarity={memorySimilarity(item)}
+                  searching={props.isSearching}
+                  selecting={selecting()}
+                  selected={selected().has(item.id)}
+                  onToggle={() => toggleCard(item.id)}
+                  onDelete={(event) => deleteMemory(item.id, event)}
+                />
+              )}
+            </For>
           </div>
         </Show>
       </Show>
@@ -338,6 +386,7 @@ export function MemoryView(props: {
 
 export function MemoryCard(props: {
   item: MemoryItem
+  detailPresentation?: boolean
   expanded: boolean
   similarity: number | undefined
   searching: boolean
@@ -354,6 +403,7 @@ export function MemoryCard(props: {
 
   return (
     <div
+      data-panel-item={props.item.id}
       classList={{
         [libraryCardBaseClass]: true,
         [libraryCardExpandedClass]: props.expanded && !props.selecting,
@@ -365,12 +415,15 @@ export function MemoryCard(props: {
       <div class="flex flex-col gap-3 p-4">
         <div class="flex items-start gap-2">
           {/* item.title is user/agent content — pass through */}
-          <button
-            type="button"
-            class="library-card-toggle flex items-start gap-2 text-left text-13-medium text-text-strong flex-1 min-w-0 leading-snug"
-            aria-expanded={props.selecting ? undefined : props.expanded}
+          <Dynamic
+            data-panel-focus-entry={props.detailPresentation ? undefined : true}
+            component={props.detailPresentation ? "h2" : "button"}
+            type={props.detailPresentation ? undefined : "button"}
+            class="library-card-toggle flex items-start gap-2 text-left app-panel-row-title text-text-strong flex-1 min-w-0 leading-snug"
+            aria-expanded={undefined}
             aria-pressed={props.selecting ? props.selected : undefined}
-            onClick={props.onToggle}
+            aria-haspopup={!props.detailPresentation && !props.selecting ? "dialog" : undefined}
+            onClick={props.detailPresentation ? undefined : props.onToggle}
           >
             <Show when={props.selecting}>
               <span class="shrink-0 pt-0.5" aria-hidden="true">
@@ -384,24 +437,18 @@ export function MemoryCard(props: {
                 <span class="line-clamp-2">{props.item.title}</span>
               )}
             </span>
-          </button>
-          <div class="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          </Dynamic>
+          <div class="library-memory-meta app-panel-caption text-text-weak">
             <Show when={category()}>
-              <span
-                class={`rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 ring-inset ring-border-base/10 ${categoryColors[category()!] ?? "bg-surface-inset-base text-text-weak"}`}
-              >
-                {getCategoryLabel(_, category()!) ?? category()}
-              </span>
+              <span class="app-panel-caption text-text-weak">{getCategoryLabel(_, category()!) ?? category()}</span>
             </Show>
             <Show when={recallMode()}>
-              <span
-                class={`rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 ring-inset ring-border-base/10 ${recallModeColors[recallMode()!] ?? "bg-surface-inset-base text-text-weaker"}`}
-              >
+              <span class="app-panel-caption text-text-weak">
                 {getRecallModeLabel(_, recallMode()!) ?? recallMode()}
               </span>
             </Show>
             <Show when={props.searching && props.similarity !== undefined}>
-              <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-base ring-1 ring-inset ring-border-base/35">
+              <span class="app-panel-caption text-text-weak">
                 {_({
                   id: "app.library.memory.similarityPercent",
                   message: "{pct}%",
@@ -416,7 +463,7 @@ export function MemoryCard(props: {
                 onClick={props.onDelete}
                 aria-label={_({ id: "app.library.memory.delete", message: "Delete memory" })}
               >
-                <Icon name={getSemanticIcon("action.close")} size="small" />
+                <Icon name={getSemanticIcon("action.remove")} size="small" />
               </button>
             </Show>
           </div>
@@ -427,13 +474,13 @@ export function MemoryCard(props: {
             when={props.expanded}
             fallback={
               // item.content is user/agent content — pass through
-              <div class="text-12-regular leading-relaxed text-text-weak/90 line-clamp-3">{props.item.content}</div>
+              <div class="app-panel-copy leading-relaxed text-text-weak/90 line-clamp-2">{props.item.content}</div>
             }
           >
             <div class={`px-3.5 py-3 ${libraryInsetClass}`}>
               <Markdown
                 text={props.item.content}
-                class="text-12-regular leading-relaxed text-text-weak/90 [&_h1]:text-13-medium [&_h2]:text-13-medium [&_h3]:text-12-medium [&_pre]:text-11-regular [&_code]:text-11-regular [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_pre]:my-1.5 [&_pre]:rounded-xl [&_pre]:bg-surface-raised-base/78 [&_pre]:p-2.5"
+                class="library-detail-markdown [&_h1]:app-panel-control [&_h2]:app-panel-control [&_h3]:app-panel-caption font-medium [&_pre]:app-panel-caption [&_code]:app-panel-caption [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_pre]:my-1.5 [&_pre]:rounded-xl [&_pre]:bg-surface-raised-base/78 [&_pre]:p-2.5"
               />
             </div>
           </Show>
@@ -444,7 +491,7 @@ export function MemoryCard(props: {
               "mt-0.5 flex items-center justify-between": !props.expanded,
             }}
           >
-            <span class="text-11-regular text-text-weaker">
+            <span class="app-panel-caption text-text-weaker">
               <Show when={props.expanded} fallback={relativeTime(fmt, updated() ?? props.item.createdAt)}>
                 {absoluteDate(fmt, props.item.createdAt)}
                 <Show when={updated() && updated() !== props.item.createdAt}>
@@ -456,28 +503,32 @@ export function MemoryCard(props: {
                 </Show>
               </Show>
             </span>
-            <button
-              type="button"
-              aria-label={
-                props.expanded
-                  ? _({ id: "app.library.memory.collapse", message: "Collapse memory" })
-                  : _({ id: "app.library.memory.expand", message: "Expand memory" })
-              }
-              aria-expanded={props.expanded}
-              onClick={props.onToggle}
-              classList={{
-                "flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all": true,
-                "rotate-180 bg-surface-raised-base-hover": props.expanded,
-              }}
-            >
-              <Icon name={getSemanticIcon("navigation.collapse")} size="small" />
-            </button>
+            <Show when={!props.detailPresentation}>
+              <button
+                type="button"
+                aria-label={
+                  props.expanded
+                    ? _({ id: "app.library.memory.collapse", message: "Collapse memory" })
+                    : _({ id: "app.library.memory.expand", message: "View memory" })
+                }
+                aria-haspopup="dialog"
+                onClick={props.onToggle}
+                classList={{
+                  "flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all": true,
+                  "rotate-180 bg-surface-raised-base-hover": props.expanded,
+                }}
+              >
+                <Icon name={getSemanticIcon("action.view")} size="small" />
+              </button>
+            </Show>
           </div>
         </Show>
 
         <Show when={props.selecting}>
           <div class="mt-0.5 flex items-center justify-between border-t border-border-base/22 pt-2.5">
-            <span class="text-11-regular text-text-weaker">{relativeTime(fmt, updated() ?? props.item.createdAt)}</span>
+            <span class="app-panel-caption text-text-weaker">
+              {relativeTime(fmt, updated() ?? props.item.createdAt)}
+            </span>
           </div>
         </Show>
       </div>

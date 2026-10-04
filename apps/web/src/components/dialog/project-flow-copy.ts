@@ -1,6 +1,7 @@
 export const projectFlowCopy = {
   cancel: { id: "project.flow.cancel", message: "Cancel" },
   choose: { id: "project.flow.choose", message: "Choose project" },
+  currentProject: { id: "project.flow.currentProject", message: "Project: {name}" },
   description: { id: "project.flow.description", message: "Keep your draft and choose where this task belongs." },
   search: { id: "project.flow.search", message: "Search projects" },
   none: { id: "project.flow.none", message: "No project" },

@@ -12,6 +12,7 @@ import { setActiveMigrationContext } from "./context"
 import { UpgradeWork } from "../storage/upgrade-work"
 import type { Migration, RunOptions, MigrationContext, MigrationSummary } from "./types"
 
+export { upgradeImportedConfig, upgradeImportedRecord } from "./import"
 export type { Migration, RunOptions, RunResult, MigrationContext, MigrationSummary, MigrationReporter } from "./types"
 
 const log = Log.create({ service: "migration" })
@@ -322,9 +323,10 @@ async function runMigrationsInternal(
       }
 
       try {
-        if (migration.onAccess) {
+        if (migration.onAccess || migration.execution === "session") {
           if (!migration.upSession) throw new Error(`On-access migration ${domain}/${migration.id} requires upSession`)
           await mergeDomainLog(domain, { [migration.id]: Date.now() })
+          logData[migration.id] = Date.now()
           summary.completed++
           continue
         }
@@ -347,8 +349,11 @@ async function runMigrationsInternal(
         if (output === "interactive") {
           stageWrite(`  ${progressBar(0)} Starting [${domain}] ${migration.description}`, true)
         }
-        let lastProgressTime = 0
+        let lastProgressTime = -Infinity
         let currentPhase = 0
+        let completedPhase = false
+        let latest: [number, number, number] | undefined
+        let published: [number, number, number] | undefined
         // Arity detection: existing migrations have up(progress) with 1 param;
         // new migrations may have up(context, progress) with 2 params.
         const upFn = migration.up
@@ -357,11 +362,16 @@ async function runMigrationsInternal(
           if (phase > currentPhase) {
             currentPhase = phase
             lastProgressTime = -Infinity
+            completedPhase = false
             reporter?.started?.({ domain, migration })
           }
+          latest = [current, total, phase]
           const now = Date.now()
-          if (now - lastProgressTime < PROGRESS_INTERVAL && current < total) return
+          const terminal = total > 0 && current >= total
+          if (now - lastProgressTime < PROGRESS_INTERVAL && !(terminal && !completedPhase)) return
+          completedPhase ||= terminal
           lastProgressTime = now
+          published = latest
           reporter?.progress?.({ domain, migration, current, total, dryRun })
           if (output === "interactive") {
             const ratio = total > 0 ? Math.max(0, Math.min(1, current / total)) : 0
@@ -381,6 +391,10 @@ async function runMigrationsInternal(
           // Two-param up with context: up(ctx, progress)
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (upFn as any)(ctx, progressCb)
+        }
+        if (latest && latest.some((value, index) => value !== published?.[index])) {
+          lastProgressTime = -Infinity
+          progressCb(...latest)
         }
 
         if (output === "interactive") {
@@ -580,4 +594,26 @@ export async function upgradeSessionRecords(owners: Array<{ scopeID: string; ses
       await Storage.write(target.key, { completed: Date.now() })
     }
   })
+}
+
+const sessionPreparations = Storage.state(() => new Map<string, Promise<void>>())
+export async function prepareSessionMigrations(owner: { scopeID: string; sessionID: string }) {
+  const key = JSON.stringify(owner)
+  const pending = sessionPreparations()
+  if (pending.has(key)) return pending.get(key)!
+  const task = (async () => {
+    const ownerKey = ["sessions", owner.scopeID, owner.sessionID, "info"]
+    if (!(await Storage.readMany([ownerKey]))[0]) return
+    for (const { domain, migration } of MigrationPlan.ordered(collectByDomain())) {
+      if (migration.execution !== "session") continue
+      const receipt = ["sessions", owner.scopeID, owner.sessionID, "migrations", domain, migration.id]
+      if ((await Storage.readMany([receipt]))[0]) continue
+      await migration.upSession!(owner, () => {})
+      await Storage.transaction(async () => {
+        if ((await Storage.readMany([ownerKey]))[0]) await Storage.write(receipt, { completed: Date.now() })
+      })
+    }
+  })().finally(() => pending.delete(key))
+  pending.set(key, task)
+  return task
 }

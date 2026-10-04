@@ -68,7 +68,13 @@ export namespace WorkspaceCatalog {
   )
   export const Unavailable = NamedError.create(
     "WorkspaceUnavailable",
-    z.object({ message: z.string(), workspaceID: z.string() }),
+    z.object({
+      message: z.string(),
+      workspaceID: z.string(),
+      reason: z
+        .enum(["binding_unavailable", "identity_unverified", "directory_unavailable", "identity_changed"])
+        .optional(),
+    }),
   )
 
   export interface RegisterInput {
@@ -113,6 +119,13 @@ export namespace WorkspaceCatalog {
     return records.flatMap((record) => (record === undefined ? [] : [Info.parse(record)]))
   }
 
+  export async function findByLocation(input: { scopeID: string; hostID: string; path: string }) {
+    return Storage.snapshot(async () => {
+      const [id] = await Storage.readMany<string>([locationKey(input.scopeID, input.hostID, `path:${input.path}`)])
+      return id ? get(id, input.scopeID) : undefined
+    })
+  }
+
   export async function register(input: RegisterInput): Promise<Info> {
     const candidate = Info.parse({
       id: `wsp_${randomUUID().replaceAll("-", "")}`,
@@ -128,27 +141,38 @@ export namespace WorkspaceCatalog {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     })
+    const registered = await Storage.snapshot(() => findRegistration(candidate))
+    if (registered) return registered
     return Storage.transaction(async () => {
-      const ids = await Storage.readMany<string>(locations(candidate))
-      const matches = [...new Set(ids.filter((id): id is string => !!id))]
-      if (matches.length > 1)
-        throw new Unavailable({ message: "Workspace location has conflicting registrations", workspaceID: matches[0] })
-      if (matches[0]) {
-        const existing = await get(matches[0], input.scopeID)
-        if (existing.lifecycle !== "active")
-          throw new Unavailable({ message: "Workspace is being removed", workspaceID: existing.id })
-        if (existing.binding.physicalID && input.physicalID && existing.binding.physicalID !== input.physicalID)
-          throw new Unavailable({
-            message: "The directory was replaced; explicitly rebind this Workspace",
-            workspaceID: existing.id,
-          })
-        return existing
-      }
+      const existing = await findRegistration(candidate)
+      if (existing) return existing
       await Storage.write(recordKey(candidate.id), candidate)
       await Storage.write(scopeKey(candidate.scopeID, candidate.id), candidate.id)
       for (const key of locations(candidate)) await Storage.write(key, candidate.id)
       return candidate
     })
+  }
+
+  async function findRegistration(candidate: Info): Promise<Info | undefined> {
+    const ids = await Storage.readMany<string>(locations(candidate))
+    const matches = [...new Set(ids.filter((id): id is string => !!id))]
+    if (matches.length > 1)
+      throw new Unavailable({ message: "Workspace location has conflicting registrations", workspaceID: matches[0] })
+    if (!matches[0]) return
+    const existing = await get(matches[0], candidate.scopeID)
+    if (existing.lifecycle !== "active")
+      throw new Unavailable({ message: "Workspace is being removed", workspaceID: existing.id })
+    if (
+      existing.binding.physicalID &&
+      candidate.binding.physicalID &&
+      existing.binding.physicalID !== candidate.binding.physicalID
+    )
+      throw new Unavailable({
+        message: "The directory was replaced; explicitly rebind this Workspace",
+        workspaceID: existing.id,
+        reason: "identity_changed",
+      })
+    return existing
   }
 
   export async function create(input: {
@@ -311,7 +335,11 @@ export namespace WorkspaceCatalog {
       info.binding.hostID !== input.hostID ||
       !info.binding.path
     )
-      throw new Unavailable({ message: "Workspace has no active binding on this host", workspaceID: id })
+      throw new Unavailable({
+        message: "Workspace has no active binding on this host",
+        workspaceID: id,
+        reason: "binding_unavailable",
+      })
     if (input.generation !== undefined && info.binding.generation !== input.generation)
       throw new BindingChanged({ message: "Workspace binding changed; refresh before continuing", workspaceID: id })
     return { ...info, binding: { ...info.binding, path: info.binding.path } }
@@ -356,6 +384,34 @@ export namespace WorkspaceCatalog {
       if (previous.binding.state === "bound") for (const key of locations(previous)) await Storage.remove(key)
       await Storage.write(recordKey(id), next)
       for (const key of keys) await Storage.write(key, id)
+      return next
+    })
+  }
+
+  export async function upgradePhysicalIdentity(previous: Info, physicalID: string) {
+    return Storage.transaction(async () => {
+      const raw = await Storage.read<Info>(recordKey(previous.id))
+      const current = await get(previous.id, previous.scopeID)
+      if (current.revision !== previous.revision || current.binding.physicalID !== previous.binding.physicalID)
+        throw new BindingChanged({ workspaceID: previous.id, message: "Workspace changed during identity upgrade" })
+      const next: Info = {
+        ...current,
+        revision: current.revision + 1,
+        binding: { ...current.binding, physicalID },
+      }
+      const keys = locations(next)
+      if ((await Storage.readMany<string>(keys)).some((owner) => owner !== undefined && owner !== current.id))
+        throw new BindingChanged({
+          workspaceID: current.id,
+          message: "Workspace identity has conflicting registrations",
+        })
+      for (const key of locations(current)) await Storage.remove(key)
+      await Storage.write(recordKey(current.id), {
+        ...raw,
+        revision: next.revision,
+        binding: { ...raw.binding, physicalID },
+      })
+      for (const key of keys) await Storage.write(key, current.id)
       return next
     })
   }

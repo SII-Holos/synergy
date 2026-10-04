@@ -33,6 +33,7 @@ const rawIconExceptionReasons: Record<string, string> = {
   "packages/ui/src/components/dag-graph.tsx": "Graph node detail uses a structural drag/grip affordance.",
   "packages/ui/src/components/image-preview.tsx": "Shared image viewer controls are base media-control affordances.",
   "packages/ui/src/components/list.tsx": "Shared list primitive search, selected, and clear affordances.",
+  "packages/ui/src/components/menu-field.tsx": "Shared choice primitive selected-option check affordance.",
   "packages/ui/src/components/popover.tsx": "Shared popover primitive close affordance.",
   "packages/ui/src/components/session-review.tsx":
     "Review outline uses structural grip controls for expand/collapse affordances.",
@@ -90,6 +91,14 @@ function componentIconNames(): Set<string> {
 }
 
 describe("semantic icons", () => {
+  test("surface sizing uses one pair of diagonal expansion and contraction arrows", () => {
+    expect(getSemanticIcon("action.expand")).toBe("maximize-2")
+    expect(getSemanticIcon("action.collapse")).toBe("minimize-2")
+    expect(getSemanticIcon("composer.expand")).toBe("maximize-2")
+    expect(getSemanticIcon("composer.collapse")).toBe("minimize-2")
+    expect(getSemanticIcon("window.restore")).toBe("minimize-2")
+    expect(getSemanticIcon("window.maximize")).toBe("square")
+  })
   test("every token resolves to its configured icon key", () => {
     for (const token of Object.keys(SemanticIconToken) as Array<keyof typeof SemanticIconToken>) {
       expect(getSemanticIcon(token)).toBe(SemanticIconToken[token])
@@ -99,6 +108,16 @@ describe("semantic icons", () => {
   test("blueprint uses a plan icon distinct from approval stamping", () => {
     expect(getSemanticIcon("blueprint.main")).toBe("clipboard-list")
     expect(getSemanticIcon("blueprint.main")).not.toBe("stamp")
+  })
+
+  test("cancelled status has a meaning distinct from dismissing a control", () => {
+    expect(getSemanticIcon("state.cancelled")).toBe("circle-minus")
+    expect(getSemanticIcon("state.cancelled")).not.toBe(getSemanticIcon("action.close"))
+  })
+
+  test("fullscreen and restore use opposite diagonal arrow glyphs", () => {
+    expect(getSemanticIcon("workspace.fullscreen")).toBe("maximize-2")
+    expect(getSemanticIcon("window.restore")).toBe("minimize-2")
   })
 
   test("semantic tokens do not reuse Lucide glyphs for different meanings", () => {
@@ -111,7 +130,10 @@ describe("semantic icons", () => {
       .filter(([, tokens]) => tokens.length > 1)
       .map(([icon, tokens]) => `${icon}: ${tokens.sort().join(", ")}`)
 
-    expect(duplicates).toEqual([])
+    expect(duplicates).toEqual([
+      "maximize-2: action.expand, composer.expand, workspace.fullscreen",
+      "minimize-2: action.collapse, composer.collapse, window.restore",
+    ])
   })
 
   test("semantic token glyphs are registered and renderable built-in icons", () => {

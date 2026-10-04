@@ -9,27 +9,22 @@ import {
   markdownRenderEntry,
   type MarkdownRenderEntry,
 } from "./markdown-render"
-import { ComponentProps, createEffect, createResource, onCleanup, splitProps } from "solid-js"
+import { ComponentProps, createEffect, createResource, createSignal, onCleanup, onMount, splitProps } from "solid-js"
+import { render } from "solid-js/web"
+import { MarkdownDocumentView } from "./markdown-document-view"
 import { copyTextToClipboard, type CopyState } from "./clipboard"
 import { sanitizeHtml } from "./markdown-sanitize"
 import { createMarkdownStreamController, type MarkdownStreamController } from "./markdown-stream"
 import { createMarkdownTerminalTransitionController } from "./markdown-terminal-transition"
+import { createMarkdownCache } from "./markdown-cache"
 
 type Entry = MarkdownRenderEntry
 
-const max = 200
-const cache = new Map<string, Entry>()
+const cache = createMarkdownCache()
 const copyResetDelay = 1600
 
 function touch(key: string, value: Entry) {
-  cache.delete(key)
   cache.set(key, value)
-
-  if (cache.size <= max) return
-
-  const first = cache.keys().next().value
-  if (!first) return
-  cache.delete(first)
 }
 
 function formatLanguage(language: string) {
@@ -38,7 +33,7 @@ function formatLanguage(language: string) {
   return normalized.replaceAll(/[-_]+/g, " ")
 }
 
-function enhanceMarkdown(root: HTMLDivElement, _: (d: MessageDescriptor) => string) {
+export function enhanceMarkdown(root: HTMLDivElement, _: (d: MessageDescriptor) => string, codeSource?: string) {
   const disposers: Array<() => void> = []
 
   for (const table of root.querySelectorAll<HTMLTableElement>("table")) {
@@ -103,7 +98,7 @@ function enhanceMarkdown(root: HTMLDivElement, _: (d: MessageDescriptor) => stri
     const code = pre?.querySelector<HTMLElement>("code")
     if (!pre || !code) continue
 
-    const source = code.textContent ?? ""
+    const source = codeSource ?? code.textContent ?? ""
     const language = pre.dataset.language || code.dataset.language || block.dataset.language || "text"
     const languageLabel = formatLanguage(language)
     const header = document.createElement("div")
@@ -196,12 +191,28 @@ export function Markdown(
   const [local, others] = splitProps(props, ["text", "streaming", "cacheKey", "class", "classList"])
   const marked = useMarked()
   const { _ } = useLingui()
+  let renderController: AbortController | undefined
+  let disposeDocument: (() => void) | undefined
+  let appliedHash: string | undefined
+  const [interaction, setInteraction] = createSignal(0)
+  onMount(() => {
+    const update = () => setInteraction((value) => value + 1)
+    document.addEventListener("selectionchange", update)
+    document.addEventListener("focusout", update)
+    onCleanup(() => {
+      document.removeEventListener("selectionchange", update)
+      document.removeEventListener("focusout", update)
+    })
+  })
 
   // Terminal (full-fidelity) HTML. Only computed when not streaming; a null
   // source short-circuits the resource so no marked work happens mid-stream.
   const [html] = createResource(
     () => (local.streaming ? null : local.text),
     async (markdown: string | null) => {
+      renderController?.abort()
+      renderController = new AbortController()
+      const signal = renderController.signal
       if (markdown == null) return null
       const entry = markdownRenderEntry(markdown, "")
       const key = local.cacheKey ?? entry.hash
@@ -216,8 +227,31 @@ export function Markdown(
 
       let next: string
       try {
-        next = sanitizeHtml(await marked.parse(markdown))
-      } catch {
+        if (markdown.length > 32 * 1024) {
+          const document = await marked.document(markdown, signal)
+          if (signal.aborted) return null
+          const rendered: Entry = { ...entry, document }
+          if (key && rendered.hash) touch(key, rendered)
+          return rendered
+        }
+        const parsed = await marked.parse(markdown, signal)
+        if (signal.aborted) return null
+        next = sanitizeHtml(parsed)
+      } catch (error) {
+        if (signal.aborted || (error instanceof Error && error.name === "AbortError")) return null
+        if (markdown.length > 32 * 1024) {
+          const rendered: Entry = {
+            ...entry,
+            document: {
+              blocks: Array.from({ length: Math.ceil(markdown.length / 8192) }, (_, index) => ({
+                html: markdownFallbackHtml(markdown.slice(index * 8192, (index + 1) * 8192)),
+              })),
+              codes: {},
+            },
+          }
+          if (key && rendered.hash) touch(key, rendered)
+          return rendered
+        }
         next = markdownFallbackHtml(markdown)
       }
       const rendered = markdownRenderEntry(markdown, next)
@@ -240,37 +274,74 @@ export function Markdown(
 
   createEffect(() => {
     if (!local.streaming) return
+    renderController?.abort()
+    disposeDocument?.()
+    disposeDocument = undefined
+    appliedHash = undefined
     terminalTransition.reset()
     if (!stream) stream = createMarkdownStreamController(container)
     stream.update(local.text, local.cacheKey)
   })
 
-  // Terminal render: once the full-fidelity HTML resolves (and we are no longer
-  // streaming), finish any live parser and crossfade from the streamed DOM into
-  // the one-shot high-fidelity tree. Enhancement (copy buttons, table wrap,
-  // katex copy) runs on the terminal content only once.
+  createEffect(() => {
+    if (local.streaming || stream || container.hasChildNodes()) return
+    const rendered = html.latest
+    if (rendered && isCurrentMarkdownRender(rendered, local.text)) return
+    stream = createMarkdownStreamController(container)
+    stream.update(local.text.length > 32 * 1024 ? local.text.slice(0, 8192) : local.text, local.cacheKey)
+    stream.end()
+    stream = undefined
+  })
+
   createEffect(() => {
     if (local.streaming) return
     const rendered = html()
+    interaction()
+    if (rendered?.hash === appliedHash) return
     if (!rendered || !isCurrentMarkdownRender(rendered, local.text)) return
-    const hadStreamContent = Boolean(stream)
+    const selection = document.getSelection()
+    if (
+      selection &&
+      !selection.isCollapsed &&
+      (container.contains(selection.anchorNode) || container.contains(selection.focusNode))
+    )
+      return
+    if (document.activeElement !== document.body && container.contains(document.activeElement)) return
     endStream()
-    const prefersReducedMotion =
-      typeof window !== "undefined" &&
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    disposeDocument?.()
+    disposeDocument = undefined
+    appliedHash = rendered.hash
+    if (rendered.document) {
+      terminalTransition.reset()
+      container.replaceChildren()
+      const key = local.cacheKey ?? rendered.hash
+      disposeDocument = render(
+        () => (
+          <MarkdownDocumentView
+            root={container}
+            document={rendered.document!}
+            cache={rendered.layout}
+            cacheUpdated={(layout) => {
+              if (cache.get(key)?.hash === rendered.hash) touch(key, { ...rendered, layout })
+            }}
+            enhance={(root, source) => enhanceMarkdown(root, _, source)}
+          />
+        ),
+        container,
+      )
+      return
+    }
     terminalTransition.apply({
       hash: rendered.hash,
       container,
       html: rendered.html,
       enhance: (root) => enhanceMarkdown(root as HTMLDivElement, _),
-      prefersReducedMotion,
-      markdownLength: local.text.length,
-      hadStreamContent,
     })
   })
 
   onCleanup(() => {
+    renderController?.abort()
+    disposeDocument?.()
     terminalTransition.reset()
     endStream()
   })

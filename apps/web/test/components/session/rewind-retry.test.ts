@@ -1,3 +1,4 @@
+import { SECONDARY_TEST_AGENT_NAME, TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, test } from "bun:test"
 import type { Part, UserMessage } from "@ericsanchezok/synergy-sdk"
 import { createRewindRetryInput } from "../../../src/components/session/rewind-retry"
@@ -9,7 +10,7 @@ describe("rewind retry", () => {
       sessionID: "session-1",
       role: "user",
       time: { created: 123 },
-      agent: "synergy-max",
+      agent: SECONDARY_TEST_AGENT_NAME,
       model: { providerID: "provider", modelID: "model" },
       variant: "high",
       system: "system override",
@@ -70,7 +71,7 @@ describe("rewind retry", () => {
 
     expect(createRewindRetryInput({ message, parts })).toEqual({
       sessionID: "session-1",
-      agent: "synergy-max",
+      agent: SECONDARY_TEST_AGENT_NAME,
       model: { providerID: "provider", modelID: "model" },
       variant: "high",
       system: "system override",
@@ -105,7 +106,7 @@ describe("rewind retry", () => {
       sessionID: "session-1",
       role: "user",
       time: { created: 123 },
-      agent: "synergy",
+      agent: TEST_AGENT_NAME,
       model: { providerID: "provider", modelID: "model" },
       origin: { type: "agenda" },
       isRoot: true,

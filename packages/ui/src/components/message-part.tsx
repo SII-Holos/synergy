@@ -29,6 +29,7 @@ import { useResourceOpen } from "../context/resource-open"
 import { useDiffComponent } from "../context/diff"
 import { useCodeComponent } from "../context/code"
 import { BasicTool } from "./basic-tool"
+import { ToolExpansionIdentity } from "./tool-expansion"
 import { Card } from "./card"
 import { createCopyController } from "./clipboard"
 import { Icon } from "./icon"
@@ -37,6 +38,7 @@ import { Checkbox } from "./checkbox"
 import { DagGraph } from "./dag-graph"
 import { DiffChanges } from "./diff-changes"
 import { Markdown } from "./markdown"
+import { UserMarkdown } from "./user-markdown"
 import { AttachmentGallery } from "./attachment-card"
 import { getDirectory as _getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
@@ -116,6 +118,7 @@ export interface MessageProps {
   message: MessageType
   parts: PartType[]
   userVariant?: UserMessageVariant
+  loadCopyText?: () => Promise<string>
 }
 
 export interface MessagePartProps {
@@ -365,7 +368,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
   switch (tool) {
     case "read":
       return {
-        icon: "glasses",
+        icon: "file-text",
         title: TOOL_TITLE_DESC["read"],
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
@@ -423,7 +426,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "terminal",
         title: TOOL_TITLE_DESC["bash"],
-        subtitle: input.description,
+        subtitle: input.command,
       }
     case "edit":
       return {
@@ -592,7 +595,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "code",
         title: TOOL_TITLE_DESC["render"],
-        subtitle: input.title,
+        subtitle: input.artifactTitle,
       }
     case "note_list":
       if (isBlueprintToolKind(input, metadata)) {
@@ -612,20 +615,20 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         return {
           icon: BLUEPRINT_ICON,
           title: TOOL_TITLE_DESC["read_blueprint"],
-          subtitle: Array.isArray(input.ids)
-            ? input.ids.length === 1
-              ? input.ids[0]
-              : `${input.ids.length} blueprints`
+          subtitle: Array.isArray(input.noteIds)
+            ? input.noteIds.length === 1
+              ? input.noteIds[0]
+              : `${input.noteIds.length} blueprints`
             : undefined,
         }
       }
       return {
         icon: "notebook-pen",
         title: TOOL_TITLE_DESC["note_read"],
-        subtitle: Array.isArray(input.ids)
-          ? input.ids.length === 1
-            ? input.ids[0]
-            : `${input.ids.length} notes`
+        subtitle: Array.isArray(input.noteIds)
+          ? input.noteIds.length === 1
+            ? input.noteIds[0]
+            : `${input.noteIds.length} notes`
           : undefined,
       }
     case "note_search":
@@ -646,36 +649,36 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         return {
           icon: BLUEPRINT_ICON,
           title: TOOL_TITLE_DESC["write_blueprint"],
-          subtitle: input.title || input.mode,
+          subtitle: input.noteTitle || input.mode,
         }
       }
       return {
         icon: "notebook-pen",
         title: TOOL_TITLE_DESC["note_write"],
-        subtitle: input.title || input.mode,
+        subtitle: input.noteTitle || input.mode,
       }
     case "note_edit":
       if (isBlueprintToolKind(input, metadata)) {
         return {
           icon: BLUEPRINT_ICON,
           title: TOOL_TITLE_DESC["edit_blueprint"],
-          subtitle: input.title || input.id,
+          subtitle: input.noteTitle || input.noteId,
         }
       }
       return {
         icon: "notebook-pen",
         title: TOOL_TITLE_DESC["note_edit"],
-        subtitle: input.title || input.id,
+        subtitle: input.noteTitle || input.noteId,
       }
     case "note_archive": {
       const unarchive = input.unarchive as boolean | undefined
       return {
         icon: "archive",
         title: unarchive ? TOOL_TITLE_DESC["note_unarchive"] : TOOL_TITLE_DESC["note_archive"],
-        subtitle: Array.isArray(input.ids)
-          ? input.ids.length === 1
-            ? input.ids[0]
-            : `${input.ids.length} notes`
+        subtitle: Array.isArray(input.noteIds)
+          ? input.noteIds.length === 1
+            ? input.noteIds[0]
+            : `${input.noteIds.length} notes`
           : undefined,
       }
     }
@@ -683,7 +686,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "trash-2",
         title: TOOL_TITLE_DESC["note_delete"],
-        subtitle: input.id,
+        subtitle: input.noteId,
       }
     case "blueprint_loop_stop":
       return {
@@ -713,13 +716,13 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "list-todo",
         title: TOOL_TITLE_DESC["task_output"],
-        subtitle: input.task_id,
+        subtitle: input.taskId,
       }
     case "task_cancel":
       return {
         icon: "circle-x",
         title: TOOL_TITLE_DESC["task_cancel"],
-        subtitle: input.task_id,
+        subtitle: input.taskId,
       }
     case "loop_stop":
       return {
@@ -966,13 +969,13 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "calendar-days",
         title: TOOL_TITLE_DESC["agenda_schedule"],
-        subtitle: input.title,
+        subtitle: input.agendaTitle,
       }
     case "agenda_watch":
       return {
         icon: "eye",
         title: TOOL_TITLE_DESC["agenda_watch"],
-        subtitle: input.title,
+        subtitle: input.agendaTitle,
       }
     case "agenda_list":
       return {
@@ -984,25 +987,25 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "pencil",
         title: TOOL_TITLE_DESC["agenda_update"],
-        subtitle: input.id,
+        subtitle: input.agendaItemId,
       }
     case "agenda_cancel":
       return {
         icon: "trash-2",
         title: TOOL_TITLE_DESC["agenda_cancel"],
-        subtitle: input.id,
+        subtitle: input.agendaItemId,
       }
     case "agenda_trigger":
       return {
         icon: "zap",
         title: TOOL_TITLE_DESC["agenda_trigger"],
-        subtitle: input.id,
+        subtitle: input.agendaItemId,
       }
     case "agenda_logs":
       return {
         icon: "clock",
         title: TOOL_TITLE_DESC["agenda_logs"],
-        subtitle: input.id,
+        subtitle: input.agendaItemId,
       }
     case "memory_search":
       return {
@@ -1019,13 +1022,13 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "brain",
         title: TOOL_TITLE_DESC["memory_write"],
-        subtitle: input.title,
+        subtitle: input.memoryTitle,
       }
     case "memory_edit":
       return {
         icon: "brain",
         title: TOOL_TITLE_DESC["memory_edit"],
-        subtitle: input.title,
+        subtitle: input.memoryTitle,
       }
     case "email_send":
       return {
@@ -1298,7 +1301,12 @@ export function Message(props: MessageProps) {
     <Switch>
       <Match when={props.message.role === "user" && props.message}>
         {(userMessage) => (
-          <UserMessageDisplay message={userMessage() as UserMessage} parts={props.parts} variant={props.userVariant} />
+          <UserMessageDisplay
+            message={userMessage() as UserMessage}
+            parts={props.parts}
+            variant={props.userVariant}
+            loadCopyText={props.loadCopyText}
+          />
         )}
       </Match>
       <Match when={props.message.role === "assistant" && props.message}>
@@ -1373,14 +1381,30 @@ function formatMessageTimestamp(timestamp: number): string {
   return `${hours}:${minutes}`
 }
 
-export function UserMessageDisplay(props: { message: UserMessage; parts: PartType[]; variant?: UserMessageVariant }) {
+export function UserMessageDisplay(props: {
+  message: UserMessage
+  parts: PartType[]
+  variant?: UserMessageVariant
+  loadCopyText?: () => Promise<string>
+}) {
   const { _ } = useLingui()
   const data = useData()
   const [expanded, setExpanded] = createSignal(false)
+  const [sourceView, setSourceView] = createSignal(false)
+  const [renderedHeight, setRenderedHeight] = createSignal(0)
+  const resourceOpen = useResourceOpen()
+  const [messageBody, setMessageBody] = createSignal<HTMLDivElement>()
+  createEffect(() => {
+    const element = messageBody()
+    if (!element || typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(() => setRenderedHeight(element.scrollHeight))
+    observer.observe(element)
+    onCleanup(() => observer.disconnect())
+  })
 
   const text = createMemo(() => visibleUserMessageText(props.parts))
   const isTurnBubble = createMemo(() => props.variant === "turn-bubble")
-  const canCollapse = createMemo(() => isTurnBubble() && shouldCollapseUserMessage(text()))
+  const canCollapse = createMemo(() => isTurnBubble() && (shouldCollapseUserMessage(text()) || renderedHeight() > 320))
   const collapsed = createMemo(() => canCollapse() && !expanded())
   const timestamp = createMemo(() => {
     const created = props.message.time?.created
@@ -1421,6 +1445,7 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
 
   const copy = createCopyController({
     text,
+    loadText: props.loadCopyText,
     copyLabel: _(MESSAGE_PART_DESC.copyMessage),
     copiedLabel: _(MESSAGE_PART_DESC.messageCopied),
     failureDescription: _(MESSAGE_PART_DESC.copyFailure),
@@ -1430,7 +1455,13 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
     <div data-component="user-message" data-variant={props.variant ?? "default"}>
       <Show when={attachments().length > 0 || noteAttachments().length > 0 || sessionAttachments().length > 0}>
         <div data-slot="user-message-attachments">
-          <AttachmentGallery files={attachments()} serverUrl={data.serverUrl} align="end" />
+          <AttachmentGallery
+            files={attachments()}
+            serverUrl={data.serverUrl}
+            align="end"
+            layout="rows"
+            compact="user"
+          />
           <For each={noteAttachments()}>{(file) => <SpecialFileAttachment file={file} kind="note" />}</For>
           <For each={sessionAttachments()}>{(file) => <SpecialFileAttachment file={file} kind="session" />}</For>
         </div>
@@ -1441,7 +1472,30 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
           data-collapsed={collapsed() ? "" : undefined}
           data-collapsible={canCollapse() ? "" : undefined}
         >
-          <HighlightedText text={text()} references={inlineFiles()} />
+          <div ref={setMessageBody}>
+            <Show when={!sourceView()} fallback={<HighlightedText text={text()} references={inlineFiles()} />}>
+              <UserMarkdown
+                text={text()}
+                references={inlineFiles().map((file) => ({
+                  start: file.source!.text!.start,
+                  end: file.source!.text!.end,
+                }))}
+                onOpenReference={(index) => {
+                  const file = inlineFiles()[index]
+                  if (file)
+                    resourceOpen?.open(
+                      {
+                        kind: "workspace-file",
+                        path: fileReferencePath(file),
+                        mime: file.mime,
+                        filename: file.filename,
+                      },
+                      { prefer: "workspace" },
+                    )
+                }}
+              />
+            </Show>
+          </div>
           <Show when={collapsed()}>
             <div data-slot="user-message-fade">
               <button type="button" data-slot="user-message-expand" onClick={() => setExpanded(true)}>
@@ -1462,8 +1516,20 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
           </Show>
         </div>
       </Show>
-      <Show when={isTurnBubble() && hasVisibleContent()}>
+      <Show when={hasVisibleContent()}>
         <div data-slot="user-message-meta">
+          <Show when={text()}>
+            <button
+              type="button"
+              data-slot="user-message-source"
+              aria-pressed={sourceView()}
+              onClick={() => setSourceView(!sourceView())}
+            >
+              {sourceView()
+                ? _({ id: "ui.userMessage.markdown", message: "Markdown" })
+                : _({ id: "ui.userMessage.source", message: "View source" })}
+            </button>
+          </Show>
           <Show keyed when={timestamp()}>
             {(value) => <span data-slot="user-message-time">{value}</span>}
           </Show>
@@ -1618,13 +1684,15 @@ export function Part(props: MessagePartProps) {
           )
         }}
       >
-        <Dynamic
-          component={component()}
-          part={props.part}
-          message={props.message}
-          hideDetails={props.hideDetails}
-          defaultOpen={props.defaultOpen}
-        />
+        <ToolExpansionIdentity partID={props.part.id}>
+          <Dynamic
+            component={component()}
+            part={props.part}
+            message={props.message}
+            hideDetails={props.hideDetails}
+            defaultOpen={props.defaultOpen}
+          />
+        </ToolExpansionIdentity>
       </ErrorBoundary>
     </Show>
   )

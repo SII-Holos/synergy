@@ -1,5 +1,5 @@
 import type { MessageDescriptor } from "@lingui/core"
-import type { ChartData, ChartOptions, TooltipItem } from "chart.js"
+import type { ChartData, ChartOptions, Scale, TooltipItem } from "chart.js"
 import { withAlpha, type HexColor } from "@ericsanchezok/synergy-ui/theme"
 import type { BrowserMetricSample, PerformanceMetricPoint, PerformanceSummary, PerformanceTimeline } from "./types"
 import { P } from "./performance-i18n"
@@ -49,6 +49,7 @@ export function buildLineChartModel(input: {
 }): PerformanceLineChartModel {
   const axisSpecs = uniqueAxes(input.datasets)
   const timestamps = input.points.map((point) => pointTimestamp(point))
+  const singleTimestamp = timestamps.length === 1 ? timestamps[0] : undefined
   return {
     data: {
       datasets: input.datasets.map((dataset) => ({
@@ -62,7 +63,7 @@ export function buildLineChartModel(input: {
         fill: true,
         tension: 0.35,
         borderWidth: 2,
-        pointRadius: 0,
+        pointRadius: singleTimestamp === undefined ? 0 : 3,
         spanGaps: true,
         pointHoverRadius: 4,
         pointBackgroundColor: dataset.color,
@@ -94,6 +95,15 @@ export function buildLineChartModel(input: {
       scales: {
         x: {
           type: "linear",
+          ...(singleTimestamp === undefined
+            ? {}
+            : {
+                min: singleTimestamp - 30_000,
+                max: singleTimestamp + 30_000,
+                afterBuildTicks: (axis: Scale) => {
+                  axis.ticks = [{ value: singleTimestamp }]
+                },
+              }),
           border: { display: false },
           grid: { display: false },
           ticks: {
@@ -106,7 +116,7 @@ export function buildLineChartModel(input: {
         },
         ...Object.fromEntries(axisSpecs.map((axis, index) => [axis.axisId, axisOptions(axis, index, input.theme)])),
       },
-      animation: { duration: 500, easing: "easeOutQuart" },
+      animation: false,
     },
   }
 }
@@ -228,7 +238,7 @@ export function formatMetricValue(value: number | undefined, unit: string): stri
   if (unit === "bytes") return formatBytes(value)
   if (unit === "ratio") return formatPercent(ratioToPercent(value))
   if (unit === "percent") return formatPercent(value)
-  if (unit === "megabytes") return `${value.toFixed(value >= 10 ? 0 : 1)} MB`
+  if (unit === "megabytes") return `${value.toFixed(value >= 10 ? 0 : 1)} MiB`
   return value.toFixed(value >= 10 ? 0 : 1)
 }
 
@@ -238,10 +248,12 @@ export function formatPercent(value?: number): string {
 }
 
 export function formatBytes(value?: number): string {
-  if (value === undefined) return "—"
-  if (value >= 1024 * 1024 * 1024) return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`
-  if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(0)} MB`
-  return `${value.toFixed(0)} B`
+  if (value === undefined || !Number.isFinite(value)) return "—"
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"]
+  const index =
+    value === 0 ? 0 : Math.min(units.length - 1, Math.max(0, Math.floor(Math.log(Math.abs(value)) / Math.log(1024))))
+  const number = value / 1024 ** index
+  return `${number.toFixed(index === 0 ? 0 : 1).replace(/\.0$/, "")} ${units[index]}`
 }
 
 export function formatDuration(value?: number): string {

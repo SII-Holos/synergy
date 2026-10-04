@@ -2,7 +2,10 @@ import { RuntimeContext } from "../lifecycle/context"
 
 export interface WorkspaceLocationSource {
   hostID(): Promise<string>
-  identify(directory: string, allowMissing?: boolean): Promise<{ path: string; physicalID?: string }>
+  identify(
+    directory: string,
+    allowMissing?: boolean,
+  ): Promise<{ path: string; physicalID?: string; legacyPhysicalID?: string }>
 }
 
 export namespace WorkspaceLocation {

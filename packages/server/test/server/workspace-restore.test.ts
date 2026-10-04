@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterAll, expect, test } from "bun:test"
 import path from "node:path"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -27,7 +28,7 @@ async function captured() {
     sessionID: session.id,
     role: "user",
     time: { created: 1 },
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test", modelID: "test" },
   })
   await Session.updateMessage({
@@ -39,7 +40,7 @@ async function captured() {
     modelID: "test",
     providerID: "test",
     mode: "build",
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -53,11 +54,18 @@ async function captured() {
     workspace: Snapshot.workspace(),
     files: [file],
   })
+  const preview = await Server.App().request(`/session/${session.id}/files/preview?scopeID=${session.scope.id}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ partID }),
+  })
+  expect(preview.status).toBe(200)
+  const { id: previewID } = await preview.json()
   const request = (scopeID = session.scope.id) =>
     Server.App().request(`/session/${session.id}/files/restore?scopeID=${scopeID}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ partID }),
+      body: JSON.stringify({ previewID }),
     })
   return { session, file, request }
 }
@@ -86,7 +94,7 @@ test("restore API reports actual native results and refuses another Scope", () =
     })
   }))
 
-test("restore API returns a conflict while the session is occupied or its binding changed", () =>
+test("restore API rejects occupied sessions and reports changed bindings without writing", () =>
   runtime.run(async () => {
     await using directory = await tmpdir()
     await using other = await tmpdir()
@@ -108,8 +116,11 @@ test("restore API returns a conflict while the session is occupied or its bindin
             path: other.path,
           })
           const response = await request()
-          expect(response.status).toBe(409)
-          expect(await response.json()).toMatchObject({ name: "WorkspaceBindingChanged" })
+          expect(response.status).toBe(200)
+          expect(await response.json()).toMatchObject({
+            restoredFiles: [],
+            failedFiles: [{ file, code: "restore_failed" }],
+          })
           expect(await Bun.file(file).text()).toBe("edited")
         } finally {
           await Session.remove(session.id)

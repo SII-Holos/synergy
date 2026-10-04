@@ -21,7 +21,7 @@ export interface PendingAttachmentUploadInput {
  */
 export async function runPendingAttachmentUpload(input: PendingAttachmentUploadInput): Promise<void> {
   const { file, id, tracker } = input
-  tracker.begin({ id, filename: file.name, mime: file.type || "application/octet-stream", size: file.size })
+  tracker.begin({ id, filename: file.name, mime: file.type || "application/octet-stream", size: file.size }, file)
   try {
     const uploaded = await input.upload(file)
     if (tracker.isCancelled(id)) {
@@ -45,7 +45,11 @@ export async function runPendingAttachmentUpload(input: PendingAttachmentUploadI
     tracker.markUploaded(id)
   } catch (error) {
     const cancelled = tracker.isCancelled(id)
-    tracker.end(id)
-    if (!cancelled) throw error
+    if (cancelled || !input.isDestinationCurrent()) {
+      tracker.end(id)
+      return
+    }
+    tracker.markFailed(id, error instanceof Error ? error.message : typeof error === "string" ? error : undefined)
+    throw error
   }
 }

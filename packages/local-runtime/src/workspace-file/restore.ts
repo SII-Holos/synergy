@@ -1,4 +1,6 @@
 import path from "node:path"
+import fs from "node:fs/promises"
+import { constants } from "node:fs"
 import { SnapshotRestore } from "@ericsanchezok/synergy-harness/session/snapshot-restore"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
@@ -17,8 +19,136 @@ import { FileView } from "../file/view"
 import { randomUUID } from "node:crypto"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
+import { SnapshotLink } from "@ericsanchezok/synergy-harness/session/snapshot-link"
 
 export namespace WorkspaceFileRestore {
+  function previewFile(
+    file: SnapshotRestore.File,
+    version: SnapshotRestore.PreviewFile["version"],
+    before: Uint8Array,
+    after: Uint8Array,
+    limit: number,
+  ): SnapshotRestore.PreviewFile {
+    const binary = before.includes(0) || after.includes(0)
+    return {
+      file: file.file,
+      workspace: file.workspace,
+      version,
+      before: binary ? "" : new TextDecoder().decode(before.subarray(0, limit)),
+      after: binary ? "" : new TextDecoder().decode(after.subarray(0, limit)),
+      action: file.mode === null ? "delete" : version.entry === null ? "create" : "replace",
+      truncated: before.length > limit || after.length > limit,
+      binary,
+    }
+  }
+
+  export async function preview(
+    input: Parameters<SnapshotRestore.Host["restore"]>[0],
+  ): Promise<SnapshotRestore.PreviewFile[]> {
+    if (input.files.length > 10_000) throw new FileEntry.LimitError("Restore exceeds 10,000 files")
+    const rows: SnapshotRestore.PreviewFile[] = []
+    let remaining = 4 * 1024 * 1024
+    const append = (
+      file: SnapshotRestore.File,
+      version: SnapshotRestore.PreviewFile["version"],
+      before: Uint8Array,
+      after: Uint8Array,
+    ) => {
+      const row = previewFile(file, version, before, after, Math.min(128 * 1024, Math.floor(remaining / 2)))
+      remaining = Math.max(0, remaining - Buffer.byteLength(row.before) - Buffer.byteLength(row.after))
+      rows.push(row)
+    }
+    for (const file of input.files) {
+      input.signal?.throwIfAborted()
+      const target = await file.read()
+      const after = file.mode === "120000" ? Buffer.from(SnapshotLink.display(SnapshotLink.decode(target))) : target
+      if (file.workspace.pathKind === "workspace") {
+        await using resources = await EnvironmentResources.resolve({
+          scopeID: ScopeContext.current.scope.id,
+          workspaceID: file.workspace.id,
+          workspaceGeneration: file.workspace.generation,
+          needs: { workspace: true },
+          signal: input.signal,
+        })
+        await EnvironmentResources.provide(resources, `restore-preview:${randomUUID()}`, async () => {
+          const entry = await FileView.stat(file.file)
+          if (entry && entry.kind !== "file")
+            throw new FileMutation.AccessDeniedError("This entry cannot be previewed for restoration")
+          const before = entry ? await FileView.bytes(file.file, undefined, 50 * 1024 * 1024) : new Uint8Array()
+          if ((await FileView.stat(file.file))?.entryVersion !== entry?.entryVersion)
+            throw new FileMutation.ConflictError()
+          append(
+            file,
+            {
+              entry: entry?.entryVersion ?? null,
+              ...(entry ? { content: `sha256:${WorkspaceTree.hash(before)}` } : {}),
+            },
+            before,
+            after,
+          )
+        })
+        continue
+      }
+      await validate(file)
+      const entry = await FileEntry.inspect(file.file)
+      if (entry && entry.type !== "file" && entry.type !== "symlink")
+        throw new FileMutation.AccessDeniedError("A directory or special file cannot be restored")
+      if (entry && entry.stat.size > 50n * 1024n * 1024n)
+        throw new FileEntry.LimitError("A file to restore exceeds 50 MB")
+      const before =
+        entry?.type === "file"
+          ? await previewBytes(file.file, entry, input.signal)
+          : entry?.link
+            ? Buffer.from(SnapshotLink.display({ target: entry.link }))
+            : new Uint8Array()
+      if ((await FileEntry.inspect(file.file))?.version !== entry?.version) throw new FileMutation.ConflictError()
+      append(
+        file,
+        {
+          entry: entry?.version ?? null,
+          ...(entry?.type === "file" ? { content: `sha256:${WorkspaceTree.hash(before)}` } : {}),
+        },
+        before,
+        after,
+      )
+    }
+    return rows
+  }
+
+  async function previewBytes(filename: string, expected: FileEntry.Entry, signal?: AbortSignal) {
+    const handle = await fs.open(
+      filename,
+      constants.O_RDONLY | (process.platform === "win32" ? 0 : constants.O_NOFOLLOW | constants.O_NONBLOCK),
+    )
+    try {
+      const stat = await handle.stat({ bigint: true })
+      if (
+        !stat.isFile() ||
+        stat.dev !== expected.stat.dev ||
+        stat.ino !== expected.stat.ino ||
+        stat.size !== expected.stat.size ||
+        stat.ctimeNs !== expected.stat.ctimeNs
+      )
+        throw new FileMutation.ConflictError()
+      const bytes = Buffer.alloc(Number(stat.size))
+      let offset = 0
+      while (offset < bytes.length) {
+        signal?.throwIfAborted()
+        const { bytesRead } = await handle.read(bytes, offset, Math.min(65536, bytes.length - offset), offset)
+        if (!bytesRead) throw new FileMutation.ConflictError()
+        offset += bytesRead
+      }
+      return bytes
+    } finally {
+      await handle.close()
+    }
+  }
+
+  function checkVersion(file: SnapshotRestore.File, entry: string | null, content?: string) {
+    if (file.expected && (file.expected.entry !== entry || file.expected.content !== content))
+      throw new FileMutation.ConflictError()
+  }
+
   async function validate(file: SnapshotRestore.File) {
     const binding = await WorkspaceBinding.validate(
       file.workspace.id,
@@ -47,9 +177,23 @@ export namespace WorkspaceFileRestore {
       const native = input.files.filter((file) => file.workspace.pathKind !== "workspace")
       const result = await restoreContent({ ...input, files: portable })
       if (native.length) {
-        const other = await restore({ ...input, files: native })
-        result.restoredFiles.push(...other.restoredFiles)
-        result.failedFiles.push(...other.failedFiles)
+        try {
+          const other = await restore({ ...input, files: native })
+          result.restoredFiles.push(...other.restoredFiles)
+          result.failedFiles.push(...other.failedFiles)
+        } catch (error) {
+          result.failedFiles.push(
+            ...native.map((file) => ({
+              file: file.file,
+              code: input.signal?.aborted
+                ? "cancelled"
+                : error instanceof FileMutation.ConflictError
+                  ? "conflict"
+                  : "restore_failed",
+              message: error instanceof Error ? error.message : "File restoration failed",
+            })),
+          )
+        }
       }
       return result
     }
@@ -63,6 +207,7 @@ export namespace WorkspaceFileRestore {
       if (entry?.type === "file" && entry.stat.size > 50n * 1024n * 1024n)
         throw new FileEntry.LimitError("A file to restore exceeds 50 MB")
       const content = entry?.type === "file" ? await FileMutation.snapshot(file.file, input.signal) : null
+      checkVersion(file, entry?.version ?? null, content?.version)
       if ((await FileEntry.inspect(file.file))?.version !== entry?.version) throw new FileMutation.ConflictError()
       before.set(file.file, { entry, contentVersion: content?.version })
     }
@@ -214,6 +359,7 @@ export namespace WorkspaceFileRestore {
                   entry?.kind === "file"
                     ? `sha256:${WorkspaceTree.hash(await FileView.bytes(file.file, undefined, 50 * 1024 * 1024))}`
                     : undefined
+                checkVersion(file, entry?.entryVersion ?? null, version)
                 if ((await FileView.stat(file.file))?.entryVersion !== entry?.entryVersion)
                   throw new FileMutation.ConflictError()
                 before.set(file.file, { entry, version })

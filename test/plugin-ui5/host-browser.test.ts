@@ -138,7 +138,10 @@ test("functional plugin commands, events, settings and resource close guards wor
     await page.getByRole("button", { name: "Options", exact: true }).click()
     await page.getByRole("button", { name: "Style: Quick", exact: true }).click()
     await page.getByRole("option", { name: "Detailed", exact: true }).click()
+    await page.getByRole("listbox", { name: "Style", exact: true }).waitFor({ state: "detached" })
+    await page.getByRole("button", { name: "Style: Detailed", exact: true }).waitFor()
     await page.keyboard.press("Escape")
+    await page.getByRole("dialog", { name: "Display options", exact: true }).waitFor({ state: "detached" })
     await page.getByRole("button", { name: "Save preferences", exact: true }).click()
     await page.getByRole("dialog", { name: "Example settings", exact: true }).waitFor({ state: "detached" })
     stage = "resource dirty close guard"

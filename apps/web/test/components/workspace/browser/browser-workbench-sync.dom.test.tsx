@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test"
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
@@ -21,7 +22,7 @@ beforeAll(async () => {
   await Bun.write(
     path.join(directory, "sdk.ts"),
     `
-    export const useSDK = () => ({ client: { browser: {
+    export const useSDK = () => ({ url: "http://fixture.test", scopeID: "home", client: { browser: {
       session: () => new Promise(resolve => { window.completeSnapshot = resolve })
     } } })
   `,
@@ -30,13 +31,16 @@ beforeAll(async () => {
     path.join(directory, "workbench.ts"),
     `
     import { createSignal } from "solid-js"
-    const [tabs, setTabs] = createSignal([
-      { id: "file", panelId: "file" },
-      { id: "old", panelId: "browser", resourceId: "old" }
-    ])
-    const [active, setActive] = createSignal("file")
-    export const surface = { tabs, setTabs, active, setActive }
-    export const useWorkbenchPanels = () => ({ surface: () => surface })
+    import { createStore } from "solid-js/store"
+    const [task, setTask] = createSignal("one")
+    const [state, setState] = createStore({
+      one: { tabs: [{ id: "file", panelId: "file" }, { id: "old", panelId: "browser", resourceId: "old" }], active: "file" },
+      two: { tabs: [{ id: "two-file", panelId: "file" }], active: "two-file" }
+    })
+    export const surface = { tabs: () => state[task()].tabs, active: () => state[task()].active,
+      setTabs: tabs => setState(task(), "tabs", tabs), setActive: active => setState(task(), "active", active), opened: () => false }
+    window.switchTask = id => setTask(id)
+    export const useWorkbenchPanels = () => ({ sessionKey: task, surface: () => surface })
   `,
   )
   await Bun.write(
@@ -51,15 +55,16 @@ beforeAll(async () => {
     import { render } from "solid-js/web"
     import { For, Suspense } from "solid-js"
     import { surface } from "./workbench"
+    import { BrowserCatalogProvider } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-catalog.tsx`)}
     import { BrowserWorkbenchSync } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-workbench-sync.tsx`)}
     window.openPage = id => {
       surface.setTabs(tabs => [...tabs, { id, panelId: "browser", resourceId: id }])
       surface.setActive(id)
     }
-    render(() => <>
+    render(() => <BrowserCatalogProvider><>
       <div role="tablist"><For each={surface.tabs()}>{tab => <button role="tab" aria-selected={surface.active() === tab.id}>{tab.id}</button>}</For></div>
-      <Suspense><BrowserWorkbenchSync route={{sessionID:"session-one",path_directory:"home"}} /></Suspense>
-    </>, document.querySelector("#root"))
+      <Suspense><BrowserWorkbenchSync route={{mode:"scope",scopeID:"home",path_directory:"home"}} /></Suspense>
+    </></BrowserCatalogProvider>, document.querySelector("#root"))
   `,
   )
   server = await createServer({
@@ -76,7 +81,7 @@ beforeAll(async () => {
       },
     },
     optimizeDeps: { noDiscovery: true, include: ["solid-js", "solid-js/web", "zod"] },
-    server: { host: "127.0.0.1", port: 0, fs: { allow: [path.resolve(source, "../../..")] } },
+    server: { host: "127.0.0.1", port: await fixturePort(), fs: { allow: [path.resolve(source, "../../..")] } },
   })
   await server.listen()
   url = server.resolvedUrls!.local[0]!
@@ -94,6 +99,7 @@ type Fixture = Window & {
   completeSnapshot(value: unknown): void
   openPage(id: string): void
   deliverPages(pages: unknown[]): void
+  switchTask(id: string): void
 }
 
 test("a held bootstrap removes stale tabs but preserves a page opened after its request", async () => {
@@ -124,4 +130,39 @@ test("a held bootstrap removes stale tabs but preserves a page opened after its 
   await page.evaluate(() => (window as unknown as Fixture).deliverPages([]))
   await page.getByRole("tab", { name: "new", exact: true }).waitFor({ state: "hidden" })
   expect(await page.getByRole("tab", { name: "file", exact: true }).getAttribute("aria-selected")).toBe("true")
+})
+
+test("one Scope catalog reconciles across task switches without changing human selection", async () => {
+  await page.goto(url)
+  await page.waitForFunction(() => typeof (window as unknown as Fixture).completeSnapshot === "function")
+  await page.evaluate(() =>
+    (window as unknown as Fixture).completeSnapshot({
+      data: {
+        pages: [
+          {
+            id: "shared",
+            profileId: "personal",
+            title: "Shared",
+            url: "about:blank",
+            status: "active",
+            isLoading: false,
+            lastActiveAt: null,
+          },
+        ],
+        seq: 1,
+        epoch: "one",
+        ownerKey: "owner-one",
+      },
+    }),
+  )
+  await page.getByRole("tab", { name: /shared/ }).waitFor()
+  await page.evaluate(() => (window as unknown as Fixture).switchTask("two"))
+  await page.getByRole("tab", { name: "two-file", exact: true }).waitFor()
+  expect(await page.getByRole("tab").count()).toBe(2)
+  expect(await page.getByRole("tab", { name: "two-file", exact: true }).getAttribute("aria-selected")).toBe("true")
+  await page.evaluate(() => (window as unknown as Fixture).deliverPages([]))
+  await page.getByRole("tab", { name: /shared/ }).waitFor({ state: "hidden" })
+  await page.evaluate(() => (window as unknown as Fixture).switchTask("one"))
+  await page.getByRole("tab", { name: "file", exact: true }).waitFor()
+  expect(await page.getByRole("tab").allTextContents()).toEqual(["file"])
 })

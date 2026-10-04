@@ -1,4 +1,5 @@
-import { createContext, useContext, type ParentProps } from "solid-js"
+import { batch, createContext, useContext, type ParentProps } from "solid-js"
+import { createSessionPreparationProgress } from "@/components/session/session-transition-progress"
 import { createStore, produce } from "solid-js/store"
 import type {
   SessionTransitionActions,
@@ -11,6 +12,11 @@ export type SessionTransitionEntry = {
   progress: SessionTransitionProgress
   actions?: SessionTransitionActions
   handoff?: SessionTransitionHandoff
+  draft?: { intent: number; text?: string }
+}
+
+export function draftTransitionKey(server: string, scope: string) {
+  return `draft:${JSON.stringify([server, scope])}`
 }
 
 type StoredSessionTransitionEntry = SessionTransitionEntry & {
@@ -65,12 +71,23 @@ export function createSessionTransitionState() {
       actions: guardedActions,
       handoff,
       revision: currentRevision,
+      draft: progress.phase === "loading" ? entries[sessionID]?.draft : undefined,
     })
+  }
+
+  const confirmHandoff = (sessionID: string, messageID: string) => {
+    const handoff = entries[sessionID]?.handoff
+    if (handoff?.messageID !== messageID || !handoff.unconfirmed) return false
+    const accepted = handoff.unconfirmed.accepted
+    setEntries(sessionID, "handoff", "unconfirmed", undefined)
+    accepted()
+    return true
   }
 
   const completeHandoff = (sessionID: string, messageID: string) => {
     const handoff = entries[sessionID]?.handoff
     if (handoff?.messageID !== messageID) return false
+    confirmHandoff(sessionID, messageID)
     set(sessionID, handoff.success, {
       dismiss: () => dismissHandoff(sessionID, messageID),
     })
@@ -86,11 +103,36 @@ export function createSessionTransitionState() {
   }
 
   return {
+    prepareDraft(key: string) {
+      set(key, createSessionPreparationProgress())
+      const intent = revision
+      setEntries(key, "draft", { intent })
+      const current = () => entries[key]?.draft?.intent === intent
+      return {
+        setText(text: string) {
+          if (current()) setEntries(key, "draft", "text", text)
+        },
+        handoff(sessionID: string, progress: SessionTransitionProgress) {
+          if (!current()) return false
+          const draft = entries[key].draft
+          batch(() => {
+            set(sessionID, progress)
+            setEntries(sessionID, "draft", draft)
+            clear(key)
+          })
+          return true
+        },
+        clear() {
+          if (current()) clear(key)
+        },
+      }
+    },
     get: (sessionID: string): SessionTransitionEntry | undefined => entries[sessionID],
     set,
     clear,
     dismissHandoff,
     completeHandoff,
+    confirmHandoff,
     isHandoffDismissed,
     getRecovery: (scopeKey: string) => recoveries.get(scopeKey),
     setRecovery,

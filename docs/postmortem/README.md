@@ -1,10 +1,10 @@
 # Postmortems
 
-Postmortems explain escaped failures, their causes, missed safeguards and added guardrails.
+Failures, causes and guardrails.
 
 ## When to write one
 
-Write a postmortem only when **all three** criteria hold:
+Write a postmortem when all criteria hold:
 
 - **Subtle** — the mechanism is non-obvious, and a careful engineer would re-derive it the hard way.
 - **Systemic** — the bug escaped because of a gap in tests, tooling, or conventions, not a one-off typo.
@@ -19,21 +19,24 @@ Otherwise, write a bug fix with tests.
 
 ## Format
 
-Name files `NNNN-kebab-case-title.md` with the next number. Sections:
+Use the next `NNNN-kebab-case-title.md`. Sections:
 
-- **Executive summary** — one short paragraph a busy reader can absorb in thirty seconds: what broke, the root cause in plain terms, why it escaped, and the durable lesson.
-- **Summary** — failure details.
+- **Executive summary** — one paragraph: what broke, its cause, why it escaped, and the durable lesson.
+- **Summary** — Failure details.
 - **Timeline** — what was observed and when.
 - **Root cause** — the mechanism, and why every safety net missed it.
-- **Guardrails added** — the concrete fixes, linked: tests, doc updates, gate changes.
+- **Guardrails added** — linked fixes: tests, doc updates, gate changes.
 - **Lessons** — the durable takeaways.
 
 ## Index
 
-Qualifying incidents:
-
+- [0041: Lost completion signal](0041-cortex-progress-fixture-lost-release.md)
+- [0040: Vite ports](0040-vite-fixtures-shared-default-ports.md)
+- [0039: Process activation deadlock](0039-paused-output-blocked-process-activation.md)
+- [0038: Session latency](0038-session-interactions-amplified-global-work.md)
 - [0035: Titlebar controls](0035-native-titlebar-swallowed-controls.md)
-- [0036: Historical data blocked startup](0036-historical-data-blocked-startup.md)
+- [0043: Historical data blocked startup](0043-historical-data-blocked-startup.md)
+- [0036: Directory replacement blocked history](0036-directory-replacement-blocked-history.md)
 
 | Number | Title                                                                      | Status      | Date       |
 | ------ | -------------------------------------------------------------------------- | ----------- | ---------- |
@@ -96,6 +99,8 @@ Qualifying incidents:
 | 0033 | [Completed terminal blocked Runtime shutdown](0033-completed-terminal-blocked-runtime-shutdown.md) | implemented | 2026-09-28 |
 
 | 0034 | [Composer uploads suppressed attachment content](0034-composer-upload-suppressed-content.md) | implemented | 2026-09-28 |
+
+- [0037: Mount identity](0037-mount-number-invalidated-directory.md)
 
 ## History rules
 

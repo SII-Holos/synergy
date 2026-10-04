@@ -38,7 +38,7 @@ test("Home tasks run in independent core and full workers, and full task data su
       const name = owner === "full" ? "note_write" : "webfetch"
       const args =
         owner === "full"
-          ? { mode: "create", title: "Home result", content: "Saved by the full worker", scope: "current" }
+          ? { mode: "create", noteTitle: "Home result", noteContent: "Saved by the full worker", scope: "current" }
           : { url: new URL("/document", request.url).toString(), format: "text" }
       const message = done
         ? { role: "assistant", content: `${owner} completed` }

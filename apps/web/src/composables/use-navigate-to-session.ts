@@ -6,6 +6,7 @@ import { useSDK } from "@/context/sdk"
 import { useSessionDataView } from "@/context/session-data-view"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 import { proxyPrefix } from "@/utils/proxy"
+import { navStart } from "@/utils/perf"
 import {
   isSessionNavigationRequestCurrent,
   navigateResolvedSession,
@@ -27,6 +28,7 @@ export function useNavigateToSession() {
   const routeDir = (scope: { id: string }) => base64Encode(scope.id)
 
   return (sessionID: string, intent: SessionNavigationIntent = "open") => {
+    navStart({ to: sessionID, from: params.id, trigger: "session-link" })
     const generation = ++navigationGeneration
     const currentPath = window.location.pathname
     const currentDepth = history.state?._depth as number | undefined

@@ -51,6 +51,10 @@ export namespace BrowserOwner {
     }
   }
 
+  export function shared(): Info {
+    return { mode: "scope", scopeID: ScopeContext.current.scope.id, directory: null, workspaceID: null }
+  }
+
   /** Derive owner from WebSocket route parameters. */
   export function fromRoute(input: {
     directory: string | null

@@ -1,3 +1,4 @@
+import { upgradeImportedRecord } from "@ericsanchezok/synergy-harness/migration/import"
 import { installedWorkerCommand } from "@ericsanchezok/synergy-util/installed-launcher"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -9,6 +10,7 @@ import { authorityRecordRoots, StoragePortable } from "@ericsanchezok/synergy-ha
 import { legacyRecordKey } from "@ericsanchezok/synergy-harness/storage/legacy-import"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Usage } from "@ericsanchezok/synergy-harness/usage"
+import { NoteStore } from "@ericsanchezok/synergy-note"
 import { StorageCompat } from "@ericsanchezok/synergy-harness/storage/compat"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SnapshotArchive } from "@ericsanchezok/synergy-harness/session/snapshot-archive"
@@ -227,13 +229,18 @@ export namespace DataTransfer {
           }
           return (await tx.readMany([entry.key]))[0] === undefined
         },
-        transform: (entry) =>
-          entry.type === "record" && workspaces && acceptArtifact(entry.key)
-            ? { ...entry, value: workspaces.record(entry.key, entry.value) }
-            : entry,
+        transform: (entry) => {
+          if (entry.type !== "record") return entry
+          const value = upgradeImportedRecord(entry.key, entry.value)
+          return {
+            ...entry,
+            value: workspaces && acceptArtifact(entry.key) ? workspaces.record(entry.key, value) : value,
+          }
+        },
         afterImport: async (tx) => {
           await workspaces?.publish(tx)
           await Session.rebuildStorageIndexes(tx)
+          await NoteStore.invalidateStorageIndexes(tx)
           await Usage.reconcileTransfer(tx)
           await tx.write(["storage_transfer", id], {
             version: 1,

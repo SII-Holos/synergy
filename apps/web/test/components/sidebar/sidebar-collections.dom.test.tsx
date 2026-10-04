@@ -33,23 +33,37 @@ beforeAll(async () => {
     const [opened, setOpened] = createSignal(true)
     const [unread, setUnread] = createSignal(1)
     const [loaded, setLoaded] = createSignal(false)
-    const [expanded, setExpanded] = createSignal(true)
+    const motion = query.get("motion") === "1"
+    const [projects, setProjects] = createSignal(motion ? [
+      {id:"project-two",name:"Project two",expanded:true},
+      {id:"project-three",name:"Project three",expanded:true},
+      {id:"project-one",name:"Project one",expanded:false},
+    ] : [{id:"project-one",name:"Project one",expanded:true}])
+    const [projectLoaded, setProjectLoaded] = createSignal(query.get("lazy") !== "1")
     const entry = (id, category, title) => ({id,category,title,scopeID:category === "project" ? "project-one" : "home",scopeType:category === "project" ? "project" : "home",lastActivityAt:1,pinned:0,archived:false,tags:["review"]})
     const recent = Array.from({length:60},(_,i)=>entry("recent-"+i,"home","Recent session "+i+" with a deliberately long title to exercise truncation"))
     const home = [entry("home-one","home","Home session")]
     const channel = [{...entry("channel-one","channel","Channel session"),chatId:"chat-one",chatName:"Team channel",channelType:"feishu"}]
     const background = [entry("background-one","background","Background session")]
-    const scope = {id:"project-one",directory:"/fixture/project",name:"Project one",worktree:"/fixture/project",get expanded(){return expanded()},time:{created:1,updated:1}}
+    const projectEntries = scope => motion
+      ? Array.from({length:scope.id === "project-one" ? 10 : 2},(_,i)=>entry(scope.id+"-session-"+i,"project",scope.name+" session "+i))
+      : [entry("project-session","project","Project session")]
+    const expand = (id, expanded) => setProjects(previous=>previous.map(scope=>scope.id===id ? {...scope,expanded}:scope))
+    window.sidebarFixture = {
+      refresh:()=>setProjects(previous=>previous.map(scope=>({...scope}))),
+      reorder:()=>setProjects(previous=>[previous.at(-1),...previous.slice(0,-1)]),
+      finishLoad:()=>setProjectLoaded(true),
+    }
     export const useLayout = () => ({
       sidebar:{opened,width,resize,setOccupiedWidth:()=>{},close:()=>setOpened(false),toggle:()=>setOpened(!opened())},
       nav:{recentEntries:()=>recent,hasMoreRecent:()=>!loaded(),loadMoreNav:()=>setLoaded(true),
         rootNavEntries:kind=>({home,channel,background})[kind]||[],hasMoreRootNavSection:()=>false,
-        scopeIndexLoaded:()=>true,navEntries:()=>({"project-one":{items:[]}}),
-        projectNavEntries:()=>[entry("project-session","project","Project session")],
+        scopeIndexLoaded:()=>true,navEntries:()=>Object.fromEntries(projects().filter(scope=>scope.id!=="project-one"||projectLoaded()).map(scope=>[scope.id,{items:projectEntries(scope)}])),
+        projectNavEntries:scope=>scope.id!=="project-one"||projectLoaded() ? projectEntries(scope) : [],
         unreadCompletionCount:unread,acknowledgeAllCompletionNotices:async()=>{setUnread(0);return {acknowledgedCount:1}},
         loadScopeNav:()=>{},
       },
-      scopes:{list:()=>[scope],isSupplemental:()=>false,expand:()=>setExpanded(true),collapse:()=>setExpanded(false)},
+      scopes:{list:()=>projects().map(scope=>({...scope,time:{created:1,updated:1}})),isSupplemental:()=>false,expand:id=>expand(id,true),collapse:id=>expand(id,false)},
       channelProjection:()=>({channelAccounts:[]}),
     })
     export const useGlobalSync = () => ({data:{scope:[],provider:{all:[],authHealth:{}}},sessionStatus:{},permissions:{},questions:{},cortex:[]})
@@ -173,6 +187,233 @@ async function open(query = "") {
     })
   expect(errors).toEqual([])
 }
+
+async function projectAction(action: "refresh" | "reorder" | "finishLoad") {
+  await page.evaluate((action) => {
+    const fixture = (window as unknown as { sidebarFixture: Record<typeof action, () => void> }).sidebarFixture
+    fixture[action]()
+  }, action)
+}
+
+async function prepareProjectMotion(query = "") {
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await open(`?motion=1${query}`)
+  await page.locator('[data-scope-id="project-one"] .sb-project-chevron-btn').scrollIntoViewIfNeeded()
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  )
+  expect(await page.locator(".sb-scroll").evaluate((element) => element.scrollTop)).toBeGreaterThan(500)
+}
+
+function recordProjectMotion() {
+  return page.evaluate(
+    () =>
+      new Promise<Array<{ top: number; scroll: number; heading: number; account: number; transforms: string[] }>>(
+        (resolve) => {
+          const row = document.querySelector('[data-scope-id="project-one"] .sb-project-row')!
+          const list = document.querySelector(".sb-scroll")!
+          const heading = document.querySelector(".sb-projects-header-actions")!
+          const account = document.querySelector(".sidebar-account-hub")!
+          const frames: Array<{ top: number; scroll: number; heading: number; account: number; transforms: string[] }> =
+            []
+          const started = performance.now()
+          const sample = () => {
+            frames.push({
+              top: row.getBoundingClientRect().top,
+              scroll: list.scrollTop,
+              heading: heading.getBoundingClientRect().top,
+              account: account.getBoundingClientRect().top,
+              transforms: [...list.querySelectorAll("[data-scope-id]")].map(
+                (element) => getComputedStyle(element).transform,
+              ),
+            })
+            if (performance.now() - started < 500) requestAnimationFrame(sample)
+            else resolve(frames)
+          }
+          sample()
+        },
+      ),
+  )
+}
+
+for (const lazy of [false, true])
+  test(`project expansion after scrolling keeps its title and sidebar stable (${lazy ? "delayed" : "cached"} sessions)`, async () => {
+    await prepareProjectMotion(lazy ? "&lazy=1" : "")
+    const toggle = page.locator('[data-scope-id="project-one"] .sb-project-chevron-btn')
+    const recording = recordProjectMotion()
+    await toggle.click()
+    if (lazy) {
+      expect(await toggle.getAttribute("aria-busy")).toBe("true")
+      await projectAction("finishLoad")
+    }
+    const frames = await recording
+    for (const frame of frames) {
+      expect(Math.abs(frame.top - frames[0]!.top)).toBeLessThanOrEqual(1)
+      expect(Math.abs(frame.scroll - frames[0]!.scroll)).toBeLessThanOrEqual(1)
+      expect(Math.abs(frame.heading - frames[0]!.heading)).toBeLessThanOrEqual(1)
+      expect(Math.abs(frame.account - frames[0]!.account)).toBeLessThanOrEqual(1)
+      expect(frame.transforms.every((transform) => transform === "none")).toBe(true)
+    }
+    expect(await page.locator('[data-session-id="project-one-session-0"]').isVisible()).toBe(true)
+    expect(await toggle.evaluate((element) => document.activeElement === element)).toBe(true)
+    expect(errors).toEqual([])
+  })
+
+test("equivalent project refresh after scrolling does not animate existing rows", async () => {
+  await prepareProjectMotion()
+  const recording = recordProjectMotion()
+  await projectAction("refresh")
+  const frames = await recording
+  expect(frames.every((frame) => frame.transforms.every((transform) => transform === "none"))).toBe(true)
+  expect(
+    Math.max(...frames.map((frame) => frame.top)) - Math.min(...frames.map((frame) => frame.top)),
+  ).toBeLessThanOrEqual(1)
+})
+
+test("rapid disclosure reversals retain the project title, focus and sibling disclosures", async () => {
+  await prepareProjectMotion("&width=230&mode=light")
+  const toggle = page.locator('[data-scope-id="project-one"] .sb-project-chevron-btn')
+  const recording = recordProjectMotion()
+  await toggle.click()
+  await toggle.press("Space")
+  await toggle.press("Enter")
+  const frames = await recording
+  expect(
+    Math.max(...frames.map((frame) => frame.top)) - Math.min(...frames.map((frame) => frame.top)),
+  ).toBeLessThanOrEqual(1)
+  expect(await toggle.getAttribute("aria-expanded")).toBe("true")
+  expect(await toggle.evaluate((element) => document.activeElement === element)).toBe(true)
+  expect(
+    await page.locator('[data-scope-id="project-two"] .sb-project-chevron-btn').getAttribute("aria-expanded"),
+  ).toBe("true")
+  expect(
+    await page.locator('[data-scope-id="project-three"] .sb-project-chevron-btn').getAttribute("aria-expanded"),
+  ).toBe("true")
+  expect(errors).toEqual([])
+})
+
+test("reordering after expansion uses current geometry and live reduced motion cancels only owned animations", async () => {
+  await prepareProjectMotion()
+  await page.locator('[data-scope-id="project-one"] .sb-project-chevron-btn').click()
+  await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"))
+  const before = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll<HTMLElement>(".sb-projects [data-scope-id]")]
+    const container = rows[0]!.parentElement!
+    const origin = container.getBoundingClientRect().top
+    const state = window as unknown as { sidebarRows?: HTMLElement[]; sidebarForeign?: Animation }
+    state.sidebarRows = rows
+    state.sidebarForeign = rows[0]!.animate([{ opacity: 0.8 }, { opacity: 0.8 }], { duration: 10000 })
+    return Object.fromEntries(rows.map((row) => [row.dataset.scopeId!, row.getBoundingClientRect().top - origin]))
+  })
+  await projectAction("reorder")
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll(".sb-projects [data-scope-id]")].some((row) =>
+      row
+        .getAnimations()
+        .some((animation) => (animation.effect as KeyframeEffect).getKeyframes().some((frame) => frame.transform)),
+    ),
+  )
+  const movement = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll<HTMLElement>(".sb-projects [data-scope-id]")]
+    const origin = rows[0]!.parentElement!.getBoundingClientRect().top
+    const state = window as unknown as { sidebarRows: HTMLElement[] }
+    return rows.map((row) => {
+      const animation = row
+        .getAnimations()
+        .find((animation) => (animation.effect as KeyframeEffect).getKeyframes().some((frame) => frame.transform))
+      const translation = new DOMMatrix(getComputedStyle(row).transform).m42
+      return {
+        id: row.dataset.scopeId!,
+        retained: state.sidebarRows.includes(row),
+        target: row.getBoundingClientRect().top - origin - translation,
+        from: new DOMMatrix(
+          animation
+            ? ((animation.effect as KeyframeEffect).getKeyframes()[0]?.transform as string | undefined)
+            : undefined,
+        ).m42,
+      }
+    })
+  })
+  expect(movement[0]?.id).toBe("project-one")
+  for (const row of movement) {
+    expect(row.retained).toBe(true)
+    expect(Math.abs(row.from - (before[row.id]! - row.target))).toBeLessThanOrEqual(1)
+  }
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll(".sb-projects [data-scope-id]")].every((row) =>
+      row
+        .getAnimations()
+        .every((animation) => (animation.effect as KeyframeEffect).getKeyframes().every((frame) => !frame.transform)),
+    ),
+  )
+  expect(await page.evaluate(() => (window as unknown as { sidebarForeign: Animation }).sidebarForeign.playState)).toBe(
+    "running",
+  )
+  await projectAction("reorder")
+  expect(
+    await page
+      .locator(".sb-projects [data-scope-id]")
+      .evaluateAll((rows) => rows.every((row) => getComputedStyle(row).transform === "none")),
+  ).toBe(true)
+  expect(errors).toEqual([])
+})
+
+test("same-frame project reorders settle to the final order without replaying intermediate movement", async () => {
+  await prepareProjectMotion()
+  const recording = recordProjectMotion()
+  await page.evaluate(() => {
+    const fixture = (window as unknown as { sidebarFixture: { reorder: () => void } }).sidebarFixture
+    fixture.reorder()
+    fixture.reorder()
+    fixture.reorder()
+  })
+  const frames = await recording
+  expect(frames.every((frame) => frame.transforms.every((transform) => transform === "none"))).toBe(true)
+  expect(
+    await page
+      .locator(".sb-projects [data-scope-id]")
+      .evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.scopeId)),
+  ).toEqual(["project-two", "project-three", "project-one"])
+})
+
+test("an interrupted reorder resumes from visible positions and leaves user scrolling in control", async () => {
+  await prepareProjectMotion()
+  await projectAction("reorder")
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll(".sb-projects [data-scope-id]")].some((row) => row.getAnimations().length > 0),
+  )
+  const before = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll<HTMLElement>(".sb-projects [data-scope-id]")]
+    const origin = rows[0]!.parentElement!.getBoundingClientRect().top
+    const positions = Object.fromEntries(
+      rows.map((row) => [row.dataset.scopeId!, row.getBoundingClientRect().top - origin]),
+    )
+    ;(window as unknown as { sidebarFixture: { reorder: () => void } }).sidebarFixture.reorder()
+    return positions
+  })
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+  const starts = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll<HTMLElement>(".sb-projects [data-scope-id]")]
+    const origin = rows[0]!.parentElement!.getBoundingClientRect().top
+    return rows.map((row) => {
+      const animation = row.getAnimations()[0]
+      const translation = new DOMMatrix(getComputedStyle(row).transform).m42
+      const from = animation
+        ? new DOMMatrix((animation.effect as KeyframeEffect).getKeyframes()[0]?.transform as string).m42
+        : 0
+      return { id: row.dataset.scopeId!, start: row.getBoundingClientRect().top - origin - translation + from }
+    })
+  })
+  for (const row of starts) expect(Math.abs(row.start - before[row.id]!)).toBeLessThanOrEqual(1)
+  const selectedScroll = await page.locator(".sb-scroll").evaluate((element) => {
+    element.scrollTop -= 100
+    return element.scrollTop
+  })
+  await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"))
+  expect(await page.locator(".sb-scroll").evaluate((element) => element.scrollTop)).toBe(selectedScroll)
+  expect(errors).toEqual([])
+})
 
 test("five vertical categories retain independent disclosure state and unique headings", async () => {
   await open()

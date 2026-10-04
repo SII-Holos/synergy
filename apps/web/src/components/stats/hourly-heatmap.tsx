@@ -4,19 +4,6 @@ import { useLocale } from "@/context/locale"
 import { S } from "./stats-i18n"
 import { calendarDays } from "./calendar-range"
 
-const HEATMAP_STYLE = `
-@keyframes heatmapCellEnter {
-  from {
-    opacity: 0;
-    transform: translateY(4px) scale(0.94);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-`
-
 const LEVEL_COLORS = [
   "var(--surface-inset-base)",
   "color-mix(in srgb, var(--chart-series-3) 28%, transparent)",
@@ -81,16 +68,15 @@ function formatHourTick(hour: number) {
 
 function DayView(props: { cells: DayCell[]; columns: number }) {
   return (
-    <div class="mt-4 rounded-[1.4rem] bg-surface-base/34 p-3 ring-1 ring-inset ring-border-weaker-base">
-      <div class="grid gap-1.5" style={{ "grid-template-columns": `repeat(${props.columns}, minmax(0, 1fr))` }}>
+    <div class="stats-heatmap-body">
+      <div class="grid gap-1.5" style={{ "grid-template-columns": `repeat(${props.columns}, minmax(14px, 1fr))` }}>
         <For each={props.cells}>
-          {(cell, index) => (
+          {(cell) => (
             <div
-              class="aspect-square min-h-4 rounded-[8px] border transition-transform duration-150 hover:-translate-y-px hover:scale-[1.03]"
+              class="stats-heatmap-cell aspect-square min-h-4 rounded-[4px] border"
               style={{
                 "background-color": LEVEL_COLORS[cell.level],
                 "border-color": LEVEL_BORDERS[cell.level],
-                animation: `heatmapCellEnter 280ms cubic-bezier(0.22, 1, 0.36, 1) ${index() * 8}ms both`,
               }}
               title={cell.label}
             />
@@ -104,32 +90,31 @@ function DayView(props: { cells: DayCell[]; columns: number }) {
 function HourView(props: { rows: Array<{ label: string; cells: HourCell[] }> }) {
   const HOUR_LABELS = [0, 6, 12, 18, 23] as const
   return (
-    <div class="mt-4 rounded-[1.4rem] bg-surface-base/34 p-3 ring-1 ring-inset ring-border-weaker-base">
+    <div class="stats-heatmap-body">
       <div
-        class="grid items-center gap-x-1.5 gap-y-2"
+        class="stats-heatmap-grid--hours grid items-center gap-x-1.5 gap-y-2"
         style={{ "grid-template-columns": "auto repeat(24, minmax(0, 1fr))" }}
       >
         <div />
         <For each={Array.from({ length: 24 }, (_, hour): number => hour)}>
           {(hour) => (
-            <div class="text-center text-[9px] font-medium text-text-weaker">
+            <div class="text-center app-panel-caption font-medium text-text-weaker">
               {HOUR_LABELS.some((value) => value === hour) ? formatHourTick(hour) : ""}
             </div>
           )}
         </For>
 
         <For each={props.rows}>
-          {(row, rowIndex) => (
+          {(row) => (
             <>
-              <div class="pr-2 text-[10px] font-medium text-text-weak">{row.label}</div>
+              <div class="pr-2 app-panel-caption font-medium text-text-weak">{row.label}</div>
               <For each={row.cells}>
-                {(cell, cellIndex) => (
+                {(cell) => (
                   <div
-                    class="aspect-square min-h-3 rounded-[6px] border transition-transform duration-150 hover:-translate-y-px hover:scale-[1.03]"
+                    class="stats-heatmap-cell aspect-square min-h-3 rounded-[4px] border"
                     style={{
                       "background-color": LEVEL_COLORS[cell.level],
                       "border-color": LEVEL_BORDERS[cell.level],
-                      animation: `heatmapCellEnter 260ms cubic-bezier(0.22, 1, 0.36, 1) ${(rowIndex() * 24 + cellIndex()) * 4}ms both`,
                     }}
                     title={cell.label}
                   />
@@ -287,12 +272,11 @@ export function ActivityHeatmap(props: {
 
   return (
     <>
-      <style>{HEATMAP_STYLE}</style>
-      <section class="rounded-2xl bg-surface-raised-base px-4 py-4">
-        <div class="flex flex-wrap items-start justify-between gap-3">
+      <section class="stats-chart-section stats-activity">
+        <div class="stats-chart-header">
           <div>
-            <h3 class="text-14-semibold tracking-tight text-text-base">{totalLabel()}</h3>
-            <p class="mt-1 text-11-regular text-text-weak">{subtitle()}</p>
+            <h3 class="app-panel-section-title text-text-strong">{totalLabel()}</h3>
+            <p class="mt-1 app-panel-caption text-text-weak">{subtitle()}</p>
           </div>
           <div class="flex flex-wrap items-center justify-end gap-1.5">
             <For each={ranges()}>
@@ -301,9 +285,9 @@ export function ActivityHeatmap(props: {
                 return (
                   <button
                     type="button"
-                    class={`rounded-full px-2.5 py-1 text-11-medium transition-all duration-200 ${
+                    class={`stats-range-button app-panel-control ${
                       active()
-                        ? "bg-surface-interactive-solid text-text-on-interactive-base shadow-sm"
+                        ? "bg-surface-interactive-solid text-text-on-interactive-base"
                         : "bg-surface-inset-base/70 text-text-weak hover:bg-surface-inset-base hover:text-text-base"
                     }`}
                     aria-pressed={active()}
@@ -320,7 +304,7 @@ export function ActivityHeatmap(props: {
         <Show
           when={granularity() === "hour" ? hourRows().length > 0 : dayCells().length > 0}
           fallback={
-            <div class="mt-4 flex h-32 items-center justify-center rounded-2xl bg-surface-inset-base/45 text-12-medium text-text-weak">
+            <div class="mt-4 flex h-32 items-center justify-center app-panel-caption text-text-weak">
               {i18n._(S.heatmapEmpty.id)}
             </div>
           }
@@ -329,10 +313,10 @@ export function ActivityHeatmap(props: {
             <HourView rows={hourRows()} />
           </Show>
 
-          <div class="mt-4 flex flex-wrap items-center justify-between gap-3 text-[10px] font-medium text-text-weaker">
+          <div class="mt-4 flex flex-wrap items-center justify-between gap-3 app-panel-caption font-medium text-text-weaker">
             <div class="flex items-center gap-2">
               <span>{granularity() === "hour" ? i18n._(S.heatmapHourView.id) : i18n._(S.heatmapDayView.id)}</span>
-              <span class="text-text-weaker/70">•</span>
+              <span aria-hidden="true">•</span>
               <span>
                 {granularity() === "hour"
                   ? i18n._(S.heatmapRows.id, { n: hourRows().length })
@@ -342,7 +326,7 @@ export function ActivityHeatmap(props: {
             <Show when={granularity() === "day" && dayCells().length > 1}>
               <div class="flex items-center gap-2">
                 <span>{edgeLabels().start}</span>
-                <span class="text-text-weaker/70">→</span>
+                <span aria-hidden="true">→</span>
                 <span>{edgeLabels().end}</span>
               </div>
             </Show>

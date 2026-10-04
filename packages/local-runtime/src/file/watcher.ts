@@ -226,6 +226,15 @@ export namespace FileWatcher {
       },
       shouldRetry: (error) => !FileWatcherEvents.isLinuxInotifyTerminalError(error),
       disconnect: (subscription) => subscription.unsubscribe(),
+      resync: async (context) => {
+        await input.resync?.()
+        if (context.isCurrent())
+          log.info("file watcher recovery completed", {
+            directory: input.directory,
+            label: input.label,
+            generation: context.generation,
+          })
+      },
       onError: async (error) => {
         const terminalError = FileWatcherEvents.isLinuxInotifyTerminalError(error)
         if (!terminalError) {
@@ -234,7 +243,6 @@ export namespace FileWatcher {
             label: input.label,
             error,
           })
-          await input.resync?.()
           return
         }
         // The breaker is process-wide: only the first capacity failure logs
@@ -312,10 +320,11 @@ export namespace FileWatcher {
           options: { backend },
           resync: async () => {
             const { RuntimeReloadExecutor } = await import("@ericsanchezok/synergy-harness/config/reload-executor")
-            await RuntimeReloadExecutor.reloadGlobal({
+            const result = await RuntimeReloadExecutor.reloadGlobal({
               targets: ["config", "agent", "command", "skill", "tool_registry"],
               reason: "global config watcher recovery",
             })
+            if (!result.success) throw new Error("Global config watcher resynchronization failed")
           },
           onEvents: (evts) => {
             for (const evt of evts) {
@@ -359,11 +368,12 @@ export namespace FileWatcher {
             },
             resync: async () => {
               const { RuntimeReloadExecutor } = await import("@ericsanchezok/synergy-harness/config/reload-executor")
-              await RuntimeReloadExecutor.reload({
+              const result = await RuntimeReloadExecutor.reload({
                 targets: ["config", "agent", "command", "skill", "tool_registry"],
                 scope: "project",
                 reason: "project config watcher recovery",
               })
+              if (!result.success) throw new Error("Project config watcher resynchronization failed")
             },
             onEvents: (evts) => {
               for (const evt of evts) {
@@ -400,6 +410,7 @@ export namespace FileWatcher {
         maxPending: 4_096,
         process: publishWorkspaceBatch,
         overflow: publishWorkspaceResync,
+        onError: (error) => log.error("workspace watcher reconciliation failed", { error }),
       })
 
       drain = workspaceDrain
@@ -412,7 +423,10 @@ export namespace FileWatcher {
           ignore: FileWatcherEvents.workspaceSubscriptionIgnores(cfgIgnores),
           backend,
         },
-        resync: () => workspaceDrain.resync(),
+        resync: async () => {
+          workspaceDrain.resync()
+          await workspaceDrain.idle()
+        },
         onEvents: (events) => workspaceDrain.enqueue(FileWatcherEvents.normalize(events)),
       })
       subs.push(workspaceRecovery)
@@ -430,7 +444,10 @@ export namespace FileWatcher {
             ignore: ignoreList,
             backend,
           },
-          resync: () => workspaceDrain.resync(),
+          resync: async () => {
+            workspaceDrain.resync()
+            await workspaceDrain.idle()
+          },
           onEvents: (events) =>
             workspaceDrain.enqueue(
               FileWatcherEvents.normalize(

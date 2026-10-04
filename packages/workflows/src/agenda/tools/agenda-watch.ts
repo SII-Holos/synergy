@@ -1,5 +1,5 @@
+import { agendaAgentItem } from "./agent-item"
 import { GithubWatchPreflight } from "./github-watch-preflight"
-import { formatLocalDateTime } from "@ericsanchezok/synergy-harness/util/time-format"
 import z from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { Agenda, AgendaTypes } from ".."
@@ -11,8 +11,12 @@ import DESCRIPTION from "./agenda-watch.txt"
 
 const parameters = z
   .object({
-    title: z.string().describe("Short name, e.g. 'Check pipeline health'"),
-    prompt: z
+    agendaTitle: z.string().describe("Short name, e.g. 'Check pipeline health'"),
+    agendaDescription: z
+      .string()
+      .optional()
+      .describe("Description of this watched item; omit when its title is sufficient"),
+    executionInstructions: z
       .string()
       .describe(
         "Instruction you'll receive when woken up. Write it for yourself — you'll see it with full conversation history.",
@@ -58,125 +62,115 @@ const parameters = z
     path: ["delay"],
   })
 
-export const AgendaWatchTool = Tool.define("agenda_watch", {
-  description: DESCRIPTION,
-  parameters,
-  async execute(params: z.infer<typeof parameters>, ctx) {
-    // Reject if there are running subagent tasks for this session.
-    // Subagents auto-notify on completion — an agenda_watch is never needed for them.
-    const { Cortex } = await import("@ericsanchezok/synergy-harness/cortex")
-    const runningSubagents = Cortex.getVisibleTasks(ctx.sessionID).filter((t) => t.status === "running")
+export const AgendaWatchTool = Tool.define(
+  "agenda_watch",
+  {
+    description: DESCRIPTION,
+    parameters,
+    async execute(params: z.infer<typeof parameters>, ctx) {
+      // Reject if there are running subagent tasks for this session.
+      // Subagents auto-notify on completion — an agenda_watch is never needed for them.
+      const { Cortex } = await import("@ericsanchezok/synergy-harness/cortex")
+      const runningSubagents = Cortex.getVisibleTasks(ctx.sessionID).filter((t) => t.status === "running")
 
-    if (runningSubagents.length > 0) {
-      const taskList = runningSubagents.map((t) => `  - ${t.id}: ${t.description} (agent: ${t.agent})`).join("\n")
+      if (runningSubagents.length > 0) {
+        const taskList = runningSubagents.map((t) => `  - ${t.id}: ${t.description} (agent: ${t.agent})`).join("\n")
+
+        return {
+          title: "agenda_watch rejected",
+          output: [
+            `You cannot set an \`agenda_watch\` while subagents are still running.`,
+            ``,
+            `Running subagents (${runningSubagents.length}):`,
+            taskList,
+            ``,
+            `These subagents **auto-notify you on completion** — the system will send a lightweight notification that wakes you when they finish.`,
+            `There is NO reason to poll or watch them. No watch is needed.`,
+            ``,
+            `Instead: continue with other independent work that does not depend on these results.`,
+            `If you need a one-shot progress check, use \`task_output(task_id="...", mode="progress")\` once — but prioritize independent work and wait for the automatic completion notification.`,
+            `When the notification arrives, it does NOT contain the final result; retrieve it once with \`task_output(task_id="...", mode="full")\`.`,
+          ].join("\n"),
+          metadata: {
+            blocked: true,
+            reason: "running_subagents",
+            runningSubagentCount: runningSubagents.length,
+            runningSubagentIds: runningSubagents.map((t) => t.id),
+          } as Record<string, any>,
+        }
+      }
+
+      const session = await SessionManager.getSession(ctx.sessionID).catch(() => undefined)
+      if (params.onGithub) {
+        // A GitHub watch without a credential never fires and, as a
+        // continuation blocker, would hold this session forever with no
+        // feedback. Reject at creation with concrete connection steps.
+        const rejected = await GithubWatchPreflight.check("agenda_watch")
+        if (rejected) return rejected
+      }
+      const trigger: AgendaTypes.Trigger = params.onSessionEnd
+        ? {
+            type: "session",
+            sessionID: params.onSessionEnd.sessionID,
+            event: "turn.end",
+            agent: params.onSessionEnd.agent,
+            finish: params.onSessionEnd.finish,
+            once: true,
+          }
+        : params.onGithub
+          ? {
+              type: "github",
+              resource: params.onGithub.resource,
+              repository: params.onGithub.repository,
+              number: params.onGithub.number,
+              ref: params.onGithub.ref,
+              states: params.onGithub.states,
+            }
+          : { type: "delay" as const, delay: params.delay! }
+
+      const conflicts = await AgendaDedup.findConflicts(
+        ScopeContext.current.scope.id,
+        params.agendaTitle,
+        [trigger],
+        params.global,
+        session?.workspaceID ?? null,
+      )
+      if (conflicts.length > 0) {
+        return {
+          title: "agenda_watch",
+          output: AgendaDedup.formatConflictMessage(conflicts, "agenda_watch"),
+          metadata: { conflictCount: conflicts.length, action: "conflict_found" } as Record<string, any>,
+        }
+      }
+
+      const item = await Agenda.create({
+        title: params.agendaTitle,
+        description: params.agendaDescription,
+        prompt: params.executionInstructions,
+        triggers: [trigger],
+        global: params.global,
+        wake: true,
+        silent: false,
+        autoDone: true,
+        createdBy: "agent",
+        sessionID: ctx.sessionID,
+        endpoint: session?.endpoint,
+      })
 
       return {
-        title: "agenda_watch rejected",
-        output: [
-          `You cannot set an \`agenda_watch\` while subagents are still running.`,
-          ``,
-          `Running subagents (${runningSubagents.length}):`,
-          taskList,
-          ``,
-          `These subagents **auto-notify you on completion** — the system will send a lightweight notification that wakes you when they finish.`,
-          `There is NO reason to poll or watch them. No watch is needed.`,
-          ``,
-          `Instead: continue with other independent work that does not depend on these results.`,
-          `If you need a one-shot progress check, use \`task_output(task_id="...", mode="progress")\` once — but prioritize independent work and wait for the automatic completion notification.`,
-          `When the notification arrives, it does NOT contain the final result; retrieve it once with \`task_output(task_id="...", mode="full")\`.`,
-        ].join("\n"),
+        title: `Watch: ${params.agendaTitle}`,
+        output: JSON.stringify(agendaAgentItem(item), null, 2),
         metadata: {
-          blocked: true,
-          reason: "running_subagents",
-          runningSubagentCount: runningSubagents.length,
-          runningSubagentIds: runningSubagents.map((t) => t.id),
+          id: item.id,
+          status: item.status,
+          ...(params.onSessionEnd
+            ? { sessionID: params.onSessionEnd.sessionID }
+            : params.onGithub
+              ? { github: params.onGithub }
+              : { delay: params.delay }),
         } as Record<string, any>,
       }
-    }
-
-    const session = await SessionManager.getSession(ctx.sessionID).catch(() => undefined)
-    if (params.onGithub) {
-      // A GitHub watch without a credential never fires and, as a
-      // continuation blocker, would hold this session forever with no
-      // feedback. Reject at creation with concrete connection steps.
-      const rejected = await GithubWatchPreflight.check("agenda_watch")
-      if (rejected) return rejected
-    }
-    const trigger: AgendaTypes.Trigger = params.onSessionEnd
-      ? {
-          type: "session",
-          sessionID: params.onSessionEnd.sessionID,
-          event: "turn.end",
-          agent: params.onSessionEnd.agent,
-          finish: params.onSessionEnd.finish,
-          once: true,
-        }
-      : params.onGithub
-        ? {
-            type: "github",
-            resource: params.onGithub.resource,
-            repository: params.onGithub.repository,
-            number: params.onGithub.number,
-            ref: params.onGithub.ref,
-            states: params.onGithub.states,
-          }
-        : { type: "delay" as const, delay: params.delay! }
-
-    const conflicts = await AgendaDedup.findConflicts(
-      ScopeContext.current.scope.id,
-      params.title,
-      [trigger],
-      params.global,
-      session?.workspaceID ?? null,
-    )
-    if (conflicts.length > 0) {
-      return {
-        title: "agenda_watch",
-        output: AgendaDedup.formatConflictMessage(conflicts, "agenda_watch"),
-        metadata: { conflictCount: conflicts.length, action: "conflict_found" } as Record<string, any>,
-      }
-    }
-
-    const item = await Agenda.create({
-      title: params.title,
-      prompt: params.prompt,
-      triggers: [trigger],
-      global: params.global,
-      wake: true,
-      silent: false,
-      autoDone: true,
-      createdBy: "agent",
-      sessionID: ctx.sessionID,
-      endpoint: session?.endpoint,
-    })
-
-    const delayMs = params.delay ? AgendaStore.parseDuration(params.delay) : 0
-    const firesAt = params.onSessionEnd
-      ? `when session "${params.onSessionEnd.sessionID}" ends a turn`
-      : params.onGithub
-        ? `when GitHub ${params.onGithub.resource} in ${params.onGithub.repository}${params.onGithub.number !== undefined ? ` #${params.onGithub.number}` : ""} changes state${params.onGithub.states?.length ? ` to ${params.onGithub.states.join("|")}` : ""}`
-        : formatLocalDateTime(Date.now() + delayMs)
-
-    return {
-      title: `Watch: ${params.title}`,
-      output: [
-        `Watch set — you'll be woken up in THIS session.`,
-        ``,
-        `ID: ${item.id}`,
-        `Fires: ${firesAt}`,
-        ``,
-        `When it fires, you receive the prompt as a message and continue with full conversation history.`,
-        `To cancel: agenda_cancel(id="${item.id}")`,
-      ].join("\n"),
-      metadata: {
-        id: item.id,
-        status: item.status,
-        ...(params.onSessionEnd
-          ? { sessionID: params.onSessionEnd.sessionID }
-          : params.onGithub
-            ? { github: params.onGithub }
-            : { delay: params.delay }),
-      } as Record<string, any>,
-    }
+    },
   },
-})
+  { activityKind: "object" },
+)

@@ -70,8 +70,11 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
     return prompt.cursor() ?? (editor ? getCursorPosition(editor) : inlineLength(prompt.current()))
   }
 
-  const appendAttachment = async (file: File, draft: ReturnType<typeof prompt.capture>["draft"]) => {
-    const id = createPromptPartID()
+  const appendAttachment = async (
+    file: File,
+    draft: ReturnType<typeof prompt.capture>["draft"],
+    id = createPromptPartID(),
+  ) => {
     const sessionKeyAtStart = `${params.dir}${params.id ? "/" + params.id : ""}`
     try {
       await runPendingAttachmentUpload({
@@ -118,6 +121,18 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
       await Promise.allSettled(accepted.map((file) => appendAttachment(file, draft.draft)))
     } finally {
       draft.release()
+    }
+  }
+
+  const retryAttachment = async (id: string) => {
+    const entry = pendingUploads.pending().find((item) => item.id === id && item.status === "failed")
+    const file = pendingUploads.file(id)
+    if (!entry || !file) return
+    const binding = prompt.capture()
+    try {
+      await appendAttachment(file, binding.draft, id)
+    } finally {
+      binding.release()
     }
   }
 
@@ -327,6 +342,7 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
 
   return {
     addAttachments,
+    retryAttachment,
     removeAttachment,
     handlePaste,
     handleDragOver,

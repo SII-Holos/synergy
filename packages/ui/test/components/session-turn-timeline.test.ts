@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, mock, test } from "bun:test"
 import type {
   AssistantMessage,
@@ -107,7 +108,7 @@ function user(
     sessionID: "session",
     role: "user",
     time: { created: 1 },
-    agent: "synergy",
+    agent: TEST_AGENT_NAME,
     model: { providerID: "provider", modelID: "model" },
     isRoot,
     rootID: opts?.rootID ?? id,
@@ -128,7 +129,7 @@ function assistantFor(id: string, parentID: string): AssistantMessage {
     parentID,
     rootID: parentID,
     mode: "test",
-    agent: "synergy",
+    agent: TEST_AGENT_NAME,
     path: { cwd: "/tmp", root: "/tmp" },
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -640,6 +641,18 @@ describe("session turn working state", () => {
     ).toBe(false)
   })
 
+  test("missing and paused runtime states never manufacture live work", () => {
+    const messages = [assistant("assistant-running")]
+    expect(resolveTurnWorking({ isLastUserMessage: true, messages })).toBe(false)
+    expect(
+      resolveTurnWorking({
+        isLastUserMessage: true,
+        messages,
+        sessionStatus: { type: "paused", reason: "aborted", since: 10 },
+      }),
+    ).toBe(false)
+  })
+
   test("never marks an older turn as working", () => {
     expect(
       resolveTurnWorking({
@@ -703,7 +716,7 @@ describe("session turn timeline", () => {
     ).toBe(true)
   })
 
-  test("shows provider prelude after prior visible work when the latest assistant response is empty", () => {
+  test("does not insert another waiting row after visible work when the next model reply is empty", () => {
     const previous = completedAssistant("assistant-a")
     const latest = assistant("assistant-b")
     const previousItems = collectSessionTurnTimelineItems(
@@ -721,8 +734,9 @@ describe("session turn timeline", () => {
         hasError: false,
         latestAssistant: latest,
         latestAssistantTimelineItems: latestItems,
+        hasTurnContent: previousItems.length > 0,
       }),
-    ).toBe(true)
+    ).toBe(false)
   })
 
   test("hides provider prelude once the latest assistant response has a visible part", () => {
@@ -780,7 +794,7 @@ describe("session turn timeline", () => {
     } satisfies SessionStatus
 
     expect(providerPreludeText(status)).toBe("Awaiting response…")
-    expect(providerPreludeText({ type: "busy" })).toBe("Awaiting response…")
+    expect(providerPreludeText({ type: "busy" })).toBe("Synergy is thinking…")
   })
 
   test("formats provider prelude elapsed time as a quiet timer label", () => {

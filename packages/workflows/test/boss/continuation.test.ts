@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -53,8 +54,8 @@ async function terminalAssistant(workerID: string, parentID: string): Promise<st
     role: "assistant",
     sessionID: workerID,
     parentID,
-    mode: "synergy",
-    agent: "synergy",
+    mode: PrimaryAgentIdentity.names.general,
+    agent: PrimaryAgentIdentity.names.general,
     path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
     cost: 0,
     tokens,

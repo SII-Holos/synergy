@@ -103,28 +103,34 @@ export function buildCommands(root = ROOT) {
     }))
 }
 
-function buildPaths(root: string) {
+type Bundle = "build" | "intermediate"
+
+function includesWeb(bundle: Bundle) {
+  return bundle === "build" && process.env.SYNERGY_CI_WEB_BUILD === "true"
+}
+
+function buildPaths(root: string, web: boolean) {
   return [
     "packages/local-runtime/.artifacts/watcher",
     "packages/local-runtime/.artifacts/pty",
     ...(process.env.SYNERGY_CI_SANDBOX_BUNDLE === "1" ? ["packages/local-runtime/sandbox-assets/linux-x64"] : []),
-    ...(process.env.SYNERGY_CI_WEB_BUILD === "true" ? ["apps/web/dist"] : []),
+    ...(web ? ["apps/web/dist"] : []),
     ...buildWorkspaces(root)
       .filter((entry) => entry.scripts?.build)
       .map((entry) => `${entry.directory}/dist`),
   ]
 }
 
-export async function buildIdentity(root = ROOT): Promise<string> {
+export async function buildIdentity(root = ROOT, web = includesWeb("build")): Promise<string> {
   const abi =
     process.platform === "linux"
       ? execFileSync("getconf", ["GNU_LIBC_VERSION"], { encoding: "utf8" }).trim()
       : process.platform
   const hash = createHash("sha256").update(
-    `ci-build-v6:${process.platform}:${process.arch}:${Bun.version}:${abi}:node22.14.0-bullseye:${process.env.SYNERGY_CI_SANDBOX_BUNDLE ?? "0"}:${process.env.SYNERGY_CI_WEB_BUILD ?? "false"}:${process.env.SYNERGY_CI_WEB_BUILD === "true" ? (process.env.SYNERGY_CI_TESTED_SHA ?? "") : ""}`,
+    `ci-build-v7:${process.platform}:${process.arch}:${Bun.version}:${abi}:node22.14.0-bullseye:${process.env.SYNERGY_CI_SANDBOX_BUNDLE ?? "0"}:${web}:${web ? (process.env.SYNERGY_CI_TESTED_SHA ?? "") : ""}`,
   )
   const files = [...BUILD_INPUTS]
-  for (const entry of buildWorkspaces(root, process.env.SYNERGY_CI_WEB_BUILD === "true")) {
+  for (const entry of buildWorkspaces(root, web)) {
     for (const file of await filesIn(
       path.join(root, entry.directory),
       ["dist", "node_modules", ".turbo", "coverage", "test"],
@@ -151,7 +157,7 @@ export async function buildIdentity(root = ROOT): Promise<string> {
   return hash.digest("hex")
 }
 
-export async function buildCacheIdentity(root = ROOT): Promise<string> {
+export async function buildCacheIdentity(root = ROOT, bundle: Bundle = "build"): Promise<string> {
   const toolchain = [process.env.ImageVersion ?? "local"]
   for (const [command, args] of [
     ["rustc", ["-vV"]],
@@ -159,14 +165,14 @@ export async function buildCacheIdentity(root = ROOT): Promise<string> {
   ] as const)
     toolchain.push(execFileSync(command, [...args], { encoding: "utf8" }).trim())
   return createHash("sha256")
-    .update(await buildIdentity(root))
+    .update(await buildIdentity(root, includesWeb(bundle)))
     .update(JSON.stringify(toolchain))
     .digest("hex")
 }
 
-export async function publishBuild(root = ROOT) {
+export async function publishBuild(root = ROOT, bundle: Bundle = "build") {
   const files: Array<{ path: string; sha256: string; mode: number }> = []
-  for (const directory of buildPaths(root)) {
+  for (const directory of buildPaths(root, includesWeb(bundle))) {
     const outputs = await filesIn(path.join(root, directory))
     if (!outputs.length) throw new Error(`Missing build output: ${directory}`)
     files.push(
@@ -177,7 +183,7 @@ export async function publishBuild(root = ROOT) {
       }))),
     )
   }
-  const destination = path.join(root, OUTPUT, "build")
+  const destination = path.join(root, OUTPUT, bundle)
   await rm(destination, { recursive: true, force: true })
   await mkdir(destination, { recursive: true })
   await mapFiles(files, async (file) => {
@@ -186,18 +192,18 @@ export async function publishBuild(root = ROOT) {
   })
   await Bun.write(
     path.join(destination, "manifest.json"),
-    JSON.stringify({ identity: await buildIdentity(root), files }),
+    JSON.stringify({ identity: await buildIdentity(root, includesWeb(bundle)), files }),
   )
 }
 
-export async function restoreBuild(root = ROOT) {
-  const directory = path.join(root, OUTPUT, "build")
-  const paths = buildPaths(root)
+export async function restoreBuild(root = ROOT, bundle: Bundle = "build") {
+  const directory = path.join(root, OUTPUT, bundle)
+  const paths = buildPaths(root, includesWeb(bundle))
   const manifest = JSON.parse(await readFile(path.join(directory, "manifest.json"), "utf8")) as {
     identity: string
     files: Array<{ path: string; sha256: string; mode: number }>
   }
-  if (manifest.identity !== (await buildIdentity(root)))
+  if (manifest.identity !== (await buildIdentity(root, includesWeb(bundle))))
     throw new Error("Build artifact inputs differ from this checkout")
   const expected = (await filesIn(directory))
     .map((file) => path.relative(directory, file).split(path.sep).join("/"))

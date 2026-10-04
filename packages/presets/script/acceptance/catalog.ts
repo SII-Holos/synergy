@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { AcceptanceCase, digest } from "./evidence"
 
 type CaseInput = Omit<AcceptanceCase, "checks" | "verification"> & {
@@ -22,7 +23,7 @@ export const cases: AcceptanceCase[] = [
     scenario({
       id: `attachments-${scope}`,
       units: ["A", "B", "C", "D"],
-      agent: "synergy-flash",
+      agent: PrimaryAgentIdentity.names.lightweight,
       live: true,
       risk: "Managed attachments inherit native Workspace restrictions; a failed input poisons the next task.",
       preconditions: [
@@ -64,7 +65,7 @@ export const cases: AcceptanceCase[] = [
   scenario({
     id: "attachment-policy",
     units: ["A", "B", "C"],
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     live: true,
     risk: "Capability routing loses attachment policies, filenames or original bytes.",
     preconditions: ["Synthetic PNG/JPEG, text, PDF, DOCX, XLSX and PPTX", "Excluded text", "Audio/video byte fixtures"],
@@ -82,7 +83,7 @@ export const cases: AcceptanceCase[] = [
   scenario({
     id: "vision-child",
     units: ["A", "B", "C"],
-    agent: "synergy-max",
+    agent: PrimaryAgentIdentity.names.coding,
     live: true,
     risk: "A text-only parent cannot deliver managed visual bytes to its vision child without a Workspace.",
     preconditions: [
@@ -100,7 +101,7 @@ export const cases: AcceptanceCase[] = [
   scenario({
     id: "api-lazy",
     units: ["A", "B", "C", "D"],
-    agent: "synergy-flash",
+    agent: PrimaryAgentIdentity.names.lightweight,
     live: true,
     risk: "Business API work accidentally allocates compute or depends on unavailable files.",
     preconditions: [
@@ -121,7 +122,7 @@ export const cases: AcceptanceCase[] = [
   scenario({
     id: "shared-delegation",
     units: ["B", "C", "D", "E"],
-    agent: "synergy-max",
+    agent: PrimaryAgentIdentity.names.coding,
     live: true,
     risk: "Shared Workspace writers, child tasks and resource switches bypass generation fencing or deadlock.",
     preconditions: ["Two sessions sharing one Workspace", "Two independent Git worktrees", "External editor writer"],
@@ -143,7 +144,7 @@ export const cases: AcceptanceCase[] = [
   scenario({
     id: "execution-drain",
     units: ["D", "E"],
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     live: true,
     risk: "Quiet or background work is reclaimed early, or output/save is truncated at disconnect.",
     preconditions: ["Bash, PTY and background commands", "Explicit quiet-work barrier", "Short isolated idle timeout"],
@@ -232,7 +233,7 @@ export const cases: AcceptanceCase[] = [
   scenario({
     id: "desktop-input",
     units: ["A", "B", "C", "D"],
-    agent: "synergy-flash",
+    agent: PrimaryAgentIdentity.names.lightweight,
     live: true,
     risk: "The actual composer loses attachments/drafts or projects incorrect pause, continue and cancel state.",
     preconditions: ["Production Web build", "Isolated Desktop user-data directory", "Independent Runtime"],
@@ -254,7 +255,7 @@ export const cases: AcceptanceCase[] = [
   scenario({
     id: "desktop-remote",
     units: ["C", "D", "E"],
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     live: true,
     risk: "Product resource selection diverges from execution, allocates eagerly or loses files when releasing compute.",
     preconditions: ["Production Desktop", "Object Workspace with random file content", "Independent TLS Docker daemon"],
@@ -285,7 +286,7 @@ export const cases: AcceptanceCase[] = [
   scenario({
     id: "web-reconnect",
     units: ["A", "B", "C"],
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     live: true,
     risk: "Reconnect replaces older history or loses pending input and attachments.",
     preconditions: ["Production Web browser", "Multiple history pages", "Unfinished input and draft attachment"],
@@ -299,7 +300,7 @@ export const cases: AcceptanceCase[] = [
   scenario({
     id: "resource-cycles",
     units: ["A", "B", "C", "D", "E", "F"],
-    agent: "synergy-max",
+    agent: PrimaryAgentIdentity.names.coding,
     live: true,
     risk: "Compaction and repeated resource recovery lose facts or accumulate orphan resources across Runtime owners.",
     preconditions: ["Real model/tool history", "Attachments and delegated task", "Second Runtime continuously working"],
@@ -394,7 +395,7 @@ export const cases: AcceptanceCase[] = [
           ? ["A", "C", "E"]
           : ["A", "C", "D", "E"],
       live: ["command-crash", "save-crash", "remote-loss", "model-stream", "model-timeout"].includes(id),
-      agent: "synergy",
+      agent: PrimaryAgentIdentity.names.general,
       risk: fault,
       preconditions: [
         "Fresh owned Runtime and exact operation identity",
@@ -437,7 +438,7 @@ export const cases: AcceptanceCase[] = [
   scenario({
     id: "current-dev-upgrade",
     units: ["A", "B", "C", "D", "E", "F"],
-    agent: "synergy-flash",
+    agent: PrimaryAgentIdentity.names.lightweight,
     live: true,
     risk: "The integrated version cannot continue data created by the current dev installation.",
     preconditions: [
@@ -454,7 +455,7 @@ export const cases: AcceptanceCase[] = [
   scenario({
     id: "installed-entrypoints",
     units: ["A", "B", "C", "D"],
-    agent: "synergy-flash",
+    agent: PrimaryAgentIdentity.names.lightweight,
     live: true,
     risk: "Source composition works while installed CLI, SDK or embedded entrypoints miss resources.",
     preconditions: ["Frozen core/full distributions and inventory", "Independent directory outside checkout"],

@@ -51,7 +51,7 @@ beforeAll(async () => {
             setImageScaleMode: () => {},
           },
           pdf: { get: () => undefined, load: async () => {} },
-          explorer: { open: () => false, setOpen: () => {}, reveal: async () => {} },
+          explorer: { open: () => false, width: () => 260, setWidth() {}, setOpen: () => {}, reveal: async () => {} },
         })
       `,
     ),
@@ -110,6 +110,7 @@ beforeAll(async () => {
       path.join(fixtureDirectory, "main.tsx"),
       `
         import { createComponent } from "solid-js"
+        import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
         import { render } from "solid-js/web"
         import { setupI18n } from "@lingui/core"
         import { I18nProvider } from "@lingui/solid"
@@ -122,9 +123,13 @@ beforeAll(async () => {
             createComponent(I18nProvider, {
               i18n,
               children: () =>
-                createComponent(FileWorkbenchContent, {
-                  tab: { id: "file", type: "file", title: file, resourceId: "wsp_demo@1/" + file, state: { workspace: { id: "wsp_demo", generation: 1, scopeID: "project", path: "/workspace/demo", type: "directory" } } },
-                  onRequestClose: () => {},
+                createComponent(DialogProvider, {
+                  get children() {
+                    return createComponent(FileWorkbenchContent, {
+                      tab: { id: "file", type: "file", title: file, resourceId: "wsp_demo@1/" + file, state: { workspace: { id: "wsp_demo", generation: 1, scopeID: "project", path: "/workspace/demo", type: "directory" } } },
+                      onRequestClose: () => {},
+                    })
+                  },
                 }),
             }),
           document.querySelector("#root"),
@@ -208,7 +213,7 @@ beforeAll(async () => {
     if (pageError) throw new Error(`file workbench fixture page failed to render: ${pageError.stack}`, { cause: error })
     throw error
   }
-})
+}, 30_000)
 
 afterAll(async () => {
   await page?.close()
@@ -227,9 +232,10 @@ describe("file workbench open-in-browser action", () => {
     expect(await owner.textContent()).toBe("demo")
   }, 60000)
 
-  test("renders the toolbar button for an HTML file and opens the raw content URL", async () => {
+  test("renders the menu action for an HTML file and opens the raw content URL", async () => {
     await page.goto(`${baseUrl}?path=docs%2Findex.html`)
-    const button = page.getByRole("button", { name: "Open in browser" })
+    await page.getByRole("button", { name: "File options" }).click()
+    const button = page.getByRole("menuitem", { name: "Open in browser" })
     await button.waitFor({ state: "visible", timeout: 30000 })
     await button.click()
     await page.waitForFunction(() => ((window as any).__openedUrls?.length ?? 0) > 0)
@@ -239,15 +245,17 @@ describe("file workbench open-in-browser action", () => {
 
   test("treats .htm files as HTML too", async () => {
     await page.goto(`${baseUrl}?path=index.htm`)
-    const button = page.getByRole("button", { name: "Open in browser" })
+    await page.getByRole("button", { name: "File options" }).click()
+    const button = page.getByRole("menuitem", { name: "Open in browser" })
     await button.waitFor({ state: "visible", timeout: 30000 })
   }, 60000)
 
-  test("hides the toolbar button for non-HTML files", async () => {
+  test("hides the menu action for non-HTML files", async () => {
     await page.goto(`${baseUrl}?path=README.md`)
     await page.waitForSelector(".file-workbench-toolbar", { timeout: 30000 })
     await page.waitForTimeout(300)
-    const count = await page.locator(".file-open-in-browser").count()
+    await page.getByRole("button", { name: "File options" }).click()
+    const count = await page.getByRole("menuitem", { name: "Open in browser" }).count()
     expect(count).toBe(0)
   }, 60000)
 })

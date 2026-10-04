@@ -1,5 +1,22 @@
 import type { ProviderAuthMethod } from "@ericsanchezok/synergy-sdk/client"
 
+export function createProviderCredentialCommand(write: () => Promise<void>, refresh: () => Promise<void>) {
+  let persisted = false
+  return {
+    persisted: () => persisted,
+    reset: () => {
+      persisted = false
+    },
+    async run() {
+      if (!persisted) {
+        await write()
+        persisted = true
+      }
+      await refresh()
+    },
+  }
+}
+
 export function resolveProviderAuthMethods(input: {
   registry: Record<string, ProviderAuthMethod[]>
   providerID: string

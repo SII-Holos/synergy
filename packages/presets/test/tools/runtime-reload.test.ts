@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { RuntimeReloadTool } from "@ericsanchezok/synergy-local-runtime/tools/runtime-reload"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -11,7 +12,7 @@ const ctx = {
   sessionID: "test",
   messageID: "",
   callID: "",
-  agent: "synergy",
+  agent: PrimaryAgentIdentity.names.general,
   abort: AbortSignal.any([]),
   metadata: () => {},
   ask: async () => {},

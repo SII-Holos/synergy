@@ -129,8 +129,10 @@
   line-height: 20px;
 }
 
-.stb-left > [data-component="tooltip-trigger"] {
+.stb-left > [data-component="tooltip-trigger"],
+.stb-center > [data-component="tooltip-trigger"] {
   min-width: 0;
+  max-width: 100%;
 }
 .stb-left > [data-component="tooltip-trigger"]:first-child {
   flex: 0 1 auto;
@@ -158,13 +160,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 9px;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 6px;
   color: var(--icon-base);
   transition:
-    color 150ms,
-    background-color 150ms;
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
 .stb-icon-btn:hover {
@@ -330,16 +333,16 @@
     position: absolute;
     z-index: 31;
     top: 0;
-    right: 22px;
+    right: 8px;
     display: flex;
     height: 48px;
     align-items: center;
     -webkit-app-region: no-drag;
   }
   [data-default-session]:not(:has(.workbench-surface--side.workbench-surface--open)) .stb-root {
-    padding-right: 64px;
+    padding-right: 48px;
   }
-  [data-default-session] .workbench-surface--side .workbench-surface-tabs {
-    padding-right: 64px;
+  [data-default-session]:has(.workbench-surface--side.workbench-surface--open) .session-workbench-controls {
+    display: none;
   }
 }

@@ -108,6 +108,10 @@ for (const held of [false, true]) {
       await SessionCompat.ensureImported(${JSON.stringify(fixture.records[0].value.id)});
     }
     if ((await SessionCompat.stats()).imported !== ${held ? 2 : 1}) throw new Error("Requested history did not converge");
+    const { SessionHistory } = await import(${JSON.stringify(path.join(harness, "session/history.ts"))});
+    await SessionHistory.prepareDisplayOwner({ scopeID: "home", sessionID: ${JSON.stringify(fixture.records[0].value.id)} });
+    const display = await handle.store.read(["sessions", "home", ${JSON.stringify(fixture.records[0].value.id)}, "display_state"]);
+    if (!display.ready || display.count !== 1) throw new Error("Published history display index is incomplete");
     if (${held}) {
       const info = await handle.store.read(["sessions", "home", ${JSON.stringify(heldSessionID)}, "info"]);
       if (info.blueprint.phase !== "running" || info.blueprint.loopID !== ${JSON.stringify(loopID)} || info.paused?.reason !== "workflow")

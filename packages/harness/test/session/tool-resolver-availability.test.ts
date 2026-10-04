@@ -35,6 +35,7 @@ function processor() {
   return {
     message: { id: "msg_availability", rootID: "msg_availability_root", parentID: "msg_availability_root" },
     partFromToolCall: () => undefined,
+    modelInputFromToolCall: () => undefined,
     beginExecution: () => undefined,
     executeOnce: (_callID: string, execute: () => Promise<unknown>) => execute(),
   } as any

@@ -99,9 +99,9 @@ describe("BrowserDownloads owner isolation", () => {
       const schema = (await BrowserDownloadsTool.init()).parameters
       expect(schema.safeParse({ action: "list" }).success).toBe(true)
       expect(schema.safeParse({ action: "wait" }).success).toBe(false)
-      expect(schema.safeParse({ action: "cancel", id: "x" }).success).toBe(true)
-      expect(schema.safeParse({ action: "export", id: "x" }).success).toBe(false)
-      expect(schema.safeParse({ action: "export", id: "x", path: "out/file.zip" }).success).toBe(true)
+      expect(schema.safeParse({ action: "cancel", downloadId: "x" }).success).toBe(true)
+      expect(schema.safeParse({ action: "export", downloadId: "x" }).success).toBe(false)
+      expect(schema.safeParse({ action: "export", downloadId: "x", filePath: "out/file.zip" }).success).toBe(true)
     }))
 })
 

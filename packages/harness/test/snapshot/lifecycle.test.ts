@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { registerSnapshotTestHost } from "../support/snapshot-host"
 import { expect, test } from "bun:test"
 import path from "node:path"
@@ -62,7 +63,7 @@ test("JSON import retains available snapshots and reports missing objects", () =
           sessionID: source.id,
           role: "user",
           time: { created: Date.now() },
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           model: { providerID: "test", modelID: "test" },
         })
         for (const snapshot of [hash, "a".repeat(40)]) {
@@ -105,7 +106,7 @@ for (const backend of ["shared", "legacy"] as const) {
             sessionID: source.id,
             role: "user",
             time: { created: Date.now() },
-            agent: "synergy",
+            agent: PrimaryAgentIdentity.names.general,
             model: { providerID: "test", modelID: "test" },
           })
           await Session.updatePart({

@@ -98,6 +98,7 @@ function minimalProcessor(executions: Map<string, Promise<any>>) {
   return {
     message: { id: "msg_p1_sandbox", rootID: "msg_p1_sandbox_root", parentID: "msg_p1_sandbox_root" },
     partFromToolCall: () => undefined,
+    modelInputFromToolCall: () => undefined,
     updateToolCallState: async () => {},
     executeOnce: <T>(id: string, execute: () => Promise<T>) => {
       const existing = callbacks.get(id)
@@ -221,8 +222,8 @@ describe("sandbox denial is actionable for the model", () => {
             const pending = waitForPermission("ses_p1_guarded_text")
             const execution = bash
               .execute(
-                { command: `out=${DENIED_PATH}; { echo hi; } > "$out"`, description: "denied write" },
-                { toolCallId: "call_p1_guarded_text" },
+                { command: `out=${DENIED_PATH}; { echo hi; } > "$out"` },
+                { ...{ toolCallId: "call_p1_guarded_text" }, workBrief: "denied write" },
               )
               .catch((error: unknown) => error)
             const request = await pending
@@ -310,8 +311,8 @@ describe("sandbox denial is actionable for the model", () => {
             const pending = waitForPermission("ses_p1_guarded_metadata")
             const execution = bash
               .execute(
-                { command: `out=${DENIED_PATH}; { echo hi; } > "$out"`, description: "denied write" },
-                { toolCallId: "call_p1_guarded_metadata" },
+                { command: `out=${DENIED_PATH}; { echo hi; } > "$out"` },
+                { ...{ toolCallId: "call_p1_guarded_metadata" }, workBrief: "denied write" },
               )
               .catch((error: unknown) => error)
             const request = await pending
@@ -345,8 +346,8 @@ describe("sandbox denial is actionable for the model", () => {
           try {
             await bash
               .execute(
-                { command: `out=${DENIED_PATH}; { echo hi; } > "$out"`, description: "denied write" },
-                { toolCallId: "call_p1_autonomous" },
+                { command: `out=${DENIED_PATH}; { echo hi; } > "$out"` },
+                { ...{ toolCallId: "call_p1_autonomous" }, workBrief: "denied write" },
               )
               .catch((error: unknown) => error)
 
@@ -380,8 +381,8 @@ describe("sandbox denial is actionable for the model", () => {
           try {
             await bash
               .execute(
-                { command: `out=${DENIED_PATH}; { echo hi; } > "$out"`, description: "denied write" },
-                { toolCallId: "call_p1_full_access" },
+                { command: `out=${DENIED_PATH}; { echo hi; } > "$out"` },
+                { ...{ toolCallId: "call_p1_full_access" }, workBrief: "denied write" },
               )
               .catch((error: unknown) => error)
 
@@ -445,7 +446,7 @@ describe("sandbox denial is actionable for the model", () => {
               includeMCP: false,
             })
             await (resolved.executionTools.bash as any)
-              .execute({ command: "opaque", description: "opaque" }, { toolCallId: "call_p1_no_path" })
+              .execute({ command: "opaque" }, { ...{ toolCallId: "call_p1_no_path" }, workBrief: "opaque" })
               .catch((error: unknown) => error)
 
             const pending = await PermissionNext.list()

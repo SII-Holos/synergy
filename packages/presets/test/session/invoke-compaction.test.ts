@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterAll, beforeAll, describe, expect, test, mock, spyOn } from "bun:test"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
@@ -120,7 +121,7 @@ function testUser(input: {
     id: input.id,
     role: "user",
     sessionID: input.sessionID,
-    agent: "synergy",
+    agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test-provider", modelID: "test-model" },
     time: { created: input.created },
     ...(input.summaryTitle ? { summary: { title: input.summaryTitle, diffs: [] } } : {}),
@@ -241,6 +242,7 @@ async function runCompactionProcessCase(input: {
       return {
         message: processorInput.assistantMessage,
         partFromToolCall: () => undefined,
+        modelInputFromToolCall: () => undefined,
         trackExecution: () => {},
         process: mock(async (processInput: SessionProcessor.ProcessInput) => {
           processUserVariant = processInput.user.variant
@@ -275,7 +277,7 @@ async function runCompactionProcessCase(input: {
           id: Identifier.ascending("message"),
           role: "user",
           sessionID: session.id,
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           model: { providerID: input.providerID ?? "test-provider", modelID: "test-model" },
           time: { created: Date.now() },
           ...(input.variant ? { variant: input.variant } : {}),
@@ -432,6 +434,7 @@ async function expectPreflightCompaction(input: { shouldCompact: boolean; contex
     ;(SessionProcessor.create as any) = mock((createInput: Parameters<typeof SessionProcessor.create>[0]) => ({
       message: createInput.assistantMessage,
       partFromToolCall: () => undefined,
+      modelInputFromToolCall: () => undefined,
       trackExecution: () => {},
       process: processCalled,
     }))
@@ -460,7 +463,7 @@ async function expectPreflightCompaction(input: { shouldCompact: boolean; contex
           id: Identifier.ascending("message"),
           role: "user",
           sessionID,
-          agent: "synergy",
+          agent: PrimaryAgentIdentity.names.general,
           model: {
             providerID: "test-provider",
             modelID: "test-model",
@@ -590,6 +593,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
         ;(SessionProcessor.create as any) = mock((createInput: Parameters<typeof SessionProcessor.create>[0]) => ({
           message: createInput.assistantMessage,
           partFromToolCall: () => undefined,
+          modelInputFromToolCall: () => undefined,
           trackExecution: () => {},
           process: mock(async () => {
             if (createInput.assistantMessage.mode !== "compaction") {
@@ -623,7 +627,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
               id: Identifier.ascending("message"),
               role: "user",
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               time: { created: Date.now() },
             })
@@ -732,6 +736,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
         ;(SessionProcessor.create as any) = mock((input: Parameters<typeof SessionProcessor.create>[0]) => ({
           message: input.assistantMessage,
           partFromToolCall: () => undefined,
+          modelInputFromToolCall: () => undefined,
           trackExecution: () => {},
           process: processCalled,
         }))
@@ -746,7 +751,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
               id: Identifier.ascending("message"),
               role: "user",
               sessionID: session.id,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: { providerID: "test-provider", modelID: "test-model" },
               time: { created: Date.now() },
             })
@@ -837,6 +842,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
         ;(SessionProcessor.create as any) = mock((input: Parameters<typeof SessionProcessor.create>[0]) => ({
           message: input.assistantMessage,
           partFromToolCall: () => undefined,
+          modelInputFromToolCall: () => undefined,
           trackExecution: () => {},
           process: mock(async (processInput: SessionProcessor.ProcessInput) => {
             processMaxOutputTokens.push(processInput.maxOutputTokens)
@@ -866,7 +872,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
               id: Identifier.ascending("message"),
               role: "user",
               sessionID,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: {
                 providerID: "test-provider",
                 modelID: "test-model",
@@ -970,6 +976,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
         ;(SessionProcessor.create as any) = mock((input: Parameters<typeof SessionProcessor.create>[0]) => ({
           message: input.assistantMessage,
           partFromToolCall: () => undefined,
+          modelInputFromToolCall: () => undefined,
           trackExecution: () => {},
           process: mock(async () => {
             processCount++
@@ -993,7 +1000,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
               id: Identifier.ascending("message"),
               role: "user",
               sessionID,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: {
                 providerID: "test-provider",
                 modelID: "test-model",
@@ -1025,8 +1032,8 @@ describe.serial("SessionInvoke preflight compaction", () => {
               sessionID,
               modelID: "test-model",
               providerID: "test-provider",
-              mode: "synergy",
-              agent: "synergy",
+              mode: PrimaryAgentIdentity.names.general,
+              agent: PrimaryAgentIdentity.names.general,
               path: {
                 cwd: tmp.path,
                 root: tmp.path,
@@ -1077,7 +1084,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
               id: Identifier.ascending("message"),
               role: "user",
               sessionID,
-              agent: "synergy",
+              agent: PrimaryAgentIdentity.names.general,
               model: {
                 providerID: "test-provider",
                 modelID: "test-model",
@@ -1639,12 +1646,13 @@ describe("remote compaction rollout", () => {
   test("does not downgrade a remote recording failure to optional metadata", () =>
     runtime.run(async () => {
       using config = spyOn(Config, "current").mockResolvedValue({ compaction: { codexRemote: true } } as Config.Info)
-      using write = spyOn(Storage, "writeBinary").mockRejectedValue(new Error("disk full"))
+      using write = spyOn(Storage, "prepareBinary").mockRejectedValue(new Error("disk full"))
       using remote = spyOn(CodexProvider, "requestRemoteCompactionV2").mockImplementation(async () => {
         throw new Error("must not issue request")
       })
       const observed = await runCompactionProcessCase({ providerID: CodexProvider.PROVIDER_ID, text: "Local summary" })
       expect(observed.thrown).toMatchObject({ name: "RolloutRecordingError" })
+      expect(write).toHaveBeenCalled()
       expect(remote).not.toHaveBeenCalled()
       expect(observed.result).toBeUndefined()
     }))

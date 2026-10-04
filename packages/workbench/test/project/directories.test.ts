@@ -1,13 +1,86 @@
 import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
+
+import { Hono } from "hono"
+import { generateSpecs } from "hono-openapi"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { testRuntime } from "../support/runtime"
 import { ProjectDirectories } from "../../src/project/directories"
+import { ProjectDirectoriesRoute } from "../../src/project/routes/directories"
+
+test("unavailable project folders retain identity failure reasons and recover through explicit rebinding", async () => {
+  await using runtime = await testRuntime()
+  await using main = await tmpdir({ git: true })
+  await using extra = await tmpdir()
+  await runtime.run(async () => {
+    const created = await ProjectDirectories.create({
+      name: "Recovery",
+      directories: [main.path, extra.path],
+      mainDirectory: main.path,
+    })
+    const records = await WorkspaceCatalog.list(created.scope.id)
+    for (const record of records)
+      await Storage.write(StoragePath.workspace(record.id), {
+        ...record,
+        binding: { ...record.binding, physicalID: "legacy-mount:old-inode:old-birth" },
+      })
+    const unavailable = await ProjectDirectories.get(created.scope.id)
+    const app = new Hono().route("/global/project", ProjectDirectoriesRoute())
+    const response = await app.request(`/global/project/${created.scope.id}/directories`)
+    expect(response.status).toBe(200)
+    expect(ProjectDirectories.Result.parse(await response.json())).toEqual(unavailable)
+    const spec = await generateSpecs(app)
+    expect(spec.paths?.["/global/project/{scopeID}/directories"]?.get?.operationId).toBe("project.directories")
+    expect(spec.components?.schemas?.ProjectFolder).toMatchObject({
+      properties: { unavailable: { $ref: "#/components/schemas/WorkspaceUnavailable" } },
+    })
+    expect(unavailable.folders).toHaveLength(2)
+    for (const folder of unavailable.folders)
+      expect(folder).toMatchObject({
+        available: false,
+        git: false,
+        unavailable: {
+          name: "WorkspaceUnavailable",
+          data: { workspaceID: folder.workspaceID, reason: "identity_changed" },
+        },
+      })
+    for (const record of records) {
+      const recovered = await WorkspaceBinding.rebind(record.id, {
+        scopeID: created.scope.id,
+        expectedRevision: record.revision,
+        path: record.binding.path!,
+      })
+      expect(recovered.id).toBe(record.id)
+      expect(recovered.sharedWritableWorkspaceIDs).toEqual(record.sharedWritableWorkspaceIDs)
+      expect(recovered.binding.generation).toBe(record.binding.generation + 1)
+    }
+    const recovered = await ProjectDirectories.get(created.scope.id)
+    expect(recovered.revision).toBe(created.directories.revision)
+    expect(recovered.mainWorkspaceID).toBe(created.directories.mainWorkspaceID)
+    expect(recovered.folders.every((folder) => folder.available && !folder.unavailable)).toBe(true)
+    expect(recovered.folders.find((folder) => folder.workspaceID === recovered.mainWorkspaceID)?.git).toBe(true)
+  })
+})
+
+test("unexpected directory validation failures remain request errors", async () => {
+  await using runtime = await testRuntime()
+  await using directory = await tmpdir()
+  await runtime.run(async () => {
+    const created = await ProjectDirectories.create({
+      name: "Error",
+      directories: [directory.path],
+      mainDirectory: directory.path,
+    })
+    using failure = spyOn(WorkspaceBinding, "validate").mockRejectedValue(new Error("storage offline"))
+    await expect(ProjectDirectories.get(created.scope.id)).rejects.toThrow("storage offline")
+  })
+})
 
 test("Git folder detection tolerates a missing working directory", async () => {
   await using directory = await tmpdir()

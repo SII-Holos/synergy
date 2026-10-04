@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import type { Info as BlueprintLoopInfo } from "../../src/blueprint/types"
 import { buildBlueprintLoopContext } from "../../src/blueprint/prompt"
@@ -65,7 +66,13 @@ describe("blueprint loop context golden (execution variants)", () => {
 
   test("synergy-max execution instruction is byte-exact", () =>
     runtime.run(() => {
-      expect(buildBlueprintLoopContext({ loop: loopFixture(), isAuditSession: false, agentName: "synergy-max" })).toBe(
+      expect(
+        buildBlueprintLoopContext({
+          loop: loopFixture(),
+          isAuditSession: false,
+          agentName: PrimaryAgentIdentity.names.coding,
+        }),
+      ).toBe(
         [
           "<blueprint-loop-context>",
           "Active BlueprintLoop: blueprint_loop_alpha",
@@ -83,7 +90,13 @@ describe("blueprint loop context golden (execution variants)", () => {
 
   test("generic execution instruction is byte-exact", () =>
     runtime.run(() => {
-      expect(buildBlueprintLoopContext({ loop: loopFixture(), isAuditSession: false, agentName: "synergy" })).toBe(
+      expect(
+        buildBlueprintLoopContext({
+          loop: loopFixture(),
+          isAuditSession: false,
+          agentName: PrimaryAgentIdentity.names.general,
+        }),
+      ).toBe(
         [
           "<blueprint-loop-context>",
           "Active BlueprintLoop: blueprint_loop_alpha",
@@ -104,7 +117,7 @@ describe("blueprint loop context golden (execution variants)", () => {
       const block = buildBlueprintLoopContext({
         loop: loopFixture({ source: "lattice", userPrompt: "全量执行，开一个大 PR。" }),
         isAuditSession: false,
-        agentName: "synergy-max",
+        agentName: PrimaryAgentIdentity.names.coding,
       })
       expect(block).toContain(
         "This BlueprintLoop owns exactly one current Lattice Step. Future Pathway Steps are context only, not authorization. Earlier messages such as “continue” mean continue the current Blueprint only. Never create, submit, or implement a later Step. Continue until the current Blueprint is fully implemented and verified.",
@@ -135,7 +148,7 @@ describe("blueprint control-source suppression golden", () => {
           WorkflowUserWrapper.metadataForUserMessage({
             session,
             metadata: { source },
-            agentName: "synergy",
+            agentName: PrimaryAgentIdentity.names.general,
           }),
         ).toEqual({})
       }
@@ -143,9 +156,11 @@ describe("blueprint control-source suppression golden", () => {
 
   test("unstamped user requests still get workflow metadata", () =>
     runtime.run(() => {
-      expect(WorkflowUserWrapper.metadataForUserMessage({ session, agentName: "synergy" })).toEqual({
+      expect(
+        WorkflowUserWrapper.metadataForUserMessage({ session, agentName: PrimaryAgentIdentity.names.general }),
+      ).toEqual({
         workflow: "lightloop",
-        workflowAgent: "synergy",
+        workflowAgent: PrimaryAgentIdentity.names.general,
         workflowVersion: 1,
       })
     }))

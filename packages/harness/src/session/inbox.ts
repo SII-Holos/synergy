@@ -199,6 +199,7 @@ export namespace SessionInbox {
 
   export type StoredItem = Item & {
     input?: InvokeInput
+    admission?: "idle_no_reply"
   }
 
   async function readSession(sessionID: string): Promise<Info> {
@@ -374,6 +375,7 @@ export namespace SessionInbox {
     }
 
     const agent = await Agent.get(agentName ?? (await Agent.defaultAgent()))
+    if (!agent) throw new Error(`Agent not found: ${agentName}`)
     const inheritedModel = await lastModel(sessionID).catch(() => undefined)
     const model =
       payload.model ??
@@ -388,26 +390,22 @@ export namespace SessionInbox {
   }
 
   export async function latestRootID(sessionID: string): Promise<string | undefined> {
-    const messages = await SessionHistory.modelMessages({ sessionID })
-    for (let index = messages.length - 1; index >= 0; index--) {
-      const msg = messages[index]
-      if (msg.info.role !== "user") continue
-      const user = msg.info as MessageV2.User
-      if (user.isRoot === true) return user.rootID ?? user.id
-    }
+    return SessionHistory.latestRootID(sessionID)
   }
 
   export async function hasRunnableItem(
     sessionID: string,
-    options?: { allowSteer?: boolean; excludeIDs?: Set<string>; createdAfter?: number },
+    options?: { allowSteer?: boolean; allowPassive?: boolean; excludeIDs?: Set<string>; createdAfter?: number },
   ): Promise<boolean> {
     const stored = await peekReady(sessionID, options?.excludeIDs)
-    const items =
+    const timed =
       options?.createdAfter === undefined
         ? stored
         : stored.filter((item) => item.time.created >= (options.createdAfter ?? 0))
+    const items = options?.allowPassive === false ? timed.filter((item) => item.admission !== "idle_no_reply") : timed
     if (items.some((item) => item.mode === "task" && item.status !== "failed")) return true
     if (options?.allowSteer === false) return false
+    if (items.some((item) => item.admission === "idle_no_reply" && item.status !== "failed")) return true
     if (!items.some((item) => item.mode === "steer" && item.status !== "failed")) return false
     return !!(await latestRootID(sessionID))
   }
@@ -426,7 +424,8 @@ export namespace SessionInbox {
         const item = items[i]
         if (!item?.id) continue
         const normalized = normalizeStored(item)
-        if (normalized.mode === "task" && normalized.status !== "failed") candidates.set(keys[i][2], keys[i][1])
+        if ((normalized.mode === "task" || normalized.admission === "idle_no_reply") && normalized.status !== "failed")
+          candidates.set(keys[i][2], keys[i][1])
       }
       if (keys.length < 256) break
       after = keys.at(-1)
@@ -633,13 +632,19 @@ export namespace SessionInbox {
     return deliverUniqueWithPreparedMessage(input, writeItem)
   }
 
-  export async function enqueueUser(input: InvokeInput, options?: { mode: "task" | "steer" }): Promise<Item> {
+  export async function enqueueUser(
+    input: InvokeInput,
+    options?: { mode: "task" | "steer"; admission?: "idle_no_reply" },
+  ): Promise<Item> {
+    if (input.agent !== undefined && !(await Agent.get(input.agent))) throw new Error(`Agent not found: ${input.agent}`)
     const messageID = input.messageID ?? Identifier.ascending("message")
     const itemID = stableDeliveryItemID(input.sessionID, `user:${messageID}`)
     const { messageID: _queuedMessageID, ...queuedInput } = input
     const summarized = summarizeParts(input.parts)
     const origin = MessageV2.originFromMetadata(input.metadata)
     const mode: ItemMode = options?.mode ?? (input.noReply === true ? "steer" : "task")
+    if (options?.admission && (mode !== "steer" || input.noReply !== true))
+      throw new Error("Passive admission requires a noReply steer input")
     let taskSession: Info | undefined
     if (mode === "task") {
       taskSession = await readSession(input.sessionID)
@@ -679,6 +684,7 @@ export namespace SessionInbox {
       orderKey: Identifier.ascending("inbox"),
       messageID,
       input: queuedInput,
+      admission: options?.admission,
     }
     const admitted = await Storage.transaction(async () => {
       const session = taskSession ?? (await readSession(input.sessionID))
@@ -702,7 +708,9 @@ export namespace SessionInbox {
         })
         if (run && ["cancelled", "completed", "failed"].includes(run.status)) return { stored: item, created: false }
       }
-      return { stored: await writeItem(item), created: true }
+      const stored = await writeItem(item)
+      await Session.recordActivity(input.sessionID)
+      return { stored, created: true }
     })
     const stored = admitted.stored
     if (!admitted.created) return publicItem(stored)
@@ -718,10 +726,6 @@ export namespace SessionInbox {
         log.warn("failed to open queued task run shell", { sessionID: input.sessionID, messageID, error })
       })
     }
-    // The inbox is durable first; return only after navigation observes the accepted input.
-    await Session.recordActivity(input.sessionID).catch((error) => {
-      log.warn("failed to record session activity after user inbox enqueue", { sessionID: input.sessionID, error })
-    })
     return publicItem(stored)
   }
 
@@ -950,6 +954,10 @@ export namespace SessionInbox {
 
   export async function peekSteer(sessionID: string): Promise<StoredItem[]> {
     return (await listStored(sessionID)).filter((item) => item.mode === "steer" && item.status !== "failed")
+  }
+
+  export async function peekIdleNoReply(sessionID: string) {
+    return (await peekSteer(sessionID)).filter((item) => item.admission === "idle_no_reply")
   }
 
   export async function peekContext(sessionID: string): Promise<StoredItem[]> {

@@ -1,4 +1,4 @@
-import { createMemo, createSignal, Show, Suspense, onCleanup } from "solid-js"
+import { createEffect, createMemo, createSignal, on, Show, Suspense, onCleanup } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -26,6 +26,8 @@ export function LibraryPanel() {
   const onCloseWorkspace = useWorkspaceMobileHeaderClose()
   const { _ } = useLingui()
   const [view, setView] = createSignal<View>("home")
+  const [statisticsView, setStatisticsView] = createSignal("knowledge")
+  let searchInput: HTMLInputElement | undefined
   const [homeSync, setHomeSync] = createSignal<LibraryHomeSync>()
   const [search, setSearch] = createSignal("")
   const [searchError, setSearchError] = createSignal(false)
@@ -59,6 +61,18 @@ export function LibraryPanel() {
   }
 
   onCleanup(() => clearTimeout(debounceTimer))
+  createEffect(
+    on(
+      currentScopeID,
+      () => {
+        clearTimeout(debounceTimer)
+        setSearch("")
+        setDebouncedSearch("")
+        setSearchError(false)
+      },
+      { defer: true },
+    ),
+  )
 
   const isSearching = () => !!debouncedSearch()
 
@@ -76,7 +90,7 @@ export function LibraryPanel() {
 
   const showSearch = () => view() !== "stats"
   const navItems = createMemo(() => [
-    { id: "home", label: _({ id: "app.library.nav.home", message: "Home" }) },
+    { id: "home", label: _({ id: "app.library.nav.home", message: "Overview" }) },
     {
       id: "memory",
       label:
@@ -108,7 +122,11 @@ export function LibraryPanel() {
   })
   const isSyncing = createMemo(() =>
     Boolean(
-      view() === "home" ? homeSync()?.syncing() : workspaceStatsSync()?.syncing() || libraryStatsSync()?.syncing(),
+      view() === "home"
+        ? homeSync()?.syncing()
+        : statisticsView() === "usage"
+          ? workspaceStatsSync()?.syncing()
+          : libraryStatsSync()?.syncing(),
     ),
   )
 
@@ -119,13 +137,8 @@ export function LibraryPanel() {
       await refetchStats()
       return
     }
-    const tasks: Array<Promise<void>> = []
-    const workspace = workspaceStatsSync()
-    const library = libraryStatsSync()
-    if (workspace) tasks.push(Promise.resolve(workspace.sync()))
-    if (library) tasks.push(Promise.resolve(library.sync()))
-    if (tasks.length === 0) return
-    await Promise.all(tasks)
+    const target = statisticsView() === "usage" ? workspaceStatsSync() : libraryStatsSync()
+    await target?.sync()
     await refetchStats()
   }
 
@@ -136,7 +149,7 @@ export function LibraryPanel() {
         <AppPanel.Header class="library-header">
           <div class="library-header-inner">
             <AppPanel.HeaderRow>
-              <h1 class="library-title">{_({ id: "app.library.title", message: "Library" })}</h1>
+              <AppPanel.Title>{_({ id: "app.library.title", message: "Library" })}</AppPanel.Title>
               <Show when={view() === "home" || view() === "stats"}>
                 <AppPanel.Actions>
                   <button
@@ -153,19 +166,19 @@ export function LibraryPanel() {
               </Show>
             </AppPanel.HeaderRow>
             <div class="library-header-controls" classList={{ "library-header-home": view() === "home" }}>
-              <AppPanel.SegmentedNav
+              <AppPanel.Tabs
+                id="library"
+                label={_({ id: "app.library.views", message: "Library views" })}
                 items={navItems().map((item) => ({ id: item.id, label: item.label as string }))}
                 active={view()}
-                onChange={(id) => {
-                  setView(id as View)
-                  onSearchInput("")
-                }}
+                onChange={(id) => setView(id as View)}
               />
               <Show when={showSearch()}>
                 <div class="library-search-field">
                   <Icon name={getSemanticIcon("action.search")} size="small" class="text-icon-weak-base shrink-0" />
                   <input
                     type="text"
+                    ref={searchInput}
                     aria-label={_({ id: "app.library.search.label", message: "Search library" })}
                     placeholder={
                       view() === "home"
@@ -176,7 +189,7 @@ export function LibraryPanel() {
                             ? _({ id: "app.library.search.experiences", message: "Search experiences..." })
                             : _({ id: "app.library.search.skills", message: "Search skills..." })
                     }
-                    class="flex-1 bg-transparent text-13-regular text-text-base placeholder:text-text-weak outline-none"
+                    class="flex-1 bg-transparent app-panel-control text-text-base placeholder:text-text-weak outline-none"
                     value={search()}
                     onInput={(e) => onSearchInput(e.currentTarget.value)}
                   />
@@ -185,7 +198,10 @@ export function LibraryPanel() {
                       type="button"
                       aria-label={_({ id: "app.library.clearSearch", message: "Clear search" })}
                       class="library-icon-button"
-                      onClick={() => onSearchInput("")}
+                      onClick={() => {
+                        onSearchInput("")
+                        searchInput?.focus()
+                      }}
                     >
                       <Icon name={getSemanticIcon("action.close")} size="small" />
                     </button>
@@ -197,7 +213,7 @@ export function LibraryPanel() {
         </AppPanel.Header>
         <Show when={searchError()}>
           <div class="shrink-0 px-6 pb-1">
-            <span class="text-11-regular text-text-diff-delete-base">
+            <span class="app-panel-caption text-text-diff-delete-base">
               {_({
                 id: "app.library.search.unavailable",
                 message: "Search unavailable — embedding API may not be configured",
@@ -205,7 +221,7 @@ export function LibraryPanel() {
             </span>
           </div>
         </Show>
-        <AppPanel.Body padding={false} class="library-body">
+        <AppPanel.Body padding={false} class="library-body" tab={{ id: "library", value: view() }}>
           <Suspense>
             <div class="library-stage">
               <Show when={view() === "home"}>
@@ -213,6 +229,7 @@ export function LibraryPanel() {
                   sdk={sdk}
                   search={debouncedSearch()}
                   scopeID={currentScopeID()}
+                  scopeLabel={(id) => globalSync.data.scope.find((scope) => scope.id === id)?.name}
                   registerSync={setHomeSync}
                   onBrowse={(view, query) => {
                     setView(view)
@@ -221,23 +238,43 @@ export function LibraryPanel() {
                 />
               </Show>
               <Show when={view() === "stats"}>
-                <div class="library-section-block">
-                  <div class="library-section-heading">
-                    <span class="library-section-title">{_({ id: "app.library.stats.usage", message: "Usage" })}</span>
-                  </div>
-                  <Suspense>
-                    <StatsSection registerSync={setWorkspaceStatsSync} />
-                  </Suspense>
-                </div>
-                <div class="library-section-block">
+                <AppPanel.Tabs
+                  id="library-statistics"
+                  label={_({ id: "app.library.stats.views", message: "Statistics views" })}
+                  items={[
+                    { id: "knowledge", label: _({ id: "app.library.stats.knowledge", message: "Knowledge" }) },
+                    { id: "usage", label: _({ id: "app.library.stats.usage", message: "Usage" }) },
+                  ]}
+                  active={statisticsView()}
+                  onChange={setStatisticsView}
+                />
+                <div
+                  class="library-section-block"
+                  hidden={statisticsView() !== "knowledge"}
+                  role="tabpanel"
+                  id="library-statistics-knowledge-panel"
+                  aria-labelledby="library-statistics-knowledge"
+                >
                   <Suspense>
                     <StatsView registerSync={setLibraryStatsSync} storageLabel={storageLabel()} />
+                  </Suspense>
+                </div>
+                <div
+                  class="library-section-block"
+                  hidden={statisticsView() !== "usage"}
+                  role="tabpanel"
+                  id="library-statistics-usage-panel"
+                  aria-labelledby="library-statistics-usage"
+                >
+                  <Suspense>
+                    <StatsSection registerSync={setWorkspaceStatsSync} />
                   </Suspense>
                 </div>
               </Show>
               <Show when={view() === "memory"}>
                 <MemoryView
                   sdk={sdk}
+                  scopeID={currentScopeID()}
                   search={debouncedSearch()}
                   isSearching={isSearching()}
                   setSearchError={setSearchError}
@@ -253,6 +290,7 @@ export function LibraryPanel() {
                   refetchStats={refetchStats}
                   currentScopeID={currentScopeID()}
                   currentSessionID={currentSessionID()}
+                  scopeLabel={(id) => globalSync.data.scope.find((scope) => scope.id === id)?.name}
                 />
               </Show>
               <Show when={view() === "skill"}>

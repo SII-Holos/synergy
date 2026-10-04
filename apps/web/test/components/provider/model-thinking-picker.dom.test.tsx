@@ -90,6 +90,12 @@ test("thinking choices stay above the composer, distinguish Default from Off, an
     const defaultTrigger = page.getByRole("button", { name: "Select thinking effort: Default", exact: true })
     await defaultTrigger.press("Enter")
     await page.keyboard.press("Escape")
+    await page.locator('[data-component="popover-content"]').waitFor({ state: "detached", timeout: 5000 })
+    await page.waitForFunction(
+      () => document.activeElement?.getAttribute("aria-label") === "Select thinking effort: Default",
+      undefined,
+      { timeout: 5000 },
+    )
     expect(await defaultTrigger.getAttribute("aria-expanded")).toBe("false")
     expect(await defaultTrigger.evaluate((element) => document.activeElement === element)).toBe(true)
   } finally {

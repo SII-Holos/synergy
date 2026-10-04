@@ -38,7 +38,7 @@ export const recallModeLabels: Record<MemoryRecallMode, string> = {
 
 export const recallModeColors: Record<MemoryRecallMode, string> = {
   always: "workbench-selected-surface text-text-strong ring-border-base/20",
-  contextual: "bg-surface-success-base/20 text-text-on-success-base",
+  contextual: "bg-surface-success-weak text-text-on-success-base",
   search_only: "bg-surface-inset-base text-text-weaker",
 }
 
@@ -168,8 +168,9 @@ export const libraryMetaLabelClass = "library-meta-label"
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MiB`
+  return `${(bytes / 1024 ** 3).toFixed(1)} GiB`
 }
 
 export function SelectionBar(props: {
@@ -184,7 +185,7 @@ export function SelectionBar(props: {
   return (
     <div class={`flex items-center justify-between gap-3 px-3 py-2.5 ${libraryInsetClass}`}>
       <div class="flex min-w-0 items-center gap-2">
-        <span class="text-12-medium text-text-base">
+        <span class="app-panel-caption font-medium text-text-base">
           {_({
             id: "app.library.selection.count",
             message: "{selected} / {total} selected",
@@ -194,7 +195,7 @@ export function SelectionBar(props: {
         <Show when={props.count < props.total}>
           <button
             type="button"
-            class="rounded-full px-2.5 py-1 text-11-medium text-text-base ring-1 ring-inset ring-border-base/35 transition-colors hover:bg-surface-raised-base-hover"
+            class="rounded-full px-2.5 py-1 app-panel-caption font-medium text-text-base ring-1 ring-inset ring-border-base/35 transition-colors hover:bg-surface-raised-base-hover"
             onClick={props.onSelectAll}
           >
             {_({ id: "app.library.selection.selectAll", message: "Select all" })}
@@ -206,7 +207,7 @@ export function SelectionBar(props: {
           <button
             type="button"
             classList={{
-              "flex items-center gap-1 rounded-full px-3 py-1.5 text-11-medium ring-1 ring-inset transition-all": true,
+              "flex items-center gap-1 rounded-full px-3 py-1.5 app-panel-caption font-medium ring-1 ring-inset transition-all": true,
               "text-text-diff-delete-base ring-text-diff-delete-base/15 hover:bg-text-diff-delete-base/8":
                 !props.deleting,
               "text-text-weaker ring-border-base/40 pointer-events-none": props.deleting,
@@ -233,7 +234,7 @@ export function SelectionBar(props: {
         </Show>
         <button
           type="button"
-          class="rounded-full px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
+          class="rounded-full px-3 py-1.5 app-panel-caption font-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
           onClick={props.onCancel}
         >
           {_({ id: "app.library.selection.cancel", message: "Cancel" })}
@@ -247,7 +248,7 @@ export function ViewTab(props: { active: boolean; onClick: () => void; children:
     <button
       type="button"
       classList={{
-        "flex-1 rounded-[0.8rem] px-3 py-1.5 text-center text-12-medium transition-all duration-200": true,
+        "flex-1 rounded-[0.8rem] px-3 py-1.5 text-center app-panel-caption font-medium transition-all duration-180": true,
         "workbench-selected-surface bg-surface-raised-base text-text-strong scale-[1.01] ring-1 ring-inset ring-border-base/32":
           props.active,
         "text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base": !props.active,

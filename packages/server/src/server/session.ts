@@ -1,3 +1,5 @@
+import { SessionActivity } from "@ericsanchezok/synergy-harness/session/activity"
+import { TurnExecutionState } from "@ericsanchezok/synergy-harness/session/turn-execution-state"
 import {
   abandonSession,
   continueSession,
@@ -43,6 +45,23 @@ import { BusyError } from "@ericsanchezok/synergy-harness/session/error"
 import { BadRequestError, errors } from "./error"
 
 const log = Log.create({ service: "session" })
+function fileHistoryFailure(error: unknown): Response {
+  if (error instanceof SessionHistory.FileRestoreMissingPatchDataError)
+    return Response.json(error.toObject(), { status: 400 })
+  if (
+    error instanceof BusyError ||
+    (error instanceof Error &&
+      [
+        "SnapshotRestoreUnavailable",
+        "SnapshotStorageError",
+        "WorkspaceFileWriteConflictError",
+        "WorkspaceFileAccessDeniedError",
+        "WorkspaceBusyError",
+      ].includes(error.name))
+  )
+    return Response.json({ name: error.name, data: { message: error.message } }, { status: 409 })
+  throw error
+}
 const ControlProfileId = z.enum(["guarded", "autonomous", "full_access"])
 const booleanQuery = z.preprocess((value) => {
   if (value === "true" || value === true) return true
@@ -80,6 +99,49 @@ const SessionAbandonResult = z
 
 export const SessionRoute = () =>
   new Hono()
+    .post(
+      "/:sessionID/turn-execution",
+      describeRoute({
+        summary: "Read root task execution states",
+        operationId: "session.turnExecution",
+        tags: ["Session"],
+        responses: {
+          200: {
+            description: "Execution states for the requested roots",
+            content: { "application/json": { schema: resolver(z.array(TurnExecutionState.Schema)) } },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ sessionID: Identifier.schema("session") })),
+      validator("json", z.object({ rootIDs: z.array(Identifier.schema("message")).max(64) })),
+      async (c) => c.json(await SessionActivity.turns(c.req.valid("param").sessionID, c.req.valid("json").rootIDs)),
+    )
+    .get(
+      "/:sessionID/message/:messageID/part/:partID/activity",
+      describeRoute({
+        summary: "Read one tool activity result",
+        operationId: "session.toolActivity",
+        tags: ["Session"],
+        responses: {
+          200: {
+            description: "Captured result of the selected tool invocation",
+            content: { "application/json": { schema: resolver(SessionActivity.Result) } },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: Identifier.schema("session"),
+          messageID: Identifier.schema("message"),
+          partID: Identifier.schema("part"),
+        }),
+      ),
+      validator("query", z.object({ callID: z.string().optional() })),
+      async (c) => c.json(await SessionActivity.tool({ ...c.req.valid("param"), ...c.req.valid("query") })),
+    )
     .post(
       "/:sessionID/run/:runID/cancel",
       describeRoute({
@@ -918,7 +980,7 @@ export const SessionRoute = () =>
       describeRoute({
         summary: "Submit session input",
         description:
-          "Persist input before scheduling it. Input on a paused session with an existing task steers that task before its next model call and resumes it; other ordinary input queues a new task. Idle no-reply input starts directly.",
+          "Persist input before scheduling it. Input on a paused session with an existing task steers that task before its next model call and resumes it; other ordinary input queues a new task. Idle no-reply input queues durable passive materialization without model execution.",
         operationId: "session.input",
         responses: {
           200: {
@@ -1204,6 +1266,205 @@ export const SessionRoute = () =>
       },
     )
     .get(
+      "/:sessionID/timeline/page",
+      describeRoute({
+        summary: "Get an ordered page of message presentation summaries",
+        operationId: "session.timelinePage",
+        responses: {
+          200: {
+            description: "Bounded message summaries and lightweight referenced roots",
+            content: { "application/json": { schema: resolver(SessionHistory.TimelinePage) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("param", z.object({ sessionID: Identifier.schema("session") })),
+      validator(
+        "query",
+        z.object({
+          cursor: z.string().optional(),
+          limit: z.coerce.number().int().min(1).max(100).optional(),
+          messageID: Identifier.schema("message").optional(),
+        }),
+      ),
+      async (c) => {
+        try {
+          return c.json(await SessionHistory.timelinePage({ ...c.req.valid("param"), ...c.req.valid("query") }))
+        } catch (error) {
+          if (error instanceof SessionHistory.DisplayConflict) return c.json(error.toObject(), 409)
+          throw error
+        }
+      },
+    )
+    .get(
+      "/:sessionID/history/search",
+      describeRoute({
+        summary: "Search original content across the effective Session history",
+        operationId: "session.historySearch",
+        responses: {
+          200: {
+            description: "Stable message and Part matches with resumable preparation and bounded cursors",
+            content: { "application/json": { schema: resolver(SessionHistory.SearchPage) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("param", z.object({ sessionID: Identifier.schema("session") })),
+      validator(
+        "query",
+        z.object({
+          query: z
+            .string()
+            .min(1)
+            .max(1024)
+            .refine(
+              (value) => [...value.normalize("NFC").toLowerCase()].length <= 512,
+              "Search query exceeds its budget",
+            ),
+          reasoning: booleanQuery.optional(),
+          tools: booleanQuery.optional(),
+          cursor: z.string().optional(),
+          limit: z.coerce.number().int().min(1).max(100).optional(),
+        }),
+      ),
+      async (c) => {
+        const { sessionID } = c.req.valid("param")
+        await Session.flushPartWrites(sessionID)
+        try {
+          return c.json(await SessionHistory.search({ sessionID, ...c.req.valid("query"), signal: c.req.raw.signal }))
+        } catch (error) {
+          if (error instanceof SessionHistory.DisplayConflict) return c.json(error.toObject(), 409)
+          throw error
+        }
+      },
+    )
+    .get(
+      "/:sessionID/history/text",
+      describeRoute({
+        summary: "Read original text from the effective Session history",
+        operationId: "session.historyText",
+        responses: {
+          200: {
+            description: "Original text independent of the mounted window",
+            content: { "application/json": { schema: resolver(z.object({ text: z.string() })) } },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ sessionID: Identifier.schema("session") })),
+      validator(
+        "query",
+        z.object({
+          messageID: Identifier.schema("message").optional(),
+          rootID: Identifier.schema("message").optional(),
+          role: z.enum(["user", "assistant"]).optional(),
+          latest: booleanQuery.optional(),
+          reasoning: booleanQuery.optional(),
+          tools: booleanQuery.optional(),
+        }),
+      ),
+      async (c) => {
+        const { sessionID } = c.req.valid("param")
+        await Session.flushPartWrites(sessionID)
+        return c.json({ text: await SessionHistory.text({ sessionID, ...c.req.valid("query") }) })
+      },
+    )
+    .get(
+      "/:sessionID/message/:messageID/details",
+      describeRoute({
+        summary: "Resolve original message metadata by version",
+        operationId: "session.messageDetails",
+        responses: {
+          200: {
+            description: "Original message metadata without Part bodies",
+            content: { "application/json": { schema: resolver(SessionHistory.MessageDetails) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator(
+        "param",
+        z.object({ sessionID: Identifier.schema("session"), messageID: Identifier.schema("message") }),
+      ),
+      validator("query", z.object({ version: z.string().optional() })),
+      async (c) => {
+        try {
+          return c.json(await SessionHistory.messageDetails({ ...c.req.valid("param"), ...c.req.valid("query") }))
+        } catch (error) {
+          if (error instanceof SessionHistory.DisplayConflict) return c.json(error.toObject(), 409)
+          throw error
+        }
+      },
+    )
+    .get(
+      "/:sessionID/message/:messageID/part/page",
+      describeRoute({
+        summary: "Get presentation summaries for a message's Parts",
+        operationId: "session.partPage",
+        responses: {
+          200: {
+            description: "Bounded Part summaries with versioned content references",
+            content: { "application/json": { schema: resolver(SessionHistory.PartPage) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator(
+        "param",
+        z.object({ sessionID: Identifier.schema("session"), messageID: Identifier.schema("message") }),
+      ),
+      validator(
+        "query",
+        z.object({
+          cursor: z.string().optional(),
+          limit: z.coerce.number().int().min(1).max(100).optional(),
+          partID: Identifier.schema("part").optional(),
+          older: booleanQuery.optional(),
+        }),
+      ),
+      async (c) => {
+        await Session.flushPartWrites(c.req.valid("param").sessionID)
+        try {
+          return c.json(await SessionHistory.partPage({ ...c.req.valid("param"), ...c.req.valid("query") }))
+        } catch (error) {
+          if (error instanceof SessionHistory.DisplayConflict) return c.json(error.toObject(), 409)
+          throw error
+        }
+      },
+    )
+    .get(
+      "/:sessionID/message/:messageID/part/:partID/content",
+      describeRoute({
+        summary: "Resolve the original content of a versioned Part",
+        operationId: "session.partContent",
+        responses: {
+          200: {
+            description: "Canonical Part content and its version",
+            content: { "application/json": { schema: resolver(SessionHistory.PartContent) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: Identifier.schema("session"),
+          messageID: Identifier.schema("message"),
+          partID: Identifier.schema("part"),
+        }),
+      ),
+      validator("query", z.object({ version: z.string().optional() })),
+      async (c) => {
+        await Session.flushPartWrites(c.req.valid("param").sessionID)
+        try {
+          return c.json(await SessionHistory.partContent({ ...c.req.valid("param"), ...c.req.valid("query") }))
+        } catch (error) {
+          if (error instanceof SessionHistory.DisplayConflict) return c.json(error.toObject(), 409)
+          throw error
+        }
+      },
+    )
+    .get(
       "/:sessionID/message/page",
       describeRoute({
         summary: "Get a page of session messages",
@@ -1462,13 +1723,10 @@ export const SessionRoute = () =>
       ),
       validator("json", InvokeInput.omit({ sessionID: true })),
       async (c) => {
-        c.status(204)
-        c.header("Content-Type", "application/json")
-        return stream(c, async () => {
-          const sessionID = c.req.valid("param").sessionID
-          const body = c.req.valid("json")
-          await submitInput({ ...body, sessionID })
-        })
+        const sessionID = c.req.valid("param").sessionID
+        const body = c.req.valid("json")
+        await submitInput({ ...body, sessionID })
+        return c.body(null, 204)
       },
     )
     .post(
@@ -1666,11 +1924,71 @@ export const SessionRoute = () =>
       },
     )
     .post(
+      "/:sessionID/files/preview",
+      describeRoute({
+        summary: "Preview file restoration",
+        description: "Compare current files with the selected historical baseline before confirmation.",
+        operationId: "session.files.preview",
+        responses: {
+          200: {
+            description: "Restore preview and version identity",
+            content: { "application/json": { schema: resolver(SessionHistory.FileRestorePreview) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("param", z.object({ sessionID: Session.restoreFiles.schema.shape.sessionID })),
+      validator("json", SessionHistory.previewFiles.schema.omit({ sessionID: true })),
+      async (c) => {
+        try {
+          return c.json(
+            await SessionHistory.previewFilesWithSignal(
+              { sessionID: c.req.valid("param").sessionID, ...c.req.valid("json") },
+              c.req.raw.signal,
+            ),
+          )
+        } catch (error) {
+          return fileHistoryFailure(error)
+        }
+      },
+    )
+    .get(
+      "/:sessionID/files/diff",
+      describeRoute({
+        summary: "Read a historical file diff",
+        description: "Read captured file versions for a turn or session without reading the current workspace.",
+        operationId: "session.files.diff",
+        responses: {
+          200: {
+            description: "Historical file diff",
+            content: { "application/json": { schema: resolver(SnapshotSchema.FileDiff) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("param", z.object({ sessionID: Session.restoreFiles.schema.shape.sessionID })),
+      validator(
+        "query",
+        SessionHistory.FileDiffInput.omit({ sessionID: true }).extend({
+          generation: z.coerce.number().int().positive(),
+        }),
+      ),
+      async (c) => {
+        try {
+          return c.json(
+            await SessionHistory.fileDiff({ sessionID: c.req.valid("param").sessionID, ...c.req.valid("query") }),
+          )
+        } catch (error) {
+          return fileHistoryFailure(error)
+        }
+      },
+    )
+    .post(
       "/:sessionID/files/restore",
       describeRoute({
         summary: "Restore session files",
         description:
-          "Explicitly restore files from session patch data. Message rollback never calls this automatically.",
+          "Confirm a version-checked restore preview. Repeated confirmation returns the stored result without writing again. Message rollback never calls this automatically.",
         operationId: "session.files.restore",
         responses: {
           200: {
@@ -1690,7 +2008,7 @@ export const SessionRoute = () =>
           sessionID: Session.restoreFiles.schema.shape.sessionID,
         }),
       ),
-      validator("json", Session.restoreFiles.schema.omit({ sessionID: true })),
+      validator("json", Session.restoreFiles.schema.pick({ previewID: true }).required()),
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
         const body = c.req.valid("json")
@@ -1698,19 +2016,7 @@ export const SessionRoute = () =>
           const result = await SessionHistory.restoreFilesWithSignal({ sessionID, ...body }, c.req.raw.signal)
           return c.json(result)
         } catch (error) {
-          if (error instanceof SessionHistory.FileRestoreMissingPatchDataError) return c.json(error.toObject(), 400)
-          if (error instanceof BusyError) return c.json({ name: error.name, data: { message: error.message } }, 409)
-          if (
-            error instanceof Error &&
-            [
-              "SnapshotRestoreUnavailable",
-              "WorkspaceFileWriteConflictError",
-              "WorkspaceFileAccessDeniedError",
-              "WorkspaceBusyError",
-            ].includes(error.name)
-          )
-            return c.json({ name: error.name, data: { message: error.message } }, 409)
-          throw error
+          return fileHistoryFailure(error)
         }
       },
     )

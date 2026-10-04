@@ -17,6 +17,7 @@
     "@ericsanchezok/synergy-presets": "workspace:*"
   },
   "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",

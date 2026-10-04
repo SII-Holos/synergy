@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, mock, test } from "bun:test"
 import * as fs from "node:fs"
 import * as os from "node:os"
@@ -60,7 +61,7 @@ function bashRegistryTool() {
     description: "Bash tool",
     parameters: z.object({ command: z.string(), description: z.string().optional() }),
     async execute(params: { command: string; description?: string }, ctx: any) {
-      return LocalBashBackend.execute({ command: params.command, description: params.description ?? "bash" }, ctx)
+      return LocalBashBackend.execute({ command: params.command }, { ...ctx, workBrief: params.description ?? "bash" })
     },
   }
 }
@@ -76,7 +77,7 @@ async function resolveBash(sessionID: string) {
       modelID: "test-model",
       providerID: "test-provider",
       mode: "build",
-      agent: "synergy",
+      agent: PrimaryAgentIdentity.names.general,
       path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
       cost: 0,
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

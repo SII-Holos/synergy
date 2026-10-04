@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-Project directory conversion runs before server admission and inspects historical filesystem paths. A deleted project directory must remain visible as unavailable, but a Git probe can fail before the migration reaches its missing-directory handling. The failure mechanism and missed fixture are recorded in the [postmortem](../../../postmortem/0036-historical-data-blocked-startup.md).
+Project directory conversion runs before server admission and inspects historical filesystem paths. A deleted project directory must remain visible as unavailable, but a Git probe can fail before the migration reaches its missing-directory handling. The failure mechanism and missed fixture are recorded in the [postmortem](../../../postmortem/0043-historical-data-blocked-startup.md).
 
 ## Decision
 

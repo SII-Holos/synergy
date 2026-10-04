@@ -1,5 +1,6 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { registerToolGroup } from "./tool-group-browser"
+import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { BrowserAnnotateTool } from "./tools/browser-annotate"
 import { BrowserSnapshotTool } from "./tools/browser-snapshot"
@@ -32,6 +33,11 @@ const runtimeState = RuntimeContext.state(() => ({
 export function registerBrowserTools(): void {
   const instanceState = runtimeState()
 
+  Tool.registerInputHistory("browser", {
+    browser_console: { id: "entryId" },
+    browser_network: { id: "requestId" },
+    browser_downloads: { id: "downloadId", path: "filePath" },
+  })
   registerToolGroup()
   if (instanceState.registered) return
   instanceState.registered = true

@@ -1,16 +1,13 @@
-import { createMemo, createRenderEffect, on, onCleanup, type JSX, type ParentProps } from "solid-js"
+import { createMemo, createRenderEffect, on, onCleanup, onMount, type JSX, type ParentProps } from "solid-js"
 
 const EASING_REPOSITION = "cubic-bezier(0.2, 0, 0, 1)"
-const DURATION_REPOSITION = 250
-const STAGGER_MS = 18
-const MAX_STAGGER = 120
+const DURATION_REPOSITION = 240
 
 /**
  * 2D FLIP container for kanban panes: whenever the pane-key sequence of
  * `entries` changes, every `[data-pane-key]` descendant that moved (reorder
  * swaps, focus promotion, overflow reflow) animates from its previous
- * position to the new one. Mirrors the sidebar FlipList timing and respects
- * prefers-reduced-motion.
+ * position to the new one, respecting prefers-reduced-motion.
  *
  * Measurements are deferred to a requestAnimationFrame: the keyed <For> below
  * commits its DOM moves in a later effect, so measuring synchronously reads
@@ -27,7 +24,20 @@ export function FlipPanes(
 ) {
   let container: HTMLDivElement | undefined
   let previousPositions: Map<string, { left: number; top: number }> | undefined
-  const reduceMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  const motionPreference =
+    typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)") : undefined
+  let frame: number | undefined
+  const onMotionChange = () => {
+    cancelAnimations(query())
+    previousPositions = snapshot(query())
+  }
+  motionPreference?.addEventListener("change", onMotionChange)
+  onCleanup(() => {
+    motionPreference?.removeEventListener("change", onMotionChange)
+    if (frame !== undefined) cancelAnimationFrame(frame)
+    cancelAnimations(query())
+    container = undefined
+  })
 
   const bindRoot = (element: HTMLDivElement) => {
     container = element
@@ -56,17 +66,22 @@ export function FlipPanes(
   }
 
   function runFlip() {
-    if (!container || reduceMotion) return
+    if (!container) return
+    if (frame !== undefined) cancelAnimationFrame(frame)
+    if (motionPreference?.matches) {
+      previousPositions = snapshot(query())
+      return
+    }
     const storedPositions = previousPositions
     cancelAnimations(query())
-    requestAnimationFrame(() => {
-      if (!container) return
+    frame = requestAnimationFrame(() => {
+      frame = undefined
+      if (!container || motionPreference?.matches) return
       const nextPositions = snapshot(query())
       previousPositions = nextPositions
       if (!storedPositions) return
 
-      const moving: Array<{ element: HTMLElement; dx: number; dy: number; index: number }> = []
-      let index = 0
+      const moving: Array<{ element: HTMLElement; dx: number; dy: number }> = []
       for (const row of query()) {
         const key = row.dataset.paneKey
         if (!key) continue
@@ -76,18 +91,15 @@ export function FlipPanes(
         const dx = previous.left - current.left
         const dy = previous.top - current.top
         if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-          moving.push({ element: row, dx, dy, index })
-          index += 1
+          moving.push({ element: row, dx, dy })
         }
       }
       if (moving.length === 0) return
 
-      const staggerDelay = Math.min(STAGGER_MS, MAX_STAGGER / Math.max(1, moving.length))
-      for (const { element, dx, dy, index: i } of moving) {
+      for (const { element, dx, dy } of moving) {
         element.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "translate(0, 0)" }], {
           duration: DURATION_REPOSITION,
           easing: EASING_REPOSITION,
-          delay: i * staggerDelay,
           fill: "backwards",
         })
       }
@@ -108,9 +120,10 @@ export function FlipPanes(
   // Refresh the stored positions without animating when the container
   // resizes (window resize, rail drag): the next signature change must not
   // animate from stale coordinates.
-  createRenderEffect(() => {
+  onMount(() => {
     const element = container
     if (!element) return
+    previousPositions = snapshot(query())
     const observer = new ResizeObserver(() => {
       cancelAnimations(query())
       previousPositions = snapshot(query())

@@ -2,6 +2,32 @@ import type { IntlFormatter } from "@/context/locale/formatter"
 import type { AccountUsageSnapshot, AccountUsageWindow } from "@ericsanchezok/synergy-sdk/client"
 import type { MessageDescriptor } from "@lingui/core"
 
+export async function completeUsageSnapshots(
+  snapshots: Record<string, AccountUsageSnapshot>,
+  connected: readonly string[],
+  read: (providerID: string) => Promise<AccountUsageSnapshot | undefined>,
+) {
+  const missing = [...new Set(connected)].filter((id) => !snapshots[id])
+  const results = await Promise.allSettled(missing.map(read))
+  return Object.fromEntries([
+    ...Object.entries(snapshots),
+    ...results.map((result, index) => {
+      const providerID = missing[index]!
+      const snapshot: AccountUsageSnapshot =
+        result.status === "fulfilled" && result.value
+          ? result.value
+          : {
+              providerID,
+              status: "error",
+              fetchedAt: new Date().toISOString(),
+              windows: [],
+              details: [],
+            }
+      return [providerID, snapshot] as const
+    }),
+  ])
+}
+
 export type UsageResetCopy = {
   value: string
   valueDescriptor: MessageDescriptor

@@ -1,3 +1,4 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { describe, expect, mock, test } from "bun:test"
 import { Token } from "../../src/util/token"
 import { Log } from "../../src/util/log"
@@ -713,7 +714,7 @@ describe("session.compaction.buildAnchor", () => {
         role: "user",
         sessionID: "test-session",
         time: { created: now },
-        agent: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
         model: { providerID: "test", modelID: "test-model" },
         ...(metadata ? { metadata } : {}),
       },
@@ -993,7 +994,7 @@ describe("session.compaction.selectPartsToPrune", () => {
         role: "user",
         sessionID: "test-session",
         time: { created: now },
-        agent: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
         model: { providerID: "test", modelID: "test-model" },
       },
       parts: [{ id: `text-${id}`, sessionID: "test-session", messageID: id, type: "text", text: "hello" }],
@@ -1011,7 +1012,7 @@ describe("session.compaction.selectPartsToPrune", () => {
         modelID: "test-model",
         providerID: "test",
         mode: "default",
-        agent: "synergy",
+        agent: PrimaryAgentIdentity.names.general,
         path: { cwd: "/", root: "/" },
         cost: 0,
         tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

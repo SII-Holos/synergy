@@ -176,13 +176,6 @@ export const S = {
     message: "{date} {time} · {turns} turns",
   },
 
-  // ── milestones.tsx ──────────────────────────────────────────────────
-  milestoneTitle: { id: "app.stats.milestone.title", message: "Achievements (coming next)" },
-  milestoneSubtitle: {
-    id: "app.stats.milestone.subtitle",
-    message: "We’ll turn your long-term stats into unlockable milestones next.",
-  },
-
   // ── model.ts — overview label descriptors (translate at use-site) ───
   overviewLabelSessions: { id: "app.stats.overview.label.sessions", message: "Sessions" },
   overviewLabelTurns: { id: "app.stats.overview.label.turns", message: "Turns" },

@@ -1,0 +1,585 @@
+import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
+import type { AssistantMessage, UserMessage, TurnExecutionState } from "@ericsanchezok/synergy-sdk"
+import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack } from "solid-js"
+import { useLingui } from "@lingui/solid"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { createDisclosureMotionRef } from "@ericsanchezok/synergy-ui/hooks"
+import "./conversation-rows.css"
+import { Dynamic } from "solid-js/web"
+import { SessionTurn, resolveActivityDisclosure } from "@ericsanchezok/synergy-ui/session-turn"
+import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
+import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
+import { MessageSlotOutlet } from "@ericsanchezok/synergy-ui/message-slots"
+import { useExecution } from "@/context/execution"
+import { buildConversationRows, type ConversationRow } from "./conversation-rows"
+import { ToolExpansionProvider } from "@ericsanchezok/synergy-ui/tool-expansion"
+
+// Provenance: https://github.com/inokawa/virtua/blob/0.42.3/src/solid/Virtualizer.tsx
+// Local adaptation: Part identities, retained interaction rows and prepend offsets share the existing scroll element.
+const layouts = new WeakMap<
+  PluginConversationService,
+  Map<string, { keys: string[]; cache: VirtualizerHandle["cache"]; bytes: number }>
+>()
+
+type ProcessControls = {
+  executionFor?: (rootID: string) => TurnExecutionState | undefined
+  onRestoreChanges?: (messageID: string) => void
+}
+
+export function VirtualConversationRows(
+  input: ProcessControls & { context: PluginConversationService; scrollRef?: HTMLDivElement },
+) {
+  const props = input.context
+  const content = props.content!
+  const [handle, setHandle] = createSignal<VirtualizerHandle>()
+  const [margin, setMargin] = createSignal(0)
+  const [retained, setRetained] = createSignal<string[]>([])
+  const [interactionBlocks, setInteractionBlocks] = createSignal<string[]>([])
+  const [interactionRoots, setInteractionRoots] = createSignal<string[]>([])
+  const [expanded, setExpanded] = createSignal<ReadonlyMap<string, boolean>>(new Map())
+  const activityView = {
+    getExpanded: (key: string) => props.activityView?.getExpanded(key) ?? expanded().get(key),
+    setExpanded: (key: string, value: boolean) => {
+      const set = (id: string, open: boolean) => {
+        if (props.activityView) props.activityView.setExpanded(id, open)
+        else setExpanded((previous) => new Map(previous).set(id, open))
+      }
+      if (!value && key.startsWith("turn-process:")) {
+        for (const row of requestedRows())
+          if (row.kind === "activity" && `turn-process:${row.root.id}` === key) set(row.activity.key, false)
+      }
+      set(key, value)
+    },
+  }
+  const processState = createMemo((previous: Map<string, { working: boolean; held: boolean }> | undefined) => {
+    const next = new Map<string, { working: boolean; held: boolean }>()
+    for (const root of props.timeline()) {
+      if (root.role !== "user") continue
+      const state = input.executionFor?.(root.id)
+      const last = previous?.get(root.id)
+      const final = props
+        .turnProjection()
+        .turnMessagesFor(root)
+        .findLast((message) => message.role === "assistant")
+      const working = state
+        ? ["preparing", "running", "approval"].includes(state.status) ||
+          (state.status === "completed" && !!last?.working && final?.time.completed == null)
+        : root.id === props.lastUserMessage()?.id && props.isWorking()
+      const reading = props.scrolledUp() || interactionRoots().includes(root.id)
+      next.set(root.id, { working, held: reading && (!!last?.held || (!!last?.working && !working)) })
+    }
+    return next
+  })
+  const requestedRows = createMemo<ConversationRow[]>((previous) =>
+    buildConversationRows({
+      previous,
+      timeline: props.timeline(),
+      messagesFor: (root) => props.turnProjection().turnMessagesFor(root as UserMessage),
+      summaries: content.summaries,
+      page: content.page,
+      activity: (block) =>
+        activityView.getExpanded(block.key) ??
+        (props.activityDisplay() === "full" ||
+          (interactionBlocks().includes(block.key) &&
+            !!previous?.find((row) => row.key === block.key)?.activity?.open) ||
+          (props.activityDisplay() !== "minimal" &&
+            (block.active ||
+              (props.scrolledUp() && !!previous?.find((row) => row.key === block.key)?.activity?.open)))),
+      process: (root) => {
+        const state = processState().get(root.id)!
+        return {
+          working: state.working,
+          open: resolveActivityDisclosure({
+            mode: props.activityDisplay(),
+            working: state.working,
+            heldOpen: state.held,
+            explicit: activityView.getExpanded(`turn-process:${root.id}`),
+          }),
+        }
+      },
+    }),
+  )
+  let container: HTMLDivElement | undefined
+  const [rows, setRows] = createSignal<ConversationRow[]>(requestedRows())
+  createEffect(
+    on(requestedRows, (next) => {
+      const current = untrack(rows)
+      const nextKeys = new Set(next.map((row) => row.key))
+      const mounted = new Set(
+        [...(container?.querySelectorAll<HTMLElement>("[data-display-row]") ?? [])].map(
+          (row) => row.dataset.displayRow,
+        ),
+      )
+      const exits = current.filter(
+        (row) =>
+          !nextKeys.has(row.key) &&
+          mounted.has(row.key) &&
+          ((row.kind === "body" && row.processBody) || row.kind === "activity" || row.activity),
+      )
+      const merged = [...next]
+      for (const row of exits) {
+        const following = current.slice(current.indexOf(row) + 1).find((item) => nextKeys.has(item.key))
+        const index = following ? merged.findIndex((item) => item.key === following.key) : merged.length
+        merged.splice(index, 0, { ...row, exiting: true })
+      }
+      setRows(merged)
+    }),
+  )
+  const finishExit = (key: string) => setRows((previous) => previous.filter((row) => row.key !== key || !row.exiting))
+  const keys = createMemo(() => rows().map((row) => row.key))
+  const layout = layouts.get(props)?.get(props.sessionID)
+  const initialCache =
+    layout && layout.keys.length === keys().length && layout.keys.every((key, index) => key === keys()[index])
+      ? layout.cache
+      : undefined
+  onCleanup(() => {
+    const virtual = handle()
+    if (!virtual) return
+    const cache = virtual.cache
+    const current = keys()
+    const entries = layouts.get(props) ?? new Map()
+    layouts.set(props, entries)
+    entries.delete(props.sessionID)
+    entries.set(props.sessionID, { keys: current, cache, bytes: JSON.stringify([current, cache]).length * 2 })
+    let bytes = [...entries.values()].reduce((total, entry) => total + entry.bytes, 0)
+    for (const [key, entry] of entries) {
+      if (bytes <= 4 * 1024 * 1024) break
+      entries.delete(key)
+      bytes -= entry.bytes
+    }
+  })
+  const byKey = createMemo(() => new Map(rows().map((row) => [row.key, row])))
+  const kept = createMemo(() =>
+    retained()
+      .map((key) => keys().indexOf(key))
+      .filter((index) => index >= 0),
+  )
+  const expansions = new Map<string, boolean>()
+  const expansionState = {
+    get: (id: string) => expansions.get(id),
+    set: (id: string, open: boolean) => {
+      expansions.delete(id)
+      expansions.set(id, open)
+      if (expansions.size > 4096) expansions.delete(expansions.keys().next().value!)
+    },
+  }
+  let previous: string[] = []
+  let anchor: { key: string; offset: number } | undefined
+  let anchorFrame: number | undefined
+  const captureAnchor = () => {
+    const virtual = handle()
+    if (!virtual) return
+    const index = virtual.findStartIndex()
+    const key = keys()[index]
+    if (key) anchor = { key, offset: virtual.scrollOffset - virtual.getItemOffset(index) }
+  }
+  createEffect(() => {
+    const next = keys()
+    const virtual = untrack(handle)
+    const scroller = input.scrollRef
+    const leading = previous[0]?.endsWith(":earlier") ? previous[1] : previous[0]
+    const prepended = leading !== undefined && next.indexOf(leading) > previous.indexOf(leading)
+    if (virtual && prepended && scroller && props.scrolledUp()) {
+      const saved = anchor
+      const target = saved ? next.indexOf(saved.key) : -1
+      if (saved && target >= 0 && target !== previous.indexOf(saved.key)) {
+        if (anchorFrame !== undefined) cancelAnimationFrame(anchorFrame)
+        anchorFrame = requestAnimationFrame(() => {
+          anchorFrame = undefined
+          scroller.scrollTop = virtual.getItemOffset(target) + saved.offset
+        })
+      }
+    }
+    previous = next
+  })
+  onCleanup(() => {
+    if (anchorFrame !== undefined) cancelAnimationFrame(anchorFrame)
+  })
+  const pinInteraction = () => {
+    const ids = new Set<string>()
+    const roots = new Set<string>()
+    const blocks = new Set<string>()
+    const add = (node: Node | null) => {
+      const element = node instanceof Element ? node : node?.parentElement
+      const row = element?.closest<HTMLElement>("[data-display-row]")
+      if (row && container?.contains(row)) {
+        ids.add(row.dataset.displayRow!)
+        roots.add(row.dataset.turnRoot!)
+        if (row.dataset.activityBlock) blocks.add(row.dataset.activityBlock)
+      }
+    }
+    add(document.activeElement)
+    const selection = document.getSelection()
+    if (selection && !selection.isCollapsed) {
+      add(selection.anchorNode)
+      add(selection.focusNode)
+      const indices = [...ids].map((key) => keys().indexOf(key)).filter((index) => index >= 0)
+      if (indices.length === 2) {
+        const start = Math.min(...indices),
+          end = Math.max(...indices)
+        for (const element of container?.querySelectorAll<HTMLElement>("[data-display-row]") ?? []) {
+          const index = keys().indexOf(element.dataset.displayRow!)
+          if (index >= start && index <= end) ids.add(element.dataset.displayRow!)
+        }
+      }
+    }
+    setRetained([...ids])
+    setInteractionRoots([...roots])
+    setInteractionBlocks([...blocks])
+  }
+  onMount(() => {
+    const measure = () => {
+      const scroll = input.scrollRef
+      if (scroll && container)
+        setMargin(container.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop)
+    }
+    const observer = new ResizeObserver(measure)
+    if (container?.parentElement) observer.observe(container.parentElement)
+    measure()
+    captureAnchor()
+    document.addEventListener("focusin", pinInteraction)
+    document.addEventListener("focusout", pinInteraction)
+    document.addEventListener("selectionchange", pinInteraction)
+    const release = props.registerMessageLocator?.(async (messageID, behavior, partID) => {
+      if (content.loadWindow && !(await content.loadWindow(messageID, partID))) return false
+      if (partID) {
+        const root = props.timeline().find(
+          (root) =>
+            root.id === messageID ||
+            (root.role === "user" &&
+              props
+                .turnProjection()
+                .turnMessagesFor(root)
+                .some((message) => message.id === messageID)),
+        )
+        if (root) activityView.setExpanded(`turn-process:${root.id}`, true)
+        const block = requestedRows().find((row) => row.kind === "activity" && row.activity.parts.includes(partID))
+        if (block?.activity) activityView.setExpanded(block.activity.key, true)
+      }
+      let index = rows().findIndex((row) => row.message.id === messageID)
+      if (index < 0) return false
+      await content.load(messageID)
+      index = rows().findIndex(
+        (row) =>
+          row.message.id === messageID &&
+          (!partID || (row.kind === "body" && row.parts.some((part) => part.id === partID))),
+      )
+      if (index < 0 || !handle()) return false
+      handle()!.scrollToIndex(index, { align: "start", smooth: behavior === "smooth" })
+      if (partID)
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => {
+            const part = [...container!.querySelectorAll<HTMLElement>("[data-part-id]")].find(
+              (element) => element.dataset.partId === partID,
+            )
+            if (part && input.scrollRef)
+              input.scrollRef.scrollBy({
+                top: part.getBoundingClientRect().top - input.scrollRef.getBoundingClientRect().top,
+                behavior,
+              })
+            resolve()
+          }),
+        )
+      return true
+    })
+    onCleanup(() => {
+      observer.disconnect()
+      release?.()
+      document.removeEventListener("focusin", pinInteraction)
+      document.removeEventListener("focusout", pinInteraction)
+      document.removeEventListener("selectionchange", pinInteraction)
+    })
+  })
+  return (
+    <div ref={container} class="w-full min-w-0 max-w-full">
+      <Show when={input.scrollRef}>
+        <ToolExpansionProvider value={expansionState}>
+          <Virtualizer
+            ref={setHandle}
+            data={keys()}
+            scrollRef={input.scrollRef}
+            startMargin={margin()}
+            overscan={4}
+            keepMounted={kept()}
+            onScroll={captureAnchor}
+            cache={initialCache}
+          >
+            {(key) => {
+              const row = createMemo<ConversationRow>((previous) => byKey().get(key) ?? previous!, byKey().get(key)!)
+              return (
+                <ConversationDisplayRow
+                  context={props}
+                  row={row}
+                  onExit={finishExit}
+                  activityView={activityView}
+                  executionFor={input.executionFor}
+                  onRestoreChanges={input.onRestoreChanges}
+                />
+              )
+            }}
+          </Virtualizer>
+        </ToolExpansionProvider>
+      </Show>
+    </div>
+  )
+}
+
+function ConversationDisplayRow(
+  input: ProcessControls & {
+    context: PluginConversationService
+    row: () => ConversationRow
+    onExit: (key: string) => void
+    activityView: NonNullable<PluginConversationService["activityView"]>
+  },
+) {
+  const props = input.context
+  const content = props.content!
+  const row = input.row
+  const execution = useExecution()
+  const { _ } = useLingui()
+  const exitMotion = createDisclosureMotionRef({
+    visible: () => !row().exiting,
+    animate: () => !props.scrolledUp(),
+    onHidden: () => input.onExit(row().key),
+  })
+  const [failure, setFailure] = createSignal<string>()
+  const [loading, setLoading] = createSignal(false)
+  const [retry, setRetry] = createSignal(0)
+  const refreshed = new Set<string>()
+  const load = async () => {
+    const current = row()
+    if (current.kind === "body") {
+      for (const entry of retainedParts.values()) entry.lease.release()
+      retainedParts.clear()
+      setFailure(undefined)
+      setRetry((value) => value + 1)
+      return
+    }
+    if (current.kind !== "load") return
+    setLoading(true)
+    setFailure(undefined)
+    try {
+      if (current.older && content.loadEarlier) await content.loadEarlier(current.message.id)
+      else await content.load(current.message.id, current.more)
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : String(error))
+    } finally {
+      setLoading(false)
+    }
+  }
+  onMount(() => {
+    props.onFirstTurnMounted()
+    if (row().kind === "load") void load()
+  })
+  const retainedParts = new Map<string, { version: string; lease: ReturnType<typeof content.retain> }>()
+  let alive = true
+  onCleanup(() => {
+    alive = false
+    for (const entry of retainedParts.values()) entry.lease.release()
+    retainedParts.clear()
+  })
+  createEffect(() => {
+    const current = row()
+    if (current.kind !== "body" || content.page(current.message.id)) return
+    void content
+      .load(current.message.id)
+      .then(() => {
+        if (alive) void load()
+      })
+      .catch((error) => {
+        if (alive) setFailure(error instanceof Error ? error.message : String(error))
+      })
+  })
+  createEffect(() => {
+    retry()
+    const current = row()
+    if (current.kind !== "body") return
+    const wanted = new Set(current.parts.map((part) => part.id))
+    for (const part of current.parts) {
+      const previous = retainedParts.get(part.id)
+      if (previous?.version === part.content.version) continue
+      const lease = content.retain(part)
+      retainedParts.set(part.id, { version: part.content.version, lease })
+      previous?.lease.release()
+      void lease.ready.catch((error) => {
+        if (retainedParts.get(part.id)?.lease !== lease) return
+        setFailure(error instanceof Error ? error.message : String(error))
+        const identity = `${part.id}:${part.content.version}`
+        if (!refreshed.has(identity)) {
+          refreshed.add(identity)
+          void content.load(current.message.id, false, true).catch(() => {})
+        }
+      })
+    }
+    for (const [key, entry] of retainedParts)
+      if (!wanted.has(key)) {
+        entry.lease.release()
+        retainedParts.delete(key)
+      }
+  })
+  const standalone = () => row().root.role === "assistant"
+  const segment = () => {
+    const current = row()
+    return {
+      user: current.kind === "body" && current.message.id === current.root.id,
+      footer: current.kind === "footer",
+      parts: current.kind === "body" ? current.parts : [],
+      before: current.kind === "body" && current.before,
+      after: current.kind === "body" && current.after,
+      beforeTool: current.kind === "body" && current.beforeTool,
+      beforeReasoning: current.kind === "body" && current.beforeReasoning,
+      activityBody: current.kind === "body" && !!current.activity,
+      processHeader: current.kind === "process",
+      processBody: current.kind === "body" && current.processBody,
+      process: current.process,
+    }
+  }
+  const anchor = () => {
+    const current = row()
+    return current.kind === "body" && current.before ? props.anchor(current.message.id) : undefined
+  }
+  const partID = () => {
+    const current = row()
+    return current.kind === "body" ? current.parts[0]?.id : undefined
+  }
+  return (
+    <div
+      ref={exitMotion}
+      data-display-row={row().key}
+      data-row-kind={row().kind}
+      data-activity-block={row().activity?.key}
+      data-process-body={segment().processBody ? "" : undefined}
+      data-turn-root={row().root.id}
+      data-message-id={row().message.id}
+      data-message-role={row().message.role}
+      data-part-id={partID()}
+      id={anchor()}
+      class="conversation-display-row min-w-0 w-full max-w-full"
+    >
+      <Show when={failure()}>
+        <button type="button" class="text-12-medium text-text-weak" onClick={() => void load()}>
+          {failure()}
+        </button>
+      </Show>
+      <Show
+        when={row().kind !== "load"}
+        fallback={
+          <div class="min-h-6" aria-busy={loading()}>
+            <Show when={failure()}>
+              <button type="button" onClick={() => void load()}>
+                {failure()}
+              </button>
+            </Show>
+          </div>
+        }
+      >
+        <Show
+          when={row().kind === "activity"}
+          fallback={
+            <Show
+              when={!standalone()}
+              fallback={
+                <Show when={row().kind === "body"}>
+                  <Show when={segment().before}>
+                    <MessageSlotOutlet
+                      slot="message.before"
+                      sessionId={props.sessionID}
+                      messageId={row().message.id}
+                      role="assistant"
+                    />
+                  </Show>
+                  <Dynamic
+                    component={row().message.metadata?.source === "command" ? CommandResultOutput : MailboxMessage}
+                    message={row().message as AssistantMessage}
+                    partIDs={segment().parts.map((part) => part.id)}
+                    showHeader={segment().before}
+                    classes={{ root: "min-w-0 w-full relative", container: "w-full min-w-0 max-w-full" }}
+                  />
+                  <Show when={segment().after}>
+                    <MessageSlotOutlet
+                      slot="message.actions"
+                      sessionId={props.sessionID}
+                      messageId={row().message.id}
+                      role="assistant"
+                    />
+                    <MessageSlotOutlet
+                      slot="message.after"
+                      sessionId={props.sessionID}
+                      messageId={row().message.id}
+                      role="assistant"
+                    />
+                  </Show>
+                </Show>
+              }
+            >
+              <SessionTurn
+                sessionID={props.sessionID}
+                messageID={row().root.id}
+                rootMessage={row().root as UserMessage}
+                messages={
+                  row().kind === "footer" || row().kind === "process"
+                    ? props.turnProjection().turnMessagesFor(row().root as UserMessage)
+                    : [row().message]
+                }
+                segment={segment()}
+                copyMessageText={content.text}
+                compactionParentIDs={props.turnProjection().compactionParentIDs}
+                activityDisplay={props.activityDisplay()}
+                activityView={input.activityView}
+                executionState={input.executionFor?.(row().root.id)}
+                following={!props.scrolledUp()}
+                lastUserMessageID={props.lastUserMessage()?.id}
+                compactReasoning={props.compactReasoning()}
+                onRewind={
+                  props.canRewind(row().root as UserMessage)
+                    ? () => props.onRewind?.(row().root as UserMessage)
+                    : undefined
+                }
+                rollbackActive={props.rollbackActive}
+                onReviewChanges={props.onReviewChanges}
+                onRestoreChanges={input.onRestoreChanges}
+                onForkMessage={props.onForkMessage}
+                executionSummary={
+                  row().kind === "footer" && execution.available() ? execution.round(row().root.id) : undefined
+                }
+                onExecutionDetails={
+                  row().kind === "footer" && execution.available()
+                    ? () => void execution.open(row().root.id)
+                    : undefined
+                }
+                classes={{
+                  root: "min-w-0 w-full relative",
+                  content: "flex flex-col justify-between !overflow-visible",
+                  container: "w-full min-w-0 max-w-full",
+                }}
+              />
+            </Show>
+          }
+        >
+          <button
+            type="button"
+            data-slot="activity-batch-trigger"
+            aria-expanded={row().activity?.open}
+            onClick={() => {
+              const block = row().activity
+              if (block) input.activityView.setExpanded(block.key, !block.open)
+            }}
+          >
+            <span>
+              {row().activity?.tools
+                ? _({
+                    id: "session.activity.operations",
+                    message: "{count, plural, one {# action} other {# actions}}",
+                    values: { count: row().activity!.tools },
+                  })
+                : _({ id: "session.reasoning.title", message: "Reasoning" })}
+            </span>
+            <Icon name={getSemanticIcon("navigation.expand")} size="small" />
+          </button>
+        </Show>
+      </Show>
+    </div>
+  )
+}

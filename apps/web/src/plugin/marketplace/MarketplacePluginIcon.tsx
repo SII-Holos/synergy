@@ -1,5 +1,6 @@
-import { createSignal, Show } from "solid-js"
+import { createEffect, createSignal, on, Show } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { hasIcon } from "@ericsanchezok/synergy-ui/plugin/icon-registry"
 import { useLingui } from "@lingui/solid"
 
 type MarketplaceIcon = { type: "lucide"; name: string } | { type: "image"; url: string; alt?: string }
@@ -10,18 +11,10 @@ type PluginIconSource = {
   icon?: MarketplaceIcon
 }
 
-function fallbackPluginIcon(plugin: PluginIconSource | null | undefined) {
-  const keywords = plugin?.keywords.map((item) => item.toLowerCase()) ?? []
-  if (keywords.some((item) => item.includes("image") || item.includes("meme"))) return "image"
-  if (keywords.some((item) => item.includes("frontend") || item.includes("ui"))) return "layout-grid"
-  if (keywords.some((item) => item.includes("hash") || item.includes("password") || item.includes("id")))
-    return "fingerprint"
-  return "package"
-}
-
 export function MarketplacePluginIcon(props: { plugin: PluginIconSource | null | undefined; class: string }) {
   const { _ } = useLingui()
   const [imageFailed, setImageFailed] = createSignal(false)
+  const [imageLoaded, setImageLoaded] = createSignal(false)
   const icon = () => props.plugin?.icon
   const imageIcon = () => {
     const current = icon()
@@ -30,8 +23,18 @@ export function MarketplacePluginIcon(props: { plugin: PluginIconSource | null |
   const visibleImageIcon = () => (imageFailed() ? undefined : imageIcon())
   const lucideName = () => {
     const current = icon()
-    return current?.type === "lucide" ? current.name : fallbackPluginIcon(props.plugin)
+    return current?.type === "lucide" && hasIcon(current.name) ? current.name : undefined
   }
+  createEffect(
+    on(
+      () => imageIcon()?.url,
+      () => {
+        setImageFailed(false)
+        setImageLoaded(false)
+      },
+    ),
+  )
+  const initial = () => Array.from(props.plugin?.name.trim() ?? "")[0]?.toLocaleUpperCase() ?? "?"
 
   const imageAlt = () => {
     const current = imageIcon()
@@ -42,22 +45,42 @@ export function MarketplacePluginIcon(props: { plugin: PluginIconSource | null |
   }
 
   return (
-    <span class={props.class}>
+    <span class={props.class} data-image={(!!visibleImageIcon() && imageLoaded()) || undefined}>
       <Show
         when={visibleImageIcon()}
         fallback={
-          <Icon name={lucideName() as Parameters<typeof Icon>[0]["name"]} size="normal" class="text-icon-weak-base" />
+          <Show
+            when={lucideName()}
+            fallback={
+              <span class="plugin-marketplace-monogram" aria-hidden="true">
+                {initial()}
+              </span>
+            }
+          >
+            {(name) => (
+              <Icon name={name() as Parameters<typeof Icon>[0]["name"]} size="normal" class="text-icon-base" />
+            )}
+          </Show>
         }
       >
         {(current) => (
-          <img
-            src={current().url}
-            alt={imageAlt()}
-            class="plugin-marketplace-icon-image"
-            loading="lazy"
-            decoding="async"
-            onError={() => setImageFailed(true)}
-          />
+          <>
+            <Show when={!imageLoaded()}>
+              <span class="plugin-marketplace-monogram" aria-hidden="true">
+                {initial()}
+              </span>
+            </Show>
+            <img
+              src={current().url}
+              alt={imageAlt()}
+              class="plugin-marketplace-icon-image"
+              style={{ visibility: imageLoaded() ? "visible" : "hidden" }}
+              loading="lazy"
+              decoding="async"
+              onLoad={() => setImageLoaded(true)}
+              onError={() => setImageFailed(true)}
+            />
+          </>
         )}
       </Show>
     </span>

@@ -7,27 +7,6 @@ import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 
-test("historical executor limits remain evidence without becoming active runtime settings", () =>
-  runtime.run(() => {
-    const captured = Experiment.capture({ model: "test/historical" })
-    const recorded = { execution: { toolExecutorConcurrency: { file: 2, link: 3 } } }
-    const snapshot = Experiment.Snapshot.parse({ ...captured, runtime: recorded })
-    expect(snapshot.runtime).toEqual(recorded)
-    expect(Experiment.Runtime.safeParse(recorded).success).toBe(false)
-    expect(Experiment.File.safeParse({ version: 1, label: "retired", runtime: recorded }).success).toBe(false)
-    const current = { execution: { toolExecutorConcurrency: { file: 5 } } }
-    Experiment.provide(snapshot, () => {
-      expect(Experiment.apply(current).execution?.toolExecutorConcurrency).toEqual({ file: 5 })
-    })
-    for (const value of [0, -1, 1.5, 513, "3"])
-      expect(
-        Experiment.Snapshot.safeParse({
-          ...captured,
-          runtime: { execution: { toolExecutorConcurrency: { link: value } } },
-        }).success,
-      ).toBe(false)
-  }))
-
 test("sealed core experiments apply without enabling absent optional mechanisms", () => {
   const context = RuntimeContext.create(runtime.host)
   try {
@@ -96,6 +75,45 @@ test("task settings cannot pretend to configure shared workers or permission gra
     ])
       expect(Experiment.File.safeParse({ version: 1, label: "invalid", overrides }).success).toBe(false)
     expect(Experiment.File.safeParse({ version: 2, label: "unsupported" }).success).toBe(false)
+  }))
+
+test("historical executor settings remain evidence while live execution stays current", () =>
+  runtime.run(() => {
+    const captured = Experiment.capture({ execution: { toolExecutorConcurrency: { local_process: 2 } } })
+    const historicalRuntime = {
+      ...captured.runtime,
+      execution: {
+        ...captured.runtime.execution,
+        toolExecutorConcurrency: { local_process: 2, link: 3 },
+      },
+    }
+    const historical = {
+      ...captured,
+      runtime: historicalRuntime,
+      fingerprint: Experiment.fingerprint({ effective: captured.effective, runtime: historicalRuntime }),
+    }
+    expect(Experiment.Snapshot.parse(historical)).toEqual(historical)
+    Experiment.provide(historical, () => {
+      expect(Experiment.current()).toEqual(historical)
+      expect(
+        Experiment.apply({ execution: { toolExecutorConcurrency: { local_process: 5 } } }).execution,
+      ).toMatchObject({ toolExecutorConcurrency: { local_process: 5 } })
+    })
+    expect(Experiment.Runtime.safeParse(historicalRuntime).success).toBe(false)
+    expect(Experiment.File.safeParse({ version: 1, label: "new", runtime: historicalRuntime }).success).toBe(false)
+    expect(
+      Experiment.Snapshot.safeParse({
+        ...historical,
+        runtime: { execution: { toolExecutorConcurrency: { arbitrary_executor: 3 } } },
+      }).success,
+    ).toBe(false)
+    for (const value of [0, -1, 1.5, 513, "3"])
+      expect(
+        Experiment.Snapshot.safeParse({
+          ...historical,
+          runtime: { execution: { toolExecutorConcurrency: { link: value } } },
+        }).success,
+      ).toBe(false)
   }))
 
 test("explicit model overrides win and fingerprints are stable across capture time and key order", () =>

@@ -224,6 +224,45 @@ for (const backend of storageTestBackends()) {
       expect((await store.versioned(["part"])).revision).toBeGreaterThan(before.revision)
     })
 
+    test("prefix pages preserve exact segments, ordering, bounds and deleted cursors", async () => {
+      const store = await open()
+      const prefix = ["usage_time", "scope", 'operation_A%_"雪🧭']
+      await store.transaction(async (tx) => {
+        for (let index = 0; index < 45; index++) {
+          for (const owner of [prefix[2], prefix[2].toLowerCase(), prefix[2] + "suffix"]) {
+            await tx.write([prefix[0], prefix[1], owner, String(index).padStart(3, "0")], { index })
+          }
+        }
+        await tx.remove([...prefix, "010"])
+      })
+      for (const descending of [false, true]) {
+        const query = { kind: "usage_time", prefix, descending, orderFrom: "005", orderTo: "042" }
+        const expected = await store.query({ ...query, limit: 100 })
+        expect(expected).toHaveLength(36)
+        expect(expected.every((row) => row.key[2] === prefix[2])).toBe(true)
+        const actual = []
+        let after: string[] | undefined
+        for (;;) {
+          const page = await store.query({ ...query, after, limit: 4 })
+          expect(await store.snapshot((tx) => tx.queryKeys({ ...query, after, limit: 4 }))).toEqual(
+            page.map((row) => row.key),
+          )
+          if (!page.length) break
+          actual.push(...page)
+          after = page.at(-1)!.key
+        }
+        expect(actual).toEqual(expected)
+        expect(await store.snapshot((tx) => tx.count(query))).toBe(36)
+      }
+      const query = { kind: "usage_time", prefix, limit: 4 }
+      const first = await store.query(query)
+      const after = first.at(-1)!.key
+      const next = await store.query({ ...query, after })
+      await store.remove(after)
+      expect(await store.query({ ...query, after })).toEqual(next)
+      expect(await store.query({ prefix: [...prefix, "missing"] })).toEqual([])
+    })
+
     test("cursor pages preserve tied ordering, tombstones and complete exports", async () => {
       const store = await open()
       await store.transaction(async (tx) => {

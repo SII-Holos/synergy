@@ -7,7 +7,8 @@ import type { InstalledPlugin, PluginDetail } from "./types"
 
 type RuntimeMode = RegistryPluginSummary["runtimeMode"]
 
-export type MarketplaceSummary = Omit<RegistryPluginSummary, "source"> & {
+export type MarketplaceSummary = Omit<RegistryPluginSummary, "source" | "updatedAt"> & {
+  updatedAt?: RegistryPluginSummary["updatedAt"]
   catalogSource?: RegistryPluginSummary["source"]
   repo?: string
   homepage?: string
@@ -64,15 +65,14 @@ export function fallbackPluginSummary(input: {
   return {
     id: input.installed.id,
     name,
-    description: stringField(manifest, "description") ?? "Installed plugin",
+    description: stringField(manifest, "description") ?? "",
     repo: stringField(manifest, "repository"),
     homepage: stringField(manifest, "homepage"),
-    author: { name: stringField(manifest, "author") ?? "Installed locally" },
+    author: { name: stringField(manifest, "author") ?? "" },
     verified: false,
     official: false,
     keywords: ["plugin"],
     latestVersion: input.installed.version,
-    updatedAt: Date.now(),
     trustTier: input.detail?.trust ?? input.installed.trust,
     runtimeMode: runtimeModeFromManifest(manifest),
     uiSurfaces: uiSurfacesFromManifest(manifest),
@@ -85,9 +85,9 @@ export function toTimestamp(value: number | string | undefined): number {
   if (typeof value === "number") return value
   if (typeof value === "string") {
     const parsed = Date.parse(value)
-    return Number.isFinite(parsed) ? parsed : Date.now()
+    return Number.isFinite(parsed) ? parsed : 0
   }
-  return Date.now()
+  return 0
 }
 
 export function collectAllPermissions(versions: RegistryPluginVersion[]): RegistryPermissionItem[] {

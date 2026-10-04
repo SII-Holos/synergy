@@ -105,7 +105,7 @@ describe("pending attachment upload flow", () => {
     expect(inserted.map((part) => (part as { id: string }).id)).toEqual(["prt-2"])
   })
 
-  test("an upload failure clears the pending card and rethrows", async () => {
+  test("an upload failure retains the card and original File for retry", async () => {
     const tracker = createPendingAttachmentTracker()
     tracker.begin({ id: "prt-warm", filename: "warm.png", mime: "image/png", size: 5 })
 
@@ -126,9 +126,45 @@ describe("pending attachment upload flow", () => {
 
     expect(tracker.pending()).toEqual([
       { id: "prt-warm", filename: "warm.png", mime: "image/png", size: 5, status: "uploading" },
+      { id: "prt-1", filename: "bad.png", mime: "image/png", size: 32, status: "failed", error: "upload failed" },
     ])
     expect(tracker.uploading()).toBe(true)
+    expect(tracker.file("prt-1")?.name).toBe("bad.png")
+    expect(tracker.scope()).toEqual({ count: 2, bytes: 37 })
   })
+})
+
+test("retry keeps identity, capacity and removal invalidates its late result", async () => {
+  const tracker = createPendingAttachmentTracker()
+  const file = fakeFile()
+  const inserted: unknown[] = []
+  const base = {
+    file,
+    id: "retry",
+    tracker,
+    insertAttachment: (part: unknown) => inserted.push(part),
+    isDestinationCurrent: () => true,
+  }
+  await expect(
+    runPendingAttachmentUpload({
+      ...base,
+      upload: async () => {
+        throw new Error("offline")
+      },
+    }),
+  ).rejects.toThrow("offline")
+  expect(tracker.blocking()).toBe(true)
+  expect(tracker.file("retry")).toBe(file)
+  const pending = Promise.withResolvers<UploadedPromptAttachment>()
+  const done = runPendingAttachmentUpload({ ...base, upload: () => pending.promise })
+  expect(tracker.pending()).toHaveLength(1)
+  expect(tracker.scope()).toEqual({ count: 1, bytes: file.size })
+  tracker.cancel("retry")
+  expect(tracker.file("retry")).toBeUndefined()
+  pending.resolve(uploadedResult)
+  await done
+  expect(inserted).toEqual([])
+  expect(tracker.blocking()).toBe(false)
 })
 
 test("clearing a destination invalidates its in-flight upload even after returning", async () => {

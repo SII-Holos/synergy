@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, test } from "bun:test"
 import { createRoot } from "solid-js"
 import {
@@ -9,6 +10,35 @@ import type { SessionTransitionHandoff } from "@/components/session/session-tran
 import { createSessionTransitionState } from "../../src/context/session-transition"
 
 describe("session transition state", () => {
+  test("publishes preparation before an ID exists and atomically hands it to the session", () => {
+    createRoot((dispose) => {
+      const state = createSessionTransitionState()
+      const lease = state.prepareDraft("draft:connection/scope")
+      expect(state.get("draft:connection/scope")?.progress.phase).toBe("loading")
+      lease.setText("Inspect the project")
+      expect(state.get("draft:connection/scope")?.draft?.text).toBe("Inspect the project")
+      expect(lease.handoff("session-1", createNewSessionTransitionProgress())).toBe(true)
+      expect(state.get("draft:connection/scope")).toBeUndefined()
+      expect(state.get("session-1")?.draft?.text).toBe("Inspect the project")
+      lease.clear()
+      expect(state.get("session-1")).toBeDefined()
+      dispose()
+    })
+  })
+  test("stale preparation cannot replace or clear a newer submission", () => {
+    createRoot((dispose) => {
+      const state = createSessionTransitionState()
+      const stale = state.prepareDraft("draft:scope")
+      const current = state.prepareDraft("draft:scope")
+      stale.setText("stale")
+      stale.clear()
+      expect(stale.handoff("wrong", createNewSessionTransitionProgress())).toBe(false)
+      current.setText("current")
+      expect(state.get("draft:scope")?.draft?.text).toBe("current")
+      expect(state.get("wrong")).toBeUndefined()
+      dispose()
+    })
+  })
   test("retains a transition for a remounted session route consumer", () => {
     createRoot((dispose) => {
       const state = createSessionTransitionState()
@@ -17,7 +47,7 @@ describe("session transition state", () => {
       state.set("session-1", progress)
 
       const readAfterRouteRemount = () => state.get("session-1")
-      expect(readAfterRouteRemount()?.progress).toBe(progress)
+      expect(readAfterRouteRemount()?.progress).toEqual(progress)
       dispose()
     })
   })
@@ -71,6 +101,54 @@ describe("session transition state", () => {
     })
   })
 
+  test("canonical completion confirms a lost receipt once and cannot confirm a newer input", () => {
+    createRoot((dispose) => {
+      const state = createSessionTransitionState()
+      let accepted = 0
+      const handoff = {
+        messageID: "msg_first",
+        success: createNewSessionTransitionSuccessProgress(),
+        unconfirmed: {
+          missing() {},
+          accepted() {
+            accepted++
+          },
+        },
+      } satisfies SessionTransitionHandoff
+      state.set("session-1", createNewSessionTransitionProgress(), undefined, handoff)
+      expect(state.completeHandoff("session-1", "stale")).toBe(false)
+      expect(accepted).toBe(0)
+      expect(state.completeHandoff("session-1", "msg_first")).toBe(true)
+      expect(accepted).toBe(1)
+      expect(state.completeHandoff("session-1", "msg_first")).toBe(false)
+      expect(accepted).toBe(1)
+      dispose()
+    })
+  })
+
+  test("durable confirmation and canonical completion share one acceptance callback", () => {
+    createRoot((dispose) => {
+      const state = createSessionTransitionState()
+      let accepted = 0
+      state.set("session-1", createNewSessionTransitionProgress(), undefined, {
+        messageID: "msg_first",
+        success: createNewSessionTransitionSuccessProgress(),
+        unconfirmed: {
+          missing() {},
+          accepted() {
+            accepted++
+          },
+        },
+      })
+      expect(state.confirmHandoff("session-1", "stale")).toBe(false)
+      expect(state.confirmHandoff("session-1", "msg_first")).toBe(true)
+      expect(state.confirmHandoff("session-1", "msg_first")).toBe(false)
+      expect(state.completeHandoff("session-1", "msg_first")).toBe(true)
+      expect(accepted).toBe(1)
+      dispose()
+    })
+  })
+
   test("does not complete a newer handoff from a stale message result", () => {
     createRoot((dispose) => {
       const state = createSessionTransitionState()
@@ -82,7 +160,7 @@ describe("session transition state", () => {
       state.set("session-1", loading, undefined, handoff)
 
       expect(state.completeHandoff("session-1", "msg_first")).toBe(false)
-      expect(state.get("session-1")?.progress).toBe(loading)
+      expect(state.get("session-1")?.progress).toEqual(loading)
       expect(state.get("session-1")?.handoff?.messageID).toBe("msg_second")
       dispose()
     })
@@ -101,7 +179,7 @@ describe("session transition state", () => {
       state.set("session-1", loading)
       staleDismiss?.()
 
-      expect(state.get("session-1")?.progress).toBe(loading)
+      expect(state.get("session-1")?.progress).toEqual(loading)
       dispose()
     })
   })
@@ -123,7 +201,7 @@ describe("session transition state", () => {
         lightLoop: false,
         boss: false,
         blueprintSlot: null,
-        agent: "synergy",
+        agent: TEST_AGENT_NAME,
         model: { providerID: "provider", modelID: "model" },
         autoSubmit: true,
       }

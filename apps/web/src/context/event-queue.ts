@@ -37,6 +37,7 @@ function eventKey(scopeID: string, payload: unknown): string | undefined {
   if (!isRecord(payload)) return
   const type = payload.type
   const properties = payload.properties
+  if (typeof payload.seq === "number") return
   if (type === "session.status" || type === "session.inbox.updated") {
     if (!isRecord(properties) || typeof properties.sessionID !== "string") return
     return `${type}:${scopeID}:${properties.sessionID}`
@@ -47,6 +48,11 @@ function eventKey(scopeID: string, payload: unknown): string | undefined {
     const part = properties.part
     if (typeof part.messageID !== "string" || typeof part.id !== "string") return
     return `message.part.updated:${scopeID}:${part.messageID}:${part.id}`
+  }
+  if (type === "message.part.summary" && isRecord(properties) && !properties.content && isRecord(properties.summary)) {
+    const part = properties.summary
+    if (typeof part.messageID === "string" && typeof part.id === "string")
+      return `message.part.summary:${scopeID}:${part.messageID}:${part.id}`
   }
 }
 

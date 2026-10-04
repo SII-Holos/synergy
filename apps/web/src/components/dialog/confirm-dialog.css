@@ -56,3 +56,11 @@
   width: 12px;
   height: 12px;
 }
+
+.confirm-dialog-error {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-base);
+  overflow-wrap: anywhere;
+}

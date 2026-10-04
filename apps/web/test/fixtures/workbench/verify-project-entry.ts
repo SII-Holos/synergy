@@ -111,6 +111,12 @@ async function settle() {
 async function close() {
   await settle()
   await page.waitForFunction(() => !document.querySelector('[data-component="tooltip"][data-expanded]'))
+  const pathField = top().getByRole("textbox", { name: "文件夹路径", exact: true })
+  if (await pathField.isVisible()) {
+    await pathField.press("Escape")
+    await pathField.waitFor({ state: "detached" })
+    check(await top().isVisible(), "Escape leaves the directory picker open after closing path editing")
+  }
   const id = await top().getAttribute("id")
   assert.ok(id)
   if ((await top().getAttribute("data-component")) === "popover-content") {
@@ -137,14 +143,26 @@ async function settings() {
   })
 }
 async function folderPath(value: string) {
-  await top().getByRole("textbox", { name: "文件夹路径", exact: true }).fill(value)
-  await top().getByRole("button", { name: "前往", exact: true }).click()
+  const field = top().getByRole("textbox", { name: "文件夹路径", exact: true })
+  if (!(await field.count())) await top().getByRole("button", { name: "编辑路径", exact: true }).click()
+  await field.fill(value)
+  await field.press("Enter")
   await page.waitForFunction(
     () =>
       !Array.from(document.querySelectorAll('[role="status"]')).some((el) =>
         /正在加载文件夹|Loading folders/.test(el.textContent ?? ""),
       ),
   )
+  if (!(await top().getByRole("alert").count())) await field.waitFor({ state: "detached" })
+}
+async function selectFolder(name: string) {
+  const checkbox = page.getByRole("checkbox", { name: `选择文件夹：${name}`, exact: true })
+  await top()
+    .locator('[data-component="checkbox"]')
+    .filter({ has: checkbox })
+    .locator('[data-slot="checkbox-checkbox-control"]')
+    .click()
+  assert.equal(await checkbox.isChecked(), true)
 }
 async function createForm() {
   await picker.click()
@@ -155,7 +173,9 @@ async function submit(message: string) {
   await editor.fill(message)
   await page.getByRole("button", { name: "发送消息", exact: true }).click()
   await page.waitForURL(/\/session\/ses_/)
+  check((await page.locator(".session-work-context").count()) === 0, "accepted Session removes the whole setup strip")
   await page.getByText("已收到测试任务。", { exact: false }).first().waitFor()
+  check((await page.locator(".session-work-context").count()) === 0, "completed Session keeps setup hidden")
   return page.url().split("/").at(-1)!
 }
 try {
@@ -171,7 +191,7 @@ try {
   await shot({ path: path.join(output, "create-empty.png") })
   await top().getByRole("button", { name: "选择文件夹", exact: true }).click()
   await folderPath(fixture)
-  for (const name of ["frontend", "backend", "docs"]) await top().getByRole("button", { name, exact: true }).click()
+  for (const name of ["frontend", "backend", "docs"]) await selectFolder(name)
   await top().getByRole("button", { name: "使用选中的文件夹", exact: true }).click()
   check(
     (await top().getByRole("textbox", { name: "项目名称", exact: true }).inputValue()) === "frontend",
@@ -201,7 +221,7 @@ try {
   )
   const resourceBefore = (await client.environment.list({ scopeID }, options)).data
   const workspaceBefore = (await client.workspace.list({ scopeID }, options)).data
-  await page.locator(".session-work-context").getByRole("button", { name: "主目录", exact: true }).click()
+  await page.locator("[data-worktree-task-selector]").click()
   check((await top().innerText()).includes("其他 2 个文件夹"), "Worktree choice explains shared folders")
   await top()
     .getByRole("button", { name: /^新建 Worktree/ })
@@ -262,7 +282,7 @@ try {
     "next task uses changed main folder",
   )
   await open(scopeID)
-  await page.locator(".session-work-context").getByRole("button", { name: "主目录", exact: true }).click()
+  await page.locator("[data-worktree-task-selector]").click()
   await top()
     .getByRole("button", { name: /^新建 Worktree/ })
     .click()
@@ -340,10 +360,10 @@ try {
     .click()
   await page.waitForFunction(() => document.querySelectorAll(".directory-navigation-entry").length >= 120)
   checks.push("service browser loads real pagination")
-  await top().getByRole("button", { name: "folder-000", exact: true }).click()
-  await top().getByRole("button", { name: "folder-119", exact: true }).click()
+  await selectFolder("folder-000")
+  await selectFolder("folder-119")
   check(
-    (await top().locator('.directory-navigation-entry [aria-pressed="true"]').count()) === 2,
+    (await top().locator(".directory-navigation-entry").getByRole("checkbox", { checked: true }).count()) === 2,
     "folder multi-selection spans directory pages",
   )
   await shot({ path: path.join(output, "directory-multiple.png") })

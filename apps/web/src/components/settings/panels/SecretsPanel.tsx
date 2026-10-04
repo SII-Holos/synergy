@@ -8,8 +8,8 @@ import { For, Show, createResource, createSignal } from "solid-js"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { requestErrorMessage } from "@/utils/error"
 import { PasswordField } from "../components/PasswordField"
-import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
-import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
+import { SettingsAdvanced, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
+import { SettingRow } from "../components/SettingsSettingRow"
 import {
   formatResolveCap,
   formatToolAllowlist,
@@ -24,8 +24,7 @@ const copy = {
   title: { id: "settings.secrets.page.title", message: "Secrets" },
   description: {
     id: "settings.secrets.page.description",
-    message:
-      "Registered secrets are masked everywhere the model can see and resolved only when a tool executes. Values are never sent to the browser; reveal them with the CLI.",
+    message: "Register sensitive values and choose which tools may use them.",
   },
   registerTitle: { id: "settings.secrets.register.title", message: "Register a secret" },
   registerDescription: {
@@ -251,6 +250,11 @@ export function SecretsPanel() {
                         size="small"
                         disabled={busy()}
                         onClick={() => void toggleHistory(entry.id)}
+                        aria-label={_({
+                          id: "settings.secrets.history.named",
+                          message: "View history: {name}",
+                          values: { name: entry.id },
+                        })}
                       >
                         {_(copy.history)}
                       </Button>
@@ -260,6 +264,19 @@ export function SecretsPanel() {
                         size="small"
                         disabled={busy()}
                         onClick={() => openEditor(entry)}
+                        aria-label={
+                          expanded() === entry.id
+                            ? _({
+                                id: "settings.secrets.close.named",
+                                message: "Close editor: {name}",
+                                values: { name: entry.id },
+                              })
+                            : _({
+                                id: "settings.secrets.edit.named",
+                                message: "Edit secret: {name}",
+                                values: { name: entry.id },
+                              })
+                        }
                       >
                         {expanded() === entry.id ? _(copy.close) : _(copy.edit)}
                       </Button>
@@ -269,6 +286,11 @@ export function SecretsPanel() {
                         size="small"
                         disabled={busy()}
                         onClick={() => void remove(entry.id)}
+                        aria-label={_({
+                          id: "settings.secrets.remove.named",
+                          message: "Remove secret: {name}",
+                          values: { name: entry.id },
+                        })}
                       >
                         {_(copy.remove)}
                       </Button>
@@ -319,7 +341,19 @@ export function SecretsPanel() {
             )}
           </For>
         </Show>
-        <p>{_(copy.revealHint)}</p>
+        <SettingsAdvanced
+          id="secret-details"
+          title={_({ id: "settings.secrets.details", message: "How masking and secret resolution work" })}
+        >
+          <p class="settings-row-description">
+            {_({
+              id: "settings.secrets.masking",
+              message:
+                "Registered values are masked in model-visible content and resolved only at tool execution. Stored values are never returned to the browser.",
+            })}
+          </p>
+          <p class="settings-row-description">{_(copy.revealHint)}</p>
+        </SettingsAdvanced>
       </SettingsSection>
     </SettingsPage>
   )

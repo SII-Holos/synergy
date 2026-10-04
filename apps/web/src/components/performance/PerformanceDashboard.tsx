@@ -1,8 +1,10 @@
-import { createMemo, createSignal, For, Show } from "solid-js"
+import { createMemo, createSignal, For, Show, onCleanup, type JSX } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { Line } from "solid-chartjs"
 import { Chart as ChartJS, CategoryScale, Filler, LinearScale, LineElement, PointElement, Tooltip } from "chart.js"
-import { Dialog as KobalteDialog } from "@kobalte/core/dialog"
+import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { AppPanel } from "@/components/app-panel"
 import type { I18n, MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -35,6 +37,7 @@ import {
   type ChartDatasetSpec,
 } from "./chart-model"
 import { P } from "./performance-i18n"
+import { issueTitle, ISSUE_SEVERITY, traceDisplayName } from "./presentation"
 import { performanceSummaryCardModel } from "./summary-card-model"
 import { usePerformance } from "./use-performance"
 import { PerformanceSnapshotBoundary, SnapshotErrorDetails } from "./snapshot-boundary"
@@ -49,6 +52,7 @@ import type {
   PerformanceTimeline,
   PerformanceTraceDetail,
   PerformanceTraceSpan,
+  PerformanceTracePreview,
 } from "./types"
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip)
@@ -60,62 +64,117 @@ type RankedItem = PerformanceSummary["top"]["slowRoutes"][number]
 export function PerformanceDashboard() {
   const { _ } = useLingui()
   const { fmt } = useLocale()
+  const timelineSource = (metric: string) =>
+    _({ id: "app.performance.source.timeline", message: "Timeline · {metric}", values: { metric } })
   const perf = usePerformance()
   const chartTheme = useChartTheme()
   const chartColors = createMemo(() => {
     const colors = chartTheme()
     return {
-      cpu: colors.color("text-interactive-base"),
-      memory: colors.color("text-on-success-base"),
-      request: colors.color("text-on-warning-base"),
-      browser: colors.color("syntax-type"),
-      disk: colors.color("text-on-critical-base"),
+      cpu: colors.series[0],
+      memory: colors.series[2],
+      request: colors.series[3],
+      browser: colors.series[4],
+      disk: colors.series[6],
     }
   })
-  const [selectedTrace, setSelectedTrace] = createSignal<PerformanceTraceSpan | null>(null)
+  const [selectedTrace, setSelectedTrace] = createSignal<PerformanceTracePreview | null>(null)
   const [selectedTraceDetail, setSelectedTraceDetail] = createSignal<PerformanceTraceDetail | null>(null)
   const summary = () => perf.summary()
   const issues = createMemo(() => (summary()?.issues ?? []).slice(0, 12))
   const traces = createMemo(() => perf.eventTraces().slice(0, 24))
+  const traceLabels = createMemo(() => {
+    const labels = new Map<string, string>()
+    for (const group of Object.values(summary()?.top ?? {})) {
+      for (const item of group) {
+        if ("traceId" in item && "label" in item && item.traceId && item.label && !labels.has(item.traceId))
+          labels.set(item.traceId, item.label)
+      }
+    }
+    return labels
+  })
 
+  const dialog = useDialog()
+  const [traceLoading, setTraceLoading] = createSignal(false)
+  const [traceError, setTraceError] = createSignal<string>()
+  let traceDialog: string | undefined
+  let traceRequest = 0
+  onCleanup(() => {
+    traceRequest++
+    if (traceDialog) dialog.close(traceDialog)
+  })
   const selectTrace = async (traceId: string, fallback?: Partial<PerformanceTraceSpan>) => {
-    const detail = await perf.loadTrace(traceId).catch(() => null)
-    setSelectedTraceDetail(detail ?? null)
-    const root = detail?.root
-    setSelectedTrace(
-      root
-        ? ({
-            traceId,
-            kind: "runtime",
-            name: root.name,
-            status: root.status,
-            startedAt: root.startTime
-              ? new Date(root.startTime).toISOString()
-              : (fallback?.startedAt ?? new Date().toISOString()),
-            endedAt: root.endTime ? new Date(root.endTime).toISOString() : fallback?.endedAt,
-            durationMs: root.durationMs,
-            module: root.module,
-            sessionID: root.sessionID,
-            redactionApplied: true,
-          } as PerformanceTraceSpan)
-        : ({
-            traceId,
-            kind: "runtime",
-            name: fallback?.name ?? traceId,
-            status: fallback?.status ?? "ok",
-            startedAt: fallback?.startedAt ?? new Date().toISOString(),
-            durationMs: fallback?.durationMs,
-            module: fallback?.module,
-            sessionID: fallback?.sessionID,
-            redactionApplied: fallback?.redactionApplied ?? true,
-          } as PerformanceTraceSpan),
-    )
+    const request = ++traceRequest
+    setSelectedTrace({ ...fallback, traceId, name: fallback?.name ?? _(P.traceDetail) })
+    setSelectedTraceDetail(null)
+    setTraceLoading(true)
+    setTraceError(undefined)
+    if (!traceDialog)
+      traceDialog = dialog.show(
+        () => (
+          <TraceDialog
+            _={_}
+            fmt={fmt}
+            trace={selectedTrace()}
+            detail={selectedTraceDetail()}
+            loading={traceLoading()}
+            error={traceError()}
+            onRetry={() => {
+              const current = selectedTrace()
+              if (current) void selectTrace(current.traceId, current)
+            }}
+          />
+        ),
+        () => {
+          traceDialog = undefined
+          traceRequest++
+          setSelectedTrace(null)
+          setSelectedTraceDetail(null)
+        },
+      )
+    try {
+      const detail = await perf.loadTrace(traceId)
+      if (request !== traceRequest || selectedTrace()?.traceId !== traceId) return
+      if (!detail || detail.traceId !== traceId)
+        throw new Error(_({ id: "app.performance.trace.missingDetail", message: "Trace details are unavailable" }))
+      setSelectedTraceDetail(detail)
+      const root = detail.root
+      if (root)
+        setSelectedTrace((previous) =>
+          previous
+            ? {
+                ...previous,
+                name: traceDisplayName(root.name, root.attributes),
+                status: root.status ?? previous.status,
+                startedAt: root.startTime !== undefined ? new Date(root.startTime).toISOString() : previous.startedAt,
+                endedAt: root.endTime !== undefined ? new Date(root.endTime).toISOString() : previous.endedAt,
+                durationMs: root.durationMs,
+                module: root.module,
+                sessionID: root.sessionID,
+              }
+            : null,
+        )
+    } catch (error) {
+      if (request === traceRequest)
+        setTraceError(
+          error instanceof Error
+            ? error.message
+            : _({ id: "app.performance.trace.loadFailed", message: "Unable to load trace details" }),
+        )
+    } finally {
+      if (request === traceRequest) setTraceLoading(false)
+    }
+  }
+  const jumpToIssues = () => {
+    const section = document.getElementById("performance-diagnostics")
+    section?.scrollIntoView({ block: "start" })
+    section?.focus({ preventScroll: true })
   }
 
   return (
     <div class="performance-dashboard">
       <div class="performance-toolbar flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3">
-        <div class="text-12-medium text-text-weak">
+        <div class="app-panel-caption font-medium text-text-weak">
           {summary()?.generatedAt
             ? _(P.snapshotFrom.id, { time: formatTime(summary()?.generatedAt, fmt) })
             : _(P.snapshotLabel)}
@@ -134,6 +193,10 @@ export function PerformanceDashboard() {
               perf.analysisStarting() ||
               isPerformanceAnalysisActive(perf.analysis()?.status)
             }
+            title={_({
+              id: "app.performance.analysis.startHint",
+              message: "Create a model diagnosis session for this snapshot",
+            })}
             onClick={() => void perf.startAnalysis()}
           >
             {perf.analysisStarting() || isPerformanceAnalysisActive(perf.analysis()?.status)
@@ -153,6 +216,9 @@ export function PerformanceDashboard() {
         </div>
       </div>
 
+      <p class="app-panel-caption text-text-weak">
+        {_({ id: "app.performance.analysis.startHint", message: "Create a model diagnosis session for this snapshot" })}
+      </p>
       <PerformanceAnalysisCard
         _={_}
         analysis={perf.analysis()}
@@ -169,190 +235,265 @@ export function PerformanceDashboard() {
         onRetry={() => void perf.refresh()}
       >
         <SummaryQualityNotice _={_} summary={summary()} />
-        <SummaryCards _={_} summary={summary()} />
-        <ResourceOwnership _={_} summary={summary()} />
-        <RuntimeSupport _={_} summary={summary()} />
+        <SummaryCards _={_} summary={summary()} onIssues={jumpToIssues} />
+        <details class="performance-resource-disclosure">
+          <summary>{_(P.resourceDetails)}</summary>
+          <ResourceOwnership _={_} summary={summary()} />
+        </details>
 
         <Show when={perf.timelineError()}>
           <div class="performance-snapshot-notice" role="alert">
-            <p class="text-14-medium text-text-strong">{_(P.timelineUnavailable)}</p>
+            <p class="app-panel-row-title text-text-strong">{_(P.timelineUnavailable)}</p>
             <SnapshotErrorDetails error={perf.timelineError()!} />
+            <Button
+              type="button"
+              variant="secondary"
+              size="small"
+              disabled={perf.timelineLoading()}
+              onClick={() => void perf.loadTimeline()}
+            >
+              {_(P.retry)}
+            </Button>
           </div>
         </Show>
         <Show when={perf.timelineLoading()}>
-          <p class="text-14-regular text-text-weak" role="status">
+          <p class="app-panel-copy text-text-weak" role="status">
             {_(P.timelineLoading)}
           </p>
         </Show>
-        <Show when={!perf.timelineError() && !perf.timelineLoading()}>
-          <div class="performance-chart-grid">
-            <PerformanceLineChart
-              _={_}
-              title={P.chartCpu}
-              description={P.chartCpuDesc}
-              points={resourcePressurePoints(perf.timeline())}
-              datasets={[
-                percentDataset("CPU", "cpu", chartColors().cpu, "Timeline process.cpu.utilization"),
-                durationDataset(
-                  "Event loop",
-                  "eventLoopLag",
-                  chartColors().request,
-                  "Timeline process.event_loop.lag",
-                  "p95",
-                ),
-              ]}
-              quality={timelineQuality(perf.timeline(), ["process.cpu.utilization", "process.event_loop.lag"])}
-            />
-            <PerformanceLineChart
-              _={_}
-              title={P.chartMemory}
-              description={P.chartMemoryDesc}
-              points={memoryPoints(perf.timeline(), summary())}
-              datasets={[
-                megabytesDataset(_(P.datasetRss), "memory", chartColors().memory, "Timeline process.memory.rss"),
-                megabytesDataset(
-                  _(P.datasetHeapUsed),
-                  "heapUsed",
-                  chartColors().browser,
-                  "Timeline process.memory.heap_used",
-                ),
-                megabytesDataset(
-                  _(P.datasetHeapTotal),
-                  "heapTotal",
-                  chartColors().disk,
-                  "Timeline process.memory.heap_total",
-                ),
-                megabytesDataset(
-                  _(P.datasetExternal),
-                  "external",
-                  chartColors().request,
-                  "Timeline process.memory.external",
-                ),
-                megabytesDataset(
-                  _(P.datasetArrayBuffers),
-                  "arrayBuffers",
-                  chartColors().cpu,
-                  "Timeline process.memory.array_buffers",
-                ),
-              ]}
-              quality={timelineQuality(perf.timeline(), [
-                "process.memory.rss",
-                "process.memory.heap_used",
-                "process.memory.heap_total",
-                "process.memory.external",
-                "process.memory.array_buffers",
-              ])}
-            />
-            <PerformanceLineChart
-              _={_}
-              title={P.chartRequests}
-              description={P.chartRequestsDesc}
-              points={requestTimelinePoints(perf.timeline())}
-              datasets={[
-                durationDataset("Request", "latency", chartColors().cpu, "Timeline http.request.duration", "p95"),
-                countDataset(
-                  "Requests / bucket",
-                  "requests",
-                  chartColors().request,
-                  "Bucket sample count for http.request.duration",
-                ),
-              ]}
-              quality={timelineQuality(perf.timeline(), ["http.request.duration"])}
-            />
-            <PerformanceLineChart
-              _={_}
-              title={P.chartSessions}
-              description={P.chartSessionsDesc}
-              points={sessionPoints(perf.timeline())}
-              datasets={[
-                countDataset("Active turns", "activeSessions", chartColors().memory, "Timeline session.turn.active"),
-                durationDataset("Turn", "latency", chartColors().browser, "Timeline session.turn.duration", "p95"),
-              ]}
-              quality={timelineQuality(perf.timeline(), ["session.turn.active", "session.turn.duration"])}
-              emptyLabel={P.chartSessionsEmpty}
-            />
-            <PerformanceLineChart
-              _={_}
-              title={P.chartStorage}
-              description={P.chartStorageDesc}
-              points={storagePoints(perf.timeline())}
-              datasets={[
-                countDataset("Operations / bucket", "diskOps", chartColors().disk, "Timeline storage.operation.count"),
-                durationDataset(
-                  "Operation",
-                  "latency",
-                  chartColors().request,
-                  "Timeline storage.operation.duration",
-                  "p95",
-                ),
-                bytesDataset("Read bytes / bucket", "readBytes", chartColors().memory, "Timeline storage.read.bytes"),
-                bytesDataset(
-                  "Write bytes / bucket",
-                  "writeBytes",
-                  chartColors().browser,
-                  "Timeline storage.write.bytes",
-                ),
-              ]}
-              quality={timelineQuality(perf.timeline(), [
-                "storage.operation.count",
-                "storage.operation.duration",
-                "storage.read.bytes",
-                "storage.write.bytes",
-              ])}
-              emptyLabel={P.chartStorageEmpty}
-            />
-          </div>
+        <Show when={perf.timeline() || (!perf.timelineError() && !perf.timelineLoading())}>
+          <section class="performance-section" aria-label={_(P.groupResourcePressure)}>
+            <h2 class="performance-section-title">{_(P.groupResourcePressure)}</h2>
+            <div class="performance-chart-grid">
+              {" "}
+              <PerformanceLineChart
+                _={_}
+                title={P.chartCpu}
+                description={P.chartCpuDesc}
+                points={resourcePressurePoints(perf.timeline())}
+                datasets={[
+                  percentDataset("CPU", "cpu", chartColors().cpu, timelineSource("process.cpu.utilization")),
+                  durationDataset(
+                    _({ id: "app.performance.dataset.eventLoop", message: "Event loop" }),
+                    "eventLoopLag",
+                    chartColors().request,
+                    timelineSource("process.event_loop.lag"),
+                    "p95",
+                  ),
+                ]}
+                quality={timelineQuality(perf.timeline(), ["process.cpu.utilization", "process.event_loop.lag"])}
+              />
+              <PerformanceLineChart
+                _={_}
+                title={P.chartMemory}
+                description={P.chartMemoryDesc}
+                points={memoryPoints(perf.timeline(), summary())}
+                datasets={[
+                  megabytesDataset(
+                    _(P.datasetRss),
+                    "memory",
+                    chartColors().memory,
+                    timelineSource("process.memory.rss"),
+                  ),
+                  megabytesDataset(
+                    _(P.datasetHeapUsed),
+                    "heapUsed",
+                    chartColors().browser,
+                    timelineSource("process.memory.heap_used"),
+                  ),
+                  megabytesDataset(
+                    _(P.datasetHeapTotal),
+                    "heapTotal",
+                    chartColors().disk,
+                    timelineSource("process.memory.heap_total"),
+                  ),
+                  megabytesDataset(
+                    _(P.datasetExternal),
+                    "external",
+                    chartColors().request,
+                    timelineSource("process.memory.external"),
+                  ),
+                  megabytesDataset(
+                    _(P.datasetArrayBuffers),
+                    "arrayBuffers",
+                    chartColors().cpu,
+                    timelineSource("process.memory.array_buffers"),
+                  ),
+                ]}
+                quality={timelineQuality(perf.timeline(), [
+                  "process.memory.rss",
+                  "process.memory.heap_used",
+                  "process.memory.heap_total",
+                  "process.memory.external",
+                  "process.memory.array_buffers",
+                ])}
+              />
+            </div>
+          </section>
+          <section class="performance-section" aria-label={_(P.groupRequests)}>
+            <h2 class="performance-section-title">{_(P.groupRequests)}</h2>
+            <div class="performance-chart-grid">
+              {" "}
+              <PerformanceLineChart
+                _={_}
+                title={P.chartRequests}
+                description={P.chartRequestsDesc}
+                points={requestTimelinePoints(perf.timeline())}
+                datasets={[
+                  durationDataset(
+                    _({ id: "app.performance.dataset.request", message: "Request" }),
+                    "latency",
+                    chartColors().cpu,
+                    timelineSource("http.request.duration"),
+                    "p95",
+                  ),
+                  countDataset(
+                    _({ id: "app.performance.dataset.requestsPerBucket", message: "Requests / bucket" }),
+                    "requests",
+                    chartColors().request,
+                    _({ id: "app.performance.source.requestBuckets", message: "Request samples per timeline bucket" }),
+                    _(P.axisCount),
+                  ),
+                ]}
+                quality={timelineQuality(perf.timeline(), ["http.request.duration"])}
+              />
+              <PerformanceLineChart
+                _={_}
+                title={P.chartSessions}
+                description={P.chartSessionsDesc}
+                points={sessionPoints(perf.timeline())}
+                datasets={[
+                  countDataset(
+                    _({ id: "app.performance.dataset.activeTurns", message: "Active turns" }),
+                    "activeSessions",
+                    chartColors().memory,
+                    timelineSource("session.turn.active"),
+                    _(P.axisCount),
+                  ),
+                  durationDataset(
+                    _({ id: "app.performance.dataset.turn", message: "Turn" }),
+                    "latency",
+                    chartColors().browser,
+                    timelineSource("session.turn.duration"),
+                    "p95",
+                  ),
+                ]}
+                quality={timelineQuality(perf.timeline(), ["session.turn.active", "session.turn.duration"])}
+                emptyLabel={P.chartSessionsEmpty}
+              />
+            </div>
+          </section>
+          <section class="performance-section" aria-label={_(P.groupStorage)}>
+            <h2 class="performance-section-title">{_(P.groupStorage)}</h2>
+            <div class="performance-chart-grid">
+              {" "}
+              <PerformanceLineChart
+                _={_}
+                title={P.chartStorage}
+                description={P.chartStorageDesc}
+                points={storagePoints(perf.timeline())}
+                datasets={[
+                  countDataset(
+                    _({ id: "app.performance.dataset.operationsPerBucket", message: "Operations / bucket" }),
+                    "diskOps",
+                    chartColors().disk,
+                    timelineSource("storage.operation.count"),
+                    _(P.axisCount),
+                  ),
+                  durationDataset(
+                    _({ id: "app.performance.dataset.operation", message: "Operation" }),
+                    "latency",
+                    chartColors().request,
+                    timelineSource("storage.operation.duration"),
+                    "p95",
+                  ),
+                  bytesDataset(
+                    _({ id: "app.performance.dataset.readBytesPerBucket", message: "Read bytes / bucket" }),
+                    "readBytes",
+                    chartColors().memory,
+                    timelineSource("storage.read.bytes"),
+                  ),
+                  bytesDataset(
+                    _({ id: "app.performance.dataset.writeBytesPerBucket", message: "Write bytes / bucket" }),
+                    "writeBytes",
+                    chartColors().browser,
+                    timelineSource("storage.write.bytes"),
+                  ),
+                ]}
+                quality={timelineQuality(perf.timeline(), [
+                  "storage.operation.count",
+                  "storage.operation.duration",
+                  "storage.read.bytes",
+                  "storage.write.bytes",
+                ])}
+                emptyLabel={P.chartStorageEmpty}
+              />
+            </div>
+          </section>
         </Show>
 
-        <div class="performance-split-grid">
-          <Show
-            when={!perf.tracesError()}
-            fallback={
-              <div class="performance-snapshot-notice" role="alert">
-                <p class="text-14-medium text-text-strong">{_(P.tracesUnavailable)}</p>
-                <SnapshotErrorDetails error={perf.tracesError()!} />
-              </div>
-            }
-          >
-            <Show
-              when={!perf.tracesLoading()}
-              fallback={
-                <p class="text-14-regular text-text-weak" role="status">
+        <section
+          class="performance-section"
+          id="performance-diagnostics"
+          tabindex="-1"
+          aria-label={_(P.groupDiagnostics)}
+        >
+          <h2 class="performance-section-title">{_(P.groupDiagnostics)}</h2>
+          <div class="performance-split-grid">
+            <div class="performance-detail-group">
+              <Show when={perf.tracesError()}>
+                <div class="performance-snapshot-notice" role="alert">
+                  <p class="app-panel-row-title text-text-strong">{_(P.tracesUnavailable)}</p>
+                  <SnapshotErrorDetails error={perf.tracesError()!} />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="small"
+                    disabled={perf.tracesLoading()}
+                    onClick={() => void perf.loadTraces()}
+                  >
+                    {_(P.retry)}
+                  </Button>
+                </div>
+              </Show>
+              <Show when={perf.tracesLoading()}>
+                <p class="app-panel-copy text-text-weak" role="status">
                   {_(P.tracesLoading)}
                 </p>
-              }
-            >
-              <Timeline _={_} traces={traces()} onSelect={(trace) => void selectTrace(trace.traceId, trace)} />
-            </Show>
-          </Show>
-          <IssueList
+              </Show>
+              <Show when={traces().length || (!perf.tracesLoading() && !perf.tracesError())}>
+                <Timeline
+                  _={_}
+                  traces={traces()}
+                  labels={traceLabels()}
+                  onSelect={(trace) => void selectTrace(trace.traceId, trace)}
+                />
+              </Show>
+            </div>
+            <IssueList
+              _={_}
+              fmt={fmt}
+              issues={issues()}
+              onTrace={(issue) => issue.traceId && void selectTrace(issue.traceId, issueTraceFallback(issue))}
+            />
+          </div>
+
+          <ToolFailures _={_} items={summary()?.top.toolFailures ?? []} />
+
+          <TopRankings
             _={_}
-            fmt={fmt}
-            issues={issues()}
-            onTrace={(issue) => issue.traceId && void selectTrace(issue.traceId, issueTraceFallback(issue))}
+            summary={summary()}
+            labels={traceLabels()}
+            onTrace={(item) => item.traceId && void selectTrace(item.traceId, rankedTraceFallback(item))}
           />
-        </div>
-
-        <ToolFailures _={_} items={summary()?.top.toolFailures ?? []} />
-
-        <TopRankings
-          _={_}
-          summary={summary()}
-          onTrace={(item) => item.traceId && void selectTrace(item.traceId, rankedTraceFallback(item))}
-        />
-        <BrowserMetricsChart _={_} samples={perf.browserSamples()} />
-        <FrontendSection _={_} summary={summary()} />
+          <RuntimeSupport _={_} summary={summary()} />
+        </section>
+        <section class="performance-section" aria-label={_(P.groupBrowser)}>
+          <h2 class="performance-section-title">{_(P.groupBrowser)}</h2>
+          <BrowserMetricsChart _={_} samples={perf.browserSamples()} />
+          <FrontendSection _={_} summary={summary()} stale={Boolean(perf.error())} />
+        </section>
       </PerformanceSnapshotBoundary>
-      <TraceDrawer
-        _={_}
-        fmt={fmt}
-        trace={selectedTrace()}
-        detail={selectedTraceDetail()}
-        onClose={() => {
-          setSelectedTrace(null)
-          setSelectedTraceDetail(null)
-        }}
-      />
     </div>
   )
 }
@@ -398,16 +539,30 @@ function PerformanceAnalysisCard(props: {
           <div class="flex min-w-0 items-center gap-2">
             <Icon name={getSemanticIcon("performance.analysis")} size="small" class="text-icon-weak-base" />
             <div class="min-w-0">
-              <div class="text-13-medium text-text-strong">{props._(P.analysisTitle)}</div>
-              <div class="text-11-regular text-text-subtle">
-                {props._(analysis() ? P.analysisDescriptionReady : P.analysisDescriptionPreparing)}
+              <div class="app-panel-control text-text-strong">{props._(P.analysisTitle)}</div>
+              <div class="app-panel-caption text-text-subtle">
+                {props._(
+                  props.starting
+                    ? P.analysisDescriptionPreparing
+                    : active()
+                      ? {
+                          id: "app.performance.analysis.description.running",
+                          message: "Diagnosing this snapshot in a model session",
+                        }
+                      : analysis()?.status === "completed"
+                        ? P.analysisDescriptionReady
+                        : {
+                            id: "app.performance.analysis.description.session",
+                            message: "Model diagnosis for the selected snapshot",
+                          },
+                )}
               </div>
             </div>
           </div>
           <div class="flex items-center gap-2">
             <Show when={analysis()}>
               {(item) => (
-                <span class={`text-12-medium ${statusTone()}`}>
+                <span class={`app-panel-caption font-medium ${statusTone()}`}>
                   {props._(performanceAnalysisStatusDescriptor(item().status))}
                 </span>
               )}
@@ -440,13 +595,13 @@ function PerformanceAnalysisCard(props: {
         </div>
 
         <Show when={props.starting || active()}>
-          <p class="mt-3 text-12-regular text-text-weak">{props._(P.analysisProgress)}</p>
+          <p class="mt-3 app-panel-caption text-text-weak">{props._(P.analysisProgress)}</p>
         </Show>
         <Show when={props.error}>
-          {(message) => <p class="mt-3 text-12-regular text-text-on-critical-base">{message()}</p>}
+          {(message) => <p class="mt-3 app-panel-caption text-text-on-critical-base">{message()}</p>}
         </Show>
         <Show when={analysis()?.error}>
-          {(message) => <p class="mt-3 text-12-regular text-text-on-critical-base">{message()}</p>}
+          {(message) => <p class="mt-3 app-panel-caption text-text-on-critical-base">{message()}</p>}
         </Show>
         <Show when={analysis()?.result}>
           {(result) => (
@@ -460,26 +615,15 @@ function PerformanceAnalysisCard(props: {
   )
 }
 
-function TimeRangeControl(props: { value: number; onChange: (value: number) => void }) {
+export function TimeRangeControl(props: { value: number; onChange: (value: number) => void }) {
   const { i18n } = useLocale()
   return (
-    <div class="performance-control flex shrink-0 items-center rounded-lg p-1">
-      <For each={TIME_RANGE_MS}>
-        {(ms) => (
-          <button
-            type="button"
-            classList={{
-              "whitespace-nowrap rounded-md px-2.5 py-1 text-11-medium transition-colors": true,
-              "workbench-selected-surface text-text-strong shadow-sm": props.value === ms,
-              "text-text-weak hover:text-text-base": props.value !== ms,
-            }}
-            onClick={() => props.onChange(ms)}
-          >
-            {i18n._(timeRangeLabel(ms))}
-          </button>
-        )}
-      </For>
-    </div>
+    <AppPanel.Selection
+      label={i18n._({ id: "app.performance.timeRange", message: "Time range" })}
+      items={TIME_RANGE_MS.map((ms) => ({ id: String(ms), label: i18n._(timeRangeLabel(ms)) }))}
+      active={String(props.value)}
+      onChange={(value) => props.onChange(Number(value))}
+    />
   )
 }
 
@@ -497,149 +641,220 @@ function SummaryQualityNotice(props: {
   const msg = () => summaryQualityMessage(props.summary)
   return (
     <Show when={msg()}>
-      <div class="performance-card rounded-xl px-4 py-3 text-12-regular text-icon-warning-base">{props._(msg()!)}</div>
+      <div class="performance-card rounded-xl px-4 py-3 app-panel-caption text-text-on-warning-base">
+        {props._(msg()!)}
+      </div>
     </Show>
   )
 }
 
-function SummaryCards(props: { _: ReturnType<typeof useLingui>["_"]; summary: PerformanceSummary | null | undefined }) {
+export function SummaryCards(props: {
+  _: ReturnType<typeof useLingui>["_"]
+  summary: PerformanceSummary | null | undefined
+  onIssues?: () => void
+}) {
   const { _ } = props
   const summary = () => props.summary
   const cards = () => performanceSummaryCardModel(summary())
   const resources = () => summary()?.resources
   const frontend = () => summary()?.frontend
+  const healthLabel = () => {
+    const status = summary()?.health.status
+    if (status === "healthy") return _(P.summaryHealthy)
+    if (status === "degraded") return _(P.summaryDegraded)
+    if (status === "critical") return _(P.summaryCritical)
+    return _(P.summaryUnknown)
+  }
   const serviceMemorySource = () =>
     cards().serviceMemory?.source === "cgroup_v2" ? _(P.summaryMemorySourceCgroup) : _(P.summaryMemorySourceProcess)
   const serviceMemoryCoverage = () =>
     cards().serviceMemory?.completeness === "full" ? _(P.summaryMemoryCoverageFull) : _(P.summaryMemoryCoveragePartial)
   return (
-    <div class="performance-summary-grid">
-      <MetricCard
-        _={_}
-        label={P.summaryHealth}
-        value={summary()?.health.status ?? _(P.summaryUnknown)}
-        icon="performance.health"
-      />
-      <MetricCard
-        _={_}
-        label={P.summaryHttpP95}
-        value={formatChartDuration(summary()?.backend.p95RequestMs)}
-        icon="performance.latency"
-      />
-      <MetricCard
-        _={_}
-        label={P.summarySessions}
-        value={_(P.summarySessionsValue.id, {
-          active: String(summary()?.backend.activeSessions ?? 0),
-          pending: String(summary()?.backend.pendingSessions ?? 0),
-        })}
-        icon="performance.trace"
-      />
-      <MetricCard
-        _={_}
-        label={P.summaryIssues}
-        value={String(cards().openIssueCount)}
-        icon="performance.issue"
-        tone={cards().openIssueCount > 0 ? "warning" : "default"}
-      />
-      <MetricCard
-        _={_}
-        label={P.summaryCpu}
-        value={formatChartPercent(ratioToPercent(resources()?.cpuUtilizationRatio))}
-        icon="performance.cpu"
-      />
-      <MetricCard
-        _={_}
-        label={P.summaryServiceMemory}
-        value={
-          cards().serviceMemory
-            ? _(P.summaryServiceMemoryValue.id, {
-                rss: formatChartBytes(cards().serviceMemory?.rssBytes),
-                source: serviceMemorySource(),
-                coverage: serviceMemoryCoverage(),
-              })
-            : "—"
-        }
-        icon="performance.memory"
-      />
-      <MetricCard
-        _={_}
-        label={P.summaryServerRss}
-        value={formatChartBytes(cards().serverRssBytes)}
-        icon="performance.memory"
-      />
-      <MetricCard
-        _={_}
-        label={P.summaryHeapUsed}
-        value={formatChartBytes(resources()?.heapUsedBytes)}
-        icon="performance.memory"
-      />
-      <MetricCard
-        _={_}
-        label={P.summaryExternal}
-        value={formatChartBytes(resources()?.externalBytes)}
-        icon="performance.memory"
-      />
-      <MetricCard
-        _={_}
-        label={P.summaryArrayBuffers}
-        value={formatChartBytes(resources()?.arrayBuffersBytes)}
-        icon="performance.memory"
-      />
-      <MetricCard
-        _={_}
-        label={P.summaryToolChildRss}
-        value={_(P.summaryToolChildRssValue.id, {
-          rss: formatChartBytes(cards().childProcessRssBytes),
-          measured: String(cards().measuredChildProcessCount),
-          count: String(cards().childProcessCount),
-        })}
-        icon="performance.memory"
-        tone={cards().measuredChildProcessCount < cards().childProcessCount ? "warning" : "default"}
-      />
-      <MetricCard
-        _={_}
-        label={P.summaryEventLoop}
-        value={formatChartDuration(resources()?.eventLoopLagP95Ms)}
-        icon="performance.latency"
-      />
-      <MetricCard
-        _={_}
-        label={P.summaryDiskIo}
-        value={_(P.summaryDiskIoValue.id, {
-          read: formatChartBytes(resources()?.appReadBytes),
-          write: formatChartBytes(resources()?.appWrittenBytes),
-        })}
-        icon="performance.disk"
-      />
-      <MetricCard
-        _={_}
-        label={P.summaryDiskOps}
-        value={_(P.summaryDiskOpsValue.id, {
-          read: String(resources()?.appReadOps ?? 0),
-          write: String(resources()?.appWriteOps ?? 0),
-        })}
-        icon="performance.disk"
-      />
-      <MetricCard
-        _={_}
-        label={P.summaryLlmCalls}
-        value={String(summary()?.sessions?.llmCallCount ?? 0)}
-        icon="performance.network"
-      />
-      <MetricCard
-        _={_}
-        label={P.summaryToolCalls}
-        value={String(summary()?.sessions?.toolCallCount ?? 0)}
-        icon="performance.trace"
-      />
-      <MetricCard
-        _={_}
-        label={P.summaryLongTasks}
-        value={String(frontend()?.longTaskCount ?? 0)}
-        icon="performance.frontend"
-      />
-    </div>
+    <>
+      <div class="performance-summary-grid">
+        <MetricCard
+          _={_}
+          label={P.summaryHealth}
+          value={healthLabel()}
+          icon="performance.health"
+          onClick={summary()?.health.status !== "healthy" ? props.onIssues : undefined}
+        />
+        <MetricCard
+          _={_}
+          label={P.summaryHttpP95}
+          value={formatChartDuration(summary()?.backend.p95RequestMs)}
+          icon="performance.latency"
+        />
+        <MetricCard
+          _={_}
+          label={P.summarySessions}
+          value={
+            <span class="performance-session-counts">
+              <span class="performance-session-count">
+                {_({
+                  id: "app.performance.sessions.active",
+                  message: "{count} active",
+                  values: { count: summary()?.backend.activeSessions ?? "—" },
+                })}
+              </span>
+              <span class="performance-session-count">
+                {_({
+                  id: "app.performance.sessions.pending",
+                  message: "{count} pending",
+                  values: { count: summary()?.backend.pendingSessions ?? "—" },
+                })}
+              </span>
+            </span>
+          }
+          icon="performance.trace"
+        />
+        <MetricCard
+          _={_}
+          label={P.summaryIssues}
+          value={summary() ? String(cards().openIssueCount) : "—"}
+          onClick={summary() ? props.onIssues : undefined}
+          icon="performance.issue"
+          tone={cards().openIssueCount > 0 ? "warning" : "default"}
+        />
+      </div>
+      <section class="performance-section" aria-label={_(P.groupResources)}>
+        <h2 class="performance-section-title">{_(P.groupResources)}</h2>
+        <div class="performance-resource-grid">
+          <div class="performance-resource-group">
+            <h3 class="app-panel-section-title">
+              {_({ id: "app.performance.resources.cpu", message: "CPU and event loop" })}
+            </h3>
+            <MetricCard
+              variant="resource"
+              _={_}
+              label={P.summaryCpu}
+              value={formatChartPercent(ratioToPercent(resources()?.cpuUtilizationRatio))}
+              icon="performance.cpu"
+            />
+            <MetricCard
+              variant="resource"
+              _={_}
+              label={P.summaryEventLoop}
+              value={formatChartDuration(resources()?.eventLoopLagP95Ms)}
+              icon="performance.latency"
+            />
+          </div>
+          <div class="performance-resource-group">
+            <h3 class="app-panel-section-title">{_({ id: "app.performance.resources.memory", message: "Memory" })}</h3>
+            <MetricCard
+              variant="resource"
+              _={_}
+              label={P.summaryServiceMemory}
+              value={formatChartBytes(cards().serviceMemory?.rssBytes)}
+              hint={
+                cards().serviceMemory
+                  ? _({
+                      id: "app.performance.memory.provenance",
+                      message: "{source} · {coverage}",
+                      values: { source: serviceMemorySource(), coverage: serviceMemoryCoverage() },
+                    })
+                  : undefined
+              }
+              icon="performance.memory"
+            />
+            <MetricCard
+              variant="resource"
+              _={_}
+              label={P.summaryServerRss}
+              value={formatChartBytes(cards().serverRssBytes)}
+              icon="performance.memory"
+            />
+            <MetricCard
+              variant="resource"
+              _={_}
+              label={P.summaryHeapUsed}
+              value={formatChartBytes(resources()?.heapUsedBytes)}
+              icon="performance.memory"
+            />
+            <MetricCard
+              variant="resource"
+              _={_}
+              label={P.summaryExternal}
+              value={formatChartBytes(resources()?.externalBytes)}
+              icon="performance.memory"
+            />
+            <MetricCard
+              variant="resource"
+              _={_}
+              label={P.summaryArrayBuffers}
+              value={formatChartBytes(resources()?.arrayBuffersBytes)}
+              icon="performance.memory"
+            />
+            <MetricCard
+              variant="resource"
+              _={_}
+              label={P.summaryToolChildRss}
+              value={formatChartBytes(cards().childProcessRssBytes)}
+              hint={_({
+                id: "app.performance.memory.measured",
+                message: "{measured}/{count} processes measured",
+                values: { measured: cards().measuredChildProcessCount, count: cards().childProcessCount },
+              })}
+              icon="performance.memory"
+              tone={cards().measuredChildProcessCount < cards().childProcessCount ? "warning" : "default"}
+            />
+          </div>
+          <div class="performance-resource-group">
+            <h3 class="app-panel-section-title">{_({ id: "app.performance.resources.disk", message: "Disk" })}</h3>
+            <MetricCard
+              variant="resource"
+              _={_}
+              label={P.summaryDiskIo}
+              value={_(P.summaryDiskIoValue.id, {
+                read: formatChartBytes(resources()?.appReadBytes),
+                write: formatChartBytes(resources()?.appWrittenBytes),
+              })}
+              icon="performance.disk"
+            />
+            <MetricCard
+              variant="resource"
+              _={_}
+              label={P.summaryDiskOps}
+              value={
+                resources()?.appReadOps !== undefined && resources()?.appWriteOps !== undefined
+                  ? _(P.summaryDiskOpsValue.id, {
+                      read: String(resources()?.appReadOps),
+                      write: String(resources()?.appWriteOps),
+                    })
+                  : "—"
+              }
+              icon="performance.disk"
+            />
+          </div>
+          <div class="performance-resource-group">
+            <h3 class="app-panel-section-title">
+              {_({ id: "app.performance.resources.calls", message: "Model and tool calls" })}
+            </h3>
+            <MetricCard
+              variant="resource"
+              _={_}
+              label={P.summaryLlmCalls}
+              value={String(summary()?.sessions?.llmCallCount ?? "—")}
+              icon="performance.network"
+            />
+            <MetricCard
+              variant="resource"
+              _={_}
+              label={P.summaryToolCalls}
+              value={String(summary()?.sessions?.toolCallCount ?? "—")}
+              icon="performance.trace"
+            />
+            <MetricCard
+              variant="resource"
+              _={_}
+              label={P.summaryLongTasks}
+              value={String(frontend()?.longTaskCount ?? "—")}
+              icon="performance.frontend"
+            />
+          </div>
+        </div>
+      </section>
+    </>
   )
 }
 
@@ -687,12 +902,12 @@ function ResourceOwnership(props: {
   return (
     <section class="performance-card rounded-xl px-4 py-4">
       <div class="mb-3">
-        <div class="text-14-medium text-text-strong">{_(P.resourceOwnershipTitle)}</div>
-        <div class="mt-1 text-12-regular text-text-weak">{_(P.resourceOwnershipDesc)}</div>
+        <div class="app-panel-row-title text-text-strong">{_(P.resourceOwnershipTitle)}</div>
+        <div class="mt-1 app-panel-caption text-text-weak">{_(P.resourceOwnershipDesc)}</div>
       </div>
       <Show when={service()?.source === "cgroup_v2" ? service() : undefined}>
         {(memory) => (
-          <div class="performance-service-memory mb-4 grid gap-2 rounded-lg p-3 text-12-regular">
+          <div class="performance-service-memory mb-4 grid gap-2 rounded-lg p-3 app-panel-caption">
             <div>
               <span class="text-text-weak">{_(P.resourceCgroupCurrent)}</span>
               <span class="ml-2 text-text-strong">{formatChartBytes(memory().currentBytes)}</span>
@@ -709,7 +924,7 @@ function ResourceOwnership(props: {
         )}
       </Show>
       <div class="performance-owner-table-wrap">
-        <table class="performance-owner-table w-full text-left text-12-regular">
+        <table class="performance-owner-table w-full text-left app-panel-caption">
           <thead class="text-text-weak">
             <tr>
               <th>{_(P.resourceOwner)}</th>
@@ -726,8 +941,8 @@ function ResourceOwnership(props: {
               {(owner) => (
                 <tr>
                   <td>
-                    <div class="text-12-medium text-text-strong">{ownerLabel(owner.owner)}</div>
-                    <div class="mt-0.5 text-11-regular text-text-weak">{owner.source}</div>
+                    <div class="app-panel-caption font-medium text-text-strong">{ownerLabel(owner.owner)}</div>
+                    <div class="mt-0.5 app-panel-caption text-text-weak">{owner.source}</div>
                   </td>
                   <td>{formatChartBytes(owner.currentBytes)}</td>
                   <td>{formatChartBytes(owner.peakBytes)}</td>
@@ -748,24 +963,51 @@ function ResourceOwnership(props: {
 function MetricCard(props: {
   _: ReturnType<typeof useLingui>["_"]
   label: MessageDescriptor
-  value: string
+  value: JSX.Element
+  hint?: string
+  onClick?: () => void
   icon: Parameters<typeof getSemanticIcon>[0]
   tone?: "default" | "warning"
+  variant?: "summary" | "resource"
 }) {
   return (
-    <div class="performance-card rounded-xl p-4">
+    <div
+      class={props.variant === "resource" ? "performance-resource-metric" : "performance-card rounded-xl p-4"}
+      role="group"
+      aria-label={props._(props.label)}
+    >
       <div class="flex items-center justify-between gap-3">
-        <div class="text-11-medium uppercase tracking-[0.12em] text-text-weaker">{props._(props.label)}</div>
-        <Icon
-          name={getSemanticIcon(props.icon)}
-          size="small"
-          classList={{
-            "text-icon-weak-base": props.tone !== "warning",
-            "text-icon-warning-base": props.tone === "warning",
-          }}
-        />
+        <div class="app-panel-caption font-medium text-text-weak">{props._(props.label)}</div>
+        <Show when={props.variant !== "resource"}>
+          <Icon
+            name={getSemanticIcon(props.icon)}
+            size="small"
+            classList={{
+              "text-icon-weak-base": props.tone !== "warning",
+              "text-icon-warning-base": props.tone === "warning",
+            }}
+          />
+        </Show>
       </div>
-      <div class="mt-2 truncate text-20-semibold text-text-strong tabular-nums">{props.value}</div>
+      <div
+        class="performance-metric-value mt-2 app-panel-value text-text-strong tabular-nums"
+        title={typeof props.value === "string" ? props.value : undefined}
+      >
+        <Show when={props.onClick} fallback={props.value}>
+          <button type="button" class="performance-summary-action" onClick={props.onClick}>
+            {props.value}
+            <span class="sr-only">
+              {props._({ id: "app.performance.openDiagnostics", message: "Open diagnostics" })}
+            </span>
+          </button>
+        </Show>
+      </div>
+      <Show when={props.hint || props.value === "—"}>
+        <p class="performance-metric-hint app-panel-caption text-text-weak mt-1">
+          {props.hint ??
+            props._({ id: "app.performance.metric.unavailable", message: "No measurement in this snapshot" })}
+        </p>
+      </Show>
     </div>
   )
 }
@@ -779,20 +1021,22 @@ function RuntimeSupport(props: {
       <div class="mb-3 flex items-center gap-2">
         <Icon name={getSemanticIcon("performance.health")} size="small" class="text-icon-weak-base" />
         <div>
-          <h3 class="text-14-semibold text-text-strong">{props._(P.runtimeHealth)}</h3>
-          <p class="mt-1 text-11-regular text-text-weak">{props._(P.runtimeHealthDesc)}</p>
+          <h3 class="app-panel-row-title text-text-strong">{props._(P.runtimeHealth)}</h3>
+          <p class="mt-1 app-panel-caption text-text-weak">{props._(P.runtimeHealthDesc)}</p>
         </div>
       </div>
       <div class="grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-6">
         <For each={runtimeSupportItems(props.summary, { _: props._ } as I18n)}>
           {(item) => (
             <div class="performance-card-soft rounded-lg px-3 py-2">
-              <div class="text-10-medium uppercase tracking-[0.1em] text-text-weaker">{props._(item.label)}</div>
+              <div class="app-panel-caption font-medium uppercase tracking-[0.1em] text-text-weaker">
+                {props._(item.label)}
+              </div>
               <div
                 classList={{
-                  "mt-1 text-13-medium text-text-strong tabular-nums": true,
-                  "text-icon-warning-base": item.tone === "warning",
-                  "text-icon-success-base": item.tone === "success",
+                  "mt-1 app-panel-control text-text-strong tabular-nums": true,
+                  "text-text-on-warning-base": item.tone === "warning",
+                  "text-text-on-success-base": item.tone === "success",
                 }}
               >
                 {item.value}
@@ -828,10 +1072,10 @@ function PerformanceLineChart(props: {
   return (
     <div class="performance-card rounded-xl p-4">
       <div class="mb-3">
-        <h3 class="text-14-semibold text-text-strong">{props._(props.title)}</h3>
-        <p class="mt-1 text-11-regular text-text-weak">{props._(props.description)}</p>
+        <h3 class="app-panel-row-title text-text-strong">{props._(props.title)}</h3>
+        <p class="mt-1 app-panel-caption text-text-weak">{props._(props.description)}</p>
         <Show when={props.quality}>
-          {(quality) => <p class="mt-1 text-11-regular text-icon-warning-base">{props._(quality())}</p>}
+          {(quality) => <p class="mt-1 app-panel-caption text-text-on-warning-base">{props._(quality())}</p>}
         </Show>
       </div>
       <Show
@@ -849,13 +1093,14 @@ function PerformanceLineChart(props: {
 function Timeline(props: {
   _: ReturnType<typeof useLingui>["_"]
   traces: PerformanceTraceSpan[]
+  labels: ReadonlyMap<string, string>
   onSelect: (trace: PerformanceTraceSpan) => void
 }) {
   return (
     <div class="performance-card rounded-xl p-4">
       <div class="mb-3 flex items-center gap-2">
         <Icon name={getSemanticIcon("performance.timeline")} size="small" class="text-icon-weak-base" />
-        <h3 class="text-14-semibold text-text-strong">{props._(P.timelineTitle)}</h3>
+        <h3 class="app-panel-row-title text-text-strong">{props._(P.timelineTitle)}</h3>
       </div>
       <Show when={props.traces.length > 0} fallback={<EmptyState _={props._} label={P.timelineNoSpans} />}>
         <div class="flex flex-col gap-2">
@@ -868,12 +1113,26 @@ function Timeline(props: {
               >
                 <div class="h-2 w-2 shrink-0 rounded-full bg-icon-interactive-base" />
                 <div class="min-w-0 flex-1">
-                  <div class="truncate text-12-medium text-text-strong">{trace.name}</div>
-                  <div class="truncate text-11-regular text-text-weaker">
-                    {[trace.kind, trace.module, trace.traceId].filter(Boolean).join(" · ")}
+                  <div class="line-clamp-2 app-panel-row-title text-text-strong">
+                    {props.labels.get(trace.traceId) ?? trace.name}
+                  </div>
+                  <Show
+                    when={!props.labels.has(trace.traceId) && (trace.kind === "http" || trace.name === "http.request")}
+                  >
+                    <p class="app-panel-caption text-text-weak">
+                      {props._({ id: "app.performance.trace.limited", message: "Information limited" })}
+                    </p>
+                  </Show>
+                  <div class="truncate app-panel-caption text-text-weaker">
+                    {[trace.kind, trace.module, traceStatusLabel(trace.status)]
+                      .filter(Boolean)
+                      .map((value) => (typeof value === "string" ? value : props._(value)))
+                      .join(" · ")}
                   </div>
                 </div>
-                <div class="text-11-medium text-text-weak tabular-nums">{formatChartDuration(trace.durationMs)}</div>
+                <div class="app-panel-caption font-medium text-text-weak tabular-nums">
+                  {formatChartDuration(trace.durationMs)}
+                </div>
               </button>
             )}
           </For>
@@ -882,58 +1141,79 @@ function Timeline(props: {
     </div>
   )
 }
-function IssueList(props: {
+export function IssueList(props: {
   _: ReturnType<typeof useLingui>["_"]
   fmt: ReturnType<typeof useLocale>["fmt"]
   issues: PerformanceIssue[]
   onTrace: (issue: PerformanceIssue) => void
 }) {
   return (
-    <div class="performance-card rounded-xl p-4">
-      <div class="mb-3 flex items-center gap-2">
-        <Icon name={getSemanticIcon("performance.issue")} size="small" class="text-icon-weak-base" />
-        <h3 class="text-14-semibold text-text-strong">{props._(P.issuesTitle)}</h3>
-      </div>
-      <Show when={props.issues.length > 0} fallback={<EmptyState _={props._} label={P.issuesNoActive} />}>
-        <div class="flex flex-col gap-2">
+    <section class="performance-card rounded-xl p-4">
+      <h3 class="app-panel-section-title text-text-strong mb-3">{props._(P.issuesTitle)}</h3>
+      <Show when={props.issues.length} fallback={<EmptyState _={props._} label={P.issuesNoActive} />}>
+        <div class="flex flex-col gap-3">
           <For each={props.issues}>
             {(issue) => {
-              const content = (
-                <>
-                  <div class="flex items-center justify-between gap-3">
-                    <div class="truncate text-12-medium text-text-strong">
-                      {issue.title ?? issue.message ?? props._(P.issuesFallbackName)}
+              const title = () => issueTitle(issue)
+              return (
+                <article class="performance-issue-row">
+                  <div class="flex items-start justify-between gap-3">
+                    <h4 class="app-panel-row-title text-text-strong line-clamp-2">
+                      {typeof title() === "string" ? (title() as string) : props._(title() as MessageDescriptor)}
+                    </h4>
+                    <span class={severityClass(issue.severity)}>{props._(ISSUE_SEVERITY[issue.severity])}</span>
+                  </div>
+                  <p class="app-panel-caption text-text-weak mt-1">
+                    {props._({
+                      id: "app.performance.issue.occurrences",
+                      message: "{count} occurrences · last seen {time}",
+                      values: { count: issue.occurrenceCount, time: formatTime(issue.lastSeenTime, props.fmt) },
+                    })}
+                  </p>
+                  <Show when={typeof issue.evidence?.observedValue === "number"}>
+                    <p class="app-panel-caption text-text-base mt-1">
+                      {props._({
+                        id: "app.performance.issue.observed",
+                        message: "Observed: {value}",
+                        values: {
+                          value: formatChartMetricValue(
+                            issue.evidence?.observedValue as number,
+                            typeof issue.evidence?.unit === "string" ? issue.evidence?.unit : "",
+                          ),
+                        },
+                      })}
+                    </p>
+                  </Show>
+                  <Show when={issue.traceId}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="small"
+                      class="performance-issue-trace"
+                      onClick={() => props.onTrace(issue)}
+                    >
+                      {props._({ id: "app.performance.issue.inspectTrace", message: "Inspect related trace" })}
+                    </Button>
+                  </Show>
+                  <details class="performance-issue-details mt-1">
+                    <summary class="app-panel-caption text-text-weak">{props._(P.errorDetails)}</summary>
+                    <div class="app-panel-copy text-text-base flex flex-col gap-2 mt-2 break-words">
+                      <p>{issue.message}</p>
+                      <Show when={issue.recommendation}>
+                        <p>{issue.recommendation}</p>
+                      </Show>
+                      <p class="app-panel-caption text-text-weak">
+                        {issue.module} · {issue.code}
+                      </p>
                     </div>
-                    <span class={severityClass(issue.severity)}>{issue.severity ?? props._(P.severityInfo)}</span>
-                  </div>
-                  <div class="mt-1 line-clamp-2 text-11-regular text-text-weak">{issue.message}</div>
-                  <div class="mt-1 text-11-regular text-text-weaker">
-                    {[
-                      issue.module,
-                      formatTime(issue.lastSeenTime, props.fmt),
-                      issue.traceId ? props._(P.issueTraceAvailable) : undefined,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </div>
-                </>
-              )
-              return issue.traceId ? (
-                <button
-                  type="button"
-                  class="performance-card-soft rounded-lg p-3 text-left transition-colors hover:bg-surface-hover-base"
-                  onClick={() => props.onTrace(issue)}
-                >
-                  {content}
-                </button>
-              ) : (
-                <div class="performance-card-soft rounded-lg p-3">{content}</div>
+                  </details>
+                </article>
               )
             }}
           </For>
         </div>
       </Show>
-    </div>
+    </section>
   )
 }
 
@@ -943,8 +1223,8 @@ function ToolFailures(props: { _: ReturnType<typeof useLingui>["_"]; items: Tool
       <div class="mb-3 flex items-center gap-2">
         <Icon name={getSemanticIcon("performance.tools")} size="small" class="text-icon-weak-base" />
         <div>
-          <h3 class="text-14-semibold text-text-strong">{props._(P.toolFailures)}</h3>
-          <p class="mt-1 text-11-regular text-text-weak">{props._(P.toolFailuresDesc)}</p>
+          <h3 class="app-panel-row-title text-text-strong">{props._(P.toolFailures)}</h3>
+          <p class="mt-1 app-panel-caption text-text-weak">{props._(P.toolFailuresDesc)}</p>
         </div>
       </div>
       <Show when={props.items.length > 0} fallback={<EmptyState _={props._} label={P.toolFailuresEmpty} />}>
@@ -955,16 +1235,16 @@ function ToolFailures(props: { _: ReturnType<typeof useLingui>["_"]; items: Tool
               return (
                 <div class="performance-card-soft flex items-start gap-3 rounded-lg px-3 py-2">
                   <div class="min-w-0 flex-1">
-                    <div class="truncate text-12-medium text-text-strong">{item.tool}</div>
-                    <div class="mt-0.5 truncate text-11-regular text-text-weaker">
+                    <div class="truncate app-panel-caption font-medium text-text-strong">{item.tool}</div>
+                    <div class="mt-0.5 truncate app-panel-caption text-text-weaker">
                       {typeof cats === "string" ? cats : props._(cats)}
                     </div>
                   </div>
                   <div class="shrink-0 text-right tabular-nums">
-                    <div class="text-11-medium text-text-weak">
+                    <div class="app-panel-caption font-medium text-text-weak">
                       {item.errorCount} {props._(P.toolFailuresFailed)} · {formatChartPercent(item.errorRate * 100)}
                     </div>
-                    <div class="mt-0.5 text-11-regular text-text-weaker">
+                    <div class="mt-0.5 app-panel-caption text-text-weaker">
                       {item.callCount} {props._(P.toolFailuresCalls)}
                     </div>
                   </div>
@@ -978,9 +1258,10 @@ function ToolFailures(props: { _: ReturnType<typeof useLingui>["_"]; items: Tool
   )
 }
 
-function TopRankings(props: {
+export function TopRankings(props: {
   _: ReturnType<typeof useLingui>["_"]
   summary: PerformanceSummary | null | undefined
+  labels?: ReadonlyMap<string, string>
   onTrace: (item: RankedItem) => void
 }) {
   const groups = createMemo(() => {
@@ -999,13 +1280,15 @@ function TopRankings(props: {
     <div class="performance-card rounded-xl p-4">
       <div class="mb-3 flex items-center gap-2">
         <Icon name={getSemanticIcon("performance.routes")} size="small" class="text-icon-weak-base" />
-        <h3 class="text-14-semibold text-text-strong">{props._(P.topRankings)}</h3>
+        <h3 class="app-panel-row-title text-text-strong">{props._(P.topRankings)}</h3>
       </div>
       <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <For each={groups()}>
           {(group) => (
             <div>
-              <div class="mb-2 text-11-medium uppercase tracking-[0.12em] text-text-weaker">{props._(group.title)}</div>
+              <div class="mb-2 app-panel-caption font-medium uppercase tracking-[0.12em] text-text-weaker">
+                {props._(group.title)}
+              </div>
               <Show when={group.items.length > 0} fallback={<EmptyState _={props._} label={P.rankingEmpty} />}>
                 <div class="flex flex-col gap-1.5">
                   <For each={group.items}>
@@ -1016,12 +1299,24 @@ function TopRankings(props: {
                         onClick={() => props.onTrace(item)}
                       >
                         <div class="min-w-0 flex-1">
-                          <div class="truncate text-12-medium text-text-strong">{item.label}</div>
-                          <div class="truncate text-11-regular text-text-weaker">
+                          <div class="line-clamp-2 app-panel-row-title text-text-strong">
+                            {(item.traceId && props.labels?.get(item.traceId)) || item.label}
+                          </div>
+                          <Show
+                            when={
+                              item.label.startsWith("http.request") &&
+                              !(item.traceId && props.labels?.has(item.traceId))
+                            }
+                          >
+                            <p class="app-panel-caption text-text-weak">
+                              {props._({ id: "app.performance.trace.limited", message: "Information limited" })}
+                            </p>
+                          </Show>
+                          <div class="truncate app-panel-caption text-text-weaker">
                             {[item.module, item.sessionID, item.tool].filter(Boolean).join(" · ")}
                           </div>
                         </div>
-                        <div class="text-11-medium text-text-weak tabular-nums">
+                        <div class="app-panel-caption font-medium text-text-weak tabular-nums">
                           {formatChartMetricValue(item.value, item.unit)}
                         </div>
                       </button>
@@ -1042,9 +1337,9 @@ function BrowserMetricsChart(props: { _: ReturnType<typeof useLingui>["_"]; samp
   const colors = createMemo(() => {
     const colors = chartTheme()
     return {
-      browser: colors.color("syntax-type"),
-      memory: colors.color("text-on-success-base"),
-      request: colors.color("text-on-warning-base"),
+      browser: colors.series[4],
+      memory: colors.series[2],
+      request: colors.series[3],
     }
   })
   const points = createMemo(() => browserMetricPoints(props.samples))
@@ -1058,27 +1353,54 @@ function BrowserMetricsChart(props: { _: ReturnType<typeof useLingui>["_"]; samp
       description={P.chartBrowserDesc}
       points={points()}
       datasets={[
-        megabytesDataset("Heap used", "memory", colors().browser, "Local performance.memory sample"),
-        countDataset("DOM nodes", "domNodes", colors().memory, "Local DOM sample"),
-        durationDataset("Navigation duration", "latency", colors().request, "Local navigation timing sample"),
+        megabytesDataset(
+          props._(P.datasetHeapUsed),
+          "memory",
+          colors().browser,
+          props._({ id: "app.performance.source.localHeap", message: "Local browser memory sample" }),
+        ),
+        countDataset(
+          props._({ id: "app.performance.dataset.domNodes", message: "DOM nodes" }),
+          "domNodes",
+          colors().memory,
+          props._({ id: "app.performance.source.localDom", message: "Local DOM sample" }),
+          props._(P.axisCount),
+        ),
+        durationDataset(
+          props._({ id: "app.performance.dataset.navigation", message: "Navigation duration" }),
+          "latency",
+          colors().request,
+          props._({ id: "app.performance.source.localNavigation", message: "Local navigation timing sample" }),
+        ),
       ]}
       quality={memoryUnsupported() ? P.chartBrowserMemoryUnsupported : undefined}
     />
   )
 }
 
-function FrontendSection(props: {
+export function FrontendSection(props: {
   _: ReturnType<typeof useLingui>["_"]
   summary: PerformanceSummary | null | undefined
+  stale?: boolean
 }) {
   const frontend = () => props.summary?.frontend
+  const metricState = (value: number | undefined, entryType: string) => {
+    const missing = browserMetricState(value, entryType, props._)
+    if (missing) return missing
+    if (props.stale) return props._({ id: "app.performance.browser.stale", message: "From the previous snapshot" })
+    if (props.summary?.quality?.partial || props.summary?.quality?.truncated)
+      return props._({ id: "app.performance.browser.partial", message: "Partial snapshot" })
+    if (props.summary?.quality?.retentionLimited)
+      return props._({ id: "app.performance.browser.retention", message: "Retention-limited snapshot" })
+    return undefined
+  }
   const slow = () => props.summary?.top.slowFrontend ?? []
   return (
     <div class="performance-frontend-grid">
       <div class="performance-card rounded-xl p-4">
         <div class="mb-3 flex items-center gap-2">
           <Icon name={getSemanticIcon("performance.frontend")} size="small" class="text-icon-weak-base" />
-          <h3 class="text-14-semibold text-text-strong">{props._(P.frontendSlow)}</h3>
+          <h3 class="app-panel-row-title text-text-strong">{props._(P.frontendSlow)}</h3>
         </div>
         <Show when={slow().length > 0} fallback={<EmptyState _={props._} label={P.frontendNoSlow} />}>
           <div class="flex flex-col gap-1.5">
@@ -1086,10 +1408,10 @@ function FrontendSection(props: {
               {(item) => (
                 <div class="performance-card-soft flex items-center gap-3 rounded-lg px-3 py-2">
                   <div class="min-w-0 flex-1">
-                    <div class="truncate text-12-medium text-text-strong">{item.label}</div>
-                    <div class="truncate text-11-regular text-text-weaker">{item.module}</div>
+                    <div class="truncate app-panel-caption font-medium text-text-strong">{item.label}</div>
+                    <div class="truncate app-panel-caption text-text-weaker">{item.module}</div>
                   </div>
-                  <div class="text-11-medium text-text-weak tabular-nums">
+                  <div class="app-panel-caption font-medium text-text-weak tabular-nums">
                     {formatChartMetricValue(item.value, item.unit)}
                   </div>
                 </div>
@@ -1101,131 +1423,177 @@ function FrontendSection(props: {
       <div class="performance-card rounded-xl p-4">
         <div class="mb-3 flex items-center gap-2">
           <Icon name={getSemanticIcon("performance.vitals")} size="small" class="text-icon-weak-base" />
-          <h3 class="text-14-semibold text-text-strong">{props._(P.frontendVitals)}</h3>
+          <h3 class="app-panel-row-title text-text-strong">{props._(P.frontendVitals)}</h3>
         </div>
-        <div class="grid grid-cols-2 gap-2 text-12-regular">
-          <Vital label="INP" value={formatChartDuration(frontend()?.inpMs)} />
-          <Vital label="LCP" value={formatChartDuration(frontend()?.lcpMs)} />
-          <Vital label="CLS" value={formatDecimal(frontend()?.cls)} />
-          <Vital label="FCP" value={formatChartDuration(frontend()?.fcpMs)} />
-          <Vital label="TTFB" value={formatChartDuration(frontend()?.ttfbMs)} />
-          <Vital label={props._(P.frontendResourceP95)} value={formatChartDuration(frontend()?.resourceP95Ms)} />
-          <Vital label={props._(P.summaryLongTasks)} value={String(frontend()?.longTaskCount ?? 0)} />
+        <div class="grid grid-cols-2 gap-2 app-panel-caption">
+          <Vital
+            label="INP"
+            value={formatChartDuration(frontend()?.inpMs)}
+            state={metricState(frontend()?.inpMs, "event")}
+          />
+          <Vital
+            label="LCP"
+            value={formatChartDuration(frontend()?.lcpMs)}
+            state={metricState(frontend()?.lcpMs, "largest-contentful-paint")}
+          />
+          <Vital
+            label="CLS"
+            value={formatDecimal(frontend()?.cls)}
+            state={metricState(frontend()?.cls, "layout-shift")}
+          />
+          <Vital
+            label="FCP"
+            value={formatChartDuration(frontend()?.fcpMs)}
+            state={metricState(frontend()?.fcpMs, "paint")}
+          />
+          <Vital
+            label="TTFB"
+            value={formatChartDuration(frontend()?.ttfbMs)}
+            state={metricState(frontend()?.ttfbMs, "navigation")}
+          />
+          <Vital
+            label={props._(P.frontendResourceP95)}
+            value={formatChartDuration(frontend()?.resourceP95Ms)}
+            state={metricState(frontend()?.resourceP95Ms, "resource")}
+          />
+          <Vital
+            label={props._(P.summaryLongTasks)}
+            value={String(frontend()?.longTaskCount ?? "—")}
+            state={metricState(frontend()?.longTaskCount, "longtask")}
+          />
         </div>
       </div>
     </div>
   )
 }
 
-function Vital(props: { label: string; value: string }) {
+function Vital(props: { label: string; value: string; state?: string }) {
   return (
     <div class="performance-card-soft rounded-lg px-3 py-2">
-      <div class="text-10-medium uppercase tracking-[0.1em] text-text-weaker">{props.label}</div>
-      <div class="mt-1 text-13-medium text-text-strong tabular-nums">{props.value}</div>
+      <div class="app-panel-caption font-medium uppercase tracking-[0.1em] text-text-weaker">{props.label}</div>
+      <div class="mt-1 app-panel-control text-text-strong tabular-nums">{props.value}</div>
+      <Show when={props.state}>
+        <p class="app-panel-caption text-text-weak mt-1">{props.state}</p>
+      </Show>
     </div>
   )
 }
 
-function TraceDrawer(props: {
+function traceStatusLabel(status?: string) {
+  const labels: Record<string, MessageDescriptor> = {
+    ok: { id: "app.performance.trace.status.ok", message: "Completed" },
+    running: { id: "app.performance.trace.status.running", message: "Running" },
+    error: { id: "app.performance.trace.status.error", message: "Failed" },
+    cancelled: { id: "app.performance.trace.status.cancelled", message: "Cancelled" },
+    timeout: { id: "app.performance.trace.status.timeout", message: "Timed out" },
+    interrupted: { id: "app.performance.trace.status.interrupted", message: "Interrupted" },
+  }
+  return (status ? labels[status] : undefined) ?? P.traceUnknown
+}
+
+export function TraceDialog(props: {
   _: ReturnType<typeof useLingui>["_"]
   fmt: ReturnType<typeof useLocale>["fmt"]
-  trace: PerformanceTraceSpan | null
+  trace: PerformanceTracePreview | null
   detail: PerformanceTraceDetail | null
-  onClose: () => void
+  loading: boolean
+  error?: string
+  onRetry: () => void
 }) {
   return (
-    <KobalteDialog open={props.trace !== null} onOpenChange={(open) => !open && props.onClose()}>
-      <KobalteDialog.Portal>
-        <KobalteDialog.Overlay data-component="dialog-overlay" />
-        <div data-component="dialog" data-size="content" data-placement="center">
-          <div data-slot="dialog-container">
-            <KobalteDialog.Content data-slot="dialog-content">
-              <div data-slot="dialog-header">
-                <div class="min-w-0">
-                  <Show
-                    when={props.trace}
-                    fallback={
-                      <KobalteDialog.Title data-slot="dialog-title">{props._(P.traceDetail)}</KobalteDialog.Title>
-                    }
-                  >
-                    {(trace) => <KobalteDialog.Title data-slot="dialog-title">{trace().name}</KobalteDialog.Title>}
-                  </Show>
-                </div>
-                <KobalteDialog.CloseButton
-                  data-slot="dialog-close-button"
-                  data-component="icon-button"
-                  data-variant="ghost"
-                >
-                  <Icon name={getSemanticIcon("action.close")} size="small" />
-                </KobalteDialog.CloseButton>
-              </div>
-              <KobalteDialog.Description data-slot="dialog-description">
-                {props.trace?.traceId}
-              </KobalteDialog.Description>
-              <div data-slot="dialog-body">
-                <Show when={props.trace}>
-                  {(trace) => (
-                    <div class="flex flex-col gap-3 text-12-regular">
-                      <DetailRow _={props._} label={P.traceStatus} value={trace().status ?? props._(P.traceUnknown)} />
-                      <DetailRow _={props._} label={P.traceDuration} value={formatChartDuration(trace().durationMs)} />
-                      <DetailRow _={props._} label={P.traceModule} value={trace().module ?? "—"} />
-                      <DetailRow _={props._} label={P.traceSession} value={trace().sessionID ?? "—"} />
-                      <DetailRow _={props._} label={P.traceStart} value={formatTime(trace().startedAt, props.fmt)} />
-                      <DetailRow _={props._} label={P.traceEnd} value={formatTime(trace().endedAt, props.fmt)} />
-                      <Show when={trace().errorCode}>
-                        <div class="performance-card-soft rounded-lg p-3 text-icon-warning-base">
-                          {trace().errorCode}
-                        </div>
-                      </Show>
-                      <Show when={props.detail?.spans.length}>
-                        <div>
-                          <div class="mb-2 text-11-medium uppercase tracking-[0.12em] text-text-weaker">
-                            {props._(P.traceSpans)}
-                          </div>
-                          <div class="flex flex-col gap-1.5">
-                            <For each={props.detail?.spans ?? []}>
-                              {(span) => (
-                                <div class="performance-card-soft rounded-lg px-3 py-2">
-                                  <div class="truncate text-12-medium text-text-strong">{span.name}</div>
-                                  <div class="mt-1 text-11-regular text-text-weaker">
-                                    {[span.module, span.status, formatChartDuration(span.durationMs)]
-                                      .filter(Boolean)
-                                      .join(" · ")}
-                                  </div>
-                                </div>
-                              )}
-                            </For>
-                          </div>
-                        </div>
-                      </Show>
-                      <Show when={props.detail?.events.length}>
-                        <div>
-                          <div class="mb-2 text-11-medium uppercase tracking-[0.12em] text-text-weaker">
-                            {props._(P.traceEvents)}
-                          </div>
-                          <div class="flex flex-col gap-1.5">
-                            <For each={(props.detail?.events ?? []).slice(0, 20)}>
-                              {(event) => (
-                                <div class="performance-card-soft rounded-lg px-3 py-2">
-                                  <div class="truncate text-12-medium text-text-strong">{event.type}</div>
-                                  <div class="mt-1 text-11-regular text-text-weaker">
-                                    {formatTime(event.iso ?? event.time, props.fmt)}
-                                  </div>
-                                </div>
-                              )}
-                            </For>
-                          </div>
-                        </div>
-                      </Show>
-                    </div>
-                  )}
-                </Show>
-              </div>
-            </KobalteDialog.Content>
-          </div>
+    <Dialog
+      size="wide"
+      class="app-panel-detail-dialog performance-trace-dialog"
+      title={props.trace?.name ?? props._(P.traceDetail)}
+    >
+      <p class="app-panel-caption text-text-weak mb-4">{props.trace?.traceId}</p>
+      <Show when={props.loading}>
+        <p role="status" class="app-panel-caption">
+          {props._({ id: "app.performance.trace.loading", message: "Loading trace details…" })}
+        </p>
+      </Show>
+      <Show when={props.error}>
+        <div role="alert" class="performance-trace-error">
+          <p class="app-panel-caption">{props.error}</p>
+          <Button
+            type="button"
+            variant="secondary"
+            size="small"
+            onClick={(event: MouseEvent & { currentTarget: HTMLButtonElement }) => {
+              const trigger = event.currentTarget
+              const surface = trigger.closest<HTMLElement>('[role="dialog"]')
+              props.onRetry()
+              queueMicrotask(() => {
+                if (!trigger.isConnected && document.activeElement === document.body) surface?.focus()
+              })
+            }}
+          >
+            {props._(P.retry)}
+          </Button>
         </div>
-      </KobalteDialog.Portal>
-    </KobalteDialog>
+      </Show>
+      <Show when={props.trace}>
+        {(trace) => (
+          <div class="flex flex-col gap-3 app-panel-caption">
+            <DetailRow
+              _={props._}
+              label={P.traceStatus}
+              value={trace().status ? props._(traceStatusLabel(trace().status!)) : props._(P.traceUnknown)}
+            />
+            <DetailRow _={props._} label={P.traceDuration} value={formatChartDuration(trace().durationMs)} />
+            <DetailRow _={props._} label={P.traceModule} value={trace().module ?? "—"} />
+            <DetailRow _={props._} label={P.traceSession} value={trace().sessionID ?? "—"} />
+            <DetailRow _={props._} label={P.traceStart} value={formatTime(trace().startedAt, props.fmt)} />
+            <DetailRow _={props._} label={P.traceEnd} value={formatTime(trace().endedAt, props.fmt)} />
+            <Show when={trace().errorCode}>
+              <div class="performance-card-soft rounded-lg p-3 text-text-on-warning-base">{trace().errorCode}</div>
+            </Show>
+            <Show when={props.detail?.spans.length}>
+              <div>
+                <div class="mb-2 app-panel-caption font-medium uppercase tracking-[0.12em] text-text-weaker">
+                  {props._(P.traceSpans)}
+                </div>
+                <div class="flex flex-col gap-1.5">
+                  <For each={props.detail?.spans ?? []}>
+                    {(span) => (
+                      <div class="performance-card-soft rounded-lg px-3 py-2">
+                        <div class="truncate app-panel-caption font-medium text-text-strong">
+                          {traceDisplayName(span.name, span.attributes)}
+                        </div>
+                        <div class="mt-1 app-panel-caption text-text-weaker">
+                          {[span.module, props._(traceStatusLabel(span.status)), formatChartDuration(span.durationMs)]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </div>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </div>
+            </Show>
+            <Show when={props.detail?.events.length}>
+              <div>
+                <div class="mb-2 app-panel-caption font-medium uppercase tracking-[0.12em] text-text-weaker">
+                  {props._(P.traceEvents)}
+                </div>
+                <div class="flex flex-col gap-1.5">
+                  <For each={(props.detail?.events ?? []).slice(0, 20)}>
+                    {(event) => (
+                      <div class="performance-card-soft rounded-lg px-3 py-2">
+                        <div class="truncate app-panel-caption font-medium text-text-strong">{event.type}</div>
+                        <div class="mt-1 app-panel-caption text-text-weaker">
+                          {formatTime(event.iso ?? event.time, props.fmt)}
+                        </div>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </div>
+            </Show>
+          </div>
+        )}
+      </Show>
+    </Dialog>
   )
 }
 
@@ -1233,14 +1601,14 @@ function DetailRow(props: { _: ReturnType<typeof useLingui>["_"]; label: Message
   return (
     <div class="flex items-center justify-between gap-3 border-b border-border-weaker-base/70 pb-2">
       <span class="text-text-weaker">{props._(props.label)}</span>
-      <span class="truncate text-text-base">{props.value}</span>
+      <span class="break-words text-right text-text-base">{props.value}</span>
     </div>
   )
 }
 
 function EmptyState(props: { _: ReturnType<typeof useLingui>["_"]; label: MessageDescriptor }) {
   return (
-    <div class="performance-card-soft rounded-lg px-3 py-8 text-center text-12-regular text-text-weaker">
+    <div class="performance-card-soft rounded-lg px-3 py-8 text-center app-panel-caption text-text-weaker">
       {props._(props.label)}
     </div>
   )
@@ -1260,7 +1628,7 @@ function percentDataset(
     unit: "percent",
     stat: "avg",
     axisId: "percent",
-    axisTitle: "Percent",
+    axisTitle: "%",
     formatter: formatChartPercent,
   }
 }
@@ -1280,7 +1648,7 @@ function durationDataset(
     unit: "ms",
     stat,
     axisId: "duration",
-    axisTitle: "Milliseconds",
+    axisTitle: "ms",
     formatter: formatChartDuration,
   }
 }
@@ -1299,8 +1667,8 @@ function megabytesDataset(
     unit: "megabytes",
     stat: "latest",
     axisId: "memory",
-    axisTitle: "Memory (MB)",
-    formatter: (value) => `${value.toFixed(value >= 10 ? 0 : 1)} MB`,
+    axisTitle: "MiB",
+    formatter: (value) => `${value.toFixed(value >= 10 ? 0 : 1)} MiB`,
   }
 }
 
@@ -1309,6 +1677,7 @@ function countDataset(
   field: keyof PerformanceMetricPoint,
   color: HexColor,
   source: string,
+  axisTitle: string,
 ): ChartDatasetSpec {
   return {
     label,
@@ -1318,7 +1687,7 @@ function countDataset(
     unit: "count",
     stat: label.includes("bucket") ? "count" : "latest",
     axisId: "count",
-    axisTitle: "Count",
+    axisTitle,
     formatter: (value) => value.toFixed(value >= 10 ? 0 : 1),
   }
 }
@@ -1337,7 +1706,7 @@ function bytesDataset(
     unit: "bytes",
     stat: "sum",
     axisId: "bytes",
-    axisTitle: "Bytes",
+    axisTitle: "B",
     formatter: formatChartBytes,
   }
 }
@@ -1381,9 +1750,7 @@ function formatTime(
 function issueTraceFallback(issue: PerformanceIssue): Partial<PerformanceTraceSpan> {
   return {
     name: issue.title ?? issue.message ?? P.issuesFallbackName.message,
-    status: issue.severity === "critical" || issue.severity === "error" ? "error" : "ok",
-    startedAt: new Date(issue.firstSeenTime).toISOString(),
-    durationMs: Math.max(0, issue.lastSeenTime - issue.firstSeenTime),
+
     module: issue.module,
     sessionID: issue.sessionID,
     redactionApplied: true,
@@ -1393,8 +1760,8 @@ function issueTraceFallback(issue: PerformanceIssue): Partial<PerformanceTraceSp
 function rankedTraceFallback(item: RankedItem): Partial<PerformanceTraceSpan> {
   return {
     name: item.label,
-    status: item.status === "error" || item.status === "cancelled" || item.status === "timeout" ? item.status : "ok",
-    durationMs: item.unit === "ms" ? item.value : undefined,
+    status:
+      item.status === "error" || item.status === "cancelled" || item.status === "timeout" ? item.status : undefined,
     module: item.module,
     sessionID: item.sessionID,
     redactionApplied: true,
@@ -1402,8 +1769,19 @@ function rankedTraceFallback(item: RankedItem): Partial<PerformanceTraceSpan> {
 }
 
 function severityClass(severity?: string): string {
-  const base = "shrink-0 rounded-full px-2 py-0.5 text-10-medium uppercase tracking-[0.1em]"
-  if (severity === "critical" || severity === "error") return `${base} bg-icon-critical-base/15 text-icon-critical-base`
-  if (severity === "warning") return `${base} bg-icon-warning-base/15 text-icon-warning-base`
+  const base = "shrink-0 rounded-md px-2 py-0.5 app-panel-caption"
+  if (severity === "critical" || severity === "error")
+    return `${base} bg-surface-critical-weak text-text-on-critical-base`
+  if (severity === "warning") return `${base} bg-surface-warning-weak text-text-on-warning-base`
   return `${base} bg-surface-base text-text-weaker`
+}
+
+function browserMetricState(value: number | undefined, entryType: string, _: ReturnType<typeof useLingui>["_"]) {
+  if (value !== undefined) return undefined
+  if (typeof PerformanceObserver === "undefined" || !PerformanceObserver.supportedEntryTypes.includes(entryType))
+    return _({
+      id: "app.performance.browser.unsupported",
+      message: "Unsupported by this browser; no snapshot measurement",
+    })
+  return _({ id: "app.performance.browser.noSamples", message: "No samples in this snapshot" })
 }

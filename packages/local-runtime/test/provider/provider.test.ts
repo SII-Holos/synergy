@@ -18,6 +18,21 @@ import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 
+test("usage support is explicit for a connected service without a usage reader", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({})
+    await provideTestScope({
+      scope: await tmp.scope(),
+      fn: async () => {
+        expect(await ProviderUsage.get("deepseek")).toMatchObject({
+          providerID: "deepseek",
+          status: "unavailable",
+          source: "unsupported",
+        })
+      },
+    })
+  }))
+
 async function provideTestScope(input: {
   scope: Awaited<ReturnType<Awaited<ReturnType<typeof tmpdir>>["scope"]>>
   init?: () => Promise<void>

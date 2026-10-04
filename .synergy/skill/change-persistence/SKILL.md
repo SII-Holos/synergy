@@ -45,6 +45,7 @@ Register optional session fields, creation/import hooks and indexes through the 
 
 1. Add a migration whenever an existing persisted shape can reach the new code.
 2. Make the migration deterministic and idempotent. Record dependencies and ordering explicitly.
+   Identity renames must detect an occupied destination before discarding any source. Cover both key orders, permission maps and existing target files; publish renamed files without replacement, and preserve ambiguous definitions for explicit recovery.
 3. Migrate to one canonical current path, then remove obsolete runtime adapters where the migrated state makes them unnecessary.
 4. Keep compatibility readers only at a named boundary when migration cannot make old data impossible; do not spread legacy checks through business logic.
 5. Preserve secrets and owner-only permissions. Never log raw credentials or include them in diagnostics fixtures. Apply credential owner checks inside serialized deletion and invalidation mutations as well as writes; background OAuth probes must clear only their own ephemeral verifier, never an interactive owner's persisted PKCE state. Revoke the previous authentication round before awaiting cleanup, and retain recovery exclusion until cleanup ends. A provider shared with ordinary header reads cannot use its last token read as an authentication-attempt identity; coordinate SDK authentication at an explicit operation boundary and capture a separate credential snapshot for that round. Compare the expected stored entry inside the mutation and advance that snapshot only after its own commit. Test late successful writes as well as rejected credentials against both a newer owner and a same-owner credential replacement.
@@ -55,7 +56,7 @@ Register optional session fields, creation/import hooks and indexes through the 
 
 For migrations that inspect historical filesystem paths, delete a real fixture directory before running the central migration and reopen its storage afterward. Optional Bun shell probes need a `try`/`catch` around construction and awaiting: `.nothrow()` handles command exit status, and a chained `.catch()` can miss synchronous launch errors. Keep this handling limited to the optional probe; identity validation and storage failures remain fatal.
 
-When retiring a configuration enum member, inspect recorded execution snapshots and journal replay as well as live configuration. Preserve immutable evidence and fingerprints; keep historical readers separate from active input validation. Seed a record emitted by the retired writer and verify recovery plus task continuation without reapplying retired runtime resources.
+Frozen configuration evidence needs a reader that covers supported historical writers independently of current configuration admission. Retain known historical fields and fingerprints instead of rewriting committed journal evidence. Keep accepted historical settings out of current execution configuration; test recovery, repeated reads, continuation with live resources, unchanged journal events and rejection of new inputs containing retired settings.
 
 When metadata upgrades run on access, audit projection builders as well as ordinary record readers. Apply registered owner upgrades before current-schema validation; a global migration receipt does not prove every lazy owner is current. Reproduce an already-completed projection migration that persisted an empty or partial index, reopen the Runtime through normal startup, and verify a new versioned repair restores it. Cover mixed upgraded and untouched owners, preserved activity and unknown fields, transactional rollback, and deferred-owner isolation without reading history.
 
@@ -64,6 +65,10 @@ Recovery indexes must stay absent or untrusted until a complete recovery pass es
 Deferred imports participate in the complete central migration graph. Mark an owner-local migration explicitly and test its `upSession` callback against unrelated owners; leave Scope-wide or unclassified work behind the staging barrier. Never mark a domain ledger complete before the discovered cohort converges. Import before entering a business transaction, recover before publishing the owner, and keep recovery baselines untrusted while old owners are unresolved. Keep catalog projections out of canonical index writers and drain Handle-owned background work before shutdown. Verify default eligibility from historical ledgers, retry fairness, first new work, first old-session access and interrupted retirement.
 
 For segmented backups, test durable source freezing, missing/replaced source identity, independently sealed owner segments, incomplete-cohort restoration and a second import after business rollback. A frozen source is necessary recovery input until all segments seal; never describe the unfinished backup as independently portable. Verify original bytes against the seal before import and before retirement. Preserve old manifest protocols when resuming.
+
+For identity changes, keep the versioned historical mapping independent of the current identity catalog. Put reusable `upgradeConfig` and `upgradeRecord` transforms on the owning migration and call the central import entry points before validation or publication. A startup receipt cannot authorize an unupgraded late import or newly discovered project config. Update derived indexes through the owning service, preserve raw evidence and billing records, and test retry, restart, late discovery and imports into an already upgraded Home.
+
+The central runner invokes startup callbacks without a method receiver. Reuse a standalone owner transform from `up`, `upSession` and `upgradeRecord`. Exercise registered startup callbacks independently and retain startup coverage from a released writer and completion ledger.
 
 ## File Snapshot Storage
 
@@ -74,6 +79,8 @@ Use `SnapshotStore` for backend resolution, `SnapshotLifecycle` for copied/delet
 For snapshot lease changes, test metadata-gate contention separately from active lease contention. Hold both the Home and Scope gates past a short internal wait, check the single admission budget and cancellation reason, and verify that disposal and failed exclusive admission remove their tokens even after admission expires or is cancelled. Keep cleanup independent of admission cancellation; never reclaim a live owner merely because it is old.
 
 ## Verify
+
+For indexed history reads, seed real SQL records and inject a targeted read failure at the first record, a later individual record, a batch and nested part hydration. Assert that injection was reached and the original error propagated; separately delete records after the reader captures its index snapshot and verify that only missing records are skipped. Register the regression in the PostgreSQL test inventory and run both engines.
 
 When adding a migration domain, update the complete-product registry contract in `packages/presets/test/migration/registry.test.ts` and run the Presets migration suite alongside the owning domain's upgrade tests.
 
@@ -133,7 +140,7 @@ When adding a bulk variant of a storage operation, exercise every supported name
 
 For optional whole-store rewrites, prove ordinary startup never calls the rewrite even when prerequisite maintenance is already applied. Keep the atomic format commit separate from physical reclamation and reconcile a committed format with an absent migration receipt through a read-only probe. Persist every copy cursor in its batch transaction. If normal writes can occur between attempts, invalidate staged copies on source mutations before allowing a later swap; rebuild unfenced historical staging. Test updates, inserts, deletion, source drift, rollback, cancellation, reopening, and a second namespace. Background reclamation must yield to work and disk/WAL pressure, persist pause and progress, back off failures, and drain before storage closes.
 
-## Preserve File History Attribution
+## Preserve File History and Workspace Identity
 
 Snapshot and patch producers retain the source Workspace identity and binding generation. Derived summaries group those sources before comparing trees; current Session selection must not rewrite historical file ownership. Use literal, NUL-delimited Git filenames and object-store working directories for history-only reads. Exercise non-Git capture, missing directories, rebindings and equal relative filenames in different Workspaces.
 
@@ -158,3 +165,21 @@ For retained usage, exercise deletion and retention independently from explicit 
 Test unknown-attribution records with unrelated owners and descendants together. Selection must preserve uncertainty from the selected owners without importing another owner's gaps; a narrower clear must not erase uncertainty shared by unselected work.
 
 Cross multiple runs under one owner with exact, owner-only and null-run ancestry at successive levels. A run filter needs a proven parent run at every edge, while Session-wide selection may retain owner-only relationships. Exercise reporting and revision-bounded clearing against the same real records, and verify unrelated record identities survive; a correct aggregate alone cannot prove safe deletion. Keep uncertainty records out of evidence-coverage counts.
+
+For large evidence projections, keep historical preparation resumable and generation-checked. Test overwrites, tombstones, physical deletion, imports, restart and a concurrent mutation at publication. Unknown owners must remain ineligible for retention. Measure maintenance on its separate reader lane and verify foreground admission while that lane holds a snapshot. Prepared artifact bytes must remain pinned until the publishing transaction settles, including rollback and uncertain commit recovery.
+
+Owner migration callbacks must read canonical records using the owner identities supplied by the central runner; do not reenter business admission for the same unpublished owner. Verify this with a released completion ledger and an actual deferred import. If storage initialization already owns schema and preparation markers, structural startup migration must not join a historical background batch or inherit its admission deadline. Keep that backfill resumable after startup and prove foreground admission survives unavailable background maintenance.
+
+## Workspace net changes
+
+Keep segment checkpoint capture and settlement in Session, immutable trees in Snapshot and version-checked file publication in Local Runtime. Test baseline failure without recapture, net cancellation, parallel read-only tools, late background writes, partial capture, historical reads, migration, fork/export retention and restore receipt replay. A turn Diff describes all writers in its captured interval; do not add author attribution or scan the full workspace for every tool. File previews may truncate text, but comparison statistics and restoration must use complete retained evidence.
+
+Evaluate net coverage from its first baseline and latest endpoint, keeping each endpoint's omissions separate. Test recovery after an intermediate capture failure without clearing that historical failure or fabricating an unavailable first baseline.
+
+When changing filesystem identity formats, inventory the catalog, indexes and native receipts before implementation. Upgrade only exact verified legacy identities, preserve unknown owner data and binding generations, and test volume changes separately from object replacement. Live cross-version coordination claims require a separate lifetime analysis.
+
+For selected-owner reporting, seed unrelated corrupt counters as well as valid descendant Sessions and operations. Verify the query never reads foreign counters and that paginated merging matches global canonical order. Keep owner-local history preparation separate from metadata-only admission, test interrupted step receipts and concurrent requests, and never classify shared store inventory as a Session projection.
+
+For paginated operation history, verify an early page never enumerates the full owner subtree. Apply exact segment prefixes and cursor bounds before the storage limit, check real early and late query plans, and cover special characters, tied order, both directions and deleted cursors. Classify shared derived-index migrations explicitly when they only need already imported records; rerun released-ledger upgrade tests to prove they do not force historical Session convergence.
+
+For presentation over append-only journals, distinguish full integrity replay from a discardable checkpoint. Verify restart reuse, tail-only reads, fixed historical revisions, missing tail evidence, explicit gaps, owner deletion/recreation and append during publication. Publish a checkpoint only while its captured head is unchanged; keep recovery and portable archives on the complete validation path. Reverse lineage indexes must cover retained orphan descendants, exact run ancestry, transfer replacement and transactional rollback, with a central versioned migration for historical links.
