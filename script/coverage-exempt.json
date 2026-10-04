@@ -799,6 +799,26 @@
           "reason": "Dynamic registry entries, capability and session availability, matching resource menus and narrow layouts are verified by test/components/workspace/resource-home.dom.test.ts in Chromium; Bun cannot instrument the Vite renderer's TSX source."
         },
         {
+          "glob": "src/components/workspace/review-copy.ts",
+          "reason": "Runtime Lingui descriptors consumed by browser-only Review views; catalog extraction, strict locale compilation and product-copy checks validate this data module, which contains no execution logic."
+        },
+        {
+          "glob": "src/components/workspace/review-data.ts",
+          "reason": "Solid resource ownership, initial comparison/notes failures, explicit retries and Session switches are exercised in Chromium by test/components/workspace/review-data.dom.test.ts; Vite browser execution does not contribute to Bun coverage. The read queue and diff projection remain measured by unit tests."
+        },
+        {
+          "glob": "src/components/workspace/review-file-tree.tsx",
+          "reason": "Interactive Solid navigation requires the browser; production Web acceptance covers long and unusual filenames, filtering, file jumps and narrow-pane navigation. Canonical row identities remain measured by the shared session-review unit tests."
+        },
+        {
+          "glob": "src/components/workspace/review-panel.tsx",
+          "reason": "Review composes live Scope, Session, SDK, restoration and dialog owners; production Web acceptance covers comparison sources, comments, editable handoff, exports, loading/retry and responsive controls. Chromium resource/viewer regressions and measured queue/projection/export logic complement this browser-only composition boundary."
+        },
+        {
+          "glob": "src/components/workspace/review-version-preview.tsx",
+          "reason": "Historical source, missing versions, Markdown and sandboxed HTML/SVG previews are verified in production Web acceptance. Browser iframe focus loading is covered by the shared iframe-focus browser regression; sanitization and Markdown parsing remain measured by their owning unit suites."
+        },
+        {
           "glob": "src/components/workspace/tool-context.tsx",
           "reason": "workspace/browser surfaces require a live runtime"
         },
@@ -2030,6 +2050,10 @@
         {
           "glob": "src/components/resize-handle.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/review-viewer.tsx",
+          "reason": "Pierre Shadow DOM rendering, bounded 20,000-line virtualization, distant-file navigation, header geometry, layout switches and pointer/keyboard/Shift selection are exercised by test/components/review-viewer.dom.test.ts in Chromium; Vite browser execution does not contribute to Bun coverage."
         },
         {
           "glob": "src/components/session-review.tsx",
