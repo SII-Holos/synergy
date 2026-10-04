@@ -4,6 +4,13 @@
 import { registerIcon } from "./icon-registry"
 
 const builtinIconNames = [
+  "file-search",
+  "fold-vertical",
+  "unfold-vertical",
+  "columns-2",
+  "wrap-text",
+  "folders",
+  "message-square-text",
   "file-chart-column",
   "list-end",
   "shield-half",

@@ -15680,6 +15680,10 @@ msgid "review.panel.exporting"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "review.panel.fileOptions"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "review.panel.files"
 msgstr ""
 
@@ -15708,6 +15712,10 @@ msgid "review.panel.handoff"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "review.panel.hideFiles"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "review.panel.historical"
 msgstr ""
 
@@ -15725,6 +15733,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "review.panel.layout"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.layoutState"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -15860,6 +15872,10 @@ msgid "review.panel.sessionRequired"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "review.panel.showFiles"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "review.panel.source"
 msgstr ""
 
@@ -15925,6 +15941,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "review.panel.wrap"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.wrapDisable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.wrapEnable"
 msgstr ""
 
 #. scopes

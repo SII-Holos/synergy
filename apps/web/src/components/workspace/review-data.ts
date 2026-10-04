@@ -124,7 +124,16 @@ export function useReviewData(input: {
     }
     if (signal.aborted || captured !== key()) throw new DOMException("Aborted", "AbortError")
     const value = { key: captured, rows, recording, endpoints }
+    const loaded = new Set(cache.keys())
+    const live = new Set(rows.map(reviewFileKey))
+    controller.abort()
+    controller = new AbortController()
+    pending.clear()
+    failures.clear()
+    for (const id of cache.keys()) if (!live.has(id)) cache.delete(id)
     setAccepted(value)
+    for (const row of rows) if (loaded.has(reviewFileKey(row))) void load(row, true)
+    setRevision((value) => value + 1)
     return value
   })
   const rows = () => (accepted()?.key === key() ? accepted()!.rows : [])
@@ -176,8 +185,8 @@ export function useReviewData(input: {
   }
   async function load(row: ReviewRow, retry = false) {
     const id = reviewFileKey(row)
-    if (cache.has(id) && !retry) return cache.get(id)
     if (pending.has(id)) return pending.get(id)
+    if (cache.has(id) && !retry) return cache.get(id)
     if (failures.has(id) && !retry) return undefined
     failures.delete(id)
     const captured = key(),
@@ -215,7 +224,8 @@ export function useReviewData(input: {
             value = result.data
           }
           if (captured !== key() || signal.aborted) return undefined
-          cache.set(id, value)
+          const retained = cache.get(id)
+          cache.set(id, retained?.version === value.version ? retained : value)
           failures.delete(id)
           let bytes = [...cache.values()].reduce((total, item) => total + item.before.bytes + item.after.bytes, 0)
           for (const [old, item] of cache) {
@@ -260,7 +270,6 @@ export function useReviewData(input: {
     refresh: () => {
       controller.abort()
       controller = new AbortController()
-      cache.clear()
       failures.clear()
       pending.clear()
       setRevision((value) => value + 1)

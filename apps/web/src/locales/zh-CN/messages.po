@@ -15680,6 +15680,10 @@ msgid "review.panel.exporting"
 msgstr "正在准备补丁… {done}/{total}"
 
 #. js-lingui-explicit-id
+msgid "review.panel.fileOptions"
+msgstr "文件选项"
+
+#. js-lingui-explicit-id
 msgid "review.panel.files"
 msgstr "文件"
 
@@ -15708,6 +15712,10 @@ msgid "review.panel.handoff"
 msgstr "发送所选评论"
 
 #. js-lingui-explicit-id
+msgid "review.panel.hideFiles"
+msgstr "隐藏文件"
+
+#. js-lingui-explicit-id
 msgid "review.panel.historical"
 msgstr "此版本属于另一个工作区绑定。"
 
@@ -15726,6 +15734,10 @@ msgstr "跳转到文件"
 #. js-lingui-explicit-id
 msgid "review.panel.layout"
 msgstr "差异布局"
+
+#. js-lingui-explicit-id
+msgid "review.panel.layoutState"
+msgstr "差异布局：{layout}"
 
 #. js-lingui-explicit-id
 msgid "review.panel.loading"
@@ -15860,6 +15872,10 @@ msgid "review.panel.sessionRequired"
 msgstr "打开一个会话以审阅更改。"
 
 #. js-lingui-explicit-id
+msgid "review.panel.showFiles"
+msgstr "显示文件"
+
+#. js-lingui-explicit-id
 msgid "review.panel.source"
 msgstr "比较范围"
 
@@ -15926,6 +15942,14 @@ msgstr "工作区改动"
 #. js-lingui-explicit-id
 msgid "review.panel.wrap"
 msgstr "自动换行"
+
+#. js-lingui-explicit-id
+msgid "review.panel.wrapDisable"
+msgstr "关闭自动换行"
+
+#. js-lingui-explicit-id
+msgid "review.panel.wrapEnable"
+msgstr "开启自动换行"
 
 #. scopes
 msgid "scopes.active"

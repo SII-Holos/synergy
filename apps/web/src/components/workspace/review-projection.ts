@@ -67,6 +67,11 @@ export function projectReviewMetadata(input: {
     metadata =
       parseRenderablePatch(value?.diff.patch ?? input.patch ?? "") ??
       parseDiffFromFile({ name: input.file, contents: "" }, { name: input.file, contents: "" })
+  // Provenance: https://github.com/pierrecomputer/diffs (parseDiffFromFile, version 1.3.3).
+  // Local adaptation: bind worker highlights to captured versions rather than the parser's filename default.
+  metadata.cacheKey = value
+    ? JSON.stringify([input.file, value.version, input.ignoreWhitespace, input.whitespace, input.imports])
+    : undefined
   if (!input.whitespace) return metadata
   const display = (line: string) => line.replace(/ /g, "·").replace(/\t/g, "→\t")
   return {

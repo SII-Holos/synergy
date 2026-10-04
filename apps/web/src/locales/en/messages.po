@@ -15680,6 +15680,10 @@ msgid "review.panel.exporting"
 msgstr "Preparing patch… {done}/{total}"
 
 #. js-lingui-explicit-id
+msgid "review.panel.fileOptions"
+msgstr "File options"
+
+#. js-lingui-explicit-id
 msgid "review.panel.files"
 msgstr "Files"
 
@@ -15708,6 +15712,10 @@ msgid "review.panel.handoff"
 msgstr "Send selected comments"
 
 #. js-lingui-explicit-id
+msgid "review.panel.hideFiles"
+msgstr "Hide files"
+
+#. js-lingui-explicit-id
 msgid "review.panel.historical"
 msgstr "This version belongs to another workspace binding."
 
@@ -15726,6 +15734,10 @@ msgstr "Jump to file"
 #. js-lingui-explicit-id
 msgid "review.panel.layout"
 msgstr "Diff layout"
+
+#. js-lingui-explicit-id
+msgid "review.panel.layoutState"
+msgstr "Diff layout: {layout}"
 
 #. js-lingui-explicit-id
 msgid "review.panel.loading"
@@ -15860,6 +15872,10 @@ msgid "review.panel.sessionRequired"
 msgstr "Open a conversation to review changes."
 
 #. js-lingui-explicit-id
+msgid "review.panel.showFiles"
+msgstr "Show files"
+
+#. js-lingui-explicit-id
 msgid "review.panel.source"
 msgstr "Comparison"
 
@@ -15926,6 +15942,14 @@ msgstr "Working changes"
 #. js-lingui-explicit-id
 msgid "review.panel.wrap"
 msgstr "Wrap lines"
+
+#. js-lingui-explicit-id
+msgid "review.panel.wrapDisable"
+msgstr "Disable line wrapping"
+
+#. js-lingui-explicit-id
+msgid "review.panel.wrapEnable"
+msgstr "Enable line wrapping"
 
 #. scopes
 msgid "scopes.active"

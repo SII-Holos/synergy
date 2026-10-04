@@ -39,6 +39,7 @@ import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-p
 import { useReviewData, errorText, type ReviewRow, type ReviewSource } from "./review-data"
 import { downloadReviewPatch, formatReviewApplyCommand } from "./review-export"
 import { ReviewFileTree } from "./review-file-tree"
+import { ReviewFilePicker } from "./review-file-picker"
 import { ReviewVersionPreview } from "./review-version-preview"
 import { reviewCopy as C } from "./review-copy"
 import { projectReviewMetadata, staticImportLines } from "./review-projection"
@@ -73,6 +74,9 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
     [contentWidth, setContentWidth] = createSignal(0)
   const [tree, setTree] = createSignal(true),
     [treePicker, setTreePicker] = createSignal(false),
+    [filesPicker, setFilesPicker] = createSignal(false),
+    [optionsOpen, setOptionsOpen] = createSignal(false),
+    [refsOpen, setRefsOpen] = createSignal(false),
     [commentsOpen, setCommentsOpen] = createSignal(false)
   const [selection, setSelection] = createSignal<CodeViewLineSelection | null>(null)
   const [commentText, setCommentText] = createSignal(""),
@@ -106,6 +110,10 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
   )
   const rowMap = createMemo(() => new Map(data.rows().map((row) => [reviewFileKey(row), row])))
   const inlineTree = () => tree() && paneWidth() >= 800
+  const filesVisible = () => (paneWidth() >= 800 ? tree() : filesPicker())
+  createEffect(() => {
+    if (paneWidth() >= 800) setFilesPicker(false)
+  })
   const effectiveStyle = () =>
     style() === "auto" ? (contentWidth() >= 640 ? "split" : "unified") : (style() as "split" | "unified")
   let previousKey = ""
@@ -122,6 +130,7 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
       setEditing(undefined)
       setCommentText("")
       setNotice(undefined)
+      setFilter("")
     }
     if (!rows.length) return
     if (!selected() || !rowMap().has(selected()!)) {
@@ -135,6 +144,7 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
     setSelected(id)
     setExpanded((values) => (values.includes(id) ? values : [...values, id]))
     setTreePicker(false)
+    setFilesPicker(false)
   }
   const visible = (id: string) => {
     const row = rowMap().get(id)
@@ -167,10 +177,11 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
       )
     },
   )
-  const items = createMemo<CodeViewItem[]>(() => {
-    const live = new Set(filtered().map(reviewFileKey))
+  const items = createMemo<CodeViewItem[]>((previous) => {
+    const prior = new Map(previous.map((item) => [item.id, item]))
+    const live = new Set(data.rows().map(reviewFileKey))
     for (const id of metadataCache.keys()) if (!live.has(id)) metadataCache.delete(id)
-    return filtered().map((row) => {
+    const next = data.rows().map((row): CodeViewItem => {
       const id = reviewFileKey(row),
         value = data.content(id)
       const range = imports() ? importRanges()?.get(id) : undefined,
@@ -194,7 +205,7 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
         metadataCache.set(id, cached)
       }
       const metadata = cached.metadata
-      return {
+      const item: CodeViewItem = {
         id,
         type: "diff",
         fileDiff: metadata,
@@ -204,8 +215,16 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
           `${ignoreWhitespace()}:${whitespace()}:${imports()}:${importRanges()?.get(id)?.before ?? 0}:${importRanges()?.get(id)?.after ?? 0}:${expanded().includes(id)}`,
         ),
       }
+      const old = prior.get(id)
+      return old?.type === "diff" &&
+        old.fileDiff === metadata &&
+        old.version === item.version &&
+        old.collapsed === item.collapsed
+        ? old
+        : item
     })
-  })
+    return previous.length === next.length && next.every((item, index) => item === previous[index]) ? previous : next
+  }, [])
   const viewed = (id: string) =>
     Boolean(data.content(id) && data.state()?.viewed[`${data.sourceKey()}:${id}`] === data.content(id)?.version)
   const comments = () => data.state()?.comments.filter((comment) => comment.source === data.sourceKey()) ?? []
@@ -396,15 +415,24 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
       )
     })
   }
-  const icon = (token: SemanticIconTokenName, label: string, action: () => void, disabled = false, active = false) => (
-    <Tooltip value={label}>
+  const ReviewIcon = (props: {
+    token: SemanticIconTokenName
+    label: string
+    action: () => void
+    disabled?: boolean
+    active?: boolean
+    hint?: string
+  }) => (
+    <Tooltip value={props.hint ?? props.label}>
       <IconButton
-        icon={getSemanticIcon(token)}
+        icon={getSemanticIcon(props.token)}
         variant="ghost"
-        aria-label={label}
-        aria-pressed={active ? true : undefined}
-        disabled={disabled}
-        onClick={action}
+        size="large"
+        iconSize="small"
+        aria-label={props.label}
+        aria-pressed={props.active}
+        disabled={props.disabled}
+        onClick={props.action}
       />
     </Tooltip>
   )
@@ -418,15 +446,23 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
         onInput={(event) => setFilter(event.currentTarget.value)}
       />
       <Show when={filtered().length} fallback={<p class="review-state">{_(filter() ? C.filterEmpty : C.empty)}</p>}>
-        <ReviewFileTree rows={filtered()} selected={selected()} select={select} label={_(C.files)} viewed={viewed} />
+        <ReviewFileTree
+          rows={filtered()}
+          selected={selected()}
+          select={select}
+          label={_(C.files)}
+          viewed={viewed}
+          filtering={Boolean(filter().trim())}
+        />
       </Show>
     </div>
   )
   const neighbor = (direction: number) => {
-    const index = filtered().findIndex((row) => reviewFileKey(row) === selected())
-    const row = filtered()[index + direction]
+    const index = data.rows().findIndex((row) => reviewFileKey(row) === selected())
+    const row = data.rows()[index + direction]
     if (row) select(reviewFileKey(row))
   }
+  const fold = () => setExpanded(expanded().length ? [] : data.rows().map(reviewFileKey))
   function fileHeader(id: string) {
     const row = () => rowMap().get(id)
     return (
@@ -468,7 +504,11 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
               </Show>
               <Show when={data.fileError(id)}>
                 <span class="review-file-status review-error" role="alert">
-                  {icon("action.refresh", `${_(C.retry)}: ${data.fileError(id)}`, () => void data.load(value(), true))}
+                  <ReviewIcon
+                    token="action.refresh"
+                    label={`${_(C.retry)}: ${data.fileError(id)}`}
+                    action={() => void data.load(value(), true)}
+                  />
                 </span>
               </Show>
               <Show
@@ -498,21 +538,23 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
               </Show>
               <DiffChanges changes={value()} />
               <div class="review-file-actions">
-                {icon("action.view", _(C.versions), () => void preview(value()))}
-                {icon(
-                  "action.open",
-                  _(data.canOpen(value()) ? C.open : C.historical),
-                  () => void file.openWorkspaceFile(value().file),
-                  !data.canOpen(value()),
-                )}
+                <ReviewIcon token="action.view" label={_(C.versions)} action={() => void preview(value())} />
+                <ReviewIcon
+                  token="action.open"
+                  label={_(data.canOpen(value()) ? C.open : C.historical)}
+                  action={() => void file.openWorkspaceFile(value().file)}
+                  disabled={!data.canOpen(value())}
+                />
                 <Popover
                   variant="menu"
                   triggerAs={(triggerProps) => (
                     <IconButton
                       {...triggerProps}
                       icon={getSemanticIcon("action.more")}
-                      aria-label={_(C.options)}
+                      aria-label={_(C.fileOptions)}
                       variant="ghost"
+                      size="large"
+                      iconSize="small"
                     />
                   )}
                 >
@@ -589,65 +631,99 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
               }}
             />
           </span>
+          <Show when={source() === "branch"}>
+            <Popover
+              open={refsOpen()}
+              onOpenChange={setRefsOpen}
+              variant="menu"
+              title={_(C.source)}
+              class="review-popover"
+              triggerAs={(triggerProps) => (
+                <Button
+                  {...triggerProps}
+                  class="review-comparison-refs"
+                  variant="ghost"
+                  aria-label={`${_(C.source)}: ${from()} → ${to()}`}
+                  title={`${from()} → ${to()}`}
+                >
+                  <span>{from()}</span>
+                  <span aria-hidden="true">→</span>
+                  <span>{to()}</span>
+                </Button>
+              )}
+            >
+              <form
+                class="review-refs"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  setFrom(draftFrom().trim())
+                  setTo(draftTo().trim())
+                  setRefsOpen(false)
+                }}
+              >
+                <input
+                  aria-label={_(C.from)}
+                  value={draftFrom()}
+                  onInput={(event) => setDraftFrom(event.currentTarget.value)}
+                />
+                <input
+                  aria-label={_(C.to)}
+                  value={draftTo()}
+                  onInput={(event) => setDraftTo(event.currentTarget.value)}
+                />
+                <span>{_(C.readOnly)}</span>
+                <Button type="submit" size="normal" disabled={!draftFrom().trim() || !draftTo().trim()}>
+                  {_(C.applyComparison)}
+                </Button>
+              </form>
+            </Popover>
+          </Show>
         </div>
-        <div class="review-toolbar-tools">
+        <div class="review-toolbar-tools" role="group" aria-label={_(C.options)}>
           <Popover
-            open={treePicker()}
-            onOpenChange={setTreePicker}
+            open={optionsOpen()}
+            onOpenChange={setOptionsOpen}
             variant="menu"
+            title={_(C.options)}
+            class="review-popover"
             triggerAs={(triggerProps) => (
-              <IconButton
-                {...triggerProps}
-                aria-label={_(C.jump)}
-                icon={getSemanticIcon("action.search")}
-                variant="ghost"
-                disabled={!data.rows().length}
-              />
-            )}
-          >
-            {fileTree()}
-          </Popover>
-          {icon("action.refresh", _(C.refresh), data.refresh, data.comparison.loading)}
-          {icon(
-            "navigation.back",
-            _(C.previous),
-            () => neighbor(-1),
-            filtered().findIndex((row) => reviewFileKey(row) === selected()) <= 0,
-          )}
-          {icon(
-            "navigation.forward",
-            _(C.next),
-            () => neighbor(1),
-            !filtered().length ||
-              filtered().findIndex((row) => reviewFileKey(row) === selected()) >= filtered().length - 1,
-          )}
-          {icon(
-            expanded().length ? "action.collapse" : "action.expand",
-            _(expanded().length ? C.collapse : C.expand),
-            () => setExpanded(expanded().length ? [] : data.rows().map(reviewFileKey)),
-            !data.rows().length,
-          )}
-          <MenuField
-            ariaLabel={_(C.layout)}
-            value={style()}
-            onChange={setStyle}
-            options={(["auto", "unified", "split"] as const).map((value) => ({ value, label: _(C[value]) }))}
-          />
-          <Popover
-            variant="menu"
-            triggerAs={(triggerProps) => (
-              <IconButton
-                {...triggerProps}
-                aria-label={_(C.options)}
-                icon={getSemanticIcon("action.more")}
-                variant="ghost"
-              />
+              <Tooltip value={_(C.options)}>
+                <IconButton
+                  {...triggerProps}
+                  aria-label={_(C.options)}
+                  icon={getSemanticIcon("action.more")}
+                  variant="ghost"
+                  size="large"
+                  iconSize="small"
+                />
+              </Tooltip>
             )}
           >
             <div class="review-menu">
-              <Checkbox checked={wrap()} onChange={setWrap}>
-                {_(C.wrap)}
-              </Checkbox>
+              <div class="review-compact-actions" data-compact={paneWidth() <= 420}>
+                <Button
+                  variant="ghost"
+                  icon={getSemanticIcon("action.refresh")}
+                  disabled={data.comparison.loading}
+                  onClick={() => {
+                    data.refresh()
+                    setOptionsOpen(false)
+                  }}
+                >
+                  {_(C.refresh)}
+                </Button>
+                <Button
+                  variant="ghost"
+                  icon={getSemanticIcon(expanded().length ? "review.fold" : "review.unfold")}
+                  disabled={!data.rows().length}
+                  onClick={() => {
+                    fold()
+                    setOptionsOpen(false)
+                  }}
+                >
+                  {_(expanded().length ? C.collapse : C.expand)}
+                </Button>
+              </div>
               <Checkbox checked={words()} onChange={setWords}>
                 {_(C.words)}
               </Checkbox>
@@ -675,55 +751,164 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
               >
                 {_(C.imports)}
               </Checkbox>
-              <Checkbox checked={tree()} onChange={setTree}>
-                {_(C.files)}
-              </Checkbox>
-              <Button variant="ghost" disabled={!data.rows().length || exporting()} onClick={() => void exportPatch()}>
+              <Button
+                variant="ghost"
+                icon={getSemanticIcon("review.comments")}
+                aria-pressed={commentsOpen()}
+                disabled={!data.state()}
+                onClick={() => {
+                  setCommentsOpen(!commentsOpen())
+                  setOptionsOpen(false)
+                }}
+              >
+                {_(C.comments)}
+              </Button>
+              <Button
+                variant="ghost"
+                icon={getSemanticIcon("navigation.back")}
+                disabled={data.rows().findIndex((row) => reviewFileKey(row) === selected()) <= 0}
+                onClick={() => {
+                  neighbor(-1)
+                  setOptionsOpen(false)
+                }}
+              >
+                {_(C.previous)}
+              </Button>
+              <Button
+                variant="ghost"
+                icon={getSemanticIcon("navigation.forward")}
+                disabled={
+                  !data.rows().length ||
+                  data.rows().findIndex((row) => reviewFileKey(row) === selected()) >= data.rows().length - 1
+                }
+                onClick={() => {
+                  neighbor(1)
+                  setOptionsOpen(false)
+                }}
+              >
+                {_(C.next)}
+              </Button>
+              <Button
+                variant="ghost"
+                icon={getSemanticIcon("action.export")}
+                disabled={!data.rows().length || exporting()}
+                onClick={() => {
+                  void exportPatch()
+                  setOptionsOpen(false)
+                }}
+              >
                 {_(C.export)}
               </Button>
               <Button
                 variant="ghost"
+                icon={getSemanticIcon("action.copy")}
                 disabled={!data.rows().length || exporting()}
-                onClick={() => void exportPatch(true)}
+                onClick={() => {
+                  void exportPatch(true)
+                  setOptionsOpen(false)
+                }}
               >
                 {_(C.copyApply)}
               </Button>
               <Show when={data.historical()}>
                 <Button
                   variant="ghost"
+                  icon={getSemanticIcon("command.undo")}
                   disabled={!data.rows().length || data.comparison.loading}
-                  onClick={() => void restore({ messageID: source() === "turn" ? messageID() : undefined })}
+                  onClick={() => {
+                    void restore({ messageID: source() === "turn" ? messageID() : undefined })
+                    setOptionsOpen(false)
+                  }}
                 >
                   {_(C.undo)}
                 </Button>
               </Show>
             </div>
           </Popover>
-          {icon("command.review", _(C.comments), () => setCommentsOpen(!commentsOpen()), !data.state(), commentsOpen())}
+          <Popover
+            open={treePicker()}
+            onOpenChange={setTreePicker}
+            variant="menu"
+            title={_(C.jump)}
+            class="review-popover review-jump-popover"
+            triggerAs={(triggerProps) => (
+              <Tooltip value={_(C.jump)}>
+                <IconButton
+                  {...triggerProps}
+                  aria-label={_(C.jump)}
+                  icon={getSemanticIcon("review.jump")}
+                  variant="ghost"
+                  size="large"
+                  iconSize="small"
+                  disabled={!data.rows().length}
+                />
+              </Tooltip>
+            )}
+          >
+            <ReviewFilePicker rows={data.rows()} select={select} />
+          </Popover>
+          <span class="review-secondary-tool">
+            <ReviewIcon
+              token="action.refresh"
+              label={_(C.refresh)}
+              action={data.refresh}
+              disabled={data.comparison.loading}
+            />
+          </span>
+          <ReviewIcon
+            token="review.wrap"
+            label={_(C.wrap)}
+            action={() => setWrap(!wrap())}
+            active={wrap()}
+            hint={_(wrap() ? C.wrapDisable : C.wrapEnable)}
+          />
+          <span class="review-secondary-tool">
+            <ReviewIcon
+              token={expanded().length ? "review.fold" : "review.unfold"}
+              label={_(expanded().length ? C.collapse : C.expand)}
+              action={fold}
+              disabled={!data.rows().length}
+            />
+          </span>
+          <Tooltip value={_({ ...C.layoutState, values: { layout: _(C[style()]) } })}>
+            <MenuField
+              ariaLabel={_({ ...C.layoutState, values: { layout: _(C[style()]) } })}
+              icon={getSemanticIcon("review.layout")}
+              triggerClass="review-layout-trigger"
+              triggerLabel=""
+              surfaceClass="review-layout-menu"
+              value={style()}
+              onChange={setStyle}
+              options={(["auto", "unified", "split"] as const).map((value) => ({ value, label: _(C[value]) }))}
+            />
+          </Tooltip>
+          <Popover
+            open={paneWidth() < 800 && filesPicker()}
+            onOpenChange={(open) => {
+              if (paneWidth() >= 800) setTree(!tree())
+              else setFilesPicker(open)
+            }}
+            variant="menu"
+            title={_(C.files)}
+            class="review-popover review-files-popover"
+            triggerAs={(triggerProps) => (
+              <Tooltip value={_(filesVisible() ? C.hideFiles : C.showFiles)}>
+                <IconButton
+                  {...triggerProps}
+                  aria-label={_(filesVisible() ? C.hideFiles : C.showFiles)}
+                  aria-pressed={filesVisible()}
+                  icon={getSemanticIcon("review.files")}
+                  variant="ghost"
+                  size="large"
+                  iconSize="small"
+                />
+              </Tooltip>
+            )}
+          >
+            {fileTree()}
+          </Popover>
         </div>
       </div>
-      <Show when={source() === "branch"}>
-        <form
-          class="review-refs"
-          onSubmit={(event) => {
-            event.preventDefault()
-            setFrom(draftFrom())
-            setTo(draftTo())
-          }}
-        >
-          <input
-            aria-label={_(C.from)}
-            value={draftFrom()}
-            onInput={(event) => setDraftFrom(event.currentTarget.value)}
-          />
-          <span>→</span>
-          <input aria-label={_(C.to)} value={draftTo()} onInput={(event) => setDraftTo(event.currentTarget.value)} />
-          <Button type="submit" size="normal">
-            {_(C.applyComparison)}
-          </Button>
-          <span>{_(C.readOnly)}</span>
-        </form>
-      </Show>
       <Show when={data.comparison.loading && data.context()}>
         <div class="review-progress" role="status">
           {_(C.refreshing)}
@@ -758,11 +943,6 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
         </div>
       </Show>
       <div class="review-body">
-        <Show when={inlineTree()}>
-          <aside class="review-sidebar" aria-label={_(C.files)}>
-            {fileTree()}
-          </aside>
-        </Show>
         <div class="review-content" ref={content}>
           <Switch>
             <Match when={!data.context() && data.comparison.loading}>
@@ -785,12 +965,7 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
                 {_(C.empty)}
               </div>
             </Match>
-            <Match when={data.rows().length && !filtered().length}>
-              <div class="review-state" role="status">
-                {_(C.filterEmpty)}
-              </div>
-            </Match>
-            <Match when={filtered().length}>
+            <Match when={data.rows().length}>
               <ReviewViewer
                 items={items()}
                 style={effectiveStyle()}
@@ -813,11 +988,16 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
             </Match>
           </Switch>
         </div>
+        <Show when={inlineTree()}>
+          <aside class="review-sidebar" aria-label={_(C.files)}>
+            {fileTree()}
+          </aside>
+        </Show>
         <Show when={commentsOpen()}>
           <aside class="review-comments" aria-label={_(C.comments)}>
             <div class="review-comment-title">
               <span>{_(C.comments)}</span>
-              {icon("action.close", _(C.cancel), () => setCommentsOpen(false))}
+              <ReviewIcon token="action.close" label={_(C.cancel)} action={() => setCommentsOpen(false)} />
             </div>
             <form
               onSubmit={(event) => {
@@ -867,22 +1047,27 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
                     <pre>{comment.excerpt}</pre>
                   </details>
                   <div class="review-comment-actions">
-                    {icon(
-                      "action.rename",
-                      _(C.edit),
-                      () => {
+                    <ReviewIcon
+                      token="action.rename"
+                      label={_(C.edit)}
+                      action={() => {
                         setEditing(comment)
                         setCommentText(comment.text)
-                      },
-                      data.saving(),
-                    )}
-                    {icon(
-                      "action.view",
-                      _(comment.resolved ? C.reopen : C.resolve),
-                      () => void changeComment(comment, "resolve"),
-                      data.saving(),
-                    )}
-                    {icon("action.remove", _(C.remove), () => void changeComment(comment, "delete"), data.saving())}
+                      }}
+                      disabled={data.saving()}
+                    />
+                    <ReviewIcon
+                      token="action.view"
+                      label={_(comment.resolved ? C.reopen : C.resolve)}
+                      action={() => void changeComment(comment, "resolve")}
+                      disabled={data.saving()}
+                    />
+                    <ReviewIcon
+                      token="action.remove"
+                      label={_(C.remove)}
+                      action={() => void changeComment(comment, "delete")}
+                      disabled={data.saving()}
+                    />
                   </div>
                 </article>
               )}

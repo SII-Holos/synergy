@@ -11,9 +11,11 @@ Review is a session-scoped Web workspace panel. Its toolbar selects the comparis
 
 ## Presentation
 
-The continuous diff virtualizes files and lines, retains sticky headers and supports per-file or global folding. Automatic layout selects split view at 640 pixels of diff width. Inline file navigation appears at 800 pixels of panel width; the file picker, filter and previous/next actions remain available at smaller widths. Wrap and word differences default on. Full files, whitespace display, ignored whitespace and static import folding are optional display projections.
+The continuous diff virtualizes files and lines, retains sticky headers and supports per-file or global folding. Automatic layout selects split view at 640 pixels of actual diff width. A 232px directory appears on the right at 800 pixels of panel width; Files opens a directory popover in narrower panes. Quick jump is a separate searchable flat list with basename, directory and workspace labels for duplicate names. Both navigation collections virtualize large comparisons. Arrow keys select, Enter jumps, and Escape returns focus. Navigation filters never remove files from the diff or discard selected lines and content caches.
 
-File actions reveal on hover and keyboard focus and remain visible for touch input. Long headers prioritize the basename and expose the complete path through the control's accessible name and tooltip. Recording, loading, empty, error and partial results have distinct states. Retry preserves the current comparison identity.
+The reading toolbar orders More, Jump to file, Refresh, Wrap lines, Fold all, Diff layout and Files. Layout opens explicit Auto, Unified and Split choices. Wrap and Files expose persistent pressed states. More contains advanced projections, comments, previous/next navigation, export and available historical restoration. Branch references open a compact editing form. Desktop targets are 32px with 16px glyphs; touch targets are at least 44px and narrow touch panes move Refresh and Fold into More. Wrap and word differences default on. Full files, whitespace display, ignored whitespace and static import folding are optional display projections.
+
+File actions reveal on hover and keyboard focus and remain visible for touch input. Long headers prioritize the basename and expose the complete path through the control's accessible name and tooltip. Recording, loading, empty, error and partial results have distinct states. Refresh and retry retain existing content until successful version revalidation; late responses cannot cross comparison identity. Reading switches preserve the selected file, lines and scroll anchor.
 
 ## Versions, notes and export
 

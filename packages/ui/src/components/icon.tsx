@@ -88,6 +88,12 @@ import {
   FileCheck2,
   FilePen,
   FileSearch,
+  FoldVertical,
+  UnfoldVertical,
+  Columns2,
+  WrapText,
+  Folders,
+  MessageSquareText,
   FileTerminal,
   FileText,
   Fingerprint,
@@ -255,6 +261,13 @@ import {
 } from "lucide-solid"
 
 const icons = {
+  "file-search": FileSearch,
+  "fold-vertical": FoldVertical,
+  "unfold-vertical": UnfoldVertical,
+  "columns-2": Columns2,
+  "wrap-text": WrapText,
+  folders: Folders,
+  "message-square-text": MessageSquareText,
   "file-chart-column": FileChartColumn,
   "list-end": ListEnd,
   "shield-half": ShieldHalf,
