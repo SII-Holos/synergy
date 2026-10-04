@@ -10922,6 +10922,10 @@ msgid "browser.import.cookies"
 msgstr "Cookies"
 
 #. js-lingui-explicit-id
+msgid "browser.import.desktopUnavailable"
+msgstr "Browser import is unavailable in this Desktop window. Reopen it and try again."
+
+#. js-lingui-explicit-id
 msgid "browser.import.done"
 msgstr "Done"
 
@@ -10980,6 +10984,10 @@ msgstr "Saved accounts for signing in"
 #. js-lingui-explicit-id
 msgid "browser.import.passwords"
 msgstr "Passwords"
+
+#. js-lingui-explicit-id
+msgid "browser.import.preparing"
+msgstr "Preparing browser…"
 
 #. js-lingui-explicit-id
 msgid "browser.import.progress"
@@ -11064,6 +11072,22 @@ msgstr "unsettled"
 #. js-lingui-explicit-id
 msgid "browser.page.back"
 msgstr "Back to webpage"
+
+#. js-lingui-explicit-id
+msgid "browser.prepare.cleanup"
+msgstr "Browser page could not close"
+
+#. js-lingui-explicit-id
+msgid "browser.prepare.closed"
+msgstr "The browser target changed or closed. Reopen the import dialog."
+
+#. js-lingui-explicit-id
+msgid "browser.prepare.failed"
+msgstr "Browser preparation failed. Retry."
+
+#. js-lingui-explicit-id
+msgid "browser.prepare.timeout"
+msgstr "Browser preparation timed out. Retry to check the same page."
 
 #. js-lingui-explicit-id
 msgid "browser.settings.advanced"

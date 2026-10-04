@@ -60,6 +60,57 @@ test("manual recovery resumes the most recent page without creating another page
   expect(await input.requests[1]!.json()).toMatchObject({ pageId: "recent", command: { type: "resume" } })
 })
 
+test("open retries carry the caller's stable request identity", async () => {
+  const input = fixture((request) =>
+    request.method === "GET"
+      ? Response.json({ ownerKey: "owner-one", pages: [] })
+      : Response.json({ id: "opened", title: "", url: "about:blank", status: "active" }),
+  )
+  await openBrowserWorkbenchPage({ ...input, requestId: "open-intent-one" })
+  await openBrowserWorkbenchPage({ ...input, requestId: "open-intent-one" })
+  const bodies = await Promise.all(
+    input.requests.filter((request) => request.method === "POST").map((request) => request.json()),
+  )
+  expect(bodies).toEqual([
+    { requestId: "open-intent-one", url: "about:blank" },
+    { requestId: "open-intent-one", url: "about:blank" },
+  ])
+})
+
+test("an explicit missing import target never opens a replacement page", async () => {
+  const input = fixture(() => Response.json({ ownerKey: "owner-one", pages: [] }))
+  await expect(openBrowserWorkbenchPage({ ...input, pageId: "missing" })).rejects.toThrow()
+  expect(input.requests.every((request) => request.method === "GET")).toBe(true)
+})
+
+test("an uncertain empty-Workspace open cannot restore a different page on retry", async () => {
+  let reads = 0
+  let writes = 0
+  const input = fixture((request) => {
+    if (request.method === "GET")
+      return Response.json({
+        ownerKey: "owner-one",
+        epoch: "one",
+        pages: reads++
+          ? [{ id: "other", title: "Other", url: "https://example.com", status: "active", lastActiveAt: 10 }]
+          : [],
+      })
+    if (writes++ === 0) throw new TypeError("Connection lost")
+    return Response.json({ id: "opened", title: "", url: "about:blank", status: "active" })
+  })
+  const selection = {}
+  await expect(
+    openBrowserWorkbenchPage({ ...input, restore: true, requestId: "same-request", selection }),
+  ).rejects.toThrow()
+  const tab = await openBrowserWorkbenchPage({ ...input, restore: true, requestId: "same-request", selection })
+  expect(tab.resourceId).toBe("opened")
+  const requests = input.requests.filter((request) => request.method === "POST")
+  expect(await Promise.all(requests.map((request) => request.json()))).toEqual([
+    { requestId: "same-request", url: "about:blank" },
+    { requestId: "same-request", url: "about:blank" },
+  ])
+})
+
 function fixture(respond: (request: Request) => Response = () => Response.json({ ownerKey: "owner-one" })) {
   const requests: Request[] = []
   const tickets: Parameters<BrowserNativeViewBridge["createPresentationTicket"]>[0][] = []
