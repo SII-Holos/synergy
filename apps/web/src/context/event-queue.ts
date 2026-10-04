@@ -52,7 +52,7 @@ function eventKey(scopeID: string, payload: unknown): string | undefined {
   if (type === "message.part.summary" && isRecord(properties) && !properties.content && isRecord(properties.summary)) {
     const part = properties.summary
     if (typeof part.messageID === "string" && typeof part.id === "string")
-      return `message.part.summary:${scopeID}:${part.messageID}:${part.id}`
+      return `message.part.${properties.discovery ? "discovery" : "summary"}:${scopeID}:${part.messageID}:${part.id}`
   }
 }
 
