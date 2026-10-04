@@ -51,6 +51,10 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
+          "glob": "src/components/agenda/details.tsx",
+          "reason": "Schedule details, slow run history, pause/enable actions and origin dismissal are exercised by test/components/execution/task-details.dom.test.tsx and test/components/agenda/agenda-interaction.dom.test.tsx in Vite/Chromium; Bun cannot attribute that execution to the TSX source."
+        },
+        {
           "glob": "src/components/agenda/form.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
@@ -65,6 +69,10 @@
         {
           "glob": "src/components/agenda/panel.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/agenda/session-item-dialog.tsx",
+          "reason": "Captured-client dialog requests, slow history, stale responses and sequential actions after the task popover closes are exercised by test/components/execution/task-details.dom.test.tsx; Vite/Chromium execution is outside Bun source coverage."
         },
         {
           "glob": "src/components/agenda/shared.ts",
