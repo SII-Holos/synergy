@@ -150,6 +150,8 @@ Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It fixes the sizin
 
 Review navigation uses its dedicated reading-action tokens; surface sizing arrows do not mean folding files. Mount the actual `ReviewPanel`, generated client, shared theme/dialog controls and production CSS in browser fixtures. Keep quick-jump queries and directory filters independent from the diff collection and its caches. Verify duplicate workspace paths, keyboard selection/focus return, right-directory and narrow-popover transitions, complete pressed states, retained line/comment drafts and scroll anchors. Refresh must retain loaded content through pending and failure, revalidate versions on success and reject responses from another comparison. Inspect 320px/375px touch overflow, the compact More entries, reduced motion and large-file/list virtualization. Do not treat substitute buttons or the older per-file review accordion as evidence about this panel.
 
+Compare hovered control colors with their actual enclosing surface in both themes; a changed CSS value or visible tooltip alone does not establish visible feedback. Preserve pressed accents and target/glyph geometry during hover.
+
 Compile repeated Review acceptance fixtures before serving them, so development reloads and dependency optimization cannot replace a mounted panel. Initialize asynchronous highlight themes before rendering without blocking entry-module evaluation; a dynamic shared chunk can depend on that entry. Wait for the full-file scroll range and the requested virtual line range before testing retained anchors under CPU throttling.
 
 ## Preserve Product Presentation

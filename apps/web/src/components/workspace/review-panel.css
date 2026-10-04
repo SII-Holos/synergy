@@ -58,11 +58,13 @@
     background-color var(--motion-duration-fast) var(--motion-ease-standard),
     color var(--motion-duration-fast) var(--motion-ease-standard);
 }
+.review-toolbar-tools [data-component="icon"],
 .review-toolbar-tools [data-slot="icon-svg"] {
   color: inherit;
 }
 .review-toolbar-tools button:hover:not(:disabled) {
-  background: var(--surface-base-hover);
+  background: var(--workbench-control-bg-hover, var(--surface-inset-base-hover));
+  color: var(--icon-strong-base);
 }
 .review-toolbar-tools button[aria-pressed="true"] {
   background: var(--surface-interactive-base);
@@ -70,6 +72,7 @@
 }
 .review-toolbar-tools button[aria-pressed="true"]:hover {
   background: var(--surface-interactive-hover);
+  color: var(--text-interactive-base);
 }
 .review-toolbar-tools button:focus:not(:focus-visible):not(:hover):not([aria-pressed="true"]) {
   background: transparent;

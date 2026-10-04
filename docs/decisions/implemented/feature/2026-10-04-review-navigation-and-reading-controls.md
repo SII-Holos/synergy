@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-Review navigation shared a filter with the diff projection, so quick lookup could hide other files and release their rendering state. Common reading settings were buried while lower-frequency navigation consumed toolbar space. Folding used surface-sizing glyphs, mixed target sizes made controls inconsistent, and narrow file-list settings could change without a visible result. Refresh also replaced loaded content before its comparison settled.
+Review navigation shared a filter with the diff projection, so quick lookup could hide other files and release their rendering state. Common reading settings were buried while lower-frequency navigation consumed toolbar space. Folding used surface-sizing glyphs, mixed target sizes made controls inconsistent, and narrow file-list settings could change without a visible result. Refresh also replaced loaded content before its comparison settled. Neutral toolbar hover reused the inset surface color, leaving its visual feedback indistinguishable from the surrounding toolbar.
 
 ## Decision
 
@@ -12,7 +12,7 @@ The existing [versioned review surface](2026-10-04-review-frontend-optimization.
 
 Quick jump uses a virtualized flat list with basename, directory and workspace labels. It supports directional selection, explicit Enter activation, composing-input protection and Escape focus recovery. The directory remains a separate browser on the right of wide diffs and opens as a popover in narrow panes. Neither navigation query changes diff membership, content caches or selected lines. Viewer items retain identity when their content and display projections have not changed. Highlight-cache identities include captured content versions and projection settings, so placeholder metadata cannot collide with a later full file. Same-comparison refresh retains content through pending and failure; successful comparisons revalidate loaded versions under the existing cancellation and bounded-read owner.
 
-Desktop controls use 32px targets with 16px glyphs. Touch uses at least 44px targets and moves Refresh/Fold into More when necessary. Viewed checkboxes retain their compact glyph while the owning control's hit area fills the same target. File disclosures and advanced setting labels also provide the full touch target, including native activation near its edges. Narrow panes reserve separate metadata and tool rows. Theme tokens distinguish neutral, hover, pressed and keyboard-focused states; existing fast motion remains reduced-motion aware.
+Desktop controls use 32px targets with 16px glyphs. Touch uses at least 44px targets and moves Refresh/Fold into More when necessary. Viewed checkboxes retain their compact glyph while the owning control's hit area fills the same target. File disclosures and advanced setting labels also provide the full touch target, including native activation near its edges. Narrow panes reserve separate metadata and tool rows. Theme tokens distinguish neutral, hover, pressed and keyboard-focused states; existing fast motion remains reduced-motion aware. Neutral hover follows the shared workbench control surface and strengthens the icon foreground. Pressed controls retain their accent foreground while hovering. Both themes must visibly distinguish hovered controls from their enclosing toolbar without moving targets or glyphs.
 
 ## Alternatives considered
 

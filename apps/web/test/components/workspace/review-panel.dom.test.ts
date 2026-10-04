@@ -324,6 +324,60 @@ test("reading controls expose their states and keyboard jump returns focus", asy
   expect(errors).toEqual([])
 })
 
+test("toolbar hover remains visible against its surface in both themes without moving glyphs", async () => {
+  await page.setViewportSize({ width: 1100, height: 850 })
+  await mount()
+  const tools = page.getByRole("group", { name: "Review options", exact: true })
+  for (const mode of ["light", "dark"]) {
+    await page.evaluate(
+      (value) => (window as unknown as { fixture: { theme(mode: string): void } }).fixture.theme(value),
+      mode,
+    )
+    await page.waitForFunction((value) => document.documentElement.dataset.colorScheme === value, mode)
+    for (const [label, hint] of [
+      ["Review options", "Review options"],
+      ["Jump to file", "Jump to file"],
+      ["Refresh comparison", "Refresh comparison"],
+      ["Wrap lines", "Disable line wrapping"],
+      ["Collapse all", "Collapse all"],
+      ["Diff layout: Auto", "Diff layout: Auto"],
+      ["Hide files", "Hide files"],
+    ]) {
+      const button = tools.getByRole("button", { name: label, exact: true })
+      const appearance = () =>
+        button.evaluate(async (element) => {
+          await Promise.all(element.getAnimations().map((animation) => animation.finished))
+          const style = getComputedStyle(element)
+          const icon = element.querySelector("svg")!
+          return {
+            background: style.backgroundColor,
+            surface: getComputedStyle(element.closest(".review-toolbar-tools")!).backgroundColor,
+            color: style.color,
+            iconColor: getComputedStyle(icon).color,
+            bounds: element.getBoundingClientRect().toJSON(),
+            iconBounds: icon.getBoundingClientRect().toJSON(),
+            pressed: element.getAttribute("aria-pressed") === "true",
+            hovered: element.matches(":hover"),
+          }
+        })
+      await page.mouse.move(0, 0)
+      const before = await appearance()
+      await button.hover()
+      await page.getByRole("tooltip", { name: hint, exact: true }).waitFor()
+      const hovered = await appearance()
+      expect(hovered.hovered).toBe(true)
+      expect(hovered.background).not.toBe(before.background)
+      expect(hovered.background).not.toBe(hovered.surface)
+      expect(hovered.iconColor).toBe(hovered.color)
+      if (before.pressed) expect(hovered.color).toBe(before.color)
+      else expect(hovered.color).not.toBe(before.color)
+      expect(hovered.bounds).toEqual(before.bounds)
+      expect(hovered.iconBounds).toEqual(before.iconBounds)
+    }
+  }
+  expect(errors).toEqual([])
+}, 30_000)
+
 test("refresh holds loaded contents through pending and failure, then retry recovers", async () => {
   await mount(rows().map(({ patch: _patch, ...row }) => row))
   const after = page.locator(".review-content").getByText("after", { exact: true }).first()
