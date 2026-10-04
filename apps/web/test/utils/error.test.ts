@@ -29,4 +29,16 @@ describe("requestErrorMessage", () => {
   test("returns the fallback for message-free objects", () => {
     expect(requestErrorMessage({ code: "REQUEST_FAILED" }, "Request failed")).toBe("Request failed")
   })
+
+  test("only renders string fields from structured errors", () => {
+    expect(requestErrorMessage({ data: { message: { detail: "failed" }, error: 503 } }, "Unavailable")).toBe(
+      "Unavailable",
+    )
+    expect(requestErrorMessage({ data: { message: [], error: {} }, message: "Try again" })).toBe("Try again")
+    expect(requestErrorMessage({ data: "invalid", message: false }, "Unavailable")).toBe("Unavailable")
+    expect(requestErrorMessage(new Error("Offline"))).toBe("Offline")
+    expect(requestErrorMessage({ name: "SessionDisplayConflict", data: { message: "Refresh its summary" } })).toBe(
+      "Refresh its summary",
+    )
+  })
 })

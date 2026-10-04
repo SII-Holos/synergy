@@ -9,6 +9,7 @@ let harness: {
   setPreview: (preview: boolean) => void
   setSegmented: (value: boolean) => void
   addCompaction: (state?: "committed" | "running" | "failed") => void
+  selection: () => unknown
   reset: () => void
 }
 
@@ -180,13 +181,13 @@ test("segmented turns share a single process entrance and preserve the answer wh
   expect(document.contains(answer)).toBe(true)
 })
 
-test("a virtual process header does not announce provider waiting after narrative content arrives", async () => {
+test("a virtual process header without phase evidence uses neutral activity after narrative content arrives", async () => {
   harness.move(3)
   harness.setSegmented(true)
   await waitForUpdate()
   expect(trigger().textContent).not.toContain("Waiting for response")
   expect(trigger().textContent).not.toContain("Awaiting response")
-  expect(trigger().textContent).toContain("Working")
+  expect(trigger().textContent).toContain("Processing task")
 })
 
 test("segmented completed compaction renders once in its owning body without phantom running footer cards", async () => {
@@ -199,7 +200,12 @@ test("segmented completed compaction renders once in its owning body without pha
   expect(card.getAttribute("data-status")).toBe("complete")
   ;(card.querySelector("button") as HTMLButtonElement).click()
   await waitForUpdate()
-  expect(card.textContent).toContain("Durable summary")
+  expect(card.textContent).not.toContain("Durable summary")
+  expect(harness.selection()).toEqual({
+    kind: "compaction",
+    sessionID: "session-activity-switch",
+    messageID: "assistant-activity-switch",
+  })
 })
 
 test.each(["running", "failed"] as const)(
