@@ -24,23 +24,37 @@ export function ProjectMenuContent(props: {
   const { _ } = useLingui()
   const sync = useGlobalSync()
   const sdk = useGlobalSDK()
+  const owner = createMemo(() => ({ client: sdk.client, url: sdk.url, ids: sync.data.scope.map((scope) => scope.id) }))
+  const initialLocations: {
+    owner: ReturnType<typeof owner> | undefined
+    values: Record<string, string | undefined>
+  } = { owner: undefined, values: {} }
   const [locations] = createResource(
-    () => sync.data.scope.map((scope) => scope.id),
-    async (ids) =>
-      Object.fromEntries(
+    owner,
+    async (request) => ({
+      owner: request,
+      values: Object.fromEntries(
         await Promise.all(
-          ids.map(async (scopeID) => {
-            const value = await sdk.client.project.directories({ scopeID }).then((result) => result.data)
-            return [
-              scopeID,
-              value?.folders.find((folder) => folder.workspaceID === value.mainWorkspaceID)?.path,
-            ] as const
+          request.ids.map(async (scopeID) => {
+            try {
+              const { data } = await request.client.project.directories({ scopeID }, { throwOnError: true })
+              return [
+                scopeID,
+                data?.folders.find((folder) => folder.workspaceID === data.mainWorkspaceID)?.path,
+              ] as const
+            } catch {
+              return [scopeID, undefined] as const
+            }
           }),
         ),
       ),
+    }),
+    { initialValue: initialLocations },
   )
-  const location = (project: (typeof sync.data.scope)[number]) =>
-    locations()?.[project.id] ?? project.local?.worktree ?? ""
+  const location = (project: (typeof sync.data.scope)[number]) => {
+    const snapshot = locations.latest
+    return (snapshot.owner === owner() ? snapshot.values[project.id] : undefined) ?? project.local?.worktree ?? ""
+  }
   const [query, setQuery] = createSignal("")
   const [pending, setPending] = createSignal(false)
   const [error, setError] = createSignal("")
@@ -109,7 +123,9 @@ export function ProjectMenuContent(props: {
                 <span class="project-flow-row-copy">
                   <strong>{getScopeLabel(project)}</strong>
                   <small class="project-short-path">
-                    {location(project).replaceAll("\\", "/").split("/").filter(Boolean).slice(-3).join("/")}
+                    {location(project)
+                      ? location(project).replaceAll("\\", "/").split("/").filter(Boolean).slice(-3).join("/")
+                      : _(locations.loading ? entry.loading : copy.directoryUnavailable)}
                   </small>
                 </span>
                 <span class="project-flow-check">

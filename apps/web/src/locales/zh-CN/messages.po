@@ -13242,6 +13242,10 @@ msgid "project.flow.description"
 msgstr "保留当前草稿，选择这个任务所属的项目。"
 
 #. js-lingui-explicit-id
+msgid "project.flow.directoryUnavailable"
+msgstr "目录暂不可用"
+
+#. js-lingui-explicit-id
 msgid "project.flow.empty"
 msgstr "没有匹配的项目"
 
