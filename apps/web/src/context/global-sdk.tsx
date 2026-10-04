@@ -9,7 +9,7 @@ import { recordTokenReceive, stopBrowserPerformanceMetrics } from "@/components/
 import { useServer } from "./server"
 import { streamingTokenReceipt } from "./streaming-token-event"
 import { createRuntimeCapabilities } from "./runtime-capabilities"
-import { createContentSubscriptions } from "./content-subscriptions"
+import { createContentSubscriptions, projectContentSummary } from "./content-subscriptions"
 
 const PING_INTERVAL = 20_000
 const PONG_TIMEOUT = 10_000
@@ -151,11 +151,13 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         if (type === "server.heartbeat") return
 
         if (payload.type === "message.part.summary") {
-          const summaryAccepted = contentSubscriptions.acceptsSummary(parsed.scopeID ?? "global", payload.properties)
-          if (!contentSubscriptions.accept(parsed.scopeID ?? "global", payload.properties)) {
-            if ((payload as Event & { seq?: number }).seq === undefined && !summaryAccepted) return
-            payload.properties = { summary: payload.properties.summary }
-          }
+          const properties = projectContentSummary(
+            contentSubscriptions,
+            parsed.scopeID ?? "global",
+            payload.properties,
+            (payload as Event & { seq?: number }).seq,
+          )
+          payload.properties = properties
         }
         const tokenReceipt = streamingTokenReceipt(payload)
         if (tokenReceipt) recordTokenReceive(tokenReceipt.part, { delta: tokenReceipt.delta })

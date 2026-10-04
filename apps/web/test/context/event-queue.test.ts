@@ -10,6 +10,29 @@ import {
 
 type Recorded = { directory: string; payload: unknown }
 
+test("obsolete discovery cannot coalesce away a current summary", () => {
+  const emitted: unknown[] = []
+  const queue = createEventQueue({
+    emit: (_scope, event) => emitted.push(event),
+    isHidden: () => true,
+    batch: (fn) => fn(),
+    schedule: () => {},
+  })
+  const current = {
+    type: "message.part.summary",
+    properties: { summary: { messageID: "m", id: "p", content: { version: "new" } } },
+  }
+  const stale = {
+    type: "message.part.summary",
+    properties: { summary: { messageID: "m", id: "p", content: { version: "old" } }, discovery: true },
+  }
+  queue.push("scope", current)
+  queue.push("scope", stale)
+  queue.flush()
+  expect(emitted).toEqual([current, stale])
+  queue.dispose()
+})
+
 test("summary coalescing retains every sequenced state event", () => {
   const emitted: unknown[] = []
   const queue = createEventQueue({
