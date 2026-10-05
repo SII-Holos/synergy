@@ -5,7 +5,7 @@ import { createDisclosureMotion } from "../../src/utils/disclosure-motion"
 function fixture(reduced = false) {
   const dom = new JSDOM("<!doctype html><div><button>Inspect evidence</button></div>")
   const element = dom.window.document.querySelector("div")! as unknown as HTMLElement
-  Object.defineProperty(element, "getBoundingClientRect", { value: () => ({ height: 28 }) })
+  Object.defineProperty(element, "getBoundingClientRect", { configurable: true, value: () => ({ height: 28 }) })
   const animations: { finish: () => void; cancelled: boolean; frames: Keyframe[]; duration: number }[] = []
   element.animate = (frames, options) => {
     let finish: (() => void) | undefined
@@ -34,6 +34,31 @@ function fixture(reduced = false) {
   const motion = createDisclosureMotion(element)
   return { dom, element, animations, motion }
 }
+
+test("settled disclosures and opacity transitions work without measuring their layout box", () => {
+  const { dom, element, motion } = fixture()
+  Object.defineProperty(element, "getBoundingClientRect", {
+    configurable: true,
+    value: () => {
+      throw new Error("A settled disclosure does not need a layout measurement")
+    },
+  })
+  motion.setVisible(true)
+  motion.setVisible(false)
+  expect(element.hidden).toBe(true)
+  motion.dispose()
+  element.hidden = false
+  const appearance = createDisclosureMotion(element, true)
+  appearance.setVisible(true, true, true)
+  appearance.dispose()
+  const opacity = createDisclosureMotion(element, true, undefined, false)
+  opacity.setVisible(true, true, true)
+  expect(element.hidden).toBe(false)
+  opacity.setVisible(false, true)
+  expect(element.inert).toBe(true)
+  opacity.dispose()
+  dom.window.close()
+})
 
 test("ordinary updates do not replay an appearance and collected tools leave before becoming hidden", () => {
   const { dom, element, animations, motion } = fixture()

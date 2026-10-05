@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test"
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
+import { createRequire } from "node:module"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solid from "vite-plugin-solid"
@@ -45,11 +46,45 @@ declare global {
     __conversationProcess: Fixture
     answerNode?: Element | null
     __processSelection?: unknown
+    __resizeErrors: string[]
   }
 }
 let server: ViteDevServer, browser: Browser, page: Page, directory: string, url: string
 const errors: string[] = []
 const app = path.resolve(import.meta.dir, "../../..")
+const require = createRequire(import.meta.url)
+const virtualizer = path.join(path.dirname(require.resolve("virtua/package.json")), "lib/solid")
+const observeResizeErrors = (target: Page) =>
+  target.addInitScript(() => {
+    window.__resizeErrors = []
+    window.addEventListener("error", (event) => {
+      if (event.message.includes("ResizeObserver")) window.__resizeErrors.push(event.message)
+    })
+  })
+const fixtureServer = async (entry: "index.mjs" | "index.jsx") => {
+  const server = await createServer({
+    configFile: false,
+    root: directory,
+    cacheDir: path.join(directory, `.vite-${entry}`),
+    plugins: [solid()],
+    resolve: {
+      alias: [
+        { find: /^virtua\/solid$/, replacement: path.join(virtualizer, entry) },
+        { find: "@/context/execution", replacement: path.join(directory, "execution.ts") },
+      ],
+    },
+    server: {
+      hmr: false,
+      host: "127.0.0.1",
+      port: await fixturePort(),
+      strictPort: true,
+      fs: { allow: [path.resolve(app, "../.."), directory] },
+    },
+  })
+  await server.listen()
+  await server.warmupRequest("/main.tsx")
+  return server
+}
 const frames = () =>
   page.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
@@ -65,7 +100,7 @@ beforeAll(async () => {
   directory = await mkdtemp(path.join(import.meta.dir, ".conversation-process-"))
   await Bun.write(
     path.join(directory, "index.html"),
-    '<style>body{font:16px/24px system-ui}button{font:inherit}[data-component="session-turn"]{height:auto}[data-slot="session-turn-content"]{height:auto!important}</style><div id="root"></div><script type="module" src="/main.tsx"></script>',
+    '<!doctype html><style>body{font:16px/24px system-ui}button{font:inherit}[data-component="session-turn"]{height:auto}[data-slot="session-turn-content"]{height:auto!important}</style><div id="root"></div><script type="module" src="/main.tsx"></script>',
   )
   await Bun.write(
     path.join(directory, "main.tsx"),
@@ -75,25 +110,11 @@ beforeAll(async () => {
     path.join(directory, "execution.ts"),
     "export const useExecution=()=>({available:()=>true,round:()=>undefined,open:()=>{}})",
   )
-  server = await createServer({
-    configFile: false,
-    root: directory,
-    cacheDir: path.join(directory, ".vite"),
-    plugins: [solid()],
-    resolve: { alias: [{ find: "@/context/execution", replacement: path.join(directory, "execution.ts") }] },
-    server: {
-      hmr: false,
-      host: "127.0.0.1",
-      port: await fixturePort(),
-      strictPort: true,
-      fs: { allow: [path.resolve(app, "../.."), directory] },
-    },
-  })
-  await server.listen()
-  await server.warmupRequest("/main.tsx")
+  server = await fixtureServer("index.mjs")
   url = server.resolvedUrls!.local[0]!
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage()
+  await observeResizeErrors(page)
   page.setDefaultTimeout(15000)
   page.on("pageerror", (e) => {
     errors.push(e.message)
@@ -107,6 +128,83 @@ afterAll(async () => {
   await server?.close()
   if (directory) await rm(directory, { recursive: true, force: true })
 }, 30000)
+
+test.each(["index.mjs", "index.jsx"] as const)(
+  "history hydration and process disclosure settle without dropping resize notifications (%s)",
+  async (entry) => {
+    const alternate = entry === "index.jsx" ? await fixtureServer(entry) : undefined
+    const target = alternate ? await browser.newPage() : page
+    target.setDefaultTimeout(15000)
+    if (alternate) target.on("pageerror", (error) => errors.push(error.message))
+    await observeResizeErrors(target)
+    try {
+      await target.goto(alternate?.resolvedUrls!.local[0]! ?? url)
+      await target.getByText("I will check the project first.", { exact: true }).waitFor()
+      await target.evaluate(() => {
+        window.__conversationProcess.grow(80)
+        window.__conversationProcess.stream()
+        window.__conversationProcess.complete()
+      })
+      const trigger = target.locator('[data-slot="turn-process-trigger"]')
+      await target.waitForFunction(() => !document.querySelector('[data-row-kind="activity"]'))
+      await trigger.press("Enter")
+      const batch = target.locator('[data-component="conversation-activity"] > button').last()
+      await batch.waitFor()
+      await batch.focus()
+      expect(await batch.evaluate((element) => element === document.activeElement)).toBe(true)
+      if ((await batch.getAttribute("aria-expanded")) !== "true") await batch.press("Enter")
+      const viewport = target.locator('[data-component="process-viewport"]').last()
+      await viewport.waitFor()
+      const heights = await target
+        .locator('[data-slot="activity-batch-content"]')
+        .last()
+        .evaluate(async (element) => {
+          const heights: number[] = []
+          for (let frame = 0; frame < 8; frame++) {
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+            heights.push(element.getBoundingClientRect().height)
+          }
+          return heights
+        })
+      expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(1)
+      await target.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
+      for (const height of [420, 700, 600]) {
+        await target.locator("[data-scroller]").evaluate((element, height) => {
+          ;(element as HTMLElement).style.height = `${height}px`
+        }, height)
+        await target.evaluate(
+          () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+        )
+        expect(await viewport.evaluate((element) => element.clientHeight)).toBeLessThanOrEqual(height * 0.45)
+      }
+      await batch.press("Enter")
+      await target.waitForFunction(() => !document.querySelector('[data-slot="activity-step-trigger"]'))
+      await batch.press("Enter")
+      await viewport.waitFor()
+      await target.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
+      await target.evaluate(() => window.__conversationProcess.hydrateBefore(24))
+      await target.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+      )
+      await target.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+      )
+      await target.locator("[data-scroller]").evaluate(async (element) => {
+        ;(element as HTMLElement).style.height = "420px"
+        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+        window.__conversationProcess.prepare()
+      })
+      await target.waitForFunction(() => !document.querySelector('[data-component="process-viewport"]'))
+      expect(await target.evaluate(() => window.__resizeErrors)).toEqual([])
+    } finally {
+      if (alternate) {
+        await target.close()
+        await alternate.close()
+      }
+    }
+  },
+  60000,
+)
 
 test("a history locator retains its Part through late preceding summaries and releases on wheel input", async () => {
   const cdp = await page.context().newCDPSession(page)

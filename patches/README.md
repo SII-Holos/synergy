@@ -1,5 +1,13 @@
 # Dependency patches
 
+## Virtua Solid resize delivery
+
+Provenance: [Virtua 0.42.3 resize observer](https://github.com/inokawa/virtua/blob/0.42.3/src/core/resizer.ts) and [upstream resize delivery issue](https://github.com/inokawa/virtua/issues/470).
+
+Local adaptation: [the pinned patch](virtua@0.42.3.patch) queues the latest notification per target and publishes one Solid batch on the next animation frame. Unobserving a target drops its queued entry; disposal cancels the frame and clears pending entries. Both the published JavaScript and JSX Solid entrypoints carry the same correction. Other framework entrypoints and the package licenses remain unchanged.
+
+[Real browser regression](../apps/web/test/components/session/conversation-process.dom.test.ts) checks nested process disclosure, delayed history hydration and viewport resizing without undelivered notifications, alongside reading anchors and retained content. Keep this patch until an upgraded dependency passes these cases through both entrypoints without it; verify a fresh frozen-lockfile install before accepting an upgrade.
+
 ## Kobalte iframe focus
 
 Provenance: Kobalte utils 0.9.1, including its pinned [tabbable traversal](https://github.com/kobaltedev/kobalte/blob/1bd4aaa7ad782b7ad03a9e4fd94565310dce08a0/packages/utils/src/tabbable.ts) and [active element lookup](https://github.com/kobaltedev/kobalte/blob/1bd4aaa7ad782b7ad03a9e4fd94565310dce08a0/packages/utils/src/dom.ts).
