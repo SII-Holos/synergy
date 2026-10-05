@@ -33,6 +33,7 @@ For every sessionless call:
 5. Use a Session or Cortex instead when tools, durable history, resumability, progress, or completion delivery are part of the contract.
 6. Bound input and output, treat tagged/untrusted content as data, and redact secrets before policy/classification calls.
 7. Parse and validate structured output with Zod or an equivalent explicit schema. Define whether timeout, unavailable model, malformed output, or provider error fails soft or propagates.
+   `AgentCall` returns native output-tool arguments after decoding the common intent facade. Do not add presentation fields to business schemas or strip arbitrary unknown fields to accept them. Test both flat inputs and an enveloped native schema with a field named `workBrief`.
 8. Test model-role fallback, timeout/cancellation, stream disposal, parsing, redaction, and failure semantics without making a live provider call.
 9. Treat any `MessageV2.User.variant` on a reused source or root envelope as durable root-execution metadata. A `small: true` sessionless call must neither validate nor apply it; the call uses `ProviderTransform.smallOptions()` for its target model.
 

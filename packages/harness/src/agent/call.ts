@@ -12,6 +12,7 @@ import { ScopeContext } from "../scope/context"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { RolloutRecordingError } from "../session/rollout/error"
+import { ToolIntent } from "../session/tool-intent"
 
 export namespace AgentCall {
   export type ErrorCode =
@@ -100,6 +101,11 @@ export namespace AgentCall {
   }
 
   export async function text(input: TextInput): Promise<TextOutput> {
+    const outputTool = input.outputTool && {
+      name: input.outputTool.name,
+      description: input.outputTool.description,
+      binding: ToolIntent.snapshot(input.outputTool.schema),
+    }
     if (!Experiment.current()) return Experiment.provide(await Experiment.resolve(), () => text(input))
     const causal = RolloutContext.current()
     if (
@@ -203,16 +209,16 @@ export namespace AgentCall {
             retryIndex: attempt,
             agent,
             user,
-            toolDefinitions: input.outputTool
+            toolDefinitions: outputTool
               ? [
                   {
-                    id: input.outputTool.name,
-                    description: input.outputTool.description,
-                    inputSchema: input.outputTool.schema,
+                    id: outputTool.name,
+                    description: outputTool.description,
+                    inputSchema: outputTool.binding.nativeSchema,
                   },
                 ]
               : [],
-            toolChoice: input.outputTool ? { type: "tool", toolName: input.outputTool.name } : undefined,
+            toolChoice: outputTool ? { type: "tool", toolName: outputTool.name } : undefined,
             model,
             small: input.small ?? true,
             messages: input.messages,
@@ -251,7 +257,7 @@ export namespace AgentCall {
               const part = next.value
               if (part.type === "error") throw part.error
               if (part.type === "abort") throw new Error("cancelled", `Agent ${input.agent} was cancelled`)
-              if (part.type === "tool-call" && input.outputTool) {
+              if (part.type === "tool-call" && outputTool) {
                 outputCharacters += (JSON.stringify(part.input) ?? "").length
                 if (outputCharacters > input.maxOutputChars) {
                   output.abort(new DOMException("Agent output exceeded its bound", "AbortError"))
@@ -260,7 +266,12 @@ export namespace AgentCall {
                     `Agent ${input.agent} output exceeded ${input.maxOutputChars} characters`,
                   )
                 }
-                toolCalls.push({ name: part.toolName, input: part.input })
+                const value = part.input
+                const decoded =
+                  value && typeof value === "object" && !Array.isArray(value)
+                    ? ToolIntent.decode(outputTool.binding, value as Record<string, unknown>).input
+                    : value
+                toolCalls.push({ name: part.toolName, input: decoded })
                 continue
               }
               if (part.type !== "text-delta" || !part.text) continue
@@ -275,7 +286,7 @@ export namespace AgentCall {
             }
             const usage = await wait(stream.usage)
             status = "completed"
-            return { text: value, model, usage, ...(input.outputTool ? { toolCalls } : {}) }
+            return { text: value, model, usage, ...(outputTool ? { toolCalls } : {}) }
           } finally {
             await stream.dispose()
           }

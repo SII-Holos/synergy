@@ -30,6 +30,8 @@ Use the next `NNNN-kebab-case-title.md`. Sections:
 
 ## Index
 
+- [0046: Structured output retained tool intent](0046-structured-output-retained-tool-intent.md)
+
 - [0045: PostgreSQL startup DDL blocked writers](0045-postgres-startup-ddl-blocked-writers.md)
 
 - [0042: Compaction completion](0042-process-event-ownership-and-compaction-completion.md)
