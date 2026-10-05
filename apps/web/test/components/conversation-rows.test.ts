@@ -196,6 +196,57 @@ test("structural Parts create no empty rows and tool and reasoning slots remain 
   expect(bodies.find((row) => row.beforeTool)?.before).toBe(false)
 })
 
+test("Render visuals and their final explanation stay visible when process history is closed", () => {
+  const before = { ...parts[0], id: "before", type: "text" } as SessionPartSummary
+  const visual = { ...parts[0], id: "visual", tool: "render", status: "completed" }
+  const after = { ...before, id: "after" }
+  for (const open of [false, true]) {
+    const rows = buildConversationRows({
+      timeline: [root],
+      messagesFor: () => [{ ...reply, finish: "stop" } as Message],
+      summaries: (id) => (id === reply.id ? [before, visual, after] : []),
+      page: () => ({ hasMore: false }),
+      process: () => ({ open, working: false }),
+      activity: () => false,
+    })
+    const bodies = rows.filter((row) => row.kind === "body")
+    expect(bodies.map((row) => row.parts[0].id)).toEqual(["before", "visual", "after"])
+    expect(bodies.every((row) => !row.processBody && !row.activity)).toBe(true)
+    expect(rows.find((row) => row.kind === "process")?.process?.hasContent).toBe(false)
+  }
+})
+
+test("Render receipts split bounded activity chunks without changing their identities", () => {
+  for (const status of ["pending", "running", "completed", "error"]) {
+    const values = [
+      { ...parts[0], id: "read-before", tool: "read" },
+      { ...parts[0], id: "visual", tool: "render", status },
+      { ...parts[0], id: "read-after", tool: "read" },
+    ]
+    const input = {
+      timeline: [root],
+      messagesFor: () => [reply],
+      summaries: (id: string) => (id === reply.id ? values : []),
+      page: () => ({ hasMore: false }),
+      process: () => ({ open: true, working: false }),
+    }
+    const expanded = buildConversationRows(input)
+    expect(expanded.filter((row) => row.kind === "activity").map((row) => row.activity.parts)).toEqual([
+      ["read-before"],
+      ["read-after"],
+    ])
+    const collapsed = buildConversationRows({
+      ...input,
+      previous: expanded,
+      process: () => ({ open: false, working: false }),
+    })
+    const visible = collapsed.filter((row) => row.kind === "body")
+    expect(visible.map((row) => row.key)).toEqual([`${reply.id}:visual`])
+    expect(visible[0].processBody).toBe(false)
+    expect(visible[0].activity).toBeUndefined()
+  }
+})
+
 test("virtualized processes have one entrance and bounded batches without hiding the final answer", () => {
   const answer = { ...parts[0], id: "answer", type: "text" } as SessionPartSummary
   const input = {

@@ -8,7 +8,7 @@ import { useData } from "../../../context"
 import { BasicTool } from "../../basic-tool"
 import { Icon } from "../../icon"
 import { Checkbox } from "../../checkbox"
-import { RenderHtml } from "../../render-html"
+import { RenderTool } from "../../render-tool"
 import { AttachmentGallery } from "../../attachment-card"
 import { ToolTextOutput } from "../../tool-output-text"
 import { ToolRegistry, getToolInfo, getDirectory } from "../../message-part"
@@ -1757,39 +1757,7 @@ ToolRegistry.register({
 
 ToolRegistry.register({
   name: "render",
-  render(props) {
-    const { _ } = useLingui()
-    const html = () => props.metadata?.html as string | undefined
-    return (
-      <BasicTool
-        {...props}
-        defaultOpen
-        forceOpen
-        trigger={{
-          icon: "code",
-          title: TOOL_TITLE_DESC["render"],
-          subtitle: props.input.artifactTitle || "",
-          tags: html() ? [{ label: _(TOOL_MISC_DESC.htmlPreview) }] : undefined,
-        }}
-      >
-        <Show
-          keyed
-          when={html()}
-          fallback={
-            <Show keyed when={props.output}>
-              {(output) => (
-                <div data-component="tool-output">
-                  <ToolTextOutput text={output} />
-                </div>
-              )}
-            </Show>
-          }
-        >
-          {(content) => <RenderHtml html={content} />}
-        </Show>
-      </BasicTool>
-    )
-  },
+  render: RenderTool,
 })
 
 ToolRegistry.register({
