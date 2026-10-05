@@ -1,0 +1,41 @@
+[data-component="render-tool"] {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-weak-base);
+  border-radius: 12px;
+
+  figcaption {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 10px 6px 16px;
+    border-top: 1px solid var(--border-weak-base);
+    color: var(--text-weak);
+    font-size: 12px;
+    line-height: 18px;
+
+    > span {
+      min-width: 0;
+      flex: 1;
+      overflow-wrap: anywhere;
+    }
+
+    > button {
+      flex-shrink: 0;
+    }
+  }
+}
+
+[data-component="render-viewer"] [data-component="dialog"] {
+  --dialog-width: min(calc(100vw - 32px), 1040px);
+  --dialog-max-height: calc(100dvh - 40px);
+  --dialog-body-padding: 0;
+  --dialog-header-padding: 16px;
+
+  [data-slot="dialog-title"] {
+    font-size: 14px;
+    line-height: 20px;
+    overflow-wrap: anywhere;
+  }
+}

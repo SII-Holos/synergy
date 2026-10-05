@@ -1,4 +1,8 @@
 import type { Message, SessionPartSummary } from "@ericsanchezok/synergy-sdk"
+import { isActivityGroupableTool } from "@ericsanchezok/synergy-util/activity"
+
+const isExecutionPart = (part: SessionPartSummary) =>
+  part.type === "reasoning" || (part.type === "tool" && isActivityGroupableTool(part.tool ?? ""))
 
 export type ConversationActivity = {
   key: string
@@ -74,12 +78,11 @@ export function buildConversationRows(input: {
     }
     const isProcessPart = (message: Message, parts: readonly SessionPartSummary[], index: number) =>
       message.role === "assistant" &&
-      (parts[index].type === "tool" ||
-        parts[index].type === "reasoning" ||
+      (isExecutionPart(parts[index]) ||
         (parts[index].type === "text" &&
           (message.id !== lastAssistant?.id ||
             message.finish === "tool-calls" ||
-            parts.slice(index + 1).some((part) => part.type === "tool"))))
+            parts.slice(index + 1).some((part) => part.type === "tool" && isExecutionPart(part)))))
     const process = processState && {
       ...processState,
       hasTurnContent: messages.some(
@@ -132,12 +135,12 @@ export function buildConversationRows(input: {
         const first = offset++
         const processBody = isProcessPart(message, parts, first)
         let bytes = parts[first].content?.bytes ?? 0
-        if (process && ["tool", "reasoning"].includes(parts[first].type)) {
+        if (process && isExecutionPart(parts[first])) {
           while (
             offset < parts.length &&
             offset - first < 6 &&
             !boundaries.has(`${message.id}:${parts[offset].id}`) &&
-            ["tool", "reasoning"].includes(parts[offset].type) &&
+            isExecutionPart(parts[offset]) &&
             bytes + (parts[offset].content?.bytes ?? 0) <= 128 * 1024
           ) {
             bytes += parts[offset].content?.bytes ?? 0
@@ -178,9 +181,7 @@ function groupActivities(
     if (
       row.process &&
       row.kind === "body" &&
-      (row.event ||
-        (row.message.role === "assistant" &&
-          row.parts.every((part) => part.type === "tool" || part.type === "reasoning")))
+      (row.event || (row.message.role === "assistant" && row.parts.every(isExecutionPart)))
     ) {
       if (!block) {
         block = {

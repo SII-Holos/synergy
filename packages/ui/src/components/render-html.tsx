@@ -1,11 +1,12 @@
+import DOMPurify from "dompurify"
 import { createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { THEME_CHANGE_EVENT } from "../theme/application"
 import { synergyTheme } from "../theme/default-themes"
 import { resolveTheme, resolveThemeColor } from "../theme/resolve"
 import type { ResolvedTheme } from "../theme/types"
 
-const MIN_HEIGHT = 120
-const DEFAULT_HEIGHT = 280
+const MIN_HEIGHT = 48
+const DEFAULT_HEIGHT = 80
 const MAX_HEIGHT = 720
 
 export const RENDER_HTML_CSP = [
@@ -60,14 +61,13 @@ const BASE_STYLE = `
 
   html {
     margin: 0;
-    min-height: 100%;
     background: transparent;
     color-scheme: var(--render-color-scheme, light);
   }
 
   body {
     margin: 0;
-    min-height: 100%;
+    display: flow-root;
     padding: 16px;
     background: transparent;
     color: var(--render-text-base);
@@ -176,9 +176,7 @@ const BASE_STYLE = `
     padding: 14px;
   }
 
-  [data-render-fullbleed] {
-    margin: -16px;
-  }
+  body[data-synergy-render-fullbleed] { padding: 0; }
 `
 
 function readThemeCss() {
@@ -217,49 +215,101 @@ function fallbackThemeCss(mode: "light" | "dark") {
 
 export function renderHtmlDocument(html: string, themeCss: string) {
   const csp = `<meta http-equiv="Content-Security-Policy" content="${RENDER_HTML_CSP}">`
-  const base = `<style data-synergy-render-base>\n${themeCss}\n${BASE_STYLE}\n</style>`
-  const headContent = `${csp}\n${base}`
-
-  if (/<head[\s>]/i.test(html)) {
-    return html.replace(/<head([^>]*)>/i, `<head$1>\n${headContent}`)
+  const root = DOMPurify.sanitize(`<!doctype html><html><head>${csp}</head><body>${html}</body></html>`, {
+    WHOLE_DOCUMENT: true,
+    RETURN_DOM: true,
+    ADD_TAGS: ["use"],
+    FORBID_TAGS: [
+      "base",
+      "meta",
+      "link",
+      "form",
+      "iframe",
+      "object",
+      "embed",
+      "set",
+      "animate",
+      "animateMotion",
+      "animateTransform",
+    ],
+    FORBID_ATTR: ["srcdoc", "autofocus"],
+  })
+  if (!(root instanceof window.HTMLElement)) throw new Error("Render HTML requires a browser document")
+  for (const element of root.querySelectorAll("*")) {
+    for (const attribute of Array.from(element.attributes)) {
+      const name = attribute.name.toLowerCase()
+      if (name.startsWith("data-synergy-render-")) element.removeAttribute(attribute.name)
+      if (
+        element.localName === "a" ||
+        element.localName === "area" ||
+        element.namespaceURI === "http://www.w3.org/1998/Math/MathML"
+      ) {
+        if (["href", "xlink:href", "ping", "target", "download"].includes(name)) element.removeAttribute(attribute.name)
+      } else if (
+        element.localName === "use" &&
+        (name === "href" || name === "xlink:href") &&
+        !attribute.value.startsWith("#")
+      ) {
+        element.removeAttribute(attribute.name)
+      }
+    }
   }
-
-  if (/<html[\s>]/i.test(html)) {
-    return html.replace(/<html([^>]*)>/i, `<html$1>\n<head>\n${headContent}\n</head>`)
-  }
-
-  return `<!doctype html>
-<html>
-<head>
-${headContent}
-</head>
-<body>
-${html}
-</body>
-</html>`
+  const head = root.querySelector("head")!
+  const body = root.querySelector("body")!
+  const contentRoots = Array.from(body.children).filter((element) => element.localName !== "style")
+  if (contentRoots.length === 1 && contentRoots[0].hasAttribute("data-render-fullbleed"))
+    body.dataset.synergyRenderFullbleed = ""
+  const policy = root.ownerDocument.createElement("meta")
+  policy.httpEquiv = "Content-Security-Policy"
+  policy.content = RENDER_HTML_CSP
+  const base = root.ownerDocument.createElement("style")
+  base.dataset.synergyRenderBase = ""
+  base.textContent = BASE_STYLE
+  const theme = root.ownerDocument.createElement("style")
+  theme.dataset.synergyRenderTheme = ""
+  theme.textContent = themeCss
+  head.prepend(policy, base, theme)
+  return `<!doctype html>${root.outerHTML}`
 }
 
-export function RenderHtml(props: { html: string }) {
+export function RenderHtml(props: {
+  html: string
+  title?: string
+  expanded?: boolean
+  maxHeight?: number
+  onEscape?: () => void
+}) {
   const [contentHeight, setContentHeight] = createSignal(DEFAULT_HEIGHT)
-  const [themeVersion, setThemeVersion] = createSignal(0)
-  const srcdoc = createMemo(() => {
-    themeVersion()
-    return renderHtmlDocument(props.html, readThemeCss())
-  })
+  const srcdoc = createMemo(() => renderHtmlDocument(props.html, readThemeCss()))
   let iframeRef: HTMLIFrameElement | undefined
   let observer: ResizeObserver | undefined
   let timers: number[] = []
+  let measureFrame: number | undefined
+  let themeStyle: HTMLStyleElement | undefined
+  let releaseDocument: (() => void) | undefined
 
   const measure = () => {
     const doc = iframeRef?.contentDocument
     const body = doc?.body
-    const root = doc?.documentElement
-    if (!body || !root) return
+    if (!body) return
 
-    const nextHeight = Math.max(body.scrollHeight, root.scrollHeight, body.offsetHeight, root.offsetHeight, MIN_HEIGHT)
-    setContentHeight(Math.min(nextHeight, MAX_HEIGHT))
+    const limit = props.expanded ? Math.max(160, window.innerHeight - 180) : (props.maxHeight ?? MAX_HEIGHT)
+    const nextHeight = Math.max(body.offsetHeight, body.scrollHeight, MIN_HEIGHT)
+    setContentHeight(Math.min(nextHeight, limit))
   }
 
+  const scheduleMeasure = () => {
+    if (measureFrame !== undefined) cancelAnimationFrame(measureFrame)
+    measureFrame = requestAnimationFrame(() => {
+      measureFrame = undefined
+      measure()
+    })
+  }
+
+  const updateTheme = () => {
+    if (themeStyle && themeStyle.ownerDocument === iframeRef?.contentDocument) themeStyle.textContent = readThemeCss()
+    scheduleMeasure()
+  }
   const clearTimers = () => {
     for (const timer of timers) window.clearTimeout(timer)
     timers = []
@@ -268,46 +318,78 @@ export function RenderHtml(props: { html: string }) {
   const onLoad = () => {
     observer?.disconnect()
     clearTimers()
+    releaseDocument?.()
+    releaseDocument = undefined
+    themeStyle = undefined
 
     const doc = iframeRef?.contentDocument
-    if (doc?.body) {
-      observer = new ResizeObserver(measure)
+    if (doc?.body && doc.URL === "about:srcdoc") {
+      themeStyle = doc.head.querySelector<HTMLStyleElement>("style[data-synergy-render-theme]") ?? undefined
+      if (themeStyle) themeStyle.textContent = readThemeCss()
+      const blockNavigation = (event: Event) => {
+        if (
+          event.composedPath().some((node) => {
+            const element = node as Element
+            return (
+              ["a", "area"].includes(element.localName) ||
+              (element.namespaceURI === "http://www.w3.org/1998/Math/MathML" &&
+                (element.hasAttribute("href") || element.hasAttribute("xlink:href")))
+            )
+          })
+        )
+          event.preventDefault()
+      }
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if (event.key !== "Escape" || event.defaultPrevented || !props.onEscape) return
+        event.preventDefault()
+        props.onEscape()
+      }
+      doc.addEventListener("click", blockNavigation, true)
+      doc.addEventListener("auxclick", blockNavigation, true)
+      doc.addEventListener("keydown", handleKeyDown)
+      releaseDocument = () => {
+        doc.removeEventListener("click", blockNavigation, true)
+        doc.removeEventListener("auxclick", blockNavigation, true)
+        doc.removeEventListener("keydown", handleKeyDown)
+      }
+      observer = new ResizeObserver(scheduleMeasure)
       observer.observe(doc.body)
-      if (doc.documentElement) observer.observe(doc.documentElement)
     }
 
     measure()
-    requestAnimationFrame(measure)
+    scheduleMeasure()
     timers = [window.setTimeout(measure, 100), window.setTimeout(measure, 500)]
   }
 
   onMount(() => {
-    const handleThemeChange = () => setThemeVersion((version) => version + 1)
-    const handleFontChange = () => setThemeVersion((version) => version + 1)
-    document.addEventListener(THEME_CHANGE_EVENT, handleThemeChange)
-    document.addEventListener("synergy:font-change", handleFontChange)
+    document.addEventListener(THEME_CHANGE_EVENT, updateTheme)
+    document.addEventListener("synergy:font-change", updateTheme)
+    window.addEventListener("resize", scheduleMeasure)
     onCleanup(() => {
-      document.removeEventListener(THEME_CHANGE_EVENT, handleThemeChange)
-      document.removeEventListener("synergy:font-change", handleFontChange)
+      document.removeEventListener(THEME_CHANGE_EVENT, updateTheme)
+      document.removeEventListener("synergy:font-change", updateTheme)
+      window.removeEventListener("resize", scheduleMeasure)
     })
   })
 
   onCleanup(() => {
     observer?.disconnect()
+    releaseDocument?.()
     clearTimers()
+    if (measureFrame !== undefined) cancelAnimationFrame(measureFrame)
   })
 
   return (
     <div data-component="render-html" style={{ overflow: "hidden" }}>
       <iframe
         ref={iframeRef}
+        title={props.title}
         srcdoc={srcdoc()}
         sandbox="allow-same-origin"
         onLoad={onLoad}
         style={{
           width: "100%",
           height: `${contentHeight()}px`,
-          "max-height": `${MAX_HEIGHT}px`,
           border: "none",
           overflow: "hidden",
           display: "block",

@@ -25,6 +25,8 @@ export const testOptions = {
     "test/components/session-turn-activity-switch.dom.test.ts",
     "test/components/session-turn-chronology.dom.test.ts",
     "test/components/conversation-motion.browser.test.ts",
+    "test/components/render-html.browser.test.ts",
+    "test/components/render-html.test.ts",
     "test/markdown-terminal-transition.test.ts",
     "test/components/session-turn-timeline.test.ts",
     "test/components/session-turn-timeline-boundary.test.ts",
@@ -44,6 +46,7 @@ export const testOptions = {
   ],
   browserOnly: [
     "test/components/message-readers.render.test.ts",
+    "test/components/render-html.test.ts",
     "test/hooks/create-auto-scroll.test.ts",
     "test/hooks/use-filtered-list.test.tsx",
     "test/theme-provider-fallback.test.ts",
