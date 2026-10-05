@@ -4,7 +4,7 @@ Failures, causes and guardrails.
 
 ## When to write one
 
-Write a postmortem when all criteria hold:
+Criteria:
 
 - **Subtle** — the mechanism is non-obvious, and a careful engineer would re-derive it the hard way.
 - **Systemic** — the bug escaped because of a gap in tests, tooling, or conventions, not a one-off typo.
@@ -29,6 +29,8 @@ Use the next `NNNN-kebab-case-title.md`. Sections:
 - **Lessons** — the durable takeaways.
 
 ## Index
+
+- [0045: PostgreSQL startup DDL blocked writers](0045-postgres-startup-ddl-blocked-writers.md)
 
 - [0042: Compaction completion](0042-process-event-ownership-and-compaction-completion.md)
 - [0041: Lost completion signal](0041-cortex-progress-fixture-lost-release.md)

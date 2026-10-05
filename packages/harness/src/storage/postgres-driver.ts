@@ -8,6 +8,10 @@ import {
   StorageIntegrityError,
 } from "./errors"
 import type { SqlConnection, SqlDriver, SqlRow, SqlTransactionOptions, SqlValue } from "./sql-contract"
+import { missingPostgresSchema } from "./postgres-schema"
+
+// The one-bigint lock space is disjoint from the namespace's two-integer locks.
+const schemaLock = createHash("sha256").update("synergy-storage-schema").digest().readBigInt64BE(0)
 
 function statement(sql: string) {
   let index = 0
@@ -73,9 +77,31 @@ export class PostgresDriver implements SqlDriver {
     body: (connection: SqlConnection) => Promise<T>,
     options: SqlTransactionOptions = {},
   ): Promise<T> {
+    return this.transact(body, options)
+  }
+
+  async initializeSchema(statements: string[]) {
+    if (!(await missingPostgresSchema(this, statements)).length) return
+    await this.transact(
+      async (connection) => {
+        await connection.query("SELECT pg_advisory_xact_lock(?)", [schemaLock])
+        // READ COMMITTED sees the preceding initializer's commit after waiting
+        // for its lock. Existing indexes must never acquire CREATE INDEX locks.
+        for (const sql of await missingPostgresSchema(connection, statements)) await connection.query(sql)
+      },
+      {},
+      "READ COMMITTED",
+    )
+  }
+
+  private async transact<T>(
+    body: (connection: SqlConnection) => Promise<T>,
+    options: SqlTransactionOptions,
+    isolation: "REPEATABLE READ" | "READ COMMITTED" = "REPEATABLE READ",
+  ): Promise<T> {
     for (let attempt = 0; ; attempt++) {
       try {
-        return await this.attempt(body, options)
+        return await this.attempt(body, options, isolation)
       } catch (error) {
         if (attempt >= 2 || !["40001", "40P01"].includes(databaseErrorCode(error) ?? "")) throw error
         await Bun.sleep(10 * 2 ** attempt + Math.floor(Math.random() * 10))
@@ -85,7 +111,8 @@ export class PostgresDriver implements SqlDriver {
 
   private async attempt<T>(
     body: (connection: SqlConnection) => Promise<T>,
-    options: SqlTransactionOptions = {},
+    options: SqlTransactionOptions,
+    isolation: "REPEATABLE READ" | "READ COMMITTED",
   ): Promise<T> {
     if (this.closed) throw new StorageClosedError()
     if (!options.readOnly) await this.assertOwnership()
@@ -101,12 +128,7 @@ export class PostgresDriver implements SqlDriver {
       // Namespace ownership and the Store's write queue already serialize its mutations.
       // SSI predicate locks span physical pages/tables shared by unrelated namespaces,
       // so SERIALIZABLE can exhaust retries without any logical data conflict.
-      if (transactional)
-        await query(
-          options.readOnly
-            ? "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"
-            : "BEGIN ISOLATION LEVEL REPEATABLE READ",
-        )
+      if (transactional) await query(`BEGIN ISOLATION LEVEL ${isolation}${options.readOnly ? " READ ONLY" : ""}`)
       if (transactional && !options.readOnly) await query("SET LOCAL synchronous_commit = on")
       const result = await body({ query })
       if (!options.readOnly) await this.assertOwnership()
