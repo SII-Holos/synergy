@@ -143,6 +143,22 @@ describe("resolveTheme", () => {
     expect(resolveThemeVariant(theme.light, false)).toEqual(resolveTheme(theme).light)
   })
 
+  test("Full Access inherits warning overrides unless its own foreground is provided", () => {
+    for (const [seeds, isDark, color] of [
+      [lightSeeds, false, "#555555"],
+      [darkSeeds, true, "#dddddd"],
+    ] as const) {
+      const inherited = resolveThemeVariant({ seeds, overrides: { "text-on-warning-base": color } }, isDark)
+      expect(resolveThemeColor(inherited, "text-permission-full-access")).toBe(color)
+      const distinct = resolveThemeVariant(
+        { seeds, overrides: { "text-on-warning-base": color, "text-permission-full-access": "var(--text-base)" } },
+        isDark,
+      )
+      expect(resolveThemeColor(distinct, "text-permission-full-access")).toBe(resolveThemeColor(distinct, "text-base"))
+      expect(resolveThemeColor(distinct, "text-on-warning-base")).toBe(color)
+    }
+  })
+
   test("resolveThemeColor resolves direct hex values and css var chains", () => {
     const { light } = resolveTheme(fixtureTheme())
     expect(resolveThemeColor(light, "background-base")).toMatch(hexValue)

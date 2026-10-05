@@ -35,6 +35,8 @@ const rawIconExceptionReasons: Record<string, string> = {
   "packages/ui/src/components/list.tsx": "Shared list primitive search, selected, and clear affordances.",
   "packages/ui/src/components/menu-field.tsx": "Shared choice primitive selected-option check affordance.",
   "packages/ui/src/components/popover.tsx": "Shared popover primitive close affordance.",
+  "packages/ui/src/components/render-tool.tsx":
+    "Render tool lifecycle fallback retains its registered code tool glyph.",
   "packages/ui/src/components/session-review.tsx":
     "Review outline uses structural grip controls for expand/collapse affordances.",
   "packages/ui/src/components/session-turn.tsx": "Diff accordion uses a structural grip affordance.",

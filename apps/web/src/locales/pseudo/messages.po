@@ -24917,6 +24917,14 @@ msgid "tool.misc.warnings"
 msgstr "⟦Warnings⟧"
 
 #. js-lingui-explicit-id
+msgid "tool.render.expand"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.visual"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "tool.result.next"
 msgstr ""
 

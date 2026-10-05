@@ -195,6 +195,7 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
     warning,
     neutralAlpha[10],
   )
+  tokens["text-permission-full-access"] = "var(--text-on-warning-base)"
   tokens["text-on-info-base"] = readableStatusText(tokens["surface-info-weak"] as HexColor, info, neutralAlpha[10])
   tokens["text-diff-add-base"] = pickReadableColor(tokens["surface-diff-add-weak"] as HexColor, [
     diffAdd[isDark ? 9 : 10],

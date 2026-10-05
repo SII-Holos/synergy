@@ -38,6 +38,39 @@
   outline: 2px solid var(--border-focus);
   outline-offset: 2px;
 }
+[data-component="process-event-row"][data-kind="compaction"] [data-slot="process-event-title"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-component="process-event-row"][data-kind="compaction"][data-status="failed"] [data-slot="process-event-trigger"] {
+  color: var(--text-error);
+}
+[data-component="process-event-row"][data-kind="compaction"][data-status="failed"]
+  [data-slot="process-event-icon"]
+  [data-component="icon"] {
+  color: var(--icon-critical-base);
+}
+/* Provenance: https://github.com/anomalyco/opencode/blob/dev/packages/ui/src/components/text-shimmer.css
+   Local adaptation: one stable status label; existing theme tokens, no character layers or swap timers. */
+@supports (background-clip: text) {
+  [data-component="process-event-row"][data-kind="compaction"][data-status="running"]
+    [data-slot="process-event-title"] {
+    color: transparent;
+    background-image: linear-gradient(90deg, var(--text-weak) 40%, var(--text-strong) 50%, var(--text-weak) 60%);
+    background-size: 250% 100%;
+    background-clip: text;
+    animation: process-event-sweep 2s linear infinite;
+  }
+}
+@keyframes process-event-sweep {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
 [data-slot="process-event-icon"][data-running] {
   animation: process-event-spin 1s linear infinite;
 }
@@ -46,7 +79,13 @@
     transform: rotate(360deg);
   }
 }
-@media (prefers-reduced-motion: reduce) {
+@media (prefers-reduced-motion: reduce), (forced-colors: active) {
+  [data-component="process-event-row"][data-kind="compaction"][data-status="running"]
+    [data-slot="process-event-title"] {
+    animation: none;
+    background-image: none;
+    color: inherit;
+  }
   [data-slot="process-event-icon"][data-running] {
     animation: none;
   }

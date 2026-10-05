@@ -53,7 +53,9 @@ function contrastRatio(foreground: string, background: string): number {
 }
 
 function expectReadablePair(theme: ResolvedTheme, foreground: ThemeTokenName, background: ThemeTokenName) {
-  expect(contrastRatio(theme[foreground], theme[background])).toBeGreaterThanOrEqual(4.5)
+  expect(
+    contrastRatio(resolveThemeColor(theme, foreground), resolveThemeColor(theme, background)),
+  ).toBeGreaterThanOrEqual(4.5)
 }
 
 function expectBrighter(theme: ResolvedTheme, inner: ThemeTokenName, outer: ThemeTokenName) {
@@ -163,6 +165,30 @@ describe("color scheme helpers", () => {
 })
 
 describe("resolveTheme (synergy)", () => {
+  test("gives Full Access its own readable foreground without recoloring warnings", () => {
+    const fullAccessToken = "text-permission-full-access"
+    const resolved = resolveTheme(synergyTheme)
+    for (const [mode, expected, warning] of [
+      ["light", "#C4481C", "#6c6c6c"],
+      ["dark", "#FF8A50", "#b7b7b7"],
+    ] as const) {
+      const theme = resolved[mode]
+      expect(theme[fullAccessToken]).toBe(expected)
+      expect(resolveThemeColor(theme, "text-on-warning-base")).toBe(warning)
+      for (const background of ["input-base", "surface-raised-stronger-non-alpha"] as const) {
+        expectReadablePair(theme, fullAccessToken, background)
+      }
+    }
+  })
+
+  test("resolves the Full Access foreground for seed-only themes", () => {
+    for (const mode of ["light", "dark"] as const) {
+      const theme = resolveThemeVariant({ seeds: synergyTheme[mode].seeds }, mode === "dark")
+      const fullAccessToken = "text-permission-full-access"
+      expect(resolveThemeColor(theme, fullAccessToken)).toBe(resolveThemeColor(theme, "text-on-warning-base"))
+    }
+  })
+
   test("keeps workbench captions readable on canvas, navigation, input and menus", () => {
     for (const theme of Object.values(resolveTheme(synergyTheme))) {
       for (const surface of [

@@ -39,7 +39,7 @@ mock.module("../../../../src/components/basic-tool", () => ({
 }))
 mock.module("../../../../src/components/icon", () => ({ Icon: () => null }))
 mock.module("../../../../src/components/checkbox", () => ({ Checkbox: () => null }))
-mock.module("../../../../src/components/render-html", () => ({ RenderHtml: () => null }))
+mock.module("../../../../src/components/render-tool", () => ({ RenderTool: () => null }))
 let capturedGalleryFiles: unknown[] | undefined
 const lastGalleryFiles = () => capturedGalleryFiles
 mock.module("../../../../src/components/attachment-card", () => ({
