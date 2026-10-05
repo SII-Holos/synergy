@@ -35,7 +35,7 @@ export function AttachmentWorkbenchContent(
     const value = locator()
     return value ? findAttachmentByLocator(data.view.partsFor(value.messageID), value) : undefined
   })
-  const [remoteParts] = createResource(
+  const [remoteParts, { refetch }] = createResource(
     () => {
       const value = locator()
       return value && !local() ? value : undefined
@@ -50,7 +50,7 @@ export function AttachmentWorkbenchContent(
   )
   const attachment = createMemo(() => {
     const value = locator()
-    return local() ?? (value ? findAttachmentByLocator(remoteParts(), value) : undefined)
+    return local() ?? (value && !remoteParts.error ? findAttachmentByLocator(remoteParts(), value) : undefined)
   })
   const sourceFileAction = createMemo(() => {
     const path = attachmentSourcePath(attachment() ?? { mime: "" })
@@ -65,6 +65,11 @@ export function AttachmentWorkbenchContent(
             <Spinner class="size-5" />
           </Show>
           <strong>{remoteParts.loading ? lingui._(A.loading) : lingui._(A.unavailable)}</strong>
+          <Show when={locator() && !remoteParts.loading}>
+            <button type="button" class="attachment-workbench-action" onClick={() => void refetch()}>
+              {lingui._({ id: "app.workspace.panel.retry", message: "Retry" })}
+            </button>
+          </Show>
         </div>
       }
     >

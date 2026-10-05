@@ -26,14 +26,58 @@ function fixture(reduced = false) {
       finished: Promise.resolve(),
     } as unknown as Animation
   }
-  dom.window.matchMedia = (() => ({
+  const listeners = new Set<() => void>()
+  const media = {
     matches: reduced,
-    addEventListener() {},
-    removeEventListener() {},
-  })) as unknown as typeof dom.window.matchMedia
+    addEventListener(_event: string, listener: () => void) {
+      listeners.add(listener)
+    },
+    removeEventListener(_event: string, listener: () => void) {
+      listeners.delete(listener)
+    },
+  }
+  dom.window.matchMedia = (() => media) as unknown as typeof dom.window.matchMedia
   const motion = createDisclosureMotion(element)
-  return { dom, element, animations, motion }
+  return {
+    dom,
+    element,
+    animations,
+    motion,
+    listeners,
+    reduce: () => {
+      media.matches = true
+      for (const listener of listeners) listener()
+    },
+  }
 }
+
+test("restored content stays static and a live receipt grants only an opacity entrance", () => {
+  const { dom, element, animations, motion } = fixture()
+  motion.dispose()
+  const content = createDisclosureMotion(element, true)
+  content.setVisible(false, true)
+  content.setVisible(true, true)
+  expect(animations).toHaveLength(0)
+  content.setVisible(false)
+  content.setVisible(true, true, true)
+  expect(animations).toHaveLength(1)
+  expect(animations[0].frames).toEqual([{ opacity: 0.65 }, { opacity: 1 }])
+  content.dispose()
+  dom.window.close()
+})
+
+test("changing reduced motion settles an active disclosure and disposes its listener", () => {
+  const { dom, element, animations, motion, reduce, listeners } = fixture()
+  motion.setVisible(true)
+  motion.setVisible(false, true)
+  reduce()
+  expect(element.hidden).toBe(true)
+  expect(animations[0].cancelled).toBe(true)
+  expect(element.hasAttribute("data-motion-changing")).toBe(false)
+  motion.dispose()
+  expect(listeners.size).toBe(0)
+  dom.window.close()
+})
 
 test("ordinary updates do not replay an appearance and collected tools leave before becoming hidden", () => {
   const { dom, element, animations, motion } = fixture()

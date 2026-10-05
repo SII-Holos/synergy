@@ -33,7 +33,7 @@ export function createSessionCommandParts(input: {
   const sessions = input.sessions ?? []
 
   return [
-    ...attachments.map(createUploadedAttachmentInputPart),
+    ...attachments.map((attachment) => createUploadedAttachmentInputPart(attachment)),
     ...notes.map((attachment) => {
       const text = formatNoteContent(attachment)
       return {

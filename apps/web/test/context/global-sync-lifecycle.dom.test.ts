@@ -15,6 +15,9 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
   await Bun.write(
     stub,
     `
+    import { createSignal } from "solid-js"
+    const [connected, setConnected] = createSignal(false)
+    export const connect = () => setConnected(true)
     export const optionalRequests = []
     export const requests = []
     export const modelRequests = []
@@ -36,7 +39,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
         session:{list:()=>new Promise(resolve=>lists.push(resolve)),inbox:()=>{inboxRequests.push(options.scopeID);inboxReady();return ok([])}},
       }
     }
-    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>false},prepareScopeState(){},connected:()=>false,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
+    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>false},prepareScopeState(){},connected,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>{optionalRequests.push("agenda");return ok([])}}},
       scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:seedStatuses},
     }})
@@ -60,13 +63,13 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     import { I18nProvider } from "@lingui/solid"
     import { setupI18n } from "@lingui/core"
     import { GlobalSyncProvider, useGlobalSync } from ${JSON.stringify(globalSync)}
-    import { requests, modelRequests, replays, lists, emit, inboxRequests, inboxArrived, optionalRequests } from ${JSON.stringify(stub)}
+    import { requests, modelRequests, replays, lists, emit, inboxRequests, inboxArrived, optionalRequests, connect } from ${JSON.stringify(stub)}
     export function mount(root) {
       let api, ready
       const started = new Promise(resolve=>ready=resolve)
       function Child(){api=useGlobalSync();ready();return <div>ready</div>}
       const dispose=render(()=><I18nProvider i18n={setupI18n({locale:'en',messages:{en:{}}})}><GlobalSyncProvider><Child/></GlobalSyncProvider></I18nProvider>,root)
-      return {started,dispose,requests,modelRequests,emit,replays,lists,inboxRequests,inboxArrived,optionalRequests,api:()=>api,
+      return {started,dispose,requests,modelRequests,emit,replays,lists,inboxRequests,inboxArrived,optionalRequests,connect,api:()=>api,
         seedInbox(key) {api.ensureScopeState(key)[1]("inbox","fixture-session",[{id:"pending"}])},
         complete(index,version) {const request=requests[index];request.resolve({data:{scopeID:request.key,provider:{all:[]},agent:[],config:{version}}})},
         waitComplete(state) {return new Promise(resolve=>createRoot(dispose=>createComputed(()=>{if(state[0].status==='complete'){dispose();resolve()}})))},
@@ -132,6 +135,9 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       beginContextProjection(key: string, sessionID: string): number
       setLatestContextMessage(key: string, sessionID: string, message: null, revision: number): void
       failure: unknown
+      reconnectVersion(): number
+      scopeReconnectVersion(key: string): number
+      scopeRecoveryPending(key: string): boolean
       sessionStatus: Record<string, { type?: string; reason?: string; since?: number }>
       scope: { loadSessions(key: string): Promise<void>; loadAgenda(key: string): Promise<void> }
     }
@@ -145,6 +151,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
         requests: unknown[]
         modelRequests: Array<(value: unknown) => void>
         emit(key: string, seq: number): void
+        connect(): void
         seedInbox(key: string): void
         inboxRequests: string[]
         inboxArrived: Promise<void>
@@ -283,6 +290,24 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
         clearTimeout(timeout)
         neighbor.release()
       }
+      const home = api.retainScopeState("home")
+      h.emit("home", 1)
+      const before = h.replays.length
+      h.connect()
+      const deadline = Date.now() + 5000
+      while (h.replays.length === before) {
+        if (Date.now() > deadline) throw new Error("Initial Scope recovery did not start")
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
+      expect(api.scopeRecoveryPending("home")).toBe(true)
+      expect(api.scopeRecoveryPending("untracked")).toBe(false)
+      h.replays.at(-1)!({ data: { status: "ok", epoch: "test-epoch", seq: 1, events: [] } })
+      while (api.scopeRecoveryPending("home")) {
+        if (Date.now() > deadline) throw new Error("Completed Scope recovery stayed pending")
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
+      expect(api.scopeReconnectVersion("home")).toBe(api.reconnectVersion())
+      home.release()
     } finally {
       h.dispose()
     }

@@ -2,6 +2,29 @@ import { isOptimisticMessagePending } from "@/context/session-optimistic-message
 
 import type { SessionTransitionProgress } from "./session-transition-progress"
 import type { NewSessionWorkspaceSelection } from "./worktree-session"
+import type { Message, Part, SessionPartSummary } from "@ericsanchezok/synergy-sdk/client"
+
+export function isSessionSubmissionContentReady(input: {
+  ready: boolean
+  message?: Message
+  captured?: readonly Part[]
+  summaries?: readonly SessionPartSummary[]
+  parts?: readonly Part[]
+  versions: Readonly<Record<string, string>>
+}) {
+  if (!input.ready || !input.message || isOptimisticMessagePending(input.message)) return false
+  return (
+    !input.captured?.length ||
+    input.captured.every((part) => {
+      const summary = input.summaries?.find((item) => item.id === part.id)
+      return (
+        summary &&
+        input.versions[part.id] === summary.content.version &&
+        input.parts?.some((item) => item.id === part.id)
+      )
+    })
+  )
+}
 
 export const SESSION_TRANSITION_HANDOFF_TIMEOUT_MS = 30_000
 

@@ -42,6 +42,7 @@ export type ConversationRow = {
       after: boolean
       beforeTool: boolean
       beforeReasoning: boolean
+      reasoningAnchors?: Record<string, string>
       processBody?: boolean
       event?: "agent-delivery" | "compaction"
     }
@@ -54,6 +55,7 @@ export type ConversationRow = {
 export function buildConversationRows(input: {
   previous?: readonly ConversationRow[]
   timeline: readonly Message[]
+  messageKey?: (messageID: string) => string
   messagesFor: (root: Message) => readonly Message[]
   summaries: (messageID: string) => readonly SessionPartSummary[]
   page: (messageID: string) => { hasMore: boolean; hasEarlier?: boolean } | undefined
@@ -61,6 +63,7 @@ export function buildConversationRows(input: {
   process?: (root: Message) => { open: boolean; working: boolean }
 }): ConversationRow[] {
   const rows: ConversationRow[] = []
+  const messageKey = input.messageKey ?? ((id: string) => id)
   const previousBlocks =
     input.previous?.flatMap((row) =>
       row.kind === "process" ? (row.activities ?? []) : row.kind === "activity" ? [row.activity] : [],
@@ -70,6 +73,15 @@ export function buildConversationRows(input: {
       .filter((row) => row.kind === "body")
       .map((row) => row.key),
   )
+  const userRows = input.previous?.filter((row) => row.kind === "body" && row.message.role === "user") ?? []
+  const userPartRows = new Map<string, string>()
+  const userBoundaries = new Set<string>()
+  const usedUserKeys = new Set<string>()
+  for (const row of userRows) {
+    if (row.kind !== "body") continue
+    if (row.parts[0]) userBoundaries.add(`${messageKey(row.message.id)}:${row.parts[0].id}`)
+    for (const part of row.parts) userPartRows.set(`${messageKey(row.message.id)}:${part.id}`, row.key)
+  }
   for (const root of input.timeline) {
     const messages =
       root.role === "assistant"
@@ -121,7 +133,7 @@ export function buildConversationRows(input: {
       const event = eventFor(message)
       if (message.role === "user" && message.metadata?.compactionBoundary === true && !event) continue
       if (process && (message.role === "assistant" || event) && !header) {
-        rows.push({ key: `${root.id}:process`, root, message: root, kind: "process", process })
+        rows.push({ key: `${messageKey(root.id)}:process`, root, message: root, kind: "process", process })
         header = true
       }
       const parts = input.summaries(message.id).filter((part) => part.render !== false)
@@ -133,7 +145,7 @@ export function buildConversationRows(input: {
         )
           continue
         rows.push({
-          key: `${message.id}:${event}`,
+          key: `${messageKey(message.id)}:${event}`,
           root,
           message,
           kind: "body",
@@ -149,31 +161,76 @@ export function buildConversationRows(input: {
         continue
       }
       if (page?.hasEarlier)
-        rows.push({ key: `${message.id}:earlier`, root, message, kind: "load", more: true, older: true })
+        rows.push({ key: `${messageKey(message.id)}:earlier`, root, message, kind: "load", more: true, older: true })
       const firstTool = parts.findIndex((part) => part.type === "tool"),
         firstReasoning = parts.findIndex((part) => part.type === "reasoning")
+      const bodyBytes = (part: SessionPartSummary) =>
+        message.role === "user" && part.type === "attachment" ? 0 : (part.content?.bytes ?? 0)
+      const reasoningAnchors: Record<string, string> = {}
+      let previousReasoning: { identity: string; anchor: string } | undefined
+      for (const part of parts) {
+        if (part.type !== "reasoning") {
+          previousReasoning = undefined
+          continue
+        }
+        const anchor =
+          part.reasoningKey && part.reasoningKey === previousReasoning?.identity ? previousReasoning.anchor : part.id
+        reasoningAnchors[part.id] = anchor
+        previousReasoning = part.reasoningKey ? { identity: part.reasoningKey, anchor } : undefined
+      }
       for (let offset = 0; offset < parts.length; ) {
         const first = offset++
         const processBody = isProcessPart(message, parts, first)
-        let bytes = parts[first].content?.bytes ?? 0
+        let bytes = bodyBytes(parts[first])
+        let texts = parts[first].type === "text" ? 1 : 0
+        const userKey = userPartRows.get(`${messageKey(message.id)}:${parts[first].id}`)
+        if (message.role === "user") {
+          while (
+            offset < parts.length &&
+            offset - first < 32 &&
+            (parts[offset].type !== "text" || texts < 6) &&
+            (!userBoundaries.has(`${messageKey(message.id)}:${parts[offset].id}`) ||
+              userPartRows.get(`${messageKey(message.id)}:${parts[offset].id}`) === userKey) &&
+            bytes + bodyBytes(parts[offset]) <= 128 * 1024
+          ) {
+            bytes += bodyBytes(parts[offset])
+            if (parts[offset].type === "text") texts++
+            offset++
+          }
+        }
         if (process && ["tool", "reasoning"].includes(parts[first].type)) {
           while (
             offset < parts.length &&
             offset - first < 6 &&
-            !boundaries.has(`${message.id}:${parts[offset].id}`) &&
+            !boundaries.has(`${messageKey(message.id)}:${parts[offset].id}`) &&
             ["tool", "reasoning"].includes(parts[offset].type) &&
-            bytes + (parts[offset].content?.bytes ?? 0) <= 128 * 1024
+            bytes + bodyBytes(parts[offset]) <= 128 * 1024
           ) {
-            bytes += parts[offset].content?.bytes ?? 0
+            bytes += bodyBytes(parts[offset])
             offset++
           }
         }
+        const key =
+          (userKey && !usedUserKeys.has(userKey) ? userKey : undefined) ??
+          (message.role === "user" &&
+          first === 0 &&
+          !page?.hasEarlier &&
+          !userRows.some((row) => row.key === `${messageKey(message.id)}:user`)
+            ? `${messageKey(message.id)}:user`
+            : `${messageKey(message.id)}:${parts[first].id}`)
+        if (message.role === "user") usedUserKeys.add(key)
         rows.push({
-          key: `${message.id}:${parts[first].id}`,
+          key,
           root,
           message,
           kind: "body",
           parts: parts.slice(first, offset),
+          reasoningAnchors: Object.fromEntries(
+            parts
+              .slice(first, offset)
+              .filter((part) => part.type === "reasoning")
+              .map((part) => [part.id, reasoningAnchors[part.id]]),
+          ),
           process,
           processBody,
           before: first === 0 && !page?.hasEarlier,
@@ -182,10 +239,12 @@ export function buildConversationRows(input: {
           beforeReasoning: !page?.hasEarlier && firstReasoning >= first && firstReasoning < offset,
         })
       }
-      if (!page || page.hasMore) rows.push({ key: `${message.id}:load`, root, message, kind: "load", more: !!page })
+      if (!page || page.hasMore)
+        rows.push({ key: `${messageKey(message.id)}:load`, root, message, kind: "load", more: !!page })
     }
-    if (process && !header) rows.push({ key: `${root.id}:process`, root, message: root, kind: "process", process })
-    rows.push({ key: `${root.id}:footer`, root, message: root, kind: "footer", process })
+    if (process && !header)
+      rows.push({ key: `${messageKey(root.id)}:process`, root, message: root, kind: "process", process })
+    rows.push({ key: `${messageKey(root.id)}:footer`, root, message: root, kind: "footer", process })
   }
   return groupActivities(rows, input.activity, previousBlocks).filter(
     (row) => !row.process || row.process.open || (row.kind !== "activity" && !(row.kind === "body" && row.processBody)),
@@ -236,7 +295,8 @@ function groupActivities(
       for (const part of row.parts) {
         block.parts.push(part.id)
         if (!row.event && part.type === "tool") block.tools++
-        else if (!row.event && part.type === "reasoning") block.reasoning++
+        else if (!row.event && part.type === "reasoning" && (row.reasoningAnchors?.[part.id] ?? part.id) === part.id)
+          block.reasoning++
       }
       row.activity = block
     } else if (row.kind !== "process") {

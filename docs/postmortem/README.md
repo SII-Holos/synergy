@@ -10,7 +10,7 @@ Write a postmortem when all criteria hold:
 - **Systemic** — the bug escaped because of a gap in tests, tooling, or conventions, not a one-off typo.
 - **Costly to rediscover** — it cost real debugging time, and it would cost it again.
 
-Otherwise, write a bug fix with tests.
+Otherwise, fix with tests.
 
 ## Placement
 
@@ -30,6 +30,7 @@ Use the next `NNNN-kebab-case-title.md`. Sections:
 
 ## Index
 
+- [0045: Process stability](0045-process-layout-and-arrival-ownership.md)
 - [0042: Compaction completion](0042-process-event-ownership-and-compaction-completion.md)
 - [0041: Lost completion signal](0041-cortex-progress-fixture-lost-release.md)
 - [0040: Vite ports](0040-vite-fixtures-shared-default-ports.md)

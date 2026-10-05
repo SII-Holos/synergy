@@ -1,4 +1,4 @@
-const THUMBNAIL_MAX_DIMENSION = 128
+const THUMBNAIL_MAX_DIMENSION = 512
 const THUMBNAIL_MIME = "image/webp"
 const THUMBNAIL_QUALITY = 0.78
 const BITMAP_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
@@ -177,7 +177,7 @@ export function schedulePromptAttachmentImagePipelineWarmup() {
   window.setTimeout(warm, 250)
 }
 
-async function createThumbnailFile(file: File): Promise<File | undefined> {
+async function createThumbnailFile(file: File): Promise<{ file: File; width: number; height: number } | undefined> {
   if (!isBitmapImage(file)) return undefined
 
   let image: HTMLImageElement
@@ -206,7 +206,11 @@ async function createThumbnailFile(file: File): Promise<File | undefined> {
   const blob = await canvasToBlob(canvas, THUMBNAIL_MIME, THUMBNAIL_QUALITY)
   if (!blob) throw new PromptAttachmentError("Couldn't attach image", "Failed to create an image thumbnail.")
 
-  return new File([blob], `${file.name}.thumb.webp`, { type: THUMBNAIL_MIME })
+  return {
+    file: new File([blob], `${file.name}.thumb.webp`, { type: THUMBNAIL_MIME }),
+    width: canvas.width,
+    height: canvas.height,
+  }
 }
 
 async function normalizeFileForUpload(file: File) {
@@ -222,7 +226,7 @@ export async function uploadPromptAttachment(client: AssetUploadClient, file: Fi
   const thumbnailFile = await createThumbnailFile(uploadFile)
   if (!thumbnailFile) return uploaded
 
-  const thumbnail = await uploadAsset(client, thumbnailFile)
+  const thumbnail = await uploadAsset(client, thumbnailFile.file)
   return {
     ...uploaded,
     metadata: {
@@ -230,6 +234,8 @@ export async function uploadPromptAttachment(client: AssetUploadClient, file: Fi
         url: thumbnail.url,
         mime: thumbnail.mime,
         size: thumbnail.size,
+        width: thumbnailFile.width,
+        height: thumbnailFile.height,
       },
     },
     presentation: {

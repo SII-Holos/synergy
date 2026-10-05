@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/solid"
-import { sessionActivityLabel } from "./session-status"
+import { sessionActivityAnimating, sessionActivityLabel } from "./session-status"
 import { SESSION_TURN_DESC, MAILBOX_DESC, TOOL_LABEL_DESC } from "./tool-title-descriptors"
 
 import type {
@@ -36,6 +36,7 @@ import type { PluginConversationActivityView } from "@ericsanchezok/synergy-plug
 import { ActivityBatch } from "./activity-batch"
 import { ActivityReasoning } from "./process-reasoning"
 import { createDisclosureMotionRef } from "../utils/disclosure-motion"
+import { useConversationMotion } from "./conversation-motion"
 import { projectActivityBatches, resolveActivityDisclosure } from "./session-turn-process"
 export { resolveActivityDisclosure } from "./session-turn-process"
 import { TurnChangeSummaryPanel } from "./turn-change-summary-panel"
@@ -826,9 +827,16 @@ export function TimelineDisplay(props: {
   activityDisplay?: ActivityDisplayMode
   activityView?: PluginConversationActivityView
   activeBatch?: string
+  statusLabel?: string
+  statusAnimated?: boolean
   following?: boolean
   onInspectProcess?: () => void
+  onBeforeProcessLayoutChange?: (event: Event) => void
   initialReasoning?: boolean
+  userMetadata?: boolean
+  userHasText?: boolean
+  userPresentation?: import("./user-message-content").UserMessagePresentation
+  copyMessageText?: (messageID: string) => Promise<string>
 }) {
   return (
     <ErrorBoundary
@@ -853,9 +861,16 @@ function TimelineDisplayInner(props: {
   activityDisplay?: ActivityDisplayMode
   activityView?: PluginConversationActivityView
   activeBatch?: string
+  statusLabel?: string
+  statusAnimated?: boolean
   following?: boolean
   onInspectProcess?: () => void
+  onBeforeProcessLayoutChange?: (event: Event) => void
   initialReasoning?: boolean
+  userMetadata?: boolean
+  userHasText?: boolean
+  userPresentation?: import("./user-message-content").UserMessagePresentation
+  copyMessageText?: (messageID: string) => Promise<string>
 }) {
   const { _ } = useLingui()
   const activityBatch = createMemo(() =>
@@ -889,6 +904,7 @@ function TimelineDisplayInner(props: {
             preview={props.compactReasoning === true}
             view={props.activityView}
             onInspect={props.onInspectProcess}
+            onBeforeLayoutChange={props.onBeforeProcessLayoutChange}
           />
         )}
       </Match>
@@ -899,10 +915,13 @@ function TimelineDisplayInner(props: {
             serverUrl={props.serverUrl}
             mode={props.activityDisplay ?? "balanced"}
             active={props.activeBatch === item().key}
+            statusLabel={props.statusLabel}
+            statusAnimated={props.statusAnimated}
             following={props.following !== false}
             reasoningPreview={props.compactReasoning}
             view={props.activityView}
             onInspect={props.onInspectProcess}
+            onBeforeLayoutChange={props.onBeforeProcessLayoutChange}
           />
         )}
       </Match>
@@ -911,7 +930,15 @@ function TimelineDisplayInner(props: {
       <Match when={guidedUser()}>
         {(item) => (
           <div data-slot="session-turn-rewind-wrapper" data-align="right">
-            <Message message={item().message} parts={item().parts} userVariant="turn-bubble" />
+            <Message
+              message={item().message}
+              parts={item().parts}
+              userVariant="turn-bubble"
+              userMetadata={props.userMetadata}
+              userHasText={props.userHasText}
+              userPresentation={props.userPresentation}
+              loadCopyText={props.copyMessageText ? () => props.copyMessageText!(item().message.id) : undefined}
+            />
           </div>
         )}
       </Match>
@@ -991,6 +1018,7 @@ export function SessionTurn(
     compactionParentIDs?: ReadonlySet<string>
     lastUserMessageID?: string
     onUserInteracted?: () => void
+    onBeforeProcessLayoutChange?: (event: Event) => void
     onRewind?: () => void
     rollbackActive?: boolean
     onReviewChanges?: (input: { messageID: string; file?: string }) => void
@@ -1001,14 +1029,17 @@ export function SessionTurn(
     activityDisplay?: ActivityDisplayMode
     compactReasoning?: boolean
     copyMessageText?: (messageID: string) => Promise<string>
+    userPresentation?: import("./user-message-content").UserMessagePresentation
     segment?: {
       user: boolean
+      userHasText?: boolean
       footer: boolean
       parts: readonly { messageID: string; id: string }[]
       before: boolean
       after: boolean
       beforeTool?: boolean
       beforeReasoning?: boolean
+      reasoningAnchors?: Readonly<Record<string, string>>
       activityBody?: boolean
       processHeader?: boolean
       processBody?: boolean
@@ -1020,6 +1051,7 @@ export function SessionTurn(
     takeUserArrival?: (messageID: string) => boolean
     submission?: { activity?: import("@ericsanchezok/synergy-sdk/client").SessionActivity; failed: boolean }
     executionState?: import("@ericsanchezok/synergy-sdk/client").TurnExecutionState
+    connected?: boolean
     classes?: {
       root?: string
       content?: string
@@ -1036,7 +1068,10 @@ export function SessionTurn(
     const table: Record<string, PartType[]> = {}
     for (const selected of props.segment.parts) {
       const part = view.partsFor(selected.messageID).find((part) => part.id === selected.id)
-      if (part) (table[selected.messageID] ??= []).push(part)
+      if (part) {
+        ;(table[selected.messageID] ??= []).push(part)
+        if (props.segment.user && part.messageID !== selected.messageID) (table[part.messageID] ??= []).push(part)
+      }
     }
     return table
   })
@@ -1156,6 +1191,7 @@ export function SessionTurn(
       permissions: permissions(),
       resolveToolInfo: getToolInfo,
       isToolRenderBoundary,
+      reasoningAnchors: props.segment?.reasoningAnchors,
     })
   }
 
@@ -1420,6 +1456,10 @@ export function SessionTurn(
       !!paused(),
   )
   const showProcessHeader = () => !props.segment || props.segment.processHeader
+  const beforeProcessLayoutChange = (event: Event) => {
+    autoScroll.handleInteraction(event)
+    props.onBeforeProcessLayoutChange?.(event)
+  }
   const inspectProcess = () => {
     if (props.activityView) props.activityView.setExpanded(processKey(), true)
     else setExplicitProcessOpen(true)
@@ -1442,14 +1482,28 @@ export function SessionTurn(
         (item.metadata?.compactionAttempt as { state?: unknown } | undefined)?.state === "running",
     ),
   )
-  const activeAction = () =>
-    compacting()
+  const activityContext = () => ({
+    rootID: props.messageID,
+    approval: props.executionState?.status === "approval" || (isLastUserMessage() && permissionCount() > 0),
+    question: isLastUserMessage() && view.questionsFor(props.sessionID).length > 0,
+    connected: props.connected,
+  })
+  const activityAnimated = () => sessionActivityAnimating(sessionStatus(), activityContext())
+  const activeAction = () => {
+    const status = sessionStatus()
+    const context = activityContext()
+    const phase = status?.type === "busy" ? status.activity?.phase : undefined
+    const waiting =
+      context.connected === false ||
+      context.approval ||
+      context.question ||
+      status?.type === "retry" ||
+      phase === "stopping" ||
+      phase === "reconnecting"
+    return compacting() && !waiting
       ? _({ id: "ui.compaction.running", message: "Compressing context..." })
-      : sessionActivityLabel(sessionStatus(), i18n(), {
-          rootID: props.messageID,
-          approval: props.executionState?.status === "approval" || (isLastUserMessage() && permissionCount() > 0),
-          question: isLastUserMessage() && view.questionsFor(props.sessionID).length > 0,
-        })
+      : sessionActivityLabel(status, i18n(), context)
+  }
   const processLabel = () =>
     working()
       ? activeAction()
@@ -1545,6 +1599,9 @@ export function SessionTurn(
                               message={msg()}
                               parts={parts()}
                               userVariant="turn-bubble"
+                              userMetadata={afterBoundary()}
+                              userHasText={props.segment?.userHasText}
+                              userPresentation={props.userPresentation}
                               loadCopyText={props.copyMessageText ? () => props.copyMessageText!(msg().id) : undefined}
                             />
                           }
@@ -1591,7 +1648,8 @@ export function SessionTurn(
                                 data-scroll-anchor={processKey()}
                                 aria-expanded={hasProcess() ? processOpen() : undefined}
                                 disabled={!hasProcess()}
-                                onClick={() => {
+                                onClick={(event) => {
+                                  beforeProcessLayoutChange(event)
                                   const next = !processOpen()
                                   if (props.activityView) props.activityView.setExpanded(processKey(), next)
                                   else setExplicitProcessOpen(next)
@@ -1600,6 +1658,7 @@ export function SessionTurn(
                                 <Show
                                   when={
                                     working() &&
+                                    activityAnimated() &&
                                     !reasoningRunning() &&
                                     !timelineItems().some(
                                       (item) => item.kind === "activity-batch" && item.state === "running",
@@ -1608,7 +1667,9 @@ export function SessionTurn(
                                 >
                                   <span data-slot="activity-live-indicator" aria-hidden="true" />
                                 </Show>
-                                <span>{processLabel()}</span>
+                                <span role={working() ? "status" : undefined} aria-live="polite" aria-atomic="true">
+                                  {processLabel()}
+                                </span>
                                 <Show when={props.executionState?.stoppedAt.length && !stopped()}>
                                   <span data-slot="turn-prior-stop">
                                     {_({ id: "session.process.priorStop", message: "Previously stopped" })}
@@ -1641,16 +1702,19 @@ export function SessionTurn(
                             return (
                               <Show when={item()}>
                                 {(current) => {
+                                  const takeArrival = useConversationMotion()
                                   const motionRef = createDisclosureMotionRef({
                                     visible: () =>
                                       !isActivityBoundaryDisplayItem(current()) &&
                                       (!isProcessItem(current()) || processOpen()),
                                     animate: following,
-                                    content: displayItemVisualKind(current()) === "text",
-                                    appear: () =>
-                                      working() &&
-                                      current().message.id === lastAssistantMessage()?.id &&
-                                      displayItemVisualKind(current()) === "text",
+                                    content: true,
+                                    appear: () => {
+                                      const item = current()
+                                      return (
+                                        item.kind === "part" && item.part.type === "text" && takeArrival(item.part.id)
+                                      )
+                                    },
                                   })
                                   return (
                                     <>
@@ -1704,9 +1768,16 @@ export function SessionTurn(
                                           activityDisplay={activityDisplay()}
                                           activityView={props.activityView}
                                           activeBatch={activeBatch()}
+                                          statusLabel={activeAction()}
+                                          statusAnimated={activityAnimated()}
                                           following={following()}
                                           onInspectProcess={inspectProcess}
+                                          onBeforeProcessLayoutChange={beforeProcessLayoutChange}
                                           compactReasoning={props.compactReasoning}
+                                          userMetadata={afterBoundary()}
+                                          userHasText={props.segment?.userHasText}
+                                          userPresentation={props.userPresentation}
+                                          copyMessageText={props.copyMessageText}
                                         />
                                       </div>
                                       <Show when={afterBoundary() && index() === timelineSlotIndexes().lastReasoning}>

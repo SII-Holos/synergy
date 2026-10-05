@@ -6,18 +6,29 @@ import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { ActivityBatchLabel } from "@ericsanchezok/synergy-ui/activity-batch"
+import { ActivityBatchLabel, ActivityBatchStatus } from "@ericsanchezok/synergy-ui/activity-batch"
+import { sessionActivityAnimating, sessionActivityLabel } from "@ericsanchezok/synergy-ui/session-status"
 import { createDisclosureMotionRef } from "@ericsanchezok/synergy-ui/hooks"
 import "./conversation-rows.css"
 import { Dynamic } from "solid-js/web"
 import { SessionTurn, resolveActivityDisclosure } from "@ericsanchezok/synergy-ui/session-turn"
+import {
+  createUserMessagePresentation,
+  type UserMessagePresentation,
+} from "@ericsanchezok/synergy-ui/user-message-content"
 import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
 import { MessageSlotOutlet } from "@ericsanchezok/synergy-ui/message-slots"
 import { useExecution } from "@/context/execution"
 import { buildConversationRows, type ConversationRow } from "./conversation-rows"
 import { ToolExpansionProvider } from "@ericsanchezok/synergy-ui/tool-expansion"
-import { ProcessViewport } from "@ericsanchezok/synergy-ui/process-viewport"
+import {
+  ProcessViewport,
+  captureProcessReadingAnchor,
+  processReadingAnchorNode,
+  type ProcessReadingAnchor,
+} from "@ericsanchezok/synergy-ui/process-viewport"
+import { ConversationMotionProvider } from "@ericsanchezok/synergy-ui/conversation-motion"
 import { CompactionCard } from "@ericsanchezok/synergy-ui/compaction-card"
 import { useData } from "@ericsanchezok/synergy-ui/context/data"
 import { requestErrorMessage } from "../../utils/error"
@@ -31,11 +42,15 @@ const layouts = new WeakMap<
 >()
 
 type ProcessControls = {
+  liveRevision?: () => number
+  takePartArrival?: (partID: string) => boolean
+  messageKey?: (messageID: string) => string
   takeUserArrival?: (messageID: string) => boolean
   submissionFor?: (
     rootID: string,
   ) => { activity?: import("@ericsanchezok/synergy-sdk").SessionActivity; failed: boolean } | undefined
   executionFor?: (rootID: string) => TurnExecutionState | undefined
+  connected?: () => boolean
   onRestoreChanges?: (messageID: string) => void
 }
 
@@ -44,12 +59,37 @@ export function VirtualConversationRows(
 ) {
   const props = input.context
   const content = props.content!
+  const userPresentations = new Map<string, UserMessagePresentation>()
+  const userPresentation = (messageID: string) => {
+    const key = input.messageKey?.(messageID) ?? messageID
+    let state = userPresentations.get(key)
+    if (!state) userPresentations.set(key, (state = createUserMessagePresentation()))
+    return state
+  }
+  createEffect(() => {
+    const ids = new Set(
+      props
+        .timeline()
+        .flatMap((root) => [
+          root.id,
+          ...(root.role === "user"
+            ? props
+                .turnProjection()
+                .turnMessagesFor(root)
+                .map((message) => message.id)
+            : []),
+        ])
+        .map((id) => input.messageKey?.(id) ?? id),
+    )
+    for (const id of userPresentations.keys()) if (!ids.has(id)) userPresentations.delete(id)
+  })
   const [handle, setHandle] = createSignal<VirtualizerHandle>()
   const [located, setLocated] = createSignal<{ messageID: string; partID?: string }>()
   const [margin, setMargin] = createSignal(0)
   const [retained, setRetained] = createSignal<string[]>([])
   const [interactionBlocks, setInteractionBlocks] = createSignal<string[]>([])
   const [readingBlocks, setReadingBlocks] = createSignal<string[]>([])
+  const [readingOwner, setReadingOwner] = createSignal<string>()
   const [interactionRoots, setInteractionRoots] = createSignal<string[]>([])
   const [expanded, setExpanded] = createSignal<ReadonlyMap<string, boolean>>(new Map())
   const activityView = {
@@ -88,6 +128,7 @@ export function VirtualConversationRows(
     buildConversationRows({
       previous,
       timeline: props.timeline(),
+      messageKey: input.messageKey,
       messagesFor: (root) => props.turnProjection().turnMessagesFor(root as UserMessage),
       summaries: content.summaries,
       page: content.page,
@@ -176,7 +217,13 @@ export function VirtualConversationRows(
     return location ? rows().findIndex((row) => ownsLocation(row, location)) : -1
   })
   const kept = createMemo(() =>
-    [...new Set([...retained().map((key) => keys().indexOf(key)), locatedIndex()])].filter((index) => index >= 0),
+    [
+      ...new Set([
+        ...retained().map((key) => keys().indexOf(key)),
+        locatedIndex(),
+        keys().indexOf(readingOwner() ?? ""),
+      ]),
+    ].filter((index) => index >= 0),
   )
   const expansions = new Map<string, boolean>()
   const expansionState = {
@@ -193,7 +240,9 @@ export function VirtualConversationRows(
   let locationFrame: number | undefined
   let locationGeneration = 0
   let disposed = false
-  const releaseLocation = () => {
+  const releaseLocation = (event?: Event) => {
+    if (!(event?.target instanceof Element && event.target.closest('[data-component="process-viewport"]')))
+      setReadingOwner(undefined)
     locationGeneration++
     setLocated(undefined)
     if (locationFrame !== undefined) cancelAnimationFrame(locationFrame)
@@ -393,43 +442,49 @@ export function VirtualConversationRows(
     })
   })
   return (
-    <div ref={container} data-component="virtual-conversation-rows" class="w-full min-w-0 max-w-full">
-      <Show when={input.scrollRef}>
-        <ToolExpansionProvider value={expansionState}>
-          <Virtualizer
-            ref={setHandle}
-            data={keys()}
-            scrollRef={input.scrollRef}
-            startMargin={margin()}
-            overscan={4}
-            keepMounted={kept()}
-            onScroll={captureAnchor}
-            cache={initialCache}
-          >
-            {(key) => {
-              const row = createMemo<ConversationRow>((previous) => byKey().get(key) ?? previous!, byKey().get(key)!)
-              return (
-                <ConversationDisplayRow
-                  context={props}
-                  row={row}
-                  onExit={finishExit}
-                  activityView={activityView}
-                  submissionFor={input.submissionFor}
-                  takeUserArrival={input.takeUserArrival}
-                  executionFor={input.executionFor}
-                  onRestoreChanges={input.onRestoreChanges}
-                  onReading={(key, reading) =>
-                    setReadingBlocks((previous) =>
-                      reading ? [...new Set([...previous, key])] : previous.filter((value) => value !== key),
-                    )
-                  }
-                />
-              )
-            }}
-          </Virtualizer>
-        </ToolExpansionProvider>
-      </Show>
-    </div>
+    <ConversationMotionProvider takeArrival={input.takePartArrival} liveRevision={input.liveRevision}>
+      <div ref={container} data-component="virtual-conversation-rows" class="w-full min-w-0 max-w-full">
+        <Show when={input.scrollRef}>
+          <ToolExpansionProvider value={expansionState}>
+            <Virtualizer
+              ref={setHandle}
+              data={keys()}
+              scrollRef={input.scrollRef}
+              startMargin={margin()}
+              overscan={4}
+              keepMounted={kept()}
+              onScroll={captureAnchor}
+              cache={initialCache}
+            >
+              {(key) => {
+                const row = createMemo<ConversationRow>((previous) => byKey().get(key) ?? previous!, byKey().get(key)!)
+                return (
+                  <ConversationDisplayRow
+                    context={props}
+                    userPresentation={userPresentation}
+                    located={located()}
+                    row={row}
+                    onExit={finishExit}
+                    activityView={activityView}
+                    submissionFor={input.submissionFor}
+                    takeUserArrival={input.takeUserArrival}
+                    executionFor={input.executionFor}
+                    connected={input.connected}
+                    onRestoreChanges={input.onRestoreChanges}
+                    onReading={(key, reading) => {
+                      setReadingOwner((previous) => (reading ? key : previous === key ? undefined : previous))
+                      setReadingBlocks((previous) =>
+                        reading ? [...new Set([...previous, key])] : previous.filter((value) => value !== key),
+                      )
+                    }}
+                  />
+                )
+              }}
+            </Virtualizer>
+          </ToolExpansionProvider>
+        </Show>
+      </div>
+    </ConversationMotionProvider>
   )
 }
 
@@ -440,20 +495,26 @@ function ConversationDisplayRow(
     onExit: (key: string) => void
     activityView: NonNullable<PluginConversationService["activityView"]>
     onReading?: (key: string, reading: boolean) => void
+    userPresentation?: (messageID: string) => UserMessagePresentation
+    located?: { messageID: string; partID?: string }
   },
 ) {
   const props = input.context
   const content = props.content!
   const row = input.row
   const [activityMounted, setActivityMounted] = createSignal(!!row().activity?.open)
+  let manualDisclosure = false
   createEffect(() => {
     if (row().activity?.open) setActivityMounted(true)
   })
   const batchMotion = createDisclosureMotionRef({
     visible: () => !!row().activity?.open,
-    animate: () => true,
-    appear: () => true,
+    animate: () => manualDisclosure,
+    appear: () => manualDisclosure,
     onHidden: () => setActivityMounted(false),
+    onSettled: () => {
+      manualDisclosure = false
+    },
   })
   const execution = useExecution()
   const { _ } = useLingui()
@@ -469,7 +530,6 @@ function ConversationDisplayRow(
   const [loading, setLoading] = createSignal(false)
   const [retry, setRetry] = createSignal(0)
   let loadGeneration = 0
-  let hadPage = false
   let rowElement: HTMLDivElement | undefined
   let retryFocus: HTMLButtonElement | undefined
   const failure = () => {
@@ -534,18 +594,13 @@ function ConversationDisplayRow(
   createEffect(() => {
     const current = row()
     if (current.kind !== "body" || current.event) return
-    if (content.page(current.message.id)) {
-      hadPage = true
-      return
-    }
-    const renew = hadPage
+    if (content.page(current.message.id)) return
     const generation = ++loadGeneration
     void content
       .load(current.message.id)
       .then(() => {
         if (!alive || generation !== loadGeneration) return
         setLoadFailure(undefined)
-        if (!renew) return
         for (const entry of retainedParts.values()) entry.lease.release()
         retainedParts.clear()
         setRetry((value) => value + 1)
@@ -604,12 +659,16 @@ function ConversationDisplayRow(
     const current = row()
     return {
       user: current.kind === "body" && current.message.id === current.root.id,
+      userHasText:
+        current.message.role === "user" &&
+        content.summaries(current.message.id).some((part) => part.type === "text" && part.render !== false),
       footer: current.kind === "footer",
       parts: current.kind === "body" ? current.parts : [],
       before: current.kind === "body" && current.before,
       after: current.kind === "body" && current.after,
       beforeTool: current.kind === "body" && current.beforeTool,
       beforeReasoning: current.kind === "body" && current.beforeReasoning,
+      reasoningAnchors: current.kind === "body" ? current.reasoningAnchors : undefined,
       activityBody: current.kind === "body" && !!current.activity,
       processHeader: current.kind === "process",
       processBody: current.kind === "body" && current.processBody,
@@ -623,6 +682,12 @@ function ConversationDisplayRow(
   }
   const partID = () => {
     const current = row()
+    if (
+      current.kind === "body" &&
+      input.located?.messageID === current.message.id &&
+      current.parts.some((part) => part.id === input.located?.partID)
+    )
+      return input.located.partID
     return current.kind === "body" ? current.parts[0]?.id : undefined
   }
   return (
@@ -639,6 +704,7 @@ function ConversationDisplayRow(
       data-turn-root={row().root.id}
       data-message-id={row().message.id}
       data-message-role={row().message.role}
+      data-message-end={segment().after ? "" : undefined}
       data-part-id={partID()}
       id={anchor()}
       class="conversation-display-row min-w-0 w-full max-w-full"
@@ -680,7 +746,19 @@ function ConversationDisplayRow(
           </button>
         </div>
       </Show>
-      <Show when={row().kind !== "load"} fallback={<div class="min-h-6" aria-busy={loading()} />}>
+      <Show
+        when={row().kind !== "load"}
+        fallback={
+          <div
+            classList={{
+              "min-h-6": !content
+                .summaries(row().message.id)
+                .some((part) => part.content.version.startsWith("optimistic:")),
+            }}
+            aria-busy={loading()}
+          />
+        }
+      >
         <Show
           when={row().kind === "activity"}
           fallback={
@@ -726,6 +804,7 @@ function ConversationDisplayRow(
                 }
                 fallback={
                   <SessionTurn
+                    onBeforeProcessLayoutChange={props.autoScroll?.handleInteraction}
                     takeUserArrival={input.takeUserArrival}
                     sessionID={props.sessionID}
                     messageID={row().root.id}
@@ -737,11 +816,15 @@ function ConversationDisplayRow(
                     }
                     segment={segment()}
                     copyMessageText={content.text}
+                    userPresentation={
+                      row().message.role === "user" ? input.userPresentation?.(row().message.id) : undefined
+                    }
                     compactionParentIDs={props.turnProjection().compactionParentIDs}
                     activityDisplay={props.activityDisplay()}
                     activityView={input.activityView}
                     submission={input.submissionFor?.(row().root.id)}
                     executionState={input.executionFor?.(row().root.id)}
+                    connected={input.connected?.()}
                     following={!props.scrolledUp()}
                     lastUserMessageID={props.lastUserMessage()?.id}
                     compactReasoning={props.compactReasoning()}
@@ -781,9 +864,13 @@ function ConversationDisplayRow(
               data-slot="activity-batch-trigger"
               aria-expanded={row().activity?.open}
               aria-controls={`${row().key}:content`}
-              onClick={() => {
+              onClick={(event) => {
                 const block = row().activity
-                if (block) input.activityView.setExpanded(block.key, !block.open)
+                if (block) {
+                  manualDisclosure = true
+                  props.autoScroll?.handleInteraction(event)
+                  input.activityView.setExpanded(block.key, !block.open)
+                }
               }}
             >
               <span>
@@ -794,6 +881,13 @@ function ConversationDisplayRow(
                 ) : (
                   _({ id: "session.reasoning.title", message: "Reasoning" })
                 )}
+                <ConversationActivityStatus
+                  context={props}
+                  row={row}
+                  submissionFor={input.submissionFor}
+                  executionFor={input.executionFor}
+                  connected={input.connected}
+                />
               </span>
               <Icon name={getSemanticIcon("navigation.expand")} size="small" />
             </button>
@@ -806,6 +900,7 @@ function ConversationDisplayRow(
                   onReading={input.onReading}
                   submissionFor={input.submissionFor}
                   executionFor={input.executionFor}
+                  connected={input.connected}
                   onRestoreChanges={input.onRestoreChanges}
                 />
               </div>
@@ -814,6 +909,36 @@ function ConversationDisplayRow(
         </Show>
       </Show>
     </div>
+  )
+}
+
+function ConversationActivityStatus(
+  input: ProcessControls & { context: PluginConversationService; row: () => ConversationRow },
+) {
+  const { view } = useData()
+  const { i18n } = useLingui()
+  const props = input.context
+  const row = input.row
+  const sessionStatus = () => {
+    const submission = input.submissionFor?.(row().root.id)
+    return submission?.activity
+      ? { type: "busy" as const, activity: submission.activity }
+      : view.statusFor(props.sessionID)
+  }
+  const activityContext = () => ({
+    rootID: row().root.id,
+    approval:
+      input.executionFor?.(row().root.id)?.status === "approval" ||
+      (props.lastUserMessage()?.id === row().root.id && view.permissionsFor(props.sessionID).length > 0),
+    question: props.lastUserMessage()?.id === row().root.id && view.questionsFor(props.sessionID).length > 0,
+    connected: input.connected?.(),
+  })
+  const active = () => row().activity?.active && (sessionStatus()?.type === "busy" || sessionStatus()?.type === "retry")
+  return (
+    <ActivityBatchStatus
+      label={active() ? sessionActivityLabel(sessionStatus(), i18n(), activityContext()) : undefined}
+      animated={sessionActivityAnimating(sessionStatus(), activityContext())}
+    />
   )
 }
 
@@ -840,53 +965,51 @@ function ConversationActivityBody(
     layout && layout.keys.length === keys().length && layout.keys.every((key, index) => key === keys()[index])
       ? layout.cache
       : undefined
-  let anchor: { key: string; offset: number; partID?: string } | undefined
+  let anchor: ProcessReadingAnchor | undefined
   let anchorFrame: number | undefined
-  const captureAnchor = () => {
+  const captureAnchor = (target?: Element) => {
     if (!viewport) return
-    const bounds = viewport.getBoundingClientRect()
-    const row = [
-      ...viewport.querySelectorAll<HTMLElement>(
-        '[data-slot="activity-step"][data-part-id], [data-component="process-reasoning"][data-part-id], [data-display-row]',
-      ),
-    ].find((element) => {
-      if (
-        element.dataset.displayRow &&
-        element.querySelector('[data-slot="activity-step"], [data-component="process-reasoning"]')
-      )
-        return false
-      const rect = element.getBoundingClientRect()
-      return rect.bottom > bounds.top && rect.top < bounds.bottom
-    })
-    if (row)
-      anchor = {
-        key: row.closest<HTMLElement>("[data-display-row]")!.dataset.displayRow!,
-        partID: row.dataset.partId,
-        offset: row.getBoundingClientRect().top - bounds.top,
-      }
+    anchor = captureProcessReadingAnchor(viewport, target)
   }
-  const restoreAnchor = (saved: { key: string; offset: number; partID?: string }) => {
+  const restoreAnchor = (saved: ProcessReadingAnchor) => {
+    anchor = saved
     const index = saved.partID
         ? entries().findIndex((entry) => entry.kind === "body" && entry.parts.some((part) => part.id === saved.partID))
         : keys().indexOf(saved.key),
       virtual = handle()
-    if (index < 0 || !virtual || !viewport) return
+    if (!virtual || !viewport) return
+    let measured = true
+    const align = () => {
+      if (!viewport) return false
+      const node = processReadingAnchorNode(viewport, saved),
+        row = node?.closest<HTMLElement>("[data-display-row]")
+      if (!node || !row) return false
+      const nodeIndex = keys().indexOf(row.dataset.displayRow!)
+      const targetIndex = nodeIndex >= 0 ? nodeIndex : index
+      if (targetIndex < 0) return false
+      measured = Math.abs(virtual.getItemSize(targetIndex) - row.parentElement!.getBoundingClientRect().height) < 0.5
+      const offset = node.getBoundingClientRect().top - row.getBoundingClientRect().top - saved.offset
+      const targetOffset = virtual.getItemOffset(targetIndex) + offset
+      const legalOffset = Math.min(
+        Math.max(0, viewport.scrollHeight - viewport.clientHeight),
+        Math.max(0, targetOffset),
+      )
+      // Virtua retries imperative targets on later measurements; aligned anchors must not leave a stale request.
+      if (Math.abs(viewport.scrollTop - legalOffset) < 0.5) return true
+      virtual.scrollToIndex(targetIndex, {
+        align: "start",
+        offset,
+      })
+      return true
+    }
+    if (align()) return measured
+    if (index < 0) return
     virtual.scrollToIndex(index, { align: "start", offset: -saved.offset })
     if (!saved.partID) return
     if (anchorFrame !== undefined) cancelAnimationFrame(anchorFrame)
     anchorFrame = requestAnimationFrame(() => {
       anchorFrame = undefined
-      const part = [
-        ...(viewport?.querySelectorAll<HTMLElement>(
-          '[data-slot="activity-step"][data-part-id], [data-component="process-reasoning"][data-part-id]',
-        ) ?? []),
-      ].find((element) => element.dataset.partId === saved.partID)
-      const row = part?.closest<HTMLElement>("[data-display-row]")
-      if (part && row)
-        virtual.scrollToIndex(index, {
-          align: "start",
-          offset: part.getBoundingClientRect().top - row.getBoundingClientRect().top - saved.offset,
-        })
+      align()
     })
   }
   let previous = keys()
@@ -977,12 +1100,12 @@ function ConversationActivityBody(
       controls={(value) => {
         pause = value.pause
       }}
-      anchor={() => {
-        captureAnchor()
+      anchor={(target) => {
+        captureAnchor(target)
         return anchor
       }}
       restoreAnchor={restoreAnchor}
-      onScroll={captureAnchor}
+      onBeforeLayoutChange={(event) => input.context.autoScroll?.handleInteraction(event)}
       active={input.row().activity?.active ?? false}
       following={!input.context.scrolledUp()}
       revision={entries()
@@ -990,7 +1113,10 @@ function ConversationActivityBody(
           entry.kind === "body" ? entry.parts.map((part) => `${part.id}:${part.content.version}`).join(",") : entry.key,
         )
         .join(";")}
-      onReading={(value) => input.onReading?.(input.row().key, value)}
+      onReading={(value) => {
+        if (value) input.context.autoScroll?.handleInteraction(new Event("process-reading"))
+        input.onReading?.(input.row().key, value)
+      }}
       ref={(element) => {
         viewport = element
         setScroll(element)
@@ -1015,6 +1141,7 @@ function ConversationActivityBody(
                 onExit={() => {}}
                 submissionFor={input.submissionFor}
                 executionFor={input.executionFor}
+                connected={input.connected}
                 onRestoreChanges={input.onRestoreChanges}
               />
             )

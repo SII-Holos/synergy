@@ -211,7 +211,7 @@
   width: 100%;
   max-width: 100%;
   align-items: flex-end;
-  gap: 4px;
+  gap: 8px;
 
   [data-slot="user-message-attachments"] {
     width: min(42rem, 78%);
@@ -260,6 +260,7 @@
   }
 
   [data-slot="user-message-meta"] {
+    margin-block-start: -4px;
     width: min(42rem, 78%);
     max-width: 100%;
     min-height: 18px;

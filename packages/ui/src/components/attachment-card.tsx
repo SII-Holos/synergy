@@ -1,4 +1,16 @@
-import { createEffect, createMemo, createSignal, For, Match, onMount, Show, Switch, type JSX } from "solid-js"
+import {
+  createComputed,
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  Match,
+  onMount,
+  Show,
+  Switch,
+  type JSX,
+} from "solid-js"
+import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import { useDialog } from "../context/dialog"
 import { useResourceOpen } from "../context/resource-open"
@@ -52,6 +64,7 @@ export function AttachmentCard(props: {
   autoplay?: boolean
   autoplayKey?: string
   compact?: "draft" | "user"
+  singleImage?: boolean
   onOpen?: (file: AttachmentFile) => void
 }) {
   const { _ } = useLingui()
@@ -60,6 +73,41 @@ export function AttachmentCard(props: {
   const [imageFailed, setImageFailed] = createSignal(false)
   const url = createMemo(() => resolveAttachmentUrl(props.serverUrl, props.file))
   const thumbnailUrl = createMemo(() => resolveAttachmentThumbnailUrl(props.serverUrl, props.file))
+  const [originalPreview, setOriginalPreview] = createSignal(false)
+  const [imageDimensions, setImageDimensions] = createSignal<{ width: number; height: number }>()
+  createEffect(() => {
+    url()
+    thumbnailUrl()
+    setOriginalPreview(false)
+    setImageFailed(false)
+    setImageDimensions(undefined)
+  })
+  const imageSrc = () => (originalPreview() ? url() : (thumbnailUrl() ?? url()))
+  const imageStyle = () => {
+    if (!props.singleImage) return undefined
+    const thumbnail = props.file.metadata?.thumbnail as { width?: number; height?: number } | undefined
+    const dimensions = imageDimensions() ?? thumbnail
+    if (!dimensions?.width || !dimensions.height) return undefined
+    const scale = Math.min(240 / dimensions.width, 180 / dimensions.height)
+    return {
+      "--attachment-image-width": `${dimensions.width * scale}px`,
+      "aspect-ratio": `${dimensions.width} / ${dimensions.height}`,
+    }
+  }
+  const previewLoaded = (event: Event & { currentTarget: HTMLImageElement }) => {
+    const image = event.currentTarget
+    if (image.naturalWidth && image.naturalHeight)
+      setImageDimensions({ width: image.naturalWidth, height: image.naturalHeight })
+    if (image.src === url() || originalPreview() || !thumbnailUrl()) return
+    const bounds = image.getBoundingClientRect()
+    const density = window.devicePixelRatio || 1
+    if (image.naturalWidth < bounds.width * density || image.naturalHeight < bounds.height * density)
+      setOriginalPreview(true)
+  }
+  const previewFailed = () => {
+    if (!originalPreview() && thumbnailUrl() && thumbnailUrl() !== url()) setOriginalPreview(true)
+    else setImageFailed(true)
+  }
   const presentation = createMemo(() => resolveAttachmentPresentation(props.file))
   const filename = createMemo(() => props.file.filename ?? (isPdfAttachment(props.file) ? "file.pdf" : "file"))
   const meta = createMemo(() =>
@@ -154,7 +202,10 @@ export function AttachmentCard(props: {
           type="button"
           data-component="attachment-card"
           data-compact={props.compact}
-          data-type={isImageAttachment(props.file) && !imageFailed() ? "image" : "file"}
+          data-type={isImageAttachment(props.file) ? "image" : "file"}
+          data-single-image={props.singleImage ? "" : undefined}
+          data-image-failed={imageFailed() ? "" : undefined}
+          style={imageStyle()}
           aria-label={_({ ...openAttachmentDescriptor, values: { filename: filename() } })}
           title={filename()}
           onClick={openAttachment}
@@ -178,7 +229,7 @@ export function AttachmentCard(props: {
               </>
             }
           >
-            <img src={thumbnailUrl() ?? url()} alt={filename()} loading="lazy" onError={() => setImageFailed(true)} />
+            <img src={imageSrc()} alt={filename()} loading="lazy" onLoad={previewLoaded} onError={previewFailed} />
           </Show>
         </button>
       </Match>
@@ -337,6 +388,7 @@ function DynamicAttachmentLink(props: {
 }
 
 interface AttachmentGalleryEntry {
+  key: string
   file: AttachmentFile
   imagePreview?: ImagePreviewImage
   imagePreviewIndex?: number
@@ -350,38 +402,46 @@ export function AttachmentGallery(props: {
   autoplayKey?: string
   layout?: "columns" | "rows"
   compact?: "draft" | "user"
+  expanded?: boolean
+  onExpandedChange?: (value: boolean) => void
   onOpen?: (file: AttachmentFile) => void
 }) {
   const visibleFiles = createMemo(() => props.files.filter((file) => !resolveAttachmentPresentation(file).hidden))
-  const entries = createMemo<AttachmentGalleryEntry[]>(() => {
+  const [entries, setEntries] = createStore<AttachmentGalleryEntry[]>([])
+  createComputed(() => {
     let previewIndex = 0
-    return visibleFiles().map((file, index) => {
-      const imagePreview = resolveImagePreviewImage(props.serverUrl, file, index)
-      if (!imagePreview) return { file }
-      return { file, imagePreview, imagePreviewIndex: previewIndex++ }
-    })
+    setEntries(
+      reconcile(
+        visibleFiles().map((file, index) => {
+          const key = file.id ?? `${index}:${file.url ?? file.assetId ?? file.filename}`
+          const imagePreview = resolveImagePreviewImage(props.serverUrl, file, index)
+          if (!imagePreview) return { key, file }
+          return { key, file, imagePreview, imagePreviewIndex: previewIndex++ }
+        }),
+        { key: "key" },
+      ),
+    )
   })
   const previewImages = createMemo(() =>
-    entries()
-      .map((entry) => entry.imagePreview)
-      .filter((image): image is ImagePreviewImage => Boolean(image)),
+    entries.map((entry) => entry.imagePreview).filter((image): image is ImagePreviewImage => Boolean(image)),
   )
-  const columns = createMemo(() => attachmentColumns(entries()))
+  const columns = createMemo(() => attachmentColumns(entries))
   return (
     <Show
       when={props.layout !== "rows"}
       fallback={
         <div data-component="attachment-gallery" data-align={props.align ?? "start"}>
-          <AttachmentRows items={entries()}>
+          <AttachmentRows items={entries} expanded={props.expanded} onExpandedChange={props.onExpandedChange}>
             {(entry) => (
               <AttachmentCard
                 file={entry.file}
                 serverUrl={props.serverUrl}
                 compact={props.compact}
+                singleImage={props.compact === "user" && visibleFiles().length === 1 && isImageAttachment(entry.file)}
                 onOpen={props.onOpen}
                 imagePreview={
                   entry.imagePreviewIndex !== undefined
-                    ? { images: previewImages(), index: entry.imagePreviewIndex }
+                    ? { images: previewImages(), index: entry.imagePreviewIndex! }
                     : undefined
                 }
               />

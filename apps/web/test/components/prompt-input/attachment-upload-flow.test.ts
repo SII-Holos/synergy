@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { runPendingAttachmentUpload } from "../../../src/components/prompt-input/attachment-upload-flow"
+import {
+  insertUploadedPromptAttachment,
+  runPendingAttachmentUpload,
+} from "../../../src/components/prompt-input/attachment-upload-flow"
+import type { Prompt } from "../../../src/context/prompt"
 import { createPendingAttachmentTracker } from "../../../src/components/prompt-input/pending-attachments"
 import type { UploadedPromptAttachment } from "../../../src/utils/prompt-attachment"
 
@@ -12,6 +16,29 @@ const uploadedResult: UploadedPromptAttachment = {
   url: "asset://video-1",
   size: 1024,
 }
+
+test("parallel upload completion retains the selected attachment order and authored text", () => {
+  const body = { type: "text" as const, content: "Inspect these files", start: 0, end: 19 }
+  let prompt: Prompt = [body]
+  for (const id of ["prt-3", "prt-1", "prt-2"])
+    prompt = insertUploadedPromptAttachment(prompt, {
+      type: "attachment" as const,
+      id,
+      mime: "text/plain",
+      filename: `${id}.txt`,
+      url: `asset://${id}`,
+    })
+  expect(prompt).toEqual([
+    body,
+    ...["prt-1", "prt-2", "prt-3"].map((id) => ({
+      type: "attachment" as const,
+      id,
+      mime: "text/plain",
+      filename: `${id}.txt`,
+      url: `asset://${id}`,
+    })),
+  ])
+})
 
 describe("pending attachment upload flow", () => {
   test("inserts the settled part under the pending id and flashes uploaded", async () => {

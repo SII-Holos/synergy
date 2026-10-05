@@ -67365,6 +67365,9 @@
           "tool": {
             "type": "string"
           },
+          "reasoningKey": {
+            "type": "string"
+          },
           "content": {
             "$ref": "#/components/schemas/SessionPartContentReference"
           }

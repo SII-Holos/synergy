@@ -1,7 +1,7 @@
 import type { PluginComposerLayoutService } from "@ericsanchezok/synergy-plugin"
 import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
 import { HostView } from "./host-view"
-import { createMemo, createSignal, onCleanup, onMount, type Component, type JSX } from "solid-js"
+import { createMemo, createSignal, onCleanup, onMount, Show, type Component, type JSX } from "solid-js"
 import { ShellSurface } from "./shell-surface"
 import type {
   PluginShellService,
@@ -88,7 +88,6 @@ export function PluginPageOutlet(props: {
   const host = usePluginHost()
   const entry = selectedShell()
   const Fallback: Component<ShellRenderProps> = () => props.fallback()
-  const fallbackLoader: ShellEntry["loader"] = async () => ({ default: Fallback })
   const shell: PluginShellService = {
     page: () => props.page,
     render(view) {
@@ -99,19 +98,23 @@ export function PluginPageOutlet(props: {
     },
   }
   return (
-    <ShellSurface
-      reportError={host.reportError}
-      entry={entry()}
-      loader={entry().pages?.[props.page] ?? fallbackLoader}
-      shell={shell}
-      sessionId={props.sessionId}
-      input={props.input}
-      session={props.session}
-      conversation={props.conversation}
-      composerLayout={props.composerLayout}
-      layout={props.layout}
-      workbench={props.workbench}
-      fallback={Fallback}
-    />
+    <Show when={entry().pages?.[props.page]} fallback={<HostView render={props.fallback} />}>
+      {(loader) => (
+        <ShellSurface
+          reportError={host.reportError}
+          entry={entry()}
+          loader={loader()}
+          shell={shell}
+          sessionId={props.sessionId}
+          input={props.input}
+          session={props.session}
+          conversation={props.conversation}
+          composerLayout={props.composerLayout}
+          layout={props.layout}
+          workbench={props.workbench}
+          fallback={Fallback}
+        />
+      )}
+    </Show>
   )
 }

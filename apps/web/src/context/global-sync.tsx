@@ -27,6 +27,7 @@ import {
 import { sharedRequests } from "@/utils/shared-requests"
 import { createContentBudget, contentBudgetKey } from "./content-budget"
 import { clearConversationContent } from "./conversation-content-state"
+import { createPartArrivalState } from "./part-arrival"
 import type { createPartMaterializer } from "./part-materializer"
 import { mergeModelDirectory, type ProviderSnapshot } from "./model-directory"
 import { projectWorkspaceBinding } from "./workspace-catalog"
@@ -280,6 +281,7 @@ function removePendingRequest<T extends { id: string }>(
 // is its only event-side source.
 
 function createGlobalSync() {
+  const partArrival = createPartArrivalState()
   const contentBudget = createContentBudget()
   const contentCaches = new Map<string, { cache: ReturnType<typeof createPartMaterializer>; readers: number }>()
   function retainContentCache(scopeKey: string, create: () => ReturnType<typeof createPartMaterializer>) {
@@ -379,6 +381,7 @@ function createGlobalSync() {
   // generation below, after replay/reset has established freshness state.
   const [reconnectVersion, setReconnectVersion] = createSignal(0)
   const [scopeReconnectVersions, setScopeReconnectVersions] = createStore<Record<string, number>>({})
+  const [scopeRecoveryTargets, setScopeRecoveryTargets] = createStore<Record<string, number>>({})
   const scopeReconnectRecovery = createScopeReconnectRecovery((scopeKey, generation) => {
     const state = children[scopeKey]
     if (state) {
@@ -414,8 +417,7 @@ function createGlobalSync() {
     // Retries run the generation-owning recovery path directly instead of the
     // aggregated resync request, so a retry can neither suppress nor be
     // suppressed by a concurrent global resync sharing the request singleton.
-    retry: (scopeKey) =>
-      recoveryCoordination.runWithGeneration(scopeKey, reconnectVersion() + 1, () => replayOrResync(scopeKey)),
+    retry: (scopeKey) => runScopeRecovery(scopeKey, reconnectVersion() + 1, () => replayOrResync(scopeKey)),
   })
   // Generation-owning recovery completion is the only success that cancels a
   // pending retry: a bare event-gap replay repairs the store without
@@ -424,6 +426,12 @@ function createGlobalSync() {
     recovery: scopeReconnectRecovery,
     retries: recoveryRetryScheduler,
   })
+
+  function runScopeRecovery(scopeKey: string, generation: number, recover: () => Promise<boolean>) {
+    if (!children[scopeKey]) return Promise.resolve(false)
+    setScopeRecoveryTargets(scopeKey, (current) => Math.max(current ?? 0, generation))
+    return recoveryCoordination.runWithGeneration(scopeKey, generation, recover)
+  }
 
   async function runInstanceRequests<T>(
     items: T[],
@@ -829,6 +837,11 @@ function createGlobalSync() {
     inboxRefreshTimers.delete(scopeKey)
     scopeReconnectRecovery.release(scopeKey)
     setScopeReconnectVersions(
+      produce((draft) => {
+        delete draft[scopeKey]
+      }),
+    )
+    setScopeRecoveryTargets(
       produce((draft) => {
         delete draft[scopeKey]
       }),
@@ -1699,7 +1712,7 @@ function createGlobalSync() {
     reloadSessionWindow(scopeKey, sessionID)
   })
 
-  function applyEvent(scopeKey: string, event: any) {
+  function applyEvent(scopeKey: string, event: any, source: "live" | "replay" = "replay") {
     const stamp = parseEventWriteStamp(event)
     if (event?.type === "global.disposed") {
       // Every scope runtime was disposed, so every epoch changed; bootstrap
@@ -2071,6 +2084,11 @@ function createGlobalSync() {
         const summaries = store.partSummary[summary.messageID] ?? []
         const index = summaries.findIndex((part) => part.id === summary.id)
         if (discovery && index >= 0) break
+        partArrival.add([globalSDK.url, scopeKey, summary.sessionID], summary.id, {
+          source: discovery ? "discovery" : source,
+          render: summary.render !== false,
+          previous: index >= 0 ? summaries[index].render !== false : undefined,
+        })
         partSnapshotFreshness.touch(scopeKey, summary.sessionID, summary.messageID)
         if (index >= 0) setStore("partSummary", summary.messageID, index, reconcile(summary))
         else
@@ -2413,10 +2431,11 @@ function createGlobalSync() {
       void replayOrResync(e.name, observed.replayFrom)
       return
     }
-    applyEvent(e.name, e.details)
+    applyEvent(e.name, e.details, "live")
   })
   onCleanup(() => {
     disposed = true
+    partArrival.clear()
     unsub()
     for (const scopeKey of Object.keys(children)) releaseScopeState(scopeKey)
     for (const timers of inboxRefreshTimers.values()) {
@@ -2490,9 +2509,12 @@ function createGlobalSync() {
     // what restores the sessions this client has not leased.
     void loadGlobalSessionStatus()
     const generation = reconnectVersion() + 1
-    setReconnectVersion(generation)
+    batch(() => {
+      for (const directory of directories) setScopeRecoveryTargets(directory, generation)
+      setReconnectVersion(generation)
+    })
     resyncInstancesPromise = runInstanceRequests(directories, (directory) =>
-      recoveryCoordination.runWithGeneration(directory, generation, () => replayOrResync(directory)),
+      runScopeRecovery(directory, generation, () => replayOrResync(directory)),
     ).finally(() => {
       resyncInstancesPromise = undefined
     })
@@ -2608,6 +2630,7 @@ function createGlobalSync() {
 
   return {
     data: globalStore,
+    partArrival,
     contentBudget,
     retainContentCache,
     get ready() {
@@ -2627,6 +2650,8 @@ function createGlobalSync() {
     recover,
     reconnectVersion,
     scopeReconnectVersion,
+    scopeRecoveryPending: (scopeKey: string) =>
+      (scopeRecoveryTargets[scopeKey] ?? 0) > (scopeReconnectVersions[scopeKey] ?? 0),
     captureResourceRequest,
     applyResourceResponse,
     applyResourceMutationResponse,

@@ -1,7 +1,10 @@
 .conversation-display-row {
-  padding-block-end: 16px;
+  padding-block-end: var(--conversation-flow-gap);
 }
 .conversation-display-row[data-row-kind="body"][data-message-role="user"] {
+  padding-block-end: 8px;
+}
+.conversation-display-row[data-row-kind="body"][data-message-role="user"][data-message-end] {
   padding-block-end: 28px;
 }
 .conversation-display-row[data-row-kind="body"][data-activity-block] {
@@ -10,11 +13,7 @@
 .conversation-display-row[data-row-kind="body"][data-activity-block][data-message-role="user"] {
   padding-block-end: 2px;
 }
-.conversation-display-row[data-row-kind="activity"] {
-  padding-block-end: 16px;
-}
 [data-component="conversation-activity"] > [data-slot="activity-batch-trigger"] {
-  margin-block-end: 4px;
   color: var(--text-weak);
   line-height: 20px;
 }
@@ -30,5 +29,5 @@
 }
 
 [data-component="conversation-activity"] > [data-slot="activity-batch-content"] {
-  padding-inline-start: 8px;
+  min-width: 0;
 }

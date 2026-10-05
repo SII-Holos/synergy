@@ -11,6 +11,7 @@
   padding-inline: 3px;
   margin-inline: -3px;
   scrollbar-width: thin;
+  scrollbar-gutter: stable;
   /* The virtual parent suspends pointer events while scrolling; nested scroll regions keep their own input. */
   pointer-events: auto;
 }
@@ -25,15 +26,13 @@
   position: absolute;
   inset-block-end: 6px;
   inset-inline-end: 6px;
-  z-index: 1;
+  z-index: 2;
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 4px;
-  padding-inline: 8px;
-  font-size: 12px;
-  height: 28px;
-  border: 1px solid var(--border-weaker-base);
+  width: 32px;
+  height: 32px;
+  border: 0;
   border-radius: var(--radius-full);
   background: var(--surface-base);
   color: var(--text-base);
@@ -59,36 +58,20 @@
   margin-block-start: 2px;
 }
 
-[data-component="process-window"][data-overflow] {
-  border-inline-start: 1px solid var(--border-weak-base);
-  padding-inline-start: 8px;
-  padding-block: 8px 24px;
-}
-[data-component="process-viewport"][data-overflow] {
-  scrollbar-gutter: stable;
-}
-[data-slot="process-more"] {
-  position: absolute;
-  inset-block-end: 2px;
-  inset-inline-start: 8px;
-  font-size: 12px;
-  line-height: 20px;
-  color: var(--text-weak);
-  pointer-events: none;
-}
 [data-component="process-window"][data-above]::before,
 [data-component="process-window"][data-below]::after {
   content: "";
   position: absolute;
   inset-inline: 0;
-  height: 8px;
+  height: 24px;
+  z-index: 1;
   pointer-events: none;
 }
 [data-component="process-window"][data-above]::before {
   inset-block-start: 0;
-  background: linear-gradient(var(--surface-base), transparent);
+  background: linear-gradient(var(--background-stronger), transparent);
 }
 [data-component="process-window"][data-below]::after {
-  inset-block-end: 16px;
-  background: linear-gradient(transparent, var(--surface-base));
+  inset-block-end: 0;
+  background: linear-gradient(transparent, var(--background-stronger));
 }

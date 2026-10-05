@@ -1342,6 +1342,10 @@ msgid "app.attachment.office.unsupported"
 msgstr "This Office file uses an unsupported format. Download the original to open it."
 
 #. js-lingui-explicit-id
+msgid "app.attachment.openFailed"
+msgstr "Couldn’t open attachment"
+
+#. js-lingui-explicit-id
 msgid "app.attachment.pdf.fitWidth"
 msgstr "Fit width"
 
@@ -17605,16 +17609,12 @@ msgid "session.process.interrupted"
 msgstr "Interrupted"
 
 #. js-lingui-explicit-id
+msgid "session.process.latest"
+msgstr "Back to latest action"
+
+#. js-lingui-explicit-id
 msgid "session.process.loadFailed"
 msgstr "Unable to load process details."
-
-#. js-lingui-explicit-id
-msgid "session.process.more"
-msgstr "More actions below"
-
-#. js-lingui-explicit-id
-msgid "session.process.newActions"
-msgstr "New actions"
 
 #. js-lingui-explicit-id
 msgid "session.process.openSource"

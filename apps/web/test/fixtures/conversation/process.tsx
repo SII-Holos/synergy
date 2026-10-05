@@ -8,7 +8,7 @@ import type {
   SessionActivity,
 } from "@ericsanchezok/synergy-sdk"
 import type { Data } from "@ericsanchezok/synergy-ui/context/data"
-import { createSignal } from "solid-js"
+import { createSignal, Show } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { render } from "solid-js/web"
 import { setupI18n } from "@lingui/core"
@@ -18,9 +18,13 @@ import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
 import { MarkedProvider } from "@ericsanchezok/synergy-ui/context/marked"
 import { DiffComponentProvider } from "@ericsanchezok/synergy-ui/context/diff"
 import { ResourceOpenProvider } from "@ericsanchezok/synergy-ui/context/resource-open"
+import { ThemeProvider } from "@ericsanchezok/synergy-ui/theme/context"
+import "@ericsanchezok/synergy-ui/styles"
 import { VirtualConversationRows } from "../../../src/components/session/virtual-conversation-rows"
 import { createPartMaterializer } from "../../../src/context/part-materializer"
+import { createPartArrivalState } from "../../../src/context/part-arrival"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
+import { reasoningItemKey } from "@ericsanchezok/synergy-util/reasoning-item"
 
 const root: UserMessage = {
   id: "root",
@@ -92,14 +96,24 @@ const [data, setData] = createStore<Data>({
   },
 })
 const [status, setStatus] = createSignal<TurnExecutionState["status"]>("running")
-const [activity, setActivity] = createSignal<SessionActivity>({ phase: "waiting_model", startedAt: 1, rootID: "root" })
+const [activity, setActivity] = createSignal<SessionActivity | undefined>({
+  phase: "waiting_model",
+  startedAt: 1,
+  rootID: "root",
+})
 const [submission, setSubmission] = createSignal<{ activity?: SessionActivity; failed: boolean }>()
 const [reading, setReading] = createSignal(false)
+const [connected, setConnected] = createSignal(true)
 const [mode, setMode] = createSignal<"balanced" | "full" | "minimal">("balanced")
 const [expanded, setExpanded] = createStore<Record<string, boolean>>({})
 const [scroll, setScroll] = createSignal<HTMLDivElement>()
 const [versions, setVersions] = createStore<Record<string, string>>({})
 const [hasPage, setHasPage] = createSignal(true)
+const [mounted, setMounted] = createSignal(true)
+const arrivals = createPartArrivalState()
+const arrivalOwner = ["http://localhost", "/project", "session"]
+const arrivalView = arrivals.open(arrivalOwner)
+arrivalView.ready(true)
 const scenario = new URL(location.href).searchParams.get("content")
 const faults = new Map<string, "denied" | "conflict" | "stalled" | "pending" | "malformed">()
 const reads = new Map<string, number>()
@@ -112,18 +126,28 @@ if (scenario) {
     part("work", "progress-2", "text", "Second paragraph stays readable."),
     part("work", "command-0", "tool"),
   ])
-  faults.set(
-    "progress",
-    scenario === "mixed"
-      ? "denied"
-      : scenario === "stalled"
-        ? "stalled"
-        : scenario === "malformed"
-          ? "malformed"
-          : "conflict",
-  )
+  if (scenario !== "late-reconnect")
+    faults.set(
+      "progress",
+      scenario === "mixed"
+        ? "denied"
+        : scenario === "stalled"
+          ? "stalled"
+          : scenario === "malformed"
+            ? "malformed"
+            : "conflict",
+    )
   if (scenario === "mixed") faults.set("progress-2", "denied")
 }
+const canonicalParts =
+  scenario === "late-reconnect" ? new Map(Object.entries(data.part).map(([id, parts]) => [id, [...parts]])) : undefined
+let finishPage: (() => void) | undefined
+const pageReady = canonicalParts
+  ? new Promise<void>((resolve) => {
+      finishPage = resolve
+      setHasPage(false)
+    })
+  : Promise.resolve()
 const client = createSynergyClient({
   baseUrl: "http://fixture.local",
   fetch: Object.assign(
@@ -149,7 +173,7 @@ const client = createSynergyClient({
         return new Promise((resolve) => {
           completions.set(id, resolve)
         })
-      const body = Object.values(data.part)
+      const body = (canonicalParts ? [...canonicalParts.values()] : Object.values(data.part))
         .flat()
         .find((item) => item.id === id)!
       return Response.json({ part: body, version: url.searchParams.get("version") })
@@ -177,10 +201,25 @@ const materializer = createPartMaterializer({
   },
   wait: async () => {},
   apply: (body) => {
-    const index = data.part[body.messageID].findIndex((item) => item.id === body.id)
-    setData("part", body.messageID, index, reconcile(body))
+    const parts = data.part[body.messageID]
+    const index = parts.findIndex((item) => item.id === body.id)
+    if (index >= 0) {
+      setData("part", body.messageID, index, reconcile(body))
+      return
+    }
+    const order = canonicalParts?.get(body.messageID) ?? parts
+    setData(
+      "part",
+      body.messageID,
+      [...parts, body].sort(
+        (a, b) => order.findIndex((item) => item.id === a.id) - order.findIndex((item) => item.id === b.id),
+      ),
+    )
   },
-  evict: () => {},
+  evict: (summary) => {
+    if (!canonicalParts) return
+    setData("part", summary.messageID, (parts) => parts.filter((part) => part.id !== summary.id))
+  },
 })
 let retained = 0
 let locate: ((messageID: string, behavior?: ScrollBehavior, partID?: string) => Promise<boolean>) | undefined
@@ -209,15 +248,16 @@ const context: Partial<PluginConversationService> = {
   },
   content: {
     summaries: (id) =>
-      data.part[id].map((p) => ({
+      (canonicalParts?.get(id) ?? data.part[id]).map((p) => ({
         ...p,
         preview: "",
         status: p.type === "tool" ? p.state.status : undefined,
+        reasoningKey: p.type === "reasoning" ? reasoningItemKey(p.metadata) : undefined,
         content: { version: versions[p.id] ?? "v1", bytes: 64 },
       })),
     page: () => (hasPage() ? { hasMore: false } : undefined),
     load: async () => {
-      await Promise.resolve()
+      await pageReady
       setHasPage(true)
     },
     text: async () => "Final answer stays mounted.",
@@ -236,6 +276,33 @@ const context: Partial<PluginConversationService> = {
 }
 let toolCaseSequence = 0
 window.__conversationProcess = {
+  fragments(count: number) {
+    setData("message", "session", [root, work])
+    setData("part", "work", [
+      ...Array.from(
+        { length: count },
+        (_, index) =>
+          ({
+            ...part("work", `summary-${index}`, "reasoning", `Summary paragraph ${index}`),
+            metadata: { "openai-codex": { itemId: "rs_shared" } },
+          }) as Part,
+      ),
+      part("work", "command-0", "tool"),
+    ])
+  },
+  append(id: string, source: "live" | "replay" = "live") {
+    arrivals.add(arrivalOwner, id, { source, render: true, previous: data.part.more.some((part) => part.id === id) })
+    setData("part", "more", (parts) => [...parts.filter((part) => part.id !== id), part("more", id, "tool")])
+  },
+  remount() {
+    setMounted(false)
+    queueMicrotask(() => setMounted(true))
+  },
+  reasoning(text: string, partID?: string) {
+    setData("part", "work", (parts) =>
+      parts.map((part) => (part.type === "reasoning" && (!partID || part.id === partID) ? { ...part, text } : part)),
+    )
+  },
   toolCase(tool, input, metadata, status = "completed") {
     const base = part("work", `case-${++toolCaseSequence}`, "tool")
     if (base.type !== "tool") return
@@ -250,10 +317,14 @@ window.__conversationProcess = {
     setStatus("preparing")
     setSubmission({ activity: { phase: "submitting_input", startedAt: 1 }, failed: false })
   },
-  phase(value: SessionActivity) {
+  phase(value?: SessionActivity) {
     setSubmission(undefined)
     setStatus("running")
     setActivity(value)
+  },
+  connected: setConnected,
+  approval(value: boolean) {
+    setStatus(value ? "approval" : "running")
   },
   respond() {
     setSubmission(undefined)
@@ -274,6 +345,14 @@ window.__conversationProcess = {
     setData("message", "session", 3, "time", { created: 2, completed: 10 })
   },
   grow(count) {
+    for (let index = 0; index < count; index++) {
+      const id = `many-${index}`
+      arrivals.add(arrivalOwner, id, {
+        source: "live",
+        render: true,
+        previous: data.part.more.some((part) => part.id === id),
+      })
+    }
     setData(
       "part",
       "more",
@@ -362,9 +441,13 @@ window.__conversationProcess = {
     materializer.invalidate("work")
     setHasPage(false)
   },
+  contentPageFinish() {
+    finishPage?.()
+  },
 }
 const runtime = {
-  statusFor: (): SessionStatus => (status() === "running" ? { type: "busy", activity: activity() } : { type: "idle" }),
+  statusFor: (): SessionStatus =>
+    status() === "running" || status() === "approval" ? { type: "busy", activity: activity() } : { type: "idle" },
   permissionsFor: () => [],
   questionsFor: () => [],
   cortexTasks: () => [],
@@ -386,27 +469,34 @@ const resource = {
 render(
   () => (
     <I18nProvider i18n={setupI18n({ locale: "en", messages: { en: {} } })}>
-      <DialogProvider>
-        <ResourceOpenProvider value={resource}>
-          <MarkedProvider>
-            <DiffComponentProvider component={() => null}>
-              <DataProvider data={data} runtime={runtime} directory="/project" serverUrl="http://localhost">
-                <div ref={setScroll} style="height:600px;overflow:auto;width:700px" data-scroller>
-                  <VirtualConversationRows
-                    context={context as PluginConversationService}
-                    scrollRef={scroll()}
-                    submissionFor={() => submission()}
-                    executionFor={() => ({ rootID: "root", status: status(), startedAt: 1, stoppedAt: [] })}
-                  />
-                  <button type="button" data-outside-control>
-                    Outside conversation
-                  </button>
-                </div>
-              </DataProvider>
-            </DiffComponentProvider>
-          </MarkedProvider>
-        </ResourceOpenProvider>
-      </DialogProvider>
+      <ThemeProvider>
+        <DialogProvider>
+          <ResourceOpenProvider value={resource}>
+            <MarkedProvider>
+              <DiffComponentProvider component={() => null}>
+                <DataProvider data={data} runtime={runtime} directory="/project" serverUrl="http://localhost">
+                  <div ref={setScroll} style="height:600px;overflow:auto;width:700px;max-width:100%" data-scroller>
+                    <Show when={mounted()}>
+                      <VirtualConversationRows
+                        takePartArrival={arrivalView.take}
+                        liveRevision={arrivalView.revision}
+                        context={context as PluginConversationService}
+                        scrollRef={scroll()}
+                        submissionFor={() => submission()}
+                        executionFor={() => ({ rootID: "root", status: status(), startedAt: 1, stoppedAt: [] })}
+                        connected={connected}
+                      />
+                    </Show>
+                    <button type="button" data-outside-control>
+                      Outside conversation
+                    </button>
+                  </div>
+                </DataProvider>
+              </DiffComponentProvider>
+            </MarkedProvider>
+          </ResourceOpenProvider>
+        </DialogProvider>
+      </ThemeProvider>
     </I18nProvider>
   ),
   document.getElementById("root")!,

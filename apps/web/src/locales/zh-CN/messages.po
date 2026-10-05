@@ -1342,6 +1342,10 @@ msgid "app.attachment.office.unsupported"
 msgstr "此 Office 文件使用了暂不支持的格式，请下载原文件打开。"
 
 #. js-lingui-explicit-id
+msgid "app.attachment.openFailed"
+msgstr "无法打开附件"
+
+#. js-lingui-explicit-id
 msgid "app.attachment.pdf.fitWidth"
 msgstr "适应宽度"
 
@@ -17605,16 +17609,12 @@ msgid "session.process.interrupted"
 msgstr "已中断"
 
 #. js-lingui-explicit-id
+msgid "session.process.latest"
+msgstr "回到最新操作"
+
+#. js-lingui-explicit-id
 msgid "session.process.loadFailed"
 msgstr "无法加载过程详情。"
-
-#. js-lingui-explicit-id
-msgid "session.process.more"
-msgstr "下方还有更多操作"
-
-#. js-lingui-explicit-id
-msgid "session.process.newActions"
-msgstr "有新操作"
 
 #. js-lingui-explicit-id
 msgid "session.process.openSource"

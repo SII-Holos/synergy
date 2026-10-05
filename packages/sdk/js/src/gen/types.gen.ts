@@ -10347,6 +10347,7 @@ export type SessionPartSummary = {
   render?: boolean
   status?: string
   tool?: string
+  reasoningKey?: string
   content: SessionPartContentReference
 }
 
