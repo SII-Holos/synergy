@@ -272,6 +272,7 @@
   --color-text-on-warning-base: var(--text-on-warning-base);
   --color-text-on-warning-strong: var(--text-on-warning-strong);
   --color-text-on-warning-weak: var(--text-on-warning-weak);
+  --color-text-permission-full-access: var(--text-permission-full-access);
   --color-text-strong: var(--text-strong);
   --color-text-stronger: var(--text-stronger);
   --color-text-subtle: var(--text-subtle);

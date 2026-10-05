@@ -47,7 +47,7 @@ export const PERMISSION_MODES: PermissionModeVisual[] = [
     shortLabel: P.modeFullAccessShort,
     description: P.modeFullAccessDesc,
     icon: "permission.fullAccess",
-    iconClass: "text-text-on-warning-base",
+    iconClass: "text-text-permission-full-access",
   },
 ]
 
