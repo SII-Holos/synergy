@@ -2140,6 +2140,10 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
+          "glob": "src/components/user-message-content.tsx",
+          "reason": "apps/web/test/components/session/session-submission-status.dom.test.ts and apps/web/test/components/attachment-workbench/message.dom.test.ts exercise this shared renderer in Chromium, covering canonical identity, attachment disclosure, source view, metadata, preview and keyboard recovery. Vite/browser execution does not contribute Bun source LCOV; user-message-utils remains directly measured."
+        },
+        {
           "glob": "src/components/tool/anysearch-info.ts",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
