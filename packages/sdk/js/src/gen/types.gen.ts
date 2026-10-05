@@ -6609,7 +6609,7 @@ export type Config = {
    */
   timeout?: {
     /**
-     * Max wall-clock seconds for one assistant step (default: 21600 = 6h)
+     * Max wall-clock seconds for one assistant step (0 = disabled, default: 21600 = 6h)
      */
     invoke_sec?: number
     provider?: {
@@ -6628,11 +6628,11 @@ export type Config = {
     }
     tool?: {
       /**
-       * Default timeout per tool execution in seconds (default: 7200 = 2h)
+       * Default timeout per tool execution in seconds (0 = disabled, default: 7200 = 2h)
        */
       default_sec?: number
       /**
-       * Per-tool timeout overrides by tool name, e.g. { bash: 600, webfetch: 120 }
+       * Per-tool timeout overrides by tool name (0 = disabled), e.g. { bash: 600, webfetch: 120 }
        */
       overrides?: {
         [key: string]: number
@@ -10545,6 +10545,14 @@ export type QuestionInfo = {
    * Allow selecting multiple choices
    */
   multiple?: boolean
+  /**
+   * Allow a custom free-form answer; defaults to true
+   */
+  allow_custom?: boolean
+  /**
+   * Direct input; password replies are redacted from lifecycle events
+   */
+  input_type?: "text" | "password"
 }
 
 export type QuestionRequest = {
