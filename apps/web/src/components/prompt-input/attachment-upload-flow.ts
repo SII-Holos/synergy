@@ -1,4 +1,4 @@
-import type { UploadedAttachmentPart } from "@/context/prompt"
+import type { Prompt, UploadedAttachmentPart } from "@/context/prompt"
 import type { UploadedPromptAttachment } from "@/utils/prompt-attachment"
 import type { PendingAttachmentTracker } from "./pending-attachments"
 
@@ -10,6 +10,13 @@ export interface PendingAttachmentUploadInput {
   insertAttachment: (attachment: UploadedAttachmentPart) => void
   /** False once the destination changed mid-flight (e.g. session switch). */
   isDestinationCurrent: () => boolean
+}
+
+export function insertUploadedPromptAttachment(prompt: Prompt, attachment: UploadedAttachmentPart): Prompt {
+  const next = [...prompt]
+  const index = next.findIndex((part) => part.type === "attachment" && part.id.localeCompare(attachment.id) > 0)
+  next.splice(index < 0 ? next.length : index, 0, attachment)
+  return next
 }
 
 /**

@@ -8,6 +8,18 @@ import {
 } from "../../../src/components/prompt-input/composer-presentation"
 
 describe("long message presentation", () => {
+  test("attachments lower the automatic minimum without resetting a manual or expanded draft", () => {
+    expect(composerBodyLimits(500, 60, true).minimum).toBe(48)
+    expect(composerBodyLimits(500, 60, false).minimum).toBe(96)
+    expect(composerBodyLimits(120, 80, true).minimum).toBe(24)
+    const state = new ComposerPresentation()
+    state.setHeight(180)
+    state.expand()
+    composerBodyLimits(500, 60, true)
+    expect(state.manualHeight).toBe(180)
+    expect(state.expanded).toBe(true)
+    expect(composerBodyLimits(500, 60, false, 48).minimum).toBe(48)
+  })
   test("resize obeys measured chat height and uses a 32 pixel expansion hysteresis", () => {
     expect(composerBodyLimits(500, 60)).toEqual({ minimum: 96, automatic: 200, manual: 240 })
     const drag = new ComposerResizeGesture({ y: 300, height: 120, maximum: 240, minimum: 96 })

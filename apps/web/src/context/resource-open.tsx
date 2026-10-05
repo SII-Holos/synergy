@@ -1,7 +1,9 @@
 import { usePluginHost } from "@/plugin/host"
 import { useParams } from "@solidjs/router"
 import { toolReviewSource } from "./tool-review-target"
-import { onCleanup, onMount, type ParentProps } from "solid-js"
+import { createEffect, createSignal, lazy, Suspense, onCleanup, onMount, type ParentProps } from "solid-js"
+import { useLingui } from "@lingui/solid"
+import { showToast, toaster } from "@ericsanchezok/synergy-ui/toast"
 import {
   ResourceOpenProvider as BaseResourceOpenProvider,
   type OpenableResource,
@@ -20,11 +22,21 @@ import {
   type AttachmentFile,
 } from "@ericsanchezok/synergy-ui/attachment-card"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { createSessionDataView } from "@ericsanchezok/synergy-ui/context/session-data-view"
 import { useFile } from "@/context/file"
 import { useSDK } from "@/context/sdk"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { attachmentWorkbenchPanelInit } from "@/components/attachment-workbench/model"
 import { executionDetailState } from "@/components/session/execution-detail-model"
+import { useSync } from "@/context/sync"
+import { draftTransitionKey, useSessionTransition } from "@/context/session-transition"
+import { isOptimisticMessagePending } from "./session-optimistic-message"
+
+const DraftAttachmentPreview = lazy(() =>
+  import("@/components/attachment-workbench/draft-preview").then((module) => ({
+    default: module.DraftAttachmentPreview,
+  })),
+)
 
 function stripQueryAndHash(input: string) {
   const hashIndex = input.indexOf("#")
@@ -86,9 +98,85 @@ export function ResourceOpenProvider(props: ParentProps) {
   const dialog = useDialog()
   const file = useFile()
   const sdk = useSDK()
+  const sync = useSync()
+  const canonicalView = createSessionDataView(sync.data)
+  const transitions = useSessionTransition()
   const workbench = useWorkbenchPanels()
   const plugins = usePluginHost()
   const params = useParams()
+  const { _ } = useLingui()
+  const attachmentOpenings = new Set<string>()
+  const [openedAttachment, setOpenedAttachment] = createSignal<{
+    session: string
+    tabID: string
+    origin?: HTMLElement
+  }>()
+  let disposed = false
+  let draftDialog: string | undefined
+  onCleanup(() => {
+    disposed = true
+    attachmentOpenings.clear()
+    if (draftDialog) dialog.close(draftDialog)
+  })
+  createEffect(() => {
+    const opened = openedAttachment()
+    if (!opened) return
+    if (!workbench.isCurrent(opened.session)) {
+      setOpenedAttachment(undefined)
+      return
+    }
+    const side = workbench.surface("side")
+    if (side.opened() && side.tabs().some((tab) => tab.id === opened.tabID)) return
+    setOpenedAttachment(undefined)
+    queueMicrotask(() => {
+      if (opened.origin?.isConnected) opened.origin.focus({ preventScroll: true })
+    })
+  })
+
+  const openAttachmentPanel = (
+    attachment: AttachmentFile,
+    init: NonNullable<ReturnType<typeof attachmentWorkbenchPanelInit>>,
+  ) => {
+    const session = workbench.sessionKey()
+    const server = sdk.url
+    const scope = sdk.scopeKey
+    const origin = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+    const current = () => !disposed && workbench.isCurrent(session) && sdk.url === server && sdk.scopeKey === scope
+    const key = JSON.stringify([server, scope, session, init.resourceId])
+    const attempt = async () => {
+      if (!current() || attachmentOpenings.has(key)) return
+      attachmentOpenings.add(key)
+      try {
+        const tab = workbench.getPanel("attachment")
+          ? await workbench.openPanel("attachment", { reuseExisting: true, init })
+          : undefined
+        if (!current()) return
+        if (!tab) throw new Error("Attachment panel unavailable")
+        setOpenedAttachment({ session, tabID: tab.id, origin })
+      } catch {
+        if (!current()) return
+        const toastID = showToast({
+          type: "error",
+          persistent: true,
+          title: _({ id: "app.attachment.openFailed", message: "Couldn’t open attachment" }),
+          description: attachment.filename,
+          actions: [
+            {
+              label: _({ id: "app.workspace.panel.retry", message: "Retry" }),
+              onClick: () => {
+                toaster.dismiss(toastID)
+                void attempt()
+              },
+            },
+          ],
+        })
+      } finally {
+        attachmentOpenings.delete(key)
+      }
+    }
+    void attempt()
+    return true
+  }
 
   const openActivityDetail = (target: ActivityDetailTarget) => {
     if (params.id !== target.sessionID) return false
@@ -150,10 +238,59 @@ export function ResourceOpenProvider(props: ParentProps) {
   }
 
   const openAttachment = (attachment: AttachmentFile, options?: ResourceOpenOptions & { serverUrl?: string }) => {
+    const captured = () => {
+      const draft =
+        transitions.get(attachment.sessionID ?? "")?.draft ??
+        transitions.get(draftTransitionKey(sdk.url, sdk.scopeKey))?.draft
+      if (
+        !draft?.message ||
+        draft.message.sessionID !== attachment.sessionID ||
+        (draft.message.id !== attachment.messageID && draft.originalMessageID !== attachment.messageID) ||
+        !draft.parts?.some((part) => part.type === "attachment" && part.id === attachment.id)
+      )
+        return undefined
+      return draft
+    }
+    const canonical = () =>
+      canonicalView
+        .messagesFor(attachment.sessionID ?? "")
+        .some(
+          (message) =>
+            message.id === (captured()?.messageID ?? attachment.messageID) && !isOptimisticMessagePending(message),
+        )
+    const draft = captured()
+    if (draft && !canonical()) {
+      const server = sdk.url,
+        scope = sdk.scopeKey,
+        intent = draft.intent
+      let dialogID: string | undefined
+      dialogID = dialog.show(
+        () => (
+          <Suspense>
+            <DraftAttachmentPreview
+              file={attachment}
+              serverUrl={draft.serverUrl ?? options?.serverUrl ?? server}
+              isValid={() =>
+                !disposed &&
+                sdk.url === server &&
+                sdk.scopeKey === scope &&
+                (!params.id || params.id === attachment.sessionID) &&
+                (captured()?.intent === intent || canonical())
+              }
+              onInvalid={() => dialog.close(dialogID)}
+            />
+          </Suspense>
+        ),
+        () => {
+          if (draftDialog === dialogID) draftDialog = undefined
+        },
+      )
+      draftDialog = dialogID
+      return true
+    }
     const attachmentPanelInit = attachmentWorkbenchPanelInit(attachment)
     if (options?.prefer === "workspace" && attachmentPanelInit) {
-      void workbench.openPanel("attachment", { init: attachmentPanelInit })
-      return true
+      return openAttachmentPanel(attachment, attachmentPanelInit)
     }
     const path = attachmentPath(attachment)
     if (options?.prefer === "workspace" && path) return openWorkspaceFile(path)
@@ -169,10 +306,7 @@ export function ResourceOpenProvider(props: ParentProps) {
     }
 
     if (target === "attachment-workspace" && attachmentPanelInit) {
-      void workbench.openPanel("attachment", {
-        init: attachmentPanelInit,
-      })
-      return true
+      return openAttachmentPanel(attachment, attachmentPanelInit)
     }
 
     if (path) return openWorkspaceFile(path)

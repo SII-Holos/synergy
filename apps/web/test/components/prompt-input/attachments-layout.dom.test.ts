@@ -27,7 +27,7 @@ beforeAll(async () => {
         name: "attachment-layout-fixture",
         configureServer(server) {
           server.middlewares.use((req, res, next) => {
-            if (req.url !== "/") return next()
+            if (req.url?.split("?")[0] !== "/") return next()
             res.setHeader("Content-Type", "text/html")
             res.end('<div id="root"></div><script type="module" src="/composer-attachments.tsx"></script>')
           })
@@ -99,4 +99,21 @@ test("failure review scrolls to retry and removal restores adjacent focus withou
   for (const name of ["first.txt", "second.txt", "fourth.txt"])
     await page.getByRole("button", { name: `Remove ${name}` }).click()
   await page.waitForFunction(() => document.activeElement?.classList.contains("prompt-input-add-button"))
+})
+
+test("draft image uploads and completed previews keep the same 96 by 72 tile with cover cropping", async () => {
+  await page.goto(`${server.resolvedUrls!.local[0]}?image`)
+  const card = page.locator('[data-component="attachment-card"]')
+  await card.waitFor()
+  const pending = await card.boundingBox()
+  expect(pending?.width).toBe(96)
+  expect(pending?.height).toBe(72)
+  expect(await card.locator("img").evaluate((image) => getComputedStyle(image).objectFit)).toBe("cover")
+  await page.evaluate("window.fixture.fail()")
+  expect(await page.getByRole("button", { name: "Retry upload" }).isVisible()).toBe(true)
+  expect(await card.boundingBox()).toMatchObject({ width: 96, height: 72 })
+  await page.evaluate("window.fixture.complete()")
+  await page.getByRole("button", { name: "Open portrait.svg" }).waitFor()
+  expect(await card.boundingBox()).toMatchObject({ width: 96, height: 72 })
+  expect(await card.locator("img").evaluate((image) => getComputedStyle(image).objectFit)).toBe("cover")
 })

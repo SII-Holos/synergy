@@ -1,7 +1,7 @@
 import type { SessionInboxItem } from "@ericsanchezok/synergy-sdk/client"
 import type { DagNode, Message, Part, Session, FileDiff, Todo } from "@ericsanchezok/synergy-sdk"
 import { createSimpleContext } from "./helper"
-import { createSessionDataView, type SessionDataRuntime } from "./session-data-view"
+import { createSessionDataView, type SessionDataRuntime, type SessionDataView } from "./session-data-view"
 import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
 
 export type Data = {
@@ -51,6 +51,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
      * index instead of from `data`.
      */
     runtime?: SessionDataRuntime
+    view?: SessionDataView
     onPermissionRespond?: PermissionRespondFn
     onNavigateToSession?: NavigateToSessionFn
   }) => {
@@ -59,7 +60,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
         return props.data
       },
       get view() {
-        return createSessionDataView(props.data, props.runtime)
+        return props.view ?? createSessionDataView(props.data, props.runtime)
       },
       get directory() {
         return props.directory

@@ -210,11 +210,21 @@ const ACTIVITY_DESC = {
   stopping: defineDescriptor("session.activity.stopping", "Stopping"),
 } satisfies Record<SessionActivity["phase"], MessageDescriptor>
 
+type SessionActivityContext = { rootID?: string; approval?: boolean; question?: boolean; connected?: boolean }
+
+export function sessionActivityAnimating(status: SessionStatus | undefined, context?: SessionActivityContext): boolean {
+  if (context?.connected === false || context?.approval || context?.question) return false
+  const activity = status?.type === "busy" ? status.activity : undefined
+  if (!activity || (context?.rootID && activity.rootID && activity.rootID !== context.rootID)) return false
+  return activity.phase !== "stopping" && activity.phase !== "reconnecting"
+}
+
 export function sessionActivityLabel(
   status: SessionStatus | undefined,
   i18n?: I18n,
-  context?: { rootID?: string; approval?: boolean; question?: boolean },
+  context?: SessionActivityContext,
 ): string {
+  if (context?.connected === false) return resolveMsg(i18n, ACTIVITY_DESC.reconnecting)
   const activity = status?.type === "busy" ? status.activity : undefined
   const current = !context?.rootID || !activity?.rootID || activity.rootID === context.rootID
   if (current && activity?.phase === "stopping") return resolveMsg(i18n, ACTIVITY_DESC.stopping)

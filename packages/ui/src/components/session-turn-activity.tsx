@@ -14,6 +14,7 @@ import {
   type ActivitySummaryState,
 } from "@ericsanchezok/synergy-util/activity"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
+import { reasoningItemKey } from "@ericsanchezok/synergy-util/reasoning-item"
 import type { IconName } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import { timelineItemStableKey, type SessionTurnTimelineItem } from "./session-turn-timeline-item"
@@ -80,6 +81,8 @@ export type ActivityReasoningSummaryItem = ActivityTextSummary & {
   key: string
   message: AssistantMessage
   partID: string
+  partIDs?: string[]
+  continuation?: boolean
 }
 
 export type ActivitySummaryFact = {
@@ -306,12 +309,14 @@ export function projectAssistantActivityItems(input: {
   permissions: readonly PermissionRequest[]
   resolveToolInfo: ActivityToolInfoResolver
   isToolRenderBoundary?: (tool: string) => boolean
+  reasoningAnchors?: Readonly<Record<string, string>>
 }): ActivityTimelineItem[] {
   const result: ActivityTimelineItem[] = []
   const isRenderBoundary = input.isToolRenderBoundary ?? (() => false)
   const visibleByIdentity = new Map(input.visibleItems.map((item) => [timelineItemIdentity(item), item]))
   const visibleIdentities = new Set(visibleByIdentity.keys())
   let pendingGroup: ActivityGroupItem | undefined
+  let pendingReasoning: { item: ActivityReasoningSummaryItem; identity: string; anchor?: string } | undefined
 
   const flush = () => {
     if (!pendingGroup) return
@@ -321,12 +326,27 @@ export function projectAssistantActivityItems(input: {
   }
 
   for (const source of input.sourceItems) {
+    if (source.kind !== "reasoning") pendingReasoning = undefined
     if (!isOrdinaryTool(source, isRenderBoundary)) {
       flush()
       const visible = visibleByIdentity.get(timelineItemIdentity(source))
       if (source.kind === "reasoning") {
-        if (!visible) continue
-        result.push(reasoningSummary(input.message, source.part.id, visible.kind === "part"))
+        if (!visible) {
+          pendingReasoning = undefined
+          continue
+        }
+        const identity = reasoningItemKey(source.part.metadata)
+        const anchor = input.reasoningAnchors?.[source.part.id]
+        if (identity && pendingReasoning?.identity === identity && pendingReasoning.anchor === anchor) {
+          pendingReasoning.item.partIDs?.push(source.part.id)
+          continue
+        }
+        const item = reasoningSummary(input.message, anchor ?? source.part.id, visible.kind === "part")
+        item.partID = source.part.id
+        item.partIDs = [source.part.id]
+        item.continuation = anchor !== undefined && anchor !== source.part.id
+        result.push(item)
+        pendingReasoning = identity ? { item, identity, anchor } : undefined
         continue
       }
       if (!visible) continue

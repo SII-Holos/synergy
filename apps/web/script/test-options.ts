@@ -85,6 +85,7 @@ const playwrightIsolated = [
   "test/components/attachment-workbench/pptx-reader.dom.test.ts",
   "test/components/attachment-workbench/office-preview.dom.test.ts",
   "test/components/attachment-workbench/content.dom.test.ts",
+  "test/components/attachment-workbench/message.dom.test.ts",
   "test/components/attachment-workbench/office-integration.dom.test.ts",
   "test/components/prompt-input/composer-resize.dom.test.ts",
   "test/components/prompt-input/composer-motion.dom.test.ts",
@@ -124,6 +125,7 @@ export const testOptions = {
   isolated: playwrightIsolated,
   isolatedTimeoutMs: 120000,
   browserOnly: [
+    "test/context/session-submission-view.test.ts",
     "test/components/workspace/browser/browser-import-target.test.ts",
     "test/components/execution/controls.render.test.ts",
     "test/components/execution/trajectory.test.ts",

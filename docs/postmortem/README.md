@@ -10,7 +10,7 @@ Criteria:
 - **Systemic** — the bug escaped because of a gap in tests, tooling, or conventions, not a one-off typo.
 - **Costly to rediscover** — it cost real debugging time, and it would cost it again.
 
-Otherwise, write a bug fix with tests.
+Otherwise, fix with tests.
 
 ## Placement
 
@@ -29,6 +29,8 @@ Use the next `NNNN-kebab-case-title.md`. Sections:
 - **Lessons** — the durable takeaways.
 
 ## Index
+
+- [0048: Process stability](0048-process-layout-and-arrival-ownership.md)
 
 - [0046: Structured output retained tool intent](0046-structured-output-retained-tool-intent.md)
 

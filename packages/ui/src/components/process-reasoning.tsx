@@ -1,7 +1,7 @@
 import type { PluginConversationActivityView } from "@ericsanchezok/synergy-plugin"
 import type { ReasoningPart } from "@ericsanchezok/synergy-sdk/client"
 import { useLingui } from "@lingui/solid"
-import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
 import { createAutoScroll } from "../hooks/create-auto-scroll"
 import { Icon } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
@@ -10,7 +10,8 @@ import { useData } from "../context/data"
 import { createDisclosureMotionRef } from "../utils/disclosure-motion"
 import type { ActivityReasoningSummaryItem } from "./session-turn-activity"
 import "./activity-batch.css"
-import { useProcessViewport } from "./process-viewport"
+import { useProcessViewport, useProcessDisclosure } from "./process-viewport"
+import { useConversationMotion } from "./conversation-motion"
 
 export function ActivityReasoning(props: {
   item: ActivityReasoningSummaryItem
@@ -19,21 +20,27 @@ export function ActivityReasoning(props: {
   preview: boolean
   view?: PluginConversationActivityView
   onInspect?: () => void
+  onBeforeLayoutChange?: (event: Event) => void
 }) {
   const data = useData()
   const entries = () =>
     data.view
       .partsFor(props.item.message.id)
-      .filter((part): part is ReasoningPart => part.type === "reasoning" && part.id === props.item.partID)
+      .filter(
+        (part): part is ReasoningPart =>
+          part.type === "reasoning" && (props.item.partIDs ?? [props.item.partID]).includes(part.id),
+      )
   return (
     <ProcessReasoning
       entries={entries()}
       identity={props.item.key}
+      continuation={props.item.continuation}
       running={props.working && props.item.message.time.completed == null && entries().at(-1)?.time?.end == null}
       defaultOpen={props.initial && props.working}
       preview={props.preview}
       view={props.view}
       onInspect={props.onInspect}
+      onBeforeLayoutChange={props.onBeforeLayoutChange}
     />
   )
 }
@@ -41,17 +48,24 @@ export function ActivityReasoning(props: {
 export function ProcessReasoning(props: {
   entries: readonly ReasoningPart[]
   identity: string
+  continuation?: boolean
   running: boolean
   preview: boolean
   defaultOpen?: boolean
   view?: PluginConversationActivityView
   onInspect?: () => void
+  onBeforeLayoutChange?: (event: Event) => void
 }) {
   const { _ } = useLingui()
   const contained = useProcessViewport()
+  const disclosure = useProcessDisclosure()
+  let releaseDisclosure: (() => void) | undefined
+  onCleanup(() => releaseDisclosure?.())
+  const takeArrival = useConversationMotion()
   const [explicit, setExplicit] = createSignal<boolean>()
   const open = createMemo(() => props.view?.getExpanded(props.identity) ?? explicit() ?? props.defaultOpen === true)
   const text = () => props.entries.map((part) => part.text).join("\n\n")
+  const panelID = () => `${props.identity}:${props.entries[0]?.id ?? "empty"}:detail`
   const segments = createMemo(() => {
     const result: { messageID: string; entries: ReasoningPart[] }[] = []
     for (const part of props.entries) {
@@ -62,114 +76,140 @@ export function ProcessReasoning(props: {
     return result
   })
   const scroll = createAutoScroll({ working: () => open() && !contained })
-  createEffect(
-    on(open, (value) => {
-      if (value && !contained) scroll.forceScrollToBottom()
-    }),
-  )
   createEffect(() => {
     if (!open()) return
     text()
     scroll.scrollToBottom()
   })
-  const panelRef = createDisclosureMotionRef({ visible: open, animate: () => true })
+  const panelRef = createDisclosureMotionRef({
+    visible: open,
+    animate: () => true,
+    onSettled: () => {
+      const release = releaseDisclosure
+      releaseDisclosure = undefined
+      release?.()
+    },
+  })
+  const arrivalRef = createDisclosureMotionRef({
+    visible: () => true,
+    animate: () => true,
+    content: true,
+    appear: () => !!props.entries[0] && takeArrival(props.entries[0].id),
+  })
   return (
-    <div data-component="process-reasoning">
-      <button
-        type="button"
-        data-slot="process-reasoning-trigger"
-        aria-expanded={open()}
-        aria-controls={`${props.identity}:detail`}
-        aria-label={
-          open()
-            ? _({ id: "session.process.hideReasoning", message: "Hide reasoning" })
-            : _({ id: "session.process.viewReasoning", message: "View reasoning" })
-        }
-        onClick={() => {
-          const next = !open()
-          if (props.view) props.view.setExpanded(props.identity, next)
-          else setExplicit(next)
-          if (next) props.onInspect?.()
-        }}
+    <Show when={props.entries.length === 0 || text().trim().length > 0}>
+      <div
+        ref={arrivalRef}
+        data-component="process-reasoning"
+        data-part-id={props.entries[0]?.id}
+        data-reasoning-identity={props.identity}
+        data-reasoning-continuation={props.continuation ? "" : undefined}
       >
-        <Icon name={getSemanticIcon("performance.trace")} size="small" />
-        <span>
-          {props.running
-            ? _({ id: "session.process.thinking", message: "Thinking" })
-            : _({ id: "session.reasoning.title", message: "Reasoning" })}
-        </span>
-        <Show when={props.running}>
-          <span data-slot="activity-live-indicator" aria-hidden="true" />
-        </Show>
-        <Icon name={getSemanticIcon("navigation.expand")} size="small" />
-      </button>
-      <Show when={props.preview && !open()}>
-        <span data-slot="process-reasoning-preview">
-          {compactReasoningFirstLine(
-            segments()
-              .at(-1)
-              ?.entries.map((part) => part.text)
-              .join("\n\n") ?? "",
-          )}
-        </span>
-      </Show>
-      <div data-slot="process-reasoning-panel" ref={panelRef}>
-        <Show when={segments().length > 1 || scroll.userScrolled()}>
-          <div data-slot="reasoning-toolbar">
-            <Show when={segments().length > 1}>
-              <span>
-                {_({
-                  id: "session.reasoning.segments",
-                  message: "{count, plural, one {# reasoning segment} other {# reasoning segments}}",
-                  values: { count: segments().length },
-                })}
-              </span>
+        <Show when={!props.continuation}>
+          <button
+            type="button"
+            data-slot="process-reasoning-trigger"
+            aria-expanded={open()}
+            aria-controls={panelID()}
+            aria-label={
+              open()
+                ? _({ id: "session.process.hideReasoning", message: "Hide reasoning" })
+                : _({ id: "session.process.viewReasoning", message: "View reasoning" })
+            }
+            onClick={(event) => {
+              if (!contained) scroll.handleInteraction(event)
+              releaseDisclosure = disclosure?.disclose(event)
+              props.onBeforeLayoutChange?.(event)
+              const next = !open()
+              if (props.view) props.view.setExpanded(props.identity, next)
+              else setExplicit(next)
+              if (next) props.onInspect?.()
+            }}
+          >
+            <Icon name={getSemanticIcon("performance.trace")} size="small" />
+            <span>
+              {props.running
+                ? _({ id: "session.process.thinking", message: "Thinking" })
+                : _({ id: "session.reasoning.title", message: "Reasoning" })}
+            </span>
+            <Show when={props.running}>
+              <span data-slot="activity-live-indicator" aria-hidden="true" />
             </Show>
-            <button type="button" data-slot="reasoning-latest" onClick={() => scroll.forceScrollToBottom()}>
-              {_({ id: "session.reasoning.latest", message: "Latest reasoning" })}
-            </button>
-          </div>
+            <Icon name={getSemanticIcon("navigation.expand")} size="small" />
+          </button>
         </Show>
-        <div
-          id={`${props.identity}:detail`}
-          ref={(element) => {
-            if (!contained) scroll.scrollRef(element)
-          }}
-          onScroll={scroll.handleScroll}
-          onKeyDown={(event) => {
-            if (["ArrowUp", "PageUp", "Home"].includes(event.key)) scroll.handleInteraction()
-          }}
-          data-slot="process-reasoning-detail"
-          tabindex={contained ? undefined : "0"}
-          role="region"
-          aria-label={_({ id: "session.process.viewReasoning", message: "View reasoning" })}
-        >
-          <div ref={scroll.contentRef}>
-            <For each={segments().map((segment) => segment.messageID)}>
-              {(messageID, index) => (
-                <section data-slot="reasoning-segment" data-message-id={messageID}>
-                  <Show when={segments().length > 1}>
-                    <div data-slot="reasoning-segment-heading">
-                      {_({
-                        id: "session.reasoning.segment",
-                        message: "Reasoning {number}",
-                        values: { number: index() + 1 },
-                      })}
-                    </div>
-                  </Show>
-                  <For
-                    each={segments()
-                      .find((segment) => segment.messageID === messageID)
-                      ?.entries.map((part) => part.id)}
-                  >
-                    {(id) => <div data-reasoning-part={id}>{props.entries.find((part) => part.id === id)?.text}</div>}
-                  </For>
-                </section>
-              )}
-            </For>
+        <Show when={props.preview && !props.continuation && !open()}>
+          <span data-slot="process-reasoning-preview">
+            {compactReasoningFirstLine(
+              segments()
+                .at(-1)
+                ?.entries.map((part) => part.text)
+                .join("\n\n") ?? "",
+            )}
+          </span>
+        </Show>
+        <div data-slot="process-reasoning-panel" ref={panelRef}>
+          <Show when={segments().length > 1 || scroll.userScrolled()}>
+            <div data-slot="reasoning-toolbar">
+              <Show when={segments().length > 1}>
+                <span>
+                  {_({
+                    id: "session.reasoning.segments",
+                    message: "{count, plural, one {# reasoning segment} other {# reasoning segments}}",
+                    values: { count: segments().length },
+                  })}
+                </span>
+              </Show>
+              <button type="button" data-slot="reasoning-latest" onClick={() => scroll.forceScrollToBottom()}>
+                {_({ id: "session.reasoning.latest", message: "Latest reasoning" })}
+              </button>
+            </div>
+          </Show>
+          <div
+            id={panelID()}
+            ref={(element) => {
+              if (!contained) scroll.scrollRef(element)
+            }}
+            onScroll={scroll.handleScroll}
+            onKeyDown={(event) => {
+              if (["ArrowUp", "PageUp", "Home"].includes(event.key)) scroll.handleInteraction()
+            }}
+            data-slot="process-reasoning-detail"
+            tabindex={contained ? undefined : "0"}
+            role="region"
+            aria-label={_({ id: "session.process.viewReasoning", message: "View reasoning" })}
+          >
+            <div ref={scroll.contentRef}>
+              <For each={segments().map((segment) => segment.messageID)}>
+                {(messageID, index) => (
+                  <section data-slot="reasoning-segment" data-message-id={messageID}>
+                    <Show when={segments().length > 1}>
+                      <div data-slot="reasoning-segment-heading">
+                        {_({
+                          id: "session.reasoning.segment",
+                          message: "Reasoning {number}",
+                          values: { number: index() + 1 },
+                        })}
+                      </div>
+                    </Show>
+                    <For
+                      each={segments()
+                        .find((segment) => segment.messageID === messageID)
+                        ?.entries.map((part) => part.id)}
+                    >
+                      {(id) => (
+                        <div data-reasoning-part={id} data-part-id={id}>
+                          {props.entries.find((part) => part.id === id)?.text}
+                        </div>
+                      )}
+                    </For>
+                  </section>
+                )}
+              </For>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </Show>
   )
 }
