@@ -60,6 +60,7 @@ const playwrightIsolated = [
   "test/plugin/marketplace/marketplace.dom.test.tsx",
   "test/components/kanban/full-access-ack.test.ts",
   "test/components/prompt-input/full-access-ack.test.ts",
+  "test/components/prompt-input/permission-selector.dom.test.ts",
   "test/components/settings/panels/full-access-ack.test.ts",
   "test/components/settings/panels/StoragePanel.test.ts",
   "test/components/settings/panels/McpPanel.render.test.ts",

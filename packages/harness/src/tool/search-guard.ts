@@ -1,5 +1,8 @@
 import { RuntimeContext } from "../lifecycle/context"
-import type { MessageV2 } from "../session/message-v2"
+import { Identifier } from "../id/id"
+import { MessageV2 } from "../session/message-v2"
+import { Session } from "../session"
+import type { Tool } from "./tool"
 
 export namespace SearchGuard {
   export const REFLECTION_MARKER = "[Search failure reflection]"
@@ -19,6 +22,7 @@ export namespace SearchGuard {
   export interface SearchRecord {
     tool: string
     query?: string
+    signature?: string
     domain?: string
     failureType?: FailureType
     error?: string
@@ -33,17 +37,6 @@ export namespace SearchGuard {
     domainSummary?: string
   }
 
-  const runtimeState = RuntimeContext.state(() => ({
-    recentSearches: new Map<string, string[]>(),
-  }))
-  const MAX_RECENT_SEARCHES = 50
-
-  export function reset() {
-    const instanceState = runtimeState()
-
-    instanceState.recentSearches.clear()
-  }
-
   export function normalizeQuery(query: string | undefined): string {
     return (query ?? "")
       .toLowerCase()
@@ -52,56 +45,66 @@ export namespace SearchGuard {
       .trim()
   }
 
-  export function extractQuery(tool: string, input: any): string | undefined {
-    if (!input || typeof input !== "object") return undefined
-    if (tool === "webfetch" && typeof input.url === "string") return input.url
+  function objectInput(input: unknown): Record<string, unknown> | undefined {
+    return input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : undefined
+  }
+
+  export function extractQuery(_tool: string, input: unknown): string | undefined {
+    const value = objectInput(input)
+    if (!value) return undefined
+    for (const key of ["query", "url", "arxivId"]) {
+      if (typeof value[key] === "string" && value[key].trim()) return value[key]
+    }
+    for (const key of ["titleKeywords", "authors", "categories"]) {
+      const list = value[key]
+      if (Array.isArray(list) && list.length && list.every((item) => typeof item === "string")) return list.join(" ")
+    }
     return undefined
   }
 
-  export function extractDomain(input: any): string | undefined {
-    if (!input || typeof input !== "object" || typeof input.url !== "string") return undefined
+  export function extractDomain(input: unknown): string | undefined {
+    const value = objectInput(input)
+    if (typeof value?.url !== "string") return undefined
     try {
-      return new URL(input.url).hostname.replace(/^www\./, "")
+      return new URL(value.url).hostname.replace(/^www\./, "")
     } catch {
       return undefined
     }
   }
 
-  export function signature(tool: string, input: any): string | undefined {
-    const query = normalizeQuery(extractQuery(tool, input))
+  export function signature(tool: string, input: unknown): string | undefined {
+    const value = objectInput(input)
+    const query =
+      typeof value?.url === "string" && value.query === undefined
+        ? value.url.trim()
+        : normalizeQuery(extractQuery(tool, input))
     if (!query) return undefined
 
     const filters: Record<string, unknown> = {}
-    for (const key of [
-      "categories",
-      "startDate",
-      "endDate",
-      "titleKeywords",
-      "authors",
-      "timeRange",
-      "language",
-      "numResults",
-      "topK",
-      "format",
-    ]) {
-      if (input?.[key] !== undefined) filters[key] = input[key]
+    for (const key of Object.keys(value ?? {}).sort()) {
+      if (["query", "url", "arxivId", "timeoutSeconds"].includes(key) || value![key] === undefined) continue
+      const filter = value![key]
+      filters[key] =
+        ["categories", "authors", "titleKeywords"].includes(key) &&
+        Array.isArray(filter) &&
+        filter.every((item) => typeof item === "string")
+          ? [...filter].sort()
+          : filter
     }
 
     return `${tool}:${query}:${JSON.stringify(filters)}`
   }
 
-  export function checkDuplicate(sessionID: string, tool: string, input: any) {
-    const instanceState = runtimeState()
-
+  export function checkDuplicate(records: readonly SearchRecord[], tool: string, input: unknown) {
     const key = signature(tool, input)
     if (!key) return undefined
-    const recent = instanceState.recentSearches.get(sessionID) ?? []
-    if (!recent.includes(key)) return undefined
+    if (!records.some((record) => (record.signature ?? signature(record.tool, { query: record.query })) === key))
+      return undefined
 
     return {
       query: extractQuery(tool, input) ?? "",
       output: [
-        "Search skipped: this exact query and filter set was already tried in this session.",
+        "Search skipped: this exact query and filter set was already tried in this root task.",
         "",
         `Tool: ${tool}`,
         `Query: ${extractQuery(tool, input) ?? "(empty)"}`,
@@ -111,20 +114,11 @@ export namespace SearchGuard {
     }
   }
 
-  export function recordAttempt(sessionID: string, tool: string, input: any) {
-    const instanceState = runtimeState()
-
-    const key = signature(tool, input)
-    if (!key) return
-    const recent = instanceState.recentSearches.get(sessionID) ?? []
-    recent.push(key)
-    instanceState.recentSearches.set(sessionID, recent.slice(-MAX_RECENT_SEARCHES))
-  }
-
   export function classifyHttpStatus(status: number): FailureType | undefined {
     if (status === 403) return "http_403"
     if (status === 404) return "http_404"
-    if (status === 408 || status === 429 || status >= 500) return "blocked_or_unavailable"
+    if (status === 408) return "timeout"
+    if (status === 429 || status >= 500) return "blocked_or_unavailable"
     return undefined
   }
 
@@ -132,7 +126,8 @@ export namespace SearchGuard {
     const text = error.toLowerCase()
     if (/\b403\b/.test(text) || text.includes("forbidden")) return "http_403"
     if (/\b404\b/.test(text) || text.includes("not found")) return "http_404"
-    if (text.includes("timed out") || text.includes("timeout") || text.includes("aborterror")) return "timeout"
+    if (/\b408\b/.test(text) || text.includes("timed out") || text.includes("timeout") || text.includes("aborterror"))
+      return "timeout"
     if (
       text.includes("holoscapabilityunavailableerror") ||
       text.includes("connection was lost") ||
@@ -150,9 +145,9 @@ export namespace SearchGuard {
   export function classifyCompleted(part: MessageV2.ToolPart): FailureType | undefined {
     if (part.state.status !== "completed") return undefined
     const metadata = part.state.metadata ?? {}
-    if (typeof metadata.searchFailureType === "string") return metadata.searchFailureType as FailureType
+    if (isFailureType(metadata.searchFailureType)) return metadata.searchFailureType
     const output = part.state.output.toLowerCase()
-    if (output.includes("no search results found") || output.includes("no papers found matching")) return "no_results"
+    if (output.includes("no search results") || output.includes("no papers found matching")) return "no_results"
     if (output.includes("search skipped: this exact query")) return "duplicate_query"
     if (output.includes("search quality warning")) return "low_quality_results"
     return undefined
@@ -165,10 +160,12 @@ export namespace SearchGuard {
     if (!tools.has(part.tool)) return undefined
     const query = extractQuery(part.tool, part.state.input)
     const domain = extractDomain(part.state.input)
+    const key = signature(part.tool, part.state.input)
     if (part.state.status === "error") {
       return {
         tool: part.tool,
         query,
+        signature: key,
         domain,
         error: part.state.error,
         failureType: classifyError(part.state.error) ?? "blocked_or_unavailable",
@@ -178,6 +175,7 @@ export namespace SearchGuard {
       return {
         tool: part.tool,
         query,
+        signature: key,
         domain,
         failureType: classifyCompleted(part),
       }
@@ -185,7 +183,102 @@ export namespace SearchGuard {
     return undefined
   }
 
-  export function trailingFailures(records: SearchRecord[]): SearchRecord[] {
+  export function recordsForRoot(
+    messages: readonly MessageV2.WithParts[],
+    rootMessageID: string,
+    searchTools: ReadonlySet<string> = SEARCH_TOOLS,
+  ): SearchRecord[] {
+    const canonical = MessageV2.deriveSemantics([...messages])
+    const rootIndex = canonical.findIndex((message) => message.info.id === rootMessageID)
+    if (rootIndex < 0) return []
+    const records: SearchRecord[] = []
+    for (const message of canonical.slice(rootIndex + 1)) {
+      if (message.info.role === "user" && message.info.isRoot === true) break
+      if (message.info.role !== "assistant" || message.info.rootID !== rootMessageID) continue
+      for (const part of message.parts) {
+        if (part.type !== "tool") continue
+        const record = buildRecord(part, searchTools)
+        if (record) records.push(record)
+      }
+    }
+    return records
+  }
+
+  export async function recordsForRootDurable(input: {
+    scopeID: string
+    sessionID: string
+    rootMessageID: string
+    searchTools?: ReadonlySet<string>
+    signal?: AbortSignal
+  }): Promise<SearchRecord[]> {
+    const batches: SearchRecord[][] = []
+    for await (const raw of MessageV2.readNewestInfos({
+      scopeID: Identifier.asScopeID(input.scopeID),
+      sessionID: Identifier.asSessionID(input.sessionID),
+    })) {
+      input.signal?.throwIfAborted()
+      const info = MessageV2.Info.parse(raw)
+      if (info.id === input.rootMessageID) return batches.toReversed().flat()
+      if (info.role === "user" && info.isRoot === true) return []
+      if (info.role !== "assistant" || info.rootID !== input.rootMessageID) continue
+      const parts = await MessageV2.parts({ scopeID: input.scopeID, sessionID: input.sessionID, messageID: info.id })
+      input.signal?.throwIfAborted()
+      batches.push(
+        parts.flatMap((part) => {
+          if (part.type !== "tool") return []
+          const record = buildRecord(MessageV2.ToolPart.parse(part), input.searchTools)
+          return record ? [record] : []
+        }),
+      )
+    }
+    return []
+  }
+
+  export async function checkDuplicateForContext(
+    context: Pick<Tool.Context, "sessionID" | "messageID" | "abort">,
+    tool: string,
+    input: unknown,
+    searchTools: ReadonlySet<string> = SEARCH_TOOLS,
+  ) {
+    context.abort.throwIfAborted()
+    if (!searchTools.has(tool)) return undefined
+    const session = await Session.get(context.sessionID)
+    const scopeID = session.scope.id
+    const { info } = await MessageV2.get({ scopeID, sessionID: context.sessionID, messageID: context.messageID })
+    if (info.role !== "assistant" || !info.rootID)
+      throw new Error("Search admission requires a persisted assistant root")
+    const root = await MessageV2.get({ scopeID, sessionID: context.sessionID, messageID: info.rootID })
+    if (root.info.role !== "user" || root.info.isRoot !== true)
+      throw new Error("Search admission requires a persisted user root")
+    return checkDuplicate(
+      await recordsForRootDurable({
+        scopeID,
+        sessionID: context.sessionID,
+        rootMessageID: info.rootID,
+        searchTools,
+        signal: context.abort,
+      }),
+      tool,
+      input,
+    )
+  }
+
+  function isFailureType(value: unknown): value is FailureType {
+    return (
+      typeof value === "string" &&
+      [
+        "no_results",
+        "http_403",
+        "http_404",
+        "timeout",
+        "blocked_or_unavailable",
+        "low_quality_results",
+        "duplicate_query",
+      ].includes(value)
+    )
+  }
+
+  export function trailingFailures(records: readonly SearchRecord[]): SearchRecord[] {
     const failures: SearchRecord[] = []
     for (let i = records.length - 1; i >= 0; i--) {
       const record = records[i]
@@ -364,7 +457,7 @@ export const SearchFailureAnalyzer: ToolFailureAnalyzer = {
     if (pattern.type === "early_stop") {
       return [
         this.earlyStopMarker,
-        `Scholar search has continued to fail after reflection (${pattern.failures.length} consecutive failed or unusable search/fetch attempts).`,
+        `Search has continued to fail after reflection (${pattern.failures.length} consecutive failed or unusable search/fetch attempts).`,
         "",
         "Stop calling search tools for this turn unless the user explicitly asks for more attempts.",
         "",
@@ -385,7 +478,7 @@ export const SearchFailureAnalyzer: ToolFailureAnalyzer = {
 
     return [
       this.reflectionMarker,
-      `The last ${pattern.failures.length} scholar search/fetch attempts failed or produced unusable results.`,
+      `The last ${pattern.failures.length} search/fetch attempts failed or produced unusable results.`,
       "",
       "Recent failed attempts:",
       formatFailuresForPattern(pattern.failures),
@@ -408,9 +501,14 @@ const runtimeState = RuntimeContext.state(() => ({
 }))
 
 export function registerFailureAnalyzer(analyzer: ToolFailureAnalyzer) {
+  RuntimeContext.assertCompositionOpen("Tool failure analyzers")
   const instanceState = runtimeState()
 
-  instanceState.failureAnalyzers.set(analyzer.category, analyzer)
+  instanceState.failureAnalyzers.set(analyzer.category, {
+    ...analyzer,
+    tools: new Set(analyzer.tools),
+    agentFilter: analyzer.agentFilter ? [...analyzer.agentFilter] : undefined,
+  })
 }
 
 export function getFailureAnalyzers(): ReadonlyMap<string, ToolFailureAnalyzer> {

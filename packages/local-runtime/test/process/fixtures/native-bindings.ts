@@ -34,7 +34,7 @@ const owned = await OwnedProcess.prepare({
   args: ["-e", "process.stdout.write('owned-output'); process.stderr.write('owned-error')"],
   cwd: directory,
   env: process.env,
-  lease,
+  ownership: lease,
 })
 const stdout = buffer(owned.child.stdout),
   stderr = buffer(owned.child.stderr)

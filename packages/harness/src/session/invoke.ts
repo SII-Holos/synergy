@@ -940,6 +940,12 @@ export namespace SessionInvoke {
               }
 
               try {
+                await SessionExecutionContributions.prepareModel(session, {
+                  messageID: processor.message.id,
+                  rootMessageID: R.id,
+                  agent: agent.name,
+                  signal: abort,
+                })
                 await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
               } catch (error) {
                 await completeAssistantWithError({ sessionID, processor, model, error, abort })
@@ -1031,6 +1037,7 @@ export namespace SessionInvoke {
               const workflowContext = {
                 deliveryMetadata: channelDeliveryMetadata(msgs, lastFinishedIndex),
                 agentName: agent.name,
+                toolIDs: Object.freeze(toolDefinitions.map((tool) => tool.id)),
               }
               if (session) {
                 const contribution = workflowKind ? WorkflowPromptRegistry.get(workflowKind) : undefined
@@ -1351,10 +1358,13 @@ export namespace SessionInvoke {
                 rejectDeadline = reject
               })
               deadlinePromise.catch(() => {})
-              const turnTimer = setTimeout(() => {
-                turnDeadline.abort(deadlineError)
-                rejectDeadline(deadlineError)
-              }, timeoutCfg.invokeMs)
+              const turnTimer =
+                timeoutCfg.invokeMs === 0
+                  ? undefined
+                  : setTimeout(() => {
+                      turnDeadline.abort(deadlineError)
+                      rejectDeadline(deadlineError)
+                    }, timeoutCfg.invokeMs)
               const onSessionAbort = () => clearTimeout(turnTimer)
               abort.addEventListener("abort", onSessionAbort, { once: true })
               const combinedAbort = AbortSignal.any([abort, turnDeadline.signal])

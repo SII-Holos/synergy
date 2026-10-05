@@ -1,4 +1,8 @@
 import type { Message, SessionPartSummary } from "@ericsanchezok/synergy-sdk"
+import { isActivityGroupableTool } from "@ericsanchezok/synergy-util/activity"
+
+const isExecutionPart = (part: SessionPartSummary) =>
+  part.type === "reasoning" || (part.type === "tool" && isActivityGroupableTool(part.tool ?? ""))
 
 import {
   ACTIVITY_FAMILY_ORDER,
@@ -64,6 +68,8 @@ export function buildConversationRows(input: {
 }): ConversationRow[] {
   const rows: ConversationRow[] = []
   const messageKey = input.messageKey ?? ((id: string) => id)
+  const partsFor = (messageID: string) =>
+    input.summaries(messageID).filter((part) => part.render !== false && part.type !== "compaction")
   const previousBlocks =
     input.previous?.flatMap((row) =>
       row.kind === "process" ? (row.activities ?? []) : row.kind === "activity" ? [row.activity] : [],
@@ -111,20 +117,17 @@ export function buildConversationRows(input: {
     }
     const isProcessPart = (message: Message, parts: readonly SessionPartSummary[], index: number) =>
       message.role === "assistant" &&
-      (parts[index].type === "tool" ||
-        parts[index].type === "reasoning" ||
+      (isExecutionPart(parts[index]) ||
         (parts[index].type === "text" &&
           (message.id !== lastAssistant?.id ||
             message.finish === "tool-calls" ||
-            parts.slice(index + 1).some((part) => part.type === "tool"))))
+            parts.slice(index + 1).some((part) => part.type === "tool" && isExecutionPart(part)))))
     const process = processState && {
       ...processState,
-      hasTurnContent: messages.some(
-        (message) => message.role === "assistant" && input.summaries(message.id).some((part) => part.render !== false),
-      ),
+      hasTurnContent: messages.some((message) => message.role === "assistant" && partsFor(message.id).length > 0),
       hasContent: messages.some((message) => {
         if (eventFor(message)) return true
-        const parts = input.summaries(message.id).filter((part) => part.render !== false)
+        const parts = partsFor(message.id)
         return parts.some((_, index) => isProcessPart(message, parts, index))
       }),
     }
@@ -136,7 +139,7 @@ export function buildConversationRows(input: {
         rows.push({ key: `${messageKey(root.id)}:process`, root, message: root, kind: "process", process })
         header = true
       }
-      const parts = input.summaries(message.id).filter((part) => part.render !== false)
+      const parts = partsFor(message.id)
       const page = input.page(message.id)
       if (event) {
         if (
@@ -198,12 +201,12 @@ export function buildConversationRows(input: {
             offset++
           }
         }
-        if (process && ["tool", "reasoning"].includes(parts[first].type)) {
+        if (process && isExecutionPart(parts[first])) {
           while (
             offset < parts.length &&
             offset - first < 6 &&
             !boundaries.has(`${messageKey(message.id)}:${parts[offset].id}`) &&
-            ["tool", "reasoning"].includes(parts[offset].type) &&
+            isExecutionPart(parts[offset]) &&
             bytes + bodyBytes(parts[offset]) <= 128 * 1024
           ) {
             bytes += bodyBytes(parts[offset])
@@ -263,9 +266,7 @@ function groupActivities(
     if (
       row.process &&
       row.kind === "body" &&
-      (row.event ||
-        (row.message.role === "assistant" &&
-          row.parts.every((part) => part.type === "tool" || part.type === "reasoning")))
+      (row.event || (row.message.role === "assistant" && row.parts.every(isExecutionPart)))
     ) {
       if (!block) {
         block = {

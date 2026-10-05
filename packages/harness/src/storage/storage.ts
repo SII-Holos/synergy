@@ -18,6 +18,7 @@ import {
 import { measureStorageOperation } from "./measure"
 import { ObservabilityIssues } from "../observability/issues"
 import { ObservabilityResources } from "../observability/resources"
+import { StorageEventSinks } from "./event-sinks"
 
 export namespace Storage {
   export const NotFoundError = MissingRecord
@@ -33,6 +34,7 @@ export namespace Storage {
     effects?: Array<() => Promise<unknown> | void>
     settled?: Array<() => void>
     pending?: Promise<unknown>[]
+    eventCapture?: Promise<void>
   }
   const context = new AsyncLocalStorage<Context>()
 
@@ -171,7 +173,12 @@ export namespace Storage {
     const active = context.getStore()
     if (!active?.transaction || !active.effects || !active.pending)
       throw new StorageConflictError("An event requires a write transaction")
-    const pending = active.transaction.enqueue(event)
+    const tx = active.transaction
+    const pending = (active.eventCapture ?? Promise.resolve()).then(async () => {
+      await StorageEventSinks.capture(tx, event)
+      await tx.enqueue(event)
+    })
+    active.eventCapture = pending
     active.pending.push(pending)
     void pending.catch(() => {})
     active.effects.push(async () => {

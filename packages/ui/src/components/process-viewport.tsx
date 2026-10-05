@@ -1,4 +1,5 @@
 import {
+  batch,
   createContext,
   createEffect,
   createMemo,
@@ -141,6 +142,7 @@ export function ProcessViewport(
   let layoutReleaseFrame: number | undefined
   let layoutPending = false
   let releaseFrame: number | undefined
+  let measureFrame: number | undefined
   let resumeRequested = false
   let explicitFollow = false
   let previousOffset = 0
@@ -177,8 +179,12 @@ export function ProcessViewport(
     })
   }
   const measureEdges = () => {
-    setAbove(viewport.scrollTop > 1)
-    setBelow(viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop > 2)
+    const top = viewport.scrollTop
+    const remaining = viewport.scrollHeight - viewport.clientHeight - top
+    batch(() => {
+      setAbove(top > 1)
+      setBelow(remaining > 2)
+    })
   }
   const pause = () => {
     if (restoreFrame !== undefined) cancelAnimationFrame(restoreFrame)
@@ -252,12 +258,24 @@ export function ProcessViewport(
   )
   onMount(() => {
     const measure = () => {
-      setOverflow(viewport.scrollHeight > viewport.clientHeight + 1)
-      measureEdges()
+      const height = viewport.clientHeight
+      const contentHeight = viewport.scrollHeight
+      const top = viewport.scrollTop
+      batch(() => {
+        setOverflow(contentHeight > height + 1)
+        setAbove(top > 1)
+        setBelow(contentHeight - height - top > 2)
+      })
       if (explicitFollow && following()) follow(true)
       else if (!following()) preserve()
     }
-    const observer = new ResizeObserver(measure)
+    const observer = new ResizeObserver(() => {
+      if (measureFrame !== undefined) return
+      measureFrame = requestAnimationFrame(() => {
+        measureFrame = undefined
+        measure()
+      })
+    })
     observer.observe(viewport)
     observer.observe(content)
     const mutations = new MutationObserver(() => {
@@ -300,6 +318,7 @@ export function ProcessViewport(
     if (restoreFrame !== undefined) cancelAnimationFrame(restoreFrame)
     if (layoutReleaseFrame !== undefined) cancelAnimationFrame(layoutReleaseFrame)
     if (releaseFrame !== undefined) cancelAnimationFrame(releaseFrame)
+    if (measureFrame !== undefined) cancelAnimationFrame(measureFrame)
   })
   return (
     <div

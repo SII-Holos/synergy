@@ -17,7 +17,8 @@ const runtimeState = RuntimeContext.state(() => ({
   registered: false,
 }))
 
-export function registerNoteTools(): void {
+/** Register owned history when a host supplies its own tool catalog. */
+export function registerNoteToolInputHistory(): void {
   Tool.registerInputHistory("note", {
     note_write: {
       id: "noteId",
@@ -38,20 +39,20 @@ export function registerNoteTools(): void {
       ids: "noteIds",
     },
   })
+}
 
+export function registerNoteTools(): void {
+  registerNoteToolInputHistory()
   const instanceState = runtimeState()
 
   registerToolGroup()
   if (instanceState.registered) return
   instanceState.registered = true
 
-  ToolRegistry.registerToolProvider("note", () => [
-    NoteArchiveTool,
-    NoteListTool,
-    NoteReadTool,
-    NoteSearchTool,
-    NoteWriteTool,
-    NoteEditTool,
-    NoteDeleteTool,
-  ])
+  ToolRegistry.registerToolProvider("note", noteTools)
+}
+
+/** Complete toolkit for hosts that own group metadata and registration. */
+export function noteTools() {
+  return [NoteArchiveTool, NoteListTool, NoteReadTool, NoteSearchTool, NoteWriteTool, NoteEditTool, NoteDeleteTool]
 }

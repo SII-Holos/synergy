@@ -154,7 +154,7 @@ test(
                   args: ["-e", "process.stdin.resume()"],
                   cwd: tmp.path,
                   env: {},
-                  lease,
+                  ownership: lease,
                 })
                 owned.child.stdout.resume()
                 owned.child.stderr.resume()

@@ -67,7 +67,7 @@ nativeTest(
       ],
       cwd: directory.path,
       env: { ...environment(), VALUE: "explicit" },
-      lease,
+      ownership: lease,
     })
     const diagnostics = setTimeout(() => {
       console.error("Windows binary process drainage", owned.diagnostics())
@@ -132,7 +132,7 @@ for (const terminal of [false, true])
         args: ["-e", root],
         cwd: directory.path,
         env: environment(),
-        lease,
+        ownership: lease,
         pty: terminal ? { cols: 80, rows: 24, library: NativePty.libraryPath() } : undefined,
       })
       owned.child.stdout.resume()
@@ -188,7 +188,7 @@ nativeTest(
     import { OwnedProcess } from ${JSON.stringify(path.resolve(import.meta.dir, "../../src/process/owned-process.ts"))};
     import { WorkspaceCoordinator } from ${JSON.stringify(path.resolve(import.meta.dir, "../../src/workspace/coordinator.ts"))};
     const lease=await new WorkspaceCoordinator({directory:${JSON.stringify(locks)}}).acquire({id:crypto.randomUUID(),owner:'crashing',ancestors:[],kind:'process',roots:[${JSON.stringify(directory.path)}]});
-    const owned=await OwnedProcess.prepare({command:process.execPath,args:['-e',${JSON.stringify(command)}],cwd:${JSON.stringify(directory.path)},env:process.env,lease});
+    const owned=await OwnedProcess.prepare({command:process.execPath,args:['-e',${JSON.stringify(command)}],cwd:${JSON.stringify(directory.path)},env:process.env,ownership:lease});
     owned.child.stdout.resume();owned.child.stderr.resume();await owned.activate();setInterval(()=>{},1000);
   `,
     )
@@ -233,7 +233,7 @@ nativeTest(
       args: ["-e", `await Bun.write(${JSON.stringify(marker)}, 'bad')`],
       cwd: directory.path,
       env: environment(),
-      lease,
+      ownership: lease,
     })
     owned.child.stdout.resume()
     owned.child.stderr.resume()

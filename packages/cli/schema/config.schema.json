@@ -104,9 +104,9 @@
       "type": "object",
       "properties": {
         "invoke_sec": {
-          "description": "Max wall-clock seconds for one assistant step (default: 21600 = 6h)",
+          "description": "Max wall-clock seconds for one assistant step (0 = disabled, default: 21600 = 6h)",
           "type": "number",
-          "exclusiveMinimum": 0
+          "minimum": 0
         },
         "provider": {
           "type": "object",
@@ -135,15 +135,15 @@
           "type": "object",
           "properties": {
             "default_sec": {
-              "description": "Default timeout per tool execution in seconds (default: 7200 = 2h)",
+              "description": "Default timeout per tool execution in seconds (0 = disabled, default: 7200 = 2h)",
               "type": "number",
-              "exclusiveMinimum": 0
+              "minimum": 0
             },
             "overrides": {
-              "description": "Per-tool timeout overrides by tool name, e.g. { bash: 600, webfetch: 120 }",
+              "description": "Per-tool timeout overrides by tool name (0 = disabled), e.g. { bash: 600, webfetch: 120 }",
               "type": "object",
               "propertyNames": { "type": "string" },
-              "additionalProperties": { "type": "number", "exclusiveMinimum": 0 }
+              "additionalProperties": { "type": "number", "minimum": 0 }
             }
           },
           "additionalProperties": false

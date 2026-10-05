@@ -71,6 +71,7 @@ export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => {
       const session = await Session.get(ctx.sessionID)
       const catalog = await ToolDiscovery.collect({
         providerID: ToolDiscovery.providerIDFromModel(ctx.extra?.model),
+        model: ctx.extra?.model,
         agent,
         session,
         userTools: ctx.extra?.userTools,

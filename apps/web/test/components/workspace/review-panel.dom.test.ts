@@ -650,7 +650,7 @@ test("same-mount reading changes preserve the scroll anchor and line/comment sel
     await line.click()
     await page.getByRole("textbox", { name: "Comment", exact: true }).fill("retained comment")
     const firstLine = viewer.getByRole("button", { name: name!, exact: true })
-    const before = await firstLine.boundingBox()
+    const before = await firstLine.evaluate((element) => element.getBoundingClientRect().toJSON())
     for (const action of ["files", "wrap", "layout"] as const) {
       if (action === "files") await page.getByRole("button", { name: "Hide files", exact: true }).click()
       else if (action === "wrap") await page.getByRole("button", { name: "Wrap lines", exact: true }).click()
@@ -659,8 +659,8 @@ test("same-mount reading changes preserve the scroll anchor and line/comment sel
         await page.getByRole("option", { name: "Unified", exact: true }).click()
       }
       await firstLine.waitFor()
-      const after = await firstLine.boundingBox()
-      expect(Math.abs(after!.y - before!.y)).toBeLessThan(30)
+      const after = await firstLine.evaluate((element) => element.getBoundingClientRect().toJSON())
+      expect(Math.abs(after.y - before.y)).toBeLessThan(30)
       expect(await page.getByRole("textbox", { name: "Comment", exact: true }).inputValue()).toBe("retained comment")
     }
     const lineCount = await viewer.locator("[data-line]").count()

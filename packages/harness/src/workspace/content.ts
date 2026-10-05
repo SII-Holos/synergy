@@ -42,7 +42,11 @@ export namespace WorkspaceContent {
     () => [] as Array<{ store: BlobStore; hash: string; bytes: number; tree: WorkspaceTree.Manifest }>,
   )
   export const Spec = z
-    .object({ blobStore: z.string().min(1), settings: z.record(z.string(), z.unknown()).optional() })
+    .object({
+      blobStore: z.string().min(1),
+      settings: z.record(z.string(), z.unknown()).optional(),
+      virtualRoot: WorkspaceTree.VirtualRoot.optional(),
+    })
     .strict()
   export type Selection = { workspaceID: string; scopeID: string; generation?: number }
 

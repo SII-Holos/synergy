@@ -72,7 +72,8 @@ test("one logical write commits its evidence before acknowledging the usage outb
       })
       expect(await RolloutJournal.write(target, key, run(target, "running"))).toBe(1)
     }
-    expect(commits).toBe(2)
+    // Evidence and external capture share one commit; usage and the inert notification are acknowledged afterward.
+    expect(commits).toBe(3)
     expect(await RolloutJournal.head(target)).toEqual({ allocated: 1, committed: 1 })
   }))
 

@@ -243,6 +243,40 @@ test("prepending user content preserves existing group starts and one final meta
   expect(bodies.filter((row) => row.after)).toHaveLength(1)
 })
 
+test("repeated compaction control markers do not create body rows or duplicate attempt events", () => {
+  const text = { ...parts[0], id: "request-text", messageID: root.id, type: "text" } as SessionPartSummary
+  const markers = Array.from({ length: 8 }, (_, index) => ({
+    ...text,
+    id: `marker-${index}`,
+    type: "compaction",
+    render: true,
+  })) as SessionPartSummary[]
+  const attempts = markers.map((_, index) => ({
+    ...reply,
+    id: `attempt-${index}`,
+    metadata: { compactionAttempt: { state: "committed" } },
+  })) as Message[]
+  for (const open of [false, true]) {
+    const rows = buildConversationRows({
+      timeline: [root],
+      messagesFor: () => attempts,
+      summaries: (id) =>
+        id === root.id
+          ? [text, ...markers]
+          : [{ ...text, id: `${id}-recovery`, messageID: id, type: "compaction_recovery" }],
+      page: () => ({ hasMore: false }),
+      process: () => ({ open, working: false }),
+    })
+    const bodies = rows.filter((row) => row.kind === "body")
+    expect(
+      bodies.filter((row) => row.message.id === root.id).flatMap((row) => row.parts.map((part) => part.id)),
+    ).toEqual([text.id])
+    expect(bodies.filter((row) => row.event === "compaction").map((row) => row.message.id)).toEqual(
+      open ? attempts.map((message) => message.id) : [],
+    )
+  }
+})
+
 test("a manual compaction request yields to its canonical attempt without a stale running row", () => {
   const boundary = { ...root, metadata: { compactionBoundary: true } } as Message
   const request = { ...parts[0], id: "request", messageID: root.id, type: "compaction" } as SessionPartSummary
@@ -393,6 +427,57 @@ test("structural Parts create no empty rows and tool and reasoning slots remain 
   expect(bodies.filter((row) => row.beforeTool)).toHaveLength(1)
   expect(bodies.filter((row) => row.beforeReasoning)).toHaveLength(1)
   expect(bodies.find((row) => row.beforeTool)?.before).toBe(false)
+})
+
+test("Render visuals and their final explanation stay visible when process history is closed", () => {
+  const before = { ...parts[0], id: "before", type: "text" } as SessionPartSummary
+  const visual = { ...parts[0], id: "visual", tool: "render", status: "completed" }
+  const after = { ...before, id: "after" }
+  for (const open of [false, true]) {
+    const rows = buildConversationRows({
+      timeline: [root],
+      messagesFor: () => [{ ...reply, finish: "stop" } as Message],
+      summaries: (id) => (id === reply.id ? [before, visual, after] : []),
+      page: () => ({ hasMore: false }),
+      process: () => ({ open, working: false }),
+      activity: () => false,
+    })
+    const bodies = rows.filter((row) => row.kind === "body")
+    expect(bodies.map((row) => row.parts[0].id)).toEqual(["before", "visual", "after"])
+    expect(bodies.every((row) => !row.processBody && !row.activity)).toBe(true)
+    expect(rows.find((row) => row.kind === "process")?.process?.hasContent).toBe(false)
+  }
+})
+
+test("Render receipts split bounded activity chunks without changing their identities", () => {
+  for (const status of ["pending", "running", "completed", "error"]) {
+    const values = [
+      { ...parts[0], id: "read-before", tool: "read" },
+      { ...parts[0], id: "visual", tool: "render", status },
+      { ...parts[0], id: "read-after", tool: "read" },
+    ]
+    const input = {
+      timeline: [root],
+      messagesFor: () => [reply],
+      summaries: (id: string) => (id === reply.id ? values : []),
+      page: () => ({ hasMore: false }),
+      process: () => ({ open: true, working: false }),
+    }
+    const expanded = buildConversationRows(input)
+    expect(expanded.filter((row) => row.kind === "activity").map((row) => row.activity.parts)).toEqual([
+      ["read-before"],
+      ["read-after"],
+    ])
+    const collapsed = buildConversationRows({
+      ...input,
+      previous: expanded,
+      process: () => ({ open: false, working: false }),
+    })
+    const visible = collapsed.filter((row) => row.kind === "body")
+    expect(visible.map((row) => row.key)).toEqual([`${reply.id}:visual`])
+    expect(visible[0].processBody).toBe(false)
+    expect(visible[0].activity).toBeUndefined()
+  }
 })
 
 test("virtualized processes have one entrance and bounded batches without hiding the final answer", () => {

@@ -202,3 +202,7 @@ Editing built-in source files under a workspace package’s `src/` directory sti
 Synergy preserves discovery of existing Synergy, Claude, Codex, OpenClaw, and pre-standardization `.agents/skills` entries with their previously accepted entry names. Compatibility Skills load through the same catalog and `skill` tool as native Skills, with diagnostics for fields or legacy normalization Synergy ignores.
 
 Compatibility does not create a second Skill system. The canonical runtime record, invocation flags, permission boundary, resource lookup, import/export validation, reload target, and precedence rules above are the supported Skill contract.
+
+## Host composition
+
+A separately composed runtime can call the public local-runtime `SkillSelection.select({ builtins, filesystem })` before catalog initialization. Omitting this selection retains local-product discovery. Product-owned in-memory entries use the public Harness `SkillSourceProviders` registry. Selection is Runtime scoped and cannot change after discovery.

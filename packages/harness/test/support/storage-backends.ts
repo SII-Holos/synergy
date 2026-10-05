@@ -1,14 +1,17 @@
 import type { StoreOptions } from "../../src/storage/sql-contract"
 
 export const POSTGRES_TEST_FILES = [
+  "test/tool/search-guard-durable.test.ts",
   "test/environment/provider-request-maintenance.test.ts",
   "test/storage/artifact-pack.test.ts",
   "test/storage/backend-selection.test.ts",
+  "test/storage/event-sinks.test.ts",
   "test/storage/compat-defer.test.ts",
   "test/storage/large-artifacts.test.ts",
   "test/storage/packed-import.test.ts",
   "test/session/message-read-errors.test.ts",
   "test/storage/postgres-contract.test.ts",
+  "test/storage/postgres-schema.test.ts",
   "test/storage/postgres-ownership.test.ts",
   "test/storage/prune-contract.test.ts",
   "test/storage/transactional-store.test.ts",

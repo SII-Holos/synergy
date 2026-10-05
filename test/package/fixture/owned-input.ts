@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import path from "node:path"
 import { text } from "node:stream/consumers"
 import { openAgentRuntime } from "@ericsanchezok/synergy-agent-runtime"
+import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
 import { createLocalHost } from "@ericsanchezok/synergy-local-runtime"
 import { OwnedProcess } from "@ericsanchezok/synergy-local-runtime/process/owned-process"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
@@ -17,7 +18,12 @@ process.env.SYNERGY_LAUNCHER_COMMAND = JSON.stringify([
   path.join(process.cwd(), "node_modules/.bin/synergy"),
 ])
 const host = createLocalHost()
-const runtime = await openAgentRuntime({ host, home: host.root, mode: "oneshot" })
+const runtime = await openAgentRuntime({
+  host,
+  home: host.root,
+  mode: "oneshot",
+  components: [localRuntime({ workers: false })],
+})
 try {
   await runtime.run(() =>
     WorkspaceAccess.withinTask(async () => {
@@ -30,7 +36,7 @@ try {
         ],
         cwd: process.cwd(),
         env: {},
-        lease,
+        ownership: lease,
       })
       try {
         const output = text(processHandle.child.stdout)

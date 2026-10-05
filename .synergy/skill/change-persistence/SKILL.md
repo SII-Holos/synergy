@@ -80,6 +80,8 @@ For snapshot lease changes, test metadata-gate contention separately from active
 
 ## Verify
 
+For durable external delivery, test a failure after an accepted prefix and a changed queue revision before acknowledgment. Keep network delivery outside transactions, preserve unaccepted records and verify the entire acknowledgment rolls back on revision conflict. Measure real PostgreSQL delivery batches separately from model and Session work before changing behavioral test deadlines.
+
 For indexed history reads, seed real SQL records and inject a targeted read failure at the first record, a later individual record, a batch and nested part hydration. Assert that injection was reached and the original error propagated; separately delete records after the reader captures its index snapshot and verify that only missing records are skipped. Register the regression in the PostgreSQL test inventory and run both engines.
 
 When adding a migration domain, update the complete-product registry contract in `packages/presets/test/migration/registry.test.ts` and run the Presets migration suite alongside the owning domain's upgrade tests.

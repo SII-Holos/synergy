@@ -1645,6 +1645,11 @@ a {
   background-color: color-mix(in srgb, var(--text-strong) 7%, transparent);
 }
 
+.synergy-workbench-canvas .prompt-input-toolbar-button.prompt-input-permission-full-access:hover,
+.synergy-workbench-canvas .prompt-input-toolbar-button.prompt-input-permission-full-access[aria-expanded="true"] {
+  background-color: color-mix(in srgb, var(--input-base) 97%, var(--text-strong));
+}
+
 .synergy-workbench-canvas .prompt-input-toolbar-button:focus-visible,
 .synergy-workbench-canvas .prompt-input-toolbar-icon-button:focus-visible {
   outline: 2px solid var(--border-focus);

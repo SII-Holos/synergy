@@ -4,9 +4,9 @@ Failures, causes and guardrails.
 
 ## When to write one
 
-Write a postmortem when all criteria hold:
+Criteria:
 
-- **Subtle** — the mechanism is non-obvious, and a careful engineer would re-derive it the hard way.
+- **Subtle** — the mechanism requires careful investigation.
 - **Systemic** — the bug escaped because of a gap in tests, tooling, or conventions, not a one-off typo.
 - **Costly to rediscover** — it cost real debugging time, and it would cost it again.
 
@@ -30,7 +30,12 @@ Use the next `NNNN-kebab-case-title.md`. Sections:
 
 ## Index
 
-- [0045: Process stability](0045-process-layout-and-arrival-ownership.md)
+- [0048: Process stability](0048-process-layout-and-arrival-ownership.md)
+
+- [0046: Structured output retained tool intent](0046-structured-output-retained-tool-intent.md)
+
+- [0045: PostgreSQL startup DDL blocked writers](0045-postgres-startup-ddl-blocked-writers.md)
+
 - [0042: Compaction completion](0042-process-event-ownership-and-compaction-completion.md)
 - [0041: Lost completion signal](0041-cortex-progress-fixture-lost-release.md)
 - [0040: Vite ports](0040-vite-fixtures-shared-default-ports.md)

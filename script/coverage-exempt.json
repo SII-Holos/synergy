@@ -2100,6 +2100,10 @@
           "reason": "Pierre Shadow DOM rendering, bounded 20,000-line virtualization, distant-file navigation, header geometry, layout switches and pointer/keyboard/Shift selection are exercised by test/components/review-viewer.dom.test.ts in Chromium; Vite browser execution does not contribute to Bun coverage."
         },
         {
+          "glob": "src/components/render-tool.tsx",
+          "reason": "The real SessionTurn Chromium fixture in test/components/render-html.browser.test.ts exercises inline visual lifecycle, viewer keyboard focus and dismissal, narrow layouts and readable fallback output. Solid TSX executed by Vite in Chromium does not contribute to Bun lcov coverage."
+        },
+        {
           "glob": "src/components/session-review.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },

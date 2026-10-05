@@ -76,6 +76,38 @@ postgresTest("PostgreSQL reports no incremental vacuum work", () =>
   }),
 )
 
+postgresTest(
+  "opening and migrating a PostgreSQL namespace does not block an unrelated writer on existing indexes",
+  () =>
+    fixture(async (store) => {
+      const written = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const writing = store.transaction(async (tx) => {
+        await tx.write(["held", "record"], { value: "committed" })
+        written.resolve()
+        await release.promise
+      })
+      await Promise.race([written.promise, writing])
+      let opened: TransactionalStore | undefined
+      try {
+        opened = await TransactionalStore.open({
+          backend: "postgres",
+          namespace: crypto.randomUUID(),
+          url: process.env.SYNERGY_TEST_POSTGRES_URL!,
+        })
+        await Storage.provide({ store: opened, artifactDirectory: process.env.SYNERGY_TEST_ROOT! }, () =>
+          StorageRecordsOwnerIndex.run(),
+        )
+      } finally {
+        release.resolve()
+        await writing
+        await opened?.close()
+      }
+      expect(await store.read<{ value: string }>(["held", "record"])).toEqual({ value: "committed" })
+    }),
+  30_000,
+)
+
 postgresTest("PostgreSQL exposes unavailability subscriptions without failing ordinary writes", () =>
   fixture(async (store) => {
     const received: Error[] = []
@@ -90,4 +122,50 @@ postgresTest("PostgreSQL exposes unavailability subscriptions without failing or
       stop()
     }
   }),
+)
+
+postgresTest(
+  "independent PostgreSQL namespaces retain concurrent writes and node cleanup",
+  async () => {
+    const stores: TransactionalStore[] = []
+    const failures: unknown[] = []
+    try {
+      for (let owner = 0; owner < 8; owner++) {
+        const store = await TransactionalStore.open({
+          backend: "postgres",
+          namespace: crypto.randomUUID(),
+          url: process.env.SYNERGY_TEST_POSTGRES_URL!,
+          maxConnections: 3,
+        })
+        stores.push(store)
+        await store.write(["counter"], { owner, value: 0 })
+      }
+      await Promise.all(
+        stores.map(async (store, owner) => {
+          for (let step = 1; step <= 32; step++) {
+            try {
+              await store.transaction(async (tx) => {
+                const previous = await tx.read<{ owner: number; value: number }>(["counter"])
+                expect(previous?.owner).toBe(owner)
+                await tx.write(["counter"], { owner, value: previous!.value + 1 })
+                const key = ["pending", "delivery", String(step)]
+                await tx.write(key, { step })
+                await tx.remove(key)
+              })
+            } catch (error) {
+              failures.push(error)
+            }
+          }
+        }),
+      )
+      expect(failures).toEqual([])
+      for (const [owner, store] of stores.entries()) {
+        expect(await store.read<{ owner: number; value: number }>(["counter"])).toEqual({ owner, value: 32 })
+        expect(await store.list(["pending"])).toEqual([])
+      }
+    } finally {
+      await Promise.all(stores.map((store) => store.close()))
+    }
+  },
+  30_000,
 )

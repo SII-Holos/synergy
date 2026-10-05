@@ -1,6 +1,7 @@
 import { RolloutTransport } from "./rollout/transport"
 import { RuntimeContext } from "../lifecycle/context"
 import { Provider } from "../provider/provider"
+import { ProviderRequestSource } from "../provider/request-source"
 import { Log } from "../util/log"
 import {
   stepCountIs,
@@ -184,6 +185,7 @@ export namespace LLM {
     activeToolIDs?: string[]
     retries?: number
     maxOutputTokens?: number
+    toolChoice?: { type: "tool"; toolName: string }
     /** Codex remote-compaction replay plan for this turn (fetch-layer splice). */
     codexReplay?: CodexReplayPlan
     memoryTurn?: LLMTurnMemory.Handle
@@ -411,11 +413,14 @@ export namespace LLM {
     return {
       system,
       baseSystemLength,
-      provider: await Provider.workerPlan(provider, {
-        ttfbMs: providerTimeouts.providerTtfbMs,
-        idleMs: providerTimeouts.providerIdleMs,
-        wallMs: providerTimeouts.providerWallMs,
-      }),
+      provider: await ProviderRequestSource.prepare(
+        input,
+        await Provider.workerPlan(provider, {
+          ttfbMs: providerTimeouts.providerTtfbMs,
+          idleMs: providerTimeouts.providerIdleMs,
+          wallMs: providerTimeouts.providerWallMs,
+        }),
+      ),
       params,
       telemetryEnabled: cfg.observability?.modelSpans,
     }
@@ -533,6 +538,7 @@ export namespace LLM {
         topK: params.topK,
         providerOptions: ProviderTransform.providerOptions(input.model, params.options),
         activeTools: input.activeToolIDs ?? Object.keys(tools),
+        toolChoice: input.toolChoice,
         tools,
         stopWhen: stepCountIs(1),
         maxOutputTokens,

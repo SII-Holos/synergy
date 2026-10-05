@@ -1,5 +1,7 @@
 import { openAgentRuntime } from "@ericsanchezok/synergy-agent-runtime"
 import { createLocalHost, type LocalRuntimeOptions } from "@ericsanchezok/synergy-local-runtime"
+import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
+import { plugins } from "@ericsanchezok/synergy-plugin-host/component"
 import { fullComponents } from "../components"
 import { webApp } from "@ericsanchezok/synergy-server/web-app"
 
@@ -9,6 +11,8 @@ export namespace PresetRuntimeHandle {
   export type Options = LocalRuntimeOptions & { webAppDirectory?: string; configSchemaPath?: string }
 
   const components = (options: Options) => [
+    localRuntime({ workers: false, environment: options.environment }),
+    plugins(),
     ...fullComponents(),
     ...(options.webAppDirectory ? [webApp({ directory: options.webAppDirectory })] : []),
   ]

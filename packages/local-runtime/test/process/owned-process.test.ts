@@ -62,7 +62,7 @@ nativeTest(
       ],
       cwd: tmp.path,
       env: {},
-      lease,
+      ownership: lease,
     })
     const stdout = text(owned.child.stdout)
     const stderr = text(owned.child.stderr)
@@ -125,7 +125,7 @@ nativeTest.each([
       ],
       cwd: tmp.path,
       env: {},
-      lease,
+      ownership: lease,
     })
     const stdout = text(owned.child.stdout)
     const stderr = text(owned.child.stderr)
@@ -178,7 +178,7 @@ nativeTest(
       ],
       cwd: tmp.path,
       env: {},
-      lease,
+      ownership: lease,
     })
     const stdout = text(owned.child.stdout)
     const stderr = text(owned.child.stderr)
@@ -223,7 +223,7 @@ nativeTest(
       ],
       cwd: tmp.path,
       env: { PROBE: "ok" },
-      lease,
+      ownership: lease,
     })
     try {
       expect(await Bun.file(marker).exists()).toBe(false)
@@ -269,7 +269,7 @@ nativeTest(
       args: ["-i", "/usr/bin/python3", "-c", code],
       cwd: tmp.path,
       env: {},
-      lease,
+      ownership: lease,
     })
     try {
       const done = ChildProcessClose.wait(owned.child)
@@ -332,7 +332,7 @@ nativeTest(
       args: ["-e", `await Bun.write(${JSON.stringify(marker)}, 'bad')`],
       cwd: tmp.path,
       env: {},
-      lease,
+      ownership: lease,
     })
     await owned.stop()
     await expect(owned.activate()).rejects.toThrow()
@@ -359,7 +359,7 @@ nativeTest(
       args: [],
       cwd: tmp.path,
       env: {},
-      lease,
+      ownership: lease,
     })
     try {
       await expect(owned.activate()).rejects.toThrow()
@@ -391,7 +391,7 @@ test.skipIf(process.platform !== "darwin")(
       args: ["-i", "/usr/bin/python3", "-c", code],
       cwd: tmp.path,
       env: {},
-      lease,
+      ownership: lease,
     })
     try {
       const workerPID = (await coordinator.inspect())[0].pid
@@ -451,7 +451,7 @@ nativeTest(
       ],
       cwd: tmp.path,
       env: {},
-      lease,
+      ownership: lease,
     })
     try {
       await owned.activate()
@@ -481,7 +481,7 @@ nativeTest(
     const coordinatorModule = new URL("../../src/workspace/coordinator.ts", import.meta.url).href
     await Bun.write(
       filename,
-      `import {OwnedProcess} from ${JSON.stringify(processModule)}; import {WorkspaceCoordinator} from ${JSON.stringify(coordinatorModule)}; const c=new WorkspaceCoordinator({directory:${JSON.stringify(lockDirectory)}}); const lease=await c.acquire({id:crypto.randomUUID(),owner:'crashed',ancestors:[],kind:'process',roots:[${JSON.stringify(tmp.path)}]}); const p=await OwnedProcess.prepare({command:process.execPath,args:['-e','setInterval(()=>{},1000)'],cwd:${JSON.stringify(tmp.path)},env:{},lease}); await p.activate(); await Bun.write(${JSON.stringify(marker)},'ready'); setInterval(()=>{},1000);`,
+      `import {OwnedProcess} from ${JSON.stringify(processModule)}; import {WorkspaceCoordinator} from ${JSON.stringify(coordinatorModule)}; const c=new WorkspaceCoordinator({directory:${JSON.stringify(lockDirectory)}}); const lease=await c.acquire({id:crypto.randomUUID(),owner:'crashed',ancestors:[],kind:'process',roots:[${JSON.stringify(tmp.path)}]}); const p=await OwnedProcess.prepare({command:process.execPath,args:['-e','setInterval(()=>{},1000)'],cwd:${JSON.stringify(tmp.path)},env:{},ownership:lease}); await p.activate(); await Bun.write(${JSON.stringify(marker)},'ready'); setInterval(()=>{},1000);`,
     )
     const parent = Bun.spawn([process.execPath, filename], { stdout: "ignore", stderr: "pipe" })
     const error = new Response(parent.stderr).text()

@@ -1,5 +1,5 @@
 import { I18nProvider } from "@lingui/solid"
-import { createSignal, For } from "solid-js"
+import { batch, createSignal, For } from "solid-js"
 import { createStore } from "solid-js/store"
 import { render } from "solid-js/web"
 import { DataProvider } from "../../../src/context/data.tsx"
@@ -297,6 +297,28 @@ globalThis.__chronologyHarness = {
   move,
   setMode,
   setPreview,
+  setRender: (html: string, title = "Evidence at a glance", status = "completed", output = toolPart.state.output) =>
+    batch(() => {
+      move(8)
+      setData("message", sessionID, [rootMessage, assistantMessage])
+      setData("part", assistantID, [
+        { ...answerPart, id: "visual-before", text: "Here is the comparison." },
+        {
+          ...toolPart,
+          id: "visual",
+          tool: "render",
+          state: {
+            ...toolPart.state,
+            status,
+            output,
+            input: { artifactTitle: title },
+            metadata: { render: "html", html },
+          },
+        },
+        { ...answerPart, id: "visual-after", text: "The visual stays in the conversation." },
+      ])
+      setData("part", secondAssistantID, [])
+    }),
   setSegmented,
   addCompaction: (state = "committed") => {
     move(8)

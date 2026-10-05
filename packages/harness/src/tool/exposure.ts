@@ -60,8 +60,22 @@ export namespace ToolExposure {
     },
   ]
 
+  const selection = RuntimeContext.state(() => ({ defaults: undefined as Set<string> | undefined, initialized: false }))
+
+  export function selectDefaultGroups(ids: readonly string[]) {
+    RuntimeContext.assertCompositionOpen("default tool groups")
+    if (selection().initialized || selection().defaults)
+      throw new Error("Select default tool groups before group registration")
+    if (ids.some((id) => !builtinGroups.some((group) => group.id === id))) throw new Error("Unknown default tool group")
+    selection().defaults = new Set(ids)
+  }
+
   const groupState = RuntimeContext.state(() => {
-    const groups = structuredClone(builtinGroups)
+    const selected = selection()
+    selected.initialized = true
+    const groups = structuredClone(
+      builtinGroups.filter((group) => !selected.defaults || selected.defaults.has(group.id)),
+    )
     const byID = new Map(groups.map((group) => [group.id, group]))
     const byTool = new Map(groups.flatMap((group) => group.tools.map((tool) => [tool, group] as const)))
     return { groups, byID, byTool }

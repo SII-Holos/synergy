@@ -6,8 +6,14 @@ import { WorkspaceCatalog } from "../workspace/catalog"
 import { WorkspaceBinding } from "../workspace/binding"
 import { WorkspaceMounts } from "../workspace/mount"
 import { RuntimeContext } from "../lifecycle/context"
+import { WorkspaceTree } from "../workspace/tree"
 
 export namespace EnvironmentResources {
+  /** A model-facing file namespace, separate from any live Environment mount location. */
+  export function virtualRoot(workspace?: WorkspaceCatalog.Info) {
+    if (workspace?.backend?.provider !== "objects" || workspace.backend.spec.virtualRoot === undefined) return undefined
+    return WorkspaceTree.VirtualRoot.parse(workspace.backend.spec.virtualRoot)
+  }
   const context = RuntimeContext.createAsyncContext<{
     runtime: RuntimeContext.Instance
     resources: Resolved
@@ -68,6 +74,7 @@ export namespace EnvironmentResources {
   }
 
   export async function select(input: Selection & { ownerID: string; needs: Needs; signal?: AbortSignal }) {
+    if (input.workspaceID) virtualRoot(await WorkspaceCatalog.get(input.workspaceID, input.scopeID))
     const environment = input.needs.execution ? await Environment.select(input) : undefined
     return resolve({ ...input, environmentID: environment?.id ?? input.environmentID, needs: input.needs })
   }
@@ -106,6 +113,7 @@ export namespace EnvironmentResources {
       throw new WorkspaceCatalog.Unavailable({ workspaceID: "", message: "This operation requires a Workspace" })
     let workspace = input.workspaceID ? await WorkspaceCatalog.get(input.workspaceID, input.scopeID) : undefined
     if (workspace) {
+      virtualRoot(workspace)
       if (workspace.lifecycle !== "active" || workspace.binding.state !== "bound")
         throw new WorkspaceCatalog.Unavailable({
           workspaceID: workspace.id,
@@ -115,7 +123,8 @@ export namespace EnvironmentResources {
         throw new WorkspaceCatalog.BindingChanged({ workspaceID: workspace.id, message: "Workspace binding changed" })
     }
     if (!input.needs.execution && !workspace?.activeMount) {
-      if (workspace?.backend?.provider === "objects") return result({ kind: "objects", workspace })
+      if (workspace?.backend?.provider === "objects")
+        return result({ kind: "objects", workspace, directory: virtualRoot(workspace) })
       const location = RuntimeContext.current().host.workspaceLocation
       if (
         workspace?.backend?.provider === "directory" &&

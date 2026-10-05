@@ -22,15 +22,14 @@ function lastAssistant(ctx: LoopJob.Context): AssistantMsg | undefined {
   return recentAssistants(ctx, 1).at(0)
 }
 
-function recentToolRecords(ctx: LoopJob.Context, tools: Set<string>): SearchGuard.SearchRecord[] {
-  return recentAssistants(ctx, 8).flatMap((msg) =>
-    msg.parts.flatMap((part) => {
-      if (part.type !== "tool") return []
-      if (!tools.has(part.tool)) return []
-      const record = SearchGuard.buildRecord(part, tools)
-      return record ? [record] : []
-    }),
-  )
+async function recentToolRecords(ctx: LoopJob.Context, tools: Set<string>): Promise<SearchGuard.SearchRecord[]> {
+  return SearchGuard.recordsForRootDurable({
+    scopeID: ctx.session.scope.id,
+    sessionID: ctx.sessionID,
+    rootMessageID: ctx.lastUser.rootID ?? ctx.lastUser.id,
+    searchTools: tools,
+    signal: ctx.abort,
+  })
 }
 
 /** Check if the current context contains already-injected markers for an analyzer. */
@@ -40,9 +39,9 @@ function hasInjectedMarker(ctx: LoopJob.Context, marker: string): boolean {
 }
 
 /** Find the first analyzer that matches the current agent context and has failures. */
-function detectToolFailurePattern(
+async function detectToolFailurePattern(
   ctx: LoopJob.Context,
-): { analyzer: ToolFailureAnalyzer; pattern: SearchGuard.FailurePattern } | null {
+): Promise<{ analyzer: ToolFailureAnalyzer; pattern: SearchGuard.FailurePattern } | null> {
   const analyzers = getFailureAnalyzers()
   for (const analyzer of analyzers.values()) {
     if (analyzer.agentFilter && !analyzer.agentFilter.includes(ctx.lastUser.agent)) {
@@ -50,7 +49,7 @@ function detectToolFailurePattern(
       if (!hasAssistantMatch) continue
     }
 
-    const records = recentToolRecords(ctx, analyzer.tools)
+    const records = await recentToolRecords(ctx, analyzer.tools)
     const failures = SearchGuard.trailingFailures(records)
 
     // Check early stop first (higher threshold), then reflection.
@@ -220,8 +219,8 @@ export function registerLoopSignals() {
   })
   LoopJob.defineSignal({
     type: "tool_failure_pattern",
-    detect(ctx) {
-      return detectToolFailurePattern(ctx) !== null
+    async detect(ctx) {
+      return (await detectToolFailurePattern(ctx)) !== null
     },
   })
   LoopJob.register({
@@ -233,7 +232,7 @@ export function registerLoopSignals() {
       return []
     },
     async execute(ctx) {
-      const result = detectToolFailurePattern(ctx)
+      const result = await detectToolFailurePattern(ctx)
       if (!result) return "pass"
 
       const { analyzer, pattern } = result

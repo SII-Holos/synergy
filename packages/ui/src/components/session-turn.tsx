@@ -15,6 +15,7 @@ import type {
   UserMessage,
 } from "@ericsanchezok/synergy-sdk/client"
 import { useData } from "../context"
+import { isActivityGroupableTool } from "@ericsanchezok/synergy-util/activity"
 
 import {
   createEffect,
@@ -1444,7 +1445,7 @@ export function SessionTurn(
       return true
     const parts = view.partsFor(item.message.id)
     const index = parts.findIndex((part) => part.id === timeline.part.id)
-    return parts.slice(index + 1).some((part) => part.type === "tool")
+    return parts.slice(index + 1).some((part) => part.type === "tool" && isActivityGroupableTool(part.tool))
   }
   const paused = () => {
     const status = sessionStatus()
