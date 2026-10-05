@@ -10,6 +10,40 @@ const parts = Array.from(
     ({ id: `p${index.toString().padStart(4, "0")}`, messageID: "reply", type: "tool" }) as SessionPartSummary,
 )
 
+test("repeated compaction control markers do not create body rows or duplicate attempt events", () => {
+  const text = { ...parts[0], id: "request-text", messageID: root.id, type: "text" } as SessionPartSummary
+  const markers = Array.from({ length: 8 }, (_, index) => ({
+    ...text,
+    id: `marker-${index}`,
+    type: "compaction",
+    render: true,
+  })) as SessionPartSummary[]
+  const attempts = markers.map((_, index) => ({
+    ...reply,
+    id: `attempt-${index}`,
+    metadata: { compactionAttempt: { state: "committed" } },
+  })) as Message[]
+  for (const open of [false, true]) {
+    const rows = buildConversationRows({
+      timeline: [root],
+      messagesFor: () => attempts,
+      summaries: (id) =>
+        id === root.id
+          ? [text, ...markers]
+          : [{ ...text, id: `${id}-recovery`, messageID: id, type: "compaction_recovery" }],
+      page: () => ({ hasMore: false }),
+      process: () => ({ open, working: false }),
+    })
+    const bodies = rows.filter((row) => row.kind === "body")
+    expect(
+      bodies.filter((row) => row.message.id === root.id).flatMap((row) => row.parts.map((part) => part.id)),
+    ).toEqual([text.id])
+    expect(bodies.filter((row) => row.event === "compaction").map((row) => row.message.id)).toEqual(
+      open ? attempts.map((message) => message.id) : [],
+    )
+  }
+})
+
 test("a manual compaction request yields to its canonical attempt without a stale running row", () => {
   const boundary = { ...root, metadata: { compactionBoundary: true } } as Message
   const request = { ...parts[0], id: "request", messageID: root.id, type: "compaction" } as SessionPartSummary

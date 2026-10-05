@@ -388,6 +388,8 @@ Compaction assistants remain canonically hidden while running, but the shared ti
 
 The processor's terminal message checkpoint does not end this presentation lifecycle. The compaction owner resolves `running` to `committed`, `failed`, or `empty`; failed attempts replace progress in place with the dedicated error presentation, while hidden empty attempts disappear. Ordinary `visible = false` messages never receive this exception.
 
+Conversation body projection excludes `compaction` control-marker Parts, including historical summaries whose `render` hint is true. These markers establish compaction requests rather than display content; the owning message metadata and attempt still project the chronological process event. Filtering them cannot suppress a pending manual request or its assistant-owned replacement. See the [compaction status presentation decision](../decisions/implemented/feature/2026-10-05-compaction-status-text.md).
+
 ## Compaction Swap
 
 `session.compacted` means the visible effective message set changed at a summary boundary.

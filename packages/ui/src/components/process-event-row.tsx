@@ -30,6 +30,7 @@ export function ProcessEventRow(props: {
   return (
     <div
       data-component="process-event-row"
+      data-kind={props.kind ?? "agent-delivery"}
       data-status={props.running ? "running" : props.failed ? "failed" : "complete"}
     >
       <button
@@ -43,15 +44,19 @@ export function ProcessEventRow(props: {
         })}
         onClick={() => resource?.openActivityDetail?.(target())}
       >
-        <span data-slot="process-event-icon" aria-hidden="true" data-running={props.running ? "" : undefined}>
+        <span
+          data-slot="process-event-icon"
+          aria-hidden="true"
+          data-running={props.running && props.kind !== "compaction" ? "" : undefined}
+        >
           <Icon
             name={getSemanticIcon(
               props.failed
                 ? "state.error"
-                : props.running
-                  ? "session.running"
-                  : props.kind === "compaction"
-                    ? "settings.compaction"
+                : props.kind === "compaction"
+                  ? "settings.compaction"
+                  : props.running
+                    ? "session.running"
                     : "cortex.main",
             )}
             size="small"
