@@ -6,7 +6,7 @@ Failures, causes and guardrails.
 
 Criteria:
 
-- **Subtle** — the mechanism is non-obvious, and a careful engineer would re-derive it the hard way.
+- **Subtle** — the mechanism requires careful investigation.
 - **Systemic** — the bug escaped because of a gap in tests, tooling, or conventions, not a one-off typo.
 - **Costly to rediscover** — it cost real debugging time, and it would cost it again.
 
