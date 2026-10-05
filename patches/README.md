@@ -4,7 +4,7 @@
 
 Provenance: [Virtua 0.42.3 resize observer](https://github.com/inokawa/virtua/blob/0.42.3/src/core/resizer.ts) and [upstream resize delivery issue](https://github.com/inokawa/virtua/issues/470).
 
-Local adaptation: [the pinned patch](virtua@0.42.3.patch) queues the latest notification per target and publishes one Solid batch on the next animation frame. Unobserving a target drops its queued entry; disposal cancels the frame and clears pending entries. Both the published JavaScript and JSX Solid entrypoints carry the same correction. Other framework entrypoints and the package licenses remain unchanged.
+Local adaptation: [the pinned patch](virtua@0.42.3.patch) queues the latest notification per target and publishes one Solid batch on the next animation frame. Notifications with zero width and height from targets without layout boxes are discarded during delivery, before a hidden target can reappear and overwrite its cached dimensions. Visible zero-size targets still publish. Unobserving a target drops its queued entry; disposal cancels the frame and clears pending entries. Both the published JavaScript and JSX Solid entrypoints carry the same correction. Other framework entrypoints and the package licenses remain unchanged.
 
 [Real browser regression](../apps/web/test/components/session/conversation-process.dom.test.ts) checks nested process disclosure, delayed history hydration and viewport resizing without undelivered notifications, alongside reading anchors and retained content. Keep this patch until an upgraded dependency passes these cases through both entrypoints without it; verify a fresh frozen-lockfile install before accepting an upgrade.
 

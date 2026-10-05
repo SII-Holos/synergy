@@ -49,6 +49,7 @@ beforeAll(async () => {
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 960, height: 800 } })
   page.setDefaultTimeout(5000)
+  page.setDefaultNavigationTimeout(40_000)
   page.on("pageerror", (error) => errors.push(error.message))
   await page.goto(server.resolvedUrls!.local[0]!, { timeout: 40_000 })
   await page.getByRole("textbox", { name: "Message" }).waitFor()

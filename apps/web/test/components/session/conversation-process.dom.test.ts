@@ -6,6 +6,7 @@ import { createRequire } from "node:module"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solid from "vite-plugin-solid"
+import type { VListHandle } from "virtua/solid"
 
 type Fixture = {
   toolCase(
@@ -47,6 +48,7 @@ declare global {
     answerNode?: Element | null
     __processSelection?: unknown
     __resizeErrors: string[]
+    __conversationResizeList?: VListHandle
   }
 }
 let server: ViteDevServer, browser: Browser, page: Page, directory: string, url: string
@@ -110,6 +112,23 @@ beforeAll(async () => {
     path.join(directory, "execution.ts"),
     "export const useExecution=()=>({available:()=>true,round:()=>undefined,open:()=>{}})",
   )
+  await Bun.write(
+    path.join(directory, "resize.html"),
+    '<!doctype html><div id="root"></div><script type="module" src="/resize.tsx"></script>',
+  )
+  await Bun.write(
+    path.join(directory, "resize.tsx"),
+    `import {createSignal} from "solid-js"
+    import {render} from "solid-js/web"
+    import {VList} from "virtua/solid"
+    const [hidden,setHidden]=createSignal(false)
+    render(()=><><button onClick={()=>setHidden(!hidden())}>Toggle list</button>
+      <div style={{height:"288px",width:"320px",display:hidden()?"none":"block"}}>
+        <VList ref={value=>window.__conversationResizeList=value} data={Array.from({length:100},(_,i)=>i)} itemSize={48} overscan={2} aria-label="Measured list">
+          {item=><button style={{height:"48px",width:"100%",display:"block"}}>Item {item}</button>}
+        </VList>
+      </div></>,document.getElementById("root"))`,
+  )
   server = await fixtureServer("index.mjs")
   url = server.resolvedUrls!.local[0]!
   browser = await chromium.launch({ headless: true })
@@ -130,7 +149,7 @@ afterAll(async () => {
 }, 30000)
 
 test.each(["index.mjs", "index.jsx"] as const)(
-  "history hydration and process disclosure settle without dropping resize notifications (%s)",
+  "history hydration, hidden lists and process disclosure retain measured geometry (%s)",
   async (entry) => {
     const alternate = entry === "index.jsx" ? await fixtureServer(entry) : undefined
     const target = alternate ? await browser.newPage() : page
@@ -138,6 +157,36 @@ test.each(["index.mjs", "index.jsx"] as const)(
     if (alternate) target.on("pageerror", (error) => errors.push(error.message))
     await observeResizeErrors(target)
     try {
+      const base = alternate?.resolvedUrls!.local[0]! ?? url
+      await target.goto(`${base}resize.html`)
+      const list = target.getByLabel("Measured list")
+      await list.evaluate((element) => {
+        element.scrollTop = 1440
+      })
+      const item = target.getByRole("button", { name: "Item 30", exact: true })
+      await item.waitFor()
+      const before = await item.boundingBox()
+      await target.getByRole("button", { name: "Toggle list", exact: true }).evaluate(async (element) => {
+        ;(element as HTMLButtonElement).click()
+        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+        ;(element as HTMLButtonElement).click()
+        for (let frame = 0; frame < 4; frame++)
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      })
+      expect(await list.evaluate((element) => element.scrollTop)).toBe(1440)
+      const after = await item.boundingBox()
+      expect(after).not.toBeNull()
+      expect(Math.abs(after!.y - before!.y)).toBeLessThan(1)
+      expect(await list.getByRole("button").count()).toBeLessThan(20)
+      expect(await target.evaluate(() => window.__resizeErrors)).toEqual([])
+      await list.evaluate(async (element) => {
+        const list = element as HTMLElement
+        list.style.width = "0px"
+        list.style.height = "0px"
+        for (let frame = 0; frame < 4; frame++)
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      })
+      expect(await target.evaluate(() => window.__conversationResizeList?.viewportSize)).toBe(0)
       await target.goto(alternate?.resolvedUrls!.local[0]! ?? url)
       await target.getByText("I will check the project first.", { exact: true }).waitFor()
       await target.evaluate(() => {
