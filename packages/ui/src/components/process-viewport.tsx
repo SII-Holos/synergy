@@ -1,4 +1,5 @@
 import {
+  batch,
   createContext,
   createEffect,
   createMemo,
@@ -44,13 +45,18 @@ export function ProcessViewport(
   const [below, setBelow] = createSignal(false)
   let viewport!: HTMLDivElement, content!: HTMLDivElement
   let frame: number | undefined
+  let measureFrame: number | undefined
   let resumeRequested = false
   let explicitFollow = false
   let previousOffset = 0
   let readingAnchor = saved?.anchor
   const measureEdges = () => {
-    setAbove(viewport.scrollTop > 1)
-    setBelow(viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop > 2)
+    const top = viewport.scrollTop
+    const remaining = viewport.scrollHeight - viewport.clientHeight - top
+    batch(() => {
+      setAbove(top > 1)
+      setBelow(remaining > 2)
+    })
   }
   const pause = () => {
     resumeRequested = false
@@ -88,11 +94,23 @@ export function ProcessViewport(
   )
   onMount(() => {
     const measure = () => {
-      setOverflow(viewport.scrollHeight > viewport.clientHeight + 1)
-      measureEdges()
+      const height = viewport.clientHeight
+      const contentHeight = viewport.scrollHeight
+      const top = viewport.scrollTop
+      batch(() => {
+        setOverflow(contentHeight > height + 1)
+        setAbove(top > 1)
+        setBelow(contentHeight - height - top > 2)
+      })
       if ((props.active || explicitFollow) && following()) follow(explicitFollow)
     }
-    const observer = new ResizeObserver(measure)
+    const observer = new ResizeObserver(() => {
+      if (measureFrame !== undefined) return
+      measureFrame = requestAnimationFrame(() => {
+        measureFrame = undefined
+        measure()
+      })
+    })
     observer.observe(viewport)
     observer.observe(content)
     if (saved) viewport.scrollTop = saved.offset
@@ -126,6 +144,7 @@ export function ProcessViewport(
   })
   onCleanup(() => {
     if (frame !== undefined) cancelAnimationFrame(frame)
+    if (measureFrame !== undefined) cancelAnimationFrame(measureFrame)
   })
   return (
     <div

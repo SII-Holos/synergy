@@ -305,15 +305,28 @@ export function VirtualConversationRows(
     setInteractionBlocks([...blocks])
   }
   onMount(() => {
+    let measureFrame: number | undefined
+    let viewportLimit: number | undefined
     const measure = () => {
       const scroll = input.scrollRef
-      if (scroll && container)
-        container.style.setProperty("--process-viewport-limit", `${scroll.clientHeight * 0.45}px`)
-      if (scroll && container)
-        setMargin(container.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop)
+      if (scroll && container) {
+        const limit = scroll.clientHeight * 0.45
+        const margin = container.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop
+        if (limit !== viewportLimit) {
+          viewportLimit = limit
+          container.style.setProperty("--process-viewport-limit", `${limit}px`)
+        }
+        setMargin(margin)
+      }
       scheduleLocation()
     }
-    const observer = new ResizeObserver(measure)
+    const observer = new ResizeObserver(() => {
+      if (measureFrame !== undefined) return
+      measureFrame = requestAnimationFrame(() => {
+        measureFrame = undefined
+        measure()
+      })
+    })
     if (container) observer.observe(container)
     if (container?.parentElement) observer.observe(container.parentElement)
     if (input.scrollRef) observer.observe(input.scrollRef)
@@ -382,6 +395,7 @@ export function VirtualConversationRows(
     })
     onCleanup(() => {
       observer.disconnect()
+      if (measureFrame !== undefined) cancelAnimationFrame(measureFrame)
       release?.()
       document.removeEventListener("focusin", pinInteraction)
       document.removeEventListener("focusout", pinInteraction)
@@ -453,6 +467,7 @@ function ConversationDisplayRow(
     visible: () => !!row().activity?.open,
     animate: () => true,
     appear: () => true,
+    resize: false,
     onHidden: () => setActivityMounted(false),
   })
   const execution = useExecution()
@@ -460,6 +475,7 @@ function ConversationDisplayRow(
   const exitMotion = createDisclosureMotionRef({
     visible: () => !row().exiting,
     animate: () => !props.scrolledUp(),
+    resize: row().kind !== "activity",
     onHidden: () => input.onExit(row().key),
   })
   const [loadFailure, setLoadFailure] = createSignal<{ error: unknown }>()
