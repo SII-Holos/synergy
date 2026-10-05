@@ -61,6 +61,8 @@ export function buildConversationRows(input: {
   process?: (root: Message) => { open: boolean; working: boolean }
 }): ConversationRow[] {
   const rows: ConversationRow[] = []
+  const partsFor = (messageID: string) =>
+    input.summaries(messageID).filter((part) => part.render !== false && part.type !== "compaction")
   const previousBlocks =
     input.previous?.flatMap((row) =>
       row.kind === "process" ? (row.activities ?? []) : row.kind === "activity" ? [row.activity] : [],
@@ -107,12 +109,10 @@ export function buildConversationRows(input: {
             parts.slice(index + 1).some((part) => part.type === "tool"))))
     const process = processState && {
       ...processState,
-      hasTurnContent: messages.some(
-        (message) => message.role === "assistant" && input.summaries(message.id).some((part) => part.render !== false),
-      ),
+      hasTurnContent: messages.some((message) => message.role === "assistant" && partsFor(message.id).length > 0),
       hasContent: messages.some((message) => {
         if (eventFor(message)) return true
-        const parts = input.summaries(message.id).filter((part) => part.render !== false)
+        const parts = partsFor(message.id)
         return parts.some((_, index) => isProcessPart(message, parts, index))
       }),
     }
@@ -124,7 +124,7 @@ export function buildConversationRows(input: {
         rows.push({ key: `${root.id}:process`, root, message: root, kind: "process", process })
         header = true
       }
-      const parts = input.summaries(message.id).filter((part) => part.render !== false)
+      const parts = partsFor(message.id)
       const page = input.page(message.id)
       if (event) {
         if (
