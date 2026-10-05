@@ -10,6 +10,40 @@ const parts = Array.from(
     ({ id: `p${index.toString().padStart(4, "0")}`, messageID: "reply", type: "tool" }) as SessionPartSummary,
 )
 
+test("repeated compaction control markers do not create body rows or duplicate attempt events", () => {
+  const text = { ...parts[0], id: "request-text", messageID: root.id, type: "text" } as SessionPartSummary
+  const markers = Array.from({ length: 8 }, (_, index) => ({
+    ...text,
+    id: `marker-${index}`,
+    type: "compaction",
+    render: true,
+  })) as SessionPartSummary[]
+  const attempts = markers.map((_, index) => ({
+    ...reply,
+    id: `attempt-${index}`,
+    metadata: { compactionAttempt: { state: "committed" } },
+  })) as Message[]
+  for (const open of [false, true]) {
+    const rows = buildConversationRows({
+      timeline: [root],
+      messagesFor: () => attempts,
+      summaries: (id) =>
+        id === root.id
+          ? [text, ...markers]
+          : [{ ...text, id: `${id}-recovery`, messageID: id, type: "compaction_recovery" }],
+      page: () => ({ hasMore: false }),
+      process: () => ({ open, working: false }),
+    })
+    const bodies = rows.filter((row) => row.kind === "body")
+    expect(
+      bodies.filter((row) => row.message.id === root.id).flatMap((row) => row.parts.map((part) => part.id)),
+    ).toEqual([text.id])
+    expect(bodies.filter((row) => row.event === "compaction").map((row) => row.message.id)).toEqual(
+      open ? attempts.map((message) => message.id) : [],
+    )
+  }
+})
+
 test("a manual compaction request yields to its canonical attempt without a stale running row", () => {
   const boundary = { ...root, metadata: { compactionBoundary: true } } as Message
   const request = { ...parts[0], id: "request", messageID: root.id, type: "compaction" } as SessionPartSummary
@@ -250,6 +284,7 @@ test("prepending a process page retains existing batch identities and Part membe
     previous: initial,
     summaries: (id: string) => (id === reply.id ? parts.slice(1, 24) : []),
   })
+  expect(grown.find((row) => row.kind === "activity")?.key).toBe(initial.find((row) => row.kind === "activity")?.key)
   const original = initial.filter((row) => row.kind === "body")
   const kept = grown.filter((row) => row.kind === "body").filter((row) => original.some((old) => old.key === row.key))
   expect(kept.map((row) => [row.key, row.parts.map((part) => part.id)])).toEqual(
@@ -345,4 +380,25 @@ test("unloaded spans cannot claim a continuous execution group", () => {
   const fixture = processFixture()
   const rows = buildConversationRows({ ...fixture, page: (id) => ({ hasMore: id === "work" }), activity: () => false })
   expect(rows.filter((row) => row.kind === "activity")).toHaveLength(3)
+})
+
+test("a running parallel call keeps its earlier batch active and summaries count only confirmed success", () => {
+  const input = processFixture()
+  const original = input.summaries
+  const rows = buildConversationRows({
+    ...input,
+    messagesFor: () => input.messagesFor().slice(0, 2),
+    summaries: (id) => {
+      const items = original(id).map((part) =>
+        part.type === "tool" ? { ...part, tool: "bash", status: id === "work" ? "running" : "error" } : part,
+      )
+      return id === "more" ? [{ ...items[0], id: "boundary", type: "text" }, ...items] : items
+    },
+    process: () => ({ open: true, working: true }),
+  })
+  const blocks = rows.filter((row) => row.kind === "activity" && row.activity.tools)
+  expect(blocks.map((row) => [row.activity!.tools, row.activity!.active, row.activity!.facts])).toEqual([
+    [1, true, []],
+    [1, true, []],
+  ])
 })

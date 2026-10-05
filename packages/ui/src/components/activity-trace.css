@@ -47,10 +47,10 @@
     align-items: flex-start;
     width: 100%;
     min-width: 0;
-    min-height: 28px;
+    min-height: 32px;
     box-sizing: border-box;
     gap: 8px;
-    padding: 4px 0;
+    padding: 6px 0;
     border: 0;
     color: inherit;
     background: transparent;
@@ -452,5 +452,59 @@
   [data-component="activity-trace"] [data-component="spinner"] rect,
   [data-component="reasoning-summary"] [data-component="spinner"] rect {
     animation: none !important;
+  }
+}
+
+[data-component="activity-trace"] {
+  [data-slot="activity-step-copy"] {
+    flex: 1;
+  }
+  [data-slot="activity-step-title"] {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  [data-slot="activity-step-title"]:not([data-object]) {
+    display: block;
+    white-space: normal;
+  }
+  [data-slot="activity-step-action"] {
+    flex-shrink: 0;
+    color: var(--text-weak);
+  }
+  [data-slot="activity-step-object"] {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-base);
+  }
+  [data-slot="activity-step-object"][data-kind] {
+    font-family: var(--font-family-mono);
+  }
+  [data-slot="activity-step-object"][data-kind="path"] {
+    display: flex;
+  }
+  [data-slot="activity-step-directory"] {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  [data-slot="activity-step-filename"] {
+    flex-shrink: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  [data-slot="activity-step-error"] {
+    color: var(--icon-critical-base);
+  }
+}
+@media (pointer: coarse) {
+  [data-component="activity-trace"] [data-slot="activity-step-trigger"] {
+    min-height: 44px;
+    align-items: center;
   }
 }

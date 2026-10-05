@@ -429,7 +429,7 @@ test("cancelled turns and native background processes release Git locks after ow
                 args: ["-e", "await Bun.sleep(700)"],
                 cwd: created.path,
                 env: {},
-                lease,
+                ownership: lease,
               })
               owned.child.stdout.resume()
               owned.child.stderr.resume()

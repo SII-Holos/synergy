@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import { openAgentRuntime, type RuntimeComponent } from "../src"
 import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
 import { version } from "../package.json" with { type: "json" }
+import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
 
 test("server started hooks run after every resident is ready and stay absent in one-shot runtimes", async () => {
   await using fixture = await runtimeHome()
@@ -69,10 +70,10 @@ test("failed resident readiness drains every started component and releases the 
       home: fixture.host.root,
       host: fixture.host,
       mode: "server",
-      components: [component("b"), component("a")],
+      components: [localRuntime({ workers: false }), component("b"), component("a")],
     }),
   ).rejects.toThrow("Synergy runtime startup failed")
   expect(events).toEqual(["a:start", "b:start", "a:ready", "b:ready", "b:stop", "a:stop"])
-  await using reopened = await openAgentRuntime({ home: fixture.host.root, host: fixture.host })
+  await using reopened = await openAgentRuntime({ home: fixture.host.root, host: fixture.host, components: [] })
   expect(reopened.status).toBe("ready")
 }, 30_000)

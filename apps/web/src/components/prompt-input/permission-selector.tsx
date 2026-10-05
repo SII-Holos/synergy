@@ -40,6 +40,7 @@ export function PermissionModeSelector(props: {
           class="prompt-input-toolbar-button flex items-center gap-1.5 transition-colors"
           classList={{
             "opacity-60 cursor-not-allowed": props.switching(),
+            "prompt-input-permission-full-access": props.activeMode().id === "full_access",
           }}
         >
           <Show

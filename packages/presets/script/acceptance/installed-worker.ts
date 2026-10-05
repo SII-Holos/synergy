@@ -24,6 +24,8 @@ async function main() {
   const { createLocalHost } = await import("@ericsanchezok/synergy-local-runtime")
   const host = createLocalHost({ home: input.home })
   const { openAgentRuntime } = await import("@ericsanchezok/synergy-agent-runtime")
+  const { localRuntime } = await import("@ericsanchezok/synergy-local-runtime/component")
+  const { plugins } = await import("@ericsanchezok/synergy-plugin-host/component")
   let fixture: import("@ericsanchezok/synergy-agent-runtime").RuntimeComponent | undefined
   if (input.coordination) {
     const directory = input.coordination
@@ -51,7 +53,12 @@ async function main() {
         home: host.root,
         mode: "oneshot",
         listen: false,
-        components: [...(await import("@ericsanchezok/synergy-presets")).fullComponents(), fixture],
+        components: [
+          localRuntime({ workers: false }),
+          plugins(),
+          ...(await import("@ericsanchezok/synergy-presets")).fullComponents(),
+          fixture,
+        ],
       })
     : input.profile === "full"
       ? await (
@@ -63,7 +70,13 @@ async function main() {
         })
       : await (
           await import("@ericsanchezok/synergy-agent-runtime")
-        ).openAgentRuntime({ host, home: host.root, mode: "oneshot", listen: false })
+        ).openAgentRuntime({
+          host,
+          home: host.root,
+          mode: "oneshot",
+          listen: false,
+          components: [localRuntime({ workers: false }), plugins()],
+        })
   const { Scope } = await import("@ericsanchezok/synergy-harness/scope")
   const { ScopeContext } = await import("@ericsanchezok/synergy-harness/scope/context")
   const { Session } = await import("@ericsanchezok/synergy-harness/session")

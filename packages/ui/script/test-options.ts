@@ -3,6 +3,8 @@ import type { TestRunnerOptions } from "../../../script/shared/test-runner"
 export const testOptions = {
   timeoutMs: 120000,
   isolated: [
+    "test/components/iframe-focus.browser.test.ts",
+    "test/components/review-viewer.dom.test.ts",
     "test/components/message-readers.render.test.ts",
     "test/components/execution-completion.dom.test.ts",
     "test/components/tool/computer-tool-renders.test.tsx",
@@ -25,6 +27,7 @@ export const testOptions = {
     "test/components/session-turn-activity-switch.dom.test.ts",
     "test/components/session-turn-chronology.dom.test.ts",
     "test/components/conversation-motion.browser.test.ts",
+    "test/components/compaction-status.browser.test.ts",
     "test/components/render-html.browser.test.ts",
     "test/components/render-html.test.ts",
     "test/markdown-terminal-transition.test.ts",

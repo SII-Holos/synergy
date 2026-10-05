@@ -1,4 +1,4 @@
-import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
+import { registerLocalToolInputHistory } from "./tool-input-history"
 import { registerToolGroup } from "./tool-group-worktree"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { BashTool } from "./tools/bash"
@@ -30,11 +30,7 @@ import { ToolExposure } from "@ericsanchezok/synergy-harness/tool/exposure"
 import { RuntimeReloadTool } from "./tools/runtime-reload"
 
 export function registerLocalTools() {
-  Tool.registerInputHistory("local-runtime", {
-    bash: {
-      description: "workBrief",
-    },
-  })
+  registerLocalToolInputHistory()
 
   registerToolGroup()
   ToolExposure.registerGroups("local-runtime", [AgentConfigToolGroup])

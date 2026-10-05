@@ -13,6 +13,7 @@ export async function testRuntime(
     composition?: RuntimeComposition
     env?: Record<string, string | undefined>
     postgres?: string
+    namespace?: string
   } = {},
 ) {
   const fixture = await runtimeHome({ home: options.home })
@@ -35,8 +36,12 @@ export async function testRuntime(
         async open() {
           const store = await TransactionalStore.open(
             options.postgres
-              ? { backend: "postgres", url: options.postgres, namespace: crypto.randomUUID() }
-              : { backend: "sqlite", filename: path.join(host.root, "authority.sqlite"), namespace: "test" },
+              ? { backend: "postgres", url: options.postgres, namespace: options.namespace ?? crypto.randomUUID() }
+              : {
+                  backend: "sqlite",
+                  filename: path.join(host.root, "authority.sqlite"),
+                  namespace: options.namespace ?? "test",
+                },
           )
           return {
             handle: { store, artifactDirectory: path.join(host.root, "data") },

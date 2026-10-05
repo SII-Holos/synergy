@@ -4,7 +4,7 @@ import { z } from "zod"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
-import { BUILTIN_SKILLS } from "./builtin"
+import { SkillSelection } from "./selection"
 import { ConfigMarkdown } from "@ericsanchezok/synergy-harness/config/markdown"
 import { SkillManifest } from "./manifest"
 import { SkillSourceProfile } from "@ericsanchezok/synergy-harness/instruction/source-profile"
@@ -160,6 +160,7 @@ export namespace Skill {
       openclaw: 0,
     }
 
+    if (!SkillSelection.filesystem()) return { candidates: [], sourceCounts }
     for (const root of SkillSourceProfile.existingRoots(ScopeContext.current.workspace?.path ?? null)) {
       try {
         for await (const match of ENTRY_GLOB.scan({
@@ -265,7 +266,7 @@ export namespace Skill {
     const candidates: ProgrammaticCandidate[] = []
     const diagnostics: Diagnostic[] = []
 
-    for (const builtin of BUILTIN_SKILLS) {
+    for (const builtin of SkillSelection.builtins()) {
       const normalized = programmaticInfo({
         name: builtin.name,
         description: builtin.description,

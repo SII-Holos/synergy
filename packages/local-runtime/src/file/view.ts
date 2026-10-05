@@ -42,7 +42,15 @@ export namespace FileView {
         .replaceAll("\\", "/")
     }
     const root = directory()
-    const candidate = root && api.isAbsolute(filename) ? api.relative(root, filename) : filename
+    const virtual = EnvironmentResources.virtualRoot(EnvironmentResources.current()?.workspace)
+    const logical = virtual && api.isAbsolute(filename) ? api.relative(virtual, filename) : undefined
+    const insideVirtual =
+      logical !== undefined && logical !== ".." && !logical.startsWith("../") && !api.isAbsolute(logical)
+    const candidate = insideVirtual
+      ? logical
+      : root && api.isAbsolute(filename)
+        ? api.relative(root, filename)
+        : filename
     if (!candidate || candidate === ".") return ""
     return WorkspaceTree.Path.parse(api.normalize(candidate).replaceAll(api.sep, "/").replace(/\/$/, ""))
   }
@@ -257,6 +265,7 @@ export namespace FileView {
     filename: string,
     capture: (store: BlobStore) => Promise<WorkspaceTree.Manifest>,
     signal?: AbortSignal,
+    operationID?: string,
   ) {
     const info = await selected()
     const files = info.activeMount ? await WorkspaceMounts.connect(info) : undefined
@@ -267,14 +276,19 @@ export namespace FileView {
     const bytes = WorkspaceTree.encode(tree)
     const manifest = WorkspaceTree.hash(bytes)
     await store.put(manifest, bytes)
-    await mutate({ kind: "import", to: relative(filename), manifest }, signal, true)
+    await mutate({ kind: "import", to: relative(filename), manifest }, signal, true, operationID)
   }
 
-  export async function mutate(change: WorkspaceProtocol.Change, signal?: AbortSignal, protectSensitive?: boolean) {
+  export async function mutate(
+    change: WorkspaceProtocol.Change,
+    signal?: AbortSignal,
+    protectSensitive?: boolean,
+    operationID?: string,
+  ) {
     const info = await selected()
     await WorkspaceOperations.mutate({
       ...selection(info),
-      id: EnvironmentResources.nextOperationID(),
+      id: operationID ?? EnvironmentResources.nextOperationID(),
       change,
       signal,
       protectSensitive,

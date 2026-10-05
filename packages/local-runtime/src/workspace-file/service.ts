@@ -267,9 +267,12 @@ export namespace WorkspaceFileService {
       from: string
       to: string
       validateSource: (source: string) => Promise<void>
+      operationID?: string
     },
     signal?: AbortSignal,
   ) {
+    if (input.operationID !== undefined && (!input.operationID || input.operationID.length > 256))
+      throw new InvalidContentError("Import operation ID must contain 1 to 256 characters")
     const from = await FileEntry.canonical(input.from)
     const source = await FileEntry.inspect(from)
     if (!source) throw new NotFoundError("Import source is unavailable")
@@ -280,7 +283,7 @@ export namespace WorkspaceFileService {
         () =>
           entryOperation(async () => {
             await validateEntry(to, "write")
-            if (await FileView.stat(to)) throw new WriteConflictError()
+            if (!input.operationID && (await FileView.stat(to))) throw new WriteConflictError()
             const staging = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-transfer-"))
             await fs.chmod(staging, 0o700)
             try {
@@ -305,7 +308,12 @@ export namespace WorkspaceFileService {
                   }),
                 signal,
               )
-              await FileView.importTree(to, (store) => NativeWorkspaceTree.capture(staging, store, signal), signal)
+              await FileView.importTree(
+                to,
+                (store) => NativeWorkspaceTree.capture(staging, store, signal),
+                signal,
+                input.operationID,
+              )
               return await changedEntry(to)
             } finally {
               await fs.rm(staging, { recursive: true, force: true })
@@ -313,6 +321,7 @@ export namespace WorkspaceFileService {
           }),
         signal,
       )
+    if (input.operationID) throw new Error("Idempotent imports require a selected managed Workspace")
     let destinationRoot = path.dirname(to)
     while (!(await FileEntry.inspect(destinationRoot))) destinationRoot = path.dirname(destinationRoot)
     return WorkspaceAccess.withinTask(
@@ -531,6 +540,7 @@ export namespace WorkspaceFileService {
   export async function serveFile(input: {
     path: string
     signal?: AbortSignal
+    maximumBytes?: number
   }): Promise<{ absolute: string; node: WorkspaceFile.Node; stream: ReadableStream; mime: string }> {
     const absolute = resolve(input.path)
     await assertRealpathInside(absolute)
@@ -538,13 +548,16 @@ export namespace WorkspaceFileService {
     if (info.type !== "file") {
       throw new AccessDeniedError(`Access denied: path is not a file (${info.path})`)
     }
-    if (info.size > PREVIEW_MAX_BYTES) {
-      throw new TooLargeError(`File too large to serve (${info.size} bytes, limit ${PREVIEW_MAX_BYTES})`)
+    const limit = input.maximumBytes ?? PREVIEW_MAX_BYTES
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 512 * 1024 * 1024)
+      throw new InvalidContentError("File stream limit must be between 1 byte and 512 MiB")
+    if (info.size > limit) {
+      throw new TooLargeError(`File too large to serve (${info.size} bytes, limit ${limit})`)
     }
     const file = Bun.file(absolute)
     const opened = await WorkspaceFileStream.open({
       path: absolute,
-      limit: PREVIEW_MAX_BYTES,
+      limit,
       signal: input.signal,
       validate: assertRealpathInside,
     })

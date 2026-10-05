@@ -18,7 +18,7 @@ MCP, LSP, Formatter, ACP, External Agents, Link Client and Code Tools are separa
 
 ## Embedded component composition
 
-`@ericsanchezok/synergy-agent-runtime` provides `openAgentRuntime({ home, components })` for Bun. `home` is the data directory itself, and the returned handle exposes `client({ directory })`, `run()`, `close()` and asynchronous disposal. It includes Local Runtime and the process plugin host; optional domains come only from the explicit component list. See the [Agent Runtime package](../../packages/agent-runtime/README.md) for an embedding example.
+`@ericsanchezok/synergy-agent-runtime` provides `openAgentRuntime({ home, components })` for Bun. `home` is the data directory itself, and the returned handle exposes `client({ directory })`, `run()`, `close()` and asynchronous disposal. Every capability comes from the required explicit component list; Local Runtime and Plugin Host are selected by product assemblies. See the [Agent Runtime package](../../packages/agent-runtime/README.md) for an embedding example.
 
 Each optional package exports a factory from `./component`. Factories declare identity, API version, dependency versions, optional ordering, role-specific worker entries and lazy CLI/HTTP adapters. A missing dependency, incompatible version, duplicate identity or cycle rejects the composition before storage opens. Registration and service state belong to each Runtime, including when two runtimes reuse the same component objects. The HTTP host combines independent route owners while preserving Scope middleware, authentication and operation IDs.
 

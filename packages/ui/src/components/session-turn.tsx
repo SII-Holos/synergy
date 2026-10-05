@@ -27,6 +27,7 @@ import {
   Match,
   on,
   onCleanup,
+  onMount,
   ParentProps,
   Show,
   Switch,
@@ -1017,6 +1018,7 @@ export function SessionTurn(
     }
     activityView?: PluginConversationActivityView
     following?: boolean
+    takeUserArrival?: (messageID: string) => boolean
     submission?: { activity?: import("@ericsanchezok/synergy-sdk/client").SessionActivity; failed: boolean }
     executionState?: import("@ericsanchezok/synergy-sdk/client").TurnExecutionState
     classes?: {
@@ -1516,6 +1518,24 @@ export function SessionTurn(
                       {/* User message */}
                       <div
                         data-slot="session-turn-rewind-wrapper"
+                        ref={(element) =>
+                          onMount(() => {
+                            if (!props.takeUserArrival?.(msg().id) || !following()) return
+                            const reduced = element.ownerDocument.defaultView?.matchMedia?.(
+                              "(prefers-reduced-motion: reduce)",
+                            )
+                            if (reduced?.matches) return
+                            const settle = () => {
+                              element.removeAttribute("data-message-arrival")
+                              element.removeEventListener("animationend", settle)
+                              reduced?.removeEventListener?.("change", settle)
+                            }
+                            element.dataset.messageArrival = ""
+                            element.addEventListener("animationend", settle)
+                            reduced?.addEventListener?.("change", settle)
+                            onCleanup(settle)
+                          })
+                        }
                         data-align="right"
                         data-scroll-anchor={`turn-user:${msg().id}`}
                       >

@@ -1,4 +1,20 @@
-import type { SessionPartSummary } from "@ericsanchezok/synergy-sdk"
+import type { Event, SessionPartSummary } from "@ericsanchezok/synergy-sdk"
+
+export type ContentSummaryProperties = Extract<Event, { type: "message.part.summary" }>["properties"] & {
+  discovery?: true
+}
+
+export function projectContentSummary(
+  subscriptions: ReturnType<typeof createContentSubscriptions>,
+  scopeID: string,
+  properties: ContentSummaryProperties,
+  seq?: number,
+): ContentSummaryProperties {
+  const summaryAccepted = subscriptions.acceptsSummary(scopeID, properties)
+  if (subscriptions.accept(scopeID, properties)) return properties
+  if (seq === undefined && !summaryAccepted) return { summary: properties.summary, discovery: true }
+  return { summary: properties.summary }
+}
 
 type Interest = { scopeID: string; sessionID: string; messageID: string; partID: string; generation: number }
 type Active = { scopeID: string; sessionID: string; generation: number }

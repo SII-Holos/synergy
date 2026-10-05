@@ -224,12 +224,22 @@ test("keeps large visuals bounded and opens an accessible viewer with focus retu
   const expand = page.getByRole("button", { name: "Expand visual" })
   await expand.focus()
   await expand.press("Enter")
-  await page.getByRole("dialog", { name: "Evidence at a glance" }).waitFor()
+  const dialog = page.getByRole("dialog", { name: "Evidence at a glance" })
+  await dialog.waitFor()
+  await page.waitForFunction(() => {
+    const close = document.querySelector('[data-component="render-viewer"] [data-slot="dialog-close-button"]')
+    return close === document.activeElement
+  })
+  await page.frameLocator('[data-component="render-viewer"] iframe').locator("body").waitFor()
   await page.keyboard.press("Tab")
   expect(await page.getByRole("dialog").evaluate((element) => element.contains(document.activeElement))).toBe(true)
   expect(await page.locator('[data-component="render-html"] iframe').count()).toBe(2)
   await page.keyboard.press("Escape")
-  await page.waitForTimeout(250)
+  await dialog.waitFor({ state: "detached" })
+  await page.waitForFunction(() => {
+    const expand = document.querySelector('[data-component="render-tool"] button[aria-label="Expand visual"]')
+    return expand === document.activeElement
+  })
   expect(await page.getByRole("dialog").count()).toBe(0)
   expect(await expand.evaluate((element) => document.activeElement === element)).toBe(true)
   expect(await page.locator('[data-component="render-html"] iframe').count()).toBe(1)

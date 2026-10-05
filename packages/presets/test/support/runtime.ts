@@ -4,6 +4,8 @@ import { runInProcessStream } from "@ericsanchezok/synergy-harness/test/support/
 import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
 import { openAgentRuntime } from "@ericsanchezok/synergy-agent-runtime"
 import { desktopComponents } from "../../src/components"
+import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
+import { plugins } from "@ericsanchezok/synergy-plugin-host/component"
 
 export async function testRuntime(options: { env?: Record<string, string | undefined>; desktop?: boolean } = {}) {
   const fixture = await runtimeHome()
@@ -15,7 +17,7 @@ export async function testRuntime(options: { env?: Record<string, string | undef
           home: host.root,
           mode: "oneshot",
           listen: false,
-          components: await desktopComponents(),
+          components: [localRuntime({ workers: false }), plugins(), ...(await desktopComponents())],
         })
       : await PresetRuntimeHandle.openTask({ host, mode: "oneshot" })
     runtime.run(() => AgentTurn.setInProcessStream(runInProcessStream))

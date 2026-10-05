@@ -6609,7 +6609,7 @@ export type Config = {
    */
   timeout?: {
     /**
-     * Max wall-clock seconds for one assistant step (default: 21600 = 6h)
+     * Max wall-clock seconds for one assistant step (0 = disabled, default: 21600 = 6h)
      */
     invoke_sec?: number
     provider?: {
@@ -6628,11 +6628,11 @@ export type Config = {
     }
     tool?: {
       /**
-       * Default timeout per tool execution in seconds (default: 7200 = 2h)
+       * Default timeout per tool execution in seconds (0 = disabled, default: 7200 = 2h)
        */
       default_sec?: number
       /**
-       * Per-tool timeout overrides by tool name, e.g. { bash: 600, webfetch: 120 }
+       * Per-tool timeout overrides by tool name (0 = disabled), e.g. { bash: 600, webfetch: 120 }
        */
       overrides?: {
         [key: string]: number
@@ -7891,6 +7891,86 @@ export type SessionAgendaResponse = {
   limit: number
   total: number
   hasMore: boolean
+}
+
+export type ReviewComparisonFile = {
+  file: string
+  operationID?: string
+  workspace?: SnapshotWorkspace
+  legacyRoot?: string
+  additions: number
+  deletions: number
+  binary?: boolean
+  preview?: string
+  patch?: string
+  beforeBytes?: number
+  afterBytes?: number
+  truncated?: boolean
+  version: string
+  status: "modified" | "added" | "deleted"
+}
+
+export type ReviewComparison = {
+  source: "worktree" | "branch"
+  from: string
+  to: string
+  files: Array<ReviewComparisonFile>
+}
+
+export type ReviewInvalid = {
+  name: "ReviewInvalid"
+  data: {
+    message: string
+  }
+}
+
+export type ReviewConflict = {
+  name: "ReviewConflict"
+  data: {
+    message: string
+  }
+}
+
+export type ReviewFileVersion = {
+  kind: "text" | "binary" | "missing" | "oversized" | "symlink"
+  version: string
+  bytes: number
+  content?: string
+  base64?: string
+}
+
+export type ReviewFileContent = {
+  before: ReviewFileVersion
+  after: ReviewFileVersion
+  diff: FileDiff
+  version: string
+}
+
+export type ReviewComment = {
+  id: string
+  source: string
+  fileKey: string
+  file: string
+  version: string
+  side: "additions" | "deletions"
+  start: number
+  end: number
+  excerpt: string
+  text: string
+  resolved: boolean
+}
+
+export type ReviewStateValue = {
+  version: 1
+  comments: Array<ReviewComment>
+  viewed: {
+    [key: string]: string
+  }
+}
+
+export type ReviewStateResult = {
+  revision: number
+  state: ReviewStateValue
 }
 
 export type ExecutionTask = {
@@ -10381,6 +10461,11 @@ export type SessionFileRestorePreview = {
   }>
 }
 
+export type ReviewFileVersions = {
+  before: ReviewFileVersion
+  after: ReviewFileVersion
+}
+
 export type SessionFileRestoreResult = {
   restoredFiles: Array<string>
   failedFiles: Array<{
@@ -10460,6 +10545,14 @@ export type QuestionInfo = {
    * Allow selecting multiple choices
    */
   multiple?: boolean
+  /**
+   * Allow a custom free-form answer; defaults to true
+   */
+  allow_custom?: boolean
+  /**
+   * Direct input; password replies are redacted from lifecycle events
+   */
+  input_type?: "text" | "password"
 }
 
 export type QuestionRequest = {
@@ -13992,6 +14085,14 @@ export type EventRuntimeReloaded = {
   }
 }
 
+export type EventReviewStateUpdated = {
+  type: "review.state.updated"
+  properties: {
+    sessionID: string
+    revision: number
+  }
+}
+
 export type Event =
   | EventWorkspaceUpdated
   | EventScopeUpdated
@@ -14082,6 +14183,7 @@ export type Event =
   | EventServerConnected
   | EventGlobalDisposed
   | EventRuntimeReloaded
+  | EventReviewStateUpdated
 
 export type GlobalCapabilitiesData = {
   body?: never
@@ -18226,6 +18328,169 @@ export type SessionAgendaResponses = {
 
 export type SessionAgendaResponse2 = SessionAgendaResponses[keyof SessionAgendaResponses]
 
+export type ReviewCompareData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    source: "worktree" | "branch"
+    workspaceID: string
+    generation: number
+    from?: string
+    to?: string
+  }
+  url: "/review/compare"
+}
+
+export type ReviewCompareErrors = {
+  /**
+   * Review result
+   */
+  400: ReviewInvalid
+  /**
+   * Review result
+   */
+  409: ReviewConflict
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ReviewCompareError = ReviewCompareErrors[keyof ReviewCompareErrors]
+
+export type ReviewCompareResponses = {
+  /**
+   * Review result
+   */
+  200: ReviewComparison
+}
+
+export type ReviewCompareResponse = ReviewCompareResponses[keyof ReviewCompareResponses]
+
+export type ReviewFileData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    source: "worktree" | "branch"
+    workspaceID: string
+    generation: number
+    from?: string
+    to?: string
+    file: string
+    version: string
+  }
+  url: "/review/file"
+}
+
+export type ReviewFileErrors = {
+  /**
+   * Review result
+   */
+  400: ReviewInvalid
+  /**
+   * Review result
+   */
+  409: ReviewConflict
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ReviewFileError = ReviewFileErrors[keyof ReviewFileErrors]
+
+export type ReviewFileResponses = {
+  /**
+   * Review result
+   */
+  200: ReviewFileContent
+}
+
+export type ReviewFileResponse = ReviewFileResponses[keyof ReviewFileResponses]
+
+export type ReviewStateGetData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/review/state/{sessionID}"
+}
+
+export type ReviewStateGetErrors = {
+  /**
+   * Review result
+   */
+  400: ReviewInvalid
+  /**
+   * Review result
+   */
+  409: ReviewConflict
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ReviewStateGetError = ReviewStateGetErrors[keyof ReviewStateGetErrors]
+
+export type ReviewStateGetResponses = {
+  /**
+   * Review result
+   */
+  200: ReviewStateResult
+}
+
+export type ReviewStateGetResponse = ReviewStateGetResponses[keyof ReviewStateGetResponses]
+
+export type ReviewStateUpdateData = {
+  body?: {
+    revision: number
+    state: ReviewStateValue
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/review/state/{sessionID}"
+}
+
+export type ReviewStateUpdateErrors = {
+  /**
+   * Review result
+   */
+  400: ReviewInvalid
+  /**
+   * Review result
+   */
+  409: ReviewConflict
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ReviewStateUpdateError = ReviewStateUpdateErrors[keyof ReviewStateUpdateErrors]
+
+export type ReviewStateUpdateResponses = {
+  /**
+   * Review result
+   */
+  200: ReviewStateResult
+}
+
+export type ReviewStateUpdateResponse = ReviewStateUpdateResponses[keyof ReviewStateUpdateResponses]
+
 export type SessionExecutionSummaryData = {
   body?: never
   path: {
@@ -21121,6 +21386,55 @@ export type SessionFilesDiffResponses = {
 }
 
 export type SessionFilesDiffResponse = SessionFilesDiffResponses[keyof SessionFilesDiffResponses]
+
+export type SessionFilesVersionsData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query: {
+    directory?: string
+    scopeID?: string
+    messageID?: string
+    workspaceID: string
+    generation: number
+    file: string
+  }
+  url: "/session/{sessionID}/files/versions"
+}
+
+export type SessionFilesVersionsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionFilesVersionsError = SessionFilesVersionsErrors[keyof SessionFilesVersionsErrors]
+
+export type SessionFilesVersionsResponses = {
+  /**
+   * Captured file versions
+   */
+  200: ReviewFileVersions
+}
+
+export type SessionFilesVersionsResponse = SessionFilesVersionsResponses[keyof SessionFilesVersionsResponses]
 
 export type SessionFilesRestoreData = {
   body?: {

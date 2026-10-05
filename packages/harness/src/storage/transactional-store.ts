@@ -1316,10 +1316,11 @@ export class TransactionalStore {
       store.unavailable = error
     })
     try {
+      if (!options.readonly && driver instanceof PostgresDriver) await driver.initializeSchema(schemaFor("postgres"))
       await driver.transaction(
         async (connection) => {
-          if (!options.readonly)
-            for (const statement of schemaFor(options.backend))
+          if (!options.readonly && options.backend === "sqlite")
+            for (const statement of schemaFor("sqlite"))
               await connection.query(statement, [], {
                 // `CREATE INDEX` reads every existing row, so on a large store it
                 // outlasts the ordinary request deadline. A DDL statement killed at
@@ -1587,9 +1588,11 @@ export class TransactionalStore {
     this.check()
     if (this.options.readonly) throw new StorageConflictError("Maintenance requires a writable store")
     await this.writes.run(() =>
-      this.driver.transaction(async (connection) => {
-        await connection.query(statement, [], { maintenance: operation })
-      }),
+      this.driver instanceof PostgresDriver && operation === "create-index"
+        ? this.driver.initializeSchema([statement])
+        : this.driver.transaction(async (connection) => {
+            await connection.query(statement, [], { maintenance: operation })
+          }),
     )
   }
 

@@ -33,7 +33,7 @@ const failure = await OwnedProcess.prepare({
   args: ["-e", `await Bun.write(${JSON.stringify(marker)}, 'effect')`],
   cwd: directory,
   env: process.env,
-  lease: {
+  ownership: {
     ...lease,
     async bindProcess() {
       throw new Error("binding unavailable")

@@ -38,6 +38,14 @@ Literal colors belong only at the theme-authoring boundary, in color-generation 
 
 The default neutral recipe belongs to `themes/synergy.json`, including navigation (`background-weak`), canvas (`background-stronger`), input (`input-base`) and popup (`surface-raised-stronger-non-alpha`). Input and raised content may share a color; do not add a nested surface step merely to make them different. Necessary captions use a readable text role without reducing the enclosing opacity. Verify actual text/surface pairs after workbench and portal overrides; changing a theme token alone does not prove the rendered result. The shared-column, input-anchor and interaction rules live in the [Web product contract](../../apps/web/PRODUCT.md).
 
+### Full Access selector foreground
+
+`text-permission-full-access` is the public foreground role for the Full Access permission selector. Its consumer class is `text-text-permission-full-access`, shared by the trigger icon, trigger short label and menu icons. The default Synergy skin overrides it in `packages/ui/src/theme/themes/synergy.json` with light `#C4481C` and dark `#FF8A50`; it does not recolor general warning roles.
+
+Without an override, every theme resolves this role to `var(--text-on-warning-base)`, including existing input themes and seed-only skins. Existing Theme JSON needs no migration. An explicit override of the new role requires a host and Plugin Kit version that recognizes the token: versions whose canonical token set omits it reject that override as unknown. The role adds no stricter global contrast gates; existing required-pair validation remains unchanged, and actual selector contrast still needs rendered verification. See the [decision record](../decisions/implemented/architecture/2026-10-04-full-access-foreground.md) for the alternatives and trade-offs.
+
+The TypeScript output contract is additive but exhaustive consumers need a source update: `ResolvedTheme` and `Record<ThemeTokenName, …>` now require this key, and exhaustive switches must handle the new union member. Prefer constructing complete output with `resolveTheme()` or `resolveThemeVariant()`. Handwritten resolved maps can add `"text-permission-full-access": "var(--text-on-warning-base)"` to preserve their previous behavior.
+
 ### Imperative renderers
 
 Canvas, Chart.js, Monaco, terminal engines, SVG renderers, and isolated documents cannot assume that a CSS custom-property string is directly usable. Read the active resolved theme and flatten references with `resolveThemeColor`:

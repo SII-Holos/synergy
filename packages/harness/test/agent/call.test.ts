@@ -51,6 +51,62 @@ function call(overrides: Partial<AgentCall.TextInput> = {}) {
 }
 
 describe("AgentCall", () => {
+  test("collects a bounded forced output Tool without executing a domain action", () =>
+    runtime.run(async () => {
+      installAgent()
+      let streamInput: Record<string, unknown> | undefined
+      ;(LLM.stream as any) = mock(async (input: Record<string, unknown>) => {
+        streamInput = input
+        return {
+          fullStream: (async function* () {
+            yield {
+              type: "tool-call",
+              toolCallId: "structured",
+              toolName: "answer",
+              input: { result: 17, workBrief: "Compute the answer" },
+            }
+          })(),
+          usage: Promise.resolve(undefined),
+        }
+      })
+      const outputTool = {
+        name: "answer",
+        description: "Return the answer",
+        schema: { type: "object" as const, properties: { result: { type: "number" as const } }, required: ["result"] },
+      }
+      expect((await call({ outputTool })).toolCalls).toEqual([{ name: "answer", input: { result: 17 } }])
+      expect(streamInput?.toolChoice).toEqual({ type: "tool", toolName: "answer" })
+      expect(Object.keys(streamInput?.tools as object)).toEqual(["answer"])
+      expect((streamInput?.tools as Record<string, { execute?: unknown }>).answer.execute).toBeUndefined()
+      await expect(call({ outputTool, maxOutputChars: 1 })).rejects.toMatchObject({ code: "output_too_large" })
+    }))
+  test("unwraps structured output without deleting a domain-owned workBrief field", () =>
+    runtime.run(async () => {
+      installAgent()
+      const input = { workBrief: "domain value", unexpected: "must remain for domain validation" }
+      ;(LLM.stream as any) = mock(async () => ({
+        fullStream: (async function* () {
+          yield {
+            type: "tool-call",
+            toolCallId: "structured",
+            toolName: "answer",
+            input: { workBrief: "Return the object", toolInput: input },
+          }
+        })(),
+        usage: Promise.resolve(undefined),
+      }))
+      const outputTool = {
+        name: "answer",
+        description: "Return a brief",
+        schema: {
+          type: "object" as const,
+          properties: { workBrief: { type: "string" as const } },
+          additionalProperties: false,
+        },
+      }
+      expect((await call({ outputTool, maxOutputChars: 200 })).toolCalls).toEqual([{ name: "answer", input }])
+      await expect(call({ outputTool, maxOutputChars: 10 })).rejects.toMatchObject({ code: "output_too_large" })
+    }))
   test("resolves an Agent model and collects bounded text without creating a Session", () =>
     runtime.run(async () => {
       installAgent()

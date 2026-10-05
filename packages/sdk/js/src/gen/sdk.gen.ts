@@ -614,6 +614,15 @@ import type {
   RegistryPublishInput,
   RegistryRefreshErrors,
   RegistryRefreshResponses,
+  ReviewCompareErrors,
+  ReviewCompareResponses,
+  ReviewFileErrors,
+  ReviewFileResponses,
+  ReviewStateGetErrors,
+  ReviewStateGetResponses,
+  ReviewStateUpdateErrors,
+  ReviewStateUpdateResponses,
+  ReviewStateValue,
   RewardsInfo,
   RolloutArtifactRef,
   RuntimeAgentWorkersErrors,
@@ -706,6 +715,8 @@ import type {
   SessionFilesPreviewResponses,
   SessionFilesRestoreErrors,
   SessionFilesRestoreResponses,
+  SessionFilesVersionsErrors,
+  SessionFilesVersionsResponses,
   SessionForkErrors,
   SessionForkResponses,
   SessionGetErrors,
@@ -1862,6 +1873,48 @@ export class Files extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<SessionFilesDiffResponses, SessionFilesDiffErrors, ThrowOnError>({
       url: "/session/{sessionID}/files/diff",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read captured before and after file versions
+   */
+  public versions<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      messageID?: string
+      workspaceID: string
+      generation: number
+      file: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "messageID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "generation" },
+            { in: "query", key: "file" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionFilesVersionsResponses,
+      SessionFilesVersionsErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/files/versions",
       ...options,
       ...params,
     })
@@ -9537,6 +9590,161 @@ export class Worktree extends HeyApiClient {
   }
 }
 
+export class State extends HeyApiClient {
+  /**
+   * Read session review notes
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ReviewStateGetResponses, ReviewStateGetErrors, ThrowOnError>({
+      url: "/review/state/{sessionID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Save session review notes with a revision check
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      revision?: number
+      state?: ReviewStateValue
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "revision" },
+            { in: "body", key: "state" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<ReviewStateUpdateResponses, ReviewStateUpdateErrors, ThrowOnError>({
+      url: "/review/state/{sessionID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Review extends HeyApiClient {
+  /**
+   * Compare Git file versions without mutations
+   */
+  public compare<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scopeID?: string
+      source: "worktree" | "branch"
+      workspaceID: string
+      generation: number
+      from?: string
+      to?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "source" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "generation" },
+            { in: "query", key: "from" },
+            { in: "query", key: "to" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ReviewCompareResponses, ReviewCompareErrors, ThrowOnError>({
+      url: "/review/compare",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read a version checked Git diff and its contents
+   */
+  public file<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scopeID?: string
+      source: "worktree" | "branch"
+      workspaceID: string
+      generation: number
+      from?: string
+      to?: string
+      file: string
+      version: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "source" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "generation" },
+            { in: "query", key: "from" },
+            { in: "query", key: "to" },
+            { in: "query", key: "file" },
+            { in: "query", key: "version" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ReviewFileResponses, ReviewFileErrors, ThrowOnError>({
+      url: "/review/file",
+      ...options,
+      ...params,
+    })
+  }
+
+  state = new State({ client: this.client })
+}
+
 export class Vcs extends HeyApiClient {
   /**
    * Get VCS info
@@ -15923,6 +16131,8 @@ export class SynergyClient extends HeyApiClient {
   worktree = new Worktree({ client: this.client })
 
   session = new Session({ client: this.client })
+
+  review = new Review({ client: this.client })
 
   vcs = new Vcs({ client: this.client })
 

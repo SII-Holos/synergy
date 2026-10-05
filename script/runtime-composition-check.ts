@@ -64,7 +64,8 @@ export async function checkRuntimeCompositions(
                 },
               }
             : {}),
-          ...(mode === "full" ? { pluginMarketplace: { enabled: false }, boss: { enabled: false } } : {}),
+          ...(mode === "full" || mode === "mcp" ? { pluginMarketplace: { enabled: false } } : {}),
+          ...(mode === "full" ? { boss: { enabled: false } } : {}),
           ...(mode === "full" || mode === "library"
             ? {
                 library: {

@@ -105,6 +105,7 @@
   --text-on-critical-weak: #e35652;
   --text-on-critical-strong: #5c0000;
   --text-on-warning-base: #6c6c6c;
+  --text-permission-full-access: #C4481C;
   --text-on-info-base: #6c6c6c;
   --text-diff-add-base: #006e03;
   --text-diff-delete-base: #a8000c;
@@ -386,6 +387,7 @@
     --text-on-critical-weak: #c73c3a;
     --text-on-critical-strong: #ffc7bd;
     --text-on-warning-base: #b7b7b7;
+    --text-permission-full-access: #FF8A50;
     --text-on-info-base: #b7b7b7;
     --text-diff-add-base: #00b54e;
     --text-diff-delete-base: #ffc7bd;

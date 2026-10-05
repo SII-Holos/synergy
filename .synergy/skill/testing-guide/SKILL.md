@@ -95,6 +95,8 @@ Prepare durable fixtures before starting a short runtime deadline; for Cortex ti
 
 For persisted cooldowns and retry deadlines, advance a controlled clock at the failure-response boundary and verify both the recorded timestamp and the exact policy duration. Cover second boundaries explicitly; an upper bound derived before asynchronous work must not replace the time at which the policy applies. Restore the clock even when an assertion fails.
 
+When compressing wall timers around a controlled monotonic clock, advance only the deliberately expired requests. Keep the simulated budget valid while a healthy native worker replies, and delay that reply beyond a compressed timer tick to verify re-arming without extra timeout evidence. Separate unrelated production-host acceptance scenarios into fresh fixtures with their own bounded deadlines; retain the original history size, throttling and assertions.
+
 For worktree lifecycle changes, exercise concurrent name selection after admission, setup descendants, unregistered directory users, active-turn selection/removal, cancellation and deferred unlock. Verify concurrent tools in sibling and shared Workspaces while real unrestricted commands are still active. Test LSP continuity, exact formatter preconditions, save conflicts after response loss and stale checkpoint recovery without replay.
 
 For automatic worktree cleanup, fail native admission and the final Git removal after eligibility succeeds with an idle bound Session. Assert original binding, registry membership, bytes and activity survive, and a later candidate still progresses. Separately fail binding persistence after successful deletion and verify the next sweep reconciles the retained registry entry.

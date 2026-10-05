@@ -30,6 +30,8 @@ import { ProviderModelUnavailableError } from "./model-unavailable-error"
 import { ProviderSdkSource } from "./sdk-source"
 import { ProviderPluginAuth } from "./plugin-auth-source"
 import { ObservabilityMetrics } from "../observability/metrics"
+import { ProviderCatalogSource } from "./catalog-source"
+import { RolloutTransport } from "../session/rollout/transport"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -532,6 +534,7 @@ export namespace Provider {
   export type Info = z.infer<typeof Info>
 
   export interface WorkerPlan {
+    authoritative?: boolean
     profileID?: string
     key?: string
     env?: string[]
@@ -548,6 +551,7 @@ export namespace Provider {
   export async function workerPlan(provider: Info | undefined, timeouts: WorkerPlan["timeouts"]): Promise<WorkerPlan> {
     const runtimeProfile = provider?.id ? (await state()).runtimeProfileStates[provider.id] : undefined
     return {
+      ...(isAuthoritative(provider?.id) ? { authoritative: true } : {}),
       ...(provider?.profileID ? { profileID: provider.profileID } : {}),
       key: provider?.key,
       ...(provider?.env ? { env: provider.env } : {}),
@@ -678,6 +682,24 @@ export namespace Provider {
     if (RuntimeContext.current().host.env.SYNERGY_AGENT_WORKER !== "1") {
       throw new Error("Worker provider plans can only be installed inside an Agent worker")
     }
+    if (plan.authoritative) {
+      if (plan.profileID) throw new Error("Host-owned provider plans cannot select an implicit provider profile")
+      instanceState.authoritativeProviders.add(model.providerID)
+      instanceState.workerState.providers[model.providerID] = {
+        id: model.providerID,
+        name: model.providerID,
+        source: "custom",
+        env: [],
+        key: plan.key,
+        options: plan.options,
+        models: { [model.id]: model },
+      }
+      instanceState.workerState.timeouts[model.providerID] = plan.timeouts
+      delete instanceState.workerState.runtimeProfileStates[model.providerID]
+      delete instanceState.workerState.modelLoaders[model.providerID]
+      return
+    }
+    instanceState.authoritativeProviders.delete(model.providerID)
     const { registerBuiltinProviderProfiles } = await import("./builtin")
     registerBuiltinProviderProfiles()
     const profile = ProviderProfile.resolve(model.providerID, plan.profileID)
@@ -739,6 +761,7 @@ export namespace Provider {
   }
 
   const runtimeState = RuntimeContext.state(() => ({
+    authoritativeProviders: new Set<string>(),
     lastSettledProviders: undefined as Record<string, Info> | undefined,
     workerState: {
       models: new Map<string, { instance: LanguageModelV2; createdAt: number }>(),
@@ -752,10 +775,33 @@ export namespace Provider {
     },
   }))
 
+  function isAuthoritative(providerID?: string) {
+    return !!ProviderCatalogSource.get() || (!!providerID && runtimeState().authoritativeProviders.has(providerID))
+  }
+
   const state = ScopedState.create(async () => {
     const instanceState = runtimeState()
 
     if (RuntimeContext.current().host.env.SYNERGY_AGENT_WORKER === "1") return instanceState.workerState
+    const source = ProviderCatalogSource.get()
+    if (source) {
+      const providers = z.record(z.string(), Info).parse(structuredClone(await source.providers()))
+      for (const [id, provider] of Object.entries(providers)) {
+        if (id !== provider.id || provider.profileID)
+          throw new Error("Host-owned provider identities must match and cannot select implicit profiles")
+        for (const [modelID, model] of Object.entries(provider.models))
+          if (modelID !== model.id || id !== model.providerID)
+            throw new Error("Host-owned model identities do not match their provider")
+      }
+      return {
+        models: new Map<string, { instance: LanguageModelV2; createdAt: number }>(),
+        providers,
+        configuredForClient: mapValues(providers, redactedClientInfo),
+        sdk: new Map<number, { instance: SDK; createdAt: number }>(),
+        modelLoaders: {} as Record<string, CustomModelLoader>,
+        runtimeProfileStates: {} as Record<string, RuntimeProfileState>,
+      }
+    }
     using _ = log.time("state")
     const [{ Config }, { ProviderCatalog }] = await Promise.all([import("../config/config"), import("./catalog")])
     const config = await Config.current()
@@ -1184,6 +1230,20 @@ export namespace Provider {
     return state().then((state) => state.configuredForClient)
   }
 
+  function providerFetch(
+    model: Model,
+    provider: { profileID?: string; env?: string[] },
+    options: Record<string, unknown>,
+  ) {
+    const fetchFn = (options.fetch ?? fetch) as typeof fetch
+    if (isAuthoritative(model.providerID))
+      return (input: RequestInfo | URL, init?: RequestInit) => RolloutTransport.fetch(fetchFn, input, init)
+    return ProviderAuthRecovery.wrapFetch(model.providerID, fetchFn, provider.profileID, {
+      effectiveAPIKey: typeof options.apiKey === "string" ? options.apiKey : undefined,
+      environment: provider.env,
+    })
+  }
+
   /**
    * Create an SDK instance from a model spec and explicit provider info.
    * This is the stateless core of SDK creation — no scope context or caching.
@@ -1209,19 +1269,17 @@ export namespace Provider {
       }
 
     const bundledKey =
-      model.providerID === "google-vertex-anthropic" ? "@ai-sdk/google-vertex/anthropic" : model.api.npm
+      !isAuthoritative(model.providerID) && model.providerID === "google-vertex-anthropic"
+        ? "@ai-sdk/google-vertex/anthropic"
+        : model.api.npm
     const bundledFn = ProviderSdkSource.loadSync(bundledKey)
 
-    const customFetch = options["fetch"]
     const proxyUrl = options["proxy"] as string | undefined
     const noProxy = options["noProxy"] === true
     delete options["proxy"]
     delete options["noProxy"]
 
-    const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch, provider.profileID, {
-      effectiveAPIKey: typeof options["apiKey"] === "string" ? options["apiKey"] : undefined,
-      environment: provider.env,
-    })
+    const authFetch = providerFetch(model, provider, options)
     const proxyFetch =
       proxyUrl || noProxy
         ? (input: any, init?: any) => fetchWithProxyOptions(authFetch, input, init, proxyUrl, noProxy)
@@ -1261,9 +1319,11 @@ export namespace Provider {
     },
   ): Promise<LanguageModelV2> {
     const { registerBuiltinProviderProfiles } = await import("./builtin")
-    registerBuiltinProviderProfiles()
+    if (!isAuthoritative(model.providerID)) registerBuiltinProviderProfiles()
 
-    const profile = ProviderProfile.resolve(model.providerID, provider.profileID)
+    const profile = isAuthoritative(model.providerID)
+      ? undefined
+      : ProviderProfile.resolve(model.providerID, provider.profileID)
     const connectionAuth =
       provider.auth ?? (provider.key ? ({ type: "api", key: provider.key } satisfies Auth.Info) : undefined)
     const profileInput = {
@@ -1356,11 +1416,7 @@ export namespace Provider {
         log.info("sdk cache entry expired, recreating", { providerID: model.providerID, key })
       }
 
-      const customFetch = options["fetch"]
-      const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch, provider.profileID, {
-        effectiveAPIKey: typeof options["apiKey"] === "string" ? options["apiKey"] : undefined,
-        environment: provider.env,
-      })
+      const authFetch = providerFetch(model, provider, options)
       const proxyUrl = options["proxy"] as string | undefined
       const noProxy = options["noProxy"] === true
       delete options["proxy"]
@@ -1379,7 +1435,9 @@ export namespace Provider {
 
       // Special case: google-vertex-anthropic uses a subpath import
       const bundledKey =
-        model.providerID === "google-vertex-anthropic" ? "@ai-sdk/google-vertex/anthropic" : model.api.npm
+        !isAuthoritative(model.providerID) && model.providerID === "google-vertex-anthropic"
+          ? "@ai-sdk/google-vertex/anthropic"
+          : model.api.npm
       const factory = await ProviderSdkSource.load(bundledKey)
       const loaded = factory({ name: model.providerID, ...options })
       s.sdk.set(key, { instance: loaded, createdAt: Date.now() })

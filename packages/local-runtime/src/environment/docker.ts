@@ -48,6 +48,48 @@ export const DockerEnvironmentSpec = z
   })
   .strict()
 
+/** Canonical confinement policy shared with a privileged host's validating Engine broker. */
+export function dockerEnvironmentHostConfig(input: {
+  spec: z.infer<typeof DockerEnvironmentSpec>
+  name: string
+  publishHostIP: string
+  apparmor?: boolean
+}) {
+  return {
+    NetworkMode: input.name,
+    ReadonlyRootfs: true,
+    CapDrop: ["ALL"],
+    CapAdd: ["SETUID", "SETGID", "KILL", "CHOWN", "FOWNER", "DAC_OVERRIDE"],
+    SecurityOpt: [
+      "no-new-privileges:true",
+      `seccomp=${JSON.stringify(executionSeccomp())}`,
+      ...(input.apparmor ? ["apparmor=synergy-execution-v1"] : []),
+    ],
+    // Child proc overmounts lock the outer procfs and prevent unprivileged nested PID namespaces.
+    // User commands have no capabilities; the command sandbox creates its own procfs.
+    MaskedPaths: ["/sys/firmware", "/sys/devices/virtual/powercap"],
+    ReadonlyPaths: ["/sys"],
+    Memory: input.spec.memoryBytes,
+    NanoCpus: Math.round(input.spec.cpus * 1e9),
+    PidsLimit: input.spec.pids,
+    Tmpfs: {
+      "/tmp": "rw,nosuid,nodev,size=256m",
+      "/var/lib/synergy-executor": "rw,nosuid,nodev,noexec,mode=0700,size=512m",
+      "/run/synergy-sandbox": "rw,nosuid,nodev,noexec,mode=0711,size=16m",
+    },
+    PortBindings: { "7443/tcp": [{ HostIp: input.publishHostIP, HostPort: "" }] },
+    Mounts: [
+      { Type: "volume", Source: `${input.name}-files`, Target: "/workspaces", ReadOnly: false },
+      ...input.spec.mounts.map((mount) => ({
+        Type: mount.type,
+        Source: mount.source,
+        Target: mount.target,
+        ReadOnly: mount.readOnly,
+      })),
+    ],
+  }
+}
+
 export interface DockerEnvironmentOptions {
   id?: string
   endpoint: string
@@ -187,39 +229,7 @@ export function dockerEnvironment(options: DockerEnvironmentOptions): Environmen
                 : []),
             ],
             ExposedPorts: { "7443/tcp": {} },
-            HostConfig: {
-              NetworkMode: name(request),
-              ReadonlyRootfs: true,
-              CapDrop: ["ALL"],
-              CapAdd: ["SETUID", "SETGID", "KILL", "CHOWN", "FOWNER", "DAC_OVERRIDE"],
-              SecurityOpt: [
-                "no-new-privileges:true",
-                `seccomp=${JSON.stringify(executionSeccomp())}`,
-                ...(apparmor ? ["apparmor=synergy-execution-v1"] : []),
-              ],
-              // Child proc overmounts lock the outer procfs and prevent unprivileged nested PID namespaces.
-              // User commands have no capabilities; the command sandbox creates its own procfs.
-              MaskedPaths: ["/sys/firmware", "/sys/devices/virtual/powercap"],
-              ReadonlyPaths: ["/sys"],
-              Memory: spec.memoryBytes,
-              NanoCpus: Math.round(spec.cpus * 1e9),
-              PidsLimit: spec.pids,
-              Tmpfs: {
-                "/tmp": "rw,nosuid,nodev,size=256m",
-                "/var/lib/synergy-executor": "rw,nosuid,nodev,noexec,mode=0700,size=512m",
-                "/run/synergy-sandbox": "rw,nosuid,nodev,noexec,mode=0711,size=16m",
-              },
-              PortBindings: { "7443/tcp": [{ HostIp: publishHostIP, HostPort: "" }] },
-              Mounts: [
-                { Type: "volume", Source: `${name(request)}-files`, Target: "/workspaces", ReadOnly: false },
-                ...spec.mounts.map((mount) => ({
-                  Type: mount.type,
-                  Source: mount.source,
-                  Target: mount.target,
-                  ReadOnly: mount.readOnly,
-                })),
-              ],
-            },
+            HostConfig: dockerEnvironmentHostConfig({ spec, name: name(request), publishHostIP, apparmor }),
           },
           [409],
         )

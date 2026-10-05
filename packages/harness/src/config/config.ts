@@ -12,7 +12,6 @@ import path from "path"
 import os from "os"
 import z from "zod"
 import { Filesystem } from "../util/filesystem"
-import { ModelsCatalog } from "../provider/models"
 import { mergeDeep, unique } from "remeda"
 import { Global } from "../global"
 import fs from "fs/promises"
@@ -33,6 +32,7 @@ import * as Schema from "./schema"
 import { ConfigDomain } from "./domain"
 import { ConfigExtensions } from "./extensions"
 import { Lock } from "../util/lock"
+import { ConfigSource } from "./source"
 
 export namespace Config {
   const log = Log.create({ service: "config" })
@@ -150,6 +150,7 @@ export namespace Config {
   // stale domain-defined entries from the previous resolved snapshot.
 
   async function loadStateValue(): Promise<StateValue> {
+    if (ConfigSource.get()) return loadStateValueInner()
     const instanceState = runtimeState()
 
     const scopeKey = ScopeContext.current.scope.id
@@ -178,6 +179,8 @@ export namespace Config {
   }
 
   async function loadStateValueInner(files?: string[]): Promise<StateValue> {
+    const source = ConfigSource.get()
+    if (source) return { config: await hostConfig(source, ScopeContext.current.scope), directories: [] }
     const instanceState = runtimeState()
 
     // A reload hint that names only synergy.d domain files cannot affect
@@ -554,13 +557,33 @@ export namespace Config {
   }
 
   async function loadGlobalConfig() {
+    const source = ConfigSource.get()
+    if (source) return hostConfig(source, Scope.home())
     await ConfigReferenceMigration.directory(Global.Path.config)
     const pending = await migrateLegacyGlobalConfig()
     return loadDomainDirectory(Global.Path.config, pending)
   }
 
   const globalConfig = RuntimeContext.state(() => lazy(loadGlobalConfig))
-  export const global = Object.assign(() => globalConfig()(), { reset: () => globalConfig().reset() })
+  export const global = Object.assign(
+    () => {
+      const source = ConfigSource.get()
+      return source ? hostConfig(source, Scope.home()) : globalConfig()()
+    },
+    { reset: () => globalConfig().reset() },
+  )
+
+  async function hostConfig(source: ConfigSource.Source, scope: Scope): Promise<Info> {
+    const value = await source.resolve(Object.freeze({ scope: structuredClone(scope) }))
+    const json = z.json().parse(value)
+    if (Buffer.byteLength(JSON.stringify(json)) > 4 * 1024 * 1024)
+      throw new Error("Host configuration exceeds its bound")
+    return schema().parse(structuredClone(json))
+  }
+
+  function assertWritable() {
+    if (ConfigSource.get()) throw new Error("Host-owned configuration is read-only")
+  }
 
   async function loadDomainDirectory(root: string, initial: Info = {}): Promise<Info> {
     let result: Info = initial
@@ -1129,7 +1152,7 @@ export namespace Config {
   }
 
   export async function current() {
-    return state().then((x) => Experiment.apply(x.config))
+    return state().then((x) => (ConfigSource.get() ? x.config : Experiment.apply(x.config)))
   }
 
   export async function forScope(scope: Scope) {
@@ -1310,6 +1333,7 @@ export namespace Config {
   }
 
   export async function update(config: Info) {
+    assertWritable()
     const synergyDir = path.join(ScopeContext.current.directory, ".synergy")
     for (const [id, fragment] of ConfigDomain.split(config)) {
       if (ConfigDomain.byId().get(id)?.globalOnly) throw new Error("Resource configuration must be global")
@@ -1327,6 +1351,7 @@ export namespace Config {
   }
 
   export async function updateGlobal(config: Info) {
+    assertWritable()
     for (const [id, fragment] of ConfigDomain.split(config)) {
       await domainUpdate(id, fragment)
     }
@@ -1374,6 +1399,8 @@ export namespace Config {
 
   export async function domainGet(id: ConfigDomain.Id, root = Global.Path.config): Promise<Info> {
     const parsed = ConfigDomain.Id.parse(id)
+    const source = ConfigSource.get()
+    if (source) return ConfigDomain.split(await hostConfig(source, Scope.home())).get(parsed) ?? {}
     await migrateLegacyGlobalConfig()
     const filepath = ConfigDomain.filepath(parsed, root)
     try {
@@ -1401,6 +1428,7 @@ export namespace Config {
     root = Global.Path.config,
   ): Promise<{ config: Info; error?: string }> {
     const parsed = ConfigDomain.Id.parse(id)
+    if (ConfigSource.get()) return { config: await domainGet(parsed, root) }
     await migrateLegacyGlobalConfig()
     const filepath = ConfigDomain.filepath(parsed, root)
     using _ = await Lock.read(`config-domain:${filepath}`)
@@ -1418,6 +1446,7 @@ export namespace Config {
     patch: Partial<Info>,
     options: { mode?: ConfigDomain.MergeMode; root?: string } = {},
   ) {
+    assertWritable()
     const parsed = ConfigDomain.Id.parse(id)
     if (parsed === "storage")
       throw new Error("Change the active storage target with data storage migrate --target; it cannot be hot-reloaded")
@@ -1463,6 +1492,7 @@ export namespace Config {
     mutate: (current: Info) => Partial<Info> | Promise<Partial<Info>>,
     options: { mode?: ConfigDomain.MergeMode; root?: string } = {},
   ) {
+    assertWritable()
     const parsed = ConfigDomain.Id.parse(id)
     if (parsed === "storage")
       throw new Error("Change the active storage target with data storage migrate --target; it cannot be hot-reloaded")
@@ -1520,6 +1550,7 @@ export namespace Config {
     patch: Partial<Info>,
     options: { mode?: ConfigDomain.MergeMode } = {},
   ) {
+    assertWritable()
     const parsed = ConfigDomain.Id.parse(id)
     if (parsed === "storage")
       throw new Error("Change the active storage target with data storage migrate --target; it cannot be hot-reloaded")

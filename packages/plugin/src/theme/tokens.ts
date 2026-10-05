@@ -269,6 +269,7 @@ export const THEME_TOKEN_NAMES = [
   "text-on-warning-base",
   "text-on-warning-strong",
   "text-on-warning-weak",
+  "text-permission-full-access",
   "text-strong",
   "text-stronger",
   "text-subtle",

@@ -2,14 +2,15 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { StorageIntegrityError } from "./errors"
 import { legacyRecords } from "./legacy-source"
+import { isLegacyStartupResidue } from "./legacy-startup"
 import type { TransactionalStore, StoreTransaction } from "./transactional-store"
 
 /**
  * Storage-layer primitives for the phased activation contract: the session
  * aggregate tree (`data/sessions/**`) stays in legacy JSON after the SQLite
  * authority activates, and is imported per aggregate later. Everything outside
- * that tree keeps the #1393 invariant — no legacy record may survive
- * activation, and any record that reappears afterwards is a foreign writer.
+ * that tree rejects foreign authority while leaving validated, inert startup
+ * metadata untouched. Neither kind of file becomes SQL authority.
  */
 export namespace StorageCompat {
   const deferredRoot = "sessions"
@@ -208,8 +209,9 @@ export namespace StorageCompat {
   /**
    * The compat replacement for rejectLegacyWriters. Deferred session JSON is
    * allowed only while its aggregate has not been imported: a JSON file under
-   * an imported (or unknown) session, and any surviving record outside the
-   * deferred tree, means a legacy writer is alive.
+   * an imported (or unknown) session, and unrecognized records outside the
+   * deferred tree, remain fatal. Inert startup metadata cannot admit a foreign
+   * Session.
    */
   export async function rejectForeignWriters(dataRoot: string, store: TransactionalStore) {
     const [info] = await store.readMany<Info>([infoKey])
@@ -220,6 +222,7 @@ export namespace StorageCompat {
     )
     for await (const relative of legacyRecords(dataRoot)) {
       if (info?.backupID || !deferRelative(relative)) {
+        if (await isLegacyStartupResidue(dataRoot, relative, store)) continue
         throw new StorageIntegrityError(
           `Legacy JSON records appeared after database activation (${relative}); preserve both datasets and resolve the old writer before starting`,
         )

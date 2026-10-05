@@ -6,6 +6,7 @@ import type { Info as SessionInfo } from "../session/types"
 import type { ToolDiagnostic } from "./diagnostic"
 import { ToolExposure } from "./exposure"
 import { ToolMcpSource } from "./mcp-source"
+import { ToolPolicySource } from "./policy-source"
 
 export namespace ToolDiscovery {
   export interface Entry {
@@ -29,6 +30,7 @@ export namespace ToolDiscovery {
 
   export async function collect(input: {
     providerID: string
+    model?: Provider.Model
     agent: Agent.Info
     session?: SessionInfo
     includeMCP?: boolean
@@ -93,6 +95,14 @@ export namespace ToolDiscovery {
     )
     const disabled = new Set<string>()
     const diagnostics = new Map<string, ToolDiagnostic>()
+    const selected = new Set(
+      await ToolPolicySource.selectDiscovery({
+        session: input.session,
+        agent: input.agent,
+        model: input.model,
+        toolIDs: tools.map((tool) => tool.id),
+      }),
+    )
     for (const tool of tools) {
       const modeDiagnostic = SessionModePolicy.visibility({ toolName: tool.id, session: input.session })
       if (modeDiagnostic) {
@@ -100,7 +110,7 @@ export namespace ToolDiscovery {
         diagnostics.set(tool.id, modeDiagnostic)
         continue
       }
-      if (permissionDisabled.has(tool.id)) {
+      if (permissionDisabled.has(tool.id) || !selected.has(tool.id)) {
         disabled.add(tool.id)
         diagnostics.set(
           tool.id,

@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, mock, spyOn, test } from "bun:test"
+import { beforeEach, afterEach, describe, expect, mock, spyOn, test } from "bun:test"
 import { Attachment } from "../../src/attachment"
+import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionInbox } from "../../src/session/inbox"
@@ -13,7 +14,7 @@ import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 
-const sessionID = "ses_wake_retry_test"
+let sessionID: string
 const originalDelays = [...SessionManager.WAKE_RETRY_DELAYS_MS]
 const FAST_DELAYS = [5, 5, 5, 5]
 const MAX_ATTEMPTS = 1 + FAST_DELAYS.length
@@ -31,6 +32,16 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2_000) {
 }
 
 describe("session wake retry", () => {
+  beforeEach(() =>
+    runtime.run(() =>
+      ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          sessionID = (await Session.create({})).id
+        },
+      }),
+    ),
+  )
   afterEach(() =>
     runtime.run(() => {
       SessionManager.WAKE_RETRY_DELAYS_MS.splice(0, SessionManager.WAKE_RETRY_DELAYS_MS.length, ...originalDelays)
@@ -41,7 +52,7 @@ describe("session wake retry", () => {
   test("wake tolerates a failed pre-loop repair and still drives the loop", () =>
     runtime.run(async () => {
       spyOn(SessionInbox, "hasRunnableItem").mockResolvedValue(true)
-      spyOn(SessionInvoke, "repairAfterAbort").mockRejectedValue(new Error("repair storage unavailable"))
+      spyOn(SessionInvoke, "settleInterruptedTurn").mockRejectedValue(new Error("repair storage unavailable"))
       const loop = spyOn(SessionInvoke, "loop").mockResolvedValue({} as never)
 
       await SessionManager.wake(sessionID)
@@ -53,7 +64,7 @@ describe("session wake retry", () => {
     runtime.run(async () => {
       fastDelays()
       spyOn(SessionInbox, "hasRunnableItem").mockResolvedValue(true)
-      spyOn(SessionInvoke, "repairAfterAbort").mockResolvedValue(false)
+      spyOn(SessionInvoke, "settleInterruptedTurn").mockResolvedValue(false)
       let attempts = 0
       const loop = spyOn(SessionInvoke, "loop").mockImplementation((() => {
         attempts++
@@ -69,7 +80,7 @@ describe("session wake retry", () => {
     runtime.run(async () => {
       fastDelays()
       spyOn(SessionInbox, "hasRunnableItem").mockResolvedValue(true)
-      spyOn(SessionInvoke, "repairAfterAbort").mockResolvedValue(false)
+      spyOn(SessionInvoke, "settleInterruptedTurn").mockResolvedValue(false)
       const loop = spyOn(SessionInvoke, "loop").mockRejectedValue(new Error("permanent failure"))
 
       SessionManager.scheduleWake(sessionID, "user-input")
@@ -94,7 +105,7 @@ describe("session wake retry", () => {
           })
           let attempts = 0
           let completed = false
-          spyOn(SessionInvoke, "repairAfterAbort").mockResolvedValue(false)
+          spyOn(SessionInvoke, "settleInterruptedTurn").mockResolvedValue(false)
           spyOn(SessionInvoke, "loop").mockImplementation((async () => {
             const item = await SessionInbox.peekTask(session.id)
             if (item?.id === bad.id) {
@@ -128,7 +139,7 @@ describe("session wake retry", () => {
     runtime.run(async () => {
       fastDelays()
       spyOn(SessionInbox, "hasRunnableItem").mockResolvedValue(true)
-      spyOn(SessionInvoke, "repairAfterAbort").mockResolvedValue(false)
+      spyOn(SessionInvoke, "settleInterruptedTurn").mockResolvedValue(false)
       const failure = new Error("Worktree directory not found: /tmp/gone")
       failure.name = "WorktreeNotFoundError"
       const loop = spyOn(SessionInvoke, "loop").mockRejectedValue(failure)
@@ -143,7 +154,7 @@ describe("session wake retry", () => {
     runtime.run(async () => {
       fastDelays()
       spyOn(SessionInbox, "hasRunnableItem").mockResolvedValue(true)
-      spyOn(SessionInvoke, "repairAfterAbort").mockResolvedValue(false)
+      spyOn(SessionInvoke, "settleInterruptedTurn").mockResolvedValue(false)
       const loop = spyOn(SessionInvoke, "loop").mockRejectedValue(new Attachment.InvalidUrlError())
 
       SessionManager.scheduleWake(sessionID, "user-input")
@@ -156,7 +167,7 @@ describe("session wake retry", () => {
     runtime.run(async () => {
       fastDelays()
       spyOn(SessionInbox, "hasRunnableItem").mockResolvedValue(true)
-      spyOn(SessionInvoke, "repairAfterAbort").mockResolvedValue(false)
+      spyOn(SessionInvoke, "settleInterruptedTurn").mockResolvedValue(false)
       const loop = spyOn(SessionInvoke, "loop").mockRejectedValue(new Error("permanent failure"))
 
       SessionManager.scheduleWake(sessionID, "user-input")
@@ -168,7 +179,7 @@ describe("session wake retry", () => {
   test("scheduleWake preserves a release request arriving while the loop is finishing", () =>
     runtime.run(async () => {
       spyOn(SessionInbox, "hasRunnableItem").mockResolvedValue(true)
-      spyOn(SessionInvoke, "repairAfterAbort").mockResolvedValue(false)
+      spyOn(SessionInvoke, "settleInterruptedTurn").mockResolvedValue(false)
       let attempts = 0
       const loop = spyOn(SessionInvoke, "loop").mockImplementation((async () => {
         attempts++
@@ -222,7 +233,7 @@ describe("session wake retry", () => {
             committed = true
             return {} as never
           }) as unknown as typeof SessionInvoke.loop)
-          spyOn(SessionInvoke, "repairAfterAbort").mockResolvedValue(false)
+          spyOn(SessionInvoke, "settleInterruptedTurn").mockResolvedValue(false)
 
           SessionManager.scheduleWake(session.id, "test")
           await waitFor(() => committed)

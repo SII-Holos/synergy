@@ -17,7 +17,13 @@ export async function createRuntimeCli(components: readonly RuntimeComponent[] =
   const routes = http ? await loadHttpAdapters(selected) : []
   const open = async (options: LocalRuntimeOptions, listen: boolean) => {
     const host = options.host ?? createLocalHost()
-    return openAgentRuntime({ ...options, host, home: host.root, components, listen })
+    return openAgentRuntime({
+      ...options,
+      host,
+      home: host.root,
+      components: [localRuntime({ workers: false, environment: options.environment }), plugins(), ...components],
+      listen,
+    })
   }
   const openHttp = async (options: LocalRuntimeOptions) => {
     const handle = await open(options, true)

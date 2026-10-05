@@ -5,6 +5,7 @@
   "private": false,
   "license": "MIT",
   "exports": {
+    "./tool-input-history": "./src/tool-input-history.ts",
     "./environment/profiles": "./src/environment/profiles.ts",
     "./workspace/blob-store": "./src/workspace/blob-store.ts",
     "./environment/docker": "./src/environment/docker.ts",
@@ -104,7 +105,8 @@
     "./cli/network": "./src/cli/network.ts",
     "./cli/scope": "./src/cli/scope.ts",
     "./component": "./src/component.ts",
-    "./reload": "./src/reload.ts"
+    "./reload": "./src/reload.ts",
+    "./skill/selection": "./src/skill/selection.ts"
   },
   "scripts": {
     "build:execution-host": "bun script/build-execution-host.ts",

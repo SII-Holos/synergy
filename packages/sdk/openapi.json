@@ -8345,6 +8345,433 @@
         ]
       }
     },
+    "/review/compare": {
+      "get": {
+        "operationId": "review.compare",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "type": "string",
+              "enum": ["worktree", "branch"]
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "generation",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        ],
+        "summary": "Compare Git file versions without mutations",
+        "responses": {
+          "200": {
+            "description": "Review result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewComparison"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Review result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewInvalid"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Review result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewConflict"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.review.compare({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/review/file": {
+      "get": {
+        "operationId": "review.file",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "type": "string",
+              "enum": ["worktree", "branch"]
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "generation",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
+            "in": "query",
+            "name": "file",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "summary": "Read a version checked Git diff and its contents",
+        "responses": {
+          "200": {
+            "description": "Review result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewFileContent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Review result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewInvalid"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Review result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewConflict"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.review.file({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/review/state/{sessionID}": {
+      "get": {
+        "operationId": "review.state.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Read session review notes",
+        "responses": {
+          "200": {
+            "description": "Review result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewStateResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Review result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewInvalid"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Review result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewConflict"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.review.state.get({\n  ...\n})"
+          }
+        ]
+      },
+      "put": {
+        "operationId": "review.state.update",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Save session review notes with a revision check",
+        "responses": {
+          "200": {
+            "description": "Review result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewStateResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Review result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewInvalid"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Review result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewConflict"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "state": {
+                    "$ref": "#/components/schemas/ReviewStateValue"
+                  }
+                },
+                "required": ["revision", "state"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.review.state.update({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/execution/summary": {
       "get": {
         "operationId": "session.executionSummary",
@@ -15194,6 +15621,137 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.files.diff({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/files/versions": {
+      "get": {
+        "operationId": "session.files.versions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "messageID",
+            "schema": {
+              "type": "string",
+              "pattern": "^msg.*"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "generation",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "file",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "summary": "Read captured before and after file versions",
+        "responses": {
+          "200": {
+            "description": "Captured file versions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewFileVersions"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.files.versions({\n  ...\n})"
           }
         ]
       }
@@ -55567,9 +56125,9 @@
             "type": "object",
             "properties": {
               "invoke_sec": {
-                "description": "Max wall-clock seconds for one assistant step (default: 21600 = 6h)",
+                "description": "Max wall-clock seconds for one assistant step (0 = disabled, default: 21600 = 6h)",
                 "type": "number",
-                "exclusiveMinimum": 0
+                "minimum": 0
               },
               "provider": {
                 "type": "object",
@@ -55603,19 +56161,19 @@
                 "type": "object",
                 "properties": {
                   "default_sec": {
-                    "description": "Default timeout per tool execution in seconds (default: 7200 = 2h)",
+                    "description": "Default timeout per tool execution in seconds (0 = disabled, default: 7200 = 2h)",
                     "type": "number",
-                    "exclusiveMinimum": 0
+                    "minimum": 0
                   },
                   "overrides": {
-                    "description": "Per-tool timeout overrides by tool name, e.g. { bash: 600, webfetch: 120 }",
+                    "description": "Per-tool timeout overrides by tool name (0 = disabled), e.g. { bash: 600, webfetch: 120 }",
                     "type": "object",
                     "propertyNames": {
                       "type": "string"
                     },
                     "additionalProperties": {
                       "type": "number",
-                      "exclusiveMinimum": 0
+                      "minimum": 0
                     }
                   }
                 }
@@ -58608,6 +59166,270 @@
           }
         },
         "required": ["sessionID", "count", "hasActiveAgenda", "items", "offset", "limit", "total", "hasMore"]
+      },
+      "ReviewComparisonFile": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "operationID": {
+            "type": "string"
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/SnapshotWorkspace"
+          },
+          "legacyRoot": {
+            "type": "string"
+          },
+          "additions": {
+            "type": "number"
+          },
+          "deletions": {
+            "type": "number"
+          },
+          "binary": {
+            "type": "boolean"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "patch": {
+            "type": "string"
+          },
+          "beforeBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "afterBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["modified", "added", "deleted"]
+          }
+        },
+        "required": ["file", "additions", "deletions", "version", "status"],
+        "additionalProperties": false
+      },
+      "ReviewComparison": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": ["worktree", "branch"]
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "files": {
+            "maxItems": 5000,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewComparisonFile"
+            }
+          }
+        },
+        "required": ["source", "from", "to", "files"]
+      },
+      "ReviewInvalid": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ReviewInvalid"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ReviewConflict": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ReviewConflict"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ReviewFileVersion": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["text", "binary", "missing", "oversized", "symlink"]
+          },
+          "version": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "content": {
+            "type": "string"
+          },
+          "base64": {
+            "type": "string"
+          }
+        },
+        "required": ["kind", "version", "bytes"]
+      },
+      "ReviewFileContent": {
+        "type": "object",
+        "properties": {
+          "before": {
+            "$ref": "#/components/schemas/ReviewFileVersion"
+          },
+          "after": {
+            "$ref": "#/components/schemas/ReviewFileVersion"
+          },
+          "diff": {
+            "$ref": "#/components/schemas/FileDiff"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": ["before", "after", "diff", "version"]
+      },
+      "ReviewComment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "fileKey": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "file": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "version": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "side": {
+            "type": "string",
+            "enum": ["additions", "deletions"]
+          },
+          "start": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "end": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "excerpt": {
+            "type": "string",
+            "maxLength": 12000
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          },
+          "resolved": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "fileKey",
+          "file",
+          "version",
+          "side",
+          "start",
+          "end",
+          "excerpt",
+          "text",
+          "resolved"
+        ]
+      },
+      "ReviewStateValue": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "comments": {
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewComment"
+            }
+          },
+          "viewed": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "maxLength": 2500
+            },
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        },
+        "required": ["version", "comments", "viewed"]
+      },
+      "ReviewStateResult": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "state": {
+            "$ref": "#/components/schemas/ReviewStateValue"
+          }
+        },
+        "required": ["revision", "state"]
       },
       "ExecutionTask": {
         "type": "object",
@@ -66964,6 +67786,18 @@
         },
         "required": ["id", "expiresAt", "files"]
       },
+      "ReviewFileVersions": {
+        "type": "object",
+        "properties": {
+          "before": {
+            "$ref": "#/components/schemas/ReviewFileVersion"
+          },
+          "after": {
+            "$ref": "#/components/schemas/ReviewFileVersion"
+          }
+        },
+        "required": ["before", "after"]
+      },
       "SessionFileRestoreResult": {
         "type": "object",
         "properties": {
@@ -67165,6 +67999,15 @@
           "multiple": {
             "description": "Allow selecting multiple choices",
             "type": "boolean"
+          },
+          "allow_custom": {
+            "description": "Allow a custom free-form answer; defaults to true",
+            "type": "boolean"
+          },
+          "input_type": {
+            "description": "Direct input; password replies are redacted from lifecycle events",
+            "type": "string",
+            "enum": ["text", "password"]
           }
         },
         "required": ["question", "header", "options"]
@@ -78087,6 +78930,31 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.review.state.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "review.state.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses.*"
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["sessionID", "revision"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event": {
         "anyOf": [
           {
@@ -78355,6 +79223,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.runtime.reloaded"
+          },
+          {
+            "$ref": "#/components/schemas/Event.review.state.updated"
           }
         ]
       }

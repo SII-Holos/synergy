@@ -156,6 +156,7 @@ export type ToolInfo = {
   icon: IconName
   title: string | MessageDescriptor
   subtitle?: string
+  objectKind?: "path" | "command" | "query"
 }
 
 export type ToolTriggerInfo = ToolInfo & {
@@ -368,18 +369,21 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
   switch (tool) {
     case "read":
       return {
+        objectKind: "path",
         icon: "file-text",
         title: TOOL_TITLE_DESC["read"],
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
     case "view_image":
       return {
+        objectKind: "path",
         icon: "image",
         title: TOOL_TITLE_DESC["view_image"],
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
     case "view_file":
       return {
+        objectKind: "path",
         icon: "scan-eye",
         title: TOOL_TITLE_DESC["view_file"],
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
@@ -392,27 +396,31 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       }
     case "glob":
       return {
+        objectKind: "query",
         icon: "funnel",
         title: TOOL_TITLE_DESC["glob"],
-        subtitle: input.pattern,
+        subtitle: [input.pattern, input.path || input.directory].filter(Boolean).join(" · ") || undefined,
       }
     case "grep":
       return {
+        objectKind: "query",
         icon: "regex",
         title: TOOL_TITLE_DESC["grep"],
-        subtitle: input.pattern,
+        subtitle: [input.pattern, input.path || input.directory].filter(Boolean).join(" · ") || undefined,
       }
     case "file_search":
       return {
+        objectKind: "query",
         icon: "scan-document",
         title: TOOL_TITLE_DESC["file_search"],
-        subtitle: input.query,
+        subtitle: [input.query, input.path || input.directory].filter(Boolean).join(" · ") || undefined,
       }
     case "scan_files":
       return {
+        objectKind: "query",
         icon: "scan-search",
         title: TOOL_TITLE_DESC["scan_files"],
-        subtitle: input.pattern,
+        subtitle: [input.pattern, input.path || input.directory].filter(Boolean).join(" · ") || undefined,
       }
     case "webfetch":
       return {
@@ -426,17 +434,20 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "terminal",
         title: TOOL_TITLE_DESC["bash"],
+        objectKind: "command",
         subtitle: input.command,
       }
     case "edit":
       return {
+        objectKind: "path",
         icon: "pen-line",
         title: TOOL_TITLE_DESC["edit"],
-        subtitle: input.filePath ? getFilename(input.filePath) : undefined,
+        subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
     case "revise_file": {
       const path = metadata.path || metadata.filepath || input.input?.match?.(/^\[([^#\]]+)/)?.[1]
       return {
+        objectKind: "path",
         icon: "file-pen",
         title: TOOL_TITLE_DESC["revise_file"],
         subtitle: path ? getDirectory(path) + getFilename(path) : undefined,
@@ -445,6 +456,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "resolve_conflicts": {
       const path = metadata.path || metadata.filepath || input.filePath
       return {
+        objectKind: "path",
         icon: "file-pen",
         title: TOOL_TITLE_DESC["resolve_conflicts"],
         subtitle: path ? getDirectory(path) + getFilename(path) : undefined,
@@ -452,9 +464,10 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     }
     case "multiedit":
       return {
+        objectKind: "path",
         icon: "pen-line",
         title: TOOL_TITLE_DESC["multiedit"],
-        subtitle: input.filePath ? getFilename(input.filePath) : undefined,
+        subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
     case "patch":
       return {
@@ -463,13 +476,15 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       }
     case "write":
       return {
+        objectKind: "path",
         icon: "file-pen",
         title: TOOL_TITLE_DESC["write"],
-        subtitle: input.filePath ? getFilename(input.filePath) : undefined,
+        subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
     case "save_file": {
       const path = metadata.path || metadata.filepath || input.filePath
       return {
+        objectKind: "path",
         icon: "file-pen",
         title: metadata.exists === false ? TOOL_TITLE_DESC["create_file"] : TOOL_TITLE_DESC["save_file"],
         subtitle: path ? getDirectory(path) + getFilename(path) : undefined,

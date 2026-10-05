@@ -26,7 +26,7 @@ try {
     args: ["-e", `await Bun.write(${JSON.stringify(marker)},'effect')`],
     cwd: directory,
     env: process.env,
-    lease,
+    ownership: lease,
     signal: abort.signal,
   }).then(
     async (process) => {
