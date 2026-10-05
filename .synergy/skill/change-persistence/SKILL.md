@@ -33,6 +33,8 @@ Background maintenance may update session metadata without representing conversa
 
 When changing worker liveness or shutdown, close a real worker while a blocking query has entered its busy state. Verify probing exits within the teardown budget and deliberate shutdown emits no terminal-unavailability notification. Recheck driver and request ownership after awaited probes; a closed driver can make retries resolve immediately and starve shutdown timers.
 
+For PostgreSQL deletion plans, include a new namespace created after statistics were collected for unrelated history. Inspect actual row visits and loop counts for the emitted statement; indexed predicates alone do not prevent the planner from repeating an inlined candidate query. Keep the same transaction and deletion semantics when bounding repeated work.
+
 ### SQLite and other domain stores
 
 1. Keep fresh-install schema creation in the owning database initialization.

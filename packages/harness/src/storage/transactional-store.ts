@@ -793,6 +793,8 @@ export class StoreTransaction {
     const ancestorRows = ancestors.size
       ? `, ancestors(key_id) AS (VALUES ${[...ancestors].map(() => "(?)").join(",")})`
       : ""
+    // PostgreSQL may inline candidates into a nested deletion loop when a new
+    // namespace has stale statistics. Compute each bounded candidate set once.
     for (;;) {
       const dropped = await this.connection.query<SqlRow>(
         `WITH RECURSIVE roots(key_id) AS (VALUES ${[...roots].map(() => "(?)").join(",")}),
@@ -807,7 +809,7 @@ export class StoreTransaction {
             WHERE node.namespace = ? AND node.parent_id = subtree.key_id
          )${ancestorRows}, targets(key_id) AS (
            SELECT key_id FROM subtree${ancestors.size ? " UNION SELECT key_id FROM ancestors" : ""}
-         ), candidate(key_id) AS (
+         ), candidate(key_id) AS MATERIALIZED (
            SELECT node.key_id FROM targets CROSS JOIN storage_nodes node
             WHERE node.namespace = ? AND node.key_id = targets.key_id
               AND NOT EXISTS (SELECT 1 FROM storage_records record WHERE record.namespace = ? AND record.key_id = node.key_id AND record.body IS NOT NULL)

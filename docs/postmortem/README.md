@@ -10,7 +10,7 @@ Criteria:
 - **Systemic** — the bug escaped because of a gap in tests, tooling, or conventions, not a one-off typo.
 - **Costly to rediscover** — it cost real debugging time, and it would cost it again.
 
-Otherwise, write a bug fix with tests.
+Otherwise, add a tested fix.
 
 ## Placement
 
@@ -30,6 +30,7 @@ Use the next `NNNN-kebab-case-title.md`. Sections:
 
 ## Index
 
+- [0048: PostgreSQL cleanup](0048-postgres-node-cleanup-repeated-candidates.md)
 - [0046: Structured output retained tool intent](0046-structured-output-retained-tool-intent.md)
 
 - [0045: PostgreSQL startup DDL blocked writers](0045-postgres-startup-ddl-blocked-writers.md)
