@@ -1093,6 +1093,7 @@ export namespace ProviderCatalog {
     state.shutdown.abort(new Error("Provider catalog is stopping"))
     for (const timer of state.retryTimers.values()) clearTimeout(timer)
     state.retryTimers.clear()
+    if (state.modelsCatalogRuntime) await (await state.modelsCatalogRuntime).stop()
     await Promise.allSettled(state.jobs)
     await state.writeQueue
     reset()

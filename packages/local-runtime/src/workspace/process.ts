@@ -87,7 +87,7 @@ export namespace WorktreeProcess {
             args: command.slice(1),
             cwd: input.directory,
             env: { ...RuntimeContext.current().host.env, ...input.env },
-            lease: lease!,
+            ownership: lease!,
             signal,
           })
       owned.child.on("error", (error: Error) => {

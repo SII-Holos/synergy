@@ -125,6 +125,7 @@ export namespace AgentTurn {
                 messages: input.messages,
                 system: prepared?.system ?? input.system,
                 tools: input.toolDefinitions,
+                toolChoice: input.toolChoice,
                 params: prepared
                   ? { temperature: prepared.params.temperature, topP: prepared.params.topP, topK: prepared.params.topK }
                   : undefined,

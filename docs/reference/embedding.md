@@ -12,17 +12,18 @@ bun add @ericsanchezok/synergy-agent-runtime @ericsanchezok/synergy-mcp @ericsan
 
 ```ts
 import { openAgentRuntime } from "@ericsanchezok/synergy-agent-runtime"
+import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
 import { mcp } from "@ericsanchezok/synergy-mcp/component"
 import { lsp } from "@ericsanchezok/synergy-lsp/component"
 
 await using runtime = await openAgentRuntime({
   home: "./.agent-data",
-  components: [mcp(), lsp()],
+  components: [localRuntime({ workers: false }), mcp(), lsp()],
 })
 const client = runtime.client({ directory: process.cwd() })
 ```
 
-`home` is the data directory itself. Local execution and the process plugin host are included. HTTP, Browser, Library and other optional domains require their component factories. The component graph validates versions and dependencies before opening storage. See the [Agent Runtime API](../../packages/agent-runtime/README.md) for session execution.
+`home` is the data directory itself. The required component list selects every capability, including Local Runtime and Plugin Host. An empty list has no default execution Environment. HTTP, Browser, Library and other optional domains require their component factories. The component graph validates versions and dependencies before opening storage. See the [Agent Runtime API](../../packages/agent-runtime/README.md) for session execution.
 
 For the complete backend, install `@ericsanchezok/synergy-presets` and use its explicit composition. The programmatic preset does not assume a repository or bundled Web directory:
 
@@ -115,4 +116,4 @@ Managed SDK processes require the private bearer credential on HTTP requests. Ex
 
 The Web application discovers this selection before optional requests. Navigation, settings, composer mechanisms and workbench panels follow the active components; reconnecting replaces the previous selection. A Web client can therefore attach to a core server or a selected subset without polling absent component routes.
 
-Environment selection and resource ownership follow [Environments](../architecture/environments.md). Both `openAgentRuntime` and `openLocalRuntime` accept `environment: false` for hosts without a default native execution destination.
+Environment selection and resource ownership follow [Environments](../architecture/environments.md). Embedded hosts select `localRuntime({ environment: false })` when they need native services without a default execution destination. `openLocalRuntime` accepts `environment: false` directly.

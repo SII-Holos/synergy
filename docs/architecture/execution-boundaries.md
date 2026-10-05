@@ -8,6 +8,8 @@ Tools declare execution requirements separately from Workspace requirements. Bas
 
 ## Execution Pipeline
 
+Embedded hosts register ToolPolicySource before composition seals. Its requestPermission callback can own domain consent through the public permission protocol, using the resolved tool and caller identity. A false result preserves generic permission handling; a true result acknowledges completed domain consent. Callback failure or cancellation stops the call. Selection, execution authorization, capability gates and sandbox containment remain separate decisions.
+
 Managed attachments are Runtime data rather than Workspace files. `Attachment.resolveLocalPath()` permits Asset/media reads without a Workspace only when both the requested path and its canonical target remain inside the managed root. `scan_document`, `look_at` and input preparation use that resolver; arbitrary native paths still require a Workspace. This does not grant access to general filesystem tools or change Workspace-owned file-read evidence.
 
 For each model turn, the session tool resolver collects ephemeral tools, built-in and plugin tools, and MCP tools. Workspace capability is checked before exposure and again at execution: a session with a null workspace cannot invoke filesystem tools, even through a retained tool handle or `full_access`. This is a capability requirement independent of permission approval. Plugin and MCP tools require a workspace by default; the owning declaration may explicitly set `requiresWorkspace: false` for directory-independent operations. It filters that set by agent visibility and session exposure, then emits two separate products:

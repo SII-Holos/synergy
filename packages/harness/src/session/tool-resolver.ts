@@ -14,6 +14,7 @@ import { ProviderTransform } from "../provider/transform"
 import { Provider } from "../provider/provider"
 import { Tool } from "../tool/tool"
 import { ToolRegistry } from "../tool/registry"
+import { ToolPolicySource } from "../tool/policy-source"
 import { ToolTimeout } from "../tool/timeout"
 import { ToolExposure } from "../tool/exposure"
 import type { ToolDisplay } from "@ericsanchezok/synergy-util/tool"
@@ -680,6 +681,7 @@ export namespace ToolResolver {
 
   function startToolTimeout(ctx: Tool.Context, timeoutMs: number) {
     const timing = toolTiming(ctx)
+    if (timeoutMs === 0) return timing.sessionAbort
     const timeout = new AbortController()
     const timeoutError = new DOMException(`Tool execution timed out after ${timeoutMs}ms`, "TimeoutError")
     const timer = setTimeout(() => timeout.abort(timeoutError), timeoutMs)
@@ -1094,7 +1096,7 @@ export namespace ToolResolver {
     }
   }
 
-  function contextFactory(input: Input) {
+  function contextFactory(input: Input, toolID: string) {
     return (args: any, options: ToolCallOptions): Tool.Context => {
       const resolveCurrentProfile = async (): Promise<ResolvedProfile> => {
         const profileId = await Session.resolveEffectiveControlProfile({
@@ -1159,6 +1161,20 @@ export namespace ToolResolver {
           })
         },
         async ask(req) {
+          if (
+            await ToolPolicySource.requestPermission({
+              toolID,
+              request: req,
+              context: {
+                sessionID: ctx.sessionID,
+                messageID: ctx.messageID,
+                callID: ctx.callID,
+                agent: ctx.agent,
+                abort: ctx.abort,
+              },
+            })
+          )
+            return
           const profile = await resolvedProfile()
           const requestMetadata = req.metadata ?? {}
           const decision = ApprovalPolicy.decidePermission(profile, req.permission, requestMetadata)
@@ -1357,7 +1373,28 @@ export namespace ToolResolver {
       visible.push(def)
     }
 
-    return { visible, diagnostics, autoExpandable, intentBindings }
+    const allowed = new Set(
+      await ToolPolicySource.select({
+        sessionID: input.sessionID,
+        session: input.session,
+        agent: input.agent,
+        model: input.model,
+        toolIDs: [...new Set([...visible.map((item) => item.id), ...autoExpandable])],
+      }),
+    )
+    for (const item of visible) {
+      if (allowed.has(item.id)) continue
+      diagnostics.set(
+        item.id,
+        SessionModePolicy.unavailable({
+          toolName: item.id,
+          reason: "permission",
+          session: input.session,
+        }),
+      )
+    }
+    for (const id of autoExpandable) if (!allowed.has(id)) autoExpandable.delete(id)
+    return { visible: visible.filter((item) => allowed.has(item.id)), diagnostics, autoExpandable, intentBindings }
   }
 
   function diagnosticRuntimeTool(input: Input, diagnostic: ToolDiagnosticInfo): AITool {
@@ -1466,7 +1503,7 @@ export namespace ToolResolver {
         inputSchema: schema,
         executor: "control_plane",
         createRuntimeTool(runtimeInput) {
-          const context = contextFactory(runtimeInput)
+          const context = contextFactory(runtimeInput, item.id)
           return tool({
             id: item.id as any,
             description: item.description,
@@ -1583,7 +1620,7 @@ export namespace ToolResolver {
         description: item.description,
         inputSchema: schema,
         createRuntimeTool(runtimeInput) {
-          const context = contextFactory(runtimeInput)
+          const context = contextFactory(runtimeInput, item.id)
           return tool({
             id: item.id as any,
             description: item.description,
@@ -1951,7 +1988,7 @@ export namespace ToolResolver {
           inputSchema: schema,
           executor: "mcp",
           createRuntimeTool(runtimeInput) {
-            const context = contextFactory(runtimeInput)
+            const context = contextFactory(runtimeInput, key)
             const execute = item.execute
             if (!execute) return item
             return {
@@ -2235,7 +2272,24 @@ export namespace ToolResolver {
               tool: toolName,
               args: JSON.parse(JSON.stringify(input.processor.modelInputFromToolCall(options.toolCallId) ?? toolInput)),
             },
-            async () => execute.call(runtimeTool, args, options),
+            async () => {
+              try {
+                await ToolPolicySource.authorize({
+                  toolID: toolName,
+                  sessionID: input.sessionID,
+                  messageID: input.processor.message.id,
+                  callID: options.toolCallId,
+                  args: toolInput,
+                  signal: options.abortSignal,
+                })
+              } catch (error) {
+                input.processor
+                  .beginExecution(options.toolCallId)
+                  .fail(toolInput, error instanceof Error ? error.message : "Host tool authorization failed")
+                throw error
+              }
+              return execute.call(runtimeTool, args, options)
+            },
             () => {
               SessionManager.signalAbort(input.sessionID, {
                 rootID: input.processor.message.rootID ?? input.processor.message.parentID,
@@ -2371,6 +2425,7 @@ export namespace ToolResolver {
     const { ToolDiscovery } = await import("../tool/discovery")
     const catalog = await ToolDiscovery.collect({
       providerID: ToolDiscovery.providerIDFromModel(input.model),
+      model: input.model,
       agent: input.agent,
       session,
       userTools: input.userTools,

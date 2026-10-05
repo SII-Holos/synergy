@@ -7,14 +7,12 @@ import {
   createLocalStorage,
   type LocalRuntimeOptions,
 } from "@ericsanchezok/synergy-local-runtime"
-import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
-import { plugins } from "@ericsanchezok/synergy-plugin-host/component"
 import { workerPlan, registerRuntimeWorkers } from "./workers"
 import { loadHttpAdapters } from "./adapters"
 
 export type AgentRuntimeOptions = Omit<LocalRuntimeOptions, "mode"> & {
   home: string
-  components?: readonly RuntimeComponent[]
+  components: readonly RuntimeComponent[]
   mode?: "oneshot" | "server"
   listen?: boolean
   configSchemaPath?: string
@@ -24,11 +22,7 @@ export type AgentRuntime = Awaited<ReturnType<typeof openAgentRuntime>>
 export type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 
 export async function openAgentRuntime(options: AgentRuntimeOptions) {
-  const components = RuntimeComponents.resolve([
-    localRuntime({ workers: false, environment: options.environment }),
-    plugins(),
-    ...(options.components ?? []),
-  ])
+  const components = RuntimeComponents.resolve(options.components)
   const composition = RuntimeComponents.compose(components)
   const adapters = components.some((component) => component.hosts?.includes("http"))
     ? await loadHttpAdapters(components)

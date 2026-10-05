@@ -231,13 +231,18 @@ export namespace ToolRegistry {
     custom.push(tool)
   }
 
+  /** Composing hosts can attach product metadata without reimplementing discovery. */
+  export function discoveryTools(): readonly Tool.Info[] {
+    return [SearchToolsTool, ExpandToolsTool]
+  }
+
   async function all(): Promise<Tool.Info[]> {
     const instanceState = runtimeState()
 
     const custom = await state().then((x) => x.custom)
     await Config.current()
 
-    const builtin: Tool.Info[] = [SearchToolsTool, ExpandToolsTool]
+    const builtin = discoveryTools()
 
     const provided = (await Promise.all([...instanceState.toolProviders.values()].map((provider) => provider()))).flat()
     return [...builtin, ...provided, ...custom]

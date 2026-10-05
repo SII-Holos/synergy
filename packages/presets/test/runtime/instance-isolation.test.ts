@@ -11,6 +11,8 @@ import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context
 import { ObservabilityContext } from "@ericsanchezok/synergy-harness/observability/context"
 import { openAgentRuntime } from "@ericsanchezok/synergy-agent-runtime"
 import { desktopComponents } from "../../src/components"
+import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
+import { plugins } from "@ericsanchezok/synergy-plugin-host/component"
 
 test("full and core compositions coexist and closing full leaves core usable", async () => {
   await using a = await runtimeHome()
@@ -170,7 +172,7 @@ test("Home Browser descriptors and navigation policy do not require a filesystem
     home: fixture.host.root,
     host: fixture.host,
     mode: "oneshot",
-    components: await desktopComponents(),
+    components: [localRuntime({ workers: false }), plugins(), ...(await desktopComponents())],
     network: { hostname: "127.0.0.1", port: 0 },
   })
   expect(runtime.server).toBeDefined()

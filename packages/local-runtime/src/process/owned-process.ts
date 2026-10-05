@@ -9,7 +9,6 @@ import { fileURLToPath } from "node:url"
 import { EventEmitter } from "node:events"
 import { PassThrough } from "node:stream"
 import type { ProcessHandle } from "@ericsanchezok/synergy-harness/process/handle"
-import type { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { DarwinCoalition } from "./darwin-coalition"
 import { DarwinJob } from "./darwin-job"
 import { WindowsJob } from "./windows-job"
@@ -18,6 +17,21 @@ import { OwnedTree } from "./owned-tree"
 import { OwnedProtocol } from "./owned-protocol"
 
 export namespace OwnedProcess {
+  export const Reference = OwnedTree.Reference
+  export type Reference = OwnedTree.Reference
+  export interface Ownership {
+    id?: string
+    bindProcess(pid: number, options: { descendants: true; reference: Reference }): Promise<void>
+    release(): Promise<void>
+  }
+
+  export function inspect(reference: Reference) {
+    return OwnedTree.inspect(Reference.parse(reference))
+  }
+
+  export function terminate(reference: Reference) {
+    OwnedTree.terminate(Reference.parse(reference))
+  }
   class Child extends EventEmitter implements ProcessHandle {
     pid?: number
     readonly stdin = new PassThrough()
@@ -37,7 +51,7 @@ export namespace OwnedProcess {
     args: string[]
     cwd: string
     env: Record<string, string | undefined>
-    lease: WorkspaceAccess.Lease
+    ownership: Ownership
     signal?: AbortSignal
     pty?: { cols: number; rows: number; library: string }
   }
@@ -197,7 +211,7 @@ export namespace OwnedProcess {
       for (const socket of accepted) socket.destroy()
       server.close()
       await job?.remove()
-      await input.lease.release()
+      await input.ownership.release()
       await fs.rm(directory, { recursive: true, force: true })
     }
     function abandon() {
@@ -210,7 +224,7 @@ export namespace OwnedProcess {
         child.stdout.destroy()
         child.stderr.destroy()
         await job?.remove()
-        await input.lease.release()
+        await input.ownership.release()
       })())
     }
     function announceError() {
@@ -374,7 +388,10 @@ export namespace OwnedProcess {
         })
         .catch(fail)
       reference = OwnedTree.capture(pid)
-      await input.lease.bindProcess(pid, { descendants: true })
+      await input.ownership.bindProcess(pid, {
+        descendants: true,
+        reference: Object.freeze(structuredClone(reference)),
+      })
       input.signal?.throwIfAborted()
       clearTimeout(startupTimer)
       observing = observe()

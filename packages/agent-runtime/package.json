@@ -19,7 +19,6 @@
   "dependencies": {
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
-    "@ericsanchezok/synergy-plugin-host": "workspace:*",
     "zod": "catalog:"
   },
   "devDependencies": {

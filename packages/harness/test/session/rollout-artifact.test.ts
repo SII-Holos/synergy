@@ -93,6 +93,16 @@ describe("rollout artifacts", () => {
       expect(ref.status).toBe("complete")
       expect(ref.sha256).toBe(new Bun.CryptoHasher("sha256").update(data).digest("hex"))
       expect(await collect(RolloutArtifact.read(target, ref.id))).toEqual(Buffer.from(data))
+      expect(await RolloutArtifact.readChunk(target, ref, 1)).toEqual(
+        data.subarray(RolloutArtifact.CHUNK_BYTES, RolloutArtifact.CHUNK_BYTES * 2),
+      )
+      expect(await RolloutArtifact.readChunk(target, ref, 2)).toEqual(data.subarray(RolloutArtifact.CHUNK_BYTES * 2))
+      await expect(RolloutArtifact.readChunk(target, ref, 3)).rejects.toThrow()
+      await expect(RolloutArtifact.readChunk(target, ref, -1)).rejects.toThrow()
+      {
+        using corrupted = spyOn(Storage, "readBinary").mockResolvedValue(new Uint8Array([0]))
+        await expect(RolloutArtifact.readChunk(target, ref, 1)).rejects.toThrow("integrity")
+      }
     }))
 
   test("retains the committed prefix when the source fails", () =>

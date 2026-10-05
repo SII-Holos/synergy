@@ -3,8 +3,21 @@ import type { Info } from "./types"
 import type { WorkflowPromptRegistry } from "./workflow-prompt-registry"
 
 export namespace SessionExecutionContributions {
+  export interface ModelContext {
+    messageID: string
+    rootMessageID: string
+    agent: string
+    signal: AbortSignal
+  }
+  export type PromptContext = WorkflowPromptRegistry.PromptContext & {
+    agentName: string
+    /** Callable definitions after permission, availability and host selection. */
+    toolIDs: readonly string[]
+  }
   export interface Contribution {
     id: string
+    /** Required domain observations belong to the persisted assistant before generation. */
+    prepareModel?(session: Readonly<Info>, context: Readonly<ModelContext>): Promise<void>
     advisory?(sessionID: string, scopeID: string, signal: AbortSignal): Promise<string[]>
     isActive?(session: Info): Promise<boolean> | boolean
     /** Cancel the workflow bound to this session on explicit user request. The
@@ -13,10 +26,7 @@ export namespace SessionExecutionContributions {
     abandonWorkflow?(session: Info): Promise<boolean>
     hasContinuation?(session: Info): boolean
     assertWorkflowAllowed?(session: Info, kind: string): Promise<void>
-    system?(
-      session: Info,
-      context: WorkflowPromptRegistry.PromptContext & { agentName: string },
-    ): Promise<string[]> | string[]
+    system?(session: Info, context: PromptContext): Promise<string[]> | string[]
     archive?(session: Info): Promise<Record<string, unknown>>
   }
   const runtimeState = RuntimeContext.state(() => ({
@@ -40,6 +50,14 @@ export namespace SessionExecutionContributions {
       parts.push(...((await entry.advisory?.(sessionID, scopeID, signal)) ?? []))
     }
     return parts
+  }
+  export async function prepareModel(session: Info, context: ModelContext) {
+    context.signal.throwIfAborted()
+    for (const entry of runtimeState().contributions.values()) {
+      context.signal.throwIfAborted()
+      await entry.prepareModel?.(Object.freeze(structuredClone(session)), Object.freeze({ ...context }))
+      context.signal.throwIfAborted()
+    }
   }
   export async function isActive(session: Info) {
     const instanceState = runtimeState()
@@ -66,12 +84,13 @@ export namespace SessionExecutionContributions {
 
     for (const entry of instanceState.contributions.values()) await entry.assertWorkflowAllowed?.(session, kind)
   }
-  export async function system(session: Info, context: WorkflowPromptRegistry.PromptContext & { agentName: string }) {
+  export async function system(session: Info, context: PromptContext) {
     const instanceState = runtimeState()
 
+    const snapshot = { ...context, toolIDs: Object.freeze([...context.toolIDs]) }
     const parts: string[] = []
     for (const entry of instanceState.contributions.values())
-      parts.push(...((await entry.system?.(session, context)) ?? []))
+      parts.push(...((await entry.system?.(session, snapshot)) ?? []))
     return parts
   }
   export async function archive(session: Info) {

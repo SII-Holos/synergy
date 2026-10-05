@@ -10,7 +10,8 @@ await assertInstalledPackageBoundaries()
 const mode = process.argv[2]!
 const prefix = "@ericsanchezok/synergy-"
 const full = mode === "full"
-const enabled = (domain: string) => (domain === "browser" ? mode === "browser" : full || mode === domain)
+const enabled = (domain: string) =>
+  domain === "browser" ? mode === "browser" : full || mode === domain || (domain === "plugin-host" && mode === "mcp")
 const { createLocalHost } = await import("@ericsanchezok/synergy-local-runtime")
 const { openAgentRuntime } = await import("@ericsanchezok/synergy-agent-runtime")
 const host = createLocalHost()
@@ -23,7 +24,11 @@ const factories: Record<string, [string, string]> = {
   server: ["server", "server"],
 }
 const selected = factories[mode]
-const components = selected ? [(await import(`${prefix}${selected[0]}/component`))[selected[1]]()] : []
+const components = [
+  (await import("@ericsanchezok/synergy-local-runtime/component")).localRuntime({ workers: false }),
+  ...(mode === "mcp" ? [(await import("@ericsanchezok/synergy-plugin-host/component")).plugins()] : []),
+  ...(selected ? [(await import(`${prefix}${selected[0]}/component`))[selected[1]]()] : []),
+]
 const runtime = full
   ? await (
       await import("@ericsanchezok/synergy-presets")
@@ -81,11 +86,7 @@ try {
       ["mcp", "mcp"],
       ["lsp", "lsp"],
     ]) {
-      assert.equal(
-        field! in Config.Info.shape,
-        domain === "plugin-host" || enabled(domain!),
-        `unexpected config owner ${domain}`,
-      )
+      assert.equal(field! in Config.Info.shape, enabled(domain!), `unexpected config owner ${domain}`)
     }
     for (const domain of ["browser", "library", "note"]) {
       assert.equal(ToolRegistry.toolProviderIDs().includes(domain), enabled(domain), `unexpected tool owner ${domain}`)
@@ -114,12 +115,9 @@ try {
           () => true,
           () => false,
         )
-        assert.equal(installed, domain === "plugin-host" || mode === domain, `unexpected installed domain ${pkg}`)
-        assert.equal(
-          lockfile.includes(JSON.stringify(prefix + pkg)),
-          domain === "plugin-host" || mode === domain,
-          `unexpected locked domain ${pkg}`,
-        )
+        const expected = mode === domain || (domain === "plugin-host" && mode === "mcp")
+        assert.equal(installed, expected, `unexpected installed domain ${pkg}`)
+        assert.equal(lockfile.includes(JSON.stringify(prefix + pkg)), expected, `unexpected locked domain ${pkg}`)
       }
     }
     const schema = await Bun.file(path.join(host.root, "schema/config.schema.json")).json()

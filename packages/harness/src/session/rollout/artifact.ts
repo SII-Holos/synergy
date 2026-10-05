@@ -239,20 +239,24 @@ export namespace RolloutArtifact {
     }
   }
 
+  /** Read one verified immutable chunk so external exporters can resume with bounded memory and work. */
+  export async function readChunk(owner: Owner, input: string | Ref, index: number): Promise<Uint8Array> {
+    const ref = typeof input === "string" ? await get(owner, input) : Ref.parse(input)
+    z.number().int().nonnegative().lt(ref.chunks).parse(index)
+    const key = artifactRoot(owner, ref.id)
+    const chunk = Chunk.parse(await Storage.read([...key, "chunks", String(index).padStart(12, "0")]))
+    const data = await Storage.readBinary([...root(owner), "blobs", chunk.sha256], { maxBytes: CHUNK_BYTES })
+    if (data.byteLength !== chunk.bytes || new Bun.CryptoHasher("sha256").update(data).digest("hex") !== chunk.sha256)
+      throw new Error("Rollout artifact integrity check failed")
+    return data
+  }
+
   export async function* read(owner: Owner, input: string | Ref): AsyncGenerator<Uint8Array> {
     const ref = typeof input === "string" ? await get(owner, input) : Ref.parse(input)
-    const key = artifactRoot(owner, ref.id)
     const hash = new Bun.CryptoHasher("sha256")
     let bytes = 0
     for (let index = 0; index < ref.chunks; index++) {
-      const chunk = Chunk.parse(await Storage.read([...key, "chunks", String(index).padStart(12, "0")]))
-      const data = await Storage.readBinary([...root(owner), "blobs", chunk.sha256], { maxBytes: CHUNK_BYTES })
-      if (
-        data.byteLength !== chunk.bytes ||
-        new Bun.CryptoHasher("sha256").update(data).digest("hex") !== chunk.sha256
-      ) {
-        throw new Error("Rollout artifact integrity check failed")
-      }
+      const data = await readChunk(owner, ref, index)
       bytes += data.byteLength
       hash.update(data)
       yield data

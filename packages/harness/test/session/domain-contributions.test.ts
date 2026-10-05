@@ -37,7 +37,11 @@ test("an explicitly registered workflow shares session persistence, execution ow
           isActive: (info) => info.id === session.id && info.workflow?.kind === kind,
           hasContinuation: (info) => info.id === session.id && info.workflow?.kind === kind,
           abandonWorkflow: async (info) => info.id === session.id,
-          system: (info) => (info.id === session.id ? ["experiment system context"] : []),
+          system: (info, context) => {
+            expect(context.toolIDs).toEqual(["view_image"])
+            expect(() => (context.toolIDs as string[]).push("look_at")).toThrow()
+            return info.id === session.id ? ["experiment system context"] : []
+          },
           archive: async (info) => (info.id === session.id ? { experiment: "saved evidence" } : {}),
           advisory: async (sessionID, _scopeID, signal) => {
             signal.throwIfAborted()
@@ -53,7 +57,11 @@ test("an explicitly registered workflow shares session persistence, execution ow
         expect(SessionExecutionContributions.hasContinuation(enabled)).toBe(true)
         expect(await SessionExecutionContributions.abandonWorkflow(enabled)).toBe(true)
         expect(
-          await SessionExecutionContributions.system(enabled, { agentName: "test", deliveryMetadata: undefined }),
+          await SessionExecutionContributions.system(enabled, {
+            agentName: "test",
+            deliveryMetadata: undefined,
+            toolIDs: ["view_image"],
+          }),
         ).toEqual(["experiment system context"])
         expect(await SessionExecutionContributions.archive(enabled)).toEqual({ experiment: "saved evidence" })
         expect(

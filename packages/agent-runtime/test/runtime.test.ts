@@ -5,18 +5,33 @@ import { formatter } from "@ericsanchezok/synergy-formatter/component"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
 import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
+import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
+
+test("an embedded runtime does not select product components or execution resources", async () => {
+  await using fixture = await runtimeHome()
+  await using runtime = await openAgentRuntime({ home: fixture.host.root, host: fixture.host, components: [] })
+  expect(runtime.components).toEqual([])
+  runtime.run(() => {
+    expect(EnvironmentProviders.list()).toEqual([])
+    expect(EnvironmentProviders.defaultSelection()).toBeUndefined()
+    expect("plugin" in Config.Info.shape).toBe(false)
+  })
+})
 
 test("embedding selects only explicit components and isolates clients across two homes", async () => {
   await using a = await runtimeHome()
   await using b = await runtimeHome()
-  await using first = await openAgentRuntime({ home: a.host.root, host: a.host, components: [lsp()] })
+  await using first = await openAgentRuntime({
+    home: a.host.root,
+    host: a.host,
+    components: [localRuntime({ workers: false }), lsp()],
+  })
   await using second = await openAgentRuntime({
     home: b.host.root,
     host: b.host,
-    components: [formatter()],
-    environment: false,
+    components: [localRuntime({ workers: false, environment: false }), formatter()],
   })
-  expect(first.components.map((component) => component.id)).toEqual(["local-runtime", "lsp", "plugin-host"])
+  expect(first.components.map((component) => component.id)).toEqual(["local-runtime", "lsp"])
   first.run(() => {
     expect("lsp" in Config.Info.shape).toBe(true)
     expect("formatter" in Config.Info.shape).toBe(false)

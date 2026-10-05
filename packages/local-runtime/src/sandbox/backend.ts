@@ -316,7 +316,7 @@ export namespace SandboxBackend {
             args: wrapper.args,
             cwd: opts.cwd ?? process.cwd(),
             env: buildSandboxEnv(opts.env, opts.networkMode),
-            lease: lease!,
+            ownership: lease!,
             signal: controller.signal,
           })
       reads.push(

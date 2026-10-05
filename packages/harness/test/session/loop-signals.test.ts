@@ -4,6 +4,11 @@ import { LoopJob } from "../../src/session/loop-job"
 import { Log } from "../../src/util/log"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
+import { Identifier } from "../../src/id/id"
+import { Session } from "../../src/session"
+import { Scope } from "../../src/scope"
+import { ScopeContext } from "../../src/scope/context"
+import { MessageV2 } from "../../src/session/message-v2"
 const runtime = await testRuntime()
 
 runtime.run(() => Log.init({ print: false }))
@@ -84,22 +89,60 @@ function makeTextPart(text: string): any {
   }
 }
 
-function makeCtx(
+async function makeCtx(
   step: number,
   messages: any[],
   lastUserParts: any[] = [],
   agent: string = PrimaryAgentIdentity.names.general,
-): any {
-  return {
-    session: { id: "ses_test" },
-    sessionID: "ses_test",
-    step,
-    messages,
-    lastUser: makeUser(agent),
-    lastUserParts,
-    abort: new AbortController().signal,
-    modelLimits: { context: 200_000, output: 8_192 },
-  }
+): Promise<LoopJob.Context> {
+  return ScopeContext.provide({
+    scope: Scope.home(),
+    fn: async () => {
+      const session = await Session.create({ workspace: null })
+      const rootID = Identifier.ascending("message")
+      let lastUser: MessageV2.User | undefined
+      const created = Date.now()
+      for (const [index, message] of messages.entries()) {
+        const id = index === 0 ? rootID : Identifier.ascending("message")
+        const info =
+          message.info.role === "user"
+            ? { ...message.info, id, sessionID: session.id, isRoot: true, time: { created: created + index } }
+            : {
+                ...message.info,
+                id,
+                sessionID: session.id,
+                rootID,
+                parentID: rootID,
+                path: { cwd: null, root: null },
+                time: { created: created + index },
+              }
+        await Session.updateMessage(info)
+        if (info.role === "user") lastUser = { ...info, agent }
+        const parts = info.role === "user" ? lastUserParts : message.parts
+        for (const part of parts)
+          await Session.updatePart({
+            ...part,
+            id: Identifier.ascending("part"),
+            sessionID: session.id,
+            messageID: id,
+            ...(part.type === "tool"
+              ? { state: { ...part.state, time: { start: created + index, end: created + index } } }
+              : {}),
+          })
+      }
+      if (!lastUser) throw new Error("Loop fixture requires a user root")
+      return {
+        session,
+        sessionID: session.id,
+        step,
+        messages: await Session.messages({ sessionID: session.id }),
+        lastUser,
+        lastUserParts: await MessageV2.parts({ sessionID: session.id, messageID: lastUser.id }),
+        abort: new AbortController().signal,
+        modelLimits: { context: 200_000, output: 8_192 },
+      }
+    },
+  })
 }
 
 // ─── import signals (registers them into LoopJob) ──────────────────
@@ -115,7 +158,7 @@ beforeAll(() =>
 describe("loop-signals: repeat_loop signal", () => {
   test("fires when the same tool+params succeeds 3 times in a row", () =>
     runtime.run(async () => {
-      const ctx = makeCtx(3, [
+      const ctx = await makeCtx(3, [
         makeUserWrapper(),
         makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
         makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
@@ -127,7 +170,7 @@ describe("loop-signals: repeat_loop signal", () => {
 
   test("does not fire below threshold", () =>
     runtime.run(async () => {
-      const ctx = makeCtx(2, [
+      const ctx = await makeCtx(2, [
         makeUserWrapper(),
         makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
         makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
@@ -138,7 +181,7 @@ describe("loop-signals: repeat_loop signal", () => {
 
   test("does not fire when params differ", () =>
     runtime.run(async () => {
-      const ctx = makeCtx(3, [
+      const ctx = await makeCtx(3, [
         makeUserWrapper(),
         makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
         makeAssistant([makeTool("Read", { path: "/b" }, "completed")]),
@@ -150,7 +193,7 @@ describe("loop-signals: repeat_loop signal", () => {
 
   test("does not fire when tool differs", () =>
     runtime.run(async () => {
-      const ctx = makeCtx(3, [
+      const ctx = await makeCtx(3, [
         makeUserWrapper(),
         makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
         makeAssistant([makeTool("Grep", { path: "/a" }, "completed")]),
@@ -162,7 +205,7 @@ describe("loop-signals: repeat_loop signal", () => {
 
   test("does not fire when a call failed in the sequence", () =>
     runtime.run(async () => {
-      const ctx = makeCtx(3, [
+      const ctx = await makeCtx(3, [
         makeUserWrapper(),
         makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
         makeAssistant([makeTool("Read", { path: "/a" }, "error")]),
@@ -174,7 +217,7 @@ describe("loop-signals: repeat_loop signal", () => {
 
   test("does not fire when assistant message has no tool parts", () =>
     runtime.run(async () => {
-      const ctx = makeCtx(3, [
+      const ctx = await makeCtx(3, [
         makeUserWrapper(),
         makeAssistant([]),
         makeAssistant([makeTextPart("hello")]),
@@ -186,7 +229,7 @@ describe("loop-signals: repeat_loop signal", () => {
 
   test("does not fire when fewer than 3 messages have tool parts", () =>
     runtime.run(async () => {
-      const ctx = makeCtx(3, [
+      const ctx = await makeCtx(3, [
         makeUserWrapper(),
         makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
         makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
@@ -199,7 +242,7 @@ describe("loop-signals: repeat_loop signal", () => {
 describe("loop-signals: repeat_loop_injector job", () => {
   test("is collected when repeat_loop signal fires", () =>
     runtime.run(async () => {
-      const ctx = makeCtx(3, [
+      const ctx = await makeCtx(3, [
         makeUserWrapper(),
         makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
         makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
@@ -219,7 +262,7 @@ describe("loop-signals: repeat_loop_injector job", () => {
 describe("loop-signals: compact signal", () => {
   test("detects when compaction part exists", () =>
     runtime.run(async () => {
-      const ctx = makeCtx(
+      const ctx = await makeCtx(
         1,
         [makeUserWrapper()],
         [{ id: "p1", sessionID: "ses_test", messageID: "m1", type: "compaction", auto: false }],
@@ -230,7 +273,7 @@ describe("loop-signals: compact signal", () => {
 
   test("does not detect when no compaction part", () =>
     runtime.run(async () => {
-      const ctx = makeCtx(
+      const ctx = await makeCtx(
         1,
         [makeUserWrapper()],
         [{ id: "p1", sessionID: "ses_test", messageID: "m1", type: "text", text: "hello" }],
@@ -241,7 +284,7 @@ describe("loop-signals: compact signal", () => {
 
   test("coexists with repeat_loop without interference", () =>
     runtime.run(async () => {
-      const ctx = makeCtx(
+      const ctx = await makeCtx(
         5,
         [
           makeUserWrapper(),
@@ -261,7 +304,7 @@ describe("loop-signals: compact signal", () => {
 describe("loop-signals: tool_failure_pattern (scholar search)", () => {
   test("fires after consecutive no-result scholar searches", () =>
     runtime.run(async () => {
-      const ctx = makeCtx(
+      const ctx = await makeCtx(
         2,
         [
           makeUserWrapper("scholar"),
@@ -294,7 +337,7 @@ describe("loop-signals: tool_failure_pattern (scholar search)", () => {
 
   test("does not fire for non-scholar agents", () =>
     runtime.run(async () => {
-      const ctx = makeCtx(2, [
+      const ctx = await makeCtx(2, [
         makeUserWrapper(),
         makeAssistant([
           makeTool("webfetch", { url: "https://example.com/missing-one" }, "completed", {
@@ -321,7 +364,7 @@ describe("loop-signals: tool_failure_pattern (scholar search)", () => {
       const reflectionMarker = makeTextPart("[Search failure reflection]\nPrevious search failed.")
       reflectionMarker.synthetic = true
 
-      const ctx = makeCtx(
+      const ctx = await makeCtx(
         4,
         [
           makeUserWrapper("scholar"),

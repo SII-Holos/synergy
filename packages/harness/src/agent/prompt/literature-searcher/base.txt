@@ -84,4 +84,3 @@ None, or: insufficient results from any pass; topic terminology unclear; field n
 - Search queries that were most effective (for re-search or expansion)
 - Terminology map: what the field calls key concepts, common aliases to avoid
 - Explicit note: which candidate paper this agent recommends deep-reading first
-

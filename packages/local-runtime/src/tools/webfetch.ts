@@ -38,8 +38,7 @@ export const WebFetchTool = Tool.define("webfetch", {
       throw new Error("URL must start with http:// or https://")
     }
 
-    const searchScope = String((ctx.extra as any)?.userMessageID ?? ctx.sessionID)
-    const duplicate = SearchGuard.checkDuplicate(searchScope, "webfetch", params)
+    const duplicate = await SearchGuard.checkDuplicateForContext(ctx, "webfetch", params)
     if (duplicate) {
       return {
         output: duplicate.output,
@@ -62,8 +61,6 @@ export const WebFetchTool = Tool.define("webfetch", {
         timeoutSeconds: params.timeoutSeconds,
       },
     })
-    SearchGuard.recordAttempt(searchScope, "webfetch", params)
-
     const timeoutMs = Math.min((params.timeoutSeconds ?? DEFAULT_TIMEOUT / 1000) * 1000, MAX_TIMEOUT)
 
     const controller = new AbortController()

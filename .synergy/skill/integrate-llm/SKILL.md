@@ -7,6 +7,10 @@ description: Add, modify, or review an LLM-backed operation in Synergy. Use for 
 
 ## Choose the Execution Path First
 
+Embedded hosts keep stable model inventory in `ProviderCatalogSource`. For credentials or SDK context tied to an accepted invocation, register `ProviderRequestSource` before composition is sealed. Validate the detached root user metadata there; keep keys out of model options and prompts. Test real `LLM.prepare()` plus worker-plan serialization, concurrent invocation isolation, cancellation and authorization failure. SDK factories consume the ephemeral `hostRequest` context without persisting it.
+
+Keep bundled catalog imports lazy at the lifecycle boundary. An installed source host with an exclusive catalog must open, query providers and close without evaluating dependency macros or fetching models.dev. Exercise an actual `node_modules` source installation in addition to workspace tests, and include the selected backend's native resources.
+
 | Required behavior                                                                                              | Path                                                           |
 | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | Derive metadata, classify, summarize, or transform without durable work history                                | Sessionless internal-agent call through the shared `LLM` layer |
@@ -29,6 +33,7 @@ For every sessionless call:
 5. Use a Session or Cortex instead when tools, durable history, resumability, progress, or completion delivery are part of the contract.
 6. Bound input and output, treat tagged/untrusted content as data, and redact secrets before policy/classification calls.
 7. Parse and validate structured output with Zod or an equivalent explicit schema. Define whether timeout, unavailable model, malformed output, or provider error fails soft or propagates.
+   `AgentCall` returns native output-tool arguments after decoding the common intent facade. Do not add presentation fields to business schemas or strip arbitrary unknown fields to accept them. Test both flat inputs and an enveloped native schema with a field named `workBrief`.
 8. Test model-role fallback, timeout/cancellation, stream disposal, parsing, redaction, and failure semantics without making a live provider call.
 9. Treat any `MessageV2.User.variant` on a reused source or root envelope as durable root-execution metadata. A `small: true` sessionless call must neither validate nor apply it; the call uses `ProviderTransform.smallOptions()` for its target model.
 
@@ -41,6 +46,8 @@ A sessionless call does not create session history, Cortex progress, completion 
 For optional model-backed prompt preparation, choose a domain-owned interactive deadline through the context contribution contract. Share prerequisite results across parallel consumers, propagate cancellation, and do not retry the same failed prerequisite independently in each branch. Verify that timeout preserves required non-model context and does not change explicit tool execution budgets.
 
 ## Session and Cortex Calls
+
+When an embedded domain must freeze editable state before generation, register `SessionExecutionContributions.prepareModel` during composition. Use the persisted assistant/root identities to authorize and store that observation. Keep callback work bounded and cancellable; propagate storage or authorization failure. Test independent instances, cancellation, failed preparation without model dispatch, and a stale edit after a successful observation. Advisory context and executor-time refresh cannot replace that observation.
 
 Use `SessionInvoke` when the caller already owns the target session: direct user/API input, Channel or Agenda execution, workflow continuation, or an in-place loop operation such as compaction.
 
@@ -126,6 +133,8 @@ Never relax TLS verification to work around an endpoint failure — no `rejectUn
 6. Provider configuration changes, including descriptions, regenerate both shipped config schemas with `generateSchema()` from `script/release/shared/build-runtime.ts` for the core and full profiles. Run `bun test --config /dev/null test/script/release/runtime-schema.test.ts`; SDK/OpenAPI generation alone does not refresh those artifacts.
 
 ## Handoff
+
+Embedded hosts register ConfigSource for authoritative JSON configuration before sealing composition. Verify invalid snapshots reject startup and host-owned configuration rejects mutation. Keep long tool output with Harness truncation's native artifact storage and retain its failure-propagation tests; follow the [embedded extension decision](../../../docs/decisions/implemented/architecture/2026-10-05-bound-embedded-host-extension-surface.md).
 
 Report why the operation is sessionless, existing-session, Cortex, or bootstrap; the agent/model role; timeout/retry/tool/output policy; persistence and visibility; redaction; and verification.
 

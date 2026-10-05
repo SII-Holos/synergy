@@ -54,7 +54,6 @@ export async function checkInstalledComposition(
       run([process.execPath, "owned-input.ts"], {
         SYNERGY_CONFIG_CONTENT: JSON.stringify({
           execution: { agentWorkerMinIdle: 0 },
-          pluginMarketplace: { enabled: false },
         }),
       })
     assert.match(await cli("--help"), /send/)

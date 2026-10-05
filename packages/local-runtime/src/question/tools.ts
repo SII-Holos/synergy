@@ -17,5 +17,10 @@ export function registerQuestionTools(): void {
   if (instanceState.registered) return
   instanceState.registered = true
 
-  ToolRegistry.registerToolProvider("question", () => (Flag.SYNERGY_CLIENT === "cli" ? [QuestionTool] : []))
+  ToolRegistry.registerToolProvider("question", () => (Flag.SYNERGY_CLIENT === "cli" ? questionTools() : []))
+}
+
+/** Explicit composition retains the host's interaction transport. */
+export function questionTools() {
+  return [QuestionTool]
 }
