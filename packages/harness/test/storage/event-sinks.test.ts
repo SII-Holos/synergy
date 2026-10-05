@@ -166,6 +166,75 @@ for (const backend of storageTestBackends()) {
       )
     })
 
+    test("acknowledges the accepted prefix atomically when a later delivery fails", async () => {
+      const accepted: number[] = []
+      await using runtime = await testRuntime({
+        postgres: backend === "postgres" ? process.env.SYNERGY_TEST_POSTGRES_URL : undefined,
+        register: () =>
+          StorageEventSinks.register({
+            id: "bridge",
+            capture,
+            async deliver(delivery) {
+              expect(Storage.inTransaction()).toBe(false)
+              expect(await Storage.query({ kind: "event_delivery" })).toHaveLength(3)
+              if (delivery.sequence === 3) throw new Error("receiver unavailable")
+              accepted.push(delivery.sequence)
+            },
+          }),
+      })
+      await runtime.run(() =>
+        ScopeContext.provide({
+          scope: Scope.home(),
+          fn: async () => {
+            await Storage.transaction(async () => {
+              for (const value of [1, 2, 3]) await Bus.publish(Changed, { partition: "run-a", value })
+            })
+            await expect(StorageEventSinks.flush()).rejects.toThrow("receiver unavailable")
+            expect(accepted).toEqual([1, 2])
+            expect(
+              (await Storage.query<StorageEventSinks.Delivery>({ kind: "event_delivery" })).map(
+                ({ value }) => value.sequence,
+              ),
+            ).toEqual([3])
+          },
+        }),
+      )
+    })
+
+    test("changed delivery revisions roll back the entire accepted batch acknowledgment", async () => {
+      await using runtime = await testRuntime({
+        postgres: backend === "postgres" ? process.env.SYNERGY_TEST_POSTGRES_URL : undefined,
+        register: () =>
+          StorageEventSinks.register({
+            id: "bridge",
+            capture,
+            async deliver(delivery) {
+              if (delivery.sequence !== 2) return
+              const record = (await Storage.query<StorageEventSinks.Delivery>({ kind: "event_delivery" })).find(
+                ({ value }) => value.sequence === 2,
+              )!
+              await Storage.write(record.key, { ...record.value, payload: { changed: true } })
+            },
+          }),
+      })
+      await runtime.run(() =>
+        ScopeContext.provide({
+          scope: Scope.home(),
+          fn: async () => {
+            await Storage.transaction(async () => {
+              for (const value of [1, 2]) await Bus.publish(Changed, { partition: "run-a", value })
+            })
+            await expect(StorageEventSinks.flush()).rejects.toThrow("changed while awaiting acknowledgment")
+            expect(
+              (await Storage.query<StorageEventSinks.Delivery>({ kind: "event_delivery" })).map(
+                ({ value }) => value.sequence,
+              ),
+            ).toEqual([1, 2])
+          },
+        }),
+      )
+    })
+
     test("lost external acknowledgments replay stable identities after store and Runtime restart", async () => {
       await using directory = await tmpdir()
       const namespace = crypto.randomUUID()

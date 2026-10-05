@@ -14,9 +14,13 @@ Capture may await transaction-local reads to resolve persisted ownership. Its pr
 
 An optional captured callback receives the allocated delivery identity and sequence inside that transaction. A host can retain the minimal receipt required by a synchronous admission handshake without inspecting queue keys or duplicating sequence allocation. Callback failure rolls back the fact, sequence, queue and host receipt together.
 
+Each bounded pump acknowledges its accepted prefix in one transaction after external delivery, preserving revision checks for every removed record. A later delivery failure still commits the accepted prefix; a revision conflict rolls back the whole acknowledgment. This trades a larger possible replay prefix for fewer durable commits without holding a transaction during network calls.
+
 ## Alternatives considered
 
 Replaying arbitrary Bus subscribers can duplicate external effects. Publishing from a subscriber loses events after a crash. A host-side queue written after the fact leaves a commit gap. An exactly-once network promise cannot resolve a lost response.
+
+Per-record acknowledgment commits narrow the replay window but multiply transaction overhead across an already bounded delivery batch. Atomic prefix acknowledgment retains the same receiver deduplication requirement and bounds replay by the pump limit.
 
 ## Consequences
 

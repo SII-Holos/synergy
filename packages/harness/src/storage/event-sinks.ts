@@ -82,23 +82,31 @@ export namespace StorageEventSinks {
       .catch(() => {})
       .then(async () => {
         const records = await Storage.query<Delivery>({ kind: "event_delivery", limit })
-        let delivered = 0
-        for (const record of records) {
-          const delivery = DeliverySchema.parse(record.value)
-          if (JSON.stringify(key(delivery)) !== JSON.stringify(record.key))
-            throw new StorageIntegrityError("External event delivery identity does not match its record")
-          const sink = current.sinks.get(delivery.sinkID)
-          if (!sink) throw new StorageIntegrityError(`Storage event sink ${delivery.sinkID} is not registered`)
-          await sink.deliver(structuredClone(delivery))
-          await Storage.transaction(async (tx) => {
-            const latest = await tx.versioned<Delivery>(record.key)
-            if (latest.revision !== record.revision)
-              throw new StorageIntegrityError("External event delivery changed while awaiting acknowledgment")
-            await tx.remove(record.key)
-          })
-          delivered++
+        const accepted: typeof records = []
+        try {
+          for (const record of records) {
+            const delivery = DeliverySchema.parse(record.value)
+            if (JSON.stringify(key(delivery)) !== JSON.stringify(record.key))
+              throw new StorageIntegrityError("External event delivery identity does not match its record")
+            const sink = current.sinks.get(delivery.sinkID)
+            if (!sink) throw new StorageIntegrityError(`Storage event sink ${delivery.sinkID} is not registered`)
+            await sink.deliver(structuredClone(delivery))
+            accepted.push(record)
+          }
+        } finally {
+          // Commit the accepted prefix even if a later delivery fails. External
+          // effects stay outside the transaction and uncertain commits replay.
+          if (accepted.length)
+            await Storage.transaction(async (tx) => {
+              for (const record of accepted) {
+                const latest = await tx.versioned<Delivery>(record.key)
+                if (latest.revision !== record.revision)
+                  throw new StorageIntegrityError("External event delivery changed while awaiting acknowledgment")
+              }
+              await tx.removeMany(accepted.map((record) => record.key))
+            })
         }
-        return { delivered }
+        return { delivered: accepted.length }
       })
     current.flushing.set(store, pending)
     try {
