@@ -157,6 +157,36 @@ test("a verifier pins immutable packs while a concurrent deletion commits", () =
     })
   }))
 
+test("progressing collection outlives admission waiting while preserving referenced and pinned packs", () =>
+  runtime.run(async () => {
+    await using handle = await fixture()
+    const { ArtifactPack } = await import("../../src/storage/artifact-pack")
+    const directory = path.join(handle.artifactDirectory, "agent-artifacts")
+    await Storage.provide(handle, async () => {
+      const key = ["blobs", "retained"]
+      await Storage.writeBinary(key, Buffer.from("retained bytes"))
+      const orphan = await new ArtifactPack(directory).append(Buffer.from("orphan bytes"))
+      const pinned = await new ArtifactPack(directory).append(Buffer.from("import bytes"))
+      await Storage.write(["storage_pack_pins", pinned.pack, "pending-owner"], { backupID: "pending" })
+      const now = performance.now.bind(performance)
+      let elapsed = 0
+      using clock = spyOn(performance, "now").mockImplementation(() => now() + elapsed)
+      expect(
+        await Storage.collectArtifactGarbage({
+          scanOrphans: true,
+          progress() {
+            expect(Storage.current().transaction).toBeUndefined()
+            elapsed = 31_000
+          },
+        }),
+      ).toBe(1)
+      expect(elapsed).toBe(31_000)
+      expect(Buffer.from(await Storage.readBinary(key)).toString()).toBe("retained bytes")
+      expect(await Bun.file(path.join(directory, orphan.pack)).exists()).toBe(false)
+      expect(await Bun.file(path.join(directory, pinned.pack)).exists()).toBe(true)
+    })
+  }))
+
 afterRuntimeTests(() => runtime.close())
 test("durable import pins preserve orphan packs and queued garbage across collection", () =>
   runtime.run(async () => {
