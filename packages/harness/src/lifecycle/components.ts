@@ -116,34 +116,45 @@ export namespace RuntimeComponents {
     return {
       configSchemaPath: schemas.values().next().value,
       transport: transports[0]?.transport,
-      initializeExtensions: async () => {
+      initializeExtensions: async (progress) => {
         for (const service of services) {
           extensions.push(service)
-          await service.initializeExtensions?.()
+          if (!service.initializeExtensions) continue
+          await service.initializeExtensions(progress)
+          progress?.()
         }
       },
       disposeExtensions: () => cleanup(extensions, (service) => service.disposeExtensions?.()),
-      async started() {
-        for (const service of services) await service.started?.()
+      async started(progress) {
+        for (const service of services) {
+          if (!service.started) continue
+          await service.started(progress)
+          progress?.()
+        }
       },
       resident: {
-        async start(config) {
+        async start(config, progress) {
           await ScopeContext.provide({
             scope: Scope.home(),
             fn: async () => {
               for (const service of services) {
                 if (!service.resident) continue
                 residents.push(service.resident)
-                await service.resident.start(config)
+                await service.resident.start(config, progress)
+                progress?.()
               }
             },
           })
         },
-        ready: (config) =>
+        ready: (config, progress) =>
           ScopeContext.provide({
             scope: Scope.home(),
             fn: async () => {
-              for (const resident of residents) await resident.ready?.(config)
+              for (const resident of residents) {
+                if (!resident.ready) continue
+                await resident.ready(config, progress)
+                progress?.()
+              }
             },
           }),
         stop: () =>

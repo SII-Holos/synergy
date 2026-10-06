@@ -1,6 +1,12 @@
 import { createEffect, createSignal, onCleanup, untrack } from "solid-js"
 
-export function createDisclosureMotion(element: HTMLElement, content = false, onHidden?: () => void) {
+export function createDisclosureMotion(
+  element: HTMLElement,
+  content = false,
+  onHidden?: () => void,
+  resize = true,
+  onSettled?: () => void,
+) {
   const window = element.ownerDocument.defaultView
   const reduced = window?.matchMedia?.("(prefers-reduced-motion: reduce)")
   let animation: Animation | undefined
@@ -18,6 +24,7 @@ export function createDisclosureMotion(element: HTMLElement, content = false, on
     element.removeAttribute("data-motion-changing")
     element.removeAttribute("data-motion-exiting")
     if (!visible) onHidden?.()
+    onSettled?.()
   }
   const changedPreference = () => {
     if (reduced?.matches) settle()
@@ -31,13 +38,20 @@ export function createDisclosureMotion(element: HTMLElement, content = false, on
         return
       }
       const initial = visible === undefined
-      const height = element.hidden ? 0 : element.getBoundingClientRect().height
+      const animated =
+        animate &&
+        !reduced?.matches &&
+        typeof element.animate === "function" &&
+        (!initial || (next && appear)) &&
+        !(content && next && !appear)
+      const resizing = resize && !(next && content)
+      const height = resizing && animated && !element.hidden ? element.getBoundingClientRect().height : 0
       cancel()
       visible = next
       element.inert = !next
       if (next) element.removeAttribute("aria-hidden")
       else element.setAttribute("aria-hidden", "true")
-      if (!animate || reduced?.matches || !element.animate || (initial && (!next || !appear))) {
+      if (!animated) {
         settle()
         return
       }
@@ -48,15 +62,17 @@ export function createDisclosureMotion(element: HTMLElement, content = false, on
       const milliseconds = duration ? parseFloat(duration) * (duration.endsWith("ms") ? 1 : 1000) : next ? 180 : 240
       const easing = style?.getPropertyValue("--motion-ease-standard").trim() || "cubic-bezier(0.2, 0, 0, 1)"
       const frames: Keyframe[] =
-        initial && next && content
-          ? [
-              { opacity: 0.65, transform: "translateY(2px)" },
-              { opacity: 1, transform: "translateY(0)" },
-            ]
-          : [
-              { height: `${initial ? 0 : height}px`, opacity: next ? 0.65 : 1 },
-              { height: `${next ? element.getBoundingClientRect().height : 0}px`, opacity: next ? 1 : 0 },
-            ]
+        next && content
+          ? [{ opacity: 0.65 }, { opacity: 1 }]
+          : !resizing
+            ? [
+                { opacity: next ? 0.65 : 1, transform: next ? "translateY(2px)" : "translateY(0)" },
+                { opacity: next ? 1 : 0, transform: "translateY(0)" },
+              ]
+            : [
+                { height: `${initial ? 0 : height}px`, opacity: next ? 0.65 : 1 },
+                { height: `${next ? element.getBoundingClientRect().height : 0}px`, opacity: next ? 1 : 0 },
+              ]
       element.setAttribute("data-motion-changing", "")
       if (!next) element.setAttribute("data-motion-exiting", "")
       const current = element.animate(frames, { duration: milliseconds, easing, fill: "both" })
@@ -79,13 +95,15 @@ export function createDisclosureMotionRef(options: {
   animate: () => boolean
   appear?: () => boolean
   content?: boolean
+  resize?: boolean
   onHidden?: () => void
+  onSettled?: () => void
 }) {
   const [element, setElement] = createSignal<HTMLElement>()
   createEffect(() => {
     const target = element()
     if (!target) return
-    const motion = createDisclosureMotion(target, options.content, options.onHidden)
+    const motion = createDisclosureMotion(target, options.content, options.onHidden, options.resize, options.onSettled)
     createEffect(() => motion.setVisible(options.visible(), options.animate(), options.appear?.()))
     onCleanup(() => motion.dispose())
   })

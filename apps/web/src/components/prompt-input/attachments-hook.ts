@@ -19,7 +19,7 @@ import {
 import { createPromptPartID, inlineLength } from "./content"
 import { getCursorPosition } from "./editor-dom"
 import type { PendingAttachmentTracker } from "./pending-attachments"
-import { runPendingAttachmentUpload } from "./attachment-upload-flow"
+import { insertUploadedPromptAttachment, runPendingAttachmentUpload } from "./attachment-upload-flow"
 import { PI } from "./prompt-input-i18n"
 import type { BlueprintSlot, DroppedBlueprintData, PromptInputStore } from "./types"
 import { decideDroppedSession } from "./session-drop"
@@ -84,7 +84,7 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
         upload: (uploadFile) => uploadPromptAttachment(sdk.client, uploadFile),
         insertAttachment: (attachment) => {
           const cursorPosition = draft.cursor() ?? cursor()
-          draft.set([...draft.current(), attachment], cursorPosition)
+          draft.set(insertUploadedPromptAttachment(draft.current(), attachment), cursorPosition)
         },
         isDestinationCurrent: () => `${params.dir}${params.id ? "/" + params.id : ""}` === sessionKeyAtStart,
       })

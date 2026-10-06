@@ -208,7 +208,7 @@ test("an answer starting with a heading uses only the timeline's leading gap", a
       }
     })
   expect(metrics.headingMargin).toBe(0)
-  expect(metrics.gap).toBe(16)
+  expect(metrics.gap).toBe(8)
 })
 
 test("collected history occupies no row space and only current activity carries waiting motion", async () => {

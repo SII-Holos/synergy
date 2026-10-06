@@ -292,7 +292,7 @@ a {
 .session-composer-editor {
   height: var(--composer-body-height, auto);
   min-height: min(
-    96px,
+    var(--composer-body-min-height, 96px),
     calc(var(--composer-available-height, 480px) * 0.4),
     max(24px, calc(var(--composer-available-height, 480px) * 0.6 - var(--composer-chrome-height, 80px)))
   );
@@ -702,7 +702,7 @@ a {
 
 .prompt-attachments {
   min-width: 0;
-  padding: 8px 10px 0;
+  padding: 8px 16px 0;
   padding-inline-end: 48px;
 }
 .prompt-attachments [data-slot="attachment-row-layout"] {
@@ -715,10 +715,27 @@ a {
 .prompt-attachments [data-slot="attachment-row-entry"] {
   flex-shrink: 0;
 }
-.prompt-attachment-entry:has([data-slot="attachment-card-preview"] img) [data-slot="attachment-card-preview"] {
-  width: 64px;
-  height: 64px;
-  flex-basis: 64px;
+.prompt-attachment-entry [data-compact="draft"][data-type="image"] {
+  position: relative;
+}
+.prompt-attachment-entry [data-compact="draft"][data-type="image"] [data-slot="attachment-card-preview"] {
+  width: 100%;
+  height: 100%;
+  flex-basis: auto;
+}
+.prompt-attachment-entry [data-compact="draft"][data-type="image"] [data-slot="attachment-card-body"] {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  padding: 3px 4px;
+  background: var(--surface-raised-base);
+  color: var(--text-base);
+}
+.prompt-attachment-entry [data-compact="draft"][data-type="image"] [data-slot="attachment-card-meta"] {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
 }
 .prompt-attachment-entry {
   min-width: 0;

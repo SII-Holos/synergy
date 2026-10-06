@@ -4,7 +4,7 @@ import type { PluginComponentProps, PluginInputService } from "@ericsanchezok/sy
 import { createSignal, createMemo, createEffect, on, onCleanup, onMount, Show } from "solid-js"
 import { ComposerLongEditor } from "@/components/prompt-input/composer-long-editor"
 import { ComposerExpandButton } from "@/components/prompt-input/composer-expand-button"
-import { composerPresentation } from "@/components/prompt-input/composer-presentation"
+import { composerBodyLimits, composerPresentation } from "@/components/prompt-input/composer-presentation"
 import { ComposerResizeControls } from "@/components/prompt-input/composer-resize-controls"
 import { createComposerMotion } from "@/components/prompt-input/composer-motion"
 
@@ -127,10 +127,12 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
       data-ui-part="composer"
       data-expanded={expanded() ? "" : undefined}
       data-resized={manualHeight() === undefined ? undefined : ""}
+      data-has-attachments={binding?.hasAttachments?.() ? "" : undefined}
       style={{
         "--composer-available-height": `${availableHeight()}px`,
         "--composer-chrome-height": `${chromeHeight()}px`,
         "--composer-body-height": manualHeight() === undefined ? undefined : `${manualHeight()}px`,
+        "--composer-body-min-height": `${composerBodyLimits(availableHeight(), chromeHeight(), binding?.hasAttachments?.(), manualHeight()).minimum}px`,
       }}
     >
       {input.render("leading")}

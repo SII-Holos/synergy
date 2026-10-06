@@ -13,6 +13,47 @@ import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
 
+test("reasoning without readable text retains its evidence but has no display entrance", () => {
+  for (const text of ["", " \n\t", "Readable reasoning"]) {
+    const part: MessageV2.ReasoningPart = {
+      id: "prt_reasoning",
+      messageID: "msg_assistant",
+      sessionID: "ses_test",
+      type: "reasoning",
+      text,
+      time: { start: 1, end: 2 },
+      metadata: { "test-provider": { reasoningEncryptedContent: "opaque-evidence" } },
+    }
+    const before = JSON.stringify(part)
+    const summary = MessageV2.summarizePart(part)
+    expect(summary.render).toBe(text.trim().length > 0)
+    expect(summary.content.bytes).toBe(Buffer.byteLength(before))
+    expect(JSON.stringify(part)).toBe(before)
+  }
+})
+
+test("reasoning summaries carry only the provider item identity and preserve canonical content references", () => {
+  const part: MessageV2.ReasoningPart = {
+    id: "summary-0",
+    sessionID: "session",
+    messageID: "assistant",
+    type: "reasoning",
+    text: "First summary",
+    time: { start: 1, end: 2 },
+    metadata: { "openai-codex": { itemId: "rs_shared", reasoningEncryptedContent: "private-payload" } },
+  }
+  const summary = MessageV2.summarizePart(part)
+  expect(summary.reasoningKey).toBe(JSON.stringify(["openai-codex", "rs_shared"]))
+  expect(JSON.stringify(summary)).not.toContain("private-payload")
+  expect(summary.content.version).toBe(new Bun.CryptoHasher("sha256").update(JSON.stringify(part)).digest("hex"))
+  expect(MessageV2.summarizePart({ ...part, metadata: undefined }).reasoningKey).toBeUndefined()
+  expect(
+    MessageV2.summarizePart({ ...part, metadata: { "openai-codex": { itemId: "" } } }).reasoningKey,
+  ).toBeUndefined()
+  expect(MessageV2.summarizePart({ ...part, text: " \n " }).render).toBe(false)
+  expect(summary.render).toBe(true)
+})
+
 test("large provider diagnostics stay out of display headers without changing canonical evidence", () => {
   const info: MessageV2.Assistant = {
     id: "msg_assistant",

@@ -122,3 +122,18 @@ test("an evicted message is read using its original session and message identity
   expect(await page.getByRole("img", { name: "history.svg" }).isVisible()).toBe(true)
   expect(requested.at(-1)).toBe("/session/session-original/message/message-original")
 })
+
+test("an evicted message read failure stays local and can be retried", async () => {
+  let failed = true
+  await page.route("**/session/session-original/message/message-original", async (route) => {
+    if (failed) {
+      failed = false
+      await route.fulfill({ status: 503, body: "Unavailable" })
+    } else await route.continue()
+  })
+  await page.goto(`${url}?remote`)
+  await page.getByRole("button", { name: "Retry", exact: true }).click()
+  await page.getByRole("img", { name: "history.svg" }).waitFor()
+  expect(await page.locator("[role=alert]").count()).toBe(0)
+  await page.unroute("**/session/session-original/message/message-original")
+})

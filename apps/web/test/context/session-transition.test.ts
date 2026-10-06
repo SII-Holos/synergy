@@ -17,10 +17,29 @@ describe("session transition state", () => {
       const lease = state.prepareDraft("draft:connection/scope")
       expect(state.get("draft:connection/scope")?.progress.phase).toBe("loading")
       lease.setText("Inspect the project")
+      lease.submit({
+        text: "Inspect the project",
+        messageID: "message",
+        submittedAt: 123,
+        serverUrl: "https://captured.example",
+        prompt: [
+          { type: "attachment", id: "second", mime: "image/png", filename: "second.png", url: "asset://second" },
+          { type: "attachment", id: "first", mime: "text/plain", filename: "first.txt", url: "asset://first" },
+        ],
+      })
       expect(state.get("draft:connection/scope")?.draft?.text).toBe("Inspect the project")
       expect(lease.handoff("session-1", createNewSessionTransitionProgress())).toBe(true)
       expect(state.get("draft:connection/scope")).toBeUndefined()
       expect(state.get("session-1")?.draft?.text).toBe("Inspect the project")
+      expect(state.get("session-1")?.draft).toMatchObject({
+        submittedAt: 123,
+        serverUrl: "https://captured.example",
+        messageID: "message",
+      })
+      expect(state.get("session-1")?.draft?.prompt?.map((part) => part.type === "attachment" && part.id)).toEqual([
+        "second",
+        "first",
+      ])
       lease.clear()
       expect(state.get("session-1")).toBeDefined()
       dispose()

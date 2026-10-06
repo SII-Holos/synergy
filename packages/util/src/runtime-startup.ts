@@ -11,6 +11,32 @@ export const RUNTIME_STARTUP_MAX_LINE_LENGTH = 1024
 
 const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 const timeout = z.number().int().positive().max(2_147_483_647)
+export const RuntimeStartupStage = z.enum([
+  "initializing",
+  "storage",
+  "migrations",
+  "storage-recovery",
+  "configuration",
+  "execution-recovery",
+  "extensions",
+  "transport",
+  "services",
+  "finalizing",
+])
+export type RuntimeStartupStage = z.infer<typeof RuntimeStartupStage>
+export const RuntimeStartupEvent = z.discriminatedUnion("state", [
+  z
+    .object({
+      phase: z.literal("runtime"),
+      state: z.literal("opening"),
+      stage: RuntimeStartupStage,
+      current: count.optional(),
+    })
+    .strict(),
+  z.object({ phase: z.literal("runtime"), state: z.literal("ready") }).strict(),
+  z.object({ phase: z.literal("runtime"), state: z.literal("failed") }).strict(),
+])
+export type RuntimeStartupEvent = z.infer<typeof RuntimeStartupEvent>
 export const StorageMaintenanceOperation = z.enum([
   "vacuum",
   "reclaim",
@@ -34,6 +60,7 @@ export type StorageMaintenanceEvent = z.infer<typeof StorageMaintenanceEvent>
 export const StorageStartupProgress = z.object({
   stage: z.enum([
     "prepare",
+    "staging",
     "scan",
     "backup",
     "inventory",
@@ -46,6 +73,10 @@ export const StorageStartupProgress = z.object({
     "validate",
     "activate",
     "check",
+    "artifacts",
+    "resources",
+    "quarantine",
+    "notifications",
     "complete",
   ]),
   current: count,
@@ -75,6 +106,7 @@ export const MigrationStartupTask = z.enum([
 export type MigrationStartupTask = z.infer<typeof MigrationStartupTask>
 
 export const RuntimeStartupProgress = z.union([
+  RuntimeStartupEvent,
   StorageMaintenanceEvent,
   z.discriminatedUnion("phase", [
     z.object({ phase: z.literal("starting") }).strict(),

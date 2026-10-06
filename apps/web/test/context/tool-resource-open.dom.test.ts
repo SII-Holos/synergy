@@ -94,6 +94,8 @@ beforeAll(async () => {
     }})
     export const useParams=()=>({get id(){return session()},get dir(){return scope()+server()}})
     export const useFile=()=>({normalize:value=>value})
+    export const useSync=()=>({data:{session:[],message:{},part:{}}})
+    export const useSessionTransition=()=>({get:()=>undefined}),draftTransitionKey=(server,scope)=>JSON.stringify([server,scope])
     export const usePluginHost=()=>({resources:{register:()=>()=>{}}})
     export const useLayout=()=>({surface,transferWorkbenchState(){}})
     export const useLocale=()=>({i18n:setupI18n({locale:"en",messages:{en:{}}})})
@@ -135,9 +137,15 @@ beforeAll(async () => {
       alias: [
         { find: "lucide-solid", replacement: resolveUI.resolve("lucide-solid") },
         { find: "./browser-catalog", replacement: bridge },
-        ...["@/context/sdk", "@/context/file", "@/context/workbench", "@/plugin/host", "@solidjs/router"].map(
-          (find) => ({ find, replacement: bridge }),
-        ),
+        ...[
+          "@/context/sdk",
+          "@/context/file",
+          "@/context/workbench",
+          "@/context/sync",
+          "@/context/session-transition",
+          "@/plugin/host",
+          "@solidjs/router",
+        ].map((find) => ({ find, replacement: bridge })),
         { find: "../layout", replacement: bridge },
         { find: "@/context/locale", replacement: bridge },
         { find: "@/components/dialog/confirm-dialog", replacement: bridge },

@@ -107,7 +107,18 @@ test("offline recovery reclaims bytes flushed before an uncommitted reference", 
     const filename = path.join(handle.artifactDirectory, "agent-artifacts", unpublished.pack)
     expect(await Bun.file(filename).exists()).toBe(true)
     await Storage.provide(handle, async () => {
-      expect(await Storage.collectArtifactGarbage({ scanOrphans: true })).toBe(1)
+      const progress: number[] = []
+      expect(
+        await Storage.collectArtifactGarbage({
+          scanOrphans: true,
+          progress(current) {
+            expect(Storage.current().transaction).toBeUndefined()
+            progress.push(current)
+          },
+        }),
+      ).toBe(1)
+      expect(progress.at(-1)).toBe(2)
+      expect(progress.every((current, index) => index === 0 || current > progress[index - 1])).toBe(true)
       expect(await Bun.file(filename).exists()).toBe(false)
     })
   }))

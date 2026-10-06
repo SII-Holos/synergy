@@ -1,7 +1,7 @@
 import type { UploadedAttachmentPart } from "@/context/prompt"
 import type { AttachmentFile } from "@ericsanchezok/synergy-ui/attachment-card"
 
-export function uploadedPromptAttachmentToFile(attachment: UploadedAttachmentPart): AttachmentFile {
+export function uploadedPromptAttachmentToFile(attachment: UploadedAttachmentPart): Omit<AttachmentFile, "source"> {
   return {
     mime: attachment.mime,
     filename: attachment.filename,

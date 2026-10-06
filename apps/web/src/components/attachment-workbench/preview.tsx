@@ -75,7 +75,7 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
     return { href, maxBytes: preview.maxBytes, tooLarge: false as const }
   })
   const previewReader = createAttachmentPreviewReader(props.fetcher ?? fetch)
-  const [payload] = createResource(
+  const [payload, { refetch }] = createResource(
     () => {
       const request = previewRequest()
       return request && !request.tooLarge ? request : undefined
@@ -179,6 +179,7 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
               kind="warning"
               title={lingui._(A.unableToPreview)}
               detail={payload.error instanceof Error ? payload.error.message : String(payload.error)}
+              onRetry={() => void refetch()}
             />
           </Match>
           <Match when={mediaFailed()}>
@@ -277,7 +278,8 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
   )
 }
 
-function AttachmentState(props: { kind: "warning" | "file"; title: string; detail?: string }) {
+function AttachmentState(props: { kind: "warning" | "file"; title: string; detail?: string; onRetry?: () => void }) {
+  const { _ } = useLingui()
   return (
     <div class="attachment-workbench-state">
       <Show
@@ -288,6 +290,11 @@ function AttachmentState(props: { kind: "warning" | "file"; title: string; detai
       </Show>
       <strong>{props.title}</strong>
       <Show when={props.detail}>{(detail) => <span>{detail()}</span>}</Show>
+      <Show when={props.onRetry}>
+        <button type="button" class="attachment-workbench-action" onClick={() => props.onRetry?.()}>
+          {_({ id: "app.workspace.panel.retry", message: "Retry" })}
+        </button>
+      </Show>
     </div>
   )
 }
@@ -325,7 +332,12 @@ function AttachmentImagePreview(props: { url: string; filename?: string }) {
           <Icon name={getSemanticIcon("action.zoomIn")} size="small" />
         </button>
       </div>
-      <Show when={!failed()} fallback={<AttachmentState kind="warning" title={lingui._(A.unableToPreview)} />}>
+      <Show
+        when={!failed()}
+        fallback={
+          <AttachmentState kind="warning" title={lingui._(A.unableToPreview)} onRetry={() => setFailed(false)} />
+        }
+      >
         <div class="attachment-image-stage">
           <img
             src={props.url}

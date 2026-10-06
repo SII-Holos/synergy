@@ -69,10 +69,11 @@ function restoreLegacyInlineFileText(text: string, references: InlineFileReferen
 }
 
 export function visibleUserMessageText(parts: readonly PartType[] | undefined) {
-  const textPart = parts?.find((p) => p.type === "text" && !isSystemPart(p as TextPart)) as TextPart | undefined
-  const text = textPart?.text || ""
+  const textParts = parts?.filter((p): p is TextPart => p.type === "text" && !isSystemPart(p)) ?? []
+  const text = textParts[0]?.text || ""
   const references = inlineFileReferences(parts)
-  return references ? restoreLegacyInlineFileText(text, references) : text
+  const first = references ? restoreLegacyInlineFileText(text, references) : text
+  return [first, ...textParts.slice(1).map((part) => part.text)].filter(Boolean).join("\n\n")
 }
 
 export function hasVisibleUserMessageContent(parts: readonly PartType[] | undefined) {

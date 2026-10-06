@@ -328,7 +328,7 @@ export namespace WorkspaceOperations {
     return info
   }
 
-  export async function recover() {
+  export async function recover(progress?: () => void) {
     for (const key of await Storage.list(StoragePath.workspaceOperationActive())) {
       try {
         await reconcile(key[2], key[1])
@@ -338,6 +338,7 @@ export namespace WorkspaceOperations {
           error,
         })
       }
+      progress?.()
     }
   }
 

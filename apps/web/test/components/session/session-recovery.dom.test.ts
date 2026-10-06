@@ -37,8 +37,6 @@ beforeAll(async () => {
     import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
     import { SessionInbox } from ${JSON.stringify(`/@fs/${source}/components/session/session-inbox.tsx`)}
     import { PendingTimelineItem } from ${JSON.stringify(`/@fs/${source}/components/session/pending-timeline-item.tsx`)}
-    import { SessionSubmissionPreview } from ${JSON.stringify(`/@fs/${source}/components/session/session-submission-preview.tsx`)}
-    import { createNewSessionTransitionAcceptedProgress, createSessionTransitionHandoffErrorProgress } from ${JSON.stringify(`/@fs/${source}/components/session/session-transition-progress.ts`)}
     import { i18n } from "./locale"
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
@@ -80,11 +78,9 @@ beforeAll(async () => {
       },
     } }
     const sync = { data, session: { refresh: async () => setData("inbox", "s1", window.activeItems) } }
-    const accepted = createNewSessionTransitionAcceptedProgress()
-    const failed = createSessionTransitionHandoffErrorProgress({ kind:accepted.kind,error:{code:"ProviderUnavailable",message:"Diagnostic preserved"} })
     const mode = new URLSearchParams(location.search).get("mode")
     render(() => <I18nProvider i18n={i18n}><MarkedProvider><DialogProvider>
-      {mode === "pending" ? <PendingTimelineItem item={{...item,mode:"task",status:"failed",failReason:"Attachment invalid"}} rollbackActive={false} hasCanonicalRoot={false} onRemove={async () => {window.removeCalls++; await new Promise(resolve => setTimeout(resolve, 150)); if (window.failRemove) throw new Error("Removal offline")}} /> : mode === "transition" ? <SessionSubmissionPreview entry={{ progress: failed, draft: {intent: 1, text: "Original draft **preserved**"}, actions: {retry: () => {window.retryCount = (window.retryCount ?? 0)+1}} }} /> : <SessionInbox sessionID="s1" sdk={{client}} sync={sync} active={active()} />}
+      {mode === "pending" ? <PendingTimelineItem item={{...item,mode:"task",status:"failed",failReason:"Attachment invalid"}} rollbackActive={false} hasCanonicalRoot={false} onRemove={async () => {window.removeCalls++; await new Promise(resolve => setTimeout(resolve, 150)); if (window.failRemove) throw new Error("Removal offline")}} /> : <SessionInbox sessionID="s1" sdk={{client}} sync={sync} active={active()} />}
     </DialogProvider></MarkedProvider></I18nProvider>, document.querySelector("#root"))
   `,
   )
@@ -192,21 +188,6 @@ test("inbox dismissal cancels reads while retaining successful and pending opera
   await page.getByRole("heading", { name: "Removed messages" }).waitFor({ state: "hidden" })
   expect(await page.evaluate(() => (window as unknown as RecoveryWindow).restoreCalls)).toBe(1)
   expect(await page.getByRole("alert").count()).toBe(0)
-  expect(errors).toEqual([])
-})
-
-test("failed initialization stops spinners and exposes one recovery action with diagnostics at 375px", async () => {
-  await page.setViewportSize({ width: 375, height: 812 })
-  await page.goto(`${url}?mode=transition`)
-  expect(await page.locator(".session-submission-prompt").textContent()).toBe("Original draft **preserved**")
-  await page.getByRole("alert").waitFor()
-  expect(await page.getByRole("status").count()).toBe(0)
-  expect(await page.locator('[data-component="error-card"]').count()).toBe(1)
-  await page.getByRole("button", { name: "Unable to start execution" }).click()
-  await page.getByText("ProviderUnavailable: Diagnostic preserved").waitFor()
-  await page.getByRole("button", { name: "Retry", exact: true }).click()
-  expect(await page.evaluate(() => (window as unknown as RecoveryWindow).retryCount)).toBe(1)
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   expect(errors).toEqual([])
 })
 

@@ -17,6 +17,7 @@ import { createDisclosureMotionRef } from "../utils/disclosure-motion"
 import { MAX_ACTIVITY_GROUP_STEPS } from "@ericsanchezok/synergy-util/activity"
 import "./activity-batch.css"
 import { ProcessViewport } from "./process-viewport"
+import { useData } from "../context/data"
 
 const facts: Record<ActivityFamily, MessageDescriptor> = {
   "inspect-local": {
@@ -111,17 +112,39 @@ export function ActivityBatchLabel(props: {
   return <>{label()}</>
 }
 
+export function ActivityBatchStatus(props: { label?: string; animated?: boolean }) {
+  return (
+    <Show when={props.label}>
+      <span data-slot="activity-batch-status">
+        <span aria-hidden="true"> · </span>
+        <span
+          data-slot="activity-batch-status-text"
+          data-animated={props.animated === true}
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {props.label}
+        </span>
+      </span>
+    </Show>
+  )
+}
+
 export function ActivityBatch(props: {
   batch: ActivityBatchItem
   serverUrl: string
   mode: ActivityDisplayMode
   active: boolean
+  statusLabel?: string
+  statusAnimated?: boolean
   following: boolean
   reasoningPreview?: boolean
   view?: PluginConversationActivityView
   onInspect?: () => void
+  onBeforeLayoutChange?: (event: Event) => void
 }) {
   const { _ } = useLingui()
+  const data = useData()
   const [explicit, setExplicit] = createSignal<boolean>()
   const [retained, setRetained] = createSignal<string[]>([])
   const [focused, setFocused] = createSignal<string>()
@@ -173,7 +196,7 @@ export function ActivityBatch(props: {
   }))
   const triggerRef = createDisclosureMotionRef({
     visible: () => props.batch.steps.some((step) => step.state === "done" || step.state === "error") || !props.active,
-    animate: () => props.following,
+    animate: () => false,
   })
   return (
     <div data-component="activity-batch" data-state={props.batch.state}>
@@ -183,14 +206,18 @@ export function ActivityBatch(props: {
         type="button"
         aria-expanded={open()}
         aria-controls={`${props.batch.key}:steps`}
-        onClick={() => {
+        onClick={(event) => {
+          props.onBeforeLayoutChange?.(event)
           const value = !open()
           if (props.view) props.view.setExpanded(props.batch.key, value)
           else setExplicit(value)
           if (value) props.onInspect?.()
         }}
       >
-        <span>{label()}</span>
+        <span>
+          {label()}
+          <ActivityBatchStatus label={props.active ? props.statusLabel : undefined} animated={props.statusAnimated} />
+        </span>
         <Icon name={getSemanticIcon("navigation.expand")} size="small" />
       </button>
       <Show when={open() && window().total > MAX_ACTIVITY_GROUP_STEPS}>
@@ -227,10 +254,11 @@ export function ActivityBatch(props: {
         </div>
       </Show>
       <ProcessViewport
-        identity={props.batch.key}
+        identity={`${props.serverUrl}:${data.directory}:${props.batch.message.sessionID}:${props.batch.key}`}
         active={props.active}
         following={props.following}
         revision={props.batch.steps.map((step) => `${step.part.id}:${step.state}`).join(",")}
+        onBeforeLayoutChange={props.onBeforeLayoutChange}
       >
         <ActivityTrace
           id={`${props.batch.key}:steps`}
@@ -258,7 +286,7 @@ export function ActivityBatch(props: {
                           focused() === partID ||
                           (pinned().has(partID) && !props.following),
                         animate: () => props.following,
-                        appear: () => props.active && currentReasoning() === key,
+                        content: true,
                       })
                       return (
                         <li

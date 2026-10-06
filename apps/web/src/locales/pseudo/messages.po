@@ -1342,6 +1342,10 @@ msgid "app.attachment.office.unsupported"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.attachment.openFailed"
+msgstr "⟦Couldn’t open attachment⟧"
+
+#. js-lingui-explicit-id
 msgid "app.attachment.pdf.fitWidth"
 msgstr "⟦Fit width⟧"
 
@@ -17605,15 +17609,11 @@ msgid "session.process.interrupted"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.process.latest"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.process.loadFailed"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.process.more"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.process.newActions"
 msgstr ""
 
 #. js-lingui-explicit-id

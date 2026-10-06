@@ -1,9 +1,12 @@
 import type { UploadedAttachmentPart } from "@/context/prompt"
 import { Identifier } from "@/utils/id"
 
-export function createUploadedAttachmentInputPart(attachment: UploadedAttachmentPart) {
+export function createUploadedAttachmentInputPart(
+  attachment: UploadedAttachmentPart,
+  id = Identifier.ascending("part"),
+) {
   return {
-    id: Identifier.ascending("part"),
+    id,
     type: "attachment" as const,
     mime: attachment.mime,
     url: attachment.url,

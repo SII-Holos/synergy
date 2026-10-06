@@ -2676,6 +2676,7 @@ export function createPromptInputController(props: PromptInputProps) {
   onCleanup(
     bindComposerPresentation(composerInput, {
       state: presentation,
+      hasAttachments: () => hasAttachments() || attachmentsUploading(),
       preview() {
         let offset = 0
         const references: Array<{ start: number; end: number; path: string }> = []

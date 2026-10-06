@@ -29,7 +29,7 @@ beforeAll(async () => {
       import { setupI18n } from "@lingui/core"
       import { createReactiveI18n } from ${JSON.stringify(`/@fs/${source}/context/locale/reactive-i18n.ts`)}
       const mode = new URLSearchParams(location.search).get("mode")
-      const [id, setID] = createSignal("history")
+      const [id, setID] = createSignal(mode === "new" ? "" : "history")
       const [url, setURL] = createSignal("one")
       const [generation, setGeneration] = createSignal(0)
       export const core = setupI18n({ locale: "en", messages: { en: {}, "zh-CN": {
@@ -63,6 +63,7 @@ beforeAll(async () => {
         complete: () => { ready = true },
         locale: () => { core.activate("zh-CN"); setGeneration(n => n + 1) },
         navigate: () => setID("fresh"),
+        submit: () => setID("created"),
         switchServer: () => setURL("two"),
         late: () => late?.(),
         requests: () => requests.map(({ action, sessionID, signal }) => ({ action, sessionID, aborted: signal.aborted })),
@@ -76,14 +77,20 @@ beforeAll(async () => {
       import { onMount } from "solid-js"
       import { render } from "solid-js/web"
       import { I18nProvider } from "@lingui/solid"
+      import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
+      import { MarkedProvider } from "@ericsanchezok/synergy-ui/context/marked"
       import { SessionPreparation } from ${JSON.stringify(`/@fs/${source}/components/session/session-preparation.tsx`)}
+      import { SessionTransitionProvider } from ${JSON.stringify(`/@fs/${source}/context/session-transition.tsx`)}
       import { core, fixture } from "./context"
       window.mounts = 0
       function Transcript() {
         onMount(() => window.mounts++)
         return <div data-transcript>{fixture.id() || "workspace"}</div>
       }
-      render(() => <I18nProvider i18n={core}><SessionPreparation><Transcript /></SessionPreparation></I18nProvider>, document.querySelector("#root")!)
+      function Fixture() {
+        return <SessionPreparation><Transcript /></SessionPreparation>
+      }
+      render(() => <I18nProvider i18n={core}><SessionTransitionProvider><DialogProvider><MarkedProvider><Fixture /></MarkedProvider></DialogProvider></SessionTransitionProvider></I18nProvider>, document.querySelector("#root")!)
     `,
     ),
   ])
@@ -116,7 +123,7 @@ beforeAll(async () => {
   page.on("console", (message) => {
     if (message.type() === "error") errors.push(message.text())
   })
-})
+}, 30000)
 
 afterAll(async () => {
   await page?.close()
@@ -131,11 +138,33 @@ interface FixtureWindow extends Window {
     complete(): void
     locale(): void
     navigate(): void
+    submit(): void
     switchServer(): void
     late(): void
     requests(): Array<{ action: string; sessionID: string; aborted: boolean }>
   }
 }
+
+test("first-send navigation preserves the mounted page while its storage preparation is pending", async () => {
+  await page.goto(`${baseUrl}?mode=new`)
+  await page.locator("[data-transcript]").waitFor()
+  await page.evaluate(() => {
+    ;(window as unknown as Window & { pageNode: Element | null }).pageNode = document.querySelector("[data-transcript]")
+    ;(window as unknown as FixtureWindow).fixture.submit()
+  })
+  await page.waitForFunction(() => (window as unknown as FixtureWindow).fixture.requests().length === 1)
+  expect(await page.locator("[data-transcript]").count()).toBe(1)
+  expect(
+    await page.evaluate(
+      () =>
+        (window as unknown as Window & { pageNode: Element }).pageNode === document.querySelector("[data-transcript]"),
+    ),
+  ).toBe(true)
+  expect(await page.evaluate(() => (window as unknown as FixtureWindow).mounts)).toBe(1)
+  await page.evaluate(() => (window as unknown as FixtureWindow).fixture.complete())
+  await page.getByRole("status").waitFor({ state: "detached" })
+  expect(await page.evaluate(() => (window as unknown as FixtureWindow).mounts)).toBe(1)
+})
 
 async function open(mode = "pending") {
   errors.length = 0

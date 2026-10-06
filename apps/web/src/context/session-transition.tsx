@@ -9,12 +9,24 @@ import type {
 import type { SessionTransitionHandoff } from "@/components/session/session-transition-handoff"
 import type { NewSessionRecovery } from "@/components/session/new-session-recovery"
 import { createMessageArrivalState } from "./message-arrival"
+import type { Part, UserMessage } from "@ericsanchezok/synergy-sdk/client"
+import { createMessageDisplayIdentity } from "./message-display-identity"
 
 export type SessionTransitionEntry = {
   progress: SessionTransitionProgress
   actions?: SessionTransitionActions
   handoff?: SessionTransitionHandoff
-  draft?: { intent: number; text?: string; messageID?: string; prompt?: Prompt }
+  draft?: {
+    intent: number
+    text?: string
+    messageID?: string
+    originalMessageID?: string
+    prompt?: Prompt
+    submittedAt?: number
+    serverUrl?: string
+    message?: UserMessage
+    parts?: Part[]
+  }
 }
 
 export function draftTransitionKey(server: string, scope: string) {
@@ -72,13 +84,16 @@ export function createSessionTransitionState() {
           }
         : undefined
 
-    setEntries(sessionID, {
-      progress,
-      actions: guardedActions,
-      handoff,
-      revision: currentRevision,
-      draft: entries[sessionID]?.draft,
-    })
+    setEntries(
+      sessionID,
+      reconcile({
+        progress,
+        actions: guardedActions,
+        handoff,
+        revision: currentRevision,
+        draft: entries[sessionID]?.draft,
+      }),
+    )
   }
 
   const confirmHandoff = (sessionID: string, messageID: string) => {
@@ -112,6 +127,22 @@ export function createSessionTransitionState() {
 
   return {
     messageArrival: createMessageArrivalState(),
+    messageIdentity: createMessageDisplayIdentity(),
+    handoffMessage(sessionID: string, messageID: string) {
+      const draft = entries[sessionID]?.draft
+      if (!draft?.message || draft.message.id === messageID) return
+      setEntries(
+        sessionID,
+        "draft",
+        reconcile({
+          ...draft,
+          messageID,
+          originalMessageID: draft.originalMessageID ?? draft.message.id,
+          message: { ...draft.message, id: messageID, rootID: messageID },
+          parts: draft.parts?.map((part) => ({ ...part, messageID })),
+        }),
+      )
+    },
     prepareDraft(key: string) {
       set(key, createSessionPreparationProgress())
       const intent = revision
@@ -121,9 +152,17 @@ export function createSessionTransitionState() {
         setText(text: string) {
           if (current()) setEntries(key, "draft", "text", text)
         },
-        submit(draft: { text: string; messageID: string; prompt: Prompt }) {
+        submit(draft: {
+          text: string
+          messageID: string
+          prompt: Prompt
+          submittedAt?: number
+          serverUrl?: string
+          message?: UserMessage
+          parts?: Part[]
+        }) {
           if (!current()) return false
-          setEntries(key, "draft", { intent, ...draft })
+          setEntries(key, "draft", reconcile({ intent, ...draft }))
           return true
         },
         progress(progress: SessionTransitionProgress, actions?: SessionTransitionActions) {
