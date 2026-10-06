@@ -59,7 +59,6 @@ type ManagedServerLaunchFailure = Extract<ManagedServerLaunch, { ok: false }>
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const HEALTH_PATH = "/global/health"
 const SHUTDOWN_TIMEOUT_MS = DESKTOP_SERVER_SHUTDOWN_TIMEOUT_MS
-const HEALTH_TIMEOUT_MS = 30_000
 const HEALTH_POLL_INTERVAL_MS = 250
 const WINDOWS_TASKKILL_TIMEOUT_MS = 2_000
 const MANAGED_SERVER_PORT_SCAN_LENGTH = 4
@@ -328,7 +327,7 @@ export class DesktopServerManager {
     })
 
     try {
-      await waitForHealth(`${url}${HEALTH_PATH}`, child, HEALTH_TIMEOUT_MS, HEALTH_POLL_INTERVAL_MS, startup)
+      await waitForHealth(`${url}${HEALTH_PATH}`, child, startup)
       return { ok: true }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -407,6 +406,7 @@ export class DesktopServerManager {
       child.stderr?.pipe(logStream, { end: false })
       attachManagedServerExitHandlers(child, logStream, () => {})
       const startup = new DesktopServerStartup({
+        mode: "maintenance",
         onProgress: (progress) => {
           if (progress.phase === "migration") this.setMaintenance({ ...this.maintenance, progress })
         },
@@ -605,12 +605,10 @@ function waitForStreamEnd(stream: NodeJS.ReadableStream | null, timeoutMs: numbe
 export async function waitForHealth(
   url: string,
   child: ChildProcess,
-  timeoutMs = Number.POSITIVE_INFINITY,
+  startup: DesktopServerStartup,
   pollIntervalMs = HEALTH_POLL_INTERVAL_MS,
-  startup?: DesktopServerStartup,
 ): Promise<void> {
-  const deadline = performance.now() + timeoutMs
-  const remaining = () => startup?.remainingMs() ?? deadline - performance.now()
+  const remaining = () => startup.remainingMs()
   let lastError: unknown
   const childFailure = watchChildFailure(child)
   try {
@@ -625,7 +623,7 @@ export async function waitForHealth(
           () => lastError,
           () => requestController.abort(),
         )
-        if (response.ok && remaining() > 0) return
+        if (response.ok && remaining() > 0 && startup.isReady()) return
         lastError = response.ok ? undefined : new Error(`health responded ${response.status}`)
       } catch (error) {
         if (error instanceof ChildProcessHealthError) throw error
@@ -641,11 +639,7 @@ export async function waitForHealth(
       }
     }
     if (remaining() <= 0) {
-      throw new Error(
-        `${startup?.timeoutError().message ?? `Synergy server health check timed out after ${timeoutMs}ms`}${
-          lastError instanceof Error ? `: ${lastError.message}` : ""
-        }`,
-      )
+      throw new Error(`${startup.timeoutError().message}${lastError instanceof Error ? `: ${lastError.message}` : ""}`)
     }
     throw new Error(
       `Synergy server exited before health became ready (code=${child.exitCode ?? "null"} signal=${child.signalCode ?? "null"}): ${
