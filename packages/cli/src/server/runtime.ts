@@ -24,6 +24,7 @@ type Network = import("@ericsanchezok/synergy-harness/lifecycle").RuntimeNetwork
 export interface RuntimeOptions {
   managedReady?: boolean
   logging?: Log.Options
+  startupReporter?: LocalRuntimeOptions["startupReporter"]
   storageReporter?: LocalRuntimeOptions["storageReporter"]
   maintenanceReporter?: LocalRuntimeOptions["maintenanceReporter"]
   migrationReporter?: LocalRuntimeOptions["reporter"]
@@ -44,9 +45,15 @@ export async function run(options: RuntimeOptions) {
   }
   let network: Network = { hostname: "127.0.0.1", port: 0 }
   const reporter = options.printBanner ? StartupReporter.create() : undefined
+  options.startupReporter?.({ phase: "runtime", state: "opening", stage: "initializing" })
   await using handle = await options.runtimeFactory({
     mode: "server",
     logging: options.logging,
+    startupReporter: options.startupReporter
+      ? (event) => {
+          if (event.state !== "ready") options.startupReporter!(event)
+        }
+      : undefined,
     network: async () => {
       network = typeof options.network === "function" ? await options.network() : options.network
       return network
@@ -63,6 +70,7 @@ export async function run(options: RuntimeOptions) {
     if (!server) throw new Error("The selected runtime has no HTTP transport")
     reporter?.migration(handle.migration)
     registerShutdown(handle)
+    options.startupReporter?.({ phase: "runtime", state: "ready" })
     if (options.managedReady) {
       const host = RuntimeContext.current().host
       process.stdout.write(

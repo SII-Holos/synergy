@@ -1,4 +1,4 @@
-export function captureConversationReadingAnchor(container: HTMLElement, isCurrent: () => boolean) {
+export function captureConversationReadingAnchor(container: HTMLElement, isCurrent: () => boolean, target?: Element) {
   const viewportTop = container.getBoundingClientRect().top
   const visible = (node: HTMLElement) => {
     const rect = node.getBoundingClientRect()
@@ -6,19 +6,26 @@ export function captureConversationReadingAnchor(container: HTMLElement, isCurre
   }
   const message = Array.from(container.querySelectorAll<HTMLElement>("[data-message-id]")).find(visible)
   const row =
-    Array.from((message ?? container).querySelectorAll<HTMLElement>("[data-scroll-anchor]")).find(visible) ?? message
+    target?.closest<HTMLElement>('[data-component="process-window"]') ??
+    target?.closest<HTMLElement>("[data-scroll-anchor]") ??
+    Array.from((message ?? container).querySelectorAll<HTMLElement>("[data-scroll-anchor]")).find(visible) ??
+    message
   if (!row) return
   const rowBounds = row.getBoundingClientRect()
-  const block = Array.from(row.querySelectorAll<HTMLElement>("p,li,pre,h1,h2,h3,h4,h5,h6")).find((node) => {
-    const rect = node.getBoundingClientRect()
-    return visible(node) && rect.top >= rowBounds.top && rect.bottom <= rowBounds.bottom
-  })
+  const block =
+    !target &&
+    Array.from(row.querySelectorAll<HTMLElement>("p,li,pre,h1,h2,h3,h4,h5,h6")).find((node) => {
+      const rect = node.getBoundingClientRect()
+      return visible(node) && rect.top >= rowBounds.top && rect.bottom <= rowBounds.bottom
+    })
   const turn = row.closest("[data-component='session-turn']")
   const process = turn?.querySelector<HTMLElement>("[data-slot='turn-process-trigger']")
-  const fallbacks = [...new Set([block, row, process].filter((node): node is HTMLElement => !!node))].map((node) => ({
-    node,
-    offset: node.getBoundingClientRect().top - viewportTop,
-  }))
+  const fallbacks = [...new Set([block || undefined, row, process].filter((node): node is HTMLElement => !!node))].map(
+    (node) => ({
+      node,
+      offset: node.getBoundingClientRect().top - viewportTop,
+    }),
+  )
   return () => {
     if (!isCurrent() || !container.isConnected) return
     const anchor = fallbacks.find(

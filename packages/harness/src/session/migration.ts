@@ -1526,7 +1526,85 @@ export async function migrateToolInputSemantics(
   progress(done, done)
 }
 
+function invalidateReasoningDisplayState(value: Record<string, unknown>) {
+  if (value.ready === false && value.cursor === undefined && value.sourceGeneration === undefined) return false
+  value.ready = false
+  value.generation = (typeof value.generation === "number" ? value.generation : 0) + 1
+  delete value.cursor
+  delete value.sourceGeneration
+  return true
+}
+
+async function migrateReasoningDisplay(
+  owner: { scopeID: string; sessionID: string },
+  progress: (current: number, total: number) => void,
+) {
+  let batch: string[][] = []
+  let done = 0
+  const flush = async () => {
+    if (!batch.length) return
+    const keys = batch
+    batch = []
+    await Storage.transaction(async (tx) => {
+      const records = await Storage.readMany<Record<string, unknown>>(keys)
+      await tx.writeMany(
+        records.flatMap((record, index) =>
+          record && invalidateReasoningDisplayState(record) ? [{ key: keys[index], value: record }] : [],
+        ),
+      )
+    })
+    progress((done += keys.length), 0)
+  }
+  for await (const { key } of Storage.records({
+    ...owner,
+    prefix: ["sessions", owner.scopeID, owner.sessionID, "display_parts_state"],
+  })) {
+    batch.push(key)
+    if (batch.length >= 100) await flush()
+  }
+  await flush()
+  progress(done, done)
+}
+
+async function migrateReasoningDisplaySessions(progress: (current: number, total: number) => void) {
+  let done = 0
+  for (const scopeID of await SessionMigrationTarget.scopes())
+    for (const sessionID of await SessionMigrationTarget.sessions(scopeID)) {
+      await migrateReasoningDisplay({ scopeID, sessionID }, () => {})
+      progress(++done, 0)
+    }
+  progress(done, done)
+}
+
 export const migrations: Migration[] = [
+  {
+    id: "20261005-reasoning-display-identity",
+    scope: "session",
+    execution: "session",
+    domain: "session",
+    dependsOn: ["20261005-session-reasoning-display"],
+    description: "Rebuild bounded Part summaries with provider reasoning item identities on demand",
+    upgradeRecord(key, value) {
+      if (key[0] === "sessions" && key.length === 5 && key[3] === "display_parts_state")
+        invalidateReasoningDisplayState(value)
+    },
+    upSession: migrateReasoningDisplay,
+    up: migrateReasoningDisplaySessions,
+  },
+  {
+    id: "20261005-session-reasoning-display",
+    scope: "session",
+    execution: "session",
+    domain: "session",
+    dependsOn: ["20261001-session-display-index"],
+    description: "Refresh reasoning presentation summaries without changing canonical evidence",
+    upgradeRecord(key, value) {
+      if (key[0] === "sessions" && key.length === 5 && key[3] === "display_parts_state")
+        invalidateReasoningDisplayState(value)
+    },
+    upSession: migrateReasoningDisplay,
+    up: migrateReasoningDisplaySessions,
+  },
   {
     id: "20261001-session-text-projection",
     scope: "session",
@@ -1553,26 +1631,23 @@ export const migrations: Migration[] = [
     execution: "session",
     domain: "session",
     dependsOn: ["20260705-message-v2-semantics-derive", "20260923-session-model-selection"],
-    description: "Prepare ordered presentation headers in resumable batches",
+    description: "Initialize ordered presentation headers for bounded on-access preparation",
     upgradeRecord(key, value) {
       if (key[0] !== "sessions" || key.length !== 4 || key[3] !== "display_state") return
       value.ready = false
       delete value.cursor
       delete value.sourceGeneration
     },
-    async upSession(owner, progress) {
-      const { SessionHistory } = await import("./history")
-      await SessionHistory.prepareDisplayOwner(owner, progress)
+    async upSession(owner) {
+      await SessionHistoryDisplay.initializePending(owner.scopeID, owner.sessionID)
     },
     async up(progress) {
-      const { SessionHistory } = await import("./history")
       let phase = 0
       for (const scopeID of await SessionMigrationTarget.scopes()) {
         for (const sessionID of await SessionMigrationTarget.sessions(scopeID)) {
           progress(0, 0, ++phase)
-          await SessionHistory.prepareDisplayOwner({ scopeID, sessionID }, (current, total) =>
-            progress(current, total, phase),
-          )
+          await SessionHistoryDisplay.initializePending(scopeID, sessionID)
+          progress(1, 1, phase)
         }
       }
     },

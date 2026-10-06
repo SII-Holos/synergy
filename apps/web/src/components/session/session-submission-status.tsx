@@ -9,9 +9,12 @@ import { translateDescriptor } from "@/locales/translate"
 import { translateSessionTransitionCopy } from "./session-transition-progress"
 import { S } from "./session-i18n"
 import "./session-submission.css"
+import type { SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 
-export function submissionForRoot(entry: SessionTransitionEntry | undefined, rootID: string) {
+export function submissionForRoot(entry: SessionTransitionEntry | undefined, rootID: string, status?: SessionStatus) {
   if (!entry || (entry.handoff?.messageID ?? entry.draft?.messageID) !== rootID) return undefined
+  if (entry.progress.phase !== "error" && status?.type === "busy" && status.activity?.rootID === rootID)
+    return undefined
   return { activity: entry.progress.activity, failed: entry.progress.phase === "error" }
 }
 

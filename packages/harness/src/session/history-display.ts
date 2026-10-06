@@ -145,6 +145,16 @@ export namespace SessionHistoryDisplay {
     await Storage.write(key(scopeID, sessionID), { version: 1, ready: true, count: 0, generation: 0 } satisfies State)
   }
 
+  /**
+   * Seed the display state for an on-access migration without forcing the
+   * complete historical projection into the request that opened the Session.
+   */
+  export async function initializePending(scopeID: string, sessionID: string) {
+    const [current] = await Storage.readMany<State>([key(scopeID, sessionID)])
+    if (current) return
+    await Storage.write(key(scopeID, sessionID), { version: 1, ready: false, count: 0, generation: 0 } satisfies State)
+  }
+
   export async function invalidate(scopeID: string, sessionID: string) {
     const current = await state(scopeID, sessionID)
     await Storage.write(key(scopeID, sessionID), {
@@ -306,6 +316,48 @@ export namespace SessionHistoryDisplay {
     return pending
   }
 
+  export function cursorOrder(value: string) {
+    return cursor(value).at(-1)!
+  }
+
+  /**
+   * Prepare only the canonical message window needed by a foreground request.
+   * The full display projection remains resumable through prepare(), while
+   * this path keeps first-page reads independent from historical message size.
+   */
+  export async function prepareWindow(scopeID: string, sessionID: string, infos: MessageV2.Info[]) {
+    if (!infos.length) return
+    const headers = infos.map(summarizeMessage)
+    const previous = await Storage.readMany<MessageSummary>(
+      headers.map((header) => StoragePath.sessionDisplayMessage(scopeID, sessionID, header.info.id)),
+    )
+    const entries: Array<{ key: string[]; value: unknown }> = []
+    const removals: string[][] = []
+    for (const [index, header] of headers.entries()) {
+      const prior = previous[index]
+      if (
+        prior?.order === header.order &&
+        prior.version === header.version &&
+        prior.content.version === header.content.version
+      )
+        continue
+      if (prior && prior.order !== header.order) {
+        removals.push(StoragePath.sessionDisplayTimeline(scopeID, sessionID, prior.order))
+        removals.push(StoragePath.sessionDisplayRoot(scopeID, sessionID, prior.order))
+      }
+      entries.push({ key: StoragePath.sessionDisplayMessage(scopeID, sessionID, header.info.id), value: header })
+      entries.push({ key: StoragePath.sessionDisplayTimeline(scopeID, sessionID, header.order), value: header })
+      if (header.info.role === "user" && header.info.isRoot !== false)
+        entries.push({ key: StoragePath.sessionDisplayRoot(scopeID, sessionID, header.order), value: header })
+      else removals.push(StoragePath.sessionDisplayRoot(scopeID, sessionID, header.order))
+    }
+    if (!entries.length && !removals.length) return
+    await Storage.transaction(async (tx) => {
+      for (const removal of removals) await tx.remove(removal)
+      if (entries.length) await tx.writeMany(entries)
+    })
+  }
+
   function cursor(value: string) {
     try {
       return z.object({ key: z.string().array().min(1) }).parse(JSON.parse(Buffer.from(value, "base64url").toString()))
@@ -369,12 +421,16 @@ export namespace SessionHistoryDisplay {
       const total =
         (visibility.cut
           ? await Storage.count({
-              kind: "display_timeline",
-              scopeID,
-              sessionID: input.sessionID,
+              prefix: StoragePath.sessionMessageOrderMarkersRoot(
+                Identifier.asScopeID(scopeID),
+                Identifier.asSessionID(input.sessionID),
+              ),
               orderTo: visibility.cut,
             })
-          : current.count) - hidden.filter((value) => value && (!visibility.cut || value.order < visibility.cut)).length
+          : current.ready
+            ? current.count
+            : await Storage.count({ kind: "message", scopeID, sessionID: input.sessionID })) -
+        hidden.filter((value) => value && (!visibility.cut || value.order < visibility.cut)).length
       const after = input.cursor ? cursor(input.cursor) : undefined
       if (
         after &&

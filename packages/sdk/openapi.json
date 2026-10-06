@@ -13461,11 +13461,21 @@
             }
           },
           "503": {
-            "description": "Runtime shutting down",
+            "description": "Service unavailable or runtime shutting down",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StorageServiceError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
                 }
               }
             }
@@ -20991,6 +21001,9 @@
                       "$ref": "#/components/schemas/ServiceUnavailableError"
                     },
                     {
+                      "$ref": "#/components/schemas/StorageServiceError"
+                    },
+                    {
                       "$ref": "#/components/schemas/RuntimeShuttingDownError"
                     }
                   ]
@@ -21092,6 +21105,9 @@
                   "anyOf": [
                     {
                       "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StorageServiceError"
                     },
                     {
                       "$ref": "#/components/schemas/RuntimeShuttingDownError"
@@ -22015,6 +22031,9 @@
                       "$ref": "#/components/schemas/ServiceUnavailableError"
                     },
                     {
+                      "$ref": "#/components/schemas/StorageServiceError"
+                    },
+                    {
                       "$ref": "#/components/schemas/RuntimeShuttingDownError"
                     }
                   ]
@@ -22116,6 +22135,9 @@
                   "anyOf": [
                     {
                       "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StorageServiceError"
                     },
                     {
                       "$ref": "#/components/schemas/RuntimeShuttingDownError"
@@ -22248,6 +22270,9 @@
                       "$ref": "#/components/schemas/ServiceUnavailableError"
                     },
                     {
+                      "$ref": "#/components/schemas/StorageServiceError"
+                    },
+                    {
                       "$ref": "#/components/schemas/RuntimeShuttingDownError"
                     }
                   ]
@@ -22360,6 +22385,9 @@
                       "$ref": "#/components/schemas/ServiceUnavailableError"
                     },
                     {
+                      "$ref": "#/components/schemas/StorageServiceError"
+                    },
+                    {
                       "$ref": "#/components/schemas/RuntimeShuttingDownError"
                     }
                   ]
@@ -22470,6 +22498,9 @@
                   "anyOf": [
                     {
                       "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StorageServiceError"
                     },
                     {
                       "$ref": "#/components/schemas/RuntimeShuttingDownError"
@@ -30050,6 +30081,9 @@
                       "$ref": "#/components/schemas/ServiceUnavailableError"
                     },
                     {
+                      "$ref": "#/components/schemas/StorageServiceError"
+                    },
+                    {
                       "$ref": "#/components/schemas/RuntimeShuttingDownError"
                     }
                   ]
@@ -31410,6 +31444,9 @@
                       "$ref": "#/components/schemas/ServiceUnavailableError"
                     },
                     {
+                      "$ref": "#/components/schemas/StorageServiceError"
+                    },
+                    {
                       "$ref": "#/components/schemas/RuntimeShuttingDownError"
                     }
                   ]
@@ -31479,6 +31516,9 @@
                   "anyOf": [
                     {
                       "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StorageServiceError"
                     },
                     {
                       "$ref": "#/components/schemas/RuntimeShuttingDownError"
@@ -31563,6 +31603,9 @@
                   "anyOf": [
                     {
                       "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StorageServiceError"
                     },
                     {
                       "$ref": "#/components/schemas/RuntimeShuttingDownError"
@@ -31650,6 +31693,9 @@
                   "anyOf": [
                     {
                       "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StorageServiceError"
                     },
                     {
                       "$ref": "#/components/schemas/RuntimeShuttingDownError"
@@ -31742,6 +31788,9 @@
                   "anyOf": [
                     {
                       "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StorageServiceError"
                     },
                     {
                       "$ref": "#/components/schemas/RuntimeShuttingDownError"
@@ -32950,6 +32999,9 @@
                       "$ref": "#/components/schemas/ServiceUnavailableError"
                     },
                     {
+                      "$ref": "#/components/schemas/StorageServiceError"
+                    },
+                    {
                       "$ref": "#/components/schemas/RuntimeShuttingDownError"
                     }
                   ]
@@ -33066,6 +33118,9 @@
                       "$ref": "#/components/schemas/ServiceUnavailableError"
                     },
                     {
+                      "$ref": "#/components/schemas/StorageServiceError"
+                    },
+                    {
                       "$ref": "#/components/schemas/RuntimeShuttingDownError"
                     }
                   ]
@@ -33122,6 +33177,9 @@
                   "anyOf": [
                     {
                       "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StorageServiceError"
                     },
                     {
                       "$ref": "#/components/schemas/RuntimeShuttingDownError"
@@ -67260,6 +67318,62 @@
         },
         "required": ["items", "referencedRoots", "nextCursor", "hasMore", "total", "generation"]
       },
+      "ServiceUnavailableError": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["message"]
+      },
+      "StorageServiceError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "StorageServiceError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string",
+                "enum": ["busy", "unavailable"]
+              },
+              "retryAfterMs": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["message", "state", "retryAfterMs"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "RuntimeShuttingDownError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "RuntimeShuttingDown"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
       "SessionHistorySearchPage": {
         "type": "object",
         "properties": {
@@ -67363,6 +67477,9 @@
             "type": "string"
           },
           "tool": {
+            "type": "string"
+          },
+          "reasoningKey": {
             "type": "string"
           },
           "content": {
@@ -69799,34 +69916,6 @@
           }
         },
         "required": ["id", "scopeID", "workspaceID", "generation", "state", "createdAt", "updatedAt"]
-      },
-      "ServiceUnavailableError": {
-        "type": "object",
-        "properties": {
-          "message": {
-            "type": "string"
-          }
-        },
-        "required": ["message"]
-      },
-      "RuntimeShuttingDownError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "RuntimeShuttingDown"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": ["message"]
-          }
-        },
-        "required": ["name", "data"]
       },
       "ResourceProfiles": {
         "type": "object",

@@ -13,7 +13,7 @@ import { contentBudgetKey } from "./content-budget"
 import { clearConversationContent } from "./conversation-content-state"
 import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState } from "./global-sync"
 import { createSessionMessageLoader, type SessionMessageLoadState } from "./session-message-loader"
-import { requestErrorMessage } from "@/utils/error"
+import { requestErrorMessage, retryStorageRequest } from "@/utils/error"
 import {
   planSessionSyncReload,
   queueSessionSync,
@@ -256,16 +256,18 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             : undefined
         const partSnapshotRequest = globalSync.capturePartSnapshotRequest(sdk.scopeKey, sessionID)
         const read = (cursor?: string, limit = 100, messageID?: string) =>
-          retry(() =>
-            sdk.client.session.timelinePage(
-              {
-                sessionID,
-                cursor,
-                limit,
-                messageID,
-              },
-              { signal, throwOnError: true },
-            ),
+          retryStorageRequest(
+            () =>
+              sdk.client.session.timelinePage(
+                {
+                  sessionID,
+                  cursor,
+                  limit,
+                  messageID,
+                },
+                { signal, throwOnError: true },
+              ),
+            { signal },
           )
         const retained = input?.retainedWindow
         let response = await read(

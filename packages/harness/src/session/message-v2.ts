@@ -8,6 +8,7 @@ import path from "path"
 import z from "zod"
 import { RolloutSchema } from "./rollout/schema"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
+import { reasoningItemKey } from "@ericsanchezok/synergy-util/reasoning-item"
 import { classifyNetworkError } from "@ericsanchezok/synergy-util/network-error"
 import { providerRetryable } from "../provider/retry"
 import { APICallError, convertToModelMessages, LoadAPIKeyError, type ModelMessage, type UIMessage } from "ai"
@@ -772,6 +773,7 @@ export namespace MessageV2 {
       render: z.boolean().optional(),
       status: z.string().optional(),
       tool: z.string().optional(),
+      reasoningKey: z.string().optional(),
       content: z
         .object({ version: z.string(), bytes: z.number().int().nonnegative() })
         .meta({ ref: "SessionPartContentReference" }),
@@ -787,7 +789,8 @@ export namespace MessageV2 {
       type: part.type,
       render:
         !["snapshot", "patch", "step-start", "step-finish"].includes(part.type) &&
-        (part.type !== "text" || !isSystemPart(part)),
+        (part.type !== "text" || !isSystemPart(part)) &&
+        (part.type !== "reasoning" || part.text.trim().length > 0),
       preview:
         part.type === "text" || part.type === "reasoning"
           ? part.text.slice(0, 256)
@@ -796,6 +799,7 @@ export namespace MessageV2 {
             : part.type,
       tool: part.type === "tool" ? part.tool : undefined,
       status: part.type === "tool" ? part.state.status : undefined,
+      reasoningKey: part.type === "reasoning" ? reasoningItemKey(part.metadata) : undefined,
       content: { version: new Bun.CryptoHasher("sha256").update(text).digest("hex"), bytes: Buffer.byteLength(text) },
     }
   }
@@ -1541,7 +1545,7 @@ export namespace MessageV2 {
         }),
       ),
     }
-    if (Storage.inTransaction()) {
+    if (Storage.inWriteTransaction()) {
       Storage.afterCommit(() => {
         cacheMessageOrder(scopeID, sessionID, markers)
       })
@@ -1715,12 +1719,21 @@ export namespace MessageV2 {
     return infos.sort(compareStorageOrder)
   }
 
-  export async function* readNewestInfos(input: { scopeID: Identifier.ScopeID; sessionID: Identifier.SessionID }) {
+  export async function* readNewestInfos(input: {
+    scopeID: Identifier.ScopeID
+    sessionID: Identifier.SessionID
+    before?: string
+    limit?: number
+  }) {
     const markers = await messageOrderSnapshot(input.scopeID, input.sessionID)
     let index = markers.length - 1
+    if (input.before !== undefined) {
+      while (index >= 0 && markers[index]! >= input.before) index--
+    }
     let yielded = 0
-    while (index >= 0) {
-      const batchSize = yielded < 4 ? 1 : Math.min(32, index + 1)
+    while (index >= 0 && (input.limit === undefined || yielded < input.limit)) {
+      const remaining = input.limit === undefined ? index + 1 : input.limit - yielded
+      const batchSize = yielded < 4 ? 1 : Math.min(32, index + 1, remaining)
       const batch = markers
         .slice(index - batchSize + 1, index + 1)
         .toReversed()
@@ -1746,6 +1759,7 @@ export namespace MessageV2 {
         if (!info) continue
         yielded++
         yield canonicalMessage(info)
+        if (input.limit !== undefined && yielded >= input.limit) return
       }
     }
   }

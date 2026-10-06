@@ -35,7 +35,15 @@ export function ComposerResizeControls(props: { input: Pick<PluginInputService, 
     measure()
     onCleanup(() => observer.disconnect())
   })
-  const limits = () => composerBodyLimits(props.availableHeight, chromeHeight())
+  const limits = () => {
+    version()
+    return composerBodyLimits(
+      props.availableHeight,
+      chromeHeight(),
+      binding?.hasAttachments?.(),
+      binding?.state.manualHeight,
+    )
+  }
   const resize = (delta: number) => {
     const { minimum, manual } = limits()
     binding?.state.setHeight(

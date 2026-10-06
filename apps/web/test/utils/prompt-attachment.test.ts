@@ -43,6 +43,7 @@ function installImageMocks() {
     revokeObjectURL: 0,
     drawImage: 0,
     toBlobMimes: [] as string[],
+    dimensions: [] as number[][],
   }
 
   URL.createObjectURL = () => {
@@ -75,8 +76,9 @@ function installImageMocks() {
           imageSmoothingEnabled: false,
           imageSmoothingQuality: "low",
           clearRect: () => {},
-          drawImage: () => {
+          drawImage: (...args: unknown[]) => {
             calls.drawImage++
+            calls.dimensions.push([Number(args[3]), Number(args[4])])
           },
         }),
         toBlob: (callback: BlobCallback, mime: string) => {
@@ -105,7 +107,7 @@ describe("prompt attachment upload", () => {
   })
 
   test("uploads image thumbnails as separate assets for AttachmentCard previews", async () => {
-    installImageMocks()
+    const calls = installImageMocks()
     const { client, files } = uploadClient()
     const uploaded = await uploadPromptAttachment(client, new File(["image"], "photo.jpg", { type: "image/jpeg" }))
 
@@ -119,9 +121,12 @@ describe("prompt attachment upload", () => {
         url: "asset://thumb.webp",
         mime: "image/webp",
         size: 5,
+        width: 512,
+        height: 256,
       },
     })
     expect(uploaded.presentation).toEqual({ renderer: "thumbnail", size: "small", crop: true })
+    expect(calls.dimensions).toEqual([[512, 256]])
   })
 
   test("warms image thumbnail pipeline without uploading assets", async () => {

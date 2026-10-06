@@ -6,6 +6,22 @@ import {
   runtimeStartupLine,
 } from "../src/runtime-startup"
 
+test("Runtime readiness is distinct from bounded startup stages and cannot carry private data", () => {
+  for (const event of [
+    { phase: "runtime", state: "opening", stage: "extensions" },
+    { phase: "runtime", state: "ready" },
+    { phase: "runtime", state: "failed" },
+  ] as const) {
+    expect(RuntimeStartupProgress.parse(event)).toEqual(event)
+    expect(runtimeStartupLine(event).length).toBeLessThan(RUNTIME_STARTUP_MAX_LINE_LENGTH)
+    expect(RuntimeStartupProgress.safeParse({ ...event, detail: "private" }).success).toBe(false)
+  }
+  expect(RuntimeStartupProgress.safeParse({ phase: "runtime", state: "opening", stage: "custom hook" }).success).toBe(
+    false,
+  )
+  expect(RuntimeStartupProgress.safeParse({ phase: "runtime", state: "ready", stage: "storage" }).success).toBe(false)
+})
+
 test("migration progress preserves advancing counts before a total is known", () => {
   const progress = { phase: "migration", step: 2, current: 256, total: 0 } as const
   expect(RuntimeStartupProgress.parse(progress)).toEqual(progress)

@@ -4,6 +4,68 @@ import { DesktopServerStartup } from "../src/server-startup.js"
 const line = (value: unknown) => `SYNERGY_STARTUP_V1 ${JSON.stringify(value)}\n`
 
 describe("managed startup progress", () => {
+  test("only Runtime readiness can finish startup after subsystem completion", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "initializing" }))
+    for (const progress of [
+      { phase: "runtime", state: "opening", stage: "migrations" },
+      { phase: "migration", step: 1, current: 1, total: 1 },
+      { phase: "starting" },
+      { phase: "runtime", state: "opening", stage: "storage-recovery" },
+      { phase: "storage", step: 1, stage: "complete", current: 0, total: 0, bytes: 0 },
+      { phase: "runtime", state: "opening", stage: "execution-recovery" },
+      { phase: "recovery", current: 1 },
+      { phase: "starting" },
+    ]) {
+      startup.receive(line(progress))
+      now += 31_000
+      expect(startup.remainingMs()).toBeGreaterThan(0)
+    }
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "extensions" }))
+    now += 300_000
+    expect(startup.remainingMs()).toBe(0)
+    expect(startup.timeoutError().message).toContain("extensions")
+    startup.receive(line({ phase: "runtime", state: "ready" }))
+    expect(startup.remainingMs()).toBe(30_000)
+    now += 30_000
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "services" }))
+    startup.receive(line({ phase: "runtime", state: "ready" }))
+    startup.receive(line({ phase: "migration", step: 100, current: 1, total: 1 }))
+    expect(startup.remainingMs()).toBe(0)
+  })
+
+  test("stage repetition, regression and late subsystem reports cannot renew a stalled Runtime", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive(line({ phase: "runtime", state: "ready" }))
+    expect(startup.isReady()).toBe(false)
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "extensions" }))
+    now = 300_000
+    for (const stage of ["initializing", "storage-recovery", "extensions"])
+      startup.receive(line({ phase: "runtime", state: "opening", stage }))
+    startup.receive(line({ phase: "migration", step: 1, current: 100, total: 100 }))
+    startup.receive(line({ phase: "storage", step: 1, stage: "complete", current: 0, total: 0, bytes: 0 }))
+    startup.receive(line({ phase: "recovery", current: 100 }))
+    startup.receive(line({ phase: "starting" }))
+    expect(startup.remainingMs()).toBe(0)
+    expect(startup.status()).toMatchObject({ detail: "Initializing extensions.", idleMs: 300_000 })
+    startup.receive(line({ phase: "runtime", state: "failed" }))
+    startup.receive(line({ phase: "runtime", state: "ready" }))
+    expect(startup.isReady()).toBe(false)
+    expect(startup.timeoutError().message).toContain("failed during extensions")
+  })
+
+  test("readiness cannot hide outstanding maintenance", () => {
+    const startup = new DesktopServerStartup()
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "extensions" }))
+    startup.receive(line({ phase: "maintenance", id: 1, state: "started", operation: "vacuum", timeoutMs: 600_000 }))
+    startup.receive(line({ phase: "runtime", state: "ready" }))
+    expect(startup.isReady()).toBe(false)
+    expect(startup.remainingMs()).toBe(0)
+    expect(startup.timeoutError().message).toContain("unfinished database maintenance")
+  })
+
   for (const phase of ["storage", "migration"] as const) {
     test(`${phase} total discovery preserves counts and cannot turn stale work into progress`, () => {
       let now = 0
@@ -124,7 +186,7 @@ describe("managed startup progress", () => {
     startup.receive(line(begin))
     expect(startup.remainingMs()).toBe(300_000)
     startup.receive(line({ phase: "starting" }))
-    expect(startup.remainingMs()).toBe(30_000)
+    expect(startup.remainingMs()).toBe(300_000)
   })
 
   test("keeps overlapping maintenance bounded and ignores stale completions", () => {
@@ -176,7 +238,7 @@ describe("managed startup progress", () => {
     startup.receive(line(engine))
     expect(startup.remainingMs()).toBe(300_000)
     startup.receive(line({ phase: "storage", step: 3, stage: "complete", current: 0, total: 0, bytes: 0 }))
-    expect(startup.remainingMs()).toBe(30_000)
+    expect(startup.remainingMs()).toBe(300_000)
   })
 
   test("waits through storage scanning, domain migrations and activation without accepting stale work", () => {
@@ -203,9 +265,11 @@ describe("managed startup progress", () => {
     now += 31_000
     expect(startup.remainingMs()).toBe(269_000)
     startup.receive(storage(4, 0, "complete"))
-    expect(startup.remainingMs()).toBe(30_000)
+    expect(startup.remainingMs()).toBe(300_000)
     startup.receive(line({ phase: "recovery", current: 1 }))
     startup.receive(line({ phase: "starting" }))
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "finalizing" }))
+    startup.receive(line({ phase: "runtime", state: "ready" }))
     now += 30_000
     startup.receive(storage(5, 10))
     expect(startup.remainingMs()).toBe(0)
@@ -230,6 +294,9 @@ describe("managed startup progress", () => {
     expect(startup.timeoutError().message).toContain("10000")
     startup.receive(line({ phase: "recovery", current: 10_001 }))
     startup.receive(line({ phase: "starting" }))
+    expect(startup.remainingMs()).toBe(300_000)
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "finalizing" }))
+    startup.receive(line({ phase: "runtime", state: "ready" }))
     expect(startup.remainingMs()).toBe(30_000)
     now += 30_000
     startup.receive(line({ phase: "recovery", current: 10_002 }))
@@ -280,12 +347,15 @@ describe("managed startup progress", () => {
     expect(startup.timeoutError().message).toContain("3/10")
   })
 
-  test("restores a bounded health wait after migrations, without reopening completed migration work", () => {
+  test("keeps migration completion pending until Runtime readiness", () => {
     let now = 0
     const startup = new DesktopServerStartup({ now: () => now })
     startup.receive(line({ phase: "migration", step: 1, current: 0, total: 0 }))
     now = 100_000
     startup.receive(line({ phase: "starting" }))
+    expect(startup.remainingMs()).toBe(300_000)
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "finalizing" }))
+    startup.receive(line({ phase: "runtime", state: "ready" }))
     expect(startup.remainingMs()).toBe(30_000)
     expect(startup.status().progress).toBeUndefined()
     now = 130_000

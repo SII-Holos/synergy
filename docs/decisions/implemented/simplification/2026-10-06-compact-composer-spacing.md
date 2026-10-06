@@ -8,7 +8,7 @@ The empty Composer dedicates more vertical space to writing than a short draft n
 
 ## Decision
 
-The normal editor minimum is 64 pixels. Desktop bottom space is 24 pixels, reduced to 16 pixels at window heights of 640 pixels or less; below 768 pixels width it is 12 pixels plus the safe-area inset. Font metrics, toolbar geometry and 44-pixel touch actions remain unchanged. Automatic growth retains its 240-pixel or 40-percent available-height cap and grows upward from the same bottom anchor before and after first send. Very short windows may use a lower minimum within the existing measured limits.
+The normal editor minimum is 64 pixels, or 48 pixels with attachments; an explicit manual height remains authoritative. Desktop bottom space is 24 pixels, reduced to 16 pixels at window heights of 640 pixels or less; below 768 pixels width it is 12 pixels plus the safe-area inset. Font metrics, toolbar geometry and 44-pixel touch actions remain unchanged. Automatic growth retains its 240-pixel or 40-percent available-height cap and grows upward from the same bottom anchor before and after first send. Very short windows may use a lower minimum within the existing measured limits.
 
 The [quiet sizing controls](2026-10-02-quiet-composer-sizing.md) and single-editor behavior remain intact. The Dock reports its complete border-box height through a reactive observer target. Border-box observation must not filter events by unchanged content-box dimensions, because a padding-only change alters the space the conversation must avoid. Expanded editor sizing deducts the actual Dock bottom padding and preserves eight pixels of top clearance instead of assuming a fixed combined gap.
 

@@ -10,6 +10,239 @@ const parts = Array.from(
     ({ id: `p${index.toString().padStart(4, "0")}`, messageID: "reply", type: "tool" }) as SessionPartSummary,
 )
 
+test("user groups preserve their boundaries and keys through canonical message aliases", () => {
+  const canonical = { ...root, id: "accepted-root" }
+  const content = ["attachment", "text", "text"].map(
+    (type, index) =>
+      ({
+        ...parts[0],
+        id: `user-${index}`,
+        messageID: root.id,
+        type,
+        content: { bytes: type === "text" ? 80 * 1024 : 100, version: "captured" },
+      }) as SessionPartSummary,
+  )
+  const input = { messagesFor: () => [], page: () => ({ hasMore: false }), summaries: () => content }
+  const before = buildConversationRows({ ...input, timeline: [root] }).filter((row) => row.kind === "body")
+  const after = buildConversationRows({
+    ...input,
+    timeline: [canonical],
+    previous: before,
+    messageKey: (id) => (id === canonical.id ? root.id : id),
+    summaries: () => content.map((part) => ({ ...part, messageID: canonical.id })),
+  }).filter((row) => row.kind === "body")
+  expect(after.map((row) => row.key)).toEqual(before.map((row) => row.key))
+  expect(after.map((row) => row.parts.map((part) => part.id))).toEqual(
+    before.map((row) => row.parts.map((part) => part.id)),
+  )
+  expect(after.filter((row) => row.after)).toHaveLength(1)
+})
+
+test("binary attachment hydration cannot split a short user message or its gallery", () => {
+  const captured = ["text", "attachment", "attachment", "attachment"].map((type, index) => ({
+    ...parts[0],
+    id: `user-${index}`,
+    messageID: root.id,
+    type,
+    content: { bytes: 100, version: "captured" },
+  })) as SessionPartSummary[]
+  const input = { timeline: [root], messagesFor: () => [], page: () => ({ hasMore: false }) }
+  const before = buildConversationRows({ ...input, summaries: () => captured }).filter((row) => row.kind === "body")
+  const hydrated = captured.map((part) => ({
+    ...part,
+    content: { version: "canonical", bytes: part.type === "attachment" ? 512 * 1024 : 100 },
+  }))
+  const after = buildConversationRows({ ...input, previous: before, summaries: () => hydrated }).filter(
+    (row) => row.kind === "body",
+  )
+  expect(after).toHaveLength(1)
+  expect(after[0].key).toBe(before[0].key)
+  expect(after[0].parts.map((part) => part.id)).toEqual(captured.map((part) => part.id))
+  expect(after[0].after).toBe(true)
+})
+
+test("one reasoning item keeps its disclosure anchor across bounded body chunks and stream growth", () => {
+  const fragments = Array.from({ length: 8 }, (_, index) => ({
+    ...parts[0],
+    id: `summary-${index}`,
+    type: "reasoning",
+    reasoningKey: "provider:rs-shared",
+    content: { version: `v${index}`, bytes: 1024 },
+  }))
+  const input = {
+    timeline: [root],
+    messagesFor: () => [reply],
+    page: () => ({ hasMore: false }),
+    process: () => ({ open: true, working: true }),
+  }
+  const before = buildConversationRows({ ...input, summaries: (id) => (id === reply.id ? fragments.slice(0, 2) : []) })
+  const grown = buildConversationRows({
+    ...input,
+    previous: before,
+    summaries: (id) => (id === reply.id ? fragments : []),
+  })
+  const bodies = grown
+    .flatMap((row) => (row.kind === "activity" ? row.activity.entries : []))
+    .filter((row) => row.kind === "body")
+  expect(bodies.map((row) => row.parts.length)).toEqual([6, 2])
+  expect(bodies.flatMap((row) => Object.values(row.reasoningAnchors ?? {}))).toEqual(Array(8).fill("summary-0"))
+  expect(grown.find((row) => row.kind === "activity")?.activity?.reasoning).toBe(1)
+
+  const separated = buildConversationRows({
+    ...input,
+    summaries: (id) => (id === reply.id ? [fragments[0], { ...parts[0], id: "boundary" }, fragments[1]] : []),
+  })
+  const entries = separated.find((row) => row.kind === "activity")?.activity?.entries ?? []
+  expect(entries.flatMap((row) => (row.kind === "body" ? Object.values(row.reasoningAnchors ?? {}) : []))).toEqual([
+    "summary-0",
+    "summary-1",
+  ])
+
+  const byteLimited = buildConversationRows({
+    ...input,
+    summaries: (id) =>
+      id === reply.id
+        ? fragments.slice(0, 2).map((part) => ({ ...part, content: { ...part.content, bytes: 80 * 1024 } }))
+        : [],
+  })
+  expect(
+    byteLimited
+      .find((row) => row.kind === "activity")
+      ?.activity?.entries.filter((row) => row.kind === "body")
+      .map((row) => row.parts.length),
+  ).toEqual([1, 1])
+  expect(byteLimited.find((row) => row.kind === "activity")?.activity?.reasoning).toBe(1)
+
+  const other = { ...reply, id: "other" }
+  const messages = buildConversationRows({
+    ...input,
+    messagesFor: () => [reply, other],
+    summaries: (id) =>
+      id === reply.id ? [fragments[0]] : id === other.id ? [{ ...fragments[1], messageID: other.id }] : [],
+  })
+  expect(messages.find((row) => row.kind === "activity")?.activity?.reasoning).toBe(2)
+})
+
+test("ordinary user attachments and body form one stable message with one metadata boundary", () => {
+  for (const types of [
+    ["attachment", "text"],
+    ["attachment", "attachment", "text"],
+    ["text", "attachment", "attachment"],
+  ]) {
+    const content = types.map(
+      (type, index) => ({ ...parts[0], id: `user-${index}`, messageID: root.id, type }) as SessionPartSummary,
+    )
+    const input = {
+      timeline: [root],
+      messagesFor: () => [],
+      summaries: () => content,
+      page: () => ({ hasMore: false }),
+    }
+    const rows = buildConversationRows(input)
+    const bodies = rows.filter((row) => row.kind === "body")
+    expect(bodies).toHaveLength(1)
+    expect(bodies[0].parts).toEqual(content)
+    expect(bodies[0]).toMatchObject({ before: true, after: true })
+    const reconciled = buildConversationRows({ ...input, previous: rows, summaries: () => [...content].reverse() })
+    expect(reconciled.find((row) => row.kind === "body")?.key).toBe(bodies[0].key)
+  }
+})
+
+test("large user text stays bounded and pagination owns only the final metadata boundary", () => {
+  const content = Array.from(
+    { length: 12 },
+    (_, index) =>
+      ({
+        ...parts[0],
+        id: `user-${index}`,
+        messageID: root.id,
+        type: "text",
+        content: { bytes: 80 * 1024 },
+      }) as SessionPartSummary,
+  )
+  const input = {
+    timeline: [root],
+    messagesFor: () => [],
+    summaries: () => content,
+    page: () => ({ hasMore: true, hasEarlier: true }),
+  }
+  const initial = buildConversationRows(input)
+  const bodies = initial.filter((row) => row.kind === "body")
+  expect(bodies.flatMap((row) => row.parts)).toEqual(content)
+  expect(
+    bodies.every((row) => row.parts.reduce((bytes, part) => bytes + (part.content?.bytes ?? 0), 0) <= 128 * 1024),
+  ).toBe(true)
+  expect(bodies.some((row) => row.before || row.after)).toBe(false)
+  const complete = buildConversationRows({
+    ...input,
+    previous: initial,
+    page: () => ({ hasMore: false, hasEarlier: false }),
+  })
+  expect(complete.filter((row) => row.kind === "body" && row.after)).toHaveLength(1)
+  expect(complete.filter((row) => row.kind === "body").map((row) => row.key)).toEqual(bodies.map((row) => row.key))
+})
+
+test("many short user text Parts retain a finite row budget and expanded bodies keep unique identities", () => {
+  const content = Array.from({ length: 1001 }, (_, index) => ({
+    ...parts[0],
+    id: `user-${index}`,
+    messageID: root.id,
+    type: "text",
+    content: { bytes: 10 },
+  })) as SessionPartSummary[]
+  const input = { timeline: [root], messagesFor: () => [], summaries: () => content, page: () => ({ hasMore: false }) }
+  const rows = buildConversationRows(input).filter((row) => row.kind === "body")
+  expect(rows.every((row) => row.parts.length <= 6)).toBe(true)
+  expect(rows.flatMap((row) => row.parts)).toEqual(content)
+  expect(rows.filter((row) => row.after)).toHaveLength(1)
+  const initial = buildConversationRows({ ...input, summaries: () => content.slice(0, 2) })
+  const grown = buildConversationRows({
+    ...input,
+    previous: initial,
+    summaries: () =>
+      content.slice(0, 2).map((part) => ({ ...part, content: { bytes: 80 * 1024, version: "expanded" } })),
+  }).filter((row) => row.kind === "body")
+  expect(new Set(grown.map((row) => row.key)).size).toBe(grown.length)
+  expect(grown[0].key).toBe(initial[0].key)
+})
+
+test("the supported twenty attachments remain one complete gallery with their authored text", () => {
+  const content = Array.from({ length: 21 }, (_, index) => ({
+    ...parts[0],
+    id: `user-${index}`,
+    messageID: root.id,
+    type: index === 20 ? "text" : "attachment",
+    content: { bytes: 100 },
+  })) as SessionPartSummary[]
+  const rows = buildConversationRows({
+    timeline: [root],
+    messagesFor: () => [],
+    summaries: () => content,
+    page: () => ({ hasMore: false }),
+  }).filter((row) => row.kind === "body")
+  expect(rows).toHaveLength(1)
+  expect(rows[0].parts).toEqual(content)
+})
+
+test("prepending user content preserves existing group starts and one final metadata owner", () => {
+  const content = ["image", "body"].map(
+    (id) =>
+      ({ ...parts[0], id, messageID: root.id, type: id === "image" ? "attachment" : "text" }) as SessionPartSummary,
+  )
+  const input = { timeline: [root], messagesFor: () => [], summaries: () => content, page: () => ({ hasMore: false }) }
+  const initial = buildConversationRows(input)
+  const next = buildConversationRows({
+    ...input,
+    previous: initial,
+    summaries: () => [{ ...content[1], id: "earlier" }, ...content],
+  })
+  const bodies = next.filter((row) => row.kind === "body")
+  expect(bodies).toHaveLength(2)
+  expect(bodies[1].key).toBe(initial.find((row) => row.kind === "body")!.key)
+  expect(bodies[1].parts).toEqual(content)
+  expect(bodies.filter((row) => row.after)).toHaveLength(1)
+})
+
 test("repeated compaction control markers do not create body rows or duplicate attempt events", () => {
   const text = { ...parts[0], id: "request-text", messageID: root.id, type: "text" } as SessionPartSummary
   const markers = Array.from({ length: 8 }, (_, index) => ({

@@ -38,13 +38,15 @@ export class ArtifactPack {
     this.ready = true
   }
 
-  async orphaned(referenced: ReadonlySet<string>) {
+  async orphaned(referenced: ReadonlySet<string>, progress?: () => void) {
     const result: string[] = []
     try {
       const directory = await fs.opendir(this.root)
-      for await (const entry of directory)
+      for await (const entry of directory) {
         if (ArtifactLocation.shape.pack.safeParse(entry.name).success && !referenced.has(entry.name))
           result.push(entry.name)
+        progress?.()
+      }
     } catch (error) {
       if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error
     }
@@ -114,11 +116,12 @@ export class ArtifactPack {
     }
   }
 
-  async prune(packs: string[]) {
+  async prune(packs: string[], progress?: () => void) {
     for (const pack of packs) {
       ArtifactLocation.shape.pack.parse(pack)
       await fs.rm(path.join(this.root, pack), { force: true })
       for (const [owner, active] of this.active) if (active.name === pack) this.active.delete(owner)
+      progress?.()
     }
     if (packs.length && process.platform !== "win32") {
       try {

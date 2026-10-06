@@ -9,11 +9,11 @@ import { Plugin } from "."
  * right after the listeners, before session recovery. Registered through
  * src/registration.ts.
  */
-async function recoverInstallations() {
+async function recoverInstallations(progress?: () => void) {
   const { PluginInstallationRecovery } = await import("./installation-recovery")
-  await PluginInstallationRecovery.recover()
+  await PluginInstallationRecovery.recover(progress)
   const { recoverInstalledPlugins } = await import("../installation/plugin-activation")
-  await recoverInstalledPlugins()
+  await recoverInstalledPlugins(progress)
 }
 
 export function registerPluginStartup() {

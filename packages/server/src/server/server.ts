@@ -34,7 +34,7 @@ import { zodToJsonSchema } from "zod-to-json-schema"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
 import { upgradeWebSocket, websocket } from "hono/bun"
-import { errors, RuntimeShuttingDownError } from "./error"
+import { errors, RuntimeShuttingDownError, StorageServiceError } from "./error"
 import { QuestionRoute } from "./question"
 import { SessionExportRoute } from "./session-export"
 import { CortexRoute } from "./cortex"
@@ -555,6 +555,22 @@ export namespace Server {
 
         if (err instanceof BusyError || err instanceof WorkspaceAccess.BusyError)
           return c.json({ name: err.name, data: { message: err.message } }, 409)
+        if (err instanceof Storage.BusyError || err instanceof Storage.UnavailableError) {
+          const state = err instanceof Storage.UnavailableError ? "unavailable" : "busy"
+          const retryAfterMs = state === "unavailable" ? 5_000 : 1_000
+          c.header("Retry-After", String(Math.ceil(retryAfterMs / 1_000)))
+          return c.json(
+            new StorageServiceError({
+              message:
+                state === "unavailable"
+                  ? "Authoritative storage is recovering; retry shortly"
+                  : "Authoritative storage is busy; retry shortly",
+              state,
+              retryAfterMs,
+            }).toObject(),
+            503,
+          )
+        }
         if (err instanceof Scope.NotFoundError) return c.json(err.toObject(), { status: 404 })
         if (err instanceof SessionPreparingError) {
           c.header("Retry-After", "2")

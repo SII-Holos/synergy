@@ -312,6 +312,7 @@ test("explicit anchor creates no empty trigger and forwards close focus", async 
   expect(await page.locator('[data-slot="popover-trigger"]').filter({ hasText: /^$/ }).count()).toBe(0)
   await page.keyboard.press("Escape")
   await page.getByRole("button", { name: "Anchored action", exact: true }).waitFor({ state: "detached" })
+  await page.waitForFunction(() => document.activeElement?.textContent === "Anchored details")
   expect(await anchor.evaluate((node) => node === document.activeElement)).toBe(true)
   expect(errors).toEqual([])
 })

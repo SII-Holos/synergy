@@ -1,6 +1,7 @@
 import { resolver } from "hono-openapi"
 import z from "zod"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { NamedError } from "@ericsanchezok/synergy-util/error"
 
 export const BadRequestError = z
   .object({
@@ -15,6 +16,15 @@ export const ServiceUnavailableError = z
     message: z.string(),
   })
   .meta({ ref: "ServiceUnavailableError" })
+
+export const StorageServiceError = NamedError.create(
+  "StorageServiceError",
+  z.object({
+    message: z.string(),
+    state: z.enum(["busy", "unavailable"]),
+    retryAfterMs: z.number().int().positive(),
+  }),
+)
 
 export const RuntimeShuttingDownError = z
   .object({
@@ -66,7 +76,7 @@ export const ERRORS = {
     description: "Service unavailable or runtime shutting down",
     content: {
       "application/json": {
-        schema: resolver(z.union([ServiceUnavailableError, RuntimeShuttingDownError])),
+        schema: resolver(z.union([ServiceUnavailableError, StorageServiceError.Schema, RuntimeShuttingDownError])),
       },
     },
   },

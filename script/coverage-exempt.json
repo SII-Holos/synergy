@@ -1391,10 +1391,6 @@
           "reason": "test/components/session/rollback-files.dom.test.ts mounts RollbackDialog and its lazy restore dialog, covering preview, duplicate submission, partial failure and retry identity in Chromium; Vite/browser execution is outside Bun source LCOV."
         },
         {
-          "glob": "src/components/session/session-submission-preview.tsx",
-          "reason": "test/components/session/session-recovery.dom.test.ts exercises the original draft, failed handoff diagnostics and the real retry action through SessionSubmissionPreview in Chromium; Vite/browser execution is outside Bun source LCOV."
-        },
-        {
           "glob": "src/components/session/welcome/ambient.tsx",
           "reason": "test/components/session/welcome/stage.dom.test.tsx exercises the registered Canvas scenes, lifecycle, keyboard, touch, theme changes, pausing, retries and resource cleanup in Chromium; rules, fixed timing, selection and experience memory have directly measured unit tests; Vite/browser execution is outside Bun source LCOV."
         },
@@ -2142,6 +2138,10 @@
         {
           "glob": "src/components/tool-result-body.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/user-message-content.tsx",
+          "reason": "apps/web/test/components/session/session-submission-status.dom.test.ts and apps/web/test/components/attachment-workbench/message.dom.test.ts exercise this shared renderer in Chromium, covering canonical identity, attachment disclosure, source view, metadata, preview and keyboard recovery. Vite/browser execution does not contribute Bun source LCOV; user-message-utils remains directly measured."
         },
         {
           "glob": "src/components/tool/anysearch-info.ts",

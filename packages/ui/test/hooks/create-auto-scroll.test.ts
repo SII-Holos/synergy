@@ -99,6 +99,43 @@ function createScrollHarness() {
 }
 
 describe("createAutoScroll", () => {
+  test("manual disclosure at the bottom remains reading through resize and compensated scroll", async () => {
+    const harness = createScrollHarness()
+    let dispose = () => {}
+    try {
+      const element = harness.makeScroller()
+      let restores = 0
+      let autoScroll!: ReturnType<typeof createAutoScroll>
+      createRoot((cleanup) => {
+        dispose = cleanup
+        autoScroll = createAutoScroll({
+          working: () => true,
+          captureReadingAnchor: () => () => {
+            restores++
+          },
+        })
+        autoScroll.scrollRef(element)
+        autoScroll.contentRef(element)
+      })
+      await harness.tick()
+      harness.flushFrames()
+      element.scrollTop = 600
+      element.calls.length = 0
+      autoScroll.handleInteraction()
+      autoScroll.preserveReadingAnchor()
+      autoScroll.handleScroll()
+      expect(autoScroll.userScrolled()).toBe(true)
+      element.scrollHeight += 100
+      harness.lastObserver()!.fire(element)
+      harness.flushFrames()
+      expect(restores).toBe(1)
+      expect(element.calls).toEqual([])
+    } finally {
+      dispose()
+      harness.restore()
+    }
+  })
+
   test("an explicit latest intent survives delayed hydration and releases on reading input", async () => {
     const harness = createScrollHarness()
     let dispose = () => {}
@@ -234,15 +271,17 @@ describe("createAutoScroll", () => {
     try {
       const first = harness.makeScroller()
       const second = harness.makeScroller()
-      let restores = 0
+      let owner = first
+      const restored: HTMLElement[] = []
       let autoScroll: ReturnType<typeof createAutoScroll>
       createRoot((done) => {
         dispose = done
         autoScroll = createAutoScroll({
           working: () => true,
           ...{
-            captureReadingAnchor: () => () => {
-              restores++
+            captureReadingAnchor: () => {
+              const captured = owner
+              return () => restored.push(captured)
             },
           },
         })
@@ -255,7 +294,8 @@ describe("createAutoScroll", () => {
       first.scrollHeight += 100
       harness.lastObserver()!.fire(first)
       harness.flushFrames()
-      expect(restores).toBe(1)
+      expect(restored).toEqual([first])
+      owner = second
       autoScroll!.scrollRef(second)
       autoScroll!.contentRef(second)
       autoScroll!.handleInteraction()
@@ -263,7 +303,7 @@ describe("createAutoScroll", () => {
       second.scrollHeight += 100
       harness.lastObserver()!.fire(second)
       harness.flushFrames()
-      expect(restores).toBe(1)
+      expect(restored).toEqual([first, second])
     } finally {
       dispose()
       harness.restore()

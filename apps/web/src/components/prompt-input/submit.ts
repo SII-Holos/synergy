@@ -1,11 +1,10 @@
 import { resolveSessionReference } from "@/utils/session-reference"
-import { type Accessor, Setter, batch, onCleanup } from "solid-js"
+import { type Accessor, Setter, batch, onCleanup, startTransition } from "solid-js"
 import { produce, reconcile, type SetStoreFunction } from "solid-js/store"
 import { useNavigate, useParams } from "@solidjs/router"
 import { createSynergyClient, type Message, type Part } from "@ericsanchezok/synergy-sdk/client"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
-import { base64Decode, base64Encode, base64EncodeStandard } from "@ericsanchezok/synergy-util/encode"
-import { getFilename } from "@ericsanchezok/synergy-util/path"
+import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useLocal } from "@/context/local"
 import { thinkingSelection } from "@/context/prompt/model-selection"
@@ -25,7 +24,6 @@ import type {
   SessionAttachmentPart,
   UploadedAttachmentPart,
 } from "@/context/prompt"
-import type { FileSelection } from "@/context/file"
 import type { ControlProfileId } from "@/context/input"
 import { Identifier } from "@/utils/id"
 import { requestErrorMessage as errorMessage } from "@/utils/error"
@@ -38,7 +36,7 @@ import {
   SESSION_PREVIEW_MAX_MESSAGES,
 } from "./content"
 import { setCursorPosition } from "./editor-dom"
-import { createUploadedAttachmentInputPart } from "./attachment-submit"
+import { createSubmissionPartIDs, createSubmissionParts, optimisticPartSummaries } from "./submission-parts"
 import { createPromptDraftSnapshot, createSubmitFailureRestoreSnapshot } from "@/utils/prompt"
 import { sendSessionCommand } from "./session-command"
 import type { BlueprintSlot, PromptInputMode, PromptInputProps, PromptInputStore } from "./types"
@@ -311,8 +309,55 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         return
       }
 
-      if (isNewSession && submitIntent === "message" && mode === "normal" && !blueprintSlot)
+      const submissionSessionID = isNewSession ? Identifier.descending("session") : initialSessionId
+      const submissionMessageID = isNewSession ? Identifier.ascending("message") : undefined
+      const submittedAt = Date.now()
+      const submissionServer = sdk.url
+      const partID = createSubmissionPartIDs()
+      const captureSubmission = () => {
+        const model = local.model.current()
+        const agent = local.agent.current()
+        if (!submissionMessageID || !submissionSessionID || !model || !agent) return undefined
+        const message = createOptimisticUserMessage({
+          id: submissionMessageID,
+          sessionID: submissionSessionID,
+          created: submittedAt,
+          agent: agent.name,
+          model: { modelID: model.id, providerID: model.provider.id },
+          variant: local.model.variant.displayed(),
+          metadata: { promptDraft: draftSnapshot },
+        })
+        const parts = createSubmissionParts({
+          id: partID,
+          prompt: currentPrompt,
+          context: currentContext.items,
+          attachments,
+          notes,
+          sessions,
+          workspace: input.props.newSessionCanonicalDirectory ?? sdk.directory,
+        }).map((part) => ({ ...part, sessionID: submissionSessionID, messageID: submissionMessageID })) as Part[]
+        return {
+          text,
+          messageID: submissionMessageID,
+          prompt: currentPrompt,
+          submittedAt,
+          serverUrl: submissionServer,
+          message,
+          parts,
+        }
+      }
+      if (isNewSession && submitIntent === "message" && mode === "normal" && !blueprintSlot) {
         preparation = sessionTransition.prepareDraft(draftTransitionKey(sdk.url, sdk.scopeKey))
+        const captured = captureSubmission()
+        if (captured)
+          batch(() => {
+            sessionTransition.messageArrival.add(
+              [sdk.url, sdk.scopeKey, captured.message.sessionID],
+              captured.messageID,
+            )
+            preparation?.submit(captured)
+          })
+      }
 
       const runsBeforeSubmit = shouldRunComposerBeforeSubmit({
         intent: submitIntent,
@@ -399,7 +444,6 @@ export function usePromptSubmit(input: PromptSubmitInput) {
 
       const projectDirectory = sdk.directory
       const currentScopeKey = sdk.scopeKey
-      const submissionServer = sdk.url
       // Capture (and disarm) workflow state armed on the new-session composer
       // before navigation can reset it; applied once the session exists.
       const armedPlan = isNewSession && input.pendingPlan()
@@ -479,8 +523,6 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       const currentLocation = () =>
         server.url === connection && !!params.dir && base64Decode(params.dir) === sessionScopeKey
 
-      const submissionMessageID = isNewSession ? Identifier.ascending("message") : undefined
-      const submittedAt = Date.now()
       let inputCleared = false
       const clearInput = () => {
         if (inputCleared) return false
@@ -497,7 +539,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       if (submissionMessageID)
         batch(() => {
           if (!clearInput()) return
-          preparation?.submit({ text, messageID: submissionMessageID, prompt: currentPrompt })
+          const captured = captureSubmission()
+          if (captured) preparation?.submit(captured)
           preparation?.progress(
             worktreeWorkspaceSelection
               ? createNewSessionWorkspaceProgress({ selection: worktreeWorkspaceSelection, stage: "workspace" })
@@ -544,6 +587,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       if (!session && isNewSession) {
         session = await client.session
           .create({
+            id: submissionSessionID,
             environmentID,
             environmentProfile,
             controlProfile: input.selectedControlProfile(),
@@ -579,14 +623,17 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         if (session === null) return
         if (session) {
           createdSessionForSubmit = true
-          local.handoffNewSessionIntent(session.id)
+          const createdSessionID = session.id
           const initialProgress = worktreeWorkspaceSelection
             ? createSessionActivityProgress("new-worktree-session", "preparing_session")
             : createSessionActivityProgress("new-session", "preparing_session")
-          preparation?.handoff(session.id, initialProgress)
-          publishNewSessionTransition(session.id, initialProgress)
-          if (binding.isCurrent() && binding.transferToSession(session.id))
-            navigate(`/${base64Encode(sessionScopeKey)}/session/${session.id}`)
+          await startTransition(() => {
+            local.handoffNewSessionIntent(createdSessionID)
+            preparation?.handoff(createdSessionID, initialProgress)
+            publishNewSessionTransition(createdSessionID, initialProgress)
+            if (binding.isCurrent() && binding.transferToSession(createdSessionID))
+              navigate(`/${base64Encode(sessionScopeKey)}/session/${createdSessionID}`)
+          })
           try {
             const saved = await client.session.setModelSelection(
               {
@@ -907,12 +954,6 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         return
       }
 
-      const toAbsolutePath = (path: string) => {
-        const workspace = activeSession.workspace?.path
-        if (!workspace) throw new Error("File references require a session workspace")
-        return path.startsWith("/") ? path : `${workspace}/${path}`.replace("//", "/")
-      }
-
       const getSessionPreviewData = async (attachment: SessionAttachmentPart) => {
         if (!attachment.scopeID) throw new Error("Session reference has not been migrated")
         const [childStore] = globalSync.ensureScopeState(attachment.scopeID)
@@ -942,110 +983,32 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         }
       }
 
-      const createSessionAttachmentPart = async (attachment: SessionAttachmentPart) => {
-        let content = formatSessionReference(attachment)
-        try {
-          const preview = await getSessionPreviewData(attachment)
-          content = formatSessionPreview({
-            attachment,
-            sessionMessages: preview.messages,
-            getParts: preview.getParts,
-          })
-        } catch {}
-
-        return {
-          id: Identifier.ascending("part"),
-          type: "attachment" as const,
-          mime: "text/plain",
-          url: `data:text/plain;base64,${base64EncodeStandard(content)}`,
-          filename: `${attachment.title || "session"}.session.txt`,
-          model: { mode: "content" as const, text: content },
-          metadata: {
-            kind: "session",
-            sessionId: attachment.sessionId,
-            scopeID: attachment.scopeID,
-            title: attachment.title || "Untitled",
-            updatedAt: attachment.updatedAt,
-          },
-        }
-      }
-
-      const sessionAttachmentParts = await Promise.all(sessions.map(createSessionAttachmentPart))
-
-      const fileAttachments = currentPrompt.filter((part) => part.type === "file") as FileAttachmentPart[]
-
-      const fileAttachmentParts = fileAttachments.map((attachment) => {
-        const absolute = toAbsolutePath(attachment.path)
-        const query = attachment.selection
-          ? `?start=${attachment.selection.startLine}&end=${attachment.selection.endLine}`
-          : ""
-        return {
-          id: Identifier.ascending("part"),
-          type: "attachment" as const,
-          mime: "text/plain",
-          url: `file://${absolute}${query}`,
-          filename: getFilename(attachment.path),
-          model: { mode: "content" as const },
-          source: {
-            type: "file" as const,
-            text: {
-              value: attachment.content,
-              start: attachment.start,
-              end: attachment.end,
-            },
-            path: absolute,
-          },
-        }
+      const sessionContent = new Map(
+        await Promise.all(
+          sessions.map(async (attachment) => {
+            let content = formatSessionReference(attachment)
+            try {
+              const preview = await getSessionPreviewData(attachment)
+              content = formatSessionPreview({
+                attachment,
+                sessionMessages: preview.messages,
+                getParts: preview.getParts,
+              })
+            } catch {}
+            return [attachment.id, content] as const
+          }),
+        ),
+      )
+      const requestParts = createSubmissionParts({
+        id: partID,
+        prompt: currentPrompt,
+        context: currentContext.items,
+        attachments,
+        notes,
+        sessions,
+        workspace: activeSession.workspace?.path,
+        sessionContent,
       })
-
-      const usedUrls = new Set(fileAttachmentParts.map((part) => part.url))
-
-      const contextFileParts: Array<{
-        id: string
-        type: "attachment"
-        mime: string
-        url: string
-        filename?: string
-        model: { mode: "content" }
-      }> = []
-
-      const addContextFile = (path: string, selection?: FileSelection) => {
-        const absolute = toAbsolutePath(path)
-        const query = selection ? `?start=${selection.startLine}&end=${selection.endLine}` : ""
-        const url = `file://${absolute}${query}`
-        if (usedUrls.has(url)) return
-        usedUrls.add(url)
-        contextFileParts.push({
-          id: Identifier.ascending("part"),
-          type: "attachment",
-          mime: "text/plain",
-          url,
-          filename: getFilename(path),
-          model: { mode: "content" },
-        })
-      }
-
-      for (const item of prompt.context.items()) {
-        if (item.type !== "file") continue
-        addContextFile(item.path, item.selection)
-      }
-
-      const uploadedAttachmentParts = attachments.map(createUploadedAttachmentInputPart)
-
-      const noteAttachmentParts = notes.map((attachment) => ({
-        id: Identifier.ascending("part"),
-        type: "attachment" as const,
-        mime: "text/plain",
-        url: `data:text/plain;base64,${base64EncodeStandard(formatNoteContent(attachment))}`,
-        filename: `${attachment.title || "Untitled"}.md`,
-        model: { mode: "content" as const, text: formatNoteContent(attachment) },
-        metadata: {
-          kind: "note",
-          noteId: attachment.noteId,
-          title: attachment.title || "Untitled",
-        },
-      }))
-
       const queueing = input.working() || !!activeSession.paused
       const messageID =
         submissionMessageID ??
@@ -1055,30 +1018,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
             agent,
             model,
             variant,
-            parts: [
-              inlineText(currentPrompt),
-              ...fileAttachmentParts,
-              ...contextFileParts,
-              ...uploadedAttachmentParts,
-              ...noteAttachmentParts,
-              ...sessionAttachmentParts,
-            ].map((part) => (typeof part === "string" ? part : { ...part, id: undefined })),
+            parts: requestParts.map((part) => ({ ...part, id: undefined })),
           }),
           () => Identifier.ascending("message"),
         )
-      const textPart = {
-        id: Identifier.ascending("part"),
-        type: "text" as const,
-        text: inlineText(currentPrompt),
-      }
-      const requestParts = [
-        textPart,
-        ...fileAttachmentParts,
-        ...contextFileParts,
-        ...uploadedAttachmentParts,
-        ...noteAttachmentParts,
-        ...sessionAttachmentParts,
-      ]
 
       const optimisticParts = messageID
         ? (requestParts.map((part) => ({
@@ -1120,7 +1063,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         const existing = current.messages.some((message) => message.id === messageID)
         const result = reconcileMessage(current, optimisticMessage)
         const visible = result.window.messages.some((message) => message.id === messageID)
-        if (visible && !existing)
+        if (visible && !existing && !preparation)
           sessionTransition.messageArrival.add([submissionServer, sessionScopeKey, activeSession.id], messageID)
         globalSync.invalidateResource(sessionScopeKey, activeSession.id, "message")
         setSyncStore(
@@ -1141,14 +1084,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
               tailMissingLatest: result.window.tailMissingLatest,
             }
             if (visible) {
-              draft.partSummary[messageID] = optimisticParts.map((part) => ({
-                id: part.id,
-                messageID,
-                sessionID: activeSession.id,
-                type: part.type,
-                preview: "text" in part ? part.text.slice(0, 256) : "",
-                content: { version: `optimistic:${part.id}`, bytes: JSON.stringify(part).length * 2 },
-              }))
+              draft.partSummary[messageID] = optimisticPartSummaries(optimisticParts)
               for (const part of optimisticParts) draft.partVersion[part.id] = `optimistic:${part.id}`
               draft.partPage[messageID] = { hasMore: false, hasEarlier: false, nextCursor: null, previousCursor: null }
               draft.part[messageID] = optimisticParts
@@ -1163,6 +1099,11 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       const handoffAcceptedOptimisticMessage = (canonicalID: string) => {
         if (!messageID) return
         if (canonicalID === messageID) return
+        sessionTransition.messageIdentity.handoff(
+          [submissionServer, sessionScopeKey, activeSession.id],
+          messageID,
+          canonicalID,
+        )
         sessionTransition.messageArrival.handoff(
           [submissionServer, sessionScopeKey, activeSession.id],
           messageID,
@@ -1186,21 +1127,24 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           total: metadata?.total ?? messages.length,
         })
         globalSync.invalidateResource(sessionScopeKey, activeSession.id, "message")
-        setSyncStore(
-          produce((draft) => {
-            draft.message[activeSession.id] = result.window.messages
-            clearConversationContent(draft, messageID)
-            if (result.canonicalParts) draft.part[canonicalID] = result.canonicalParts
-            if (metadata) {
-              draft.messageWindow[activeSession.id] = {
-                ...metadata,
-                total: result.total,
-                pendingLatest: result.window.pendingLatest,
-                pendingLatestIds: result.window.pendingLatestIds,
+        batch(() => {
+          sessionTransition.handoffMessage(activeSession.id, canonicalID)
+          setSyncStore(
+            produce((draft) => {
+              draft.message[activeSession.id] = result.window.messages
+              clearConversationContent(draft, messageID)
+              if (result.canonicalParts) draft.part[canonicalID] = result.canonicalParts
+              if (metadata) {
+                draft.messageWindow[activeSession.id] = {
+                  ...metadata,
+                  total: result.total,
+                  pendingLatest: result.window.pendingLatest,
+                  pendingLatestIds: result.window.pendingLatestIds,
+                }
               }
-            }
-          }),
-        )
+            }),
+          )
+        })
       }
 
       const removeOptimisticMessage = () => {

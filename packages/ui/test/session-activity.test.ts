@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { setupI18n } from "@lingui/core"
-import { sessionActivityLabel } from "../src/components/session-status"
+import { sessionActivityAnimating, sessionActivityLabel } from "../src/components/session-status"
 
 test("current activity is localized without deriving it from loaded tool parts or diagnostic descriptions", () => {
   const i18n = setupI18n({
@@ -29,4 +29,18 @@ test("current activity is localized without deriving it from loaded tool parts o
     ),
   ).toBe("正在调用工具 · 3 项")
   expect(sessionActivityLabel({ type: "busy", description: "working..." }, i18n)).toBe("正在处理任务")
+})
+
+test("activity motion requires current runtime evidence and stops for human or transport waits", () => {
+  const status = { type: "busy" as const, activity: { phase: "waiting_model" as const, startedAt: 1, rootID: "root" } }
+  expect(sessionActivityAnimating(status, { rootID: "root" })).toBe(true)
+  for (const context of [{ rootID: "other" }, { connected: false }, { approval: true }, { question: true }]) {
+    expect(sessionActivityAnimating(status, context)).toBe(false)
+  }
+  expect(sessionActivityLabel(status, undefined, { connected: false })).toBe("Reconnecting")
+  expect(sessionActivityAnimating({ type: "busy", description: "working" })).toBe(false)
+  expect(sessionActivityAnimating({ type: "retry", attempt: 1, message: "retry", next: 1 })).toBe(false)
+  for (const phase of ["stopping", "reconnecting"] as const) {
+    expect(sessionActivityAnimating({ type: "busy", activity: { phase, startedAt: 1 } })).toBe(false)
+  }
 })

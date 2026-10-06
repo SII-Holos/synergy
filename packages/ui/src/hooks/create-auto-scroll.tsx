@@ -9,7 +9,7 @@ export interface AutoScrollOptions {
   onMeasure?: (distanceFromBottom: number) => void
   /** How long a forced pin keeps re-pinning through late content growth (images, code blocks) before follow releases. Default 1000. */
   settleMs?: number
-  captureReadingAnchor?: () => (() => void) | undefined
+  captureReadingAnchor?: (input: { reading: boolean; target?: Element }) => (() => void) | undefined
 }
 
 export function createAutoScroll(options: AutoScrollOptions) {
@@ -25,6 +25,8 @@ export function createAutoScroll(options: AutoScrollOptions) {
   let cleanup: (() => void) | undefined
   let restoreReadingAnchor: (() => void) | undefined
   let anchoredScrollTop: number | undefined
+  let resumeRequested = false
+  let previousOffset = 0
 
   const [store, setStore] = createStore({
     contentRef: undefined as HTMLElement | undefined,
@@ -32,8 +34,9 @@ export function createAutoScroll(options: AutoScrollOptions) {
   })
 
   const active = () => options.working() || settling || followingLatest
-  const preserveReadingAnchor = () => {
-    restoreReadingAnchor = options.captureReadingAnchor?.()
+  const preserveReadingAnchor = (target?: Element) => {
+    restoreReadingAnchor = options.captureReadingAnchor?.({ reading: store.userScrolled, target })
+    anchoredScrollTop = scroll?.scrollTop
   }
 
   const distanceFromBottom = () => {
@@ -86,6 +89,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     if (!scroll) return
     if (!force && store.userScrolled) return
     if (force) {
+      resumeRequested = false
       restoreReadingAnchor = undefined
       anchoredScrollTop = undefined
     }
@@ -99,7 +103,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const stop = () => {
-    if (!active()) return
+    resumeRequested = false
     followingLatest = false
     forceNextScroll = false
     if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
@@ -112,8 +116,8 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
   const handleWheel = (e: WheelEvent) => {
     anchoredScrollTop = undefined
-    if (e.deltaY >= 0) return
-    stop()
+    if (e.deltaY < 0) stop()
+    else if (e.deltaY > 0) resumeRequested = true
   }
 
   const handlePointerUp = () => {
@@ -124,6 +128,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   const handlePointerDown = () => {
     anchoredScrollTop = undefined
     if (followingLatest) stop()
+    resumeRequested = true
     if (down) return
     down = true
     window.addEventListener("pointerup", handlePointerUp)
@@ -137,15 +142,17 @@ export function createAutoScroll(options: AutoScrollOptions) {
   const handleTouchStart = () => {
     anchoredScrollTop = undefined
     if (followingLatest) stop()
+    resumeRequested = true
     if (down) return
     down = true
     window.addEventListener("touchend", handleTouchEnd)
   }
 
   const handleKeyDown = (event: KeyboardEvent) => {
-    if (!["ArrowUp", "PageUp", "Home"].includes(event.key)) return
+    if (event.defaultPrevented) return
     if (event.target instanceof Element && event.target.closest("input, textarea, [contenteditable]")) return
-    stop()
+    if (["ArrowUp", "PageUp", "Home"].includes(event.key)) stop()
+    if (["ArrowDown", "PageDown", "End"].includes(event.key)) resumeRequested = true
   }
 
   const handleScroll = () => {
@@ -154,8 +161,11 @@ export function createAutoScroll(options: AutoScrollOptions) {
     anchoredScrollTop = undefined
     if (!compensated) preserveReadingAnchor()
 
-    if (distanceFromBottom() < 10) {
+    const advancing = scroll.scrollTop > previousOffset
+    previousOffset = scroll.scrollTop
+    if (!compensated && resumeRequested && advancing && distanceFromBottom() < 10) {
       if (store.userScrolled) setStore("userScrolled", false)
+      resumeRequested = false
       return
     }
 
@@ -163,8 +173,9 @@ export function createAutoScroll(options: AutoScrollOptions) {
     if (down) stop()
   }
 
-  const handleInteraction = () => {
+  const handleInteraction = (event?: Event) => {
     stop()
+    preserveReadingAnchor(event && event.target instanceof Element ? event.target : undefined)
   }
 
   createResizeObserver(
@@ -237,6 +248,8 @@ export function createAutoScroll(options: AutoScrollOptions) {
       }
       scroll = el
       down = false
+      resumeRequested = false
+      previousOffset = el?.scrollTop ?? 0
 
       if (!el) return
       if (store.userScrolled) setStore("userScrolled", false)

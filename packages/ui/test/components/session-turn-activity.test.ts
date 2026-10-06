@@ -217,6 +217,44 @@ function activities(items: readonly ActivityTimelineItem[]) {
   return items.filter((item) => item.kind === "activity-group")
 }
 
+describe("reasoning item fragments", () => {
+  const fragment = (id: string, itemId = "rs_shared", provider = "openai-codex"): ReasoningPart =>
+    ({
+      ...reasoning(id),
+      type: "reasoning",
+      text: `Summary ${id}`,
+      time: { start: 1, end: 2 },
+      metadata: { [provider]: { itemId } },
+    }) as ReasoningPart
+
+  test("adjacent fragments share one stable disclosure as another summary arrives", () => {
+    const first = fragment("summary-0")
+    const before = project({ parts: [first] })
+    const after = project({ parts: [first, fragment("summary-1"), tool({ id: "read" })] })
+    expect(after.map((item) => item.kind)).toEqual(["activity-reasoning-summary", "activity-group"])
+    expect(after[0]).toMatchObject({
+      key: activityItemStableKey(before[0]),
+      partID: "summary-0",
+      partIDs: ["summary-0", "summary-1"],
+    })
+  })
+
+  test("tools, prose, other items and provider namespaces keep reasoning disclosures separate", () => {
+    for (const boundary of [
+      tool({ id: "read" }),
+      text("prose"),
+      fragment("other", "rs_other"),
+      fragment("provider", "rs_shared", "openai"),
+    ]) {
+      const result = project({ parts: [fragment("summary-0"), boundary, fragment("summary-1")] })
+      const disclosures = result.filter((item) => item.kind === "activity-reasoning-summary")
+      expect(disclosures.length).toBe(boundary.type === "reasoning" ? 3 : 2)
+      expect(disclosures.at(-1)?.partID).toBe("summary-1")
+    }
+    expect(project({ parts: [reasoning("unknown-0"), reasoning("unknown-1")] })).toHaveLength(2)
+  })
+})
+
 describe("balanced reasoning projection", () => {
   test("keeps a Thinking status row per assistant message while working", () => {
     const first = assistant("assistant-a")

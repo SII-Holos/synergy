@@ -33,6 +33,8 @@ Background maintenance may update session metadata without representing conversa
 
 When changing worker liveness or shutdown, close a real worker while a blocking query has entered its busy state. Verify probing exits within the teardown budget and deliberate shutdown emits no terminal-unavailability notification. Recheck driver and request ownership after awaited probes; a closed driver can make retries resolve immediately and starve shutdown timers.
 
+Keep queue admission wait caps separate from explicit request deadlines and SQL execution budgets. A local wait cap ends when its callback begins; only caller deadlines and cancellation propagate into later admissions. Test a real multi-step storage operation across that cap, plus expired waiters and nested explicit deadlines. Delaying a recovery entry point outside its storage gate does not exercise this boundary.
+
 ### SQLite and other domain stores
 
 1. Keep fresh-install schema creation in the owning database initialization.

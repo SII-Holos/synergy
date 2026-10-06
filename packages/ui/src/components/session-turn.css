@@ -1,3 +1,8 @@
+[data-component="session-turn"],
+[data-component="virtual-conversation-rows"] {
+  --conversation-flow-gap: 8px;
+}
+
 [data-component="session-turn"] {
   height: 100%;
   min-height: 0;
@@ -134,7 +139,7 @@
     width: 100%;
     max-width: 100%;
     min-width: 0;
-    gap: 12px;
+    gap: var(--conversation-flow-gap);
     overflow-anchor: none;
   }
 
@@ -236,14 +241,7 @@
   }
 
   [data-slot="session-turn-timeline-item"]:not([hidden]) ~ [data-slot="session-turn-timeline-item"]:not([hidden]) {
-    margin-block-start: 16px;
-  }
-
-  [data-slot="session-turn-timeline-item"]:not([hidden])
-    ~ [data-slot="session-turn-timeline-item"]:is([data-kind="activity-batch"], [data-kind="activity-group"]):not(
-      [hidden]
-    ) {
-    margin-block-start: 8px;
+    margin-block-start: var(--conversation-flow-gap);
   }
 
   [data-slot="session-turn-timeline-item"] + [data-component="turn-change-summary-panel"] {
@@ -379,7 +377,7 @@
   line-height: 1.6;
 
   p:not(:last-child) {
-    margin-bottom: 12px;
+    margin-bottom: var(--conversation-flow-gap);
   }
 
   :is(h1, h2, h3, h4, h5, h6) {

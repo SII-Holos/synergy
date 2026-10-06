@@ -7,7 +7,13 @@ import { AsyncLocalStorage } from "node:async_hooks"
 import { ArtifactPack } from "./artifact-pack"
 import type { ArtifactLocation } from "./artifact-location"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
-import { NotFoundError as MissingRecord, StorageClosedError, StorageConflictError } from "./errors"
+import {
+  NotFoundError as MissingRecord,
+  StorageBusyError as BusyStorage,
+  StorageClosedError,
+  StorageConflictError,
+  StorageUnavailableError as UnavailableStorage,
+} from "./errors"
 import {
   TransactionalStore,
   type StoreTransaction,
@@ -19,9 +25,12 @@ import { measureStorageOperation } from "./measure"
 import { ObservabilityIssues } from "../observability/issues"
 import { ObservabilityResources } from "../observability/resources"
 import { StorageEventSinks } from "./event-sinks"
+import { observeStorageProgress } from "./progress"
 
 export namespace Storage {
   export const NotFoundError = MissingRecord
+  export const BusyError = BusyStorage
+  export const UnavailableError = UnavailableStorage
   export const writeJsonAtomic = AtomicFile.writeJsonAtomic
   export interface Handle {
     store: TransactionalStore
@@ -161,6 +170,11 @@ export namespace Storage {
   export function inTransaction() {
     const active = context.getStore()
     return active?.owner === RuntimeContext.tryCurrent() && Boolean(active?.transaction)
+  }
+
+  export function inWriteTransaction() {
+    const active = context.getStore()
+    return active?.owner === RuntimeContext.tryCurrent() && Boolean(active?.transaction && active.effects)
   }
 
   export function afterCommit(effect: () => Promise<unknown> | void): void {
@@ -384,7 +398,9 @@ export namespace Storage {
     return count
   }
 
-  export async function collectArtifactGarbage(options: { scanOrphans?: boolean } = {}) {
+  export async function collectArtifactGarbage(
+    options: { scanOrphans?: boolean; progress?: (current: number) => void } = {},
+  ) {
     if (current().transaction) throw new StorageConflictError("Artifact collection requires a committed transaction")
     const state = artifactPack(["storage"])
     const store = current().store
@@ -398,37 +414,49 @@ export namespace Storage {
           timeoutMessage: busy,
         },
         () =>
-          state.gate.run(async () => {
-            let removed = 0
-            const reclaimed = new Set<string>()
-            if (options.scanOrphans) {
-              const referenced = await store.snapshot(async (tx) => {
-                const result = new Set<string>()
-                for await (const pack of tx.artifactPacks()) result.add(pack)
-                return result
-              })
-              for (const key of await store.list(["storage_pack_pins"])) referenced.add(key[1])
-              for (const pack of state.prepared.keys()) referenced.add(pack)
-              const orphans = await state.pack.orphaned(referenced)
-              await state.pack.prune(orphans)
-              for (const name of orphans) reclaimed.add(name)
-              removed += orphans.length
-            }
-            for (;;) {
-              const candidates = await store.snapshot((tx) => tx.artifactGarbage())
-              if (!candidates.length) return removed
-              const pins = new Set((await store.list(["storage_pack_pins"])).map((key) => key[1]))
-              for (const pack of state.prepared.keys()) pins.add(pack)
-              const unused = candidates
-                .filter((entry) => !entry.used && !pins.has(entry.pack) && !reclaimed.has(entry.pack))
-                .map((entry) => entry.pack)
-              await state.pack.prune(unused)
-              const acknowledged = candidates.filter((entry) => !pins.has(entry.pack)).map((entry) => entry.pack)
-              await store.transaction((tx) => tx.acknowledgeArtifactGarbage(acknowledged))
-              if (acknowledged.length < candidates.length) return removed + unused.length
-              removed += unused.length
-            }
-          }),
+          state.gate.run(() =>
+            observeStorageProgress(async (report) => {
+              let current = 0
+              const advance = () => report(++current)
+              let removed = 0
+              const reclaimed = new Set<string>()
+              if (options.scanOrphans) {
+                const referenced = await store.snapshot(async (tx) => {
+                  const result = new Set<string>()
+                  for await (const pack of tx.artifactPacks()) {
+                    result.add(pack)
+                    advance()
+                  }
+                  return result
+                })
+                for (const key of await store.list(["storage_pack_pins"])) {
+                  referenced.add(key[1])
+                  advance()
+                }
+                for (const pack of state.prepared.keys()) referenced.add(pack)
+                const orphans = await state.pack.orphaned(referenced, advance)
+                await state.pack.prune(orphans, advance)
+                for (const name of orphans) reclaimed.add(name)
+                removed += orphans.length
+              }
+              for (;;) {
+                const candidates = await store.snapshot((tx) => tx.artifactGarbage())
+                if (!candidates.length) return removed
+                const pins = new Set((await store.list(["storage_pack_pins"])).map((key) => key[1]))
+                for (const pack of state.prepared.keys()) pins.add(pack)
+                const unused = candidates
+                  .filter((entry) => !entry.used && !pins.has(entry.pack) && !reclaimed.has(entry.pack))
+                  .map((entry) => entry.pack)
+                await state.pack.prune(unused, advance)
+                const acknowledged = candidates.filter((entry) => !pins.has(entry.pack)).map((entry) => entry.pack)
+                await store.transaction((tx) => tx.acknowledgeArtifactGarbage(acknowledged))
+                current += candidates.length
+                report(current)
+                if (acknowledged.length < candidates.length) return removed + unused.length
+                removed += unused.length
+              }
+            }, options.progress),
+          ),
       )
     } catch (error) {
       if (error instanceof Error && error.message === busy) return 0

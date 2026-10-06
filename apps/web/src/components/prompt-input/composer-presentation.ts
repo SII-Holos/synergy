@@ -40,10 +40,10 @@ export class ComposerPresentation {
   }
 }
 
-export function composerBodyLimits(available: number, chrome: number) {
+export function composerBodyLimits(available: number, chrome: number, hasAttachments = false, manualHeight?: number) {
   const manual = Math.max(24, available * 0.6 - chrome)
   const automatic = Math.max(24, Math.min(240, available * 0.4, manual))
-  return { minimum: Math.min(64, automatic), automatic, manual }
+  return { minimum: Math.min(hasAttachments ? 48 : 64, automatic, manualHeight ?? Infinity), automatic, manual }
 }
 
 export class ComposerResizeGesture {
@@ -94,6 +94,7 @@ export function formatComposerSelection(text: string, range: TextRange, format: 
 
 type ComposerPresentationBinding = {
   state: ComposerPresentation
+  hasAttachments?(): boolean
   preview(): {
     text: string
     references: Array<{ start: number; end: number; path: string; mime?: string; filename?: string }>

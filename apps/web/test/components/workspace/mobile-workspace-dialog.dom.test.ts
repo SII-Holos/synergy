@@ -68,7 +68,9 @@ beforeAll(async () => {
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 375, height: 812 } })
   page.on("pageerror", (error) => errors.push(error.message))
-}, 60000)
+  await page.goto(baseUrl, { timeout: 60000 })
+  await page.getByRole("button", { name: "Open mobile workspace" }).waitFor()
+}, 90000)
 
 afterAll(async () => {
   await browser?.close()
