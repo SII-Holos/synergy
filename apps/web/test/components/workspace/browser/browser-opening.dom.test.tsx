@@ -136,6 +136,7 @@ beforeAll(async () => {
   })
   await server.listen()
   url = server.resolvedUrls!.local[0]!
+  await server.warmupRequest("/main.tsx")
   browser = await chromium.launch({ headless: true })
 }, 60_000)
 

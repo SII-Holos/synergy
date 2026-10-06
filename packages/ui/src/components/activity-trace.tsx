@@ -302,21 +302,27 @@ function ActivityStep(props: {
         type="button"
         aria-label={`${label()} · ${stateLabel()}`}
         aria-pressed={
-          resources?.isToolActivitySelected?.({
-            sessionID: props.step.part.sessionID,
-            messageID: props.step.part.messageID,
-            partID: props.step.part.id,
-            callID: props.step.part.callID,
-          }) ?? open()
-        }
-        onClick={() => {
-          if (
-            !resources?.openToolActivity?.({
+          resources?.isToolActivitySelected?.(
+            {
               sessionID: props.step.part.sessionID,
               messageID: props.step.part.messageID,
               partID: props.step.part.id,
               callID: props.step.part.callID,
-            })
+            },
+            props.step.part,
+          ) ?? open()
+        }
+        onClick={() => {
+          if (
+            !resources?.openToolActivity?.(
+              {
+                sessionID: props.step.part.sessionID,
+                messageID: props.step.part.messageID,
+                partID: props.step.part.id,
+                callID: props.step.part.callID,
+              },
+              props.step.part,
+            )
           )
             setOpen(true)
         }}

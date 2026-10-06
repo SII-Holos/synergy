@@ -83,7 +83,8 @@ function SyncState(props: { catalog: BrowserCatalog; knownPageIds: ReadonlySet<s
         untrack(() =>
           batch(() => {
             surface.setTabs(next.tabs)
-            if (!activeOpening && (active !== undefined || surface.opened())) surface.setActive(next.active)
+            if (!activeOpening && next.active !== active && (active !== undefined || surface.opened()))
+              surface.setActive(next.active)
             if (!surface.tabs().length && surface.opened()) surface.close()
           }),
         )

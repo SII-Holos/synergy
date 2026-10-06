@@ -42,6 +42,7 @@ export interface OpenWorkbenchPanelOptions {
   replaceTab?: string
   intent?: "user" | "restore" | "output"
   init?: WorkbenchPanelTabInit
+  canCommit?: () => boolean
 }
 
 export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = createSimpleContext({
@@ -55,6 +56,11 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
     const [registryVersion, setRegistryVersion] = createSignal(0)
     let nextTabIndex = 0
     const closeGuard = createTabCloseGuard()
+    const selectionRevisions = new Map<string, number>()
+    function changeSelection(boundSession: string, surfaceName: WorkbenchPanelSurface) {
+      const key = JSON.stringify([boundSession, surfaceName])
+      selectionRevisions.set(key, (selectionRevisions.get(key) ?? 0) + 1)
+    }
     const confirm = useConfirm()
     const dialog = useDialog()
     const reveal = createWorkspaceRevealPolicy(Date.now(), {
@@ -159,6 +165,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         savedTabs: value.tabs,
         tabs,
         active,
+        selectionRevision: () => selectionRevisions.get(key) ?? 0,
         activeTab: () => tabs().find((tab) => tab.id === active()),
         setTabs: (next: WorkbenchPanelTab[]) =>
           batch(() => {
@@ -168,6 +175,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
             value.setTabs(next.filter((tab) => !openings[tab.id]))
           }),
         setActive: (id: string | undefined) => {
+          changeSelection(boundSession, surfaceName)
           setOpeningActive(key, id && openings[id] ? id : undefined)
           if (!id || !openings[id]) value.setActive(id)
         },
@@ -176,6 +184,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
             (opening) => opening.session === boundSession && opening.surface === surfaceName,
           ),
         open: () => {
+          changeSelection(boundSession, surfaceName)
           interact()
           batch(() => {
             prepareDefault(surfaceName)
@@ -183,10 +192,12 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
           })
         },
         close: () => {
+          changeSelection(boundSession, surfaceName)
           interact()
           value.close()
         },
         toggle: () => {
+          changeSelection(boundSession, surfaceName)
           interact()
           batch(() => {
             if (!value.opened()) prepareDefault(surfaceName)
@@ -242,7 +253,9 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
     async function openPanel(panelId: string, options: OpenWorkbenchPanelOptions = {}) {
       const entry = visibleEntry(panelId)
       if (!entry) return undefined
+      if (options.canCommit?.() === false) return undefined
       const boundSession = sessionKey()
+      if ((options.intent ?? "user") === "user" && !options.canCommit) changeSelection(boundSession, entry.surface)
       if (
         !entry.openingComponent ||
         options.activate === false ||
@@ -394,6 +407,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         opening?.task.cancelled ||
         opening?.task.abandoned ||
         sessionKey() !== boundSession ||
+        options.canCommit?.() === false ||
         openingDocuments.get(requestKey) !== request
       )
         return undefined
@@ -424,6 +438,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         }
         if (target.tabs().some((tab) => tab.id !== existing?.id)) return undefined
       }
+      if (options.canCommit?.() === false) return undefined
       const next = openWorkbenchPanelTab({
         panelId,
         cardinality: entry.cardinality,
@@ -515,6 +530,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       const boundSession = sessionKey()
       for (const surfaceName of ["side", "bottom"] as const) {
         if (!projectedTabs(boundSession, surfaceName).some((tab) => tab.id === tabId)) continue
+        changeSelection(boundSession, surfaceName)
         return closeBoundTab(boundSession, surfaceName, tabId)
       }
       return true
@@ -531,6 +547,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       const target = layout.surface(boundSession, surfaceName)
       const keep = projectedTabs(boundSession, surfaceName).find((item) => item.id === keepTabId)
       if (!keep) return
+      changeSelection(boundSession, surfaceName)
 
       batchClosingSurfaces.add(batchKey)
       try {
@@ -574,6 +591,9 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         const target = surface(surfaceName)
         const next = updateWorkbenchPanelTab(target.tabs(), tabId, patch)
         if (next === target.tabs()) continue
+        const previous = target.tabs().find((tab) => tab.id === tabId)
+        if (previous && !sameWorkbenchResource(previous, previous.panelId, { ...previous, ...patch }))
+          changeSelection(sessionKey(), surfaceName)
         target.setTabs(next)
         return
       }

@@ -1,3 +1,4 @@
+import type { ToolPart } from "@ericsanchezok/synergy-sdk/client"
 import { createContext, useContext, type ParentProps } from "solid-js"
 import type { AttachmentFile } from "../components/attachment-card-utils"
 
@@ -33,8 +34,8 @@ export type ActivityDetailTarget =
 export interface ResourceOpenController {
   openActivityDetail?(target: ActivityDetailTarget): boolean
   isActivityDetailSelected?(target: ActivityDetailTarget): boolean
-  openToolActivity?(target: ToolActivityTarget): boolean
-  isToolActivitySelected?(target: ToolActivityTarget): boolean
+  openToolActivity?(target: ToolActivityTarget, part?: ToolPart): boolean
+  isToolActivitySelected?(target: ToolActivityTarget, part?: ToolPart): boolean
   openToolReview?(target: ToolReviewTarget): boolean
   open(resource: OpenableResource, options?: ResourceOpenOptions): boolean
   openAttachment(file: AttachmentFile, options?: ResourceOpenOptions & { serverUrl?: string }): boolean
