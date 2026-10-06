@@ -7,8 +7,8 @@ Failures, causes and guardrails.
 Criteria:
 
 - **Subtle** — the mechanism requires careful investigation.
-- **Systemic** — the bug escaped because of a gap in tests, tooling, or conventions, not a one-off typo.
-- **Costly to rediscover** — it cost real debugging time, and it would cost it again.
+- **Systemic** — a gap in tests, tooling, or conventions let the bug escape.
+- **Costly to rediscover** — rediscovery would repeat substantial debugging.
 
 Otherwise, add a tested fix.
 
@@ -29,6 +29,8 @@ Use the next `NNNN-kebab-case-title.md`. Sections:
 - **Lessons** — the durable takeaways.
 
 ## Index
+
+- [0049: Incomplete Environment release](0049-absent-compute-lost-release-intent.md)
 
 - [0048: PostgreSQL cleanup](0048-postgres-node-cleanup-repeated-candidates.md)
 - [0046: Structured output retained tool intent](0046-structured-output-retained-tool-intent.md)
