@@ -24921,6 +24921,10 @@ msgid "tool.render.expand"
 msgstr "放大视图"
 
 #. js-lingui-explicit-id
+msgid "tool.render.preparing"
+msgstr "正在准备视图"
+
+#. js-lingui-explicit-id
 msgid "tool.render.visual"
 msgstr "可视化结果"
 

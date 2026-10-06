@@ -5,6 +5,17 @@
   border: 1px solid var(--border-weak-base);
   border-radius: 12px;
 
+  [data-slot="render-tool-loading"] {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 80px;
+    padding: 16px;
+    color: var(--text-weak);
+    font-size: 14px;
+    line-height: 20px;
+  }
+
   figcaption {
     display: flex;
     align-items: center;
@@ -37,5 +48,11 @@
     font-size: 14px;
     line-height: 20px;
     overflow-wrap: anywhere;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="render-tool-loading"] [data-component="spinner"] rect {
+    animation: none !important;
   }
 }
