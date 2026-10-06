@@ -1694,6 +1694,7 @@ export namespace ToolResolver {
                   await configureGateOptions({
                     activeWorkspace: workspace,
                     pathMode,
+                    virtualRoot: EnvironmentResources.virtualRoot(resources?.workspace),
                     workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
                     originalCheckout: localFiles ? (workspaceInfo as any)?.originalCheckout : undefined,
                     profileId,
