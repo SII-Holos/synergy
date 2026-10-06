@@ -116,4 +116,4 @@ Use the next `NNNN-kebab-case-title.md`. Sections:
 
 ## History rules
 
-Preserve what happened, including mistakes and guardrails later replaced. Record subsequent corrections without rewriting the incident.
+Preserve incidents, mistakes and superseded guardrails. Append corrections without rewriting history.
