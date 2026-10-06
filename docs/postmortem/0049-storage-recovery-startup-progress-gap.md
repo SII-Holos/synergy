@@ -29,3 +29,7 @@ The [decision](../decisions/implemented/bug-fix/2026-10-06-storage-recovery-star
 ## Lessons
 
 A migration summary is not a Runtime readiness signal. Review every awaited pre-admission operation together with its progress owner, and test transitions through real producers and consumers. A healthy fresh Home and a green progress renderer cannot establish that a large existing Home will remain observable during recovery.
+
+## Subsequent correction
+
+A later launch reached the new recovery progress and then exited on an inherited storage admission deadline. The [follow-up incident](0050-storage-admission-deadline-escaped-queue.md) records the backend defect and the missing real-data acceptance evidence. The lifecycle correction remains necessary; it did not establish that every operation inside that lifecycle could complete.
