@@ -407,6 +407,7 @@ export class DesktopServerManager {
       child.stderr?.pipe(logStream, { end: false })
       attachManagedServerExitHandlers(child, logStream, () => {})
       const startup = new DesktopServerStartup({
+        mode: "maintenance",
         onProgress: (progress) => {
           if (progress.phase === "migration") this.setMaintenance({ ...this.maintenance, progress })
         },
@@ -625,7 +626,7 @@ export async function waitForHealth(
           () => lastError,
           () => requestController.abort(),
         )
-        if (response.ok && remaining() > 0) return
+        if (response.ok && remaining() > 0 && (!startup || startup.isReady())) return
         lastError = response.ok ? undefined : new Error(`health responded ${response.status}`)
       } catch (error) {
         if (error instanceof ChildProcessHealthError) throw error

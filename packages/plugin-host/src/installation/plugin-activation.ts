@@ -73,12 +73,12 @@ export async function preparePluginActivation(
     )
 }
 
-export async function activateInstalledPlugins(generation: InstalledGeneration) {
+export async function activateInstalledPlugins(generation: InstalledGeneration, progress?: () => void) {
   const root = RuntimeContext.current().host.root
   return withInstallationLock(path.join(root, "installation-activation"), async () => {
     const current = await InstallationGenerations.current(root)
     if (current?.id !== generation.id) return
-    await activate(generation)
+    await activate(generation, progress)
     await AtomicFile.writeJsonAtomic(
       path.join(root, "installations", "activated", generation.id + ".json"),
       JSON.stringify(generation.sha256),
@@ -87,7 +87,7 @@ export async function activateInstalledPlugins(generation: InstalledGeneration) 
   })
 }
 
-async function activate(generation: InstalledGeneration) {
+async function activate(generation: InstalledGeneration, progress?: () => void) {
   const filename = path.join(generation.directory, "plugin-activation.json")
   if (!(await Bun.file(filename).exists())) return
   const journal = Journal.parse(await Bun.file(filename).json())
@@ -96,7 +96,9 @@ async function activate(generation: InstalledGeneration) {
     fn: async () => {
       for (const item of journal.installs) {
         const key = ["installation-activation", generation.id, "install", item.name]
-        if ((await Storage.readMany<boolean>([key]))[0]) continue
+        const applied = (await Storage.readMany<boolean>([key]))[0]
+        progress?.()
+        if (applied) continue
         const pkg = generation.packages[item.name]
         if (pkg?.metadata?.kind !== "plugin") throw new Error("Plugin activation names an unselected package")
         const pluginDir = path.join(generation.directory, pkg.directory)
@@ -119,22 +121,26 @@ async function activate(generation: InstalledGeneration) {
           },
         })
         await Storage.write(key, true)
+        progress?.()
       }
       for (const item of journal.removes) {
         const key = ["installation-activation", generation.id, "remove", item.id]
-        if ((await Storage.readMany<boolean>([key]))[0]) continue
+        const applied = (await Storage.readMany<boolean>([key]))[0]
+        progress?.()
+        if (applied) continue
         const entry = (await Lockfile.read()).plugins[item.id]
         if (entry?.resolved === item.resolved) await Plugin.remove(item.id)
         await Storage.write(key, true)
+        progress?.()
       }
     },
   })
 }
 
-export async function recoverInstalledPlugins() {
+export async function recoverInstalledPlugins(progress?: () => void) {
   if (RuntimeContext.current().host.env.SYNERGY_INSTALLATION_ROOT !== RuntimeContext.current().host.root) return
   const raw = RuntimeContext.current().host.env.SYNERGY_INSTALLATION_PIN
   if (!raw) return
   const pin = z.object({ id: z.uuid(), sha256: z.string() }).strict().parse(JSON.parse(raw))
-  await activateInstalledPlugins(await InstallationGenerations.pin(RuntimeContext.current().host.root, pin))
+  await activateInstalledPlugins(await InstallationGenerations.pin(RuntimeContext.current().host.root, pin), progress)
 }

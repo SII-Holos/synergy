@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import fs from "node:fs"
+import { runtimeStartupLine } from "@ericsanchezok/synergy-util/runtime-startup"
 
 const args = process.argv.slice(2)
 const port = Number(args[args.indexOf("--port") + 1])
@@ -22,6 +23,7 @@ const modes: Record<string, string> = modesFile
   ? (JSON.parse(fs.readFileSync(modesFile, "utf8")) as Record<string, string>)
   : {}
 const mode = modes[String(port)] ?? "ok"
+process.stdout.write(runtimeStartupLine({ phase: "runtime", state: "opening", stage: "initializing" }))
 
 if (mode === "conflict") {
   process.stderr.write(`Error: Server startup failed: Failed to start server on port ${port}\n`)
@@ -41,6 +43,7 @@ const server = Bun.serve({
     })
   },
 })
+process.stdout.write(runtimeStartupLine({ phase: "runtime", state: "ready" }))
 
 process.on("SIGTERM", () => {
   void server.stop(true)

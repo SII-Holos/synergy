@@ -115,6 +115,35 @@ describe("desktop server manager", () => {
     }
   })
 
+  test("HTTP health cannot admit a Runtime whose startup hooks are unfinished", async () => {
+    const child = new ChildProcessFixture() as unknown as ChildProcess
+    const startup = new DesktopServerStartup()
+    startup.receive('SYNERGY_STARTUP_V1 {"phase":"runtime","state":"opening","stage":"services"}\n')
+    const originalFetch = globalThis.fetch
+    const requested = Promise.withResolvers<void>()
+    let admitted = false
+    globalThis.fetch = (async () => {
+      requested.resolve()
+      return new Response("healthy")
+    }) as typeof fetch
+    const pending = waitForHealth("http://127.0.0.1:1/global/health", child, 30_000, 1, startup).then(() => {
+      admitted = true
+    })
+    try {
+      await requested.promise
+      await Bun.sleep(10)
+      expect(admitted).toBe(false)
+      startup.receive('SYNERGY_STARTUP_V1 {"phase":"runtime","state":"ready"}\n')
+      await pending
+      expect(admitted).toBe(true)
+    } finally {
+      child.exitCode = 1
+      child.emit("exit", 1, null)
+      await pending.catch(() => {})
+      globalThis.fetch = originalFetch
+    }
+  })
+
   test("fails immediately on a child error and cleans up both child listeners", async () => {
     const child = new ChildProcessFixture() as unknown as ChildProcess
     const originalFetch = globalThis.fetch
@@ -256,6 +285,7 @@ describe("desktop server manager", () => {
     const child = new ChildProcessFixture() as unknown as ChildProcess
     let now = 0
     const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive('SYNERGY_STARTUP_V1 {"phase":"runtime","state":"opening","stage":"migrations"}\n')
     startup.receive('SYNERGY_STARTUP_V1 {"phase":"migration","step":1,"current":0,"total":10}\n')
     const originalFetch = globalThis.fetch
     let requests = 0
@@ -265,6 +295,7 @@ describe("desktop server manager", () => {
         startup.receive('SYNERGY_STARTUP_V1 {"phase":"migration","step":1,"current":1,"total":10}\n')
         return new Response(null, { status: 503 })
       }
+      startup.receive('SYNERGY_STARTUP_V1 {"phase":"runtime","state":"ready"}\n')
       return new Response("healthy")
     }) as typeof fetch
     try {
@@ -272,7 +303,7 @@ describe("desktop server manager", () => {
       expect(requests).toBe(2)
       now = 360_000
       await expect(waitForHealth("http://127.0.0.1:1/global/health", child, 0, 0, startup)).rejects.toThrow(
-        "no progress",
+        "health check timed out",
       )
     } finally {
       globalThis.fetch = originalFetch

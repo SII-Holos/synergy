@@ -1,5 +1,9 @@
 import { observeStorageMaintenance } from "../storage/maintenance-progress"
-import type { StorageMaintenanceEvent } from "@ericsanchezok/synergy-util/runtime-startup"
+import type {
+  RuntimeStartupEvent,
+  RuntimeStartupStage,
+  StorageMaintenanceEvent,
+} from "@ericsanchezok/synergy-util/runtime-startup"
 import { registerHarness } from "./register"
 import { EnvironmentProviders } from "../environment/provider"
 import { EnvironmentMaintenance } from "../environment/maintenance"
@@ -69,12 +73,12 @@ export interface RuntimeServer {
 export interface RuntimeServices {
   configSchemaPath?: string
   reload?: { start(): void; stop(): Promise<unknown> | void }
-  initializeExtensions?(): Promise<void>
+  initializeExtensions?(progress?: () => void): Promise<void>
   disposeExtensions?(): Promise<void>
-  started?(): Promise<void>
+  started?(progress?: () => void): Promise<void>
   resident?: {
-    start(config: Config.Info): Promise<void>
-    ready?(config: Config.Info): Promise<void>
+    start(config: Config.Info, progress?: () => void): Promise<void>
+    ready?(config: Config.Info, progress?: () => void): Promise<void>
     stop(): Promise<void>
   }
   transport?: {
@@ -107,6 +111,7 @@ export namespace RuntimeHandle {
     mode: "server" | "oneshot"
     network?: RuntimeNetwork | (() => Promise<RuntimeNetwork>)
     reporter?: MigrationReporter
+    startupReporter?: (event: RuntimeStartupEvent) => void
     storageReporter?: (progress: ImportProgress) => void
     maintenanceReporter?: (event: StorageMaintenanceEvent) => void
     migrationOutput?: RunOptions["output"]
@@ -114,19 +119,27 @@ export namespace RuntimeHandle {
   }
 
   export async function open(options: OpenOptions) {
+    options.startupReporter?.({ phase: "runtime", state: "opening", stage: "initializing" })
     const instance = RuntimeContext.create(options.host)
     return instance.run(async () => {
       let runtime: Awaited<ReturnType<typeof openRuntime>> | undefined
       try {
-        return await observeStorageMaintenance(
+        const handle = await observeStorageMaintenance(
           async () => (runtime = await openRuntime(options, instance)),
           (event) => {
             log.info("storage maintenance", event)
             options.maintenanceReporter?.(event)
           },
         )
+        options.startupReporter?.({ phase: "runtime", state: "ready" })
+        return handle
       } catch (error) {
         await runtime?.close().catch(() => {})
+        try {
+          options.startupReporter?.({ phase: "runtime", state: "failed" })
+        } catch (reportError) {
+          throw new AggregateError([error, reportError], "Synergy runtime startup reporting failed")
+        }
         throw error
       }
     })
@@ -148,6 +161,15 @@ export namespace RuntimeHandle {
     let closing: Promise<void> | undefined
     const shutdown = new AbortController()
     const stopBackground: Array<() => void> = []
+    function startupStage(stage: RuntimeStartupStage) {
+      let current = 0
+      const report = () => options.startupReporter?.({ phase: "runtime", state: "opening", stage, current })
+      report()
+      return () => {
+        current++
+        report()
+      }
+    }
 
     function closeAdmission() {
       SessionManager.closeAdmission()
@@ -278,6 +300,7 @@ export namespace RuntimeHandle {
       await Log.init(options.logging ?? { print: false })
       await options.host.workspaceLocation?.hostID()
       options.signal?.throwIfAborted()
+      startupStage("storage")
       if (options.storage.kind === "owned") storage = await options.storage.open()
       const handle = options.storage.kind === "borrowed" ? options.storage.handle : storage!.handle
       if (storageOwners.has(handle.store)) {
@@ -288,24 +311,27 @@ export namespace RuntimeHandle {
       attached = true
       instance.storage = handle
       options.signal?.throwIfAborted()
-      await SessionStaging.recover()
+      function storageProgress(stage: ImportProgress["stage"]) {
+        const report = (current: number, total = 0) => options.storageReporter?.({ stage, current, total, bytes: 0 })
+        report(0)
+        return report
+      }
+      await SessionStaging.recover(storageProgress("staging"))
+      startupStage("migrations")
       const migration = await ensureMigrations({
         output: options.migrationOutput ?? "silent",
         reporter: options.reporter,
       })
-      await SessionCompat.prepareRecovery((current, total) =>
-        options.storageReporter?.({ stage: "owners", current, total, bytes: 0 }),
-      )
-      if (storage?.needsValidation)
-        await StorageRecovery.validate((current) =>
-          options.storageReporter?.({ stage: "validate", current, total: 0, bytes: 0 }),
-        )
+      startupStage("storage-recovery")
+      await SessionCompat.prepareRecovery(storageProgress("owners"))
+      if (storage?.needsValidation) await StorageRecovery.validate(storageProgress("validate"))
       await storage?.activate()
-      await StorageRecovery.recoverOwners()
-      await StorageRecovery.load()
-      await StorageRecovery.reconcileNotifications()
+      await StorageRecovery.recoverOwners(options.storageReporter)
+      await StorageRecovery.load(storageProgress("quarantine"))
+      await StorageRecovery.reconcileNotifications(storageProgress("notifications"))
       options.storageReporter?.({ stage: "complete", current: 0, total: 0, bytes: 0 })
       options.signal?.throwIfAborted()
+      startupStage("configuration")
       const resolved = await ScopeContext.provide({ scope: Scope.home(), fn: () => Config.resolveExecution() })
       const requested = Experiment.applyRuntime(resolved, options.experiment?.runtime ?? {})
       const shutdownTimeoutMs = configureExecution(requested, options.mode)
@@ -332,6 +358,7 @@ export namespace RuntimeHandle {
           .catch(() => log.warn("secret vault config sync failed"))
       })
       SessionManager.openAdmission()
+      startupStage("execution-recovery")
       await RolloutRecovery.all((current) => options.recoveryReporter?.progress(current))
       options.recoveryReporter?.completed()
       ObservabilityStore.releaseMigrationConnection()
@@ -365,13 +392,15 @@ export namespace RuntimeHandle {
       }
       services.reload?.start()
       ObservabilityStore.interruptRunningSpans({ reason: "previous_runtime_ended" })
+      const extensionProgress = startupStage("extensions")
       await ScopeContext.provide({
         scope: Scope.home(),
         fn: async () => {
-          await services.initializeExtensions?.()
+          await services.initializeExtensions?.(extensionProgress)
         },
       })
       options.signal?.throwIfAborted()
+      startupStage("transport")
       if (services.transport) {
         const network = (typeof options.network === "function" ? await options.network() : options.network) ?? {
           hostname: "127.0.0.1",
@@ -380,11 +409,13 @@ export namespace RuntimeHandle {
         server = services.transport.listen(network, options.mode)
         configureRuntimeEndpoint({ hostname: server.hostname ?? network.hostname, port: server.port ?? network.port })
       }
+      const serviceProgress = startupStage("services")
       if (options.mode === "server" && services.resident) {
         residentStarted = true
-        await services.resident.start(config)
-        await services.resident.ready?.(config)
+        await services.resident.start(config, serviceProgress)
+        await services.resident.ready?.(config, serviceProgress)
       }
+      const finalProgress = startupStage("finalizing")
       if (await SessionCompat.isActive())
         stopCompat = SessionCompat.startBackgroundMigrator({
           busy: () => SessionManager.runtimeStats().runningCount > 0,
@@ -404,7 +435,7 @@ export namespace RuntimeHandle {
         }
       }
       if (options.mode === "server")
-        await ScopeContext.provide({ scope: Scope.home(), fn: async () => services.started?.() })
+        await ScopeContext.provide({ scope: Scope.home(), fn: async () => services.started?.(finalProgress) })
       options.signal?.throwIfAborted()
       phase = "ready"
       const boundClose = () => closing ?? instance.run(close)

@@ -143,6 +143,39 @@ async function run() {
         ),
         "10,001 items checked. Total not yet known.",
       )
+      let recoveryTime = 0
+      const recovery = new DesktopServerStartup({ now: () => recoveryTime })
+      recovery.receive('SYNERGY_STARTUP_V1 {"phase":"starting"}\n')
+      recovery.receive(
+        'SYNERGY_STARTUP_V1 {"phase":"storage","step":2,"stage":"notifications","current":100,"total":0,"bytes":0}\n',
+      )
+      recoveryTime += 31_000
+      assert.ok(recovery.remainingMs() > 0, "post-migration recovery retains its inactivity budget")
+      await window.webContents.executeJavaScript(startupStatusScript(recovery.status()))
+      assert.equal(
+        await window.webContents.executeJavaScript(`document.body.textContent.includes('Reconciling saved updates.')`),
+        true,
+      )
+      assert.equal(
+        await window.webContents.executeJavaScript(`document.querySelector('.startup-count').textContent`),
+        "100 items checked",
+      )
+      recovery.receive('SYNERGY_STARTUP_V1 {"phase":"runtime","state":"opening","stage":"extensions","current":3}\n')
+      recoveryTime += 31_000
+      assert.ok(recovery.remainingMs() > 0, "extension startup remains pending after recovery")
+      await window.webContents.executeJavaScript(startupStatusScript(recovery.status()))
+      assert.equal(
+        await window.webContents.executeJavaScript(`document.body.textContent.includes('Initializing extensions.')`),
+        true,
+      )
+      assert.equal(
+        await window.webContents.executeJavaScript(`document.querySelector('.startup-count').textContent`),
+        "3 items checked",
+      )
+      assert.equal(recovery.isReady(), false)
+      recovery.receive('SYNERGY_STARTUP_V1 {"phase":"runtime","state":"ready"}\n')
+      assert.equal(recovery.isReady(), true)
+      assert.equal(recovery.remainingMs(), 30_000)
       startup.receive(
         'SYNERGY_STARTUP_V1 {"phase":"maintenance","id":1,"state":"started","operation":"vacuum","timeoutMs":900000}\n',
       )

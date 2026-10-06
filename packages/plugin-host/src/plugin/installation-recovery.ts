@@ -156,7 +156,7 @@ export namespace PluginInstallationRecovery {
     }
   }
 
-  export async function recoverUnlocked() {
+  export async function recoverUnlocked(progress?: () => void) {
     for (const key of await Storage.list(["plugin-install-intents"])) {
       const intent = Intent.parse(await Storage.read(key))
       const text = await Bun.file(snapshotPath(intent.id)).text()
@@ -178,15 +178,16 @@ export namespace PluginInstallationRecovery {
       }
       if (intent.status === "complete") await cleanup(snapshot)
       else await rollback(snapshot, intent.sha256)
+      progress?.()
     }
   }
 
-  export async function recover() {
+  export async function recover(progress?: () => void) {
     using lock = await Lock.write("plugin-installation")
     const root = RuntimeContext.current().host.root
     await withInstallationLock(root, async () => {
       await InstallationGenerations.recoverUnlocked(root)
-      await recoverUnlocked()
+      await recoverUnlocked(progress)
     })
   }
 }

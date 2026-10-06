@@ -321,12 +321,14 @@ export namespace Environment {
     })
   }
 
-  async function recover() {
+  async function recover(progress?: () => void) {
     for (const key of await Storage.list(StoragePath.environmentActive())) {
       const [scopeID] = await Storage.readMany<string>([key])
+      progress?.()
       if (!scopeID) continue
       for (const use of await uses(key[1])) {
         if (use.kind === "admission" && use.ownerEpoch !== epoch()) await releaseUse(use.target, scopeID, use.id)
+        progress?.()
       }
       try {
         await reconcile(key[1], scopeID)
@@ -334,6 +336,7 @@ export namespace Environment {
         const info = await get(key[1], scopeID)
         await updateAllocation(info, "unknown")
       }
+      progress?.()
     }
   }
 

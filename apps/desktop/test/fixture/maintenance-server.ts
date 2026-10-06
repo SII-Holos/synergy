@@ -36,6 +36,7 @@ if (command === "diagnostics") {
   process.exit(0)
 }
 const port = Number(process.argv[process.argv.indexOf("--port") + 1])
+process.stdout.write(runtimeStartupLine({ phase: "runtime", state: "opening", stage: "initializing" }))
 const server = Bun.serve({
   port,
   hostname: "127.0.0.1",
@@ -56,3 +57,4 @@ process.on("SIGTERM", () => {
   server.stop(true)
   process.exit(0)
 })
+process.stdout.write(runtimeStartupLine({ phase: "runtime", state: "ready" }))

@@ -6,6 +6,8 @@ Ordered record queries accept an optional logical `prefix`. It includes that exa
 
 `Storage.Handle` binds one `TransactionalStore` namespace and one artifact directory. Logical keys do not resolve through the current project directory. The Runtime owns the Handle, runs migrations and recovery before admission, drains outstanding writes during shutdown, and closes only Handles it opened. An embedding caller can supply a Handle and retain responsibility for its lifetime. Scope and Session identify logical ownership; Workspace files and execution environments do not own Agent records.
 
+Managed startup reports interrupted-import recovery, artifact collection, registered resource recovery, quarantine loading and notification reconciliation before awaiting each stage. Counts describe actual inspected or reconciled work; artifact observers publish outside retryable SQL callbacks. Migration completion does not complete storage recovery, and storage completion is reported only after successful reconciliation. See the [recovery progress decision](../decisions/implemented/bug-fix/2026-10-06-storage-recovery-startup-progress.md).
+
 SQLite is the default backend. PostgreSQL is an explicit deployment choice using the same transaction, revision, pagination, receipt and outbox contract. One Runtime owns a namespace. PostgreSQL advisory ownership and a namespace owner identity fence stale writers; ordinary transactions are serialized inside that owner. Multiple sessions can run concurrently, but automatic Runtime failover and simultaneous replicas writing one namespace are not supported.
 
 ## Records and transactions

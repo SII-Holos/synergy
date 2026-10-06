@@ -40,7 +40,7 @@ export namespace EnvironmentExecution {
     StorageRecovery.register("environment-execution", recover)
   }
 
-  export async function recover() {
+  export async function recover(progress?: () => void) {
     for (const key of await Storage.list(StoragePath.environmentExecutionActive())) {
       try {
         const info = await reconcile(key[2], key[1])
@@ -51,6 +51,7 @@ export namespace EnvironmentExecution {
           error,
         })
       }
+      progress?.()
     }
   }
 

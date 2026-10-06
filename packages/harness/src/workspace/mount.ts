@@ -29,9 +29,10 @@ export namespace WorkspaceMounts {
     StorageRecovery.register("workspace-mounts", recover)
   }
 
-  export async function recover() {
+  export async function recover(progress?: () => void) {
     for (const key of await Storage.list(["workspace_environment"])) {
       const [scopeID] = await Storage.readMany<string>([key])
+      progress?.()
       if (!scopeID) continue
       try {
         const info = await WorkspaceCatalog.get(key[2], scopeID)
@@ -44,6 +45,7 @@ export namespace WorkspaceMounts {
           error,
         })
       }
+      progress?.()
     }
   }
 
