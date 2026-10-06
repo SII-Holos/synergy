@@ -38,11 +38,13 @@ export namespace SessionHistory {
 
   export async function prepareDisplay(sessionID: string, progress?: (current: number, total: number) => void) {
     const session = await SessionManager.requireSession(sessionID)
+    await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
     return prepareDisplayOwner({ scopeID: session.scope.id, sessionID: session.id }, progress)
   }
 
   async function prepareSessionDisplay(session: Info, input?: { cursor?: string; limit?: number; messageID?: string }) {
-    await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
+    const readOnlySnapshot = Storage.inTransaction() && !Storage.inWriteTransaction()
+    if (!readOnlySnapshot) await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
     const scopeID = asScopeID(session.scope.id)
     const sessionID = asSessionID(session.id)
     const target = input?.messageID
