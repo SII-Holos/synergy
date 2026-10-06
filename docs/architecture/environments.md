@@ -70,6 +70,8 @@ The Docker image compiles Linux sandbox profiles on the execution host and uses 
 
 ## Workspace attachment and checkpointing
 
+Tool discovery and execution use the Session's selected Workspace ID even when there is no local directory. Listing capabilities neither materializes files nor allocates compute; permission and user-tool filters remain independent.
+
 Plugin file and shell Host Services resolve the invocation's pinned resource selection. Dormant files require no allocation; shell execution uses the same Environment process facade as first-party tools. Native file-host admission inherits its calling task's reservation while retaining a separate durable physical writer. This permits a shell followed by a file write in one invocation without bypassing foreign-writer exclusion or losing a writer on interrupted saving.
 
 `WorkspaceMounts` persists one active writable view per Workspace with its own mount generation and allocation target. Attachment transfers verified object chunks and materializes their manifest through the Executor's file host. Directory attachment requires an explicitly resolved provider path. A failed or uncertain attachment retains its Environment use for reconciliation. File inspection, bounded reads, versioned writes, checkpoint transfer and acknowledgement use the same file host directly or over transport.

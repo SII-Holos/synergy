@@ -30,6 +30,8 @@ Use the next `NNNN-kebab-case-title.md`. Sections:
 
 ## Index
 
+- [0051: Workspace tool discovery](0051-discovery-omitted-workspace-selection.md)
+
 - [0050: Logical file paths](0050-logical-workspace-path-classification.md)
 
 - [0049: Incomplete Environment release](0049-absent-compute-lost-release-intent.md)

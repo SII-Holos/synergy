@@ -40,7 +40,7 @@ export namespace ToolDiscovery {
     const groupByID = new Map(ToolExposure.groups().map((group) => [group.id, { ...group, tools: [...group.tools] }]))
     const tools: Entry[] = []
 
-    for (const item of await ToolRegistry.tools(input.providerID, input.agent)) {
+    for (const item of await ToolRegistry.tools(input.providerID, input.agent, input.session?.workspaceID)) {
       const exposure = ToolExposure.normalize(item.id, item.exposure)
       const group = ToolExposure.groupInfoFromExposure(item.id, exposure)
       if (group) mergeGroup(groupByID, group)
