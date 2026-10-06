@@ -1275,7 +1275,7 @@ export const SessionRoute = () =>
             description: "Bounded message summaries and lightweight referenced roots",
             content: { "application/json": { schema: resolver(SessionHistory.TimelinePage) } },
           },
-          ...errors(400, 404, 409),
+          ...errors(400, 404, 409, 503),
         },
       }),
       validator("param", z.object({ sessionID: Identifier.schema("session") })),
