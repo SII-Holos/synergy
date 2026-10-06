@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-PostgreSQL can estimate that a newly created namespace contains one traversal node even when it already has hundreds. An inlined cleanup candidate query can then run again for every outer deletion row, multiplying recursive and anti-join work during ordinary record removal. See the [investigation](../../../postmortem/0048-postgres-node-cleanup-repeated-candidates.md).
+PostgreSQL can estimate that a newly created namespace contains one traversal node even when it already has hundreds. An inlined cleanup candidate query can then run again for every outer deletion row, multiplying recursive and anti-join work during ordinary record removal. See the [investigation](../../../postmortem/0052-postgres-node-cleanup-repeated-candidates.md).
 
 ## Decision
 

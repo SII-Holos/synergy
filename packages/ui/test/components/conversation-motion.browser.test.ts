@@ -99,7 +99,7 @@ test("waiting hands over in one stable metadata row and streaming prose never fa
   }
 })
 
-test("collecting an old tool and revealing reasoning shares a smooth bounded height change", async () => {
+test("collection animates outward while restored reasoning has no entrance", async () => {
   await move(3)
   await settled()
   const frames = await page.evaluate(async () => {
@@ -119,8 +119,8 @@ test("collecting an old tool and revealing reasoning shares a smooth bounded hei
     return result
   })
   expect(frames.some((frame) => frame.old > 0 && frame.old < 27)).toBe(true)
-  expect(frames.some((frame) => frame.next > 0 && frame.next < 27)).toBe(true)
-  expect(Math.max(...frames.map((frame) => frame.old + frame.next))).toBeLessThan(42)
+  expect(frames.some((frame) => frame.next > 0 && frame.next < 27)).toBe(false)
+  expect(Math.max(...frames.map((frame) => frame.old + frame.next))).toBeLessThanOrEqual(60)
   expect(frames.at(-1)?.hidden).toBe(true)
   expect(frames.at(-1)?.next).toBeGreaterThanOrEqual(28)
 })

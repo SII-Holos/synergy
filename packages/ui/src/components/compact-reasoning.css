@@ -101,6 +101,7 @@
       flex: 0 0 auto;
       place-items: center;
       color: var(--icon-weak-base);
+      transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
     }
 
     [data-slot="compact-reasoning-detail"] {
@@ -120,6 +121,16 @@
       white-space: pre-wrap;
       font-family: inherit;
     }
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  [data-slot="compact-reasoning-chevron"] {
+    opacity: 0;
+  }
+
+  [data-slot="compact-reasoning-trigger"]:is(:hover, :focus-visible) [data-slot="compact-reasoning-chevron"] {
+    opacity: 1;
   }
 }
 

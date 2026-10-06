@@ -8,6 +8,7 @@ import { DiffComponentProvider } from "../../../src/context/diff.tsx"
 import { MarkedProvider } from "../../../src/context/marked.tsx"
 import { ResourceOpenProvider } from "../../../src/context/resource-open.tsx"
 import { SessionTurn } from "../../../src/components/session-turn.tsx"
+import { ConversationMotionProvider } from "../../../src/components/conversation-motion.tsx"
 import { setupI18n } from "../../../src/testing/i18n.tsx"
 import { setExternalMessageSlotLookup } from "../../../src/components/message-slots.tsx"
 
@@ -146,6 +147,7 @@ setExternalMessageSlotLookup((slot) =>
 )
 
 const i18n = setupI18n()
+const partArrivals = new Set<string>()
 i18n.load("en", {})
 render(
   () => (
@@ -155,66 +157,68 @@ render(
           <MarkedProvider>
             <DiffComponentProvider component={EmptyDiff}>
               <DataProvider data={data} runtime={runtime} directory="/workspace" serverUrl="http://localhost">
-                <For each={segmented() ? ["header", "first", "second", "answer", "footer"] : [`whole-${mount()}`]}>
-                  {(segment) => (
-                    <SessionTurn
-                      segment={
-                        segment.startsWith("whole")
-                          ? undefined
-                          : {
-                              user: false,
-                              footer: segment === "footer",
-                              before: true,
-                              after: true,
-                              processHeader: segment === "header",
-                              processBody: segment === "first" || segment === "second",
-                              contentMessageID:
-                                segment === "first"
-                                  ? assistantID
-                                  : segment === "second" || segment === "answer"
-                                    ? secondAssistantID
-                                    : undefined,
-                              process: {
-                                hasContent: true,
-                                hasTurnContent: stage() > 0,
-                                working: stage() < 8,
-                                open: expanded[`turn-process:${rootID}`] ?? true,
-                              },
-                              parts:
-                                segment === "first"
-                                  ? data.part[assistantID]
-                                  : segment === "second"
-                                    ? data.part[secondAssistantID].filter((p) => p.id !== "final")
-                                    : segment === "answer"
-                                      ? data.part[secondAssistantID].filter((p) => p.id === "final")
-                                      : [],
-                            }
-                      }
-                      sessionID={sessionID}
-                      messageID={rootID}
-                      rootMessage={rootMessage}
-                      messages={data.message[sessionID]}
-                      lastUserMessageID={rootID}
-                      activityDisplay={mode()}
-                      compactReasoning={preview()}
-                      executionState={executionState()}
-                      following={following()}
-                      takeUserArrival={() => {
-                        const arrival = userArrival
-                        userArrival = false
-                        return arrival
-                      }}
-                      activityView={{
-                        getExpanded: (key) => expanded[key],
-                        setExpanded: (key, value) => setExpanded(key, value),
-                      }}
-                    >
-                      <span id="activity-switch-sentinel" hidden>
-                        stable
-                      </span>
-                    </SessionTurn>
-                  )}
-                </For>
+                <ConversationMotionProvider takeArrival={(id) => partArrivals.delete(id)}>
+                  <For each={segmented() ? ["header", "first", "second", "answer", "footer"] : [`whole-${mount()}`]}>
+                    {(segment) => (
+                      <SessionTurn
+                        segment={
+                          segment.startsWith("whole")
+                            ? undefined
+                            : {
+                                user: false,
+                                footer: segment === "footer",
+                                before: true,
+                                after: true,
+                                processHeader: segment === "header",
+                                processBody: segment === "first" || segment === "second",
+                                contentMessageID:
+                                  segment === "first"
+                                    ? assistantID
+                                    : segment === "second" || segment === "answer"
+                                      ? secondAssistantID
+                                      : undefined,
+                                process: {
+                                  hasContent: true,
+                                  hasTurnContent: stage() > 0,
+                                  working: stage() < 8,
+                                  open: expanded[`turn-process:${rootID}`] ?? true,
+                                },
+                                parts:
+                                  segment === "first"
+                                    ? data.part[assistantID]
+                                    : segment === "second"
+                                      ? data.part[secondAssistantID].filter((p) => p.id !== "final")
+                                      : segment === "answer"
+                                        ? data.part[secondAssistantID].filter((p) => p.id === "final")
+                                        : [],
+                              }
+                        }
+                        sessionID={sessionID}
+                        messageID={rootID}
+                        rootMessage={rootMessage}
+                        messages={data.message[sessionID]}
+                        lastUserMessageID={rootID}
+                        activityDisplay={mode()}
+                        compactReasoning={preview()}
+                        executionState={executionState()}
+                        following={following()}
+                        takeUserArrival={() => {
+                          const arrival = userArrival
+                          userArrival = false
+                          return arrival
+                        }}
+                        activityView={{
+                          getExpanded: (key) => expanded[key],
+                          setExpanded: (key, value) => setExpanded(key, value),
+                        }}
+                      >
+                        <span id="activity-switch-sentinel" hidden>
+                          stable
+                        </span>
+                      </SessionTurn>
+                    )}
+                  </For>
+                </ConversationMotionProvider>
               </DataProvider>
             </DiffComponentProvider>
           </MarkedProvider>
@@ -282,11 +286,13 @@ globalThis.__chronologyHarness = {
   },
   remount: () => setMount((value) => value + 1),
   setFollowing,
-  fastTool: () =>
+  fastTool: () => {
+    partArrivals.add("tool-fast")
     setData("part", assistantID, (parts) => [
       ...parts.map((part) => (part.type === "tool" ? { ...part, state: toolPart.state } : part)),
       { ...toolPart, id: "tool-fast", tool: "bash", workBrief: "Inspect fast evidence" },
-    ]),
+    ])
+  },
   selection: () => openedActivities.at(-1),
   move,
   setMode,

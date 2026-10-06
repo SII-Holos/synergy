@@ -18,12 +18,16 @@ export type ConversationTimelineSnapshot = {
  * object replacement; the per-row getter reads the current snapshot so
  * updated message data still flows through.
  */
-export function buildConversationTimelineSnapshot(messages: readonly Message[]): ConversationTimelineSnapshot {
+export function buildConversationTimelineSnapshot(
+  messages: readonly Message[],
+  messageKey = (id: string) => id,
+): ConversationTimelineSnapshot {
   const keys: string[] = []
   const map = new Map<string, Message>()
   for (const message of messages) {
-    keys.push(message.id)
-    map.set(message.id, message)
+    const key = messageKey(message.id)
+    keys.push(key)
+    map.set(key, message)
   }
   return { keys, map }
 }

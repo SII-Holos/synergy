@@ -18,6 +18,7 @@ export function PendingAttachmentCard(props: {
 }) {
   const uploading = () => props.entry.status === "uploading"
   const failed = () => props.entry.status === "failed"
+  const image = () => props.entry.mime.startsWith("image/")
   const [thumbnail, setThumbnail] = createSignal<string>()
   createEffect(() => {
     const file = props.file
@@ -43,12 +44,13 @@ export function PendingAttachmentCard(props: {
     <div class="prompt-attachment-entry relative group" title={props.entry.filename}>
       <div
         data-component="attachment-card"
-        data-type="file"
+        data-type={image() ? "image" : "file"}
         data-size="small"
         data-compact="draft"
         data-disabled="true"
         data-upload-state={props.entry.status}
         aria-busy={uploading()}
+        aria-label={image() ? `${props.entry.filename} · ${metaLabel()}` : undefined}
       >
         <span data-slot="attachment-card-preview">
           <Show
@@ -59,27 +61,42 @@ export function PendingAttachmentCard(props: {
               </Show>
             }
           >
-            <img src={thumbnail()} alt={props.entry.filename} class="size-full object-contain" />
+            <img src={thumbnail()} alt={props.entry.filename} class="size-full object-cover" />
           </Show>
         </span>
         <span data-slot="attachment-card-body">
-          <span data-slot="attachment-card-filename" class="attachment-compact-filename">
-            <span>
-              {props.entry.filename.includes(".")
-                ? props.entry.filename.slice(0, props.entry.filename.lastIndexOf("."))
-                : props.entry.filename}
+          <Show when={!image()}>
+            <span data-slot="attachment-card-filename" class="attachment-compact-filename">
+              <span>
+                {props.entry.filename.includes(".")
+                  ? props.entry.filename.slice(0, props.entry.filename.lastIndexOf("."))
+                  : props.entry.filename}
+              </span>
+              <span>
+                {props.entry.filename.includes(".")
+                  ? props.entry.filename.slice(props.entry.filename.lastIndexOf("."))
+                  : ""}
+              </span>
             </span>
-            <span>
-              {props.entry.filename.includes(".")
-                ? props.entry.filename.slice(props.entry.filename.lastIndexOf("."))
-                : ""}
-            </span>
+          </Show>
+          <span data-slot="attachment-card-meta" role="status">
+            <Show
+              when={!image()}
+              fallback={
+                <Show when={uploading()} fallback={failed() ? props.failedLabel : props.uploadedLabel}>
+                  <Spinner class="size-3" /> {props.uploadingLabel}
+                </Show>
+              }
+            >
+              {metaLabel()}
+            </Show>
           </span>
-          <span data-slot="attachment-card-meta">{metaLabel()}</span>
           <Show when={failed()}>
-            <span class="prompt-attachment-error" title={props.entry.error}>
-              {props.entry.error}
-            </span>
+            <Show when={!image()}>
+              <span class="prompt-attachment-error" title={props.entry.error}>
+                {props.entry.error}
+              </span>
+            </Show>
             <button type="button" data-slot="attachment-retry" onClick={() => props.onRetry(props.entry.id)}>
               {props.retryLabel}
             </button>

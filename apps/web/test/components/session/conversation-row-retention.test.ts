@@ -46,9 +46,12 @@ function aliasConfig(stubPath: string) {
     "@/context/locale",
     "@/context/execution",
     "@/context/sdk",
+    "@/context/global-sync",
+    "@/context/sync",
     "@/context/session-data-view",
     "@/context/session-optimistic-message",
     "./session-submission-status",
+    "./session-preparation",
     "@/context/session-transition",
   ]
   return stubbed.map((find) => ({ find, replacement: stubPath }))
@@ -59,6 +62,8 @@ beforeAll(async () => {
   const conversationPath = path.resolve(import.meta.dir, "../../../src/components/session/conversation.tsx")
   const stubPath = path.join(fixtureDirectory, "stubs.tsx")
   const processPath = path.resolve(import.meta.dir, "../../../../../packages/ui/src/components/session-turn-process.ts")
+  const arrivalPath = path.resolve(import.meta.dir, "../../../src/context/part-arrival.ts")
+  const transitionPath = path.resolve(import.meta.dir, "../../../src/context/session-transition.tsx")
   const completionPath = path.resolve(
     import.meta.dir,
     "../../../../../packages/ui/src/components/execution-completion.tsx",
@@ -74,6 +79,9 @@ beforeAll(async () => {
       `
         import { createMemo, createSignal } from "solid-js"
         import { ExecutionCompletion } from ${JSON.stringify(`/@fs/${completionPath}`)}
+        import { createPartArrivalState } from ${JSON.stringify(`/@fs/${arrivalPath}`)}
+        import { createSessionTransitionState } from ${JSON.stringify(`/@fs/${transitionPath}`)}
+        export { draftTransitionKey } from ${JSON.stringify(`/@fs/${transitionPath}`)}
 
         export { resolveActivityDisclosure } from ${JSON.stringify(`/@fs/${processPath}`)}
         let mountCount = 0
@@ -121,15 +129,20 @@ beforeAll(async () => {
           }
         }
         export const useSDK = () => ({
-          url: "http://fixture", scopeKey: "scope",
+          url: "http://fixture", scopeKey: "scope", connected: () => true,
           client: { session: { turnExecution: async (request) => holdExecutions
             ? new Promise(resolve => pendingExecutions.push({request, resolve}))
             : ({ data: [] }) } },
           event: { on: () => () => {} },
         })
-        export const useSessionDataView = () => () => ({ statusFor: () => undefined })
+        export const useSessionDataView = () => () => ({ statusFor: () => undefined, sessionFor: () => ({ id: "ses_1" }) })
+        export const useSync = () => ({ data: { partSummary: {}, part: {}, partVersion: {} } })
+        export const useSessionPreparation = () => ({ ready: () => true })
+        const partArrival = createPartArrivalState()
+        export const useGlobalSync = () => ({ partArrival, peekScopeState: () => undefined })
         export const SessionSubmissionStatus = () => null
-        export const useSessionTransition = () => ({ get: () => undefined })
+        const transitions = createSessionTransitionState()
+        export const useSessionTransition = () => transitions
         export const submissionForRoot = () => undefined
         export const useExecution = () => ({
           available: executionAvailable,
@@ -137,6 +150,7 @@ beforeAll(async () => {
           open: (id: string) => openedExecution.push(id),
         })
         export const messageAllowsCanonicalActions = () => false
+        export const isOptimisticMessagePending = () => false
       `,
     ),
     Bun.write(
@@ -228,6 +242,7 @@ beforeAll(async () => {
       alias: [
         ...aliasConfig(stubPath),
         { find: "@/utils/error", replacement: path.resolve(import.meta.dir, "../../../src/utils/error.ts") },
+        { find: "@", replacement: path.resolve(import.meta.dir, "../../../src") },
       ],
     },
     server: {
@@ -246,6 +261,7 @@ beforeAll(async () => {
   page = await browser.newPage({ viewport: { width: 900, height: 700 } })
   page.on("pageerror", (error) => pageErrors.push(error.message))
   await page.goto(url)
+  await page.waitForFunction(() => typeof window.__setTimeline === "function")
 })
 
 afterAll(async () => {
@@ -394,7 +410,8 @@ describe("conversation row retention", () => {
   })
 
   test("prepending history preserves the visible content and its viewport offset", async () => {
-    const before = await page.locator('[data-display-row="target:part-0000"]').boundingBox()
+    const target = page.locator('[data-message-id="target"][data-row-kind="body"]')
+    const before = await target.boundingBox()
     await page.evaluate(() => {
       const fixture = window as unknown as { __readingHistory(): void; __setTimeline(messages: unknown[]): void }
       fixture.__readingHistory()
@@ -405,7 +422,7 @@ describe("conversation row retention", () => {
       ])
     })
     await page.waitForTimeout(150)
-    const after = await page.locator('[data-display-row="target:part-0000"]').boundingBox()
+    const after = await target.boundingBox()
     expect(after).not.toBeNull()
     expect(Math.abs(after!.y - before!.y)).toBeLessThan(3)
     expect(pageErrors).toEqual([])

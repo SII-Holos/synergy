@@ -4,6 +4,7 @@ import { useResourceOpen } from "../context/resource-open"
 import { useData } from "../context/data"
 import { createEffect, createMemo, createSignal, For, lazy, on, onCleanup, Show, type JSX } from "solid-js"
 import { createDisclosureMotionRef } from "../utils/disclosure-motion"
+import { useConversationMotion } from "./conversation-motion"
 import {
   finishActivityCountTransition,
   reduceActivityCountTransition,
@@ -254,10 +255,12 @@ function ActivityStep(props: {
     return (metadata as Record<string, unknown>).approval as Record<string, unknown> | undefined
   })
   const audit = createMemo(() => getApprovalAudit(approval(), i18n()))
+  const takeArrival = useConversationMotion()
   const motionRef = createDisclosureMotionRef({
     visible: () => props.hidden !== true,
-    animate: () => props.motion === true,
-    appear: () => props.current === true,
+    animate: () => props.motion !== false,
+    content: true,
+    appear: () => props.hidden !== true && takeArrival(props.step.part.id),
   })
   return (
     <li

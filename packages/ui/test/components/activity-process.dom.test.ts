@@ -168,7 +168,7 @@ describe("continuous activity presentation", () => {
   })
 })
 
-test("reasoning is grouped by model reply and opens at the latest segment", async () => {
+test("reasoning is grouped by model reply and manual expansion preserves its reading position", async () => {
   const detail = document.querySelector<HTMLElement>('[data-slot="process-reasoning-detail"]')!
   Object.defineProperties(detail, {
     scrollHeight: { configurable: true, value: 1200 },
@@ -182,7 +182,7 @@ test("reasoning is grouped by model reply and opens at the latest segment", asyn
   expect(
     segments.map((segment) => segment.querySelector('[data-slot="reasoning-segment-heading"]')?.textContent),
   ).toEqual(["Reasoning 1", "Reasoning 2", "Reasoning 3"])
-  expect(detail.scrollTop).toBe(1200)
+  expect(detail.scrollTop).toBe(0)
   detail.scrollTop = 100
   detail.dispatchEvent(new dom.window.WheelEvent("wheel", { deltaY: -100 }))
   harness.setReasoning([

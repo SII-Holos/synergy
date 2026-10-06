@@ -11,6 +11,8 @@ import {
 import type { PlanBlueprintOfferState } from "./plan-blueprint-offer"
 import { useGlobalSync } from "./global-sync"
 import { useSync } from "./sync"
+import type { SessionTransitionEntry } from "./session-transition"
+import { createSessionSubmissionView } from "./session-submission-view"
 
 export type AppSessionDataView = SessionDataView & {
   planBlueprintOfferFor(sessionID: string): PlanBlueprintOfferState | undefined
@@ -41,14 +43,17 @@ export function createSessionDataRuntime(globalSync: GlobalRuntimeIndex): Sessio
   }
 }
 
-export function useSessionDataView(): Accessor<AppSessionDataView> {
+export function useSessionDataView(
+  submission?: Accessor<SessionTransitionEntry["draft"]>,
+  ready?: Accessor<boolean>,
+): Accessor<AppSessionDataView> {
   const sync = useSync()
   const globalSync = useGlobalSync()
   const runtime = createSessionDataRuntime(globalSync)
   return createMemo(() => {
     const view = createSessionDataView(sync.data, runtime)
     return {
-      ...view,
+      ...(submission ? createSessionSubmissionView(view, submission, ready) : view),
       planBlueprintOfferFor: (sessionID) => sync.data.planBlueprintOffer?.[sessionID],
     }
   })

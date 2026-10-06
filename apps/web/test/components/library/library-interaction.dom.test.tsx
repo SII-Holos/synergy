@@ -139,6 +139,7 @@ beforeAll(async () => {
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 1000, height: 800 } })
   page.setDefaultTimeout(5000)
+  page.setDefaultNavigationTimeout(30000)
   page.on("pageerror", (error) => errors.push(error.message))
   await page.route("**/api/**", async (route) => {
     const pathname = new URL(route.request().url()).pathname

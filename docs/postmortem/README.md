@@ -36,7 +36,9 @@ Use the next `NNNN-kebab-case-title.md`. Sections:
 
 - [0049: Incomplete Environment release](0049-absent-compute-lost-release-intent.md)
 
-- [0048: PostgreSQL cleanup](0048-postgres-node-cleanup-repeated-candidates.md)
+- [0052: PostgreSQL cleanup](0052-postgres-node-cleanup-repeated-candidates.md)
+
+- [0048: Process stability](0048-process-layout-and-arrival-ownership.md)
 - [0046: Structured output retained tool intent](0046-structured-output-retained-tool-intent.md)
 
 - [0045: PostgreSQL startup DDL blocked writers](0045-postgres-startup-ddl-blocked-writers.md)
@@ -116,4 +118,4 @@ Use the next `NNNN-kebab-case-title.md`. Sections:
 
 ## History rules
 
-Preserve incidents, mistakes and superseded guardrails. Append corrections without rewriting history.
+Preserve history; append corrections.

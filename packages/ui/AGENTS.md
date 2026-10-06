@@ -17,6 +17,7 @@ Load `develop-frontend` for shared UI changes and `change-plugin-runtime` for pl
 - Consumer color utilities must name canonical tokens. Add or change a semantic token at the theme boundary instead of inventing component-local aliases such as `*-soft`, `*-muted`, or unregistered foreground names. Keep status foreground/surface pairs at WCAG AA contrast.
 - Follow [Frontend themes and color](../../docs/reference/frontend-theming.md) for the complete consumer contract and theme-authoring workflow. New distributable selectable themes belong in structured plugin contributions; the other built-in skins stay seeds-only in `default-themes.ts`, and `themes/synergy.json` owns the built-in default's curated overrides.
 - Public exports are package contracts. Add exports deliberately and keep App-only components in `apps/web`.
+- `DataProvider.view` accepts a host-owned read-only session projection; `data` remains the canonical store. Local submission overlays belong to the App and must retain message and Part identities through canonical admission.
 
 ## Verify
 

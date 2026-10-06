@@ -28,6 +28,10 @@ beforeAll(async () => {
   )
   await Bun.write(path.join(directory, "decision.tsx"), "export const SessionDecisionOutlet = () => null")
   await Bun.write(
+    path.join(directory, "plugin-host.ts"),
+    "export const usePluginHost = () => ({ safeUI: true, reportError() {} })",
+  )
+  await Bun.write(
     path.join(directory, "execution.ts"),
     `export const useExecution = () => ({ available: () => false, state: {} });
      export const useSDK = () => ({ client: {} });
@@ -47,6 +51,7 @@ beforeAll(async () => {
     import { DesktopNativeTitlebar } from ${JSON.stringify(`/@fs/${source}/components/app-shell/desktop-native-titlebar.tsx`)}
     import ${JSON.stringify(`/@fs/${source}/components/top-bar/session-top-bar.css`)}
     import { DefaultSession } from ${JSON.stringify(`/@fs/${source}/plugin/default-session.tsx`)}
+    import { PluginPageOutlet } from ${JSON.stringify(`/@fs/${source}/plugin/shell-outlet.tsx`)}
     import { PromptDock } from ${JSON.stringify(`/@fs/${source}/components/session/prompt-dock.tsx`)}
     import { createPromptDockHeight } from ${JSON.stringify(`/@fs/${source}/components/session/prompt-dock-height.ts`)}
     import "@ericsanchezok/synergy-ui/styles"
@@ -54,6 +59,8 @@ beforeAll(async () => {
     import ${JSON.stringify(`/@fs/${source}/components/session/session-inbox.css`)}
     function App() {
       const [fresh, setFresh] = createSignal(true)
+      const [ready, setReady] = createSignal(true)
+      window.setComposerReady = setReady
       const [height, setHeight] = createSignal(0)
       const dock = createPromptDockHeight(setHeight)
       const input = {
@@ -65,17 +72,17 @@ beforeAll(async () => {
         render: part => part === "toolbar" ? <div class="prompt-input-toolbar"><button class="prompt-input-submit" type="submit" data-send>Send</button></div> : null,
       }
       const greeting = () => <div data-greeting>Start a task</div>
-      const composer = { input: () => input, mount: dock.mount, ready: () => true, isNewSession: fresh,
+      const composer = { input: () => input, mount: dock.mount, ready, isNewSession: fresh,
         readOnly: () => false, isGlobal: () => true, pendingText: () => "", scopeName: () => "Home",
         branch: () => undefined, lastModified: () => undefined, links: () => [],
         render: part => part === "status" ? <button data-status>Connection details</button> : null }
-      return <div style="height:100dvh"><DefaultSession context={{layout: {
+      return <div style="height:100dvh"><PluginPageOutlet page="session" sessionId={fresh() ? undefined : "created"} fallback={() => <DefaultSession context={{layout: {
         minimumWidth: () => undefined, promptHeight: height,
         render: part => part === "composer" ? <PromptDock context={composer} /> : part === "conversation" ?
           <div class="flex-1 min-h-0"><Show when={!fresh()}><header class="stb-root" style="justify-content:flex-end"><div class="stb-right"><TaskDetailsPopover inboxCount={1} inbox={() => <div class="session-inbox-list"><div class="session-inbox-row" data-inbox>Queued follow-up</div></div>} /></div></header></Show><Show when={fresh()} fallback={<div class="session-conversation-content session-content-column" data-message>Reply</div>}>
             <div class="session-empty-view"><div class="session-content-column">{greeting()}</div></div>
           </Show></div> : null,
-      }}} /></div>
+      }}} />} /></div>
     }
     function ChromeFixture() {
       const query = new URLSearchParams(location.search)
@@ -98,7 +105,20 @@ beforeAll(async () => {
     configFile: false,
     root: directory,
     cacheDir: path.join(directory, ".vite"),
-    plugins: [solid(), tailwind(), ...lingui()],
+    plugins: [
+      {
+        name: "workbench-plugin-host-fixture",
+        enforce: "pre",
+        resolveId(id, importer) {
+          if (id === "./host" && importer?.endsWith("/plugin/shell-outlet.tsx")) {
+            return path.join(directory, "plugin-host.ts")
+          }
+        },
+      },
+      solid(),
+      tailwind(),
+      ...lingui(),
+    ],
     resolve: {
       alias: [
         { find: /^\.\/decision-surface$/, replacement: path.join(directory, "decision.tsx") },
@@ -148,6 +168,37 @@ afterAll(async () => {
   if (directory) await rm(directory, { recursive: true, force: true })
 })
 
+test("draft hydration preserves the editor and bottom anchor while temporarily disabling interaction", async () => {
+  await open()
+  const editor = page.getByRole("textbox", { name: "Message", exact: true })
+  await editor.focus()
+  const node = await editor.elementHandle()
+  const before = (await editor.boundingBox())!
+  await page.evaluate(() => (window as unknown as { setComposerReady(value: boolean): void }).setComposerReady(false))
+  await page.waitForTimeout(100)
+  expect(await node!.evaluate((element) => element.isConnected)).toBe(true)
+  expect(await node!.evaluate((element) => !!element.closest("[inert]"))).toBe(true)
+  await page.evaluate(() => (window as unknown as { setComposerReady(value: boolean): void }).setComposerReady(true))
+  expect(await node!.evaluate((element) => element === document.activeElement)).toBe(true)
+  expect(await node!.evaluate((element) => element === document.querySelector('[role="textbox"]'))).toBe(true)
+  await page.evaluate(() => (window as unknown as { setComposerReady(value: boolean): void }).setComposerReady(false))
+  await page.waitForTimeout(100)
+  await page.evaluate(() => {
+    const button = document.createElement("button")
+    button.id = "outside-focus"
+    document.body.append(button)
+    button.focus()
+    ;(window as unknown as { setComposerReady(value: boolean): void }).setComposerReady(true)
+  })
+  expect(await page.evaluate(() => document.activeElement?.id)).toBe("outside-focus")
+  await page.locator("#outside-focus").evaluate((element) => element.remove())
+  expect((await editor.boundingBox())!.y + (await editor.boundingBox())!.height).toBeCloseTo(
+    before.y + before.height,
+    1,
+  )
+  expect(errors).toEqual([])
+})
+
 async function open(width = 1440, height = 900) {
   errors.length = 0
   await page.setViewportSize({ width, height })
@@ -183,6 +234,7 @@ test("new and existing tasks keep input actions without a reserved status footer
 test("first send keeps the composer anchored and the editor mounted", async () => {
   await open()
   await page.locator('[role="textbox"]').fill("Unsent draft")
+  const editor = await page.locator('[role="textbox"]').elementHandle()
   const before = await bounds(".prompt-input-shell")
   expect(before.bottom).toBeGreaterThan(810)
   expect(await page.locator("[data-greeting]").count()).toBe(1)
@@ -191,6 +243,7 @@ test("first send keeps the composer anchored and the editor mounted", async () =
   const after = await bounds(".prompt-input-shell")
   expect(Math.abs(after.bottom - before.bottom)).toBeLessThanOrEqual(1)
   expect(await page.locator('[role="textbox"]').innerText()).toBe("Unsent draft")
+  expect(await editor!.evaluate((element) => element === document.querySelector('[role="textbox"]'))).toBe(true)
   const content = await bounds(".session-conversation-content")
   const column = await bounds(".session-prompt-dock-content")
   expect(Math.abs(content.left - column.left)).toBeLessThanOrEqual(1)

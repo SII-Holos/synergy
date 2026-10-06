@@ -1,10 +1,16 @@
 import { useFileRestore } from "@/components/session/file-restore-dialog-loader"
+import { isSessionSubmissionContentReady } from "@/components/session/session-transition-handoff"
+import { submissionPartPage } from "@/context/session-submission-view"
 import { catalogFileWorkspace } from "@/context/file/workspace"
 import { projectEntryCopy } from "@/components/dialog/project-entry-copy"
 import { projectTaskIntent } from "@/components/session/project-task-intent"
 import { handleComposerTypingAutofocus } from "@/components/prompt-input/typing-autofocus"
 import { useGlobalSDK } from "@/context/global-sdk"
-import { SessionPreparation } from "@/components/session/session-preparation"
+import {
+  SessionPreparation,
+  SessionPreparationNotice,
+  useSessionPreparation,
+} from "@/components/session/session-preparation"
 import type { PluginComposerLayoutService } from "@ericsanchezok/synergy-plugin"
 import { NewSessionGreeting } from "@/components/session/session-new-view"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
@@ -20,7 +26,8 @@ import {
 import { S } from "@/components/session/session-i18n"
 import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
 import { SessionSubmissionStatus } from "@/components/session/session-submission-status"
-import { SessionSubmissionPreview } from "@/components/session/session-submission-preview"
+import { optimisticPartSummaries } from "@/components/prompt-input/submission-parts"
+import { DataProvider, useData } from "@ericsanchezok/synergy-ui/context/data"
 import { HostView } from "@/plugin/host-view"
 import type { PluginSessionService, PluginSessionLayoutService } from "@ericsanchezok/synergy-plugin"
 import { DefaultSession } from "@/plugin/default-session"
@@ -56,6 +63,7 @@ import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
 import { captureConversationReadingAnchor } from "@/components/session/conversation-reading-anchor"
 
 import { useSync } from "@/context/sync"
+import { useGlobalSync } from "@/context/global-sync"
 import { useSessionDataView } from "@/context/session-data-view"
 import { useTerminal } from "@/context/terminal"
 import { useLayout } from "@/context/layout"
@@ -177,12 +185,34 @@ export default function Page() {
         <PromptProvider connection={sdk.url} drafts={sdk.drafts}>
           <BuiltinWorkbenchPanelsProvider>
             <SessionPreparation>
-              <SessionPageContent />
+              <SessionPageData />
             </SessionPreparation>
           </BuiltinWorkbenchPanelsProvider>
         </PromptProvider>
       </ResourceOpenProvider>
     </TerminalProvider>
+  )
+}
+
+function SessionPageData() {
+  const data = useData()
+  const params = useParams()
+  const sdk = useSDK()
+  const transitions = useSessionTransition()
+  const submission = () => transitions.get(params.id ?? draftTransitionKey(sdk.url, sdk.scopeKey))?.draft
+  const preparation = useSessionPreparation()
+  const view = useSessionDataView(submission, preparation.ready)
+  return (
+    <DataProvider
+      data={data.store}
+      view={view()}
+      directory={data.directory}
+      serverUrl={data.serverUrl}
+      onPermissionRespond={data.respondToPermission}
+      onNavigateToSession={data.navigateToSession}
+    >
+      <SessionPageContent />
+    </DataProvider>
   )
 }
 
@@ -193,7 +223,8 @@ function SessionPageContent() {
   const file = useFile()
   const projectFiles = useProjectFiles()
   const sync = useSync()
-  const dataView = useSessionDataView()
+  const globalSync = useGlobalSync()
+  const preparation = useSessionPreparation()
   const terminal = useTerminal()
   const dialog = useDialog()
   const confirm = useConfirm()
@@ -276,7 +307,7 @@ function SessionPageContent() {
     delayedMessageLoad: undefined as { sessionID: string; generation: number } | undefined,
   })
 
-  const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
+  const info = createMemo(() => (params.id && preparation.ready() ? sync.session.get(params.id) : undefined))
   const reviewCount = createMemo(() => info()?.summary?.files ?? 0)
   const rollback = createMemo(() => info()?.history?.rollback)
   const [pendingRollbackDialogKey, setPendingRollbackDialogKey] = createSignal<string>()
@@ -302,9 +333,15 @@ function SessionPageContent() {
     const sessionID = params.id
     return sessionTransition.get(sessionID ?? draftTransitionKey(sdk.url, sdk.scopeKey))
   })
+  const submissionDraft = createMemo(() => visibleSessionTransitionEntry()?.draft)
+  const dataView = useSessionDataView(submissionDraft, preparation.ready)
+  const conversationSessionID = () => params.id ?? submissionDraft()?.message?.sessionID ?? ""
+  const submissionSummaries = createMemo(() => optimisticPartSummaries(submissionDraft()?.parts ?? []))
   const visibleSessionTransition = createMemo(() => visibleSessionTransitionEntry()?.progress ?? null)
   const visibleSessionTransitionActions = createMemo(() => visibleSessionTransitionEntry()?.actions)
-  const sessionTransitionPending = createMemo(() => isSessionTransitionBlocking(visibleSessionTransition()))
+  const sessionTransitionPending = createMemo(
+    () => !preparation.ready() || isSessionTransitionBlocking(visibleSessionTransition()),
+  )
   const clearSessionTransition = sessionTransition.clear
   const setSessionTransition = sessionTransition.set
   const refreshWorkspaceTransition = (input: {
@@ -474,9 +511,11 @@ function SessionPageContent() {
     if (rollbackDialogID && dialog.active?.id === rollbackDialogID) dialog.close()
   })
   const messageSnapshot = createMemo(() => {
-    const id = params.id
+    const id = conversationSessionID()
     if (!id) return [] as Message[]
+    if (!preparation.ready()) return submissionDraft()?.message ? [submissionDraft()!.message!] : undefined
     const messages = dataView().messagesFor(id)
+    if (submissionDraft()?.message?.sessionID === id) return messages
     return hasMessageWindowSnapshot(messages, sync.data.messageWindow[id]) ? messages : undefined
   })
   const messages = createMemo(() => {
@@ -857,7 +896,7 @@ function SessionPageContent() {
   )
   // Event-driven handoff resolution: re-evaluates only when the message
   // window, inbox, or transition entry changes. A message arriving in the
-  // window resolves the transition immediately — no polling required.
+  // window and authoritative execution state resolve it without polling.
   createEffect(() => {
     const sessionID = params.id
     const entry = visibleSessionTransitionEntry()
@@ -873,7 +912,29 @@ function SessionPageContent() {
       refreshAttempted: entry.handoff.refreshAttempted ?? false,
     })
     if (decision === "ready") {
-      sessionTransition.completeHandoff(sessionID, entry.handoff.messageID)
+      const rootID = entry.handoff.messageID
+      if (
+        !isSessionSubmissionContentReady({
+          ready:
+            preparation.ready() &&
+            globalSync.ready &&
+            globalSync.reconnectVersion() > 0 &&
+            !globalSync.scopeRecoveryPending(sdk.scopeKey) &&
+            globalSDK.connected(),
+          message: messages().find((message) => message.id === rootID),
+          captured: entry.draft?.parts,
+          summaries: sync.data.partSummary[rootID],
+          parts: sync.data.part[rootID],
+          versions: sync.data.partVersion,
+        })
+      )
+        return
+      const runtime = dataView().statusFor(sessionID)
+      if (
+        (runtime?.type === "busy" && runtime.activity?.rootID === rootID) ||
+        messages().some((message) => message.role === "assistant" && (message.rootID ?? message.parentID) === rootID)
+      )
+        sessionTransition.completeHandoff(sessionID, rootID)
       return
     }
     if (decision !== "refresh") return
@@ -916,7 +977,7 @@ function SessionPageContent() {
     return selectPendingTimelineItems(dataView().inboxFor(sessionID), messages())
   })
   const isNewSession = createMemo(() => {
-    if (!params.id) return true
+    if (!params.id) return !submissionDraft()?.message
     if (!isHomeScope(sdk.scopeKey)) return false
     return (messages()?.length ?? 0) === 0 && pendingTimeline().length === 0 && visibleSessionTransition() === null
   })
@@ -1049,7 +1110,7 @@ function SessionPageContent() {
   })
   const refreshConversation = async () => {
     const id = params.id
-    if (!id) return
+    if (!id || !preparation.ready()) return
     await sync.session.refresh(id).catch(() => undefined)
   }
   const setActiveMessage = (message: UserMessage | undefined) => {
@@ -1091,7 +1152,7 @@ function SessionPageContent() {
         sessionSyncWatchKey({
           sessionID: params.id,
           connected: sdk.connected(),
-          ready: sync.ready,
+          ready: sync.ready && preparation.ready(),
           reconnectVersion: sync.reconnectVersion,
           historyID: rollback()?.id,
           canUnrollback: rollbackActive(),
@@ -1130,7 +1191,7 @@ function SessionPageContent() {
     ),
   )
 
-  const currentSession = createMemo(() => dataView().sessionFor(params.id ?? ""))
+  const currentSession = createMemo(() => (preparation.ready() ? dataView().sessionFor(params.id ?? "") : undefined))
   const status = createMemo<SessionStatus>(() =>
     resolveSessionStatus({
       runtimeStatus: dataView().statusFor(params.id ?? ""),
@@ -1233,7 +1294,7 @@ function SessionPageContent() {
 
   const autoScroll = createAutoScroll({
     working: isWorking,
-    captureReadingAnchor() {
+    captureReadingAnchor(input) {
       const container = scroller
       if (!container) return
       const owner = sessionKey()
@@ -1241,11 +1302,11 @@ function SessionPageContent() {
       const scope = sdk.scopeKey
       const current = () =>
         owner === sessionKey() && sdk.url === server && sdk.scopeKey === scope && scroller === container
-      if (container.scrollHeight - container.clientHeight - container.scrollTop < 10)
+      if (!input.reading && container.scrollHeight - container.clientHeight - container.scrollTop < 10)
         return () => {
           if (current()) container.scrollTop = container.scrollHeight
         }
-      return captureConversationReadingAnchor(container, current)
+      return captureConversationReadingAnchor(container, current, input.target)
     },
     onMeasure: (distance) => {
       // Until the session's initial scroll lands, growth-driven measures only
@@ -1696,8 +1757,9 @@ function SessionPageContent() {
   })
 
   const [priorityControl, setPriorityControl] = createSignal<JSX.Element>()
+  const composerReady = createMemo((ready: boolean) => ready || prompt.ready(), false)
   const composer = createMemo(() =>
-    prompt.ready()
+    composerReady()
       ? untrack(() =>
           createPromptInputController({
             ref: (element) => {
@@ -1809,11 +1871,36 @@ function SessionPageContent() {
   }
   const conversation: PluginConversationService = {
     content: {
-      summaries: (messageID) => sync.data.partSummary[messageID] ?? [],
-      page: (messageID) => sync.data.partPage[messageID],
-      load: (messageID, more, force) => sync.session.content.summaries(params.id!, messageID, more, force),
-      retain: (summary) => sync.session.content.retain(summary),
-      text: (messageID) => sync.session.content.text(params.id!, messageID),
+      summaries: (messageID) => {
+        const canonical = preparation.ready() ? (sync.data.partSummary[messageID] ?? []) : []
+        if (submissionDraft()?.message?.id !== messageID) return canonical
+        const missing = submissionSummaries().filter((part) => !canonical.some((item) => item.id === part.id))
+        return missing.length ? [...canonical, ...missing].sort((a, b) => a.id.localeCompare(b.id)) : canonical
+      },
+      page: (messageID) =>
+        submissionPartPage({
+          ready: preparation.ready(),
+          captured: submissionDraft()?.message?.id === messageID,
+          message: params.id ? sync.data.message[params.id]?.find((message) => message.id === messageID) : undefined,
+          page: sync.data.partPage[messageID],
+        }),
+      load: (messageID, more, force) =>
+        preparation.ready() && params.id && sync.data.message[params.id]?.some((message) => message.id === messageID)
+          ? sync.session.content.summaries(params.id, messageID, more, force)
+          : Promise.resolve(),
+      retain: (summary) =>
+        summary.content.version.startsWith("optimistic:") && !sync.data.partVersion[summary.id]
+          ? { ready: Promise.resolve(), release() {} }
+          : sync.session.content.retain(summary),
+      text: (messageID) =>
+        preparation.ready() && params.id && sync.data.message[params.id]?.some((message) => message.id === messageID)
+          ? sync.session.content.text(params.id, messageID)
+          : Promise.resolve(
+              submissionDraft()
+                ?.parts?.filter((part) => part.type === "text")
+                .map((part) => part.text)
+                .join("\n") ?? "",
+            ),
       loadWindow: async (messageID, partID) => {
         setHistoryLocationPinned(true)
         autoScroll.handleInteraction()
@@ -1829,7 +1916,7 @@ function SessionPageContent() {
       }
     },
     get sessionID() {
-      return params.id!
+      return conversationSessionID()
     },
     get timeline() {
       return timeline
@@ -2103,19 +2190,17 @@ function SessionPageContent() {
           <Switch>
             <Match
               when={
-                visibleSessionTransitionEntry()?.draft &&
-                visibleSessionTransition()?.phase !== "success" &&
-                messages().length === 0 &&
-                pendingTimeline().length === 0
+                !!submissionDraft()?.message ||
+                (preparation.ready() && !isNewSession() && conversationLoadView().type === "conversation")
               }
             >
-              <SessionSubmissionPreview entry={visibleSessionTransitionEntry()!} />
+              <SessionConversation context={conversation} />
+            </Match>
+            <Match when={!preparation.ready()}>
+              <SessionPreparationNotice />
             </Match>
             <Match when={!isNewSession()}>
               <Switch>
-                <Match when={conversationLoadView().type === "conversation"}>
-                  <SessionConversation context={conversation} />
-                </Match>
                 <Match
                   when={conversationLoadView().type === "loading" || conversationLoadView().type === "delayed-loading"}
                 >
@@ -2314,7 +2399,7 @@ function SessionPageContent() {
       <WorkspaceOutputEffects />
       <Show when={composer()}>{(controller) => controller().extensions()}</Show>
       <SessionDecisionHost
-        sessionId={params.id}
+        sessionId={preparation.ready() ? params.id : undefined}
         onReturnFocus={() => {
           if (sessionMeta().isReadOnly || !inputRef?.isConnected) return false
           inputRef.focus({ preventScroll: true })
