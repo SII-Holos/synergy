@@ -83,12 +83,29 @@ describe("desktop server manager", () => {
 
   test("bounds a health check by its total timeout", async () => {
     const child = new ChildProcessFixture() as unknown as ChildProcess
+    const startup = new DesktopServerStartup({ healthTimeoutMs: 25 })
+    startup.receive('SYNERGY_STARTUP_V1 {"phase":"runtime","state":"opening","stage":"initializing"}\n')
+    startup.receive('SYNERGY_STARTUP_V1 {"phase":"runtime","state":"ready"}\n')
     const originalFetch = globalThis.fetch
     globalThis.fetch = (() => new Promise<Response>(() => {})) as typeof fetch
 
     try {
-      await expect(waitForHealth("http://127.0.0.1:1/global/health", child, 25, 1)).rejects.toThrow(
+      await expect(waitForHealth("http://127.0.0.1:1/global/health", child, startup, 1)).rejects.toThrow(
         "health check timed out after 25ms",
+      )
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("rejects a healthy child that never publishes Runtime startup", async () => {
+    const child = new ChildProcessFixture() as unknown as ChildProcess
+    const startup = new DesktopServerStartup({ healthTimeoutMs: 25 })
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async () => new Response("healthy")) as typeof fetch
+    try {
+      await expect(waitForHealth("http://127.0.0.1:1/global/health", child, startup, 1)).rejects.toThrow(
+        "runtime startup did not announce readiness",
       )
     } finally {
       globalThis.fetch = originalFetch
@@ -107,7 +124,7 @@ describe("desktop server manager", () => {
       return new Response("healthy")
     }) as typeof fetch
     try {
-      await expect(waitForHealth("http://127.0.0.1:1/global/health", child, 30000, 1, startup)).rejects.toThrow(
+      await expect(waitForHealth("http://127.0.0.1:1/global/health", child, startup, 1)).rejects.toThrow(
         /^Synergy database maintenance vacuum failed after 1ms$/,
       )
     } finally {
@@ -126,7 +143,7 @@ describe("desktop server manager", () => {
       requested.resolve()
       return new Response("healthy")
     }) as typeof fetch
-    const pending = waitForHealth("http://127.0.0.1:1/global/health", child, 30_000, 1, startup).then(() => {
+    const pending = waitForHealth("http://127.0.0.1:1/global/health", child, startup, 1).then(() => {
       admitted = true
     })
     try {
@@ -154,7 +171,7 @@ describe("desktop server manager", () => {
         init?.signal?.addEventListener("abort", () => reject(new Error("aborted")))
       })) as typeof fetch
 
-    const pending = waitForHealth("http://127.0.0.1:1/global/health", child, 30_000, 1_000)
+    const pending = waitForHealth("http://127.0.0.1:1/global/health", child, new DesktopServerStartup(), 1_000)
     child.emit("error", new Error("spawn ENOENT"))
     const result = await Promise.race([
       pending.then(
@@ -299,10 +316,10 @@ describe("desktop server manager", () => {
       return new Response("healthy")
     }) as typeof fetch
     try {
-      await waitForHealth("http://127.0.0.1:1/global/health", child, 0, 0, startup)
+      await waitForHealth("http://127.0.0.1:1/global/health", child, startup, 0)
       expect(requests).toBe(2)
       now = 360_000
-      await expect(waitForHealth("http://127.0.0.1:1/global/health", child, 0, 0, startup)).rejects.toThrow(
+      await expect(waitForHealth("http://127.0.0.1:1/global/health", child, startup, 0)).rejects.toThrow(
         "health check timed out",
       )
     } finally {
