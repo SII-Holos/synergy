@@ -73,7 +73,7 @@ test("pointer cancellation restores height and release crosses the expansion thr
   )
   await page.keyboard.press("Escape")
   await page.mouse.up()
-  expect(await page.locator(".session-composer-editor").evaluate((el) => el.getBoundingClientRect().height)).toBe(96)
+  expect(await page.locator(".session-composer-editor").evaluate((el) => el.getBoundingClientRect().height)).toBe(64)
   const next = await handle.boundingBox()
   await page.mouse.move(next!.x + next!.width / 2, next!.y + next!.height / 2)
   await page.mouse.down()
@@ -87,9 +87,9 @@ test("keyboard resizing and the corner button replace the size menu", async () =
   await page.reload()
   const handle = page.getByRole("separator", { name: "Resize editor" })
   await handle.press("ArrowUp")
-  expect(await page.locator(".session-composer-editor").evaluate((el) => el.getBoundingClientRect().height)).toBe(128)
-  await handle.press("Home")
   expect(await page.locator(".session-composer-editor").evaluate((el) => el.getBoundingClientRect().height)).toBe(96)
+  await handle.press("Home")
+  expect(await page.locator(".session-composer-editor").evaluate((el) => el.getBoundingClientRect().height)).toBe(64)
   expect(await page.getByRole("button", { name: "Editor size" }).count()).toBe(0)
   await handle.press("End")
   expect(await page.locator(".session-composer-editor").evaluate((el) => el.getBoundingClientRect().height)).toBe(
@@ -192,7 +192,7 @@ test("returning to the cap disarms expansion and Escape removes all pull feedbac
   expect(await page.locator(".composer-resize-cue").textContent()).toBe("")
   expect(
     await page.locator(".session-composer-editor").evaluate((element) => element.getBoundingClientRect().height),
-  ).toBe(96)
+  ).toBe(64)
 })
 
 test("reduced motion keeps expansion instructions while disabling pull transforms", async () => {

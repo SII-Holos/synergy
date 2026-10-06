@@ -18,7 +18,7 @@ function Fixture() {
   onCleanup(bindComposerPresentation(input, { state, preview: () => ({ text: "", references: [] }) }))
   const height = () => {
     version()
-    return state.manualHeight ?? 96
+    return state.manualHeight ?? 64
   }
   return (
     <I18nProvider

@@ -286,13 +286,19 @@ a {
 
 .session-prompt-dock {
   flex-shrink: 0;
-  padding-bottom: 8px;
+  padding-bottom: 24px;
+}
+
+@media (min-width: 768px) and (max-height: 640px) {
+  .session-prompt-dock {
+    padding-bottom: 16px;
+  }
 }
 
 .session-composer-editor {
   height: var(--composer-body-height, auto);
   min-height: min(
-    96px,
+    64px,
     calc(var(--composer-available-height, 480px) * 0.4),
     max(24px, calc(var(--composer-available-height, 480px) * 0.6 - var(--composer-chrome-height, 80px)))
   );
@@ -1770,6 +1776,10 @@ a {
 
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .session-prompt-dock.safe-bottom {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   }
 
   [data-slot="dialog-container"]:has(.dialog-skill-detail) {

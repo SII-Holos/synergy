@@ -78,7 +78,7 @@ export function ComposerResizeControls(props: { input: Pick<PluginInputService, 
           aria-label={_({ id: "prompt.long.resize", message: "Resize editor" })}
           aria-valuemin={limits().minimum}
           aria-valuemax={limits().manual}
-          aria-valuenow={(version(), binding?.state.manualHeight ?? 96)}
+          aria-valuenow={(version(), binding?.state.manualHeight ?? limits().minimum)}
           class="composer-resize-handle"
           onPointerDown={(event) => {
             if (event.button !== 0 || gesture) return

@@ -43,7 +43,7 @@ export class ComposerPresentation {
 export function composerBodyLimits(available: number, chrome: number) {
   const manual = Math.max(24, available * 0.6 - chrome)
   const automatic = Math.max(24, Math.min(240, available * 0.4, manual))
-  return { minimum: Math.min(96, automatic), automatic, manual }
+  return { minimum: Math.min(64, automatic), automatic, manual }
 }
 
 export class ComposerResizeGesture {

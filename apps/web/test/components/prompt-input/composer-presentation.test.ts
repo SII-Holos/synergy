@@ -9,7 +9,7 @@ import {
 
 describe("long message presentation", () => {
   test("resize obeys measured chat height and uses a 32 pixel expansion hysteresis", () => {
-    expect(composerBodyLimits(500, 60)).toEqual({ minimum: 96, automatic: 200, manual: 240 })
+    expect(composerBodyLimits(500, 60)).toEqual({ minimum: 64, automatic: 200, manual: 240 })
     const drag = new ComposerResizeGesture({ y: 300, height: 120, maximum: 240, minimum: 96 })
     expect(drag.move(180)).toMatchObject({ height: 240, expand: false })
     expect(drag.move(140)).toMatchObject({ height: 240, expand: true })
@@ -17,6 +17,7 @@ describe("long message presentation", () => {
     expect(drag.move(185).expand).toBe(false)
     expect(drag.move(900).height).toBe(96)
     expect(composerBodyLimits(120, 80).manual).toBeLessThan(96)
+    expect(composerBodyLimits(120, 80)).toEqual({ minimum: 24, automatic: 24, manual: 24 })
   })
   test("pull feedback advances beyond the height cap without expanding before release", () => {
     const drag = new ComposerResizeGesture({ y: 300, height: 120, maximum: 240, minimum: 96 })

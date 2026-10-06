@@ -168,6 +168,34 @@ async function bounds(selector: string) {
   return page.locator(selector).evaluate((element) => element.getBoundingClientRect().toJSON())
 }
 
+test("compact input reserves responsive bottom space in the dock and available height", async () => {
+  for (const size of [
+    { width: 1440, height: 900, gap: 24 },
+    { width: 1024, height: 600, gap: 16 },
+    { width: 768, height: 812, gap: 24 },
+    { width: 375, height: 812, gap: 12 },
+  ]) {
+    await open(size.width, size.height)
+    const input = await bounds(".prompt-input-shell")
+    expect((await bounds(".session-composer-editor")).height).toBe(64)
+    expect(size.height - input.bottom).toBe(size.gap)
+    await page.waitForFunction(() => {
+      const pane = document.querySelector(".session-workbench-pane")!
+      const dock = document.querySelector(".session-prompt-dock")!
+      return (
+        Number.parseFloat(getComputedStyle(pane).getPropertyValue("--prompt-height")) ===
+        Math.ceil(dock.getBoundingClientRect().height)
+      )
+    })
+    const available = await page
+      .locator(".session-composer")
+      .evaluate((element) =>
+        Number.parseFloat((element as HTMLElement).style.getPropertyValue("--composer-available-height")),
+      )
+    expect(available).toBe(size.height - size.gap - 8)
+  }
+}, 20_000)
+
 test("new and existing tasks keep input actions without a reserved status footer", async () => {
   await open()
   expect(await page.locator("[data-status]").count()).toBe(0)
