@@ -1631,26 +1631,23 @@ export const migrations: Migration[] = [
     execution: "session",
     domain: "session",
     dependsOn: ["20260705-message-v2-semantics-derive", "20260923-session-model-selection"],
-    description: "Prepare ordered presentation headers in resumable batches",
+    description: "Initialize ordered presentation headers for bounded on-access preparation",
     upgradeRecord(key, value) {
       if (key[0] !== "sessions" || key.length !== 4 || key[3] !== "display_state") return
       value.ready = false
       delete value.cursor
       delete value.sourceGeneration
     },
-    async upSession(owner, progress) {
-      const { SessionHistory } = await import("./history")
-      await SessionHistory.prepareDisplayOwner(owner, progress)
+    async upSession(owner) {
+      await SessionHistoryDisplay.initializePending(owner.scopeID, owner.sessionID)
     },
     async up(progress) {
-      const { SessionHistory } = await import("./history")
       let phase = 0
       for (const scopeID of await SessionMigrationTarget.scopes()) {
         for (const sessionID of await SessionMigrationTarget.sessions(scopeID)) {
           progress(0, 0, ++phase)
-          await SessionHistory.prepareDisplayOwner({ scopeID, sessionID }, (current, total) =>
-            progress(current, total, phase),
-          )
+          await SessionHistoryDisplay.initializePending(scopeID, sessionID)
+          progress(1, 1, phase)
         }
       }
     },

@@ -7,7 +7,13 @@ import { AsyncLocalStorage } from "node:async_hooks"
 import { ArtifactPack } from "./artifact-pack"
 import type { ArtifactLocation } from "./artifact-location"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
-import { NotFoundError as MissingRecord, StorageClosedError, StorageConflictError } from "./errors"
+import {
+  NotFoundError as MissingRecord,
+  StorageBusyError as BusyStorage,
+  StorageClosedError,
+  StorageConflictError,
+  StorageUnavailableError as UnavailableStorage,
+} from "./errors"
 import {
   TransactionalStore,
   type StoreTransaction,
@@ -23,6 +29,8 @@ import { observeStorageProgress } from "./progress"
 
 export namespace Storage {
   export const NotFoundError = MissingRecord
+  export const BusyError = BusyStorage
+  export const UnavailableError = UnavailableStorage
   export const writeJsonAtomic = AtomicFile.writeJsonAtomic
   export interface Handle {
     store: TransactionalStore
@@ -162,6 +170,11 @@ export namespace Storage {
   export function inTransaction() {
     const active = context.getStore()
     return active?.owner === RuntimeContext.tryCurrent() && Boolean(active?.transaction)
+  }
+
+  export function inWriteTransaction() {
+    const active = context.getStore()
+    return active?.owner === RuntimeContext.tryCurrent() && Boolean(active?.transaction && active.effects)
   }
 
   export function afterCommit(effect: () => Promise<unknown> | void): void {

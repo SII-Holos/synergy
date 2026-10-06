@@ -58,6 +58,7 @@ import {
 import { planBucketEviction } from "./message-eviction"
 import { describeToolPartApply } from "./session-sync-plan"
 import { findSessionByID, findSessionIndex } from "./session-collection"
+import { retryStorageRequest } from "@/utils/error"
 import { createSessionMessageLoader } from "./session-message-loader"
 import { createScopeReconnectRecovery } from "./scope-reconnect-recovery"
 import { createRecoveryRetryScheduler, createScopeRecoveryCoordination } from "./scope-recovery-retry"
@@ -1612,8 +1613,9 @@ function createGlobalSync() {
       const messageRequest = captureResourceRequest(input.scopeKey, input.sessionID, "message")
       const partSnapshotRequest = capturePartSnapshotRequest(input.scopeKey, input.sessionID)
       const projectionRevision = contextProjectionRevision.begin(input.scopeKey, input.sessionID)
-      const response = await retry(() =>
-        sdk.session.timelinePage({ sessionID: input.sessionID, limit: 100 }, { signal, throwOnError: true }),
+      const response = await retryStorageRequest(
+        () => sdk.session.timelinePage({ sessionID: input.sessionID, limit: 100 }, { signal, throwOnError: true }),
+        { signal },
       )
       return { response, messageRequest, partSnapshotRequest, contextProjectionRevision: projectionRevision }
     },

@@ -38,12 +38,32 @@ export namespace SessionHistory {
 
   export async function prepareDisplay(sessionID: string, progress?: (current: number, total: number) => void) {
     const session = await SessionManager.requireSession(sessionID)
-    return prepareSessionDisplay(session, progress)
-  }
-
-  async function prepareSessionDisplay(session: Info, progress?: (current: number, total: number) => void) {
     await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
     return prepareDisplayOwner({ scopeID: session.scope.id, sessionID: session.id }, progress)
+  }
+
+  async function prepareSessionDisplay(session: Info, input?: { cursor?: string; limit?: number; messageID?: string }) {
+    const readOnlySnapshot = Storage.inTransaction() && !Storage.inWriteTransaction()
+    if (!readOnlySnapshot) await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
+    const scopeID = asScopeID(session.scope.id)
+    const sessionID = asSessionID(session.id)
+    const target = input?.messageID
+      ? await Storage.read<MessageV2.Info>(
+          StoragePath.messageInfo(scopeID, sessionID, Identifier.asMessageID(input.messageID)),
+        ).catch((error) => {
+          if (error instanceof Storage.NotFoundError) return undefined
+          throw error
+        })
+      : undefined
+    const before = target
+      ? `${MessageV2.messageOrderMarker(target)}\uffff`
+      : input?.cursor
+        ? SessionHistoryDisplay.cursorOrder(input.cursor)
+        : undefined
+    const limit = Math.min(256, Math.max(100, (input?.limit ?? 50) + 100))
+    const infos: MessageV2.Info[] = []
+    for await (const info of MessageV2.readNewestInfos({ scopeID, sessionID, before, limit })) infos.push(info)
+    await SessionHistoryDisplay.prepareWindow(scopeID, sessionID, infos.toReversed())
   }
 
   export async function prepareDisplayOwner(
@@ -70,7 +90,7 @@ export namespace SessionHistory {
     messageID?: string
   }) {
     const session = await SessionManager.requireSession(input.sessionID)
-    await prepareSessionDisplay(session)
+    await prepareSessionDisplay(session, input)
     return SessionHistoryDisplay.timelinePage(input, await displayVisibility(session), session.scope.id)
   }
 
@@ -102,7 +122,7 @@ export namespace SessionHistory {
 
   async function requireDisplayMessage(session: Info, messageID: string) {
     const sessionID = session.id
-    await prepareSessionDisplay(session)
+    await prepareSessionDisplay(session, { messageID })
     const [header, visibility] = await Promise.all([
       SessionHistoryDisplay.header(session.scope.id, sessionID, messageID),
       displayVisibility(session),
@@ -200,6 +220,16 @@ export namespace SessionHistory {
       }),
     )
     const ids = [...new Set(page.items.map((item) => item.key[4]!))]
+    const infos = await Storage.readMany<MessageV2.Info>(
+      ids.map((id) =>
+        StoragePath.messageInfo(asScopeID(session.scope.id), asSessionID(input.sessionID), Identifier.asMessageID(id)),
+      ),
+    )
+    await SessionHistoryDisplay.prepareWindow(
+      session.scope.id,
+      input.sessionID,
+      infos.filter((info): info is MessageV2.Info => Boolean(info)),
+    )
     const [headers, visibility] = await Promise.all([
       Storage.readMany<SessionHistoryDisplay.MessageSummary>(
         ids.map((id) => StoragePath.sessionDisplayMessage(session.scope.id, input.sessionID, id)),

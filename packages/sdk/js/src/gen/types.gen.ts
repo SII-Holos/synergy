@@ -10315,6 +10315,26 @@ export type SessionTimelinePage = {
   generation: number
 }
 
+export type ServiceUnavailableError = {
+  message: string
+}
+
+export type StorageServiceError = {
+  name: "StorageServiceError"
+  data: {
+    message: string
+    state: "busy" | "unavailable"
+    retryAfterMs: number
+  }
+}
+
+export type RuntimeShuttingDownError = {
+  name: "RuntimeShuttingDown"
+  data: {
+    message: string
+  }
+}
+
 export type SessionHistorySearchPage = {
   items: Array<{
     sessionID: string
@@ -11141,17 +11161,6 @@ export type WorkspaceOperationSummary = {
   }
   createdAt: number
   updatedAt: number
-}
-
-export type ServiceUnavailableError = {
-  message: string
-}
-
-export type RuntimeShuttingDownError = {
-  name: "RuntimeShuttingDown"
-  data: {
-    message: string
-  }
 }
 
 export type ResourceProfiles = {
@@ -20488,9 +20497,9 @@ export type SessionTimelinePageErrors = {
     data: unknown
   }
   /**
-   * Runtime shutting down
+   * Service unavailable or runtime shutting down
    */
-  503: RuntimeShuttingDownError
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
 }
 
 export type SessionTimelinePageError = SessionTimelinePageErrors[keyof SessionTimelinePageErrors]
@@ -23705,7 +23714,7 @@ export type WorkspaceRecoverOperationErrors = {
   /**
    * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError | RuntimeShuttingDownError
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
 }
 
 export type WorkspaceRecoverOperationError = WorkspaceRecoverOperationErrors[keyof WorkspaceRecoverOperationErrors]
@@ -23753,7 +23762,7 @@ export type WorkspaceDetachErrors = {
   /**
    * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError | RuntimeShuttingDownError
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
 }
 
 export type WorkspaceDetachError = WorkspaceDetachErrors[keyof WorkspaceDetachErrors]
@@ -24161,7 +24170,7 @@ export type EnvironmentReconcileErrors = {
   /**
    * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError | RuntimeShuttingDownError
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
 }
 
 export type EnvironmentReconcileError = EnvironmentReconcileErrors[keyof EnvironmentReconcileErrors]
@@ -24208,7 +24217,7 @@ export type EnvironmentReleaseErrors = {
   /**
    * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError | RuntimeShuttingDownError
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
 }
 
 export type EnvironmentReleaseError = EnvironmentReleaseErrors[keyof EnvironmentReleaseErrors]
@@ -24254,7 +24263,7 @@ export type EnvironmentRecoverExecutionErrors = {
   /**
    * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError | RuntimeShuttingDownError
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
 }
 
 export type EnvironmentRecoverExecutionError =
@@ -24302,7 +24311,7 @@ export type EnvironmentCancelExecutionErrors = {
   /**
    * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError | RuntimeShuttingDownError
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
 }
 
 export type EnvironmentCancelExecutionError = EnvironmentCancelExecutionErrors[keyof EnvironmentCancelExecutionErrors]
@@ -24349,7 +24358,7 @@ export type EnvironmentRecoverFileErrors = {
   /**
    * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError | RuntimeShuttingDownError
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
 }
 
 export type EnvironmentRecoverFileError = EnvironmentRecoverFileErrors[keyof EnvironmentRecoverFileErrors]
@@ -27793,7 +27802,7 @@ export type PluginInvokeOperationErrors = {
   /**
    * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError | RuntimeShuttingDownError
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
 }
 
 export type PluginInvokeOperationError = PluginInvokeOperationErrors[keyof PluginInvokeOperationErrors]
@@ -28408,7 +28417,7 @@ export type RegistryPluginsSearchErrors = {
   /**
    * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError | RuntimeShuttingDownError
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
 }
 
 export type RegistryPluginsSearchError = RegistryPluginsSearchErrors[keyof RegistryPluginsSearchErrors]
@@ -28441,7 +28450,7 @@ export type RegistryRefreshErrors = {
   /**
    * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError | RuntimeShuttingDownError
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
 }
 
 export type RegistryRefreshError = RegistryRefreshErrors[keyof RegistryRefreshErrors]
@@ -28478,7 +28487,7 @@ export type RegistryPluginsGetErrors = {
   /**
    * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError | RuntimeShuttingDownError
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
 }
 
 export type RegistryPluginsGetError = RegistryPluginsGetErrors[keyof RegistryPluginsGetErrors]
@@ -28513,7 +28522,7 @@ export type RegistryPluginsVersionsErrors = {
   /**
    * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError | RuntimeShuttingDownError
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
 }
 
 export type RegistryPluginsVersionsError = RegistryPluginsVersionsErrors[keyof RegistryPluginsVersionsErrors]
@@ -28549,7 +28558,7 @@ export type RegistryPluginsVersionErrors = {
   /**
    * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError | RuntimeShuttingDownError
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
 }
 
 export type RegistryPluginsVersionError = RegistryPluginsVersionErrors[keyof RegistryPluginsVersionErrors]
@@ -29116,7 +29125,7 @@ export type HolosAgentsListErrors = {
   /**
    * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError | RuntimeShuttingDownError
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
 }
 
 export type HolosAgentsListError = HolosAgentsListErrors[keyof HolosAgentsListErrors]
@@ -29166,7 +29175,7 @@ export type HolosAgentsGetErrors = {
   /**
    * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError | RuntimeShuttingDownError
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
 }
 
 export type HolosAgentsGetError = HolosAgentsGetErrors[keyof HolosAgentsGetErrors]
@@ -29217,7 +29226,7 @@ export type HolosSendErrors = {
   /**
    * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError | RuntimeShuttingDownError
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
 }
 
 export type HolosSendError = HolosSendErrors[keyof HolosSendErrors]

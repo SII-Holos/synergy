@@ -1545,7 +1545,7 @@ export namespace MessageV2 {
         }),
       ),
     }
-    if (Storage.inTransaction()) {
+    if (Storage.inWriteTransaction()) {
       Storage.afterCommit(() => {
         cacheMessageOrder(scopeID, sessionID, markers)
       })
@@ -1719,12 +1719,21 @@ export namespace MessageV2 {
     return infos.sort(compareStorageOrder)
   }
 
-  export async function* readNewestInfos(input: { scopeID: Identifier.ScopeID; sessionID: Identifier.SessionID }) {
+  export async function* readNewestInfos(input: {
+    scopeID: Identifier.ScopeID
+    sessionID: Identifier.SessionID
+    before?: string
+    limit?: number
+  }) {
     const markers = await messageOrderSnapshot(input.scopeID, input.sessionID)
     let index = markers.length - 1
+    if (input.before !== undefined) {
+      while (index >= 0 && markers[index]! >= input.before) index--
+    }
     let yielded = 0
-    while (index >= 0) {
-      const batchSize = yielded < 4 ? 1 : Math.min(32, index + 1)
+    while (index >= 0 && (input.limit === undefined || yielded < input.limit)) {
+      const remaining = input.limit === undefined ? index + 1 : input.limit - yielded
+      const batchSize = yielded < 4 ? 1 : Math.min(32, index + 1, remaining)
       const batch = markers
         .slice(index - batchSize + 1, index + 1)
         .toReversed()
@@ -1750,6 +1759,7 @@ export namespace MessageV2 {
         if (!info) continue
         yielded++
         yield canonicalMessage(info)
+        if (input.limit !== undefined && yielded >= input.limit) return
       }
     }
   }

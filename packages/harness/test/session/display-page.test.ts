@@ -341,3 +341,43 @@ test("display pages seek chronology, bound summaries, and resolve original bodie
       },
     })
   }))
+
+test("latest display pages rebuild only a bounded window when the projection is pending", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Bounded display" })
+        const ids: string[] = []
+        for (let index = 0; index < 140; index++) {
+          const id = `msg_${index.toString(16).padStart(26, "0")}`
+          ids.push(id)
+          await Session.updateMessage({
+            id,
+            sessionID: session.id,
+            role: "user",
+            agent: "synergy",
+            model: { providerID: "test", modelID: "test" },
+            time: { created: 1_000 + index },
+            isRoot: true,
+            rootID: id,
+            visible: true,
+            origin: { type: "user" },
+          })
+        }
+        const scopeID = Identifier.asScopeID(session.scope.id)
+        await Storage.removeTree(["sessions", scopeID, session.id, "display_message"])
+        await Storage.removeTree(["sessions", scopeID, session.id, "display_timeline"])
+        await Storage.removeTree(["sessions", scopeID, session.id, "display_root"])
+        await Storage.remove(StoragePath.sessionDisplayState(scopeID, session.id))
+        using noFullScan = spyOn(MessageV2, "readInfoList").mockImplementation(async () => {
+          throw new Error("timeline page must not read the complete message history")
+        })
+        const page = await SessionHistory.timelinePage({ sessionID: session.id, limit: 2 })
+        expect(page.items.map((item) => item.info.id)).toEqual(ids.slice(-2))
+        expect(page.total).toBe(ids.length)
+        await Session.remove(session.id)
+      },
+    })
+  }))

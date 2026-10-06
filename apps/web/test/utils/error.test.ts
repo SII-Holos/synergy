@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { requestErrorMessage } from "../../src/utils/error"
+import { requestErrorMessage, retryStorageRequest, storageServiceError } from "../../src/utils/error"
 
 describe("requestErrorMessage", () => {
   test("preserves generated SDK JSON error messages", () => {
@@ -41,4 +41,38 @@ describe("requestErrorMessage", () => {
       "Refresh its summary",
     )
   })
+
+  test("parses storage service errors and gives users a recoverable message", () => {
+    const error = {
+      name: "StorageServiceError",
+      data: { message: "Authoritative storage is busy; retry shortly", state: "busy", retryAfterMs: 1_000 },
+    }
+    expect(storageServiceError(error)).toEqual({
+      message: "Authoritative storage is busy; retry shortly",
+      state: "busy",
+      retryAfterMs: 1_000,
+    })
+    expect(requestErrorMessage(error)).toBe("Storage is busy; retry shortly")
+    expect(
+      requestErrorMessage({
+        name: "StorageServiceError",
+        data: { message: "recovering", state: "unavailable", retryAfterMs: 5_000 },
+      }),
+    ).toBe("Storage is recovering; retry shortly")
+  })
+})
+
+test("retryStorageRequest follows the server storage retry hint", async () => {
+  let attempts = 0
+  const result = await retryStorageRequest(async () => {
+    attempts++
+    if (attempts < 3)
+      throw {
+        name: "StorageServiceError",
+        data: { message: "busy", state: "busy", retryAfterMs: 0 },
+      }
+    return "ready"
+  })
+  expect(result).toBe("ready")
+  expect(attempts).toBe(3)
 })
