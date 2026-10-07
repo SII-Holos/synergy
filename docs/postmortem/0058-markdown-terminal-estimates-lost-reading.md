@@ -20,6 +20,10 @@ The worker and incremental renderer had no shared reading identity or measuremen
 
 Separate ancestor scans treated computed `overflow-y` as vertical scroll intent. CSS cross-axis normalization made that value ambiguous, and checking only current overflow would also lose an empty declared viewport before its document arrived. Both renderers require the same explicit native owner, with actual overflow detection reserved for undeclared containers.
 
+Suppressing unchanged-offset scroll delivery also removed a public pagination callback. Searching a large execution record left one short tail row; the browser clamped its attempted scroll to zero, and earlier content never loaded. Scroll direction must ignore zero movement while public range-admission callbacks remain available.
+
+CI also exposed a development-fixture reload during locale and theme checks. The current import graph repeatedly lost its HMR connection after several navigations, causing Vite to reload the page; paired base-source runs passed. The static fixture uses production build and preview because it tests product behavior, retaining all assertions and action timeouts without retries. Disabling server HMR alone still loaded the development client and reproduced the reload.
+
 ## Guardrails added
 
 [Markdown terminal reading](../decisions/implemented/bug-fix/2026-10-08-markdown-terminal-reading-and-stream-ownership.md) records the canonical reading point, synchronous measured handoff and rejected alternatives. [Paint-frame regressions](../../packages/ui/test/markdown-virtual.browser.test.ts) retain the reading paragraph across real worker completion. [Consumed-source tests](../../packages/ui/test/markdown-stream-provenance.test.ts) exercise both parser artifacts. [Stream regressions](../../packages/ui/test/markdown-stream.test.ts) count settled nodes, retain selection endpoints and measure segmentation input after a large prefix. [The frontend Skill](../../.synergy/skill/develop-frontend/SKILL.md) requires these ownership and workload checks.

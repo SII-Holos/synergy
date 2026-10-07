@@ -23,8 +23,8 @@ beforeAll(async () => {
     `
     import { render } from "solid-js/web"
     import { batch, createSignal } from "solid-js"
-    import { Virtualizer as JsxVirtualizer, WindowVirtualizer as JsxWindowVirtualizer } from ${JSON.stringify(path.resolve(import.meta.dir, "../node_modules/virtua/lib/solid/index.jsx"))}
-    import { Virtualizer as MjsVirtualizer, WindowVirtualizer as MjsWindowVirtualizer } from ${JSON.stringify(path.resolve(import.meta.dir, "../node_modules/virtua/lib/solid/index.mjs"))}
+    import { VList as JsxVList, Virtualizer as JsxVirtualizer, WindowVirtualizer as JsxWindowVirtualizer } from ${JSON.stringify(path.resolve(import.meta.dir, "../node_modules/virtua/lib/solid/index.jsx"))}
+    import { VList as MjsVList, Virtualizer as MjsVirtualizer, WindowVirtualizer as MjsWindowVirtualizer } from ${JSON.stringify(path.resolve(import.meta.dir, "../node_modules/virtua/lib/solid/index.mjs"))}
     import { I18nProvider } from "@lingui/solid"
     import { setupI18n } from "@lingui/core"
     import { Markdown } from ${JSON.stringify(path.resolve(import.meta.dir, "../src/components/markdown.tsx"))}
@@ -115,6 +115,25 @@ beforeAll(async () => {
       Object.assign(window,{coldOwner:{scroller,root,dispose:()=>{dispose();scroller.remove();parser.dispose()}}})
       await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())))
       return {...initial,count:root.querySelectorAll("[data-markdown-block]").length}
+    }, async stationaryScroll(entry:string, windowed:boolean){
+      const host=document.createElement("div")
+      host.style.cssText="position:absolute;top:0;left:0;width:300px;height:200px"
+      document.body.append(host)
+      window.scrollTo(0,0)
+      const Component=windowed?(entry==="index.jsx"?JsxWindowVirtualizer:MjsWindowVirtualizer):(entry==="index.jsx"?JsxVList:MjsVList)
+      const offsets:number[]=[]
+      let handle
+      const dispose=render(()=><Component ref={value=>handle=value} data={[24]} itemSize={24} onScroll={()=>offsets.push(windowed?window.scrollY:host.firstElementChild.scrollTop)}>{height=><div style={{height:height+"px"}}>Short reading window</div>}</Component>,host)
+      try {
+        await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())))
+        handle.restoreToIndex(0,0)
+        const viewport=windowed?window:host.firstElementChild as HTMLElement
+        const before=offsets.length
+        if(windowed)window.scrollTo(0,1)
+        else viewport.scrollTop=1
+        viewport.dispatchEvent(new Event("scroll"))
+        return {before,after:offsets.length,offset:offsets.at(-1),pointer:getComputedStyle(host.querySelector("div div")!).pointerEvents}
+      } finally {dispose();host.remove()}
     }, async mountMeasured(entry:string, sizes:number[], windowed:boolean){
       const scroller=document.createElement("div")
       scroller.style.cssText=windowed?"position:absolute;top:137px;left:0;width:300px":"position:fixed;top:0;left:0;width:300px;height:200px;overflow:auto"
@@ -257,6 +276,33 @@ test("virtual Markdown remounts managed links with the same resource opener", as
   expect(await page.locator("[data-markdown-block]").count()).toBeLessThan(20)
   expect(errors).toEqual([])
 }, 20000)
+
+test.each(["index.jsx", "index.mjs"].flatMap((entry) => [false, true].map((windowed) => [entry, windowed] as const)))(
+  "%s publishes unchanged native offsets without leaving idle (window=%s)",
+  async (entry, windowed) => {
+    const result = await page.evaluate(
+      async ({ entry, windowed }) =>
+        (
+          window as unknown as {
+            stationaryScroll(
+              entry: string,
+              windowed: boolean,
+            ): Promise<{
+              before: number
+              after: number
+              offset: number
+              pointer: string
+            }>
+          }
+        ).stationaryScroll(entry, windowed),
+      { entry, windowed },
+    )
+    expect(result.after).toBe(result.before + 1)
+    expect(result.offset).toBe(0)
+    expect(result.pointer).not.toBe("none")
+    expect(errors).toEqual([])
+  },
+)
 
 test.each(
   ["index.jsx", "index.mjs"].flatMap((entry) =>
