@@ -12,8 +12,11 @@ import { ProcessMemory } from "../process/memory-usage"
 import { ServiceMemory } from "../process/service-memory"
 import { LinuxRuntimeMemory } from "./linux-runtime-memory"
 import { ServiceMemoryMetrics } from "./service-memory-metrics"
+import { Log } from "../util/log"
 
 type PublicServiceMemory = NonNullable<ObservabilitySchema.ResourceSample["serviceMemory"]>
+
+const log = Log.create({ service: "observability.resources" })
 
 const serviceMemorySources = {
   cgroup_v2: "cgroup_v2",
@@ -31,6 +34,8 @@ export namespace ObservabilityResources {
     lastTime: performance.now(),
     eventLoopExpected: Date.now(),
     sampleIntervalMs: undefined as number | undefined,
+    sampleController: undefined as AbortController | undefined,
+    pendingSamples: new Set<Promise<void>>(),
     rssWindow: [] as Array<{ time: number; rss: number }>,
     lastRuntimeMetricSampleAt: 0,
     io: { appReadBytes: 0, appWrittenBytes: 0, appReadOps: 0, appWriteOps: 0 },
@@ -56,8 +61,26 @@ export namespace ObservabilityResources {
     instanceState.io.appWriteOps += 1
   }
 
-  export function snapshot(
+  export async function snapshot(
     input: { role?: ObservabilitySchema.ResourceSample["process"]["role"]; processId?: string; pid?: number } = {},
+  ) {
+    const state = runtimeState()
+    state.sampleController?.abort()
+    const controller = new AbortController()
+    state.sampleController = controller
+    const pending = sampleResources(input, controller.signal)
+    state.pendingSamples.add(pending)
+    try {
+      await pending
+    } finally {
+      state.pendingSamples.delete(pending)
+      if (state.sampleController === controller) state.sampleController = undefined
+    }
+  }
+
+  async function sampleResources(
+    input: { role?: ObservabilitySchema.ResourceSample["process"]["role"]; processId?: string; pid?: number },
+    signal: AbortSignal,
   ) {
     const instanceState = runtimeState()
 
@@ -66,7 +89,11 @@ export namespace ObservabilityResources {
     const ctx = ObservabilityContext.current()
     const now = ObservabilityClock.now()
     const memory = process.memoryUsage()
-    const childProcesses = ProcessRegistry.resourceSnapshot({ now, settleStale: true })
+    const eventLoopNow = Date.now()
+    const lagMs = Math.max(0, eventLoopNow - instanceState.eventLoopExpected)
+    instanceState.eventLoopExpected = eventLoopNow + config.resourceSampleIntervalMs
+    const childProcesses = await ProcessRegistry.resourceSnapshot({ now, settleStale: true, signal })
+    if (signal.aborted) return
     const cgroup = ServiceMemory.currentCgroupV2()
     const serviceMemory = ServiceMemory.measure({ processRssBytes: memory.rss, children: childProcesses, cgroup })
     const cpu = process.cpuUsage()
@@ -74,8 +101,6 @@ export namespace ObservabilityResources {
     const userDelta = cpu.user - instanceState.lastCpu.user
     const systemDelta = cpu.system - instanceState.lastCpu.system
     const utilizationRatio = Math.min(1, Math.max(0, (userDelta + systemDelta) / (elapsedMs * 1000)))
-    const lagMs = Math.max(0, Date.now() - instanceState.eventLoopExpected)
-    instanceState.eventLoopExpected = Date.now() + config.resourceSampleIntervalMs
     instanceState.lastCpu = cpu
     instanceState.lastTime = performance.now()
     const sample = ObservabilitySchema.ResourceSample.parse({
@@ -135,7 +160,13 @@ export namespace ObservabilityResources {
     if (!config.enabled) return
     instanceState.sampleIntervalMs = config.resourceSampleIntervalMs
     instanceState.eventLoopExpected = Date.now() + config.resourceSampleIntervalMs
-    instanceState.timer = setInterval(snapshot, config.resourceSampleIntervalMs)
+    instanceState.timer = setInterval(() => {
+      if (instanceState.sampleController) {
+        instanceState.eventLoopExpected = Date.now() + config.resourceSampleIntervalMs
+        return
+      }
+      void snapshot().catch((error) => log.warn("resource sampling failed", { error }))
+    }, config.resourceSampleIntervalMs)
     instanceState.timer.unref()
   }
 
@@ -143,9 +174,12 @@ export namespace ObservabilityResources {
     const instanceState = runtimeState()
 
     if (instanceState.timer) clearInterval(instanceState.timer)
+    instanceState.sampleController?.abort()
+    instanceState.sampleController = undefined
     instanceState.timer = undefined
     instanceState.sampleIntervalMs = undefined
     ServiceMemoryMetrics.reset()
+    return Promise.all([...instanceState.pendingSamples].map((pending) => pending.catch(() => {}))).then(() => {})
   }
 
   export function reconfigure() {
@@ -156,7 +190,7 @@ export namespace ObservabilityResources {
   function recordChildProcesses(
     now: number,
     sampleWindowMs: number,
-    childProcesses: ReturnType<typeof ProcessRegistry.resourceSnapshot>,
+    childProcesses: Awaited<ReturnType<typeof ProcessRegistry.resourceSnapshot>>,
   ) {
     ObservabilityMetrics.record({
       name: "process.active.count",
