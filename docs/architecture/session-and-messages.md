@@ -318,6 +318,8 @@ Attachment preparation settles all sibling operations before publishing a messag
 
 Text uploads retain UTF-8 replacement decoding for invalid byte sequences, with the original bytes stored in the attachment. Encoding detection is not part of preparation; legacy text bytes do not reject the whole input.
 
+Text extraction preserves the original attachment identity, presentation and immutable bytes for every document type and source protocol. Extracted system text augments model input; it cannot remove the original part from the transcript. The attachment's model policy determines whether binary content is sent to the provider independently of whether the file remains visible.
+
 ### Assistant context usage
 
 Assistant messages may include an optional `contextUsage` snapshot for the completed provider call. The snapshot is additive message data, not a separate storage record or session aggregate.

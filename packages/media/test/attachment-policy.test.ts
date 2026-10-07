@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test"
 import { Attachment } from "@ericsanchezok/synergy-harness/attachment"
-import { registerDocumentExtraction } from "../src/register-documents"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "./support/runtime"
 const runtime = await testRuntime()
@@ -14,30 +13,27 @@ test("audio remains a binary attachment even when the document converter recogni
       expect(Attachment.policy({ filename, mime })).toMatchObject({
         kind: "media",
         extractText: false,
-        keepBinary: true,
+        model: { mode: "summary" },
       })
     }
   }))
 
-test("extracts text from office docs without keeping binary", () =>
+test("office documents use extracted text and model summaries", () =>
   runtime.run(() => {
     expect(Attachment.policy({ filename: "slides.pptx" })).toMatchObject({
       kind: "document",
       extractText: true,
-      keepBinary: false,
-      saveLocal: false,
+      model: { mode: "summary" },
     })
     expect(Attachment.policy({ filename: "sheet.xlsx" })).toMatchObject({
       kind: "document",
       extractText: true,
-      keepBinary: false,
-      saveLocal: false,
+      model: { mode: "summary" },
     })
     expect(Attachment.policy({ filename: "report.docx" })).toMatchObject({
       kind: "document",
       extractText: true,
-      keepBinary: false,
-      saveLocal: false,
+      model: { mode: "summary" },
     })
   }))
 
@@ -46,7 +42,7 @@ test("registered processor extracts PDF text and retains the original binary", (
     expect(Attachment.policy({ filename: "report.pdf" })).toMatchObject({
       kind: "pdf",
       extractText: true,
-      keepBinary: true,
+      model: { mode: "summary" },
     })
   }))
 

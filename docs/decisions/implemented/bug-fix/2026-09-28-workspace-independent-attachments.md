@@ -12,6 +12,8 @@ Managed attachments use one byte preparation path with canonical Asset/media con
 
 Text uploads keep the existing UTF-8 replacement behavior for invalid byte sequences, and retain the original bytes. Strict UTF-8 validation would reject previously accepted legacy text files without improving the managed-resource boundary, so encoding detection or stricter validation is outside this repair.
 
+Extraction always retains the original document part and its identity. Binary retention is not a document-policy switch: presentation needs the immutable original even when model input contains only extracted text and a summary. This applies to uploaded, inline and native file sources.
+
 Preparation failure rejects the whole input. Sibling preparation settles before the error propagates; the original inbox payload remains available for correction or retry, with a filename-based error instead of private source details. Invalid steer/context delivery is parked independently of the active root. Scheduling failures retain message/item identity, and exhausted preparation retries advance to other runnable work without parking unrelated input for a provider failure.
 
 ## Alternatives considered
@@ -21,6 +23,8 @@ Preparation failure rejects the whole input. Sibling preparation settles before 
 **Send the surviving text and a warning about the failed attachment.** Rejected because the model would answer an incomplete request. A retained failed input makes retry and correction explicit.
 
 **Patch only PNG handling.** Rejected because text, document extraction, visual child sessions and queue recovery cross the same resource ownership boundary.
+
+**Discard document parts after extracting their text.** Rejected because extraction is a model-input transformation, and text cannot replace the user's original document for preview, download or history recovery.
 
 ## Consequences
 

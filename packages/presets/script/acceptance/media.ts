@@ -120,7 +120,7 @@ export function media(settings: Settings): Driver {
               filename: filename!,
               original: digest(bytes),
               stored: digest(stored),
-              retainedBinary: disposition.keepBinary && !disposition.extractText,
+              retainedBinary: !!attachment && !disposition.extractText,
             })
           }
           await SessionInvoke.loop.force(session.id)

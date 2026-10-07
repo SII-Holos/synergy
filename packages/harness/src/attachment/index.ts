@@ -54,8 +54,6 @@ export namespace Attachment {
 
   export interface Policy {
     extractText: boolean
-    keepBinary: boolean
-    saveLocal: boolean
     kind: "image" | "pdf" | "document" | "media" | "other"
     presentation?: MessageV2.AttachmentPresentation
     model: MessageV2.AttachmentModelPolicy
@@ -69,8 +67,6 @@ export namespace Attachment {
       return {
         kind: "image",
         extractText: false,
-        keepBinary: true,
-        saveLocal: true,
         model: { mode: "provider-file", summary: attachmentSummary(target, mime) },
       }
     }
@@ -79,8 +75,6 @@ export namespace Attachment {
       return {
         kind: "pdf",
         extractText: AttachmentTextExtraction.supported(target.filepath ?? target.filename ?? "document.pdf"),
-        keepBinary: true,
-        saveLocal: false,
         model: { mode: "summary", summary: attachmentSummary(target, mime) },
       }
     }
@@ -89,8 +83,6 @@ export namespace Attachment {
       return {
         kind: "media",
         extractText: false,
-        keepBinary: true,
-        saveLocal: true,
         model: { mode: "summary", summary: attachmentSummary(target, mime) },
       }
     }
@@ -99,8 +91,6 @@ export namespace Attachment {
       return {
         kind: "document",
         extractText: true,
-        keepBinary: false,
-        saveLocal: false,
         model: { mode: "summary", summary: attachmentSummary(target, mime) },
       }
     }
@@ -112,8 +102,6 @@ export namespace Attachment {
     return {
       kind: "other",
       extractText: false,
-      keepBinary: false,
-      saveLocal: false,
       model: { mode: "summary", summary: attachmentSummary(target, mime) },
     }
   }

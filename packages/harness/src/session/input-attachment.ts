@@ -71,6 +71,6 @@ export async function prepareManagedAttachment(
       origin: "system",
       text: `Contents of ${part.filename ?? path.basename(localPath)}:\n${text}`,
     },
-    ...(Attachment.isText(part.mime) || !policy.extractText || policy.keepBinary ? [attachment] : []),
+    attachment,
   ]
 }
