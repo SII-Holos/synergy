@@ -10,7 +10,7 @@ import {
 describe("long message presentation", () => {
   test("attachments lower the automatic minimum without resetting a manual or expanded draft", () => {
     expect(composerBodyLimits(500, 60, true).minimum).toBe(48)
-    expect(composerBodyLimits(500, 60, false).minimum).toBe(96)
+    expect(composerBodyLimits(500, 60, false).minimum).toBe(64)
     expect(composerBodyLimits(120, 80, true).minimum).toBe(24)
     const state = new ComposerPresentation()
     state.setHeight(180)
@@ -21,7 +21,7 @@ describe("long message presentation", () => {
     expect(composerBodyLimits(500, 60, false, 48).minimum).toBe(48)
   })
   test("resize obeys measured chat height and uses a 32 pixel expansion hysteresis", () => {
-    expect(composerBodyLimits(500, 60)).toEqual({ minimum: 96, automatic: 200, manual: 240 })
+    expect(composerBodyLimits(500, 60)).toEqual({ minimum: 64, automatic: 200, manual: 240 })
     const drag = new ComposerResizeGesture({ y: 300, height: 120, maximum: 240, minimum: 96 })
     expect(drag.move(180)).toMatchObject({ height: 240, expand: false })
     expect(drag.move(140)).toMatchObject({ height: 240, expand: true })
@@ -29,6 +29,7 @@ describe("long message presentation", () => {
     expect(drag.move(185).expand).toBe(false)
     expect(drag.move(900).height).toBe(96)
     expect(composerBodyLimits(120, 80).manual).toBeLessThan(96)
+    expect(composerBodyLimits(120, 80)).toEqual({ minimum: 24, automatic: 24, manual: 24 })
   })
   test("pull feedback advances beyond the height cap without expanding before release", () => {
     const drag = new ComposerResizeGesture({ y: 300, height: 120, maximum: 240, minimum: 96 })
