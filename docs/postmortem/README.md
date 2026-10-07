@@ -7,10 +7,10 @@ Failures, causes and guardrails.
 Criteria:
 
 - **Subtle** — the mechanism requires careful investigation.
-- **Systemic** — the bug escaped because of a gap in tests, tooling, or conventions, not a one-off typo.
-- **Costly to rediscover** — it cost real debugging time, and it would cost it again.
+- **Systemic** — a gap in tests, tooling, or conventions let the bug escape.
+- **Costly to rediscover** — rediscovery would repeat substantial debugging.
 
-Otherwise, fix with tests.
+Otherwise, add a tested fix.
 
 ## Placement
 
@@ -30,10 +30,12 @@ Use the next `NNNN-kebab-case-title.md`. Sections:
 
 ## Index
 
+- [0056: PostgreSQL cleanup](0056-postgres-node-cleanup-repeated-candidates.md)
+- [0055: Workspace tool discovery](0055-discovery-omitted-workspace-selection.md)
+- [0054: Logical file paths](0054-logical-workspace-path-classification.md)
+- [0053: Incomplete Environment release](0053-absent-compute-lost-release-intent.md)
 - [0049: Runtime startup readiness and progress](0049-storage-recovery-startup-progress-gap.md)
-
 - [0048: Process stability](0048-process-layout-and-arrival-ownership.md)
-
 - [0046: Structured output retained tool intent](0046-structured-output-retained-tool-intent.md)
 
 - [0045: PostgreSQL startup DDL blocked writers](0045-postgres-startup-ddl-blocked-writers.md)
@@ -113,4 +115,4 @@ Use the next `NNNN-kebab-case-title.md`. Sections:
 
 ## History rules
 
-Preserve what happened, including mistakes and guardrails later replaced. Record subsequent corrections without rewriting the incident.
+Preserve history; append corrections.

@@ -51,6 +51,8 @@ export namespace PathClassifier {
   export interface Options {
     pathMode?: "native" | "relative" | "posix" | "win32"
     workspace: string | null
+    /** Validated object Workspace namespace; never an additional native filesystem root. */
+    virtualRoot?: string
     originalCheckout?: string
     /**
      * When false, a symlink in the final component is judged as the directory
@@ -98,6 +100,11 @@ export namespace PathClassifier {
     if (options.pathMode && options.pathMode !== "native") {
       if (hasShellExpansion(input) || containsParentTraversal(input) || /[\x00-\x1f]/.test(input))
         return outside("path traverses or expands outside the selected Workspace")
+      if (options.virtualRoot && path.posix.isAbsolute(input) && !input.includes("\\")) {
+        const relative = path.posix.relative(options.virtualRoot, input)
+        if (relative === "" || (relative !== ".." && !relative.startsWith("../") && !path.posix.isAbsolute(relative)))
+          return inside("logical path is inside the selected Workspace")
+      }
       if (options.pathMode === "relative")
         return input.startsWith("/") || input.includes("\\") || /^[a-zA-Z]:/.test(input)
           ? outside("object Workspace paths must be relative")

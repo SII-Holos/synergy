@@ -37,6 +37,8 @@ When changing worker liveness or shutdown, close a real worker while a blocking 
 
 Keep queue admission wait caps separate from explicit request deadlines and SQL execution budgets. A local wait cap ends when its callback begins; only caller deadlines and cancellation propagate into later admissions. Test a real multi-step storage operation across that cap, plus expired waiters and nested explicit deadlines. Delaying a recovery entry point outside its storage gate does not exercise this boundary.
 
+For PostgreSQL deletion plans, include a new namespace created after statistics were collected for unrelated history. Inspect actual row visits and loop counts for the emitted statement; indexed predicates alone do not prevent the planner from repeating an inlined candidate query. Keep the same transaction and deletion semantics when bounding repeated work.
+
 ### SQLite and other domain stores
 
 1. Keep fresh-install schema creation in the owning database initialization.
