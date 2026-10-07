@@ -760,7 +760,7 @@ describe("session turn activity projection", () => {
     const items = project({ parts: [tool({ id: "read-a" }), media, completed, tool({ id: "read-b" })] })
 
     expect(activities(items).map((group) => group.steps.map((step) => step.part.id))).toEqual([["read-a"], ["read-b"]])
-    expect(items.some((item) => item.kind === "passthrough" && item.item.kind === "media-pending")).toBe(true)
+    expect(items.some((item) => item.kind === "passthrough" && item.item.kind === "media")).toBe(true)
     expect(items.some((item) => item.kind === "passthrough" && item.item.kind === "tool-attachments")).toBe(true)
   })
   test("folds built-in MCP search tools into one activity group", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
-  isActiveMediaGenerationToolPart,
+  isMediaGenerationToolPart,
   isToolCardHidden,
   toolDisplayMetadata,
 } from "../../src/components/tool-result-presentation"
@@ -24,8 +24,8 @@ describe("tool result display metadata", () => {
     ).toEqual(display)
   })
 
-  test("detects active media-generation tools for pending placeholders", () => {
-    for (const status of ["pending", "generating", "running"]) {
+  test("recognizes declarative media generation throughout its lifecycle", () => {
+    for (const status of ["pending", "generating", "running", "completed", "error"]) {
       const part = {
         type: "tool",
         state: {
@@ -40,21 +40,7 @@ describe("tool result display metadata", () => {
         },
       }
 
-      expect(isActiveMediaGenerationToolPart(part)).toBe(true)
-    }
-  })
-
-  test("does not treat completed or error media tools as active placeholders", () => {
-    for (const status of ["completed", "error"]) {
-      expect(
-        isActiveMediaGenerationToolPart({
-          type: "tool",
-          state: {
-            status,
-            metadata: { display: { kind: "media-generation" } },
-          },
-        }),
-      ).toBe(false)
+      expect(isMediaGenerationToolPart(part)).toBe(true)
     }
   })
 

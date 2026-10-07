@@ -34,6 +34,32 @@
   isolation: isolate;
 }
 
+[data-slot="media-generation-label"] {
+  position: absolute;
+  inset-inline: 16px;
+  bottom: 16px;
+  color: var(--text-weak);
+  font-size: var(--font-size-small);
+}
+
+[data-slot="media-generation-result"] {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--border-base);
+  border-radius: 8px;
+  color: var(--text-base);
+  font-size: var(--font-size-small);
+  overflow-wrap: anywhere;
+
+  p {
+    margin-top: 4px;
+    color: var(--text-weak);
+    white-space: pre-wrap;
+    max-height: 180px;
+    overflow: auto;
+  }
+}
+
 [data-component="media-generation-card"][data-aspect-ratio="1:1"] [data-slot="media-generation-placeholder"] {
   aspect-ratio: 1 / 1;
 }

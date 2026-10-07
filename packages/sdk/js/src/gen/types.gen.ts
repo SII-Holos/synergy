@@ -8498,6 +8498,7 @@ export type ToolStateError = {
   status: "error"
   input: ToolStateInput
   error: string
+  reason?: "cancelled"
   metadata?: {
     [key: string]: unknown
   }

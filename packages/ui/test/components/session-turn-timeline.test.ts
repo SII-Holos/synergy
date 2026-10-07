@@ -836,7 +836,7 @@ describe("session turn timeline", () => {
 
     const items = collectSessionTurnTimelineItems([message], { [message.id]: parts }, true)
 
-    expect(items.map((item) => item.kind)).toEqual(["reasoning", "media-pending", "part"])
+    expect(items.map((item) => item.kind)).toEqual(["reasoning", "media", "part"])
     expect(items[0]).toMatchObject({ kind: "reasoning", part: { type: "reasoning" } })
     expect(items[2]).toMatchObject({ kind: "part", part: { type: "text" } })
   })
@@ -851,7 +851,7 @@ describe("session turn timeline", () => {
         true,
       )
 
-      expect(items.map((item) => item.kind)).toEqual(["media-pending"])
+      expect(items.map((item) => item.kind)).toEqual(["media"])
     }
   })
 
@@ -923,8 +923,8 @@ describe("session turn timeline", () => {
 
     const items = collectSessionTurnTimelineItems([message], { [message.id]: parts }, false)
 
-    expect(items.map((item) => item.kind)).toEqual(["tool-attachments", "part"])
-    expect(items[0]).toMatchObject({ kind: "tool-attachments", files: [image] })
+    expect(items.map((item) => item.kind)).toEqual(["media", "part"])
+    expect(items[0]).toMatchObject({ kind: "media", files: [image] })
     expect(items[1]).toMatchObject({ kind: "part", part: { type: "text" } })
   })
 
@@ -1102,8 +1102,8 @@ describe("session turn timeline", () => {
 
     const items = collectSessionTurnTimelineItems([first, second, third], partsByMessage, false)
 
-    expect(items.map((item) => item.kind)).toEqual(["tool-attachments", "part", "part"])
-    expect(items[0]).toMatchObject({ kind: "tool-attachments", files: [image] })
+    expect(items.map((item) => item.kind)).toEqual(["media", "part", "part"])
+    expect(items[0]).toMatchObject({ kind: "media", files: [image] })
     expect(items[1]).toMatchObject({ kind: "part", part: { type: "text" } })
     expect(items[2]).toMatchObject({ kind: "part", part: { type: "tool", tool: "render" } })
   })
@@ -1163,7 +1163,7 @@ describe("session turn timeline", () => {
     expect(items[0]).toMatchObject({ kind: "tool-attachments", files: [image] })
   })
 
-  test("hides completed media tools without attachments when their tool card is hidden", () => {
+  test("retains an empty generation result for explicit failure presentation", () => {
     const message = assistant("assistant-a")
     const parts: PartType[] = [
       mediaTool({ id: "tool-a", messageID: message.id, status: "completed", attachments: [] }),
@@ -1178,8 +1178,8 @@ describe("session turn timeline", () => {
 
     const items = collectSessionTurnTimelineItems([message], { [message.id]: parts }, false)
 
-    expect(items.map((item) => item.kind)).toEqual(["part"])
-    expect(items[0]).toMatchObject({ kind: "part", part: { type: "text" } })
+    expect(items.map((item) => item.kind)).toEqual(["media", "part"])
+    expect(items[0]).toMatchObject({ kind: "media", files: [] })
   })
 
   test("keeps ordinary tool timeline key stable across state updates", () => {
@@ -1199,7 +1199,7 @@ describe("session turn timeline", () => {
     expect(keys[0]).toBe("tool:assistant-a:tool-a")
   })
 
-  test("changes timeline key when a media tool changes render shape", () => {
+  test("keeps one timeline identity throughout media generation", () => {
     const message = assistant("assistant-a")
     const pending = collectSessionTurnTimelineItems(
       [message],
@@ -1212,8 +1212,8 @@ describe("session turn timeline", () => {
       false,
     )
 
-    expect(timelineItemStableKey(pending[0])).toBe("media-pending:assistant-a:tool-a")
-    expect(timelineItemStableKey(completed[0])).toBe("tool-attachments:assistant-a:tool-a")
+    expect(timelineItemStableKey(pending[0])).toBe("media:assistant-a:tool-a")
+    expect(timelineItemStableKey(completed[0])).toBe(timelineItemStableKey(pending[0]))
   })
 })
 
@@ -1298,7 +1298,7 @@ test("managed deliveries deduplicate across tools and yield to final Markdown", 
   const second = mediaTool({ id: "second", messageID: work.id, status: "completed", attachments: [file] })
   const before = collectSessionTurnTimelineItems([work], { work: [first, second] }, true)
   expect(before).toHaveLength(1)
-  expect(before[0].kind === "tool-attachments" && before[0].files).toHaveLength(1)
+  expect(before[0].kind === "media" && before[0].files).toHaveLength(1)
   const after = collectSessionTurnTimelineItems(
     [work, final],
     { work: [first, second], final: [textPart("answer", final.id, `![chart](${file.url})`)] },
@@ -1310,11 +1310,11 @@ test("managed deliveries deduplicate across tools and yield to final Markdown", 
     { work: [first, textPart("progress", work.id, `![chart](${file.url})`)] },
     true,
   )
-  expect(process.some((item) => item.kind === "tool-attachments")).toBe(true)
+  expect(process.some((item) => item.kind === "media")).toBe(true)
   const incomplete = collectSessionTurnTimelineItems(
     [work, final],
     { work: [first], final: [textPart("answer", final.id, `![chart](${file.url}`)] },
     true,
   )
-  expect(incomplete.some((item) => item.kind === "tool-attachments")).toBe(true)
+  expect(incomplete.some((item) => item.kind === "media")).toBe(true)
 })

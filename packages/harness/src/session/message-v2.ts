@@ -408,6 +408,7 @@ export namespace MessageV2 {
       status: z.literal("error"),
       input: ToolStateInput,
       error: z.string(),
+      reason: z.literal("cancelled").optional(),
       metadata: z.record(z.string(), z.any()).optional(),
       time: z.object({
         start: z.number(),

@@ -1,5 +1,6 @@
 import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { I18nProvider } from "@lingui/solid"
+import { createStore, reconcile } from "solid-js/store"
 import { render } from "solid-js/web"
 import { DataProvider } from "../../../src/context/data.tsx"
 import { DialogProvider } from "../../../src/context/dialog.tsx"
@@ -90,11 +91,14 @@ const mediaPart = {
     output: "",
     title: "Meme",
     metadata: { display: { kind: "media-generation", toolCard: "hidden" } },
-    attachments: [{ ...imagePart, id: "file-image-media", filename: "meme-2.svg" }],
+    attachments: [
+      { ...imagePart, id: "file-image-media", filename: "meme-2.svg", url: "asset://2222222222222222.png" },
+    ],
     time: { start: 1, end: 2 },
   },
 }
-const data = {
+const mediaCompletedState = structuredClone(mediaPart.state)
+const [data, setData] = createStore({
   session: [],
   session_diff: { [sessionID]: [] },
   message: { [sessionID]: [rootMessage, assistantMessage] },
@@ -102,7 +106,7 @@ const data = {
     [rootID]: [],
     [assistantID]: [inspectionPart, outputPart, mediaPart],
   },
-}
+})
 // Session runtime state lives outside the Scope store; the view resolves
 // it from this accessor bag.
 const NO_REQUESTS = []
@@ -143,3 +147,31 @@ render(
   ),
   document.querySelector("#root"),
 )
+;(
+  globalThis as typeof globalThis & { __mediaLifecycleHarness: { move: (status: string) => void } }
+).__mediaLifecycleHarness = {
+  move(status: string) {
+    const state =
+      status === "completed"
+        ? structuredClone(mediaCompletedState)
+        : status === "empty"
+          ? { ...structuredClone(mediaCompletedState), attachments: [] }
+          : status === "failed" || status === "cancelled"
+            ? {
+                status: "error",
+                input: {},
+                error: "Provider unavailable",
+                reason: status === "cancelled" ? "cancelled" : undefined,
+                metadata: structuredClone(mediaCompletedState).metadata,
+                time: { start: 1, end: 2 },
+              }
+            : {
+                status,
+                input: {},
+                raw: "",
+                metadata: structuredClone(mediaCompletedState).metadata,
+                time: { start: 1 },
+              }
+    setData("part", assistantID, 2, "state", reconcile(state as typeof mediaCompletedState))
+  },
+}

@@ -20,9 +20,10 @@ export type SessionTurnTimelineItem =
       part: ReasoningPart
     }
   | {
-      kind: "media-pending"
+      kind: "media"
       message: AssistantMessage
       part: ToolPart
+      files: AttachmentPart[]
     }
   | {
       kind: "tool-attachments"
@@ -41,7 +42,7 @@ export type SessionTurnTimelineVisualKind =
   | "reasoning"
   | "tool"
   | "attachment"
-  | "media-pending"
+  | "media"
   | "tool-attachments"
   | "compaction"
 

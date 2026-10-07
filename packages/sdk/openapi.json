@@ -61408,6 +61408,10 @@
           "error": {
             "type": "string"
           },
+          "reason": {
+            "type": "string",
+            "const": "cancelled"
+          },
           "metadata": {
             "type": "object",
             "propertyNames": {

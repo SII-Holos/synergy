@@ -349,6 +349,7 @@ export namespace SessionProcessor {
               status: "error",
               input: SessionToolInput.canonical(outcome.input),
               error: outcome.error,
+              reason: input.abort.aborted && input.abort.reason?.name === "AbortError" ? "cancelled" : undefined,
               metadata: ToolTimeout.mergeMetadata(streamingToolMetadata(live), outcome.metadata),
               time: { start: startTime, end: Date.now() },
             },

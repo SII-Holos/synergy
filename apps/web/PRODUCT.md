@@ -504,3 +504,5 @@ Review keeps comparison scope, totals and editable Git references together. Its 
 ### Tool activity objects
 
 Compact tool rows prioritize the registered action and its concrete path, command, search target, page or task over model-authored intent. Intent remains in execution details and is a fallback when no structured target exists. Paths retain directory context and their filename under truncation; commands retain their prefix. Rows open the existing right-side execution details with the original invocation identity. Completed calls do not acquire success badges. Batch summaries count evidenced successes independently of total calls and rendering budgets; incomplete file identities use operation counts rather than invented unique-file counts. Dedicated media, Diff and plugin renderers retain their boundaries.
+
+Generated media stays in one message-flow position from its pending preview to completion. Failure and stopped generation remain visible with a quiet explanation; an empty result never silently disappears. A final inline reference takes over the same immutable resource from its delivery gallery, while inspection thumbnails remain in the process.

@@ -50,11 +50,7 @@ import { MessageSlotOutlet, type MessageSlotName } from "./message-slots"
 import { AttachmentGallery } from "./attachment-card"
 import { resolveAttachmentPresentation } from "./attachment-card-utils"
 import { MediaGenerationCard } from "./media-generation-card"
-import {
-  isActiveMediaGenerationToolPart,
-  isMediaGenerationToolPart,
-  isToolCardHidden,
-} from "./tool-result-presentation"
+import { isMediaGenerationToolPart, isToolCardHidden } from "./tool-result-presentation"
 import { isSpeakTool, noteSpeakPartActive } from "./session-turn-speak-autoplay"
 import "./session-turn.css"
 import "./tool-renders"
@@ -291,7 +287,7 @@ export function timelineKindForPart(part: PartType, _working: boolean): SessionT
   if (part.type === "reasoning") return part.text.trim() ? "reasoning" : undefined
   if (part.type === "compaction_recovery") return "part"
   if (part.type !== "tool") return undefined
-  if (isActiveMediaGenerationToolPart(part)) return "media-pending"
+  if (isMediaGenerationToolPart(part)) return "media"
   if (isToolCardHidden(part)) {
     if (part.state.status === "error") return "part"
     if (part.state.status !== "completed") return undefined
@@ -383,8 +379,16 @@ export function collectSessionTurnTimelineItems(
       // so only the structured card renders — no duplicate markdown output.
       if (hasCompactionRecovery && part.type === "text") continue
 
-      if (kind === "media-pending") {
-        items.push({ kind, message, part: part as ToolPart })
+      if (kind === "media") {
+        const tool = part as ToolPart
+        const files = delivered(tool)
+        if (
+          tool.state.status === "completed" &&
+          !files.length &&
+          visibleAttachmentParts(tool.state.attachments).some((file) => attachmentPurpose(file) === "deliverable")
+        )
+          continue
+        items.push({ kind, message, part: tool, files })
         continue
       }
 
@@ -594,30 +598,21 @@ function TimelineItemDisplay(props: {
   if (props.item.kind === "part" || props.item.kind === "reasoning") {
     return <Part part={props.item.part} message={props.item.message} />
   }
-  if (props.item.kind === "media-pending") {
-    // Watch speak parts stream in: when the same part later completes, its
-    // audio autoplays once. Non-speak media (images/video) stays silent.
-    const pendingPart = props.item.part
-    if (pendingPart.type === "tool" && isSpeakTool(pendingPart.tool)) {
-      noteSpeakPartActive(`speak:${pendingPart.id}`)
-    }
-    return <MediaGenerationCard part={pendingPart} />
+  if (props.item.kind === "media") {
+    const current = () => props.item as Extract<SessionTurnTimelineItem, { kind: "media" }>
+    createEffect(() => {
+      const part = current().part
+      if (isSpeakTool(part.tool) && !["completed", "error"].includes(part.state.status))
+        noteSpeakPartActive(`speak:${part.id}`)
+    })
+    return <MediaGenerationCard part={current().part} files={current().files} serverUrl={props.serverUrl} />
   }
-  const part = props.item.part
-  const autoplay = isMediaGenerationToolPart(part) && isSpeakTool(part.tool)
-  return (
-    <AttachmentGallery
-      files={props.item.files}
-      serverUrl={props.serverUrl}
-      autoplay={autoplay}
-      autoplayKey={autoplay ? `speak:${part.id}` : undefined}
-    />
-  )
+  return <AttachmentGallery files={props.item.files} serverUrl={props.serverUrl} />
 }
 
 function isToolTimelineItem(item: SessionTurnTimelineItem): boolean {
   const kind = timelineVisualKind(item)
-  return kind === "tool" || kind === "media-pending" || kind === "tool-attachments"
+  return kind === "tool" || kind === "media" || kind === "tool-attachments"
 }
 
 type SessionTurnAssistantDisplayItem = SessionTurnTimelineItem | ActivityTimelineItem

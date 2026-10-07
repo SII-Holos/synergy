@@ -63,7 +63,9 @@ afterAll(() => {
 
 describe("SessionTurn attachment placement", () => {
   test("renders ordinary and generated deliverables directly while the process is closed", () => {
-    const items = document.querySelectorAll('[data-slot="session-turn-timeline-item"][data-kind="tool-attachments"]')
+    const items = document.querySelectorAll(
+      '[data-slot="session-turn-timeline-item"]:is([data-kind="tool-attachments"], [data-kind="media"])',
+    )
     expect(items.length).toBe(2)
 
     for (const item of items) {
@@ -86,13 +88,36 @@ describe("SessionTurn attachment placement", () => {
     expect(!!evidence.closest('[hidden], [aria-hidden="true"]')).toBe(false)
     expect(evidence.querySelector('[data-compact="process"]')?.getAttribute("title")).toBe("evidence.svg")
     expect(
-      document.querySelectorAll('[data-slot="session-turn-timeline-item"][data-kind="tool-attachments"]'),
+      document.querySelectorAll(
+        '[data-slot="session-turn-timeline-item"]:is([data-kind="tool-attachments"], [data-kind="media"])',
+      ),
     ).toHaveLength(2)
     trigger.click()
     await waitForUpdate()
     expect(!!evidence.closest('[hidden], [aria-hidden="true"]')).toBe(true)
     expect(
-      document.querySelectorAll('[data-slot="session-turn-timeline-item"][data-kind="tool-attachments"]'),
+      document.querySelectorAll(
+        '[data-slot="session-turn-timeline-item"]:is([data-kind="tool-attachments"], [data-kind="media"])',
+      ),
     ).toHaveLength(2)
   })
+})
+
+test("media generation retains its wrapper through pending, success, failure and cancellation", async () => {
+  const harness = (globalThis as typeof globalThis & { __mediaLifecycleHarness: { move: (status: string) => void } })
+    .__mediaLifecycleHarness
+  const card = document.querySelector('[data-component="media-generation-card"]')!
+  expect(Boolean(card)).toBe(true)
+  for (const status of ["pending", "generating", "running", "completed", "failed", "cancelled", "empty"]) {
+    harness.move(status)
+    await waitForUpdate()
+    expect(document.querySelector('[data-component="media-generation-card"]') === card).toBe(true)
+    const pending = ["pending", "generating", "running"].includes(status)
+    expect(card.getAttribute("aria-busy")).toBe(String(pending))
+    expect(Boolean(card.querySelector('[data-slot="media-generation-placeholder"]'))).toBe(pending)
+    expect(Boolean(card.querySelector('[data-component="attachment-gallery"]'))).toBe(status === "completed")
+    if (status === "failed") expect(card.textContent).toContain("Provider unavailable")
+    if (status === "cancelled") expect(card.textContent).toBe("Generation stopped")
+    if (status === "empty") expect(card.textContent).toContain("No media was returned")
+  }
 })
