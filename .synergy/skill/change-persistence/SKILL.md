@@ -15,6 +15,8 @@ description: Add or modify Synergy durable state, JSON storage keys, SQLite tabl
 
 When hydrating references from a batch of records, deduplicate referenced identities and use the owning domain's batch reader instead of one concurrent read per record. Keep ownership checks and missing-record positions, and verify more distinct references than storage admission capacity, shared references, malformed records and subsequent rebinding with real storage.
 
+For composed domain reads, use `Storage.snapshot()` and make every paginated projection query join its parent transaction; a direct `TransactionalStore` query inside it can reenter the non-reentrant reader queue or lose writer-local visibility. Release a reader snapshot before a cold derived-index write and recheck after writer admission. Verify with a real held writer, committed external reads, transaction-local writes and a concurrent publication; use physical barriers with bounded rescue and cleanup rather than latency targets.
+
 ### Authoritative Agent records
 
 1. Build logical keys through `StoragePath`; use an explicit `Storage.Handle`. Normal Agent record code must never read or write legacy JSON files.
