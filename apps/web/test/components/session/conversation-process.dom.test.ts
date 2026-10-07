@@ -43,6 +43,7 @@ type Fixture = {
   locate(messageID: string, partID?: string): Promise<boolean>
   reading(value: boolean): void
   retained(): number
+  summaryReads(): number
   contentRecover(id: string): void
   contentPending(id: string): void
   contentFinish(id: string): void
@@ -616,6 +617,26 @@ test("an unfocused process reader survives outer layout changes until an outer r
   await page.waitForFunction(() => !document.querySelector('[data-component="process-viewport"]'))
 })
 
+test("an already-paused process reader reacquires retention after another reader takes ownership", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => window.__conversationProcess.mode("full"))
+  await page.waitForFunction(() => document.querySelectorAll('[data-component="process-viewport"]').length === 2)
+  await page.evaluate(() => {
+    const [first, second] = document.querySelectorAll('[data-component="process-viewport"]')
+    for (const viewport of [first, second, first])
+      viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -1, bubbles: true }))
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+    window.__conversationProcess.hydrateBefore(80)
+  })
+  await page.locator("[data-scroller]").evaluate((scroller) => (scroller.scrollTop = 0))
+  await frames()
+  await frames()
+  await page.waitForFunction(() => document.querySelectorAll('[data-component="process-viewport"]').length === 1)
+  expect(await page.locator('[data-component="process-viewport"]').textContent()).toContain("Check evidence")
+  expect(await page.getByText("Continue checking", { exact: true }).count()).toBe(0)
+})
+
 test("reasoning chevrons appear on hover and focus and remain visible on touch", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
@@ -882,6 +903,27 @@ test("process edge fades blend into the conversation canvas in both themes", asy
   }
 })
 
+test("repeated process reading input does not rebuild unchanged conversation summaries", async () => {
+  await page.goto(`${url}?scrolling`)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => window.__conversationProcess.grow(600))
+  const batch = page.locator('[data-slot="activity-batch-trigger"]').last()
+  await batch.click()
+  await batch.click()
+  const viewport = page.locator('[data-component="process-viewport"]').last()
+  await viewport.waitFor()
+  await viewport.dispatchEvent("wheel", { deltaY: -1 })
+  await frames()
+  await frames()
+  const before = await page.evaluate(() => window.__conversationProcess.summaryReads())
+  for (let index = 0; index < 6; index++) {
+    await viewport.dispatchEvent("wheel", { deltaY: -1 })
+    await frames()
+  }
+  expect(await page.evaluate(() => window.__conversationProcess.summaryReads())).toBe(before)
+  expect(errors).toEqual([])
+})
+
 test("a long logical block uses a bounded independent viewport", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
@@ -1018,6 +1060,11 @@ test("local reading survives new actions, history prepend and reopening without 
   const part = page.locator('[data-slot="activity-step"][data-part-id="many-400"]')
   const before = await part.evaluate((el) => el.getBoundingClientRect().top)
   const outer = await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)
+  await page.evaluate(() => window.__conversationProcess.append("live-reading-append"))
+  await frames()
+  await frames()
+  expect(Math.abs((await part.evaluate((el) => el.getBoundingClientRect().top)) - before)).toBeLessThan(2)
+  expect(await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)).toBe(outer)
   await page.evaluate(() => window.__conversationProcess.prepend(24))
   await frames()
   expect(Math.abs((await part.evaluate((el) => el.getBoundingClientRect().top)) - before)).toBeLessThan(2)
@@ -1045,6 +1092,15 @@ test("local reading survives new actions, history prepend and reopening without 
     ),
   ).toBeLessThan(2)
   expect(await page.evaluate(() => window.__conversationProcess.retained())).toBeLessThan(120)
+  await page.locator('[data-slot="process-latest"]').last().click()
+  await page.waitForFunction(() => {
+    const part = document.querySelector('[data-part-id="live-reading-append"]')
+    const viewport = part?.closest('[data-component="process-viewport"]')
+    if (!part || !viewport) return false
+    const bounds = viewport.getBoundingClientRect(),
+      row = part.getBoundingClientRect()
+    return row.height > 0 && row.bottom > bounds.top && row.top < bounds.bottom
+  })
 }, 30000)
 
 test("compaction has one compact lifecycle row and exposes running status while collapsed", async () => {

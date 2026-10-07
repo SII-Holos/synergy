@@ -31,3 +31,5 @@ The canonical Part summary omits empty or whitespace-only reasoning from renderi
 ## Consequences
 
 Reading protection and arrival eligibility have explicit owners and lifetimes. Process windows keep bounded DOM, cached scroll positions, retained focus/selection and lazy body leases. The outer virtualizer also retains the current local reading owner, even without focus, until another process takes ownership or an outer reading gesture or locator releases it; this adds at most one retained process row. Anchor restoration adds measurement during disclosure; tests must cover virtual size commits and grouped Part offsets. Expired or offscreen receipts deliberately render statically. Automated geometry, replay, empty-content and migration tests cover regressions; physical trackpad behavior remains a device-specific check. The failure mechanism and guardrails are recorded in [the postmortem](../../../postmortem/0048-process-layout-and-arrival-ownership.md).
+
+Input notification, anchor capture and virtual mutation classification are refined by [Process reading input](2026-10-07-process-reading-input-idempotence.md) without removing pre-measurement body preservation.

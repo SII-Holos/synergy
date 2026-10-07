@@ -8,7 +8,7 @@ import type {
   SessionActivity,
 } from "@ericsanchezok/synergy-sdk"
 import type { Data } from "@ericsanchezok/synergy-ui/context/data"
-import { createSignal, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, on, Show, type ParentProps } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { render } from "solid-js/web"
 import { setupI18n } from "@lingui/core"
@@ -25,6 +25,8 @@ import { createPartMaterializer } from "../../../src/context/part-materializer"
 import { createPartArrivalState } from "../../../src/context/part-arrival"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { reasoningItemKey } from "@ericsanchezok/synergy-util/reasoning-item"
+import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
+import { captureConversationReadingAnchor } from "../../../src/components/session/conversation-reading-anchor"
 
 const root: UserMessage = {
   id: "root",
@@ -141,6 +143,22 @@ if (scenario) {
 }
 const canonicalParts =
   scenario === "late-reconnect" ? new Map(Object.entries(data.part).map(([id, parts]) => [id, [...parts]])) : undefined
+const scrolling = new URL(location.href).searchParams.has("scrolling")
+let summaryReads = 0
+const summaries = createMemo(() =>
+  Object.fromEntries(
+    Object.entries(data.part).map(([id, parts]) => [
+      id,
+      (canonicalParts?.get(id) ?? parts).map((p) => ({
+        ...p,
+        preview: "",
+        status: p.type === "tool" ? p.state.status : undefined,
+        reasoningKey: p.type === "reasoning" ? reasoningItemKey(p.metadata) : undefined,
+        content: { version: versions[p.id] ?? "v1", bytes: 64 },
+      })),
+    ]),
+  ),
+)
 let finishPage: (() => void) | undefined
 const pageReady = canonicalParts
   ? new Promise<void>((resolve) => {
@@ -247,14 +265,19 @@ const context: Partial<PluginConversationService> = {
     return () => {}
   },
   content: {
-    summaries: (id) =>
-      (canonicalParts?.get(id) ?? data.part[id]).map((p) => ({
+    summaries: (id) => {
+      if (scrolling) {
+        summaryReads++
+        return summaries()[id]
+      }
+      return (canonicalParts?.get(id) ?? data.part[id]).map((p) => ({
         ...p,
         preview: "",
         status: p.type === "tool" ? p.state.status : undefined,
         reasoningKey: p.type === "reasoning" ? reasoningItemKey(p.metadata) : undefined,
         content: { version: versions[p.id] ?? "v1", bytes: 64 },
-      })),
+      }))
+    },
     page: () => (hasPage() ? { hasMore: false } : undefined),
     load: async () => {
       await pageReady
@@ -421,6 +444,7 @@ window.__conversationProcess = {
   locate: (messageID: string, partID?: string) => locate?.(messageID, "auto", partID) ?? Promise.resolve(false),
   reading: setReading,
   retained: () => retained,
+  summaryReads: () => summaryReads,
   contentRecover(id) {
     faults.delete(id)
     setVersions(id, `${versions[id] ?? "v1"}-recovered`)
@@ -466,6 +490,35 @@ const resource = {
   resolveWorkspacePath: (v: string) => v,
   openWorkspaceSource: () => false,
 }
+function Scroller(props: ParentProps) {
+  const autoScroll = scrolling
+    ? createAutoScroll({
+        working: context.isWorking!,
+        captureReadingAnchor: ({ reading, target }) => {
+          const element = scroll()
+          if (!element || !reading) return
+          return captureConversationReadingAnchor(element, () => scroll() === element, target)
+        },
+      })
+    : undefined
+  context.autoScroll = autoScroll
+  if (autoScroll) context.scrolledUp = () => reading() || autoScroll.userScrolled()
+  createEffect(on(scroll, (element) => autoScroll?.scrollRef(element)))
+  return (
+    <div
+      ref={setScroll}
+      onScroll={() => autoScroll?.handleScroll()}
+      style="height:600px;overflow:auto;width:700px;max-width:100%"
+      data-scroller
+    >
+      <div ref={(element) => autoScroll?.contentRef(element)}>{props.children}</div>
+      <button type="button" data-outside-control>
+        Outside conversation
+      </button>
+    </div>
+  )
+}
+
 render(
   () => (
     <I18nProvider i18n={setupI18n({ locale: "en", messages: { en: {} } })}>
@@ -475,7 +528,7 @@ render(
             <MarkedProvider>
               <DiffComponentProvider component={() => null}>
                 <DataProvider data={data} runtime={runtime} directory="/project" serverUrl="http://localhost">
-                  <div ref={setScroll} style="height:600px;overflow:auto;width:700px;max-width:100%" data-scroller>
+                  <Scroller>
                     <Show when={mounted()}>
                       <VirtualConversationRows
                         takePartArrival={arrivalView.take}
@@ -487,10 +540,7 @@ render(
                         connected={connected}
                       />
                     </Show>
-                    <button type="button" data-outside-control>
-                      Outside conversation
-                    </button>
-                  </div>
+                  </Scroller>
                 </DataProvider>
               </DiffComponentProvider>
             </MarkedProvider>

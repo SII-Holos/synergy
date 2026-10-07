@@ -1,7 +1,7 @@
 import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
 import type { AssistantMessage, UserMessage, TurnExecutionState } from "@ericsanchezok/synergy-sdk"
 import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
-import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack, type JSX } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -501,10 +501,13 @@ export function VirtualConversationRows(
                     onRowReady={onRowReady}
                     onReading={(key, reading) => {
                       setReadingOwner((previous) => (reading ? key : previous === key ? undefined : previous))
-                      setReadingBlocks((previous) =>
-                        reading ? [...new Set([...previous, key])] : previous.filter((value) => value !== key),
-                      )
+                      setReadingBlocks((previous) => {
+                        const included = previous.includes(key)
+                        if (reading === included) return previous
+                        return reading ? [...previous, key] : previous.filter((value) => value !== key)
+                      })
                     }}
+                    onReadingInteraction={setReadingOwner}
                   />
                 )
               }}
@@ -523,6 +526,7 @@ function ConversationDisplayRow(
     onExit: (key: string) => void
     activityView: NonNullable<PluginConversationService["activityView"]>
     onReading?: (key: string, reading: boolean) => void
+    onReadingInteraction?: (key: string) => void
     userPresentation?: (messageID: string) => UserMessagePresentation
     located?: { messageID: string; partID?: string }
   },
@@ -946,6 +950,7 @@ function ConversationDisplayRow(
                   row={row}
                   activityView={input.activityView}
                   onReading={input.onReading}
+                  onReadingInteraction={input.onReadingInteraction}
                   submissionFor={input.submissionFor}
                   executionFor={input.executionFor}
                   connected={input.connected}
@@ -997,6 +1002,7 @@ function ConversationActivityBody(
     row: () => ConversationRow
     activityView: NonNullable<PluginConversationService["activityView"]>
     onReading?: (key: string, value: boolean) => void
+    onReadingInteraction?: (key: string) => void
   },
 ) {
   const [scroll, setScroll] = createSignal<HTMLDivElement>()
@@ -1005,6 +1011,17 @@ function ConversationActivityBody(
   const data = useData()
   const entries = () => input.row().activity?.entries ?? []
   const keys = createMemo(() => entries().map((entry) => entry.key))
+  let virtualRoot: HTMLDivElement | undefined
+  const VirtualRoot = (props: JSX.HTMLAttributes<HTMLDivElement>) => (
+    <div
+      {...props}
+      data-slot="process-virtualizer"
+      ref={(element) => {
+        virtualRoot = element
+        if (typeof props.ref === "function") props.ref(element)
+      }}
+    />
+  )
   const byKey = createMemo(() => new Map(entries().map((entry) => [entry.key, entry])))
   let viewport: HTMLDivElement | undefined
   let pause: (() => void) | undefined
@@ -1146,6 +1163,13 @@ function ConversationActivityBody(
   return (
     <ProcessViewport
       identity={`${data.serverUrl}:${data.directory}:${layoutKey}`}
+      isLayoutMutation={(record) => record.type !== "childList" || record.target !== virtualRoot}
+      onInteraction={() => {
+        if (anchorFrame !== undefined) cancelAnimationFrame(anchorFrame)
+        anchorFrame = undefined
+        input.context.autoScroll?.handleInteraction(new Event("process-reading"))
+        input.onReadingInteraction?.(input.row().key)
+      }}
       controls={(value) => {
         pause = value.pause
       }}
@@ -1163,7 +1187,7 @@ function ConversationActivityBody(
         )
         .join(";")}
       onReading={(value) => {
-        if (value) input.context.autoScroll?.handleInteraction(new Event("process-reading"))
+        if (value) input.onReadingInteraction?.(input.row().key)
         input.onReading?.(input.row().key, value)
       }}
       ref={(element) => {
@@ -1173,6 +1197,7 @@ function ConversationActivityBody(
     >
       <Show when={scroll()}>
         <Virtualizer
+          as={VirtualRoot}
           ref={setHandle}
           data={keys()}
           scrollRef={scroll()}
