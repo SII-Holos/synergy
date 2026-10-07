@@ -7,9 +7,10 @@ import * as Schema from "./schema"
 import { ConfigExtensions } from "./extensions"
 
 export namespace ConfigDomain {
-  export const Id: z.ZodEnum<Record<string, string>> = ConfigExtensions.dynamicSchema(() =>
-    z.enum([...state().byId.keys()] as [string, ...string[]]),
-  )
+  export const Id: z.ZodEnum<Record<string, string>> = ConfigExtensions.dynamicSchema(() => {
+    const instance = state()
+    return (instance.idSchema ??= z.enum([...instance.byId.keys()] as [string, ...string[]]))
+  })
   export type Id = z.infer<typeof Id>
 
   export const MergeMode = z.enum(["merge", "replace-domain", "append"])
@@ -150,7 +151,13 @@ export namespace ConfigDomain {
         byKey.set(key, domain)
       }
     }
-    return { definitions, byId, byFilename, byKey }
+    return {
+      definitions,
+      byId,
+      byFilename,
+      byKey,
+      idSchema: undefined as z.ZodEnum<Record<string, string>> | undefined,
+    }
   })
 
   export function definitions(): readonly Definition[] {
@@ -181,6 +188,7 @@ export namespace ConfigDomain {
       state().definitions.sort((a, b) => a.filename.localeCompare(b.filename, undefined, { numeric: true }))
       state().byId.set(domain.id, domain)
       state().byFilename.set(domain.filename, domain)
+      state().idSchema = undefined
     }
     for (const key of contribution.ownedKeys) {
       if (!domain.ownedKeys.includes(key)) domain.ownedKeys.push(key)

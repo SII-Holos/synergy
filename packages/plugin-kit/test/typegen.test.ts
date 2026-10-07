@@ -12,8 +12,12 @@ test("generated UI data contracts preserve schema types without importing backen
       project,
       `import { z } from "zod"
 import { definePlugin, operation, event } from "@ericsanchezok/synergy-plugin"
+const shared = z.strictObject({ value: z.string() }).meta({ id: "SharedValue" })
+const input = z.toJSONSchema(z.strictObject({ first: shared, second: shared }), { target: "draft-2020-12", io: "input", reused: "ref" })
+const tree = z.strictObject({ value: z.string(), get children() { return z.array(tree) } })
 export default definePlugin({ id: "typed-data", version: "1.0.0", description: "Typed data", contributions: [
 operation({ id: "lookup", type: "query", input: z.object({ id: z.string() }), output: z.object({ value: z.number() }), handler: async () => ({ value: 1 }) }),
+operation({ id: "inspect", type: "query", input, output: tree, handler: async () => ({ value: "root", children: [] }) }),
 event({ id: "changed", payload: z.object({ id: z.string() }) })] })`,
       "typed-data",
     )
@@ -24,6 +28,17 @@ event({ id: "changed", payload: z.object({ id: z.string() }) })] })`,
 declare const context: PluginDataContext
 const value: Promise<{ value: number }> = context.operations.query("lookup", { id: "a" })
 context.events.subscribe("changed", (payload) => { const id: string = payload.id })
+const tree: Promise<{ value: string; children: { value: string; children: unknown[] }[] }> = context.operations.query("inspect", { first: { value: "a" }, second: { value: "b" } })
+// @ts-expect-error reused references retain nested input types
+context.operations.query("inspect", { first: { value: "a" }, second: { value: 1 } })
+// @ts-expect-error reused references retain required fields
+context.operations.query("inspect", { first: { value: "a" } })
+context.operations.query("inspect", { first: { value: "a" }, second: { value: "b" } }).then(result => {
+  const child: string = result.children[0].value
+  const grandchild: string = result.children[0].children[0].value
+  // @ts-expect-error recursive output fields remain typed
+  const invalid: number = result.children[0].children[0].value
+})
 // @ts-expect-error command/query kind is part of the contract
 context.operations.command("lookup", { id: "a" })
 // @ts-expect-error declared payload type is required

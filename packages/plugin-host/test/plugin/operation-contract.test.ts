@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test"
+import { compilePluginManifest, definePlugin, operation, PluginManifest } from "@ericsanchezok/synergy-plugin"
+import { z } from "zod"
 import { PluginOperationError, resolvePluginOperation, validatePluginOperationValue } from "../../src/plugin/operation"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -38,6 +40,72 @@ describe("plugin operation contract", () => {
         expect((error as PluginOperationError).code).toBe("OUTPUT_INVALID")
       }
       expect(validatePluginOperationValue(schema, { name: "valid" }, "INPUT_INVALID")).toBeUndefined()
+    }))
+
+  test("generated manifest references enforce operation input and recursive output constraints", () =>
+    runtime.run(() => {
+      const shared = z.strictObject({ value: z.string() })
+      const tree = z.strictObject({
+        value: z.string(),
+        get children() {
+          return z.array(tree)
+        },
+      })
+      const input = z.toJSONSchema(z.strictObject({ first: shared, second: shared }), {
+        target: "draft-2020-12",
+        io: "input",
+        reused: "ref",
+      })
+      const plugin = definePlugin({
+        id: "reference-fixture",
+        version: "1.0.0",
+        description: "Generated reference validation fixture",
+        contributions: [
+          operation({
+            id: "inspect",
+            type: "query",
+            input,
+            output: tree,
+            handler: async () => ({ value: "root", children: [] }),
+          }),
+        ],
+      })
+      const manifest = PluginManifest.parse(
+        JSON.parse(
+          JSON.stringify(
+            compilePluginManifest(plugin, {
+              generation: "fixture",
+              runtime: { entry: "runtime/index.js", sha256: "0".repeat(64) },
+            }),
+          ),
+        ),
+      )
+      const contribution = resolvePluginOperation(manifest, "inspect", "ui")
+      for (const [schema, valid, invalid, code] of [
+        [
+          contribution.input,
+          { first: { value: "a" }, second: { value: "b" } },
+          { first: { value: "a" }, second: { value: 3 } },
+          "INPUT_INVALID",
+        ],
+        [
+          contribution.output,
+          { value: "root", children: [{ value: "child", children: [] }] },
+          { value: "root", children: [{ value: 3, children: [] }] },
+          "OUTPUT_INVALID",
+        ],
+      ] as const) {
+        expect(validatePluginOperationValue(schema, valid, code)).toBeUndefined()
+        expect(() => validatePluginOperationValue(schema, invalid, code)).toThrow(PluginOperationError)
+        try {
+          validatePluginOperationValue(schema, invalid, code)
+        } catch (error) {
+          expect(error).toBeInstanceOf(PluginOperationError)
+          if (!(error instanceof PluginOperationError)) throw error
+          expect(error.code).toBe(code)
+          expect(error.issues).toEqual(expect.arrayContaining([expect.objectContaining({ keyword: "type" })]))
+        }
+      }
     }))
 })
 
