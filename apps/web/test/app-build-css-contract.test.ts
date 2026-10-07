@@ -661,7 +661,7 @@ async function expectPromptDockActivityFlow(css: string) {
     const page = await browser.newPage({ viewport: { width: 1200, height: 400 } })
     await page.setContent(`
       <style>*, ::before, ::after { box-sizing: border-box; } ${css}</style>
-      <div data-dock class="session-prompt-dock" style="position: absolute; bottom: 0; width: 100%; display: flex; flex-direction: column; background: #111;">
+      <div data-dock class="session-prompt-dock safe-bottom" style="position: absolute; bottom: 0; width: 100%; display: flex; flex-direction: column; background: #111;">
         <div data-float class="${floatLayerClass}">
           <div data-busy style="height: 40px; width: 100%;"></div>
         </div>
@@ -693,33 +693,41 @@ async function expectPromptDockActivityFlow(css: string) {
     const desktop = await measure()
     expect(desktop.dockPaddingTop).toBe("0px")
     expect(desktop.dockBottom).toBe(400)
-    expect(desktop.dockHeight).toBe(128)
-    expect(desktop.composerBottom).toBe(392)
+    expect(desktop.dockHeight).toBe(136)
+    expect(desktop.composerBottom).toBe(384)
     expect(desktop.composerOffset).toBe(40)
-    expect(desktop.contentPaddingBottom).toBe("160px")
+    expect(desktop.contentPaddingBottom).toBe("168px")
+
+    await page.setViewportSize({ width: 1200, height: 800 })
+    const tallDesktop = await measure()
+    expect(tallDesktop.dockBottom).toBe(800)
+    expect(tallDesktop.dockHeight).toBe(144)
+    expect(tallDesktop.composerBottom).toBe(776)
+    expect(tallDesktop.composerOffset).toBe(40)
+    expect(tallDesktop.contentPaddingBottom).toBe("176px")
 
     await page.setViewportSize({ width: 390, height: 400 })
     const mobileBusy = await measure()
     expect(mobileBusy.dockPaddingTop).toBe("0px")
     expect(mobileBusy.dockBottom).toBe(400)
-    expect(mobileBusy.dockHeight).toBe(128)
-    expect(mobileBusy.composerBottom).toBe(392)
+    expect(mobileBusy.dockHeight).toBe(132)
+    expect(mobileBusy.composerBottom).toBe(388)
     expect(mobileBusy.composerOffset).toBe(40)
     expect(mobileBusy.contentPaddingBottom).toBe("24px")
 
     await page.evaluate(() => document.querySelector("[data-busy]")?.remove())
     const mobileIdle = await measure()
     expect(mobileIdle.dockBottom).toBe(400)
-    expect(mobileIdle.dockHeight).toBe(88)
-    expect(mobileIdle.composerBottom).toBe(392)
+    expect(mobileIdle.dockHeight).toBe(92)
+    expect(mobileIdle.composerBottom).toBe(388)
     expect(mobileIdle.composerOffset).toBe(0)
     await page.setViewportSize({ width: 1200, height: 400 })
     const desktopIdle = await measure()
     expect(desktopIdle.dockBottom).toBe(400)
-    expect(desktopIdle.dockHeight).toBe(88)
-    expect(desktopIdle.composerBottom).toBe(392)
+    expect(desktopIdle.dockHeight).toBe(96)
+    expect(desktopIdle.composerBottom).toBe(384)
     expect(desktopIdle.composerOffset).toBe(0)
-    expect(desktopIdle.contentPaddingBottom).toBe("120px")
+    expect(desktopIdle.contentPaddingBottom).toBe("128px")
   } finally {
     await browser.close()
   }
