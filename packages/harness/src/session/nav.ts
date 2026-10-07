@@ -327,11 +327,15 @@ export namespace SessionNav {
   }
 
   export async function readNavIndex(scopeID: string): Promise<ScopeNavIndex> {
+    const existing = await Storage.snapshot(async () => {
+      const index = await Storage.read<ScopeNavIndex>(StoragePath.sessionNavIndex(Identifier.asScopeID(scopeID))).catch(
+        () => undefined,
+      )
+      if (index) return SessionCompat.mergeNavIndex(scopeID, index)
+    })
+    if (existing) return existing
     return Storage.transaction(async () => {
-      const existing = await Storage.read<ScopeNavIndex>(
-        StoragePath.sessionNavIndex(Identifier.asScopeID(scopeID)),
-      ).catch(() => undefined)
-      const index = existing ?? (await readNavIndexUnlocked(scopeID))
+      const index = await readNavIndexUnlocked(scopeID)
       return (await SessionCompat.mergeNavIndex(scopeID, index)) as ScopeNavIndex
     })
   }
