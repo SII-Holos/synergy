@@ -15,6 +15,8 @@ Playwright DOM-test fixtures that boot a Vite dev server must be hermetic agains
 - Set `optimizeDeps.include` for the Solid runtime/JSX runtime/zod with `noDiscovery: true` so the optimizer never re-runs mid-load and reloads the page.
 - Scope `cacheDir` to the fixture temp directory so sibling Playwright servers sharing `apps/web/node_modules/.vite` cannot invalidate each other's optimizer cache.
 - `warmupRequest` the fixture entry before launching the browser, and surface page/console/HTTP errors in the failure message instead of a bare 30s selector timeout.
+- Set `server.watch: null` when fixture files remain immutable after setup and HMR is not under test. Native watcher shutdown can block the main thread and delay unrelated Promise continuations; a static fixture does not need that lifecycle. Keep watching for tests that exercise file changes.
+- Buffer stage, boot and console evidence by default and emit it on failure or explicit diagnostic opt-in. Settle held requests and clean resources in phases, aggregating failures; top-level `server.close()` owns Vite internals and socket draining without fixture monkeypatches.
 - Register the suite in the package's `playwrightIsolated` list so bun's worker reaping cannot kill its Chromium process mid-suite.
 
 ## Alternatives considered
