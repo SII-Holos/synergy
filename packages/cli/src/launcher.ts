@@ -85,7 +85,11 @@ export async function launch() {
       const relative = path.posix.join(selected.directory, selected.entry)
       if (generation.files[relative]?.kind !== "file")
         throw new Error("Component runner is outside its sealed generation")
-      await cli.runComponentRunner(pathToFileURL(path.join(generation.directory, relative)), selected.export)
+      await cli.runComponentRunner(
+        pathToFileURL(path.join(generation.directory, relative)),
+        selected.export,
+        resumeWorker,
+      )
       return
     }
   }
