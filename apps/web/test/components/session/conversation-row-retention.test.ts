@@ -40,6 +40,7 @@ function aliasConfig(stubPath: string) {
     "@ericsanchezok/synergy-ui/button",
     "@ericsanchezok/synergy-ui/icon",
     "@ericsanchezok/synergy-ui/icon-button",
+    "@ericsanchezok/synergy-ui/spinner",
     "@ericsanchezok/synergy-ui/semantic-icon",
     "@/utils/perf",
     "@/components/workspace/browser/browser-view-effects",
@@ -110,6 +111,7 @@ beforeAll(async () => {
         export const MessageSlotOutlet = () => null
         export const Button = (props: any) => <button type="button">{props.children}</button>
         export const Icon = () => null
+        export const Spinner = () => <span data-spinner />
         export const IconButton = () => null
         export const getSemanticIcon = () => "circle"
         export const navMark = () => {}
@@ -168,6 +170,17 @@ beforeAll(async () => {
         function App() {
           const [timeline, setTimeline] = createSignal<AnyMsg[]>([])
           const [contentEnabled, setContentEnabled] = createSignal(false)
+          const [layoutReady, setLayoutReady] = createSignal(!window.location.search.includes("admission"))
+          const [sessionID, setSessionID] = createSignal("ses_1")
+          let holdBody = false
+          const pendingBodies: { resolve(): void; reject(error: Error): void }[] = []
+          Object.assign(window, {
+            __holdBodies: () => { holdBody = true },
+            __settleBodies: () => { holdBody = false; for (const entry of pendingBodies.splice(0)) entry.resolve() },
+            __failBodies: () => { holdBody = false; for (const entry of pendingBodies.splice(0)) entry.reject(new Error("Fixture content unavailable")) },
+            __layoutReady: setLayoutReady,
+            __sessionID: setSessionID,
+          })
           let scrolledUp = false
           ;(window as any).__readingHistory = () => { scrolledUp = true }
           ;(window as any).__enableContent = () => setContentEnabled(true)
@@ -185,15 +198,15 @@ beforeAll(async () => {
             turnMessagesFor: (m: AnyMsg) => [m],
             compactionParentIDs: () => [],
           })
-          return createComponent(SessionConversation, { context: {
+          return createComponent(SessionConversation, { initialScrollSettled: layoutReady, context: {
             get content() { return contentEnabled() ? {
               summaries: id => Array.from({length: id === "huge" ? 1001 : 1}, (_, index) => ({id: "part-"+String(index).padStart(4,"0"),messageID:id,sessionID:"ses_1",type:"text",preview:"",content:{version:"one",bytes:10}})),
-              page: () => ({hasMore:false}),load: async () => {},retain: () => ({ready:Promise.resolve(),release() {}}),
+              page: () => ({hasMore:false}),load: async () => {},retain: () => ({ready:holdBody ? new Promise<void>((resolve,reject) => pendingBodies.push({resolve,reject})) : Promise.resolve(),release() {}}),
             } : undefined },
             registerMessageLocator: fn => { locate=fn; return () => { if(locate===fn) locate=undefined } },
             onFirstTurnMounted() {},
             canRewind: () => true,
-            get sessionID() { return "ses_1" },
+            get sessionID() { return sessionID() },
             get paramsDir() { return "dir" },
             get timeline() { return () => timeline() },
             get turnProjection() { return () => turnProjection() },
@@ -486,4 +499,84 @@ describe("conversation row retention", () => {
     await page.evaluate(() => window.__settleExecutions())
     expect(pageErrors).toEqual([])
   })
+})
+
+test("reveals a session only after its mounted bodies and initial scroll settle, then preserves streaming visibility", async () => {
+  await page.goto(new URL("?admission", page.url()).href)
+  await page.waitForFunction(() => typeof window.__setTimeline === "function")
+  await page.evaluate(() => {
+    const fixture = window as unknown as {
+      __holdBodies(): void
+      __layoutReady(value: boolean): void
+      __enableContent(): void
+      __setTimeline(messages: unknown[]): void
+    }
+    fixture.__holdBodies()
+    fixture.__layoutReady(false)
+    fixture.__setTimeline([{ id: "initial", sessionID: "ses_1", role: "user", text: "ready", time: { created: 1 } }])
+    fixture.__enableContent()
+  })
+  await page.waitForSelector("[data-display-row]", { state: "attached" })
+  const viewport = page.locator("[data-conversation-viewport]")
+  expect(await viewport.getAttribute("aria-hidden")).toBe("true")
+  await page.evaluate(() => (window as unknown as { __layoutReady(value: boolean): void }).__layoutReady(true))
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  )
+  expect(await viewport.getAttribute("aria-hidden")).toBe("true")
+  await page.evaluate(() => (window as unknown as { __settleBodies(): void }).__settleBodies())
+  await page.waitForSelector('[data-conversation-viewport][aria-hidden="false"]')
+  await page.evaluate(() => {
+    const fixture = window as unknown as { __holdBodies(): void; __setTimeline(messages: unknown[]): void }
+    fixture.__holdBodies()
+    fixture.__setTimeline([
+      { id: "initial", sessionID: "ses_1", role: "user", text: "updated", time: { created: 1 } },
+      { id: "stream", sessionID: "ses_1", role: "user", text: "streaming", time: { created: 2 } },
+    ])
+  })
+  expect(await viewport.getAttribute("aria-hidden")).toBe("false")
+  await page.evaluate(() => {
+    const fixture = window as unknown as {
+      __sessionID(value: string): void
+      __layoutReady(value: boolean): void
+      __setTimeline(messages: unknown[]): void
+    }
+    fixture.__layoutReady(false)
+    fixture.__sessionID("ses_2")
+    fixture.__setTimeline([{ id: "next", sessionID: "ses_2", role: "user", text: "next", time: { created: 3 } }])
+  })
+  expect(await viewport.getAttribute("aria-hidden")).toBe("true")
+  await page.evaluate(() => {
+    const fixture = window as unknown as { __settleBodies(): void; __layoutReady(value: boolean): void }
+    fixture.__settleBodies()
+    fixture.__layoutReady(true)
+  })
+  await page.waitForSelector('[data-conversation-viewport][aria-hidden="false"]')
+  expect(pageErrors).toEqual([])
+})
+
+test("terminal body failures reveal an actionable retry instead of stranding initial admission", async () => {
+  await page.goto(new URL("?admission", page.url()).href)
+  await page.waitForFunction(() => typeof window.__setTimeline === "function")
+  await page.evaluate(() => {
+    const fixture = window as unknown as {
+      __holdBodies(): void
+      __layoutReady(value: boolean): void
+      __enableContent(): void
+      __setTimeline(messages: unknown[]): void
+    }
+    fixture.__holdBodies()
+    fixture.__setTimeline([{ id: "failed", sessionID: "ses_1", role: "user", text: "failed", time: { created: 1 } }])
+    fixture.__enableContent()
+    fixture.__layoutReady(true)
+  })
+  await page.waitForSelector("[data-display-row]", { state: "attached" })
+  expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBe("true")
+  await page.evaluate(() => (window as unknown as { __failBodies(): void }).__failBodies())
+  await page.waitForSelector('[data-conversation-viewport][aria-hidden="false"]')
+  expect(await page.locator("[data-content-error] button").count()).toBe(1)
+  await page.locator("[data-content-error] button").click()
+  await page.waitForSelector("[data-content-error]", { state: "detached" })
+  expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBe("false")
+  expect(pageErrors).toEqual([])
 })

@@ -26,6 +26,7 @@ beforeAll(async () => {
       context,
       `
       import { createSignal } from "solid-js"
+      import { createSessionPreparationCache } from ${JSON.stringify(`/@fs/${source}/context/session-preparation-cache.ts`)}
       import { setupI18n } from "@lingui/core"
       import { createReactiveI18n } from ${JSON.stringify(`/@fs/${source}/context/locale/reactive-i18n.ts`)}
       const mode = new URLSearchParams(location.search).get("mode")
@@ -38,13 +39,14 @@ beforeAll(async () => {
         "app.upgrade.leave": "返回工作区",
       } } })
       const i18n = createReactiveI18n(core, generation)
+      const sessionPreparation = createSessionPreparationCache()
       let ready = false
       let late: (() => void) | undefined
       const requests: Array<{ action: string; sessionID: string; signal: AbortSignal }> = []
       const value = (sessionID: string, state: string) => ({ sessionID, state, files: 7, bytes: 100 })
       async function request(action, input, options) {
         requests.push({ action, sessionID: input.sessionID, signal: options.signal })
-        if (input.sessionID === "fresh" || url() === "two") return { data: value(input.sessionID, "ready") }
+        if (mode === "warm" || input.sessionID === "fresh" || url() === "two") return { data: value(input.sessionID, "ready") }
         if (mode === "slow") return new Promise(resolve => { late = () => resolve({ data: value(input.sessionID, "blocked") }) })
         if (mode === "failed" && action === "prepare") throw new Error("Storage temporarily unavailable")
         return { data: value(input.sessionID, mode === "blocked" ? "blocked" : action === "retry" || ready ? "ready" : "preparing") }
@@ -53,7 +55,7 @@ beforeAll(async () => {
       export const useNavigate = () => () => setID("")
       export const useServer = () => ({ get url() { return url() } })
       export const useLocale = () => ({ i18n })
-      export const useGlobalSDK = () => ({ client: { storage: {
+      export const useGlobalSDK = () => ({ sessionPreparation, client: { storage: {
         prepareSession: (input, options) => request("prepare", input, options),
         upgradeSession: (input, options) => request("poll", input, options),
         retrySession: (input, options) => request("retry", input, options),
@@ -63,6 +65,7 @@ beforeAll(async () => {
         complete: () => { ready = true },
         locale: () => { core.activate("zh-CN"); setGeneration(n => n + 1) },
         navigate: () => setID("fresh"),
+        navigateTo: (id: string) => setID(id),
         submit: () => setID("created"),
         switchServer: () => setURL("two"),
         late: () => late?.(),
@@ -79,13 +82,14 @@ beforeAll(async () => {
       import { I18nProvider } from "@lingui/solid"
       import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
       import { MarkedProvider } from "@ericsanchezok/synergy-ui/context/marked"
-      import { SessionPreparation } from ${JSON.stringify(`/@fs/${source}/components/session/session-preparation.tsx`)}
+      import { SessionPreparation, useSessionPreparation } from ${JSON.stringify(`/@fs/${source}/components/session/session-preparation.tsx`)}
       import { SessionTransitionProvider } from ${JSON.stringify(`/@fs/${source}/context/session-transition.tsx`)}
       import { core, fixture } from "./context"
       window.mounts = 0
       function Transcript() {
         onMount(() => window.mounts++)
-        return <div data-transcript>{fixture.id() || "workspace"}</div>
+        const preparation = useSessionPreparation()
+        return <div data-transcript data-ready={preparation.ready()}>{fixture.id() || "workspace"}</div>
       }
       function Fixture() {
         return <SessionPreparation><Transcript /></SessionPreparation>
@@ -138,6 +142,7 @@ interface FixtureWindow extends Window {
     complete(): void
     locale(): void
     navigate(): void
+    navigateTo(id: string): void
     submit(): void
     switchServer(): void
     late(): void
@@ -228,3 +233,23 @@ test.each(["navigate", "switchServer"] as const)(
     expect(errors).toEqual([])
   },
 )
+
+test("returning to a prepared session keeps cached content admitted without another storage request", async () => {
+  await page.goto(`${baseUrl}?mode=warm`)
+  await page.locator('[data-transcript][data-ready="true"]').waitFor()
+  await page.evaluate(() => (window as unknown as FixtureWindow).fixture.navigate())
+  await page.waitForFunction(
+    () =>
+      document.querySelector("[data-transcript]")?.textContent === "fresh" &&
+      document.querySelector("[data-transcript]")?.getAttribute("data-ready") === "true",
+  )
+  const admitted = await page.evaluate(() => {
+    ;(window as unknown as FixtureWindow).fixture.navigateTo("history")
+    return {
+      ready: document.querySelector("[data-transcript]")?.getAttribute("data-ready"),
+      requests: (window as unknown as FixtureWindow).fixture.requests().length,
+    }
+  })
+  expect(admitted).toEqual({ ready: "true", requests: 2 })
+  expect(errors).toEqual([])
+})

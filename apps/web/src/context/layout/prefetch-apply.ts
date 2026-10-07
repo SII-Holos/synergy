@@ -5,7 +5,7 @@ import type { SessionPartSnapshotAction } from "../session-part-snapshot-freshne
 
 type PartRef = { id: string }
 
-type PrefetchPageItem<M, P extends PartRef> = { info: M; parts: P[] }
+type PrefetchPageItem<M, P extends PartRef> = { info: M; parts?: P[] }
 
 type PrefetchPage<M, P extends PartRef> = {
   items: PrefetchPageItem<M, P>[]

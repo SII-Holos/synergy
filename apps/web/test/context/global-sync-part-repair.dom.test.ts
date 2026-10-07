@@ -160,6 +160,52 @@ test("part repair preserves history, diffs, and compaction ownership", async () 
       h.complete("repair", { scopeID: "scope-repair", provider: { all: [] }, agent: [], config: {} })
       await h.waitComplete(retained.state)
       const [state, setState] = retained.state
+      const content = {
+        pages: {
+          warm: {
+            items: [
+              {
+                id: "body",
+                messageID: "warm",
+                sessionID: "fixture-session",
+                type: "text" as const,
+                preview: "",
+                content: { version: "current", bytes: 12 },
+              },
+            ],
+            hasMore: false,
+            hasEarlier: false,
+            nextCursor: null,
+            previousCursor: null,
+          },
+        },
+        bodies: [
+          {
+            part: {
+              id: "body",
+              messageID: "warm",
+              sessionID: "fixture-session",
+              type: "text" as const,
+              text: "cached",
+            },
+            version: "current",
+          },
+          {
+            part: { id: "body", messageID: "warm", sessionID: "fixture-session", type: "text" as const, text: "stale" },
+            version: "old",
+          },
+        ],
+      }
+      const before = api.contentBudget.bytes
+      api.seedSessionViewportContent("repair", content)
+      expect(state.partSummary.warm?.[0]?.content.version).toBe("current")
+      expect(state.partPage.warm?.hasMore).toBe(false)
+      expect(state.part.warm?.[0]).toMatchObject({ text: "cached" })
+      expect(state.partVersion.body).toBe("current")
+      expect(api.contentBudget.bytes).toBe(before + 24)
+      api.contentBudget.publish("pressure", "one", 128 * 1024 * 1024, () => {})
+      expect(state.part.warm).toEqual([])
+      api.contentBudget.remove("pressure")
       const sessionID = "fixture-session"
       let seq = 0
       const tick = () => new Promise((resolve) => setTimeout(resolve, 0))

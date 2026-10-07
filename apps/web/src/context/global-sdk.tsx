@@ -10,6 +10,7 @@ import { useServer } from "./server"
 import { streamingTokenReceipt } from "./streaming-token-event"
 import { createRuntimeCapabilities } from "./runtime-capabilities"
 import { createContentSubscriptions, projectContentSummary } from "./content-subscriptions"
+import { createSessionPreparationCache } from "./session-preparation-cache"
 
 const PING_INTERVAL = 20_000
 const PONG_TIMEOUT = 10_000
@@ -23,6 +24,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     const sdk = createSynergyClient({ baseUrl: server.url, fetch: platform.fetch, throwOnError: true })
     const capabilities = createRuntimeCapabilities(async () => (await sdk.global.capabilities()).data!)
     const drafts = createDraftSessionIndex(server.url)
+    const sessionPreparation = createSessionPreparationCache()
     onCleanup(() => drafts.dispose())
     const emitter = createGlobalEmitter<{
       [key: string]: Event
@@ -65,6 +67,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     }
 
     const markDisconnected = () => {
+      sessionPreparation.clear()
       capabilities.reset()
       setConnected(false)
       setDisconnectedAt(Date.now())
@@ -205,6 +208,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       disconnectedAt,
       drafts,
       content: contentSubscriptions,
+      sessionPreparation,
       prepareScopeState(scopes: Parameters<typeof server.scopes.prepare>[0]) {
         server.scopes.prepare(scopes)
         drafts.rebuildDraftSessionIndex()

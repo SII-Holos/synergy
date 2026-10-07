@@ -36,6 +36,11 @@ export const useGlobalSync=()=>({retainContentCache:(_key,create)=>({cache:creat
   beginContextProjection:()=>0,
   partSnapshotAction:()=>'apply',
   applyResourceResponse:(_scopeKey,_sessionID,_resource,_request,_headers,apply)=>{apply();return true},
+  seedSessionViewportContent:(_scope,content)=>{
+    for(const [id,{items,...page}] of Object.entries(content.pages)) {
+      state[1]('partSummary',id,items);state[1]('partPage',id,page);
+    }
+  },
   setLatestContextMessage:()=>{},
   touchMessageBucket:()=>{},
   invalidateResource:()=>{},

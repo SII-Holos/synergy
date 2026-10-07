@@ -14,6 +14,8 @@ Draft captures retain the original cache entry through asynchronous work. Mutati
 
 A component mount belongs to plugin + generation + server + Scope + optional Session + contribution + optional resource. Its lifetime owns requests, subscriptions, menus, commands, portals and native view bindings. Bound services check lifetime, identity and capability before acting and after asynchronous completion. Unmounting UI does not undo an operation accepted by the server. Command registrations publish only after their owning render transition commits; disposal before commit prevents publication.
 
+Shell surfaces retain a successfully loaded component by entry and loader identity across Session changes. Every Session still receives a new bound service lifetime, and stale or failed loads cannot populate that retained component. Entry or loader replacement starts a new module load. See [Session switch admission](../decisions/implemented/bug-fix/2026-10-07-session-switch-display-admission.md).
+
 Session collections adapt existing Scope state. Session detail reads adapt the active message window and parts. The domain controller retains paging, replay/reconcile, optimistic metadata and bounded rendering. No UI component creates an EventSource or performs an event-driven REST polling loop.
 
 Workbench tabs and resource close policies remain in the workbench domain. Public handles update existing tab state, register owner-scoped close guards and preserve the persisted layout. Resource-open presentation uses the current native presenter and an identity-safe disposer; there is no fire-and-forget window-event transport that can silently drop an action.
