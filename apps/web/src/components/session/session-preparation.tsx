@@ -32,16 +32,17 @@ export function SessionPreparation(props: { children: JSX.Element }) {
   const params = useParams()
   const sdk = useGlobalSDK()
   const server = useServer()
-  const [status, setStatus] = createSignal<StorageSessionPreparation>()
+  const [status, setStatus] = createSignal<{ server: string; value: StorageSessionPreparation }>()
   const [failed, setFailed] = createSignal(false)
   const [mounted, setMounted] = createSignal(!params.id)
   let retry: (() => Promise<void>) | undefined
   createEffect(() => {
-    server.url
+    const url = server.url
     const sessionID = params.id
-    setStatus(undefined)
+    const cached = sessionID ? sdk.sessionPreparation.get(url, sessionID) : undefined
+    setStatus(cached ? { server: url, value: cached } : undefined)
     setFailed(false)
-    if (!sessionID) return
+    if (!sessionID || cached) return
     const controller = createSessionPreparationController({
       prepare: async (signal) =>
         (await sdk.client.storage.prepareSession({ sessionID }, { signal, throwOnError: true })).data!,
@@ -50,8 +51,9 @@ export function SessionPreparation(props: { children: JSX.Element }) {
       retry: async (signal) =>
         (await sdk.client.storage.retrySession({ sessionID }, { signal, throwOnError: true })).data!,
       publish: (value) => {
+        sdk.sessionPreparation.set(url, value)
         setFailed(false)
-        setStatus(value)
+        setStatus({ server: url, value })
       },
       failed: () => setFailed(true),
       hidden: () => document.hidden,
@@ -63,7 +65,13 @@ export function SessionPreparation(props: { children: JSX.Element }) {
       retry = undefined
     })
   })
-  const ready = () => !params.id || (status()?.sessionID === params.id && status()?.state === "ready")
+  const currentStatus = () =>
+    status()?.server === server.url && status()?.value.sessionID === params.id
+      ? status()?.value
+      : params.id
+        ? sdk.sessionPreparation.get(server.url, params.id)
+        : undefined
+  const ready = () => !params.id || currentStatus()?.state === "ready"
   createEffect(() => {
     if (ready()) setMounted(true)
   })
@@ -71,7 +79,7 @@ export function SessionPreparation(props: { children: JSX.Element }) {
     <SessionPreparationContext.Provider
       value={{
         ready,
-        status,
+        status: currentStatus,
         failed,
         retry: () => {
           setFailed(false)

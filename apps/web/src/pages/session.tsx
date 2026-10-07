@@ -1313,7 +1313,7 @@ function SessionPageContent() {
       // see the partially laid-out document and would flash the jump button;
       // afterwards they keep the button honest when content grows without
       // firing scroll events.
-      if (!initialScrollSettled) return
+      if (initialScrollSettled() !== params.id) return
       setScrolledUp(distance > 100)
     },
   })
@@ -1326,7 +1326,7 @@ function SessionPageContent() {
   let scrollSpyTarget: HTMLDivElement | undefined
   let initScrollFrame: number | undefined
   let historyScrollFrame: number | undefined
-  let initialScrollSettled = false
+  const [initialScrollSettled, setInitialScrollSettled] = createSignal<string>()
 
   const anchor = (id: string) => `message-${id}`
 
@@ -1652,7 +1652,7 @@ function SessionPageContent() {
 
         if (initializedSessions.has(sessionID)) return
         initializedSessions.add(sessionID)
-        initialScrollSettled = false
+        setInitialScrollSettled(undefined)
 
         const afterLayoutSettles = (fn: () => void) => {
           initScrollFrame = requestAnimationFrame(() => {
@@ -1668,41 +1668,46 @@ function SessionPageContent() {
           const hash = window.location.hash.slice(1)
           if (!hash) {
             afterLayoutSettles(() => {
-              initialScrollSettled = true
+              setInitialScrollSettled(sessionID)
               autoScroll.forceScrollToBottom({ untilInteraction: true })
             })
             return
           }
 
           afterLayoutSettles(() => {
-            initialScrollSettled = true
             const hashTarget = document.getElementById(hash)
             if (hashTarget) {
               hashTarget.scrollIntoView({ behavior: "auto", block: "start" })
+              setInitialScrollSettled(sessionID)
               return
             }
 
             const match = hash.match(/^message-(.+)$/)
             if (match) {
               if (messageLocator) {
-                void locateMessage(match[1])
+                void locateMessage(match[1]).finally(() => {
+                  if (params.id === sessionID) setInitialScrollSettled(sessionID)
+                })
                 return
               }
               const anyMessage = messages().find((message) => message.id === match[1])
               if (anyMessage) {
                 const el = document.getElementById(hash)
                 if (el) el.scrollIntoView({ behavior: "auto", block: "center" })
+                setInitialScrollSettled(sessionID)
                 return
               }
 
               const msg = visibleUserMessages().find((m) => m.id === match[1])
               if (msg) {
                 scrollToMessage(msg, "auto")
+                setInitialScrollSettled(sessionID)
                 return
               }
             }
 
             autoScroll.forceScrollToBottom({ untilInteraction: true })
+            setInitialScrollSettled(sessionID)
           })
         })
       },
@@ -2194,7 +2199,17 @@ function SessionPageContent() {
                 (preparation.ready() && !isNewSession() && conversationLoadView().type === "conversation")
               }
             >
-              <SessionConversation context={conversation} />
+              <SessionConversation
+                context={conversation}
+                initialScrollSettled={() =>
+                  !!submissionDraft()?.message ||
+                  !params.id ||
+                  (sdk.connected() &&
+                    globalSync.reconnectVersion() > 0 &&
+                    !globalSync.scopeRecoveryPending(sdk.scopeKey) &&
+                    initialScrollSettled() === params.id)
+                }
+              />
             </Match>
             <Match when={!preparation.ready()}>
               <SessionPreparationNotice />
