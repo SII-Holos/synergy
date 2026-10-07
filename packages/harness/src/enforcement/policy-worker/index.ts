@@ -35,6 +35,7 @@ export namespace PolicyWorker {
     return {
       activeWorkspace: options.activeWorkspace,
       pathMode: options.pathMode,
+      virtualRoot: options.virtualRoot,
       workspaceType: options.workspaceType,
       registeredMcpTools: [...(options.registeredMcpTools ?? [])],
       registeredPluginTools: [...(options.registeredPluginTools ?? [])],

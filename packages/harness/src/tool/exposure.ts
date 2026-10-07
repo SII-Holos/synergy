@@ -1,6 +1,6 @@
 import { RuntimeContext } from "../lifecycle/context"
 export namespace ToolExposure {
-  export type Info =
+  export type Info = (
     | {
         mode: "resident"
       }
@@ -19,6 +19,10 @@ export namespace ToolExposure {
     | {
         mode: "internal"
       }
+  ) & {
+    /** Required tools co-exposed transitively; unavailable companions suppress the dependent tool. */
+    companions?: readonly string[]
+  }
 
   export interface GroupInfo {
     id: string
@@ -180,6 +184,7 @@ export namespace ToolExposure {
     const normalized = normalize(toolID, exposure)
     if (normalized.mode !== "resident") return normalized
     return {
+      companions: normalized.companions,
       mode: "group",
       group: ORCHESTRATION_GROUP,
       title: ORCHESTRATION_GROUP_INFO.title,
@@ -222,6 +227,33 @@ export namespace ToolExposure {
     if (userTools[toolID] === true) return true
     if (userTools[toolID] === false) return false
     return userTools["*"] !== false
+  }
+
+  /** Apply companion closure only to candidates that already passed all availability and authorization filters. */
+  export function resolveVisibility(
+    tools: readonly { id: string; exposure?: Info }[],
+    state: ToolState | undefined,
+    options?: { forcedGroups?: Iterable<string>; forcedTools?: Iterable<string> },
+  ) {
+    const exposures = new Map(tools.map((tool) => [tool.id, normalize(tool.id, tool.exposure)]))
+    const available = new Set(exposures.keys())
+    let changed = true
+    while (changed) {
+      changed = false
+      for (const id of available) {
+        if (
+          exposures
+            .get(id)
+            ?.companions?.some((other) => !available.has(other) || exposures.get(other)?.mode === "internal")
+        ) {
+          available.delete(id)
+          changed = true
+        }
+      }
+    }
+    const visible = new Set([...available].filter((id) => isVisible(id, exposures.get(id), state, options)))
+    for (const id of visible) for (const other of exposures.get(id)?.companions ?? []) visible.add(other)
+    return { available, visible }
   }
 
   export function groupTable(groups: GroupInfo[] = groupState().groups): string {

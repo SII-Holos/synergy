@@ -5,6 +5,7 @@ import type { ClassifyResult, PluginToolCapabilityMap } from "../gate"
 export interface PolicyClassificationContext {
   pathMode?: "native" | "relative" | "posix" | "win32"
   activeWorkspace: string | null
+  virtualRoot?: string
   workspaceType: string
   registeredMcpTools: string[]
   registeredPluginTools: string[]
@@ -49,6 +50,7 @@ export namespace PolicyWorkerProtocol {
     .object({
       pathMode: z.enum(["native", "relative", "posix", "win32"]).optional(),
       activeWorkspace: z.string().nullable(),
+      virtualRoot: z.string().optional(),
       workspaceType: z.string(),
       registeredMcpTools: z.array(z.string()),
       registeredPluginTools: z.array(z.string()),

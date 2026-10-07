@@ -14,13 +14,17 @@ import { Provider } from "../../src/provider/provider"
 import { Agent } from "../../src/agent/agent"
 import { PermissionNext } from "../../src/permission/next"
 
-test("object file tools remain available and authorized without allocating compute or requiring a directory", async () => {
+test.each([
+  { tool: "read", filePath: "src/file.ts", virtualRoot: undefined },
+  { tool: "read", filePath: "/workspace/src/file.ts", virtualRoot: "/workspace" },
+  { tool: "write", filePath: "/workspace/src/file.ts", virtualRoot: "/workspace" },
+])("object $tool authorizes $filePath without allocating compute", async ({ tool, filePath, virtualRoot }) => {
   let calls = 0
   await using runtime = await testRuntime({
     register() {
       ToolRegistry.registerToolProvider("fixture", () => [
         Tool.define(
-          "read",
+          tool,
           {
             description: "Object file fixture",
             parameters: z.object({ filePath: z.string() }),
@@ -42,7 +46,7 @@ test("object file tools remain available and authorized without allocating compu
       fn: async () => {
         const workspace = await WorkspaceCatalog.create({
           scopeID: Scope.home().id,
-          backend: { provider: "objects", spec: { blobStore: "fixture" } },
+          backend: { provider: "objects", spec: { blobStore: "fixture", ...(virtualRoot ? { virtualRoot } : {}) } },
         })
         const session = await Session.create({ workspaceID: workspace.id, controlProfile: "autonomous" })
         const model: Provider.Model = {
@@ -102,11 +106,11 @@ test("object file tools remain available and authorized without allocating compu
               sessionID: session.id,
               session,
               processor,
-              userTools: { read: true },
+              userTools: { [tool]: true },
               includeMCP: false,
             })
-            const execute = resolved.executionTools.read.execute!
-            expect(await execute({ filePath: "src/file.ts" }, { toolCallId: "call_api", messages: [] })).toMatchObject({
+            const execute = resolved.executionTools[tool].execute!
+            expect(await execute({ filePath }, { toolCallId: "call_api", messages: [] })).toMatchObject({
               output: "API result",
             })
           } finally {

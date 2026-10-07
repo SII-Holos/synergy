@@ -109,6 +109,8 @@ export interface PluginApprovalCapabilities {
 export interface GateOptions {
   pathMode?: PathClassifier.Options["pathMode"]
   activeWorkspace: string | null
+  /** Logical file-tool namespace. Shell commands retain their physical Workspace boundary. */
+  virtualRoot?: string
   workspaceType: string
   profileId?: ProfileIdInput
   registeredMcpTools?: Set<string>
@@ -198,6 +200,7 @@ function classifyPathCapability(
   options: {
     activeWorkspace: string | null
     pathMode?: PathClassifier.Options["pathMode"]
+    virtualRoot?: string
     originalCheckout?: string
     write?: boolean
     readRoots?: string[]
@@ -216,6 +219,7 @@ function classifyPathCapability(
   const classification = PathClassifier.classifyPath(pathInput, {
     workspace: options.activeWorkspace,
     pathMode: options.pathMode,
+    virtualRoot: options.virtualRoot,
     originalCheckout: options.originalCheckout,
     followFinalSymlink: options.followFinalSymlink,
   })
@@ -281,6 +285,7 @@ export namespace EnforcementGate {
     const {
       activeWorkspace,
       pathMode,
+      virtualRoot,
       workspaceType,
       profileId: rawProfileId = "guarded",
       registeredMcpTools = new Set<string>(),
@@ -320,7 +325,7 @@ export namespace EnforcementGate {
         approvedReadPaths.add(grant)
       }
     }
-    const pathOptions = { activeWorkspace, pathMode, originalCheckout, readRoots, trustedRoots }
+    const pathOptions = { activeWorkspace, pathMode, virtualRoot, originalCheckout, readRoots, trustedRoots }
     let approvedNetwork = false
     const approvalCache = new ApprovalCache()
 

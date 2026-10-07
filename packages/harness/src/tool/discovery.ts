@@ -40,7 +40,7 @@ export namespace ToolDiscovery {
     const groupByID = new Map(ToolExposure.groups().map((group) => [group.id, { ...group, tools: [...group.tools] }]))
     const tools: Entry[] = []
 
-    for (const item of await ToolRegistry.tools(input.providerID, input.agent)) {
+    for (const item of await ToolRegistry.tools(input.providerID, input.agent, input.session?.workspaceID)) {
       const exposure = ToolExposure.normalize(item.id, item.exposure)
       const group = ToolExposure.groupInfoFromExposure(item.id, exposure)
       if (group) mergeGroup(groupByID, group)
@@ -128,6 +128,23 @@ export namespace ToolDiscovery {
       }
     }
 
+    const available = ToolExposure.resolveVisibility(
+      tools.filter((tool) => !disabled.has(tool.id)),
+      input.session?.toolState,
+    ).available
+    for (const tool of tools) {
+      if (available.has(tool.id) || disabled.has(tool.id)) continue
+      disabled.add(tool.id)
+      diagnostics.set(
+        tool.id,
+        SessionModePolicy.unavailable({
+          toolName: tool.id,
+          reason: "permission",
+          session: input.session,
+        }),
+      )
+    }
+
     return {
       groups: [...groupByID.values()].sort((a, b) => a.id.localeCompare(b.id)),
       tools,
@@ -145,7 +162,7 @@ export namespace ToolDiscovery {
 
   export function nonResidentEntries(catalog: Catalog): ToolExposure.SearchEntry[] {
     const activeGroups = new Set(catalog.state.expandedGroups)
-    const activeTools = new Set(catalog.state.activatedTools)
+    const activeTools = new Set(visibleTools(catalog))
     const groups = availableGroups(catalog).map(
       (group): ToolExposure.SearchEntry => ({
         type: "group",
@@ -170,10 +187,7 @@ export namespace ToolDiscovery {
           group: tool.group,
           groupTitle: tool.groupTitle,
           keywords: tool.keywords,
-          active:
-            tool.exposure.mode === "search"
-              ? activeTools.has(tool.id)
-              : Boolean(tool.group && activeGroups.has(tool.group)),
+          active: activeTools.has(tool.id),
         }),
       )
 
@@ -181,11 +195,13 @@ export namespace ToolDiscovery {
   }
 
   export function visibleTools(catalog: Catalog, forcedGroups?: Iterable<string>, forcedTools?: Iterable<string>) {
-    return catalog.tools
-      .filter((tool) => ToolExposure.isVisible(tool.id, tool.exposure, catalog.state, { forcedGroups, forcedTools }))
-      .filter((tool) => !catalog.disabled.has(tool.id))
-      .map((tool) => tool.id)
-      .sort()
+    return [
+      ...ToolExposure.resolveVisibility(
+        catalog.tools.filter((tool) => !catalog.disabled.has(tool.id)),
+        catalog.state,
+        { forcedGroups, forcedTools },
+      ).visible,
+    ].sort()
   }
 
   function mergeGroup(groupByID: Map<string, ToolExposure.GroupInfo>, incoming: ToolExposure.GroupInfo) {

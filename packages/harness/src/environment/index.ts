@@ -292,14 +292,14 @@ export namespace Environment {
     if (providerRequests().has(id)) return info
     return providerRequest(id, async () => {
       if (!info.allocation) return info
-      const status = await EnvironmentProviders.get(info.provider).inspect(requestOf(info))
+      const provider = EnvironmentProviders.get(info.provider)
+      if (info.state === "releasing") {
+        await releaseResources(info)
+        await provider.deallocate(requestOf(info))
+        return updateAllocation(info, undefined)
+      }
+      const status = await provider.inspect(requestOf(info))
       if (status.state === "pending") {
-        const provider = EnvironmentProviders.get(info.provider)
-        if (info.state === "releasing") {
-          await releaseResources(info)
-          await provider.deallocate(requestOf(info))
-          return updateAllocation(info, undefined)
-        }
         if (info.state !== "allocating" || !provider.resume || (await uses(id)).length)
           return updateAllocation(info, "unknown")
         return updateAllocation(info, await provider.resume(requestOf(info)))
@@ -310,11 +310,6 @@ export namespace Environment {
         for (const lost of lostResources().values()) retained = (await lost(info)) || retained
         if (retained) return updateAllocation(info, "unknown")
         if ((await uses(id)).length) return updateAllocation(info, "unknown")
-        return updateAllocation(info, undefined)
-      }
-      if (info.state === "releasing") {
-        await releaseResources(info)
-        await EnvironmentProviders.get(info.provider).deallocate(requestOf(info))
         return updateAllocation(info, undefined)
       }
       return updateAllocation(info, status.allocation)
@@ -334,7 +329,7 @@ export namespace Environment {
         await reconcile(key[1], scopeID)
       } catch {
         const info = await get(key[1], scopeID)
-        await updateAllocation(info, "unknown")
+        if (info.state !== "releasing") await updateAllocation(info, "unknown")
       }
       progress?.()
     }
