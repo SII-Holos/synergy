@@ -116,11 +116,10 @@ export namespace SessionSearchIndex {
     return { tool: joined.slice(0, TOOL_TEXT_CAP), truncated: true }
   }
 
-  /** One searchable line per attachment: filename plus URL. `data:` URLs carry
-   * whole base64 payloads (provider-file attachments keep them intact by
-   * design), so anything larger than DATA_URL_CAP is replaced by a size marker
-   * instead of being copied into the cache — clean queries never parse
-   * megabytes of inline payload. */
+  /** One searchable line per attachment: filename plus URL. Historical `data:`
+   * URLs can carry whole base64 payloads, so anything larger than DATA_URL_CAP
+   * is replaced by a size marker instead of being copied into the cache —
+   * clean queries never parse megabytes of inline payload. */
   function attachmentRefText(filename: string | undefined, url: string | undefined, mime?: string): string[] {
     const refs: string[] = []
     if (filename) refs.push(filename)

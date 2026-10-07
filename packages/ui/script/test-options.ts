@@ -3,6 +3,8 @@ import type { TestRunnerOptions } from "../../../script/shared/test-runner"
 export const testOptions = {
   timeoutMs: 120000,
   isolated: [
+    "test/markdown-resources.test.ts",
+    "test/markdown-sanitize.test.ts",
     "test/components/iframe-focus.browser.test.ts",
     "test/components/review-viewer.dom.test.ts",
     "test/components/message-readers.render.test.ts",

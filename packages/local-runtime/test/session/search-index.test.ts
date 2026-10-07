@@ -369,7 +369,7 @@ describe("session.search-index", () => {
       })
     }))
 
-  test("oversized data URLs are bounded to a size marker instead of copied into the record", () =>
+  test("oversized provider-file uploads are indexed by their managed reference", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
@@ -387,9 +387,6 @@ describe("session.search-index", () => {
             mime: "application/pdf",
             filename: "bigdata-unique-3f1a.pdf",
             url: `data:application/pdf;base64,${payload}`,
-            // provider-file attachments keep their data: URL inline (instead of
-            // externalizing to asset://), which is exactly when the indexer must
-            // bound the payload.
             model: { mode: "provider-file" },
           } as MessageV2.Part)
 
@@ -397,14 +394,32 @@ describe("session.search-index", () => {
           const record = await SessionSearchIndex.rebuildSession(scopeID, Identifier.asSessionID(session.id))
           const attachment = record.messages[0]!.attachment!
 
-          // The filename stays searchable, the raw payload does not enter the
-          // cache, and a bounded size marker makes the omission observable.
           expect(attachment).toContain("bigdata-unique-3f1a.pdf")
           expect(attachment).not.toContain(payload)
-          expect(attachment).toMatch(/\(\d+-byte inline payload\)/)
+          expect(attachment).toMatch(/\nasset:\/\/[a-f0-9]+\.pdf$/)
+          expect(attachment.length).toBeLessThan(512)
         },
       })
     }))
+
+  test("historical oversized inline attachments remain bounded in both search paths", () => {
+    const payload = "x".repeat(100_000)
+    const part: MessageV2.AttachmentPart = {
+      id: Identifier.ascending("part"),
+      sessionID: "ses_legacy",
+      messageID: "msg_legacy",
+      type: "attachment",
+      mime: "application/pdf",
+      filename: "legacy-large.pdf",
+      url: `data:application/pdf;base64,${payload}`,
+      model: { mode: "provider-file" },
+    }
+    const entry = SessionSearchIndex.messageEntryFromParts(userMessage(part.sessionID, part.messageID, 1), [part])
+    expect(entry.attachment).toContain(part.filename!)
+    expect(entry.attachment).not.toContain(payload)
+    expect(entry.attachment).toContain(`(${part.url.length}-byte inline payload)`)
+    expect(SessionSearchIndex.partsSearchText([part], "all")).toBe(entry.attachment!)
+  })
 
   test("attachments nested in completed tool state join the attachment index", () =>
     runtime.run(async () => {

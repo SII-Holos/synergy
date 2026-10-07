@@ -19,6 +19,8 @@ Cross project-folder changes with the scheduled janitor: retain a dirty bound ta
 
 In DOM fixtures, give browser navigation a separate bounded budget from interaction assertions. The test-framework budget must cover first-load module preparation on shared CI runners without weakening the component's behavior assertions.
 
+Tests that replace global DOM objects and load DOM-bound modules must use the owning runner's process-isolation list. Restoring globals or closing a JSDOM window does not rebind cached libraries such as DOMPurify; verify resource rendering and sanitization in their isolated batches.
+
 Await returned Solid navigation transitions before simulating later canonical admission in browser fixtures, matching the production submit order. Give production-host startup and history import their own bounded setup lifecycle; retain separate interaction deadlines, dataset size, CPU throttling and behavior assertions, and close that fixture before another host starts.
 
 Distinguish model disconnects from watchdog timeouts. Hold an actual upstream response until the client aborts, and require the matching first-byte or idle watchdog metric before counting the phase. Complete real model work before and after the timeout sequence and independently count any earlier tool side effect. Match delegated fixture roles by an unambiguous identity token; descriptive text appended by the model must not prevent observing the real child task.

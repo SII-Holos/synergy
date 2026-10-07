@@ -853,7 +853,7 @@ describe("tool exposure", () => {
           expect(ids.has("edit")).toBe(true)
           expect(ids.has("write")).toBe(true)
           expect(ids.has("process")).toBe(true)
-          expect(ids.has("attach")).toBe(true)
+          expect(ids.has("attach")).toBe(false)
           expect(ids.has("render")).toBe(true)
           expect(ids.has("search_tools")).toBe(true)
           expect(ids.has("expand_tools")).toBe(true)
