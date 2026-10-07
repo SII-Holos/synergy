@@ -43,11 +43,11 @@ export async function materializeAttachmentInput(
         message.content.map(async (part) => {
           if (part.type === "image") {
             const image = await resolve(part.image, part.mediaType)
-            return image ? { ...part, image: new URL(image) } : part
+            return { ...part, image: image ?? (part.image instanceof URL ? part.image.href : part.image) }
           }
           if (part.type === "file") {
             const data = await resolve(part.data, part.mediaType)
-            return data ? { ...part, data: new URL(data) } : part
+            return { ...part, data: data ?? (part.data instanceof URL ? part.data.href : part.data) }
           }
           return part
         }),

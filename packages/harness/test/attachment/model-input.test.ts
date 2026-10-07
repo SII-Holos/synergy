@@ -1,5 +1,6 @@
 import { afterAll, expect, test } from "bun:test"
 import type { ModelMessage } from "ai"
+import { serialize, deserialize } from "node:v8"
 import { Asset } from "../../src/asset/asset"
 import { materializeAttachmentInput } from "../../src/attachment/model-input"
 import { testRuntime } from "../support/runtime"
@@ -25,6 +26,7 @@ test("asset references become provider bytes only in the transient model request
     ]
     const original = JSON.stringify(messages)
     const result = await materializeAttachmentInput(messages, new AbortController().signal)
+    expect(deserialize(serialize(result))).toEqual(result)
     expect(JSON.stringify(messages)).toBe(original)
     expect(JSON.stringify(result)).toContain(`data:image/png;base64,${bytes.toString("base64")}`)
     expect(JSON.stringify(result)).toContain(`Show ![chart](${reference})`)

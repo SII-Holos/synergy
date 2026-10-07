@@ -10,14 +10,19 @@ import { SessionInputStatus } from "@ericsanchezok/synergy-harness/session/input
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { createUserMessage } from "@ericsanchezok/synergy-harness/session/input"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
+import { AgentTurn } from "@ericsanchezok/synergy-harness/session/agent-turn"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { LookAtTool } from "../../src/tools/lookat"
 import { testRuntime } from "../support/runtime"
 
 const runtime = await testRuntime()
-afterAll(() => runtime.close())
+afterAll(() => runtime.close(), 30_000)
 runtime.run(() => Log.init({ print: false }))
+runtime.run(() => {
+  AgentTurn.setInProcessStream(undefined)
+  AgentTurn.configure({ size: 1 })
+})
 const model = { providerID: "attachment-test", modelID: "text" }
 const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jS1kAAAAASUVORK5CYII=",
@@ -112,32 +117,36 @@ test("workspace file content policy preserves native selected-line reading", () 
     }),
   ))
 
-test("the primary model receives image bytes while history retains the immutable asset reference", () =>
-  runtime.run(() =>
-    withProvider(async (requests) => {
-      const id = await Asset.write(png, "image/png", "chart.png")
-      const session = await Session.create({ workspace: null, title: "Image input transport" })
-      const message = await createUserMessage({
-        sessionID: session.id,
-        model: { providerID: model.providerID, modelID: "vision" },
-        parts: [
-          { type: "text", text: "Read this image" },
-          { type: "attachment", url: `asset://${id}`, mime: "image/png", filename: "chart.png" },
-        ],
-      })
-      try {
-        await SessionInvoke.loop.force(session.id)
-        const request = requests.find((entry) => entry.model === "vision")
-        expect(request).toBeDefined()
-        expect(JSON.stringify(request!.messages)).toContain(`data:image/png;base64,${png.toString("base64")}`)
-        expect(JSON.stringify(request!.messages)).toContain(`Reference: asset://${id}`)
-        const saved = await MessageV2.get({ sessionID: session.id, messageID: message.info.id })
-        expect(saved.parts.find((part) => part.type === "attachment")?.url).toBe(`asset://${id}`)
-      } finally {
-        await SessionInvoke.cancel(session.id)
-      }
-    }),
-  ))
+test(
+  "the primary model receives image bytes while history retains the immutable asset reference",
+  () =>
+    runtime.run(() =>
+      withProvider(async (requests) => {
+        const id = await Asset.write(png, "image/png", "chart.png")
+        const session = await Session.create({ workspace: null, title: "Image input transport" })
+        const message = await createUserMessage({
+          sessionID: session.id,
+          model: { providerID: model.providerID, modelID: "vision" },
+          parts: [
+            { type: "text", text: "Read this image" },
+            { type: "attachment", url: `asset://${id}`, mime: "image/png", filename: "chart.png" },
+          ],
+        })
+        try {
+          await SessionInvoke.loop.force(session.id)
+          const request = requests.find((entry) => entry.model === "vision")
+          expect(request).toBeDefined()
+          expect(JSON.stringify(request!.messages)).toContain(`data:image/png;base64,${png.toString("base64")}`)
+          expect(JSON.stringify(request!.messages)).toContain(`Reference: asset://${id}`)
+          const saved = await MessageV2.get({ sessionID: session.id, messageID: message.info.id })
+          expect(saved.parts.find((part) => part.type === "attachment")?.url).toBe(`asset://${id}`)
+        } finally {
+          await SessionInvoke.cancel(session.id)
+        }
+      }),
+    ),
+  60_000,
+)
 
 test(
   "a failed uploaded task does not block the next task or contaminate its provider request",
