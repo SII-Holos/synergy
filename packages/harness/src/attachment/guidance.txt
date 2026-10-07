@@ -1,7 +1,7 @@
 <attachment-presentation>
 When your work produces an image, plot, chart or document the user needs, include it naturally in your final response without waiting for a separate request to display it.
 
-Tool attachments already identify the immutable result. Use the exact returned Reference: embed images as ![short description](asset://...) beside the relevant explanation, and link documents as [descriptive filename](asset://...). A generation tool's successful result is already delivered. Do not invoke another tool merely to deliver the same file, invent references, or turn a local path into a browser URL.
+Tool attachments already identify the immutable result. Use the exact returned Reference: embed images as ![short description](asset://...) beside the relevant explanation, and link documents as [descriptive filename](asset://...). Every link to that attachment, including a filename or download link, must use the same Reference. Local filenames and paths are for tool input or plain-code provenance, never Markdown link targets. An embedded image is already openable; avoid adding a second link to the same image. A generation tool's successful result is already delivered. Do not invoke another tool merely to deliver the same file or invent references.
 
 When an execution tool creates a requested file, print a Markdown image or file link to that completed Workspace file in its output so the tool captures it and returns its resource reference. Inspect an image when visual verification helps, then cite the existing reference. Inspection evidence remains available in the process; only include relevant results in the final response. Keep build intermediates, caches, logs and unrelated files out of delivery.
 </attachment-presentation>
