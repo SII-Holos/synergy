@@ -12,6 +12,8 @@ Directly testable behavior remains instrumented. Shared UI source-render tests t
 
 Exact-file coverage exclusions identify the real behavioral suite for layout, native selection, Canvas, lazy Office readers, module Workers and the remaining Vite-only wrappers. The session recovery browser fixture mounts the submission preview and verifies that its original draft and retry action survive a failed handoff. Pure rules, parsers, fixed-step timing, selection and upload state remain measured.
 
+The tool-expansion context wrapper is attributed to [the tool lifecycle fixture](../../../../packages/ui/test/components/basic-tool-lifecycle.dom.test.ts), which opens a real tool, unmounts its virtual row and verifies that remounting retains the expanded content. Its exact source entry identifies Vite compilation as the instrumentation boundary; the package coverage floors and missing-record checks stay unchanged.
+
 ## Alternatives considered
 
 **Exclude whole frontend directories.** This would conceal new, directly testable logic and provides no evidence for individual files.

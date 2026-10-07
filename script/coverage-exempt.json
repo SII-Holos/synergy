@@ -2132,6 +2132,10 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
+          "glob": "src/components/tool-expansion.tsx",
+          "reason": "Solid context providers and the Part-bound expansion handle are exercised by test/components/basic-tool-lifecycle.dom.test.ts, which verifies an expanded tool survives virtual row unmount and remount. Vite compiles this wrapper into the fixture, so its execution does not produce Bun source LCOV."
+        },
+        {
           "glob": "src/components/tool-output-text.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
