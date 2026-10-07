@@ -185,6 +185,8 @@ Tool audit icons are a quiet exception rail, not a status badge on every tool ca
 
 Tool-call rows lead with known-context purpose when provided. Missing intent falls back to a concise actual action and object, such as Read file, Search web, or Execute command. Use state phrases only for actual results or lifecycle states; do not expose a bare medium or object category as an action. Preserve canonical product and technical names inside the action phrase.
 
+Inspection images and documents appear as compact previews within their process row. Deliverables appear directly in the message flow after their producing call and remain visible when the process is closed. Both use the shared attachment gallery and resource opener; delivery adds no extra tool-card disclosure. Summary-only virtual rows and hydrated content preserve the same order and classification.
+
 Ordinary message-flow errors remain compact: show a restrained failure marker on the selectable tool row. Its read-only result displays the recorded error directly without a nested disclosure or input JSON. Parameters and diagnostics stay in the secondary view; Copy displayed content uses the selected result or parameters. Compaction preserves its status line's identity and shows diagnostics in the right-side details panel; raw diagnostics never dominate the surrounding session work.
 
 User prompts inside a turn may render as a compact right-aligned bubble with matching prompt attachments, but the turn header, tool/result timeline, media results, and diffs must keep their workbench-width timeline structure and original part order.

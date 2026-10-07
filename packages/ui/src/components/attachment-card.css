@@ -83,6 +83,20 @@
   object-fit: contain;
 }
 
+[data-component="attachment-card"][data-compact="process"] img {
+  object-fit: contain;
+}
+
+[data-slot="activity-evidence"] {
+  padding: 2px 0 8px 24px;
+  min-width: 0;
+}
+
+[data-slot="activity-evidence"] [data-component="attachment-gallery"],
+[data-slot="session-turn-timeline-item"][data-kind="tool-attachments"] [data-component="attachment-gallery"] {
+  padding: 0;
+}
+
 [data-slot="attachment-column-layout"] {
   display: flex;
   align-items: flex-start;

@@ -1,4 +1,6 @@
 import type { MessageDescriptor } from "@lingui/core"
+import { attachmentPurpose } from "@ericsanchezok/synergy-util/attachment-presentation"
+import { AttachmentGallery } from "./attachment-card"
 import { useLingui } from "@lingui/solid"
 import { useResourceOpen } from "../context/resource-open"
 import { useData } from "../context/data"
@@ -237,6 +239,12 @@ function ActivityStep(props: {
     }
   }
   const title = createMemo(() => localize(props.step.title, _))
+  const evidence = createMemo(() => {
+    const state = props.step.part.state
+    return state.status === "completed"
+      ? (state.attachments ?? []).filter((file) => !file.presentation?.hidden && attachmentPurpose(file) === "evidence")
+      : []
+  })
   // Provenance: docs/decisions/implemented/feature/2026-10-04-semantic-process-disclosure.md
   // Local adaptation: registered targets lead; invocation identity still opens the existing result owner.
   const target = () => props.step.subtitle?.trim()
@@ -350,6 +358,11 @@ function ActivityStep(props: {
           <ActivityState state={props.step.state} label={stateLabel()} />
         </Show>
       </button>
+      <Show when={evidence().length > 0}>
+        <div data-slot="activity-evidence">
+          <AttachmentGallery files={evidence()} serverUrl={props.serverUrl} compact="process" layout="rows" />
+        </div>
+      </Show>
       <Show when={request() && data.respondToPermission}>
         <div data-slot="activity-approval-actions">
           <button type="button" disabled={responding()} onClick={() => void respond("once")}>

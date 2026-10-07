@@ -1108,7 +1108,7 @@ describe("session turn timeline", () => {
     expect(items[2]).toMatchObject({ kind: "part", part: { type: "tool", tool: "render" } })
   })
 
-  test("keeps ordinary tool attachments inside the ordinary tool item", () => {
+  test("projects ordinary tool deliverables after the execution while evidence stays with inspection", () => {
     const message = assistant("assistant-a")
     const readTool = {
       id: "read-a",
@@ -1123,15 +1123,16 @@ describe("session turn timeline", () => {
         output: "Read report.pdf",
         title: "report.pdf",
         metadata: {},
-        attachments: [image],
+        attachments: [{ ...image, presentation: { purpose: "evidence" } }, image],
         time: { start: 1, end: 2 },
       },
     } as PartType
 
     const items = collectSessionTurnTimelineItems([message], { [message.id]: [readTool] }, false)
 
-    expect(items).toHaveLength(1)
+    expect(items).toHaveLength(2)
     expect(items[0]).toMatchObject({ kind: "part", part: { type: "tool", tool: "read" } })
+    expect(items[1]).toMatchObject({ kind: "tool-attachments", files: [image] })
   })
   test("routes completed hidden-card tools with attachments (e.g. attach) to the gallery", () => {
     const message = assistant("assistant-a")

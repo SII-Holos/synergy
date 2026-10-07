@@ -7,6 +7,12 @@ import {
   toolDisplayPolicy,
 } from "../src/activity"
 
+test("image and document inspection is reported as inspection rather than production", () => {
+  for (const tool of ["look_at", "view_image", "scan_document"])
+    expect(activityFamilyForTool(tool)).toBe("inspect-local")
+  expect(activityFamilyForTool("openai_image_gen")).toBe("produce")
+})
+
 describe("activityScopeForTool", () => {
   test("groups modified files by package or top-level workspace directory", () => {
     const options = { family: "modify-files" as const, workspaceRoot: "/workspace" }

@@ -392,6 +392,8 @@ The processor's terminal message checkpoint does not end this presentation lifec
 
 Conversation body projection excludes `compaction` control-marker Parts, including historical summaries whose `render` hint is true. These markers establish compaction requests rather than display content; the owning message metadata and attempt still project the chronological process event. Filtering them cannot suppress a pending manual request or its assistant-owned replacement. See the [compaction status presentation decision](../decisions/implemented/feature/2026-10-05-compaction-status-text.md).
 
+Attachment purpose counts and tool display classification come from canonical Part summaries. When an activity tool also has deliverables, the virtual projection retains one execution segment and a separately keyed attachment segment immediately after that invocation, both leasing the same Part. Closing the process removes only the execution segment. Hydrated projection applies the matching attachment selection and preserves original order; inspection evidence stays within its activity row. Neither projection requires eager tool-body hydration to decide placement.
+
 ## Compaction Swap
 
 `session.compacted` means the visible effective message set changed at a summary boundary.

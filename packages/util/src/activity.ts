@@ -333,6 +333,7 @@ const COORDINATION_RECEIPT_TOOLS = new Set([
 // `render` output is the presented card itself, so it must stay outside
 // semantic activity groups.
 const ACTIVITY_PRESENTATION_BOUNDARY_TOOLS = new Set(["render"])
+const MEDIA_INSPECTION_TOOLS = new Set(["look_at", "view_image", "scan_document"])
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {}
@@ -408,6 +409,7 @@ export function activityFamilyForTool(
   if (COORDINATION_RECEIPT_TOOLS.has(tool)) return "coordination"
   const override = metadataFamily(metadata)
   if (override) return override
+  if (MEDIA_INSPECTION_TOOLS.has(tool)) return "inspect-local"
 
   switch (classifySemanticCategory(tool, input)) {
     case "file-read":

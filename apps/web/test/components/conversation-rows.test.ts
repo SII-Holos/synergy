@@ -10,6 +10,58 @@ const parts = Array.from(
     ({ id: `p${index.toString().padStart(4, "0")}`, messageID: "reply", type: "tool" }) as SessionPartSummary,
 )
 
+test("ordinary tool deliverables keep their original position outside collapsed process history", () => {
+  const content: SessionPartSummary[] = [
+    { ...parts[0], id: "inspect", tool: "read", display: "activity", attachments: { evidence: 1, deliverable: 0 } },
+    { ...parts[0], id: "create", tool: "bash", display: "activity", attachments: { evidence: 1, deliverable: 1 } },
+    { ...parts[0], id: "verify", tool: "read", display: "activity" },
+    { ...parts[0], id: "answer", type: "text" },
+  ]
+  const input = {
+    timeline: [root],
+    messagesFor: () => [reply],
+    page: () => ({ hasMore: false }),
+    summaries: (id: string) => (id === reply.id ? content : []),
+  }
+  const closed = buildConversationRows({ ...input, process: () => ({ open: false, working: false }) })
+  expect(closed.filter((row) => row.kind === "body").map((row) => [row.key, row.toolAttachments])).toEqual([
+    ["reply:create:attachments", "only"],
+    ["reply:answer", undefined],
+  ])
+  const opened = buildConversationRows({ ...input, previous: closed, process: () => ({ open: true, working: false }) })
+  const bodies = opened.filter((row) => row.kind === "body")
+  expect(bodies.map((row) => row.parts.map((part) => part.id))).toEqual([
+    ["inspect"],
+    ["create"],
+    ["create"],
+    ["verify"],
+    ["answer"],
+  ])
+  expect(bodies.find((row) => row.key === "reply:create")?.toolAttachments).toBe("omit")
+  expect(bodies.find((row) => row.toolAttachments === "only")?.processBody).toBe(false)
+  expect(opened.filter((row) => row.kind === "activity").flatMap((row) => row.activity.parts)).toEqual([
+    "inspect",
+    "create",
+    "verify",
+  ])
+})
+
+test("summary-only rendering honors producer display policy and evidence attachment purpose", () => {
+  const content: SessionPartSummary[] = [
+    { ...parts[0], id: "inspect", type: "attachment", attachments: { evidence: 1, deliverable: 0 } },
+    { ...parts[0], id: "plugin", tool: "plugin_image", display: "content", status: "running" },
+  ]
+  const rows = buildConversationRows({
+    timeline: [root],
+    messagesFor: () => [reply],
+    page: () => ({ hasMore: false }),
+    summaries: (id) => (id === reply.id ? content : []),
+    process: () => ({ open: false, working: true }),
+  })
+  expect(rows.filter((row) => row.kind === "body").map((row) => row.parts[0].id)).toEqual(["plugin"])
+  expect(rows.find((row) => row.kind === "process")?.process?.hasContent).toBe(true)
+})
+
 test("user groups preserve their boundaries and keys through canonical message aliases", () => {
   const canonical = { ...root, id: "accepted-root" }
   const content = ["attachment", "text", "text"].map(

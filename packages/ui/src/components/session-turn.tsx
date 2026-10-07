@@ -1,6 +1,7 @@
+import { attachmentPurpose } from "@ericsanchezok/synergy-util/attachment-presentation"
 import { useLingui } from "@lingui/solid"
 import { sessionActivityAnimating, sessionActivityLabel } from "./session-status"
-import { SESSION_TURN_DESC, MAILBOX_DESC, TOOL_LABEL_DESC } from "./tool-title-descriptors"
+import { SESSION_TURN_DESC, MAILBOX_DESC } from "./tool-title-descriptors"
 
 import type {
   AssistantMessage,
@@ -45,9 +46,7 @@ import { resolveTurnDiffPanelState, type TurnDiffPanelState } from "./turn-chang
 import { Message, Part, getToolInfo } from "./message-part"
 import { MessageSlotOutlet, type MessageSlotName } from "./message-slots"
 import { AttachmentGallery } from "./attachment-card"
-import { attachmentSize, formatAttachmentSize, resolveAttachmentPresentation } from "./attachment-card-utils"
-import { BasicTool } from "./basic-tool"
-import { classifyTool } from "./tool/classifier"
+import { resolveAttachmentPresentation } from "./attachment-card-utils"
 import { MediaGenerationCard } from "./media-generation-card"
 import {
   isActiveMediaGenerationToolPart,
@@ -331,7 +330,12 @@ export function collectSessionTurnTimelineItems(
 
       if (kind === "tool-attachments") {
         const toolPart = part as ToolPart
-        const files = toolPart.state.status === "completed" ? visibleAttachmentParts(toolPart.state.attachments) : []
+        const files =
+          toolPart.state.status === "completed"
+            ? visibleAttachmentParts(toolPart.state.attachments).filter(
+                (file) => attachmentPurpose(file) === "deliverable",
+              )
+            : []
         if (files.length === 0) continue
         items.push({ kind, message, part: toolPart, files })
         continue
@@ -343,6 +347,12 @@ export function collectSessionTurnTimelineItems(
       }
 
       items.push({ kind, message, part: part as TextPart | ToolPart | AttachmentPart })
+      if (part.type === "tool" && part.state.status === "completed") {
+        const files = visibleAttachmentParts(part.state.attachments).filter(
+          (file) => attachmentPurpose(file) === "deliverable",
+        )
+        if (files.length) items.push({ kind: "tool-attachments", message, part, files })
+      }
     }
 
     // When the turn is complete, hide reasoning items if there are visible
@@ -540,60 +550,15 @@ function TimelineItemDisplay(props: {
     }
     return <MediaGenerationCard part={pendingPart} />
   }
-  if (isMediaGenerationToolPart(props.item.part)) {
-    // Completed media-generation tool part. speak delivers speech the agent
-    // decided to announce: the audio autoplays on its fresh card and keeps
-    // playing across the settlement re-projection (the tracker qualification
-    // is sticky until the clip ends or the user pauses). History replay and
-    // re-renders of an already finished clip stay silent.
-    const part = props.item.part
-    const tool = part.type === "tool" ? part.tool : ""
-    const autoplay = isSpeakTool(tool)
-    return (
-      <AttachmentGallery
-        files={props.item.files}
-        serverUrl={props.serverUrl}
-        autoplay={autoplay}
-        autoplayKey={autoplay ? `speak:${part.id}` : undefined}
-      />
-    )
-  }
-  return <DeliveredAttachmentsCard item={props.item} serverUrl={props.serverUrl} />
-}
-
-function DeliveredAttachmentsCard(props: {
-  item: Extract<SessionTurnTimelineItem, { kind: "tool-attachments" }>
-  serverUrl: string
-}) {
-  const { _ } = useLingui()
-  const part = () => props.item.part
-  const files = () => props.item.files
-  const input = () => (part().state.input ?? {}) as Record<string, unknown>
-  const metadata = () => (part().state.metadata ?? {}) as Record<string, unknown>
-  const trigger = () => {
-    const info = getToolInfo(part().tool, input(), metadata())
-    if (typeof info.title === "string" && info.title === part().tool) {
-      const classified = classifyTool(part().tool, input(), metadata())
-      return { icon: classified.spec.icon, title: classified.title }
-    }
-    return { icon: info.icon, title: info.title }
-  }
-  const subtitle = () => {
-    const current = files()
-    return current.length === 1
-      ? current[0].filename
-      : _({ ...TOOL_LABEL_DESC.files, values: { count: current.length } })
-  }
-  const totalBytes = () => files().reduce((sum, file) => sum + (attachmentSize(file) ?? 0), 0)
-  const tags = () => {
-    const bytes = totalBytes()
-    const label = bytes > 0 ? formatAttachmentSize(bytes) : undefined
-    return label ? [{ label }] : undefined
-  }
+  const part = props.item.part
+  const autoplay = isMediaGenerationToolPart(part) && isSpeakTool(part.tool)
   return (
-    <BasicTool defaultOpen trigger={{ ...trigger(), subtitle: subtitle(), tags: tags() }}>
-      <AttachmentGallery files={files()} serverUrl={props.serverUrl} />
-    </BasicTool>
+    <AttachmentGallery
+      files={props.item.files}
+      serverUrl={props.serverUrl}
+      autoplay={autoplay}
+      autoplayKey={autoplay ? `speak:${part.id}` : undefined}
+    />
   )
 }
 
@@ -1044,6 +1009,7 @@ export function SessionTurn(
       activityBody?: boolean
       processHeader?: boolean
       processBody?: boolean
+      toolAttachments?: "only" | "omit"
       contentMessageID?: string
       process?: { open: boolean; working: boolean; hasContent: boolean; hasTurnContent: boolean }
     }
@@ -1184,7 +1150,13 @@ export function SessionTurn(
         !view.partsFor(item.id).some((part) => part.type === "compaction_recovery")
       if (!ownsRecovery && !placeholder) return []
     }
-    const sourceItems = collectSessionTurnTimelineItems([item], segmentParts(), true)
+    const sourceItems = collectSessionTurnTimelineItems([item], segmentParts(), true).filter((item) =>
+      props.segment?.toolAttachments === "only"
+        ? item.kind === "tool-attachments"
+        : props.segment?.toolAttachments === "omit"
+          ? item.kind !== "tool-attachments"
+          : true,
+    )
     return projectAssistantActivityItems({
       message: item,
       sourceItems,
@@ -1437,6 +1409,8 @@ export function SessionTurn(
     if (props.segment?.processBody !== undefined) return props.segment.processBody
     if (item.kind === "activity-batch" || item.kind === "activity-reasoning-summary") return true
     const timeline = isAssistantTimelineDisplayItem(item) ? displayItemTimelineItem(item) : undefined
+    if (timeline?.kind === "part" && timeline.part.type === "attachment")
+      return attachmentPurpose(timeline.part) === "evidence"
     if (timeline?.kind !== "part" || timeline.part.type !== "text") return false
     if (
       item.message.id !== lastAssistantMessage()?.id ||

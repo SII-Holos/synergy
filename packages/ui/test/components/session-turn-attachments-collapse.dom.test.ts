@@ -61,40 +61,38 @@ afterAll(() => {
   dom?.window.close()
 })
 
-describe("SessionTurn delivered attachment collapse", () => {
-  test("renders hidden-card attach deliveries in a default-expanded collapsible card", async () => {
-    const cards = document.querySelectorAll('[data-component="collapsible"][data-variant="tool"]')
-    expect(cards.length).toBe(1)
-
-    const attachCard = cards[0] as HTMLElement
-    expect(attachCard.hasAttribute("data-expanded")).toBe(true)
-
-    const trigger = attachCard.querySelector('[data-slot="collapsible-trigger"]') as HTMLElement
-    expect(trigger?.textContent).toContain("Add attachment")
-    expect(trigger?.textContent).toContain("meme.svg")
-
-    expect(attachCard.querySelector('[data-component="attachment-gallery"]')).toBeTruthy()
-
-    trigger.click()
-    await waitForUpdate()
-
-    expect(attachCard.hasAttribute("data-expanded")).toBe(false)
-    expect(attachCard.querySelector('[data-component="attachment-gallery"]')).toBeNull()
-  })
-
-  test("renders completed media-generation deliveries as a bare inline gallery", () => {
+describe("SessionTurn attachment placement", () => {
+  test("renders ordinary and generated deliverables directly while the process is closed", () => {
     const items = document.querySelectorAll('[data-slot="session-turn-timeline-item"][data-kind="tool-attachments"]')
     expect(items.length).toBe(2)
 
-    const attachItem = items[0] as HTMLElement
-    expect(attachItem.querySelector('[data-component="collapsible"]')).toBeTruthy()
-
-    const mediaItem = items[1] as HTMLElement
-    expect(mediaItem.querySelector('[data-component="collapsible"]')).toBeNull()
-    expect(mediaItem.querySelector('[data-slot="collapsible-trigger"]')).toBeNull()
-
-    const gallery = mediaItem.querySelector('[data-component="attachment-gallery"]')
-    expect(gallery).toBeTruthy()
-    expect(mediaItem.querySelector('[data-component="attachment-card"]')).toBeTruthy()
+    for (const item of items) {
+      expect(!!item.querySelector('[data-component="collapsible"]')).toBe(false)
+      expect(item.querySelector('[data-component="attachment-gallery"]')).toBeTruthy()
+      expect(item.querySelector('[data-component="attachment-card"]')).toBeTruthy()
+    }
+    expect(!!document.querySelector('[data-slot="activity-evidence"]')?.closest('[hidden], [aria-hidden="true"]')).toBe(
+      true,
+    )
+  })
+  test("expanding inspection exposes compact evidence without duplicating deliverables", async () => {
+    const trigger = document.querySelector<HTMLButtonElement>('[data-slot="turn-process-trigger"]')!
+    trigger.click()
+    await waitForUpdate()
+    document.querySelector<HTMLButtonElement>('[data-slot="activity-batch-trigger"]')?.click()
+    await waitForUpdate()
+    const evidence = document.querySelector('[data-slot="activity-evidence"]')!
+    expect(evidence).toBeTruthy()
+    expect(!!evidence.closest('[hidden], [aria-hidden="true"]')).toBe(false)
+    expect(evidence.querySelector('[data-compact="process"]')?.getAttribute("title")).toBe("evidence.svg")
+    expect(
+      document.querySelectorAll('[data-slot="session-turn-timeline-item"][data-kind="tool-attachments"]'),
+    ).toHaveLength(2)
+    trigger.click()
+    await waitForUpdate()
+    expect(!!evidence.closest('[hidden], [aria-hidden="true"]')).toBe(true)
+    expect(
+      document.querySelectorAll('[data-slot="session-turn-timeline-item"][data-kind="tool-attachments"]'),
+    ).toHaveLength(2)
   })
 })
