@@ -75,7 +75,7 @@ def materialize(suite: Suite, task: Task, cache: Path) -> Path:
             stage = Path(tempfile.mkdtemp(prefix=".dataset-", dir=target.parent))
             try:
                 git(stage, "init", "--quiet")
-                git(stage, "fetch", "--depth=1", source.url, source.commit)
+                git(stage, "fetch", "--no-auto-maintenance", "--depth=1", source.url, source.commit)
                 git(stage, "checkout", "--detach", "--quiet", "FETCH_HEAD")
                 if git(stage, "rev-parse", "HEAD").decode().strip() != source.commit:
                     raise ValueError("Dataset revision mismatch")
