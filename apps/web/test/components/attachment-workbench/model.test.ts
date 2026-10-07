@@ -34,6 +34,17 @@ describe("attachment workspace identity", () => {
     expect(attachmentResourceState(locator)).toEqual(locator)
   })
 
+  test("opens an immutable Markdown reference without hydrating a tool message", () => {
+    const init = attachmentWorkbenchPanelInit({ url: "asset://0123456789abcdef.pdf", filename: "Report.pdf" })
+    expect(init?.resourceId).toBe("asset://0123456789abcdef.pdf")
+    expect(attachmentResourceState(init?.state)).toEqual({
+      version: 1,
+      url: "asset://0123456789abcdef.pdf",
+      filename: "Report.pdf",
+    })
+    expect(attachmentWorkbenchPanelInit({ url: "asset://../private.pdf", filename: "bad.pdf" })).toBeUndefined()
+  })
+
   test("rejects incomplete or future persisted state", () => {
     expect(attachmentResourceState({ version: 2, sessionID: "s", messageID: "m", attachmentID: "a" })).toBeUndefined()
     expect(attachmentResourceState({ version: 1, sessionID: "s", messageID: "m" })).toBeUndefined()

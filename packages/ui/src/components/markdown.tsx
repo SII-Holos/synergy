@@ -1,3 +1,5 @@
+import { useResourceOpen } from "../context/resource-open"
+import { observeMarkdownResources } from "./markdown-resources"
 import type { MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
 import { CODE_COPY_DESC } from "./tool-title-descriptors"
@@ -190,12 +192,14 @@ export function Markdown(
 
   const [local, others] = splitProps(props, ["text", "streaming", "cacheKey", "class", "classList"])
   const marked = useMarked()
+  const resources = useResourceOpen()
   const { _ } = useLingui()
   let renderController: AbortController | undefined
   let disposeDocument: (() => void) | undefined
   let appliedHash: string | undefined
   const [interaction, setInteraction] = createSignal(0)
   onMount(() => {
+    if (resources) onCleanup(observeMarkdownResources(container, resources))
     const update = () => setInteraction((value) => value + 1)
     document.addEventListener("selectionchange", update)
     document.addEventListener("focusout", update)

@@ -1,15 +1,18 @@
+import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import { OFFICE_INPUT_MAX_BYTES } from "./office-contract"
 import type { AttachmentPart, Part, ToolPart } from "@ericsanchezok/synergy-sdk"
 
 export const ATTACHMENT_TEXT_MAX_BYTES = 4 * 1024 * 1024
 export const ATTACHMENT_PDF_MAX_BYTES = 50 * 1024 * 1024
 
-export interface AttachmentResourceState {
+export interface AttachmentLocator {
   version: 1
   sessionID: string
   messageID: string
   attachmentID: string
 }
+
+export type AttachmentResourceState = AttachmentLocator | { version: 1; url: string; filename?: string }
 
 export interface AttachmentWorkbenchPanelInit {
   resourceId: string
@@ -52,6 +55,8 @@ export function attachmentResourceState(value: unknown): AttachmentResourceState
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
   const state = value as Record<string, unknown>
   if (state.version !== 1) return undefined
+  if (typeof state.url === "string" && AssetReference.parse(state.url))
+    return { version: 1, url: state.url, filename: typeof state.filename === "string" ? state.filename : undefined }
   if (typeof state.sessionID !== "string" || !state.sessionID) return undefined
   if (typeof state.messageID !== "string" || !state.messageID) return undefined
   if (typeof state.attachmentID !== "string" || !state.attachmentID) return undefined
@@ -64,6 +69,7 @@ export function attachmentResourceState(value: unknown): AttachmentResourceState
 }
 
 export function attachmentResourceId(state: AttachmentResourceState): string {
+  if ("url" in state) return state.url
   return [state.sessionID, state.messageID, state.attachmentID].map(encodeURIComponent).join("/")
 }
 
@@ -72,8 +78,13 @@ export function attachmentWorkbenchPanelInit(attachment: {
   sessionID?: string
   messageID?: string
   filename?: string
+  url?: string
 }): AttachmentWorkbenchPanelInit | undefined {
-  if (!attachment.id || !attachment.sessionID || !attachment.messageID) return undefined
+  if (!attachment.id || !attachment.sessionID || !attachment.messageID) {
+    if (!attachment.url || !AssetReference.parse(attachment.url)) return undefined
+    const state: AttachmentResourceState = { version: 1, url: attachment.url, filename: attachment.filename }
+    return { resourceId: attachmentResourceId(state), title: attachment.filename, source: "conversation", state }
+  }
   const state: AttachmentResourceState = {
     version: 1,
     sessionID: attachment.sessionID,
@@ -96,7 +107,7 @@ function completedToolAttachments(part: Part): AttachmentPart[] {
 
 export function findAttachmentByLocator(
   parts: Part[] | undefined,
-  locator: AttachmentResourceState,
+  locator: AttachmentLocator,
 ): AttachmentPart | undefined {
   for (const part of parts ?? []) {
     if (part.type === "attachment" && part.id === locator.attachmentID) return part

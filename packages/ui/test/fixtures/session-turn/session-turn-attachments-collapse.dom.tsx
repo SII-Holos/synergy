@@ -46,7 +46,7 @@ const imagePart = {
   type: "attachment",
   mime: "image/svg+xml",
   filename: "meme.svg",
-  url: "asset://meme",
+  url: "asset://1111111111111111.png",
 }
 const attachPart = {
   id: "tool-attach",

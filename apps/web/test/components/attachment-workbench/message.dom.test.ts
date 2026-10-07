@@ -237,3 +237,47 @@ test("transparent images remain readable and actionable at 200 percent interface
   await page.evaluate("document.documentElement.style.removeProperty('zoom')")
   expect(errors).toEqual([])
 })
+
+test("streamed and completed Markdown references open the shared image preview and document reader", async () => {
+  await page.route("**/asset/1111111111111111.png", (route) =>
+    route.fulfill({
+      contentType: "image/png",
+      body: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
+        "base64",
+      ),
+    }),
+  )
+  await page.route("**/asset/2222222222222222.txt", (route) =>
+    route.fulfill({ contentType: "text/plain", body: "Captured document verification: APPLE-7319" }),
+  )
+  await visit("?markdown")
+  const image = page.locator('[data-component="markdown"] img').first()
+  await page.waitForFunction(() => {
+    const image = document.querySelector('[data-component="markdown"] img') as HTMLImageElement
+    return image?.complete && image.naturalWidth > 0
+  })
+  await image.locator("..").focus()
+  await page.keyboard.press("Enter")
+  await page.locator('[data-component="image-preview"]').waitFor()
+  await page.evaluate("window.fixture.setStreaming(false)")
+  await page.waitForFunction(
+    () => !!document.querySelector('[data-component="markdown"] a[data-resource-bound="true"]'),
+  )
+  await page.keyboard.press("Escape")
+  await page.waitForFunction(
+    () => document.activeElement?.getAttribute("data-resource-reference") === "asset://1111111111111111.png",
+  )
+  await page.getByRole("link", { name: "Report.txt", exact: true }).focus()
+  await page.keyboard.press("Enter")
+  await page.locator(".attachment-workbench").waitFor()
+  await page.getByText("Captured document verification: APPLE-7319", { exact: false }).waitFor()
+  expect(await page.getByRole("link", { name: "Download", exact: true }).getAttribute("href")).toBe(
+    `${server.url}asset/2222222222222222.txt`,
+  )
+  await page.getByRole("button", { name: "Close Report.txt", exact: true }).click()
+  await page.waitForFunction(() => document.activeElement?.textContent === "Report.txt")
+  expect(errors).toEqual([])
+  await page.unroute("**/asset/1111111111111111.png")
+  await page.unroute("**/asset/2222222222222222.txt")
+}, 15000)

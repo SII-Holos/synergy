@@ -41,11 +41,13 @@ describe("attachment presentation resolver", () => {
     const file = {
       mime: "application/pdf",
       presentation: { renderer: "thumbnail" as const },
-      metadata: { thumbnail: { assetId: "thumb" } },
+      metadata: { thumbnail: { assetId: "1111111111111111.png" } },
     }
 
     expect(resolveAttachmentPresentation(file).renderer).toBe("thumbnail")
-    expect(resolveAttachmentThumbnailUrl("http://localhost:3000", file)).toBe("http://localhost:3000/asset/thumb")
+    expect(resolveAttachmentThumbnailUrl("http://localhost:3000", file)).toBe(
+      "http://localhost:3000/asset/1111111111111111.png",
+    )
   })
 })
 
@@ -54,18 +56,18 @@ describe("image preview attachment resolver", () => {
     expect(
       resolveImagePreviewImage(
         "http://localhost:3000",
-        { mime: "image/png", assetId: "asset-1", filename: "plot.png", size: 2048 },
+        { mime: "image/png", assetId: "1111111111111111.png", filename: "plot.png", size: 2048 },
         2,
       ),
     ).toEqual({
-      id: "2:asset-1",
-      src: "http://localhost:3000/asset/asset-1",
+      id: "2:1111111111111111.png",
+      src: "http://localhost:3000/asset/1111111111111111.png",
       filename: "plot.png",
       mime: "image/png",
       size: 2048,
       alt: "plot.png",
-      downloadUrl: "http://localhost:3000/asset/asset-1",
-      externalUrl: "http://localhost:3000/asset/asset-1",
+      downloadUrl: "http://localhost:3000/asset/1111111111111111.png",
+      externalUrl: "http://localhost:3000/asset/1111111111111111.png",
     })
   })
 
@@ -103,7 +105,7 @@ describe("image preview attachment resolver", () => {
     expect(
       resolveImagePreviewImage(
         "http://localhost:3000",
-        { mime: "image/png", assetId: "asset-2", metadata: { attachment: { size: 4096 } } },
+        { mime: "image/png", assetId: "2222222222222222.png", metadata: { attachment: { size: 4096 } } },
         0,
       ),
     ).toMatchObject({ filename: "image", alt: "image", size: 4096 })
@@ -115,7 +117,7 @@ describe("image preview attachment resolver", () => {
         "http://localhost:3000",
         {
           mime: "image/png",
-          assetId: "asset-2",
+          assetId: "2222222222222222.png",
           localPath: "/workspace/output/plot.png",
         },
         0,

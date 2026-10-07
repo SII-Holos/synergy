@@ -27,15 +27,26 @@ beforeAll(async () => {
     import { setupI18n } from "@lingui/core"
     import { Markdown } from ${JSON.stringify(path.resolve(import.meta.dir, "../src/components/markdown.tsx"))}
     import { MarkedProvider } from ${JSON.stringify(path.resolve(import.meta.dir, "../src/context/marked.tsx"))}
+    import { ResourceOpenProvider } from ${JSON.stringify(path.resolve(import.meta.dir, "../src/context/resource-open.tsx"))}
+    import { attachmentFromReference } from ${JSON.stringify(path.resolve(import.meta.dir, "../src/components/attachment-card-utils.ts"))}
     import { configureClipboard } from ${JSON.stringify(path.resolve(import.meta.dir, "../src/components/clipboard-core.ts"))}
     import ${JSON.stringify(path.resolve(import.meta.dir, "../src/components/markdown.css"))}
     const code = "const original = '保持原文';\\n".repeat(2000)
     const [text,setText] = createSignal("$E=mc^2$\\n\\n" + Array.from({length:5000},(_,index)=>"paragraph " + index + " **bold**\\n\\n").join("") + "\\n\`\`\`ts\\n" + code + "\`\`\`")
     const copies: string[] = []
+    const opened: string[] = []
+    const resources = {
+      resolveAttachmentReference(reference, filename) {
+        const file = attachmentFromReference(reference, filename)
+        return file ? { file, serverUrl: location.origin } : undefined
+      },
+      open: () => false,
+      openAttachment: file => { opened.push(file.url); return true },
+    }
     configureClipboard({writer: value=>{ copies.push(value);return true }})
     const i18n = setupI18n({locale:"en",messages:{en:{}}})
-    render(()=><I18nProvider i18n={i18n}><MarkedProvider><div id="scroller" style="height:480px;overflow:auto;width:720px"><Markdown text={text()} /></div></MarkedProvider></I18nProvider>,document.getElementById("root")!)
-    Object.assign(window,{markdownFixture:{setText,copies,code}})
+    render(()=><I18nProvider i18n={i18n}><MarkedProvider><ResourceOpenProvider value={resources}><div id="scroller" style="height:480px;overflow:auto;width:720px"><Markdown text={text()} /></div></ResourceOpenProvider></MarkedProvider></I18nProvider>,document.getElementById("root")!)
+    Object.assign(window,{markdownFixture:{setText,copies,code,opened}})
   `,
   )
   server = await createServer({
@@ -113,3 +124,39 @@ test("the lazy worker loads a real TypeScript grammar for normal code", async ()
   expect(await page.locator("pre.shiki code").textContent()).toContain("const answer: number = 42")
   expect(errors).toEqual([])
 })
+
+test("virtual Markdown remounts managed links with the same resource opener", async () => {
+  await page.evaluate(() => {
+    const fixture = (window as unknown as { markdownFixture: { setText: (text: string) => void } }).markdownFixture
+    fixture.setText(
+      "Start\n\n" + "Long paragraph before resource.\n\n".repeat(2500) + "[Report.pdf](asset://3333333333333333.pdf)",
+    )
+  })
+  await page.waitForSelector("[data-markdown-block]")
+  const link = page.getByRole("link", { name: "Report.pdf", exact: true })
+  const reachEnd = async () => {
+    for (let frame = 0; frame < 20; frame++) {
+      await page.locator("#scroller").evaluate(async (element) => {
+        element.scrollTop = element.scrollHeight
+        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+      })
+      if (await link.isVisible()) return
+    }
+    await link.waitFor({ timeout: 1000 })
+  }
+  await reachEnd()
+  await link.focus()
+  await page.keyboard.press("Enter")
+  expect(await page.evaluate<string | undefined>("window.markdownFixture.opened.at(-1)")).toBe(
+    "asset://3333333333333333.pdf",
+  )
+  await page.evaluate(() => (document.activeElement as HTMLElement)?.blur())
+  await page.locator("#scroller").evaluate((element) => {
+    element.scrollTop = 0
+  })
+  await link.waitFor({ state: "detached" })
+  await reachEnd()
+  expect(await link.getAttribute("href")).toContain("/asset/3333333333333333.pdf")
+  expect(await page.locator("[data-markdown-block]").count()).toBeLessThan(20)
+  expect(errors).toEqual([])
+}, 20000)

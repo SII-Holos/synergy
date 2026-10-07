@@ -12,6 +12,10 @@ Managed attachments persist the existing immutable Asset URL regardless of their
 
 Provider-file projection retains eligible Asset URLs as multimodal input. The Agent turn boundary expands those URLs to bytes only in its transient request, before semantic request recording and worker serialization. Canonical messages remain unchanged. Resolution validates Asset IDs, preserves remote URLs, shares identical reads within the request and propagates missing-file and cancellation failures before provider dispatch.
 
+Markdown preserves validated Asset references through both the streaming parser and the settled worker parser. A host-bound resource observer resolves only those references, visits inserted blocks rather than rescanning text on every delta, and opens the shared image preview or attachment reader. The same resolver serves plugin resource opening. Immutable document references can open directly without fetching the originating message; located attachments retain their existing provenance lookup. A reader returns focus by resource identity when terminal Markdown rendering replaced the original link.
+
+Asset ID validation and MIME/extension mapping live in a portable utility consumed by the runtime and UI. Browser URLs are derived from the active server and validated IDs; Markdown does not gain access to arbitrary local paths or executable protocols.
+
 ## Alternatives considered
 
 **Keep inline bytes and add a second presentation URL.** Rejected because parallel resource identities would need reconciliation for every upload, tool result and historical message.
@@ -22,4 +26,4 @@ Provider-file projection retains eligible Asset URLs as multimodal input. The Ag
 
 ## Consequences
 
-Model input and presentation share one durable resource identity. Request preparation reads eligible local Assets, and unavailable content becomes a preparation error instead of silently disappearing from inference. The existing URL schema and attachment normalization path accept historical inline data; there is no new asset store or provider protocol. Tests cover immutable history, provider bytes through the real worker and HTTP boundary, invalid references, cancellation and explicit model policies.
+Model input and presentation share one durable resource identity. Request preparation reads eligible local Assets, and unavailable content becomes a preparation error instead of silently disappearing from inference. The existing URL schema and attachment normalization path accept historical inline data; there is no new asset store or provider protocol. Tests cover immutable history, provider bytes through the real worker and HTTP boundary, invalid references, cancellation and explicit model policies. Browser tests cover streamed/settled references, shared previews and readers, immutable downloads, keyboard activation and focus after terminal rendering.

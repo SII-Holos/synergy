@@ -1,3 +1,4 @@
+import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import type { ImagePreviewImage } from "./image-preview-model"
 export interface AttachmentFile {
   id?: string
@@ -32,6 +33,11 @@ export interface ResolvedAttachmentPresentation {
   crop: boolean
 }
 
+export function attachmentFromReference(reference: string, filename?: string): AttachmentFile | undefined {
+  const asset = AssetReference.parse(reference)
+  return asset ? { url: asset.url, mime: asset.mime, filename: filename || asset.id } : undefined
+}
+
 export function joinServerUrl(serverUrl: string, pathname: string): string {
   return `${serverUrl.replace(/\/$/, "")}${pathname.startsWith("/") ? pathname : `/${pathname}`}`
 }
@@ -39,7 +45,8 @@ export function joinServerUrl(serverUrl: string, pathname: string): string {
 export function resolveAttachmentUrl(serverUrl: string, file: AttachmentFile): string | undefined {
   if (file.url) {
     if (file.url.startsWith("asset://")) {
-      return joinServerUrl(serverUrl, `/asset/${file.url.slice(8)}`)
+      const reference = AssetReference.parse(file.url)
+      return reference ? joinServerUrl(serverUrl, `/asset/${reference.id}`) : undefined
     }
     if (file.url.startsWith("file://")) {
       return undefined
@@ -52,7 +59,7 @@ export function resolveAttachmentUrl(serverUrl: string, file: AttachmentFile): s
     }
     return undefined
   }
-  if (file.assetId) {
+  if (file.assetId && AssetReference.isValidId(file.assetId)) {
     return joinServerUrl(serverUrl, `/asset/${file.assetId}`)
   }
   return undefined

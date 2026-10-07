@@ -35,6 +35,7 @@ import {
 import type { ImagePreviewImage } from "./image-preview-model"
 export type { AttachmentFile } from "./attachment-card-utils"
 export {
+  attachmentFromReference,
   attachmentColumnCount,
   attachmentColumns,
   attachmentKind,
