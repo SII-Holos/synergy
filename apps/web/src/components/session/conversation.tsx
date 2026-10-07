@@ -11,14 +11,15 @@ import { useSDK } from "@/context/sdk"
 import { useSessionDataView } from "@/context/session-data-view"
 import type { PluginComponentProps, PluginConversationService } from "@ericsanchezok/synergy-plugin"
 import { Dynamic } from "solid-js/web"
-import { For, Show, createEffect, createMemo, createSignal, createResource, onCleanup, onMount } from "solid-js"
+import { For, Show, batch, createEffect, createMemo, createSignal, onCleanup, onMount, untrack } from "solid-js"
+import { createStore, reconcile } from "solid-js/store"
 import { VirtualConversationRows } from "./virtual-conversation-rows"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { SessionTurn } from "@ericsanchezok/synergy-ui/session-turn"
 import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
 import { MessageSlotOutlet } from "@ericsanchezok/synergy-ui/message-slots"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
-import type { UserMessage, AssistantMessage, Message } from "@ericsanchezok/synergy-sdk"
+import type { UserMessage, AssistantMessage, TurnExecutionState } from "@ericsanchezok/synergy-sdk"
 import { buildConversationTimelineSnapshot } from "./conversation-timeline"
 import { ConversationViewport } from "./conversation-viewport"
 import { useLocale } from "@/context/locale"
@@ -77,68 +78,174 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
         ? {
             server: sdk.url,
             scope: sdk.scopeKey,
+            client: sdk.client,
             sessionID: props.sessionID,
             rootIDs: roots.slice(-64),
+            latestRootID: latest?.id,
             revision: `${status?.type}:${last?.id}:${last?.role === "assistant" ? last.time.completed : ""}`,
+            reconnect: globalSync.reconnectVersion(),
           }
         : undefined
     },
     undefined,
     {
       equals: (a, b) =>
-        a?.server === b?.server &&
-        a?.scope === b?.scope &&
-        a?.sessionID === b?.sessionID &&
-        a?.revision === b?.revision &&
-        a?.rootIDs.join() === b?.rootIDs.join(),
+        a === b ||
+        (!!a &&
+          !!b &&
+          a.server === b.server &&
+          a.scope === b.scope &&
+          a.sessionID === b.sessionID &&
+          a.client === b.client &&
+          a.latestRootID === b.latestRootID &&
+          a.reconnect === b.reconnect &&
+          a.revision === b.revision &&
+          a.rootIDs.length === b.rootIDs.length &&
+          a.rootIDs.every((rootID, index) => rootID === b.rootIDs[index])),
     },
   )
-  const [executions, { refetch: refreshExecutions }] = createResource(
-    executionRequest,
-    async (request) => {
-      stateRequest?.abort()
+  const [executionStates, setExecutionStates] = createStore<Record<string, TurnExecutionState | undefined>>({})
+  let baseline: ReturnType<typeof executionRequest>
+  let identityEpoch = 0
+  let rootVersion = 0
+  let disposed = false
+  let queued = false
+  const versions = new Map<string, number>()
+  const dirtyRoots = new Set<string>()
+  const scheduleExecutions = () => {
+    if (disposed || queued || stateRequest || !dirtyRoots.size) return
+    queued = true
+    queueMicrotask(() => {
+      queued = false
+      if (disposed || stateRequest || !baseline) return
+      const request = baseline
+      const rootIDs = request.rootIDs.filter((rootID) => dirtyRoots.has(rootID))
+      if (!rootIDs.length) return
+      const capturedVersions = new Map(rootIDs.map((rootID) => [rootID, versions.get(rootID)]))
+      for (const rootID of rootIDs) dirtyRoots.delete(rootID)
+      const epoch = identityEpoch
       const controller = new AbortController()
       stateRequest = controller
-      const result = await sdk.client.session.turnExecution(
-        { sessionID: request.sessionID, rootIDs: request.rootIDs },
-        { signal: controller.signal, throwOnError: true },
-      )
-      if (
-        controller.signal.aborted ||
-        sdk.url !== request.server ||
-        sdk.scopeKey !== request.scope ||
-        props.sessionID !== request.sessionID
-      )
-        return undefined
-      return { request, states: result.data ?? [] }
-    },
-    { initialValue: undefined },
-  )
+      const isCurrent = () =>
+        !disposed &&
+        !controller.signal.aborted &&
+        identityEpoch === epoch &&
+        sdk.url === request.server &&
+        sdk.scopeKey === request.scope &&
+        sdk.client === request.client &&
+        props.sessionID === request.sessionID
+      void (async () => {
+        try {
+          const response = await request.client.session.turnExecution(
+            { sessionID: request.sessionID, rootIDs },
+            { signal: controller.signal, throwOnError: true },
+          )
+          if (!isCurrent()) return
+          const states = new Map((response.data ?? []).map((state) => [state.rootID, state]))
+          batch(() => {
+            for (const rootID of rootIDs) {
+              if (!versions.has(rootID) || versions.get(rootID) !== capturedVersions.get(rootID)) continue
+              const state = states.get(rootID)
+              setExecutionStates(rootID, state ? reconcile(state) : undefined)
+            }
+          })
+        } catch {
+          if (!isCurrent()) return
+          batch(() => {
+            for (const rootID of rootIDs) {
+              if (versions.has(rootID) && versions.get(rootID) === capturedVersions.get(rootID))
+                setExecutionStates(rootID, undefined)
+            }
+          })
+        } finally {
+          if (stateRequest === controller) {
+            stateRequest = undefined
+            scheduleExecutions()
+          }
+        }
+      })()
+    })
+  }
+  const invalidateExecution = (rootID: unknown) => {
+    if (typeof rootID !== "string" || !versions.has(rootID)) return
+    versions.set(rootID, ++rootVersion)
+    dirtyRoots.add(rootID)
+    scheduleExecutions()
+  }
+  const invalidateWindow = () => {
+    for (const rootID of versions.keys()) invalidateExecution(rootID)
+  }
   createEffect(() => {
-    if (!executionRequest()) stateRequest?.abort()
+    const request = executionRequest()
+    untrack(() => {
+      const previous = baseline
+      const hasChangedIdentity =
+        !previous ||
+        !request ||
+        previous.server !== request.server ||
+        previous.scope !== request.scope ||
+        previous.client !== request.client ||
+        previous.sessionID !== request.sessionID
+      baseline = request
+      if (hasChangedIdentity) {
+        identityEpoch++
+        stateRequest?.abort()
+        stateRequest = undefined
+        versions.clear()
+        dirtyRoots.clear()
+        setExecutionStates(reconcile({}))
+      }
+      if (!request) return
+      const roots = new Set(request.rootIDs)
+      for (const rootID of versions.keys()) {
+        if (roots.has(rootID)) continue
+        versions.delete(rootID)
+        dirtyRoots.delete(rootID)
+        setExecutionStates(rootID, undefined)
+      }
+      for (const rootID of request.rootIDs) {
+        if (versions.has(rootID)) continue
+        versions.set(rootID, ++rootVersion)
+        dirtyRoots.add(rootID)
+      }
+      if (!hasChangedIdentity && previous) {
+        if (previous.reconnect !== request.reconnect) invalidateWindow()
+        else if (previous.revision !== request.revision) invalidateExecution(request.latestRootID)
+      }
+      scheduleExecutions()
+    })
   })
-  onCleanup(() => stateRequest?.abort())
+  onCleanup(() => {
+    disposed = true
+    identityEpoch++
+    stateRequest?.abort()
+    dirtyRoots.clear()
+  })
   onCleanup(
     sdk.event.on("session.execution.updated", (event) => {
-      if (event.properties.sessionID === props.sessionID) void refreshExecutions()
+      if (event.properties.sessionID === props.sessionID) invalidateExecution(event.properties.rootID)
     }),
   )
   onCleanup(
     sdk.event.on("permission.asked", (event) => {
-      if (event.properties.sessionID === props.sessionID) void refreshExecutions()
+      if (event.properties.sessionID === props.sessionID) invalidateWindow()
     }),
   )
   onCleanup(
     sdk.event.on("permission.replied", (event) => {
-      if (event.properties.sessionID === props.sessionID) void refreshExecutions()
+      if (event.properties.sessionID === props.sessionID) invalidateWindow()
     }),
   )
   const executionFor = (rootID: string) => {
-    const result = executions.error ? undefined : executions.latest
-    return result?.request.sessionID === props.sessionID &&
-      result.request.server === sdk.url &&
-      result.request.scope === sdk.scopeKey
-      ? result.states.find((state) => state.rootID === rootID)
+    const request = executionRequest()
+    const executionState = executionStates[rootID]
+    return request &&
+      baseline?.server === request.server &&
+      baseline.scope === request.scope &&
+      baseline.client === request.client &&
+      baseline.sessionID === request.sessionID &&
+      request.rootIDs.includes(rootID)
+      ? executionState
       : undefined
   }
   createEffect(() => {
@@ -313,7 +420,7 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
                       activityDisplay={props.activityDisplay()}
                       activityView={props.activityView}
                       submission={submissionFor(key)}
-                      executionState={executionFor(key)}
+                      executionState={executionFor(rootMessage().id)}
                       connected={sdk.connected()}
                       following={!props.scrolledUp()}
                       onRestoreChanges={(messageID) => void restoreFiles({ messageID })}
