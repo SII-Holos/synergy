@@ -21,7 +21,7 @@ const DESCRIPTION = `Load an image file from the selected Workspace into the cur
 
 Use this when the active model supports the image's format and you need to inspect it yourself, such as a generated plot, screenshot, diagram, rendered page, or visual artifact. The tool does not analyze the image with a separate model; it attaches the image so the current model can see it on the next model step.
 
-Use look_at instead when view_image is unavailable or the active model does not support the image's format. Use attach only when the user should receive or inspect the file.`
+Use look_at instead when view_image is unavailable or the active model does not support the image's format. Inspection evidence appears in the process; use the returned resource reference in your answer when the image is part of the result.`
 
 const parameters = z.object({
   filePath: z.string().describe("Path to the Workspace image file to load into the current model context"),
@@ -132,7 +132,7 @@ export const ViewImageTool = Tool.define<typeof parameters, ViewImageMetadata>(
             localPath: filepath,
             sessionID: ctx.sessionID,
             messageID: ctx.messageID,
-            presentation: { renderer: "image", size: "medium", crop: false },
+            presentation: { purpose: "evidence", renderer: "image", size: "medium", crop: false },
             model: { mode: "provider-file", summary },
           }),
         ],

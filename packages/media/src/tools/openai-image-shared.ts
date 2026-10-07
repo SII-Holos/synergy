@@ -273,7 +273,7 @@ export async function buildOpenAIImageResult(params: OpenAIImageResultParams) {
       filename,
       url: `asset://${assetId}`,
       localPath: params.outputPath,
-      presentation: { renderer: "image", size: "medium", crop: false },
+      presentation: { purpose: "deliverable", renderer: "image", size: "medium", crop: false },
       model: {
         mode: "provider-file",
         summary: `${params.operation} image saved to ${params.outputPath}`,

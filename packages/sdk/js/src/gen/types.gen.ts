@@ -8433,6 +8433,7 @@ export type ResourceSource = {
 export type AttachmentSource = FileSource | SymbolSource | ResourceSource
 
 export type AttachmentPresentation = {
+  purpose?: "evidence" | "deliverable"
   hidden?: boolean
   renderer?: "image" | "video" | "audio" | "thumbnail" | "file"
   size?: "original" | "small" | "medium" | "large"
@@ -8497,6 +8498,7 @@ export type ToolStateError = {
   status: "error"
   input: ToolStateInput
   error: string
+  reason?: "cancelled"
   metadata?: {
     [key: string]: unknown
   }
@@ -10368,6 +10370,13 @@ export type SessionPartSummary = {
   status?: string
   tool?: string
   reasoningKey?: string
+  display?: "activity" | "content"
+  references?: Array<string>
+  attachments?: {
+    evidence: number
+    deliverable: number
+    references?: Array<string>
+  }
   content: SessionPartContentReference
 }
 

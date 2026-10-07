@@ -1,3 +1,10 @@
+import {
+  AttachmentPresentation as SharedAttachmentPresentation,
+  attachmentPurpose,
+} from "@ericsanchezok/synergy-util/attachment-presentation"
+import { isActivityGroupableTool, isCancelledMediaGeneration } from "@ericsanchezok/synergy-util/activity"
+import { markdownAssetReferences } from "@ericsanchezok/synergy-util/markdown-assets"
+import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import { ToolIntent } from "./tool-intent"
 import { ToolActivityEvidence } from "./activity-evidence"
 import { RuntimeContext } from "../lifecycle/context"
@@ -223,16 +230,7 @@ export namespace MessageV2 {
     ref: "AttachmentSource",
   })
 
-  export const AttachmentPresentation = z
-    .object({
-      hidden: z.boolean().optional(),
-      renderer: z.enum(["image", "video", "audio", "thumbnail", "file"]).optional(),
-      size: z.enum(["original", "small", "medium", "large"]).optional(),
-      crop: z.boolean().optional(),
-    })
-    .meta({
-      ref: "AttachmentPresentation",
-    })
+  export const AttachmentPresentation = SharedAttachmentPresentation.meta({ ref: "AttachmentPresentation" })
   export type AttachmentPresentation = z.infer<typeof AttachmentPresentation>
 
   export const AttachmentModelPolicy = z
@@ -410,6 +408,7 @@ export namespace MessageV2 {
       status: z.literal("error"),
       input: ToolStateInput,
       error: z.string(),
+      reason: z.literal("cancelled").optional(),
       metadata: z.record(z.string(), z.any()).optional(),
       time: z.object({
         start: z.number(),
@@ -774,6 +773,15 @@ export namespace MessageV2 {
       status: z.string().optional(),
       tool: z.string().optional(),
       reasoningKey: z.string().optional(),
+      display: z.enum(["activity", "content"]).optional(),
+      references: z.array(z.string().max(256)).max(32).optional(),
+      attachments: z
+        .object({
+          evidence: z.number().int().nonnegative(),
+          deliverable: z.number().int().nonnegative(),
+          references: z.array(z.string().max(256)).max(32).optional(),
+        })
+        .optional(),
       content: z
         .object({ version: z.string(), bytes: z.number().int().nonnegative() })
         .meta({ ref: "SessionPartContentReference" }),
@@ -782,6 +790,30 @@ export namespace MessageV2 {
   export type PartSummary = z.infer<typeof PartSummary>
   export function summarizePart(part: Part): PartSummary {
     const text = JSON.stringify(part)
+    const attachments =
+      part.type === "attachment"
+        ? [part]
+        : part.type === "tool" && part.state.status === "completed"
+          ? part.state.attachments
+          : undefined
+    const counts = attachments?.reduce(
+      (counts, attachment) => {
+        if (!attachment.presentation?.hidden) counts[attachmentPurpose(attachment)]++
+        return counts
+      },
+      { evidence: 0, deliverable: 0 },
+    )
+    const references = part.type === "text" && !isSystemPart(part) ? markdownAssetReferences(part.text) : []
+    const outputs = attachments
+      ?.filter(
+        (file) =>
+          !file.presentation?.hidden &&
+          attachmentPurpose(file) === "deliverable" &&
+          file.url.length <= 256 &&
+          AssetReference.parse(file.url),
+      )
+      .slice(0, 32)
+      .map((file) => file.url)
     return {
       id: part.id,
       sessionID: part.sessionID,
@@ -790,6 +822,8 @@ export namespace MessageV2 {
       render:
         !["snapshot", "patch", "step-start", "step-finish"].includes(part.type) &&
         (part.type !== "text" || !isSystemPart(part)) &&
+        (part.type !== "attachment" || !part.presentation?.hidden) &&
+        (part.type !== "tool" || !isCancelledMediaGeneration(part.state)) &&
         (part.type !== "reasoning" || part.text.trim().length > 0),
       preview:
         part.type === "text" || part.type === "reasoning"
@@ -800,6 +834,14 @@ export namespace MessageV2 {
       tool: part.type === "tool" ? part.tool : undefined,
       status: part.type === "tool" ? part.state.status : undefined,
       reasoningKey: part.type === "reasoning" ? reasoningItemKey(part.metadata) : undefined,
+      display:
+        part.type === "tool"
+          ? isActivityGroupableTool(part.tool, part.state.metadata)
+            ? "activity"
+            : "content"
+          : undefined,
+      references: references.length ? references : undefined,
+      attachments: counts && { ...counts, ...(outputs?.length ? { references: outputs } : {}) },
       content: { version: new Bun.CryptoHasher("sha256").update(text).digest("hex"), bytes: Buffer.byteLength(text) },
     }
   }
@@ -906,19 +948,8 @@ export namespace MessageV2 {
     return part.synthetic === true
   }
 
-  /**
-   * Whether an attachment is an explicit deliverable. Prefers the canonical
-   * `metadata.attachment.deliverable` verdict written at creation (the attach
-   * tool and explicit markdown/file_url references are deliverables; paths
-   * that merely appeared in tool output are incidental). Falls back to the
-   * legacy `detectedFrom` heuristic for attachments persisted before the
-   * verdict existed. The single predicate consumers should use instead of
-   * reading attachment metadata directly.
-   */
   export function isDeliverableAttachment(attachment: AttachmentPart): boolean {
-    const metadata = attachment.metadata?.attachment as { deliverable?: boolean; detectedFrom?: string } | undefined
-    if (metadata?.deliverable !== undefined) return metadata.deliverable
-    return metadata?.detectedFrom !== "line" && metadata?.detectedFrom !== "path"
+    return attachmentPurpose(attachment) === "deliverable"
   }
 
   function partIsSystem(part: Part): boolean {
@@ -1057,13 +1088,12 @@ export namespace MessageV2 {
 
   function shouldSendAttachmentFile(part: AttachmentPart): boolean {
     if (attachmentModelMode(part) !== "provider-file") return false
-    if (part.url.startsWith("asset://")) return false
+    if (part.url.startsWith("asset://") && !Asset.isValidId(part.url.slice("asset://".length))) return false
     return part.mime !== "application/x-directory"
   }
 
   function shouldExternalizeAttachment(part: AttachmentPart): boolean {
     if (!part.url.startsWith("data:")) return false
-    if (attachmentModelMode(part) === "provider-file") return false
     return true
   }
 
@@ -1080,7 +1110,7 @@ export namespace MessageV2 {
     return {
       ...part,
       url: `asset://${assetID}`,
-      localPath: Asset.resolvePath(assetID),
+      localPath: part.localPath ?? Asset.resolvePath(assetID),
       metadata: {
         ...part.metadata,
         attachment: {
@@ -1179,6 +1209,8 @@ export namespace MessageV2 {
     const mode = attachmentModelMode(part)
     if (mode === "none") return
     provenance.items.filesReferences++
+    const reference =
+      part.url.startsWith("asset://") && Asset.isValidId(part.url.slice("asset://".length)) ? part.url : undefined
 
     if (mode === "content") {
       const content = part.model?.mode === "content" ? part.model.text : undefined
@@ -1195,8 +1227,13 @@ export namespace MessageV2 {
         options.includeLocalPath && localPath && !Attachment.isText(part.mime) && !part.mime.startsWith("image/")
           ? ". Attached as-is; use file tools to inspect"
           : ""
-      const description =
-        options.includeLocalPath && localPath ? `${summary}. Local path: ${localPath}${toolHint}` : summary
+      const description = [
+        summary,
+        reference ? `Reference: ${reference}` : undefined,
+        options.includeLocalPath && localPath ? `Local path: ${localPath}${toolHint}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(". ")
       const text = `[Attachment: ${description}]`
       parts.push({ type: "text", text })
       provenance.categories.filesReferences.push({ text })
@@ -1204,7 +1241,11 @@ export namespace MessageV2 {
     }
 
     const localPath = attachmentModelPath(part)
-    if (options.includeLocalPath && localPath) {
+    if (reference) {
+      const text = `[Attachment: ${attachmentSummary(part)}. Reference: ${reference}${options.includeLocalPath && localPath ? `. Local path: ${localPath}` : ""}]`
+      parts.push({ type: "text", text })
+      provenance.categories.filesReferences.push({ text })
+    } else if (options.includeLocalPath && localPath) {
       const text = `[The user attached a file: ${attachmentName(part)} (${part.mime}). Local path: ${localPath}]`
       parts.push({ type: "text", text })
       provenance.categories.filesReferences.push({ text })

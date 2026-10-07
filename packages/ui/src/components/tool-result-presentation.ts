@@ -49,14 +49,3 @@ export function isToolCardHidden(part: unknown): boolean {
   const candidate = part as MaybeToolPart
   return candidate?.type === "tool" && toolDisplayPolicy(candidate.state?.metadata).toolCardHidden
 }
-
-export function isActiveMediaGenerationToolPart(part: unknown): boolean {
-  const candidate = part as MaybeToolPart
-  if (candidate?.type !== "tool") return false
-  if (!isMediaGenerationToolPart(candidate)) return false
-  return (
-    candidate.state?.status === "pending" ||
-    candidate.state?.status === "generating" ||
-    candidate.state?.status === "running"
-  )
-}

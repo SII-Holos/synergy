@@ -1,3 +1,4 @@
+import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import * as smd from "streaming-markdown"
 import { createMarkdownStreamMotion } from "./markdown-stream-motion"
 
@@ -20,10 +21,22 @@ function createSafeRenderer(
   return {
     ...renderer,
     add_text(data, text) {
-      motion.append(data.nodes[data.index], text)
+      const node = data.nodes[data.index]
+      if (node?.nodeName === "IMG") {
+        node.setAttribute("alt", (node.getAttribute("alt") ?? "") + text)
+        return
+      }
+      motion.append(node, text)
     },
     set_attr(data, type, value) {
-      if ((type === smd.HREF || type === smd.SRC) && !isSafeUrl(value)) return
+      if (type === smd.HREF || type === smd.SRC) {
+        const reference = AssetReference.parse(value)
+        if (reference) {
+          data.nodes[data.index]?.setAttribute("data-resource-reference", reference.url)
+          return
+        }
+        if (!isSafeUrl(value)) return
+      }
       smd.default_set_attr(data, type, value)
       if (type !== smd.HREF) return
       data.nodes[data.index]?.setAttribute("rel", "noopener noreferrer")

@@ -1,3 +1,6 @@
+import { attachmentPurpose, type AttachmentPresentation } from "@ericsanchezok/synergy-util/attachment-presentation"
+export type { AttachmentPresentation } from "@ericsanchezok/synergy-util/attachment-presentation"
+import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import type { ImagePreviewImage } from "./image-preview-model"
 export interface AttachmentFile {
   id?: string
@@ -18,18 +21,17 @@ export type AttachmentRenderer = "image" | "video" | "audio" | "thumbnail" | "fi
 export type AttachmentOpenTarget = "image-preview" | "attachment-workspace" | "compatibility"
 export type AttachmentDisplaySize = "original" | "small" | "medium" | "large"
 
-export interface AttachmentPresentation {
-  hidden?: boolean
-  renderer?: AttachmentRenderer
-  size?: AttachmentDisplaySize
-  crop?: boolean
-}
-
 export interface ResolvedAttachmentPresentation {
+  purpose: "evidence" | "deliverable"
   hidden: boolean
   renderer: AttachmentRenderer
   size: AttachmentDisplaySize
   crop: boolean
+}
+
+export function attachmentFromReference(reference: string, filename?: string): AttachmentFile | undefined {
+  const asset = AssetReference.parse(reference)
+  return asset ? { url: asset.url, mime: asset.mime, filename: filename || asset.id } : undefined
 }
 
 export function joinServerUrl(serverUrl: string, pathname: string): string {
@@ -39,7 +41,8 @@ export function joinServerUrl(serverUrl: string, pathname: string): string {
 export function resolveAttachmentUrl(serverUrl: string, file: AttachmentFile): string | undefined {
   if (file.url) {
     if (file.url.startsWith("asset://")) {
-      return joinServerUrl(serverUrl, `/asset/${file.url.slice(8)}`)
+      const reference = AssetReference.parse(file.url)
+      return reference ? joinServerUrl(serverUrl, `/asset/${reference.id}`) : undefined
     }
     if (file.url.startsWith("file://")) {
       return undefined
@@ -52,7 +55,7 @@ export function resolveAttachmentUrl(serverUrl: string, file: AttachmentFile): s
     }
     return undefined
   }
-  if (file.assetId) {
+  if (file.assetId && AssetReference.isValidId(file.assetId)) {
     return joinServerUrl(serverUrl, `/asset/${file.assetId}`)
   }
   return undefined
@@ -76,6 +79,7 @@ export function resolveAttachmentPresentation(file: AttachmentFile): ResolvedAtt
     requested === "thumbnail" && !hasThumbnail ? "file" : (requested ?? inferAttachmentRenderer(file, hasThumbnail))
 
   return {
+    purpose: attachmentPurpose(file),
     hidden: presentation.hidden === true,
     renderer,
     size: presentation.size ?? "medium",

@@ -14,6 +14,7 @@ import {
 } from "@ericsanchezok/synergy-ui/context/resource-open"
 import { ImagePreview, type ImagePreviewImage } from "@ericsanchezok/synergy-ui/image-preview"
 import {
+  attachmentFromReference,
   attachmentSourcePath,
   isImageAttachment,
   resolveAttachmentOpenTarget,
@@ -126,7 +127,7 @@ export function ResourceOpenProvider(props: ParentProps) {
   const [openedAttachment, setOpenedAttachment] = createSignal<{
     session: string
     tabID: string
-    origin?: HTMLElement
+    origin?: () => HTMLElement | undefined
   }>()
   let disposed = false
   let draftDialog: string | undefined
@@ -146,13 +147,15 @@ export function ResourceOpenProvider(props: ParentProps) {
     if (side.opened() && side.tabs().some((tab) => tab.id === opened.tabID)) return
     setOpenedAttachment(undefined)
     queueMicrotask(() => {
-      if (opened.origin?.isConnected) opened.origin.focus({ preventScroll: true })
+      const origin = opened.origin?.()
+      if (origin?.isConnected) origin.focus({ preventScroll: true })
     })
   })
 
   const openAttachmentPanel = (
     attachment: AttachmentFile,
     init: NonNullable<ReturnType<typeof attachmentWorkbenchPanelInit>>,
+    options?: ResourceOpenOptions,
   ) => {
     const session = workbench.sessionKey()
     const server = sdk.url
@@ -169,7 +172,7 @@ export function ResourceOpenProvider(props: ParentProps) {
           : undefined
         if (!current()) return
         if (!tab) throw new Error("Attachment panel unavailable")
-        setOpenedAttachment({ session, tabID: tab.id, origin })
+        setOpenedAttachment({ session, tabID: tab.id, origin: options?.focusTarget ?? (() => origin) })
       } catch {
         if (!current()) return
         const toastID = showToast({
@@ -363,8 +366,17 @@ export function ResourceOpenProvider(props: ParentProps) {
     return openWorkspaceFile(path)
   }
 
-  const openUrl = (input: { url: string; mime?: string; filename?: string }) => {
+  const resolveAttachmentReference = (reference: string, filename?: string) => {
+    const attachment = attachmentFromReference(reference, filename)
+    return attachment ? { file: attachment, serverUrl: sdk.url } : undefined
+  }
+
+  const openUrl = (input: { url: string; mime?: string; filename?: string }): boolean => {
     if (!input.url) return false
+    if (input.url.startsWith("asset://")) {
+      const resource = resolveAttachmentReference(input.url, input.filename)
+      return resource ? openAttachment(resource.file, { serverUrl: resource.serverUrl }) : false
+    }
     if (input.mime?.startsWith("image/")) {
       const image = previewImageForUrl(input)
       if (image) {
@@ -377,7 +389,10 @@ export function ResourceOpenProvider(props: ParentProps) {
     return true
   }
 
-  const openAttachment = (attachment: AttachmentFile, options?: ResourceOpenOptions & { serverUrl?: string }) => {
+  const openAttachment = (
+    attachment: AttachmentFile,
+    options?: ResourceOpenOptions & { serverUrl?: string },
+  ): boolean => {
     const captured = () => {
       const draft =
         transitions.get(attachment.sessionID ?? "")?.draft ??
@@ -430,7 +445,7 @@ export function ResourceOpenProvider(props: ParentProps) {
     }
     const attachmentPanelInit = attachmentWorkbenchPanelInit(attachment)
     if (options?.prefer === "workspace" && attachmentPanelInit) {
-      return openAttachmentPanel(attachment, attachmentPanelInit)
+      return openAttachmentPanel(attachment, attachmentPanelInit, options)
     }
     const path = attachmentPath(attachment)
     if (options?.prefer === "workspace" && path) return openWorkspaceFile(path)
@@ -441,12 +456,17 @@ export function ResourceOpenProvider(props: ParentProps) {
       const image = resolveImagePreviewImage(options?.serverUrl ?? sdk.url, attachment, 0)
       if (!image) return false
       image.sourcePath = resolveWorkspacePath(attachmentSourcePath(attachment))
-      dialog.show(() => <ImagePreview images={[image]} />)
+      dialog.show(
+        () => <ImagePreview images={[image]} />,
+        () => {
+          if (options?.focusTarget) queueMicrotask(() => options.focusTarget?.()?.focus({ preventScroll: true }))
+        },
+      )
       return true
     }
 
-    if (target === "attachment-workspace" && attachmentPanelInit) {
-      return openAttachmentPanel(attachment, attachmentPanelInit)
+    if (attachmentPanelInit) {
+      return openAttachmentPanel(attachment, attachmentPanelInit, options)
     }
 
     if (path) return openWorkspaceFile(path)
@@ -472,6 +492,8 @@ export function ResourceOpenProvider(props: ParentProps) {
   onMount(() => {
     onCleanup(
       plugins.resources.register((resource) => {
+        const attachment = resolveAttachmentReference(resource.uri)
+        if (attachment) return openAttachment(attachment.file)
         const path = fileUrlPath(resource.uri)
         if (path) return openWorkspaceFile(path)
         if (resource.kind === "file") return openWorkspaceFile(resource.uri)
@@ -486,6 +508,7 @@ export function ResourceOpenProvider(props: ParentProps) {
       value={{
         open,
         openAttachment,
+        resolveAttachmentReference,
         resolveWorkspacePath,
         openWorkspaceSource,
         openToolReview,

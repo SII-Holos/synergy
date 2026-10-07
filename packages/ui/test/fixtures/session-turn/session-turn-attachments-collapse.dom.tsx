@@ -1,5 +1,6 @@
 import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { I18nProvider } from "@lingui/solid"
+import { createStore, reconcile } from "solid-js/store"
 import { render } from "solid-js/web"
 import { DataProvider } from "../../../src/context/data.tsx"
 import { DialogProvider } from "../../../src/context/dialog.tsx"
@@ -46,23 +47,35 @@ const imagePart = {
   type: "attachment",
   mime: "image/svg+xml",
   filename: "meme.svg",
-  url: "asset://meme",
+  url: "asset://1111111111111111.png",
 }
-const attachPart = {
-  id: "tool-attach",
+const outputPart = {
+  id: "tool-output",
   sessionID,
   messageID: assistantID,
   type: "tool",
-  callID: "call-attach",
-  tool: "attach",
+  callID: "call-output",
+  tool: "bash",
   state: {
     status: "completed",
     input: { file_path: "meme.svg" },
     output: "File delivered: meme.svg (1.0 KB)",
     title: "meme.svg",
-    metadata: { display: { toolCard: "hidden" } },
+    metadata: {},
     attachments: [imagePart],
     time: { start: 1, end: 2 },
+  },
+}
+const inspectionPart = {
+  ...outputPart,
+  id: "tool-inspect",
+  callID: "call-inspect",
+  tool: "view_image",
+  state: {
+    ...outputPart.state,
+    attachments: [
+      { ...imagePart, id: "evidence-image", filename: "evidence.svg", presentation: { purpose: "evidence" } },
+    ],
   },
 }
 const mediaPart = {
@@ -78,19 +91,22 @@ const mediaPart = {
     output: "",
     title: "Meme",
     metadata: { display: { kind: "media-generation", toolCard: "hidden" } },
-    attachments: [{ ...imagePart, id: "file-image-media", filename: "meme-2.svg" }],
+    attachments: [
+      { ...imagePart, id: "file-image-media", filename: "meme-2.svg", url: "asset://2222222222222222.png" },
+    ],
     time: { start: 1, end: 2 },
   },
 }
-const data = {
+const mediaCompletedState = structuredClone(mediaPart.state)
+const [data, setData] = createStore({
   session: [],
   session_diff: { [sessionID]: [] },
   message: { [sessionID]: [rootMessage, assistantMessage] },
   part: {
     [rootID]: [],
-    [assistantID]: [attachPart, mediaPart],
+    [assistantID]: [inspectionPart, outputPart, mediaPart],
   },
-}
+})
 // Session runtime state lives outside the Scope store; the view resolves
 // it from this accessor bag.
 const NO_REQUESTS = []
@@ -131,3 +147,31 @@ render(
   ),
   document.querySelector("#root"),
 )
+;(
+  globalThis as typeof globalThis & { __mediaLifecycleHarness: { move: (status: string) => void } }
+).__mediaLifecycleHarness = {
+  move(status: string) {
+    const state =
+      status === "completed"
+        ? structuredClone(mediaCompletedState)
+        : status === "empty"
+          ? { ...structuredClone(mediaCompletedState), attachments: [] }
+          : status === "failed" || status === "cancelled"
+            ? {
+                status: "error",
+                input: {},
+                error: "Provider unavailable",
+                reason: status === "cancelled" ? "cancelled" : undefined,
+                metadata: structuredClone(mediaCompletedState).metadata,
+                time: { start: 1, end: 2 },
+              }
+            : {
+                status,
+                input: {},
+                raw: "",
+                metadata: structuredClone(mediaCompletedState).metadata,
+                time: { start: 1 },
+              }
+    setData("part", assistantID, 2, "state", reconcile(state as typeof mediaCompletedState))
+  },
+}

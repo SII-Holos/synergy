@@ -262,7 +262,7 @@ describe("tool.look_at", () => {
   })
 
   describe("user-visible attachments", () => {
-    test("attaches analyzed images when show_to_user is true", () =>
+    test("always retains analyzed images as inspection evidence", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({
           git: true,
@@ -295,13 +295,13 @@ describe("tool.look_at", () => {
             fn: async () => {
               const lookat = await LookAtTool.init()
               const result = await lookat.execute(
-                { file_path: path.join(tmp.path, "visible.png"), goal: "describe", show_to_user: true },
+                { file_path: path.join(tmp.path, "visible.png"), goal: "describe" },
                 ctx,
               )
 
               expect(result.output).toBe("one pixel")
-              expect(result.metadata.shownToUser).toBe(true)
               expect(result.attachments).toHaveLength(1)
+              expect(result.attachments?.[0]?.presentation?.purpose).toBe("evidence")
               expect(result.attachments?.[0]?.mime).toBe("image/png")
               expect(result.attachments?.[0]?.filename).toBe("visible.png")
               expect(result.attachments?.[0]?.url).toStartWith("asset://")

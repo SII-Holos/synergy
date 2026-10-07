@@ -124,7 +124,6 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   email_inbox: d("tool.title.email-inbox", "View inbox"),
   generate_image: d("tool.title.generate-image", "Generate Image"),
   edit_image: d("tool.title.edit-image", "Edit Image"),
-  attach: d("tool.title.attach", "Add attachment"),
   response_card: d("tool.title.response-card", "Prepare response card"),
   speak: d("tool.title.speak", "Speak"),
 

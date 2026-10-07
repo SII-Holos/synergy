@@ -11,6 +11,10 @@ This published package owns dependency-light primitives shared across runtime, S
 
 Run `bun run typecheck`, `bun test`, and `bun run build`, affected consumer tests, and root `bun run package:check` plus `bun run quality:quick`.
 
+`asset-reference` owns portable immutable Asset ID/reference validation and MIME/extension mapping. Runtime storage and UI resolution share this contract; it never reads files or selects a server. Verify it with `bun test test/asset-reference.test.ts` and affected Asset/Markdown tests.
+
+`attachment-presentation` owns the shared attachment presentation schema and evidence/deliverable classification used by runtime, plugins and UI. Purpose is independent of model input policy; absent purpose defaults to a deliverable. Legacy metadata conversion belongs to the Session migration, not this portable contract. Verify the Harness attachment presentation/migration and UI attachment tests when changing it.
+
 `reasoning-item` owns portable provider-scoped reasoning identity for canonical Part summaries and UI grouping. Preserve ambiguous/missing-identity rejection and keep encrypted content out of derived keys.
 
 `terminal` owns explicit Bun terminal output primitives; product branding stays in CLI. `cli-command` supplies yargs definition typing without loading the CLI parser.
@@ -22,3 +26,5 @@ Run `bun run typecheck`, `bun test`, and `bun run build`, affected consumer test
 `installed-launcher` validates generation pins and builds subprocess argument arrays from explicitly supplied environment metadata. It performs no discovery, import or shell evaluation.
 
 `native-assets` resolves platform resources from an explicit owning module. Linux ABI selection distinguishes musl and glibc; native resource packages remain separate from portable JavaScript.
+
+`markdown-assets` owns bounded managed-reference extraction using the Markdown lexer and deterministic attachment suppression. It performs no resource loading; callers decide which prose is the final answer and which files are deliverables. Verify parser boundaries, summary limits and both virtual and hydrated conversation placement.

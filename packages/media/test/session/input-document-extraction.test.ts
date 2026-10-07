@@ -1,6 +1,8 @@
 import { afterAll, expect, test } from "bun:test"
 import { pathToFileURL } from "node:url"
+import { realpath } from "node:fs/promises"
 import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -37,13 +39,26 @@ for (const [extension, mime, make] of [
               `data:${mime};base64,${bytes.toString("base64")}`,
             ]) {
               const session = await Session.create({ workspace: null })
+              const partID = Identifier.ascending("part")
               const message = await createUserMessage({
                 sessionID: session.id,
                 model,
-                parts: [{ type: "attachment", url, filename, mime }],
+                parts: [{ id: partID, type: "attachment", url, filename, mime, presentation: { renderer: "file" } }],
               })
               expect(JSON.stringify(MessageV2.toModelMessage([message]))).toContain("DOCUMENTCONTENTMARKER")
               expect(JSON.stringify(MessageV2.toModelMessage([message]))).toContain(filename)
+              const saved = await MessageV2.get({ sessionID: session.id, messageID: message.info.id })
+              const attachment = saved.parts.find((part) => part.id === partID)
+              expect(attachment).toMatchObject({
+                type: "attachment",
+                filename,
+                mime,
+                presentation: { renderer: "file" },
+              })
+              if (attachment?.type !== "attachment") throw new Error("The original document was not retained")
+              expect(attachment.url).toStartWith("asset://")
+              expect(await Bun.file(attachment.localPath!).bytes()).toEqual(new Uint8Array(bytes))
+              expect(JSON.stringify(MessageV2.toModelMessage([saved]))).not.toContain(bytes.toString("base64"))
             }
           },
         }),
@@ -94,6 +109,10 @@ for (const source of ["asset", "data", "file"] as const) {
             if (valid) {
               const message = await MessageV2.get({ sessionID: session.id, messageID: item.messageID })
               expect(JSON.stringify(MessageV2.toModelMessage([message]))).toContain("DOCUMENTCONTENTMARKER")
+              const attachment = message.parts.find((part) => part.type === "attachment" && part.filename === filename)
+              expect(attachment?.type).toBe("attachment")
+              if (attachment?.type !== "attachment") throw new Error("The original slides were not retained")
+              expect(await Bun.file(attachment.localPath!).bytes()).toEqual(new Uint8Array(bytes))
             } else {
               const failed = await SessionInbox.getStored(session.id, item.id)
               expect(failed.input?.parts).toHaveLength(3)
@@ -129,7 +148,7 @@ test("audio and structured text preserve their original attachment with the docu
             parts: [{ type: "attachment", url: `asset://${id}`, mime, filename }],
           })
           const attachment = message.parts.find((part) => part.type === "attachment")
-          expect(attachment?.localPath).toBe(Asset.resolvePath(id))
+          expect(await realpath(attachment!.localPath!)).toBe(await realpath(Asset.resolvePath(id)!))
           expect(await Bun.file(attachment!.localPath!).text()).toBe(content)
           if (filename.endsWith("csv") || filename.endsWith("json"))
             expect(JSON.stringify(MessageV2.toModelMessage([message]))).toContain("TEXT_MARKER")

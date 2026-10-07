@@ -46,11 +46,11 @@ describe("tool.speak", () => {
         type: "attachment",
         mime: "audio/mpeg",
         url: expect.stringMatching(/^asset:\/\//),
-        presentation: { renderer: "audio", size: "medium" },
+        presentation: { purpose: "deliverable", renderer: "audio", size: "medium" },
         model: { mode: "none" },
         metadata: {
           kind: "attachment",
-          attachment: { originTool: "speak", deliverable: true },
+          attachment: { originTool: "speak" },
         },
       })
       expect(result.metadata).toMatchObject({

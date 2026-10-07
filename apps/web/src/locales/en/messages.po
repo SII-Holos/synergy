@@ -16168,10 +16168,6 @@ msgid "session-status.planning-next-steps"
 msgstr "Planning next steps"
 
 #. js-lingui-explicit-id
-msgid "session-status.preparing-files"
-msgstr "Preparing files"
-
-#. js-lingui-explicit-id
 msgid "session-status.querying-language-server"
 msgstr "Querying language server"
 
@@ -25013,10 +25009,6 @@ msgid "tool.title.ast-search"
 msgstr "Search AST"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.attach"
-msgstr "Add attachment"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.batch-stop"
 msgstr "Batch Stop"
 
@@ -25987,6 +25979,14 @@ msgstr "No results"
 #. js-lingui-explicit-id
 msgid "ui.mailbox.fromSession"
 msgstr "From {source}"
+
+#. js-lingui-explicit-id
+msgid "ui.mediaGeneration.empty"
+msgstr "No media was returned."
+
+#. js-lingui-explicit-id
+msgid "ui.mediaGeneration.failed"
+msgstr "Generation failed"
 
 #. js-lingui-explicit-id
 msgid "ui.mediaGeneration.generating"

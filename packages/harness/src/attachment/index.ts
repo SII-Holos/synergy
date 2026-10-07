@@ -54,8 +54,6 @@ export namespace Attachment {
 
   export interface Policy {
     extractText: boolean
-    keepBinary: boolean
-    saveLocal: boolean
     kind: "image" | "pdf" | "document" | "media" | "other"
     presentation?: MessageV2.AttachmentPresentation
     model: MessageV2.AttachmentModelPolicy
@@ -69,8 +67,6 @@ export namespace Attachment {
       return {
         kind: "image",
         extractText: false,
-        keepBinary: true,
-        saveLocal: true,
         model: { mode: "provider-file", summary: attachmentSummary(target, mime) },
       }
     }
@@ -79,8 +75,6 @@ export namespace Attachment {
       return {
         kind: "pdf",
         extractText: AttachmentTextExtraction.supported(target.filepath ?? target.filename ?? "document.pdf"),
-        keepBinary: true,
-        saveLocal: false,
         model: { mode: "summary", summary: attachmentSummary(target, mime) },
       }
     }
@@ -89,8 +83,6 @@ export namespace Attachment {
       return {
         kind: "media",
         extractText: false,
-        keepBinary: true,
-        saveLocal: true,
         model: { mode: "summary", summary: attachmentSummary(target, mime) },
       }
     }
@@ -99,8 +91,6 @@ export namespace Attachment {
       return {
         kind: "document",
         extractText: true,
-        keepBinary: false,
-        saveLocal: false,
         model: { mode: "summary", summary: attachmentSummary(target, mime) },
       }
     }
@@ -112,8 +102,6 @@ export namespace Attachment {
     return {
       kind: "other",
       extractText: false,
-      keepBinary: false,
-      saveLocal: false,
       model: { mode: "summary", summary: attachmentSummary(target, mime) },
     }
   }
@@ -246,20 +234,16 @@ export namespace Attachment {
       !Array.isArray(input.metadata.attachment)
         ? input.metadata.attachment
         : {}
-    const assetID =
-      model.mode === "provider-file"
-        ? undefined
-        : await Asset.write(Buffer.from(input.bytes), input.mime, input.filename)
-    const url = assetID ? `asset://${assetID}` : dataUrl(input.mime, input.bytes)
+    const assetID = await Asset.write(Buffer.from(input.bytes), input.mime, input.filename)
     return {
       id: input.id ?? Identifier.ascending("part"),
       sessionID: input.sessionID,
       messageID: input.messageID,
       type: "attachment",
-      url,
+      url: `asset://${assetID}`,
       mime: input.mime,
       filename: input.filename,
-      localPath: assetID ? Asset.resolvePath(assetID) : input.localPath,
+      localPath: input.localPath ?? Asset.resolvePath(assetID),
       source: input.source,
       presentation: input.presentation ?? fallbackPolicy.presentation,
       model,

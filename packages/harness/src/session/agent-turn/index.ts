@@ -18,6 +18,7 @@ import { Identifier } from "../../id/id"
 import { SessionManager } from "../manager"
 import { RolloutRecordingError } from "../rollout/error"
 import { RolloutTransport } from "../rollout/transport"
+import { materializeAttachmentInput } from "../../attachment/model-input"
 
 export namespace AgentTurn {
   export type Input = AgentTurnInput
@@ -81,10 +82,11 @@ export namespace AgentTurn {
     }
   }
 
-  export async function stream(input: Input): Promise<Stream> {
+  export async function stream(request: Input): Promise<Stream> {
     const instanceState = runtimeState()
 
     if (!instanceState.accepting || instanceState.stopPromise) throw new Error("Agent worker pool is stopping")
+    const input = { ...request, messages: await materializeAttachmentInput(request.messages, request.abort) }
     const { contextUsageProvenance, recording, usageRole, retryIndex, onPhase, ...turnInput } = input
     const attribution = recording ?? {
       owner: {

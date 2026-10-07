@@ -578,20 +578,18 @@ async function materializeUserMessage(
                     text,
                   },
                 ]
-                if (filePolicy.keepBinary) {
-                  pieces.push(
-                    await Attachment.toPart({
-                      ...part,
-                      filepath,
-                      mime: part.mime,
-                      filename: part.filename,
-                      sessionID: input.sessionID,
-                      messageID: info.id,
-                      id: part.id,
-                      source: part.source,
-                    }),
-                  )
-                }
+                pieces.push(
+                  await Attachment.toPart({
+                    ...part,
+                    filepath,
+                    mime: part.mime,
+                    filename: part.filename,
+                    sessionID: input.sessionID,
+                    messageID: info.id,
+                    id: part.id,
+                    source: part.source,
+                  }),
+                )
                 return pieces
               }
 

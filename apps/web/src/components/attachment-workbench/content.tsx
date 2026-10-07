@@ -1,7 +1,7 @@
 import { createMemo, createResource, createSignal, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import type { Part } from "@ericsanchezok/synergy-sdk"
-import { attachmentSourcePath } from "@ericsanchezok/synergy-ui/attachment-card"
+import { attachmentFromReference, attachmentSourcePath } from "@ericsanchezok/synergy-ui/attachment-card"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -30,8 +30,14 @@ export function AttachmentWorkbenchContent(
       init: { state: { url: href, nonce: browserOpenNonce() } },
     })
   }
-  const locator = createMemo(() => attachmentResourceState(props.tab.state))
+  const resource = createMemo(() => attachmentResourceState(props.tab.state))
+  const locator = createMemo(() => {
+    const value = resource()
+    return value && !("url" in value) ? value : undefined
+  })
   const local = createMemo(() => {
+    const reference = resource()
+    if (reference && "url" in reference) return attachmentFromReference(reference.url, reference.filename)
     const value = locator()
     return value ? findAttachmentByLocator(data.view.partsFor(value.messageID), value) : undefined
   })

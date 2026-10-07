@@ -5,6 +5,7 @@ import { I18nProvider } from "@lingui/solid"
 import { MemoryRouter, Route, createMemoryHistory } from "@solidjs/router"
 import { DataProvider } from "@ericsanchezok/synergy-ui/context/data"
 import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
+import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { MarkedProvider } from "@ericsanchezok/synergy-ui/context/marked"
 import { ThemeProvider, useTheme } from "@ericsanchezok/synergy-ui/theme/context"
 import { Toast } from "@ericsanchezok/synergy-ui/toast"
@@ -80,6 +81,10 @@ function Fixture() {
         : [image],
   )
   const [body, setBody] = createSignal("Inspect this image")
+  const [markdown, setMarkdown] = createSignal(
+    "![Plot](asset://1111111111111111.png)\n\n[Report.txt](asset://2222222222222222.txt)",
+  )
+  const [streaming, setStreaming] = createSignal(true)
   const parts = () => [
     ...files(),
     { id: "text", messageID: "message", sessionID: "session", type: "text" as const, text: body() },
@@ -138,6 +143,8 @@ function Fixture() {
     }).filter((row) => row.kind === "body")
   Object.assign(window, {
     fixture: {
+      setMarkdown,
+      setStreaming,
       repair: () => {
         fail = null
         if (!unregister) unregister = register()
@@ -177,6 +184,9 @@ function Fixture() {
         >
           <div class="session-workbench-pane" style={{ height: "100dvh", display: "flex" }}>
             <div class="session-content-column" style={{ "min-width": "0", flex: "1", padding: "16px" }}>
+              <Show when={query.has("markdown")}>
+                <Markdown text={markdown()} streaming={streaming()} />
+              </Show>
               <For each={mounted() ? rows() : []}>
                 {(row) => (
                   <div

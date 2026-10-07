@@ -1,8 +1,13 @@
 import type { Message, SessionPartSummary } from "@ericsanchezok/synergy-sdk"
 import { isActivityGroupableTool } from "@ericsanchezok/synergy-util/activity"
+import { attachmentSuppression } from "@ericsanchezok/synergy-util/markdown-assets"
 
 const isExecutionPart = (part: SessionPartSummary) =>
-  part.type === "reasoning" || (part.type === "tool" && isActivityGroupableTool(part.tool ?? ""))
+  part.type === "reasoning" ||
+  (part.type === "tool" && (part.display ? part.display === "activity" : isActivityGroupableTool(part.tool ?? "")))
+
+const separatesDeliverables = (part: SessionPartSummary) =>
+  part.type === "tool" && isExecutionPart(part) && (part.attachments?.deliverable ?? 0) > 0
 
 import {
   ACTIVITY_FAMILY_ORDER,
@@ -48,6 +53,8 @@ export type ConversationRow = {
       beforeReasoning: boolean
       reasoningAnchors?: Record<string, string>
       processBody?: boolean
+      toolAttachments?: "only" | "omit"
+      hiddenAttachments?: Readonly<Record<string, readonly string[]>>
       event?: "agent-delivery" | "compaction"
     }
   | { kind: "activity"; activity: ConversationActivity }
@@ -118,6 +125,7 @@ export function buildConversationRows(input: {
     const isProcessPart = (message: Message, parts: readonly SessionPartSummary[], index: number) =>
       message.role === "assistant" &&
       (isExecutionPart(parts[index]) ||
+        (parts[index].type === "attachment" && (parts[index].attachments?.evidence ?? 0) > 0) ||
         (parts[index].type === "text" &&
           (message.id !== lastAssistant?.id ||
             message.finish === "tool-calls" ||
@@ -130,6 +138,24 @@ export function buildConversationRows(input: {
         const parts = partsFor(message.id)
         return parts.some((_, index) => isProcessPart(message, parts, index))
       }),
+    }
+    const assistantParts = messages
+      .filter((message) => message.role === "assistant")
+      .flatMap((message) => partsFor(message.id))
+    const inline =
+      lastAssistant && lastAssistant.finish !== "tool-calls"
+        ? partsFor(lastAssistant.id).flatMap((part, index, parts) =>
+            part.type === "text" && !isProcessPart(lastAssistant, parts, index) ? (part.references ?? []) : [],
+          )
+        : []
+    const hiddenAttachments = attachmentSuppression(
+      assistantParts.map((part) => ({ id: part.id, references: part.attachments?.references })),
+      inline,
+    )
+    const allAttachmentsHidden = (part: SessionPartSummary) => {
+      const count = part.attachments?.deliverable ?? 0
+      const refs = part.attachments?.references ?? []
+      return count > 0 && count === refs.length && refs.every((ref) => hiddenAttachments[part.id]?.includes(ref))
     }
     let header = false
     for (const message of messages) {
@@ -204,6 +230,8 @@ export function buildConversationRows(input: {
         if (process && isExecutionPart(parts[first])) {
           while (
             offset < parts.length &&
+            !separatesDeliverables(parts[first]) &&
+            !separatesDeliverables(parts[offset]) &&
             offset - first < 6 &&
             !boundaries.has(`${messageKey(message.id)}:${parts[offset].id}`) &&
             isExecutionPart(parts[offset]) &&
@@ -222,7 +250,9 @@ export function buildConversationRows(input: {
             ? `${messageKey(message.id)}:user`
             : `${messageKey(message.id)}:${parts[first].id}`)
         if (message.role === "user") usedUserKeys.add(key)
-        rows.push({
+        const splitAttachments = message.role === "assistant" && separatesDeliverables(parts[first])
+        const hiddenOutput = message.role === "assistant" && allAttachmentsHidden(parts[first])
+        const body: Extract<ConversationRow, { kind: "body" }> = {
           key,
           root,
           message,
@@ -236,11 +266,25 @@ export function buildConversationRows(input: {
           ),
           process,
           processBody,
+          hiddenAttachments,
+          toolAttachments: splitAttachments ? "omit" : undefined,
           before: first === 0 && !page?.hasEarlier,
-          after: offset >= parts.length && !page?.hasMore,
+          after: (!splitAttachments || hiddenOutput) && offset >= parts.length && !page?.hasMore,
           beforeTool: !page?.hasEarlier && firstTool >= first && firstTool < offset,
           beforeReasoning: !page?.hasEarlier && firstReasoning >= first && firstReasoning < offset,
-        })
+        }
+        if (!hiddenOutput || parts[first].type !== "attachment") rows.push(body)
+        if (splitAttachments && !hiddenOutput)
+          rows.push({
+            ...body,
+            key: `${key}:attachments`,
+            toolAttachments: "only",
+            processBody: false,
+            before: false,
+            after: offset >= parts.length && !page?.hasMore,
+            beforeTool: false,
+            beforeReasoning: false,
+          })
       }
       if (!page || page.hasMore)
         rows.push({ key: `${messageKey(message.id)}:load`, root, message, kind: "load", more: !!page })
@@ -266,6 +310,7 @@ function groupActivities(
     if (
       row.process &&
       row.kind === "body" &&
+      row.toolAttachments !== "only" &&
       (row.event || (row.message.role === "assistant" && row.parts.every(isExecutionPart)))
     ) {
       if (!block) {

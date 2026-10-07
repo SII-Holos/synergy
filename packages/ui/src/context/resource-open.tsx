@@ -23,6 +23,7 @@ export type OpenableResource =
 
 export interface ResourceOpenOptions {
   prefer?: "preview" | "workspace" | "external"
+  focusTarget?: () => HTMLElement | undefined
 }
 
 export type ToolReviewTarget = { sessionID: string; messageID: string; partID: string; path?: string }
@@ -31,7 +32,13 @@ export type ActivityDetailTarget =
   | (ToolActivityTarget & { kind: "tool" })
   | { kind: "agent-delivery" | "compaction"; sessionID: string; messageID: string }
 
+export interface ResolvedAttachmentReference {
+  file: AttachmentFile
+  serverUrl: string
+}
+
 export interface ResourceOpenController {
+  resolveAttachmentReference?(reference: string, filename?: string): ResolvedAttachmentReference | undefined
   openActivityDetail?(target: ActivityDetailTarget): boolean
   isActivityDetailSelected?(target: ActivityDetailTarget): boolean
   openToolActivity?(target: ToolActivityTarget, part?: ToolPart): boolean

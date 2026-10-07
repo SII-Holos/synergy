@@ -16168,10 +16168,6 @@ msgid "session-status.planning-next-steps"
 msgstr "正在规划下一步"
 
 #. js-lingui-explicit-id
-msgid "session-status.preparing-files"
-msgstr "正在准备文件"
-
-#. js-lingui-explicit-id
 msgid "session-status.querying-language-server"
 msgstr "正在查询语言服务器"
 
@@ -25013,10 +25009,6 @@ msgid "tool.title.ast-search"
 msgstr "搜索 AST"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.attach"
-msgstr "添加附件"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.batch-stop"
 msgstr "批量停止"
 
@@ -25987,6 +25979,14 @@ msgstr "无结果"
 #. js-lingui-explicit-id
 msgid "ui.mailbox.fromSession"
 msgstr "来自 {source}"
+
+#. js-lingui-explicit-id
+msgid "ui.mediaGeneration.empty"
+msgstr "未返回媒体文件。"
+
+#. js-lingui-explicit-id
+msgid "ui.mediaGeneration.failed"
+msgstr "生成失败"
 
 #. js-lingui-explicit-id
 msgid "ui.mediaGeneration.generating"

@@ -167,6 +167,18 @@ describe("createMarkdownStreamController", () => {
     expect(links[1]?.hasAttribute("href")).toBe(false)
   })
 
+  test("retains managed image and document references across streaming chunks", () => {
+    const root = createRoot()
+    const stream = createMarkdownStreamController(root)
+    const prefix = "![Chart](asset://01234567"
+    stream.update(prefix)
+    stream.update(`${prefix}89abcdef.png)\n\n[Report](asset://fedcba9876543210.docx)`)
+    stream.end()
+    expect(root.querySelector("img")?.getAttribute("data-resource-reference")).toBe("asset://0123456789abcdef.png")
+    expect(root.querySelector("a")?.getAttribute("data-resource-reference")).toBe("asset://fedcba9876543210.docx")
+    expect(root.querySelector("img")?.hasAttribute("src")).toBe(false)
+  })
+
   test("blocks executable image sources", () => {
     const root = createRoot()
     const stream = createMarkdownStreamController(root)

@@ -1884,7 +1884,7 @@ describe("EnforcementGate readRoots", () => {
       expect(read.paths).toEqual(["/Users/test/my-project/screenshots/ui.png"])
     }))
 
-  test("attach inside readRoots is allowed in autonomous mode", () =>
+  test("look_at inside readRoots is allowed in autonomous mode", () =>
     runtime.run(async () => {
       const gate = await EnforcementGate.create({
         activeWorkspace: "/Users/test/my-project",
@@ -1893,14 +1893,14 @@ describe("EnforcementGate readRoots", () => {
         readRoots: ["/Users/test/.synergy"],
       })
 
-      const envelope = gate.evaluate("attach", {
+      const envelope = gate.evaluate("look_at", {
         file_path: "/Users/test/.synergy/data/tool-output/report.pdf",
       })
 
       expect(envelope.decision).toBe("allow")
     }))
 
-  test("attach classifies every file_path array entry", () =>
+  test("look_at classifies every file_path array entry", () =>
     runtime.run(async () => {
       const gate = await EnforcementGate.create({
         activeWorkspace: "/Users/test/my-project",
@@ -1909,7 +1909,7 @@ describe("EnforcementGate readRoots", () => {
       })
       const paths = ["/Users/test/my-project/report.pdf", "/Users/test/my-project/chart.png"]
 
-      const result = gate.classify("attach", { file_path: paths })
+      const result = gate.classify("look_at", { file_path: paths })
 
       expect(result.capabilities.find((cap: any) => cap.class === "file_read")?.paths).toEqual(paths)
     }))
@@ -1919,7 +1919,7 @@ describe("EnforcementGate readRoots", () => {
       const safePath = "/Users/test/my-project/report.pdf"
       const protectedPath = "/Users/test/.ssh/id_rsa"
 
-      for (const toolName of ["attach", "look_at"] as const) {
+      for (const toolName of ["look_at"] as const) {
         for (const file_path of [
           [safePath, protectedPath],
           [protectedPath, safePath],
@@ -1946,7 +1946,7 @@ describe("EnforcementGate readRoots", () => {
         profileId: "autonomous",
       })
 
-      const envelope = gate.evaluate("attach", {
+      const envelope = gate.evaluate("look_at", {
         file_path: ["/Users/test/my-project/report.pdf"],
         filePath: "/Users/test/.ssh/id_rsa",
       })

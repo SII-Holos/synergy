@@ -35,6 +35,7 @@ import {
 import type { ImagePreviewImage } from "./image-preview-model"
 export type { AttachmentFile } from "./attachment-card-utils"
 export {
+  attachmentFromReference,
   attachmentColumnCount,
   attachmentColumns,
   attachmentKind,
@@ -63,7 +64,7 @@ export function AttachmentCard(props: {
   imagePreview?: { images: ImagePreviewImage[]; index: number }
   autoplay?: boolean
   autoplayKey?: string
-  compact?: "draft" | "user"
+  compact?: "draft" | "user" | "process"
   singleImage?: boolean
   onOpen?: (file: AttachmentFile) => void
 }) {
@@ -401,7 +402,7 @@ export function AttachmentGallery(props: {
   autoplay?: boolean
   autoplayKey?: string
   layout?: "columns" | "rows"
-  compact?: "draft" | "user"
+  compact?: "draft" | "user" | "process"
   expanded?: boolean
   onExpandedChange?: (value: boolean) => void
   onOpen?: (file: AttachmentFile) => void

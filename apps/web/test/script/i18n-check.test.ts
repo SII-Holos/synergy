@@ -191,7 +191,6 @@ msgstr ""
       ["tool.title.agenda", "查看日程"],
       ["tool.title.agenda-logs", "查看日程记录"],
       ["tool.title.ast-search", "搜索 AST"],
-      ["tool.title.attach", "添加附件"],
       ["tool.title.blueprint-search", "搜索 Blueprint"],
       ["tool.title.blueprints", "查看 Blueprint"],
       ["tool.title.claim", "管理研究论点"],

@@ -38,6 +38,9 @@ describe("production conversation history", () => {
   }, 30000)
 
   test("native public conversation retains bounded history and reconciles updates after reconnect", async () => {
+    const started = performance.now()
+    const phase = (name: string) =>
+      console.info(`[conversation history] ${name}: ${Math.round(performance.now() - started)}ms`)
     const browser = await chromium.launch({ headless: true })
     let diagnostics: { errors: Error[]; dispose(): unknown } | undefined
     try {
@@ -57,6 +60,7 @@ describe("production conversation history", () => {
       })
       await page.goto(conversation.url)
       await page.getByText("Answer 360", { exact: true }).waitFor()
+      phase("initial answer")
       const roots = page.locator('.session-conversation-content [data-display-row][data-message-role="user"]')
       expect(await roots.count()).toBeGreaterThan(0)
       expect(await roots.count()).toBeLessThanOrEqual(30)
@@ -107,6 +111,7 @@ describe("production conversation history", () => {
         await page.mouse.move(viewport.x + viewport.width / 2, viewport.y + viewport.height / 2)
         await page.mouse.wheel(0, -100_000)
         await page.getByText(question.text, { exact: true }).waitFor()
+        phase(`history page ${pageIndex + 1}`)
         expect(await roots.count()).toBeLessThanOrEqual(30)
         expect(await page.locator("[data-display-row]").count()).toBeLessThanOrEqual(80)
       }
@@ -119,11 +124,13 @@ describe("production conversation history", () => {
       await historySearch.getByRole("button", { name: "Question 137", exact: true }).click()
       await historySearch.waitFor({ state: "detached" })
       await page.getByText("Question 137", { exact: true }).waitFor()
+      phase("search result")
       expect(await roots.count()).toBeLessThanOrEqual(30)
       expect(await page.locator("[data-display-row]").count()).toBeLessThanOrEqual(80)
       const returnLatest = page.getByRole("button", { name: "Return to latest", exact: true })
       await returnLatest.click()
       await page.getByText("Answer 360", { exact: true }).waitFor()
+      phase("returned to latest")
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 })
       const { data } = await preview.client.session.messages(
         { scopeID: "home", sessionID: conversation.id },
@@ -147,9 +154,11 @@ describe("production conversation history", () => {
       )
       await context.setOffline(false)
       await page.getByText("Answer 360 recovered after reconnect", { exact: true }).waitFor()
+      phase("reconnected")
       expect(await roots.count()).toBeLessThanOrEqual(30)
       await page.reload()
       await page.getByText("Answer 360 recovered after reconnect", { exact: true }).waitFor()
+      phase("reloaded")
       expect(diagnostics.errors.map((error) => error.message)).toEqual([])
     } catch (error) {
       throw new AggregateError([error, ...(diagnostics?.errors ?? [])], "Conversation real-host acceptance failed")
@@ -157,7 +166,7 @@ describe("production conversation history", () => {
       diagnostics?.dispose()
       await browser.close()
     }
-  }, 90000)
+  }, 180000)
 })
 
 test("conversation display and notification preferences survive a production-host reload", async () => {

@@ -100,16 +100,18 @@ export const ReadTool = Tool.define(
         }
         output += "\n</file>"
 
-        const attachments = filePolicy.keepBinary
-          ? [
-              await FileAttachment.toPart({
-                filepath,
-                mime: "application/pdf",
-                sessionID: ctx.sessionID,
-                messageID: ctx.messageID,
-              }),
-            ]
-          : undefined
+        const attachments =
+          filePolicy.kind === "pdf"
+            ? [
+                await FileAttachment.toPart({
+                  filepath,
+                  mime: "application/pdf",
+                  presentation: { purpose: "evidence" },
+                  sessionID: ctx.sessionID,
+                  messageID: ctx.messageID,
+                }),
+              ]
+            : undefined
 
         return {
           title,

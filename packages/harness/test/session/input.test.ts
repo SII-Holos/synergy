@@ -318,7 +318,7 @@ describe("session root variants", () => {
 })
 
 describe("session input attachment extraction", () => {
-  test("materializes a binary file attachment at its durable asset path", () =>
+  test("preserves binary attachment provenance while model input uses its durable asset", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
@@ -350,15 +350,15 @@ describe("session input attachment extraction", () => {
             )
             expect(attachment?.url.startsWith("asset://")).toBe(true)
             const assetPath = attachment ? Asset.resolvePath(attachment.url.slice("asset://".length)) : undefined
-            expect(attachment?.localPath).toBe(assetPath)
-            expect(attachment?.localPath).not.toBe(filepath)
+            expect(attachment?.localPath).toBe(filepath)
             const modelInput = JSON.stringify(MessageV2.toModelMessage([created]))
             expect(modelInput).toContain(assetPath!)
+            expect(modelInput).toContain(attachment!.url)
             expect(modelInput).not.toContain(filepath)
 
             await fs.unlink(filepath)
-            expect(await Bun.file(attachment!.localPath!).exists()).toBe(true)
-            expect(Buffer.from(await Bun.file(attachment!.localPath!).arrayBuffer())).toEqual(bytes)
+            expect(await Bun.file(assetPath!).exists()).toBe(true)
+            expect(Buffer.from(await Bun.file(assetPath!).arrayBuffer())).toEqual(bytes)
           } finally {
             await Session.remove(session.id)
           }

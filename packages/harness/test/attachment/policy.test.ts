@@ -10,8 +10,7 @@ describe("Attachment.policy", () => {
       expect(Attachment.policy({ filename: "photo.png", mime: "image/png" })).toMatchObject({
         kind: "image",
         extractText: false,
-        keepBinary: true,
-        saveLocal: true,
+        model: { mode: "provider-file" },
       })
     }))
 
@@ -20,8 +19,7 @@ describe("Attachment.policy", () => {
       expect(Attachment.policy({ filename: "report.pdf" })).toMatchObject({
         kind: "pdf",
         extractText: false,
-        keepBinary: true,
-        saveLocal: false,
+        model: { mode: "summary" },
       })
     }))
   test("keeps arbitrary files as-is without a second media copy", () =>
@@ -29,15 +27,11 @@ describe("Attachment.policy", () => {
       expect(Attachment.policy({ filename: "setup.exe", mime: "application/x-msdownload" })).toMatchObject({
         kind: "other",
         extractText: false,
-        keepBinary: false,
-        saveLocal: false,
         model: { mode: "summary" },
       })
       expect(Attachment.policy({ filename: "payload.bin" })).toMatchObject({
         kind: "other",
         extractText: false,
-        keepBinary: false,
-        saveLocal: false,
         model: { mode: "summary" },
       })
     }))

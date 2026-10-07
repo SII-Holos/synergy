@@ -1101,7 +1101,6 @@ test("a manual compaction request is replaced by one completed event inside its 
 
 test("logical execution folds across messages, preserves prose and retains the final Markdown through exit", async () => {
   const cdp = await page.context().newCDPSession(page)
-  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 })
   try {
     await page.goto(url)
     await page
@@ -1110,6 +1109,7 @@ test("logical execution folds across messages, preserves prose and retains the f
       .catch(async (error) => {
         throw new Error(JSON.stringify({ url: page.url(), errors, html: await page.content() }), { cause: error })
       })
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 })
     expect(await page.locator('[data-row-kind="activity"]').count()).toBe(2)
     expect(await page.locator('[data-component="conversation-activity"] > button').count()).toBe(2)
     expect(await page.locator('[data-component="process-viewport"]').count()).toBe(1)

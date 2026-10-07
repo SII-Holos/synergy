@@ -9,7 +9,6 @@ import { BasicTool } from "../../basic-tool"
 import { Icon } from "../../icon"
 import { Checkbox } from "../../checkbox"
 import { RenderTool } from "../../render-tool"
-import { AttachmentGallery } from "../../attachment-card"
 import { ToolTextOutput } from "../../tool-output-text"
 import { ToolRegistry, getToolInfo, getDirectory } from "../../message-part"
 import { TOOL_TITLE_DESC, TOOL_MISC_DESC, TOOL_LABEL_DESC } from "../../tool-title-descriptors"
@@ -1507,48 +1506,6 @@ ToolRegistry.register({
               <ToolTextOutput text={output()} />
             </div>
           )}
-        </Show>
-      </BasicTool>
-    )
-  },
-})
-
-ToolRegistry.register({
-  name: "attach",
-  render(props) {
-    const { _ } = useLingui()
-    const data = useData()
-    const galleryFiles = () => {
-      const attachments = props.attachments
-      if (attachments?.length) return attachments
-      return (props.metadata?.files ?? []) as { assetId: string; filename: string; mime: string; size: number }[]
-    }
-    const metadataFiles = () =>
-      (props.metadata?.files ?? []) as { assetId: string; filename: string; mime: string; size: number }[]
-    const totalSize = () => {
-      const bytes = metadataFiles().reduce((sum, f) => sum + f.size, 0)
-      if (bytes < 1024) return `${bytes} B`
-      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-    }
-    const subtitle = () => {
-      const f = galleryFiles()
-      if (f.length === 1) return f[0].filename
-      return _({ ...TOOL_LABEL_DESC.files, values: { count: f.length } })
-    }
-    return (
-      <BasicTool
-        {...props}
-        defaultOpen
-        trigger={{
-          icon: "paperclip",
-          title: TOOL_TITLE_DESC["attach"],
-          subtitle: subtitle(),
-          tags: galleryFiles().length ? [{ label: totalSize() }] : undefined,
-        }}
-      >
-        <Show when={props.status === "completed" && galleryFiles().length}>
-          <AttachmentGallery files={galleryFiles()} serverUrl={data.serverUrl} />
         </Show>
       </BasicTool>
     )

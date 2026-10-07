@@ -53,6 +53,8 @@ The tool icon registry is separate from the product semantic-token registry. Loa
 
 ## Tool Description Quality
 
+Tools that generate or inspect files return canonical attachments from their owning operation. Generation delivers directly; inspection marks `presentation.purpose` as `evidence`. Use the shared attachment constructor and returned Asset references. Do not add a second delivery tool, visibility argument or mutable browser file-path route. Execution tools capture supported explicitly referenced Workspace outputs through the bounded discovery path. Verify that the model receives the reference and that final Markdown opens the same immutable bytes.
+
 1. Write the description as a contract for a non-deterministic agent. It must answer four questions: what the tool does, when to use it (direct triggers and indirect signals), what inputs it accepts (types, constraints, defaults, and format examples), and what it returns (success shape and error conditions).
 2. Keep parameter names consistent across tools: use the same term for the same concept everywhere (for example, always `customer_id`, never `id` in one tool and `identifier` in another).
 3. Make error outputs actionable for agent recovery: state what went wrong, which input was invalid, and how to correct it (expected format plus an example). A generic "failed" message is not acceptable.

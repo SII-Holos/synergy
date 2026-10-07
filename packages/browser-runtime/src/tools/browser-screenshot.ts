@@ -73,9 +73,14 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
               type: "attachment" as const,
               mime: "image/png",
               filename,
-              url: supportsImageInput ? result.dataUrl : `asset://${assetId}`,
+              url: `asset://${assetId}`,
               localPath: filePath,
-              presentation: { renderer: "image" as const, size: "large" as const, crop: false },
+              presentation: {
+                purpose: "evidence" as const,
+                renderer: "image" as const,
+                size: "large" as const,
+                crop: false,
+              },
               model: supportsImageInput
                 ? {
                     mode: "provider-file" as const,

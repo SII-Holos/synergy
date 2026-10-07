@@ -232,7 +232,6 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   openai_image_edit: "communication",
   speak: "communication",
   render: "analyze",
-  attach: "communication",
   response_card: "communication",
   "context7_resolve-library-id": "search",
   "context7_query-docs": "web",
@@ -281,7 +280,6 @@ const PATTERN_FALLBACKS: readonly { pattern: RegExp; category: SemanticCategory 
   { pattern: /^(send|notify|message)/i, category: "communication" },
   { pattern: /^question/i, category: "communication" },
   { pattern: /^(openai[-_])?image[-_](gen|edit)/i, category: "communication" },
-  { pattern: /^attach/i, category: "communication" },
 ]
 
 const ACTIVITY_FAMILIES = new Set<ActivityFamily>(ACTIVITY_FAMILY_ORDER)
@@ -308,7 +306,6 @@ const EXTERNAL_ACTION_TOOLS = new Set([
   "inspire_notebook",
 ])
 const PRODUCTION_COMMUNICATION_TOOLS = new Set([
-  "attach",
   "response_card",
   "openai_image_gen",
   "openai_image_edit",
@@ -333,6 +330,7 @@ const COORDINATION_RECEIPT_TOOLS = new Set([
 // `render` output is the presented card itself, so it must stay outside
 // semantic activity groups.
 const ACTIVITY_PRESENTATION_BOUNDARY_TOOLS = new Set(["render"])
+const MEDIA_INSPECTION_TOOLS = new Set(["look_at", "view_image", "scan_document"])
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {}
@@ -350,6 +348,10 @@ export function toolDisplayPolicy(metadata: unknown): { toolCardHidden: boolean;
     toolCardHidden: display?.toolCard === "hidden",
     mediaGeneration: display?.kind === "media-generation",
   }
+}
+
+export function isCancelledMediaGeneration(state: { status: string; reason?: string; metadata?: unknown }): boolean {
+  return state.status === "error" && state.reason === "cancelled" && toolDisplayPolicy(state.metadata).mediaGeneration
 }
 
 function firstString(...values: unknown[]): string | undefined {
@@ -408,6 +410,7 @@ export function activityFamilyForTool(
   if (COORDINATION_RECEIPT_TOOLS.has(tool)) return "coordination"
   const override = metadataFamily(metadata)
   if (override) return override
+  if (MEDIA_INSPECTION_TOOLS.has(tool)) return "inspect-local"
 
   switch (classifySemanticCategory(tool, input)) {
     case "file-read":

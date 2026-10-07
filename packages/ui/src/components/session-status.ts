@@ -133,8 +133,6 @@ const TOOL_DESC: Record<string, MessageDescriptor> = {
   email_send: defineDescriptor("session-status.sending-email", "Sending email"),
   email_read: defineDescriptor("session-status.reading-email", "Reading email"),
 
-  attach: defineDescriptor("session-status.preparing-files", "Preparing files"),
-
   render: defineDescriptor("session-status.rendering-content", "Rendering content"),
 
   runtime_reload: defineDescriptor("session-status.reloading-config", "Reloading config"),

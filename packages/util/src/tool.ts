@@ -1,3 +1,4 @@
+import type { AttachmentPresentation } from "./attachment-presentation"
 import { z } from "zod"
 import type { ToolDisplay } from "./tool-display.js"
 import type { BunShell } from "./shell.js"
@@ -81,12 +82,7 @@ export type PluginToolAttachment = {
   filename?: string
   url: string
   localPath?: string
-  presentation?: {
-    hidden?: boolean
-    renderer?: "image" | "video" | "audio" | "thumbnail" | "file"
-    size?: "original" | "small" | "medium" | "large"
-    crop?: boolean
-  }
+  presentation?: AttachmentPresentation
   model?:
     | { mode: "summary"; summary?: string }
     | { mode: "content"; text?: string }

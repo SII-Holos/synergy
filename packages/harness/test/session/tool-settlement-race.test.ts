@@ -1,5 +1,6 @@
 import { afterAll, afterEach, describe, expect, mock, spyOn, test } from "bun:test"
 import type { Tool as AITool } from "ai"
+import { z } from "zod"
 import { Identifier } from "../../src/id/id"
 import type { Provider } from "../../src/provider/provider"
 import { Session } from "../../src/session"
@@ -54,7 +55,7 @@ function testModel(): Provider.Model {
   } as unknown as Provider.Model
 }
 
-async function createTurn() {
+async function createTurn(abort = new AbortController().signal) {
   const session = await Session.create({})
   const user = await createUserMessage({
     sessionID: session.id,
@@ -81,7 +82,7 @@ async function createTurn() {
     assistantMessage,
     sessionID: session.id,
     model: testModel(),
-    abort: new AbortController().signal,
+    abort,
   })
   const readDurableToolPart = async (callID: string): Promise<MessageV2.ToolPart> => {
     const stored = await MessageV2.get({ sessionID: session.id, messageID })
@@ -146,6 +147,44 @@ async function pumpMacrotasks(turns: number) {
   for (let i = 0; i < turns; i++) await new Promise<void>((resolve) => setTimeout(resolve, 0))
 }
 describe("tool settlement vs late state flushes", () => {
+  test("owner cancellation persists separately from timeout and ordinary failure", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          for (const kind of ["cancelled", "timeout", "failed"] as const) {
+            const abort = new AbortController()
+            const { processor, readDurableToolPart } = await createTurn(abort.signal)
+            const callID = Identifier.ascending("part")
+            await processor
+              .executeToolCall({
+                callID,
+                toolName: "probe",
+                args: {},
+                tool: {
+                  inputSchema: z.object({}),
+                  async execute() {
+                    await processor.updateToolCallState(callID, {
+                      input: {},
+                      metadata: { display: { kind: "media-generation" } },
+                    })
+                    if (kind === "cancelled") abort.abort()
+                    if (kind === "timeout") abort.abort(new DOMException("deadline", "TimeoutError"))
+                    throw new Error("generation stopped")
+                  },
+                },
+              })
+              .catch(() => {})
+            const part = await readDurableToolPart(callID)
+            expect(part.state.status).toBe("error")
+            if (part.state.status !== "error") throw new Error("Expected a settled error")
+            expect(part.state.reason).toBe(kind === "cancelled" ? "cancelled" : undefined)
+            expect(part.state.metadata?.display).toEqual({ kind: "media-generation" })
+          }
+        },
+      })
+    }))
   afterEach(() =>
     runtime.run(() => {
       mock.restore()

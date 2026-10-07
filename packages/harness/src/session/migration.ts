@@ -1,3 +1,4 @@
+import { migrateAttachmentPurposes, upgradeAttachmentPresentation } from "./attachment-migration"
 import { primaryAgentMigration } from "./primary-agent-migration"
 import { Tool } from "../tool/tool"
 import { migrateTurnFileCheckpoints } from "./file-changes-migration"
@@ -282,6 +283,7 @@ function migrateAttachmentPresentation(presentation: unknown): {
   if (!record) return { value: undefined, changed: presentation !== undefined }
 
   const next: MessageV2.AttachmentPresentation = {}
+  if (record.purpose === "evidence" || record.purpose === "deliverable") next.purpose = record.purpose
 
   if (record.hidden === true || record.mode === "hidden") next.hidden = true
   if (
@@ -1526,7 +1528,7 @@ export async function migrateToolInputSemantics(
   progress(done, done)
 }
 
-function invalidateReasoningDisplayState(value: Record<string, unknown>) {
+function invalidatePartDisplayState(value: Record<string, unknown>) {
   if (value.ready === false && value.cursor === undefined && value.sourceGeneration === undefined) return false
   value.ready = false
   value.generation = (typeof value.generation === "number" ? value.generation : 0) + 1
@@ -1535,7 +1537,7 @@ function invalidateReasoningDisplayState(value: Record<string, unknown>) {
   return true
 }
 
-async function migrateReasoningDisplay(
+async function migratePartDisplay(
   owner: { scopeID: string; sessionID: string },
   progress: (current: number, total: number) => void,
 ) {
@@ -1549,7 +1551,7 @@ async function migrateReasoningDisplay(
       const records = await Storage.readMany<Record<string, unknown>>(keys)
       await tx.writeMany(
         records.flatMap((record, index) =>
-          record && invalidateReasoningDisplayState(record) ? [{ key: keys[index], value: record }] : [],
+          record && invalidatePartDisplayState(record) ? [{ key: keys[index], value: record }] : [],
         ),
       )
     })
@@ -1566,17 +1568,78 @@ async function migrateReasoningDisplay(
   progress(done, done)
 }
 
-async function migrateReasoningDisplaySessions(progress: (current: number, total: number) => void) {
+async function migratePartDisplaySessions(progress: (current: number, total: number) => void) {
   let done = 0
   for (const scopeID of await SessionMigrationTarget.scopes())
     for (const sessionID of await SessionMigrationTarget.sessions(scopeID)) {
-      await migrateReasoningDisplay({ scopeID, sessionID }, () => {})
+      await migratePartDisplay({ scopeID, sessionID }, () => {})
       progress(++done, 0)
     }
   progress(done, done)
 }
 
+async function migrateAttachmentDisplay(
+  owner: { scopeID: string; sessionID: string },
+  progress: (current: number, total: number, phase?: number) => void,
+) {
+  progress(0, 0, 0)
+  await migrateAttachmentPurposes(owner, (current, total) => progress(current, total, 0))
+  progress(0, 0, 1)
+  await migratePartDisplay(owner, (current, total) => progress(current, total, 1))
+}
+
 export const migrations: Migration[] = [
+  {
+    id: "20261007-media-cancellation-display",
+    scope: "session",
+    execution: "session",
+    domain: "session",
+    dependsOn: ["20261007-attachment-resource-summaries"],
+    description: "Refresh display summaries to omit cancelled media generation",
+    upgradeRecord(key, value) {
+      if (key[0] === "sessions" && key.length === 5 && key[3] === "display_parts_state")
+        invalidatePartDisplayState(value)
+    },
+    upSession: migratePartDisplay,
+    up: migratePartDisplaySessions,
+  },
+  {
+    id: "20261007-attachment-resource-summaries",
+    scope: "session",
+    execution: "session",
+    domain: "session",
+    dependsOn: ["20261007-attachment-presentation"],
+    description: "Rebuild bounded managed resource summaries for attachment presentation",
+    upgradeRecord(key, value) {
+      if (key[0] === "sessions" && key.length === 5 && key[3] === "display_parts_state")
+        invalidatePartDisplayState(value)
+    },
+    upSession: migratePartDisplay,
+    up: migratePartDisplaySessions,
+  },
+  {
+    id: "20261007-attachment-presentation",
+    scope: "session",
+    execution: "session",
+    domain: "session",
+    dependsOn: ["20261005-reasoning-display-identity"],
+    description: "Record attachment purpose and rebuild bounded presentation summaries",
+    upgradeRecord(key, value) {
+      if (key[0] !== "sessions") return
+      if (key.length === 7 && key[3] === "messages" && key[5] === "parts") upgradeAttachmentPresentation(value)
+      if (key.length === 5 && key[3] === "display_parts_state") invalidatePartDisplayState(value)
+    },
+    upSession: migrateAttachmentDisplay,
+    async up(progress) {
+      let done = 0
+      for (const scopeID of await SessionMigrationTarget.scopes())
+        for (const sessionID of await SessionMigrationTarget.sessions(scopeID)) {
+          await migrateAttachmentDisplay({ scopeID, sessionID }, () => {})
+          progress(++done, 0)
+        }
+      progress(done, done)
+    },
+  },
   {
     id: "20261005-reasoning-display-identity",
     scope: "session",
@@ -1586,10 +1649,10 @@ export const migrations: Migration[] = [
     description: "Rebuild bounded Part summaries with provider reasoning item identities on demand",
     upgradeRecord(key, value) {
       if (key[0] === "sessions" && key.length === 5 && key[3] === "display_parts_state")
-        invalidateReasoningDisplayState(value)
+        invalidatePartDisplayState(value)
     },
-    upSession: migrateReasoningDisplay,
-    up: migrateReasoningDisplaySessions,
+    upSession: migratePartDisplay,
+    up: migratePartDisplaySessions,
   },
   {
     id: "20261005-session-reasoning-display",
@@ -1600,10 +1663,10 @@ export const migrations: Migration[] = [
     description: "Refresh reasoning presentation summaries without changing canonical evidence",
     upgradeRecord(key, value) {
       if (key[0] === "sessions" && key.length === 5 && key[3] === "display_parts_state")
-        invalidateReasoningDisplayState(value)
+        invalidatePartDisplayState(value)
     },
-    upSession: migrateReasoningDisplay,
-    up: migrateReasoningDisplaySessions,
+    upSession: migratePartDisplay,
+    up: migratePartDisplaySessions,
   },
   {
     id: "20261001-session-text-projection",

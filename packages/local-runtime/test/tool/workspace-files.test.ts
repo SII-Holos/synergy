@@ -1,6 +1,5 @@
 import { AttachmentDiscovery } from "../../src/tools/attachment-discovery"
 import { ViewImageTool } from "../../src/tools/view-image"
-import { AttachTool } from "../../src/tools/attach"
 import { expect, test } from "bun:test"
 import { testRuntime } from "../support/runtime"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -83,11 +82,8 @@ test("file tools share dormant object and live execution views without a local S
           const image = await (
             await ViewImageTool.init()
           ).execute({ filePath: "preview.svg" }, { ...context, callID: "view-image", resources })
-          expect(image.attachments?.[0]?.url).toBe(`data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`)
-          const attached = await (
-            await AttachTool.init()
-          ).execute({ file_path: "src/file.ts" }, { ...context, callID: "attachment", resources })
-          expect(await Bun.file(attached.attachments![0]!.localPath!).text()).toBe("const value = 2\n")
+          expect(image.attachments?.[0]?.url).toBe(discovered[0]!.url)
+          expect(await Bun.file(image.attachments![0]!.localPath!).text()).toBe(svg)
           expect((await Environment.get(environment.id, workspace.scopeID)).state).toBe("idle")
         }
         {

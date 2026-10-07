@@ -22,7 +22,6 @@ import { SessionReadTool } from "./tools/session-read"
 import { SessionSearchTool } from "./tools/session-search"
 import { SessionSendTool } from "./tools/session-send"
 import { ScopeListTool } from "./tools/scope-list"
-import { AttachTool } from "./tools/attach"
 import { SkillTool } from "./tools/skill"
 import { ProcessTool } from "./tools/process"
 import { AgentConfigTool, AgentConfigToolGroup } from "./tools/agent-config"
@@ -60,7 +59,6 @@ export function registerLocalTools() {
       SessionSearchTool,
       SessionSendTool,
       ScopeListTool,
-      AttachTool,
       SkillTool,
       ProcessTool,
       RuntimeReloadTool,

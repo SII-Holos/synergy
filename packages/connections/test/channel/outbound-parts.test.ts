@@ -37,7 +37,7 @@ function attachment(input: {
   filename: string
   hidden?: boolean
   localPath?: string
-  deliverable?: boolean
+  purpose?: "evidence" | "deliverable"
   detectedFrom?: "markdown" | "file_url" | "line" | "path"
 }): MessageV2.AttachmentPart {
   return {
@@ -48,16 +48,15 @@ function attachment(input: {
     url: input.url,
     mime: input.mime,
     filename: input.filename,
-    presentation: input.hidden ? { hidden: true } : { renderer: "image" },
+    presentation: { purpose: input.purpose, ...(input.hidden ? { hidden: true } : { renderer: "image" }) },
     ...(input.localPath ? { localPath: input.localPath } : {}),
-    ...(input.deliverable !== undefined || input.detectedFrom
+    ...(input.detectedFrom
       ? {
           metadata: {
             kind: "attachment",
             attachment: {
               originTool: "process",
               ...(input.detectedFrom ? { detectedFrom: input.detectedFrom } : {}),
-              ...(input.deliverable !== undefined ? { deliverable: input.deliverable } : {}),
             },
           },
         }
@@ -340,7 +339,7 @@ describe("Channel task outbound parts", () => {
                       url: `asset://${pngID}`,
                       mime: "image/png",
                       filename: "preview.png",
-                      deliverable: false,
+                      purpose: "evidence",
                     }),
                   ],
                 }),
@@ -354,7 +353,7 @@ describe("Channel task outbound parts", () => {
       ).toEqual([])
     }))
 
-  test("filters legacy incidental attachments via the detectedFrom fallback", () =>
+  test("filters inspection evidence while retaining capture provenance", () =>
     runtime.run(async () => {
       const pngID = await Asset.write(Buffer.from([137, 80, 78, 71]), "image/png", "preview.png")
       const rootID = "message_root"
@@ -379,6 +378,7 @@ describe("Channel task outbound parts", () => {
                       mime: "image/png",
                       filename: "preview.png",
                       detectedFrom: "path",
+                      purpose: "evidence",
                     }),
                   ],
                 }),
@@ -417,7 +417,7 @@ describe("Channel task outbound parts", () => {
                       url: `asset://${markdownID}`,
                       mime: "image/png",
                       filename: "markdown.png",
-                      deliverable: true,
+                      purpose: "deliverable",
                       detectedFrom: "markdown",
                     }),
                     attachment({
@@ -426,7 +426,7 @@ describe("Channel task outbound parts", () => {
                       url: `asset://${fileUrlID}`,
                       mime: "image/png",
                       filename: "file-url.png",
-                      deliverable: true,
+                      purpose: "deliverable",
                       detectedFrom: "file_url",
                     }),
                   ],
@@ -494,7 +494,7 @@ test("skips attachments already recorded as delivered on the root message", () =
                     url: `asset://${pngID}`,
                     mime: "image/png",
                     filename: "preview.png",
-                    deliverable: true,
+                    purpose: "deliverable",
                   }),
                 ],
               }),

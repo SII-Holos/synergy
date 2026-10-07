@@ -328,6 +328,13 @@
   border-radius: var(--radius-sm);
 }
 
+[data-component="markdown"] [data-slot="markdown-resource-image"] {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+}
+
 /* KaTeX formula click-to-copy */
 [data-component="markdown"] .katex[data-katex-copy="true"],
 [data-component="markdown"] .katex-display[data-katex-copy="true"] {

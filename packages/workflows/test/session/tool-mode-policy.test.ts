@@ -18,7 +18,6 @@ describe("SessionModePolicy Plan visibility", () => {
       "revise_file",
       "resolve_conflicts",
       "process",
-      "attach",
       "render",
       "todowrite",
       "memory_write",

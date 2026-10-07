@@ -35,6 +35,9 @@ test("reads a managed document without a workspace", () =>
         const tool = await ScanDocumentTool.init()
         const result = await tool.execute({ filePath: Asset.resolvePath(id)! }, ctx)
         expect(result.output).toContain("MANAGED_DOCUMENT_CONTENT")
+        expect(result.attachments).toHaveLength(1)
+        expect(result.attachments?.[0]?.url).toBe(`asset://${id}`)
+        expect(result.attachments?.[0]?.presentation?.purpose).toBe("evidence")
       },
     }),
   ))

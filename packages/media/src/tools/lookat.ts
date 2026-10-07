@@ -2,12 +2,10 @@ import z from "zod"
 import * as path from "path"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { SessionInteraction } from "@ericsanchezok/synergy-harness/session/interaction"
-import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { Attachment } from "@ericsanchezok/synergy-harness/attachment"
 import DESCRIPTION from "./lookat.txt"
-import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
 import { ToolTimeout } from "@ericsanchezok/synergy-harness/tool/timeout"
 
 const MULTIMODAL_AGENT = "multimodal-looker"
@@ -25,12 +23,6 @@ const parameters = z.object({
       `Optional timeout in seconds (default: ${DEFAULT_TIMEOUT_S}). If not specified, analysis will time out after ${DEFAULT_TIMEOUT_S} seconds (${DEFAULT_TIMEOUT_S / 60} minutes).`,
     )
     .optional(),
-  show_to_user: z
-    .boolean()
-    .describe(
-      "When true, also deliver the analyzed image(s) to the user as visible attachments. Use this when the user should see the same visual result you are analyzing.",
-    )
-    .optional(),
 })
 
 interface LookAtMetadata {
@@ -40,30 +32,6 @@ interface LookAtMetadata {
   error?: string
   timeout?: number
   timedOut?: boolean
-  shownToUser?: boolean
-}
-
-async function toVisibleAttachment(
-  file: { filepath: string; mimeType: string; filename: string },
-  ctx: { sessionID: string; messageID: string },
-): Promise<MessageV2.AttachmentPart> {
-  const source = Bun.file(file.filepath)
-  const buffer = Buffer.from(await source.arrayBuffer())
-  const assetId = await Asset.write(buffer, file.mimeType)
-  return {
-    id: Identifier.ascending("part"),
-    sessionID: ctx.sessionID,
-    messageID: ctx.messageID,
-    type: "attachment",
-    mime: file.mimeType,
-    filename: file.filename,
-    url: `asset://${assetId}`,
-    localPath: file.filepath,
-    model: {
-      mode: "summary",
-      summary: `${file.filename} (${file.mimeType}) analyzed by look_at`,
-    },
-  }
 }
 
 function inferMimeType(filepath: string): string {
@@ -196,6 +164,22 @@ For each image, provide a separate analysis under a "## {filename}" header.
 Be thorough on what was requested, concise on everything else.
 If the requested information is not found, clearly state what is missing.`
 
+      const attachments = await Promise.all(
+        files.map((file) =>
+          Attachment.toPart({
+            filepath: file.filepath,
+            mime: file.mimeType,
+            filename: file.filename,
+            localPath: file.filepath,
+            sessionID: ctx.sessionID,
+            messageID: ctx.messageID,
+            presentation: { purpose: "evidence" },
+            model: { mode: "summary", summary: `${file.filename} (${file.mimeType}) analyzed by look_at` },
+          }),
+        ),
+      )
+      const childMessageID = Identifier.ascending("message")
+
       let timedOut = false
       const timer = setTimeout(() => {
         timedOut = true
@@ -205,26 +189,20 @@ If the requested information is not found, clearly state what is missing.`
       let output: string
       try {
         const result = await SessionInvoke.invokeInternal({
-          messageID: Identifier.ascending("message"),
+          messageID: childMessageID,
           sessionID: session.id,
           model,
           agent: MULTIMODAL_AGENT,
           origin: { type: "system" },
           parts: [
             { type: "text", text: prompt },
-            ...(await Promise.all(
-              files.map((file) =>
-                Attachment.toPart({
-                  filepath: file.filepath,
-                  mime: file.mimeType,
-                  filename: file.filename,
-                  localPath: file.filepath,
-                  sessionID: session.id,
-                  messageID: ctx.messageID,
-                  model: { mode: "provider-file", summary: `${file.filename} (${file.mimeType})` },
-                }),
-              ),
-            )),
+            ...attachments.map((file) => ({
+              ...file,
+              id: Identifier.ascending("part"),
+              sessionID: session.id,
+              messageID: childMessageID,
+              model: { mode: "provider-file" as const, summary: `${file.filename} (${file.mime})` },
+            })),
           ],
         })
 
@@ -240,10 +218,6 @@ If the requested information is not found, clearly state what is missing.`
         clearTimeout(timer)
       }
 
-      const attachments = params.show_to_user
-        ? await Promise.all(files.map((file) => toVisibleAttachment(file, ctx)))
-        : undefined
-
       if (files.length === 1) {
         return {
           title: timedOut ? "Analysis timed out" : `Analyzed: ${files[0].filename}`,
@@ -253,7 +227,6 @@ If the requested information is not found, clearly state what is missing.`
             mimeType: files[0].mimeType,
             timeout,
             timedOut,
-            shownToUser: params.show_to_user === true,
           },
           attachments,
         }
@@ -266,7 +239,6 @@ If the requested information is not found, clearly state what is missing.`
           fileCount: files.length,
           timeout,
           timedOut,
-          shownToUser: params.show_to_user === true,
         },
         attachments,
       }
