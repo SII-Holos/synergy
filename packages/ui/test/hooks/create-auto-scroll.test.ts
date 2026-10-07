@@ -405,6 +405,58 @@ describe("createAutoScroll", () => {
     }
   })
 
+  test("a resize accepts an already compensated reading offset without adopting a newly visible owner", async () => {
+    const harness = createScrollHarness()
+    let dispose = () => {}
+    try {
+      const element = harness.makeScroller()
+      const accepted = harness.makeScroller()
+      const incoming = harness.makeScroller()
+      const offsets = new Map([
+        [accepted, 100],
+        [incoming, 0],
+      ])
+      let owner = accepted
+      let autoScroll!: ReturnType<typeof createAutoScroll>
+      createRoot((cleanup) => {
+        dispose = cleanup
+        autoScroll = createAutoScroll({
+          working: () => true,
+          captureReadingAnchor: () => {
+            const captured = owner
+            const offset = offsets.get(captured)! - element.scrollTop
+            return {
+              owner: captured,
+              restore: () => {
+                element.scrollTop = offsets.get(captured)! - offset
+              },
+            }
+          },
+        })
+        autoScroll.scrollRef(element)
+        autoScroll.contentRef(element)
+      })
+      await harness.tick()
+      element.scrollTop = 100
+      autoScroll.handleInteraction()
+      offsets.set(accepted, 200)
+      element.scrollHeight += 100
+      element.scrollTop = 200
+      owner = incoming
+      harness.lastObserver()!.fire(element)
+      autoScroll.handleScroll()
+      expect(autoScroll.readingAnchorOwner()).toBe(accepted)
+      offsets.set(accepted, 400)
+      offsets.set(incoming, 176)
+      element.scrollHeight += 200
+      harness.lastObserver()!.fire(element)
+      expect(element.scrollTop).toBe(400)
+    } finally {
+      dispose()
+      harness.restore()
+    }
+  })
+
   test("manual disclosure at the bottom remains reading through resize and compensated scroll", async () => {
     const harness = createScrollHarness()
     let dispose = () => {}

@@ -1003,33 +1003,43 @@ test("loading earlier turns from latest preserves the visible outer row before a
   expect(after.top).toBeGreaterThan(before.top)
 })
 
-test("historical Part backfill preserves latest reading when retained rows move inside the same root", async () => {
-  await page.goto(`${url}?scrolling=1`)
-  await page.getByText("I will check the project first.", { exact: true }).waitFor()
-  await page.locator("[data-scroller]").evaluate((element) => {
-    element.style.height = "280px"
-  })
-  for (let index = 0; index < 4; index++) await frames()
-  const before = await page.locator("[data-scroller]").evaluate((element) => {
-    element.scrollTop = element.scrollHeight
-    const row = element.querySelector<HTMLElement>('[data-display-row="root:process"]')!
-    return { offset: row.getBoundingClientRect().top - element.getBoundingClientRect().top, top: element.scrollTop }
-  })
-  await frames()
-  await page.evaluate(() => window.__conversationProcess.backfill(60))
-  for (let index = 0; index < 8; index++) await frames()
-  const after = await page.locator("[data-scroller]").evaluate((element) => {
-    const row = element.querySelector<HTMLElement>('[data-display-row="root:process"]')
-    return {
-      offset: row ? row.getBoundingClientRect().top - element.getBoundingClientRect().top : undefined,
-      top: element.scrollTop,
+test.each(["system-ui", "sans-serif"])(
+  "historical Part backfill preserves latest reading when retained rows move inside the same root (%s)",
+  async (font) => {
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 })
+    try {
+      await page.goto(`${url}?scrolling=1`)
+      await page.getByText("I will check the project first.", { exact: true }).waitFor()
+      await page.addStyleTag({ content: `#root, #root * { font-family: ${font} !important }` })
+      await page.locator("[data-scroller]").evaluate((element) => {
+        element.style.height = "280px"
+      })
+      for (let index = 0; index < 4; index++) await frames()
+      const before = await page.locator("[data-scroller]").evaluate((element) => {
+        element.scrollTop = element.scrollHeight
+        const row = element.querySelector<HTMLElement>('[data-display-row="root:process"]')!
+        return { offset: row.getBoundingClientRect().top - element.getBoundingClientRect().top, top: element.scrollTop }
+      })
+      await frames()
+      await page.evaluate(() => window.__conversationProcess.backfill(60))
+      for (let index = 0; index < 8; index++) await frames()
+      const after = await page.locator("[data-scroller]").evaluate((element) => {
+        const row = element.querySelector<HTMLElement>('[data-display-row="root:process"]')
+        return {
+          offset: row ? row.getBoundingClientRect().top - element.getBoundingClientRect().top : undefined,
+          top: element.scrollTop,
+        }
+      })
+      expect(after.offset).toBeDefined()
+      expect(Math.abs(after.offset! - before.offset)).toBeLessThanOrEqual(2)
+      expect(after.top).toBeGreaterThan(before.top)
+    } finally {
+      await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 })
+      await cdp.detach()
     }
-  })
-  expect(after.offset).toBeDefined()
-  expect(Math.abs(after.offset! - before.offset)).toBeLessThanOrEqual(2)
-  expect(after.top).toBeGreaterThan(before.top)
-})
-
+  },
+)
 for (const { key, change } of [
   ...["Space", "Shift+Space", "PageDown", "PageUp"].map((key) => ({ key, change: "internal Part backfill" })),
   { key: "Space", change: "same-version body growth" },

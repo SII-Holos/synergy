@@ -211,10 +211,9 @@ export function createAutoScroll(options: AutoScrollOptions) {
         flushScrollToBottom()
         return
       }
-      const previousTop = scroll?.scrollTop
       readingAnchor?.restore()
       if (readingAnchor && !readingAnchor.owner.isConnected) preserveReadingAnchor()
-      if (scroll && previousTop !== scroll.scrollTop) anchoredScrollTop = scroll.scrollTop
+      if (scroll && readingAnchor) anchoredScrollTop = scroll.scrollTop
       scheduleMeasure()
     },
   )
