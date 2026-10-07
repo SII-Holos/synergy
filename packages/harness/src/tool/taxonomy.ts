@@ -178,6 +178,7 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   runtime_reload: entry("platform.config", { stateful: true }),
   worktree_enter: entry("platform.config", { stateful: true }),
   worktree_leave: entry("platform.config", { stateful: true }),
+  worktree_archive: entry("platform.config", { stateful: true }),
   worktree_list: entry("platform.config"),
   agent_config: entry("platform.config", { stateful: true }),
 

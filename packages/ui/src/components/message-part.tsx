@@ -1135,6 +1135,18 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         args,
       }
     }
+    case "worktree_archive": {
+      const args: string[] = []
+      pushArg(args, metadata?.worktree?.branch)
+      pushArg(args, metadata?.cleanup?.reason)
+      pushArg(args, metadata?.cleanup?.error)
+      return {
+        icon: "worktree-archive",
+        title: TOOL_TITLE_DESC["worktree_archive"],
+        subtitle: metadata?.worktree?.name ?? metadata?.worktree?.path ?? input?.target ?? "",
+        args,
+      }
+    }
     case "worktree_list": {
       const args: string[] = []
       pushArg(args, metadata?.worktrees ? `${metadata.worktrees.length} total` : undefined)

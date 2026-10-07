@@ -298,7 +298,11 @@ describe("worktree sweep", () => {
             try {
               const report = await Worktree.sweep({ maxManaged: 0 })
               expect(injected).toBe(true)
-              expect(report.skipped).toContainEqual({ id: created.id, name: created.name, reason: "removal_failed" })
+              expect(report.skipped).toContainEqual({
+                id: created.id,
+                name: created.name,
+                reason: failure === "git" ? "dirty" : "removal_failed",
+              })
               expect(report.removed).toEqual([later.id])
               expect(await exists(created.path)).toBe(true)
               if (failure === "git") expect(await Bun.file(racedFile).text()).toBe("new user work")
@@ -351,6 +355,7 @@ describe("worktree sweep", () => {
               const failed = await Worktree.sweep({ maxManaged: 0 })
               expect(injected).toBe(true)
               expect(failed.skipped).toContainEqual({ id: created.id, name: created.name, reason: "removal_failed" })
+              expect(failed.removed).toEqual([created.id])
               expect(await exists(created.path)).toBe(false)
               expect(await Bun.file(registryFile(scope.local!.worktree, created.id)).exists()).toBe(true)
               expect((await Session.get(session.id)).workspaceID).toBe(before.workspaceID)

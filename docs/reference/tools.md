@@ -120,6 +120,7 @@ Every model-visible tool schema includes optional `workBrief`: One short sentenc
 | `view_file` | `code.read` | Read a file through the anchored coding harness. Use this instead of `read` when the content may feed `revise_file` or `resolve_conflicts`. The output starts with a real `[path#TAG]` header followed b |
 | `view_image` | `code.analyze` | Load an image file from the selected Workspace into the current model context for direct visual inspection. Use this when the active model supports the image's format and you need to inspect it yourse |
 | `webfetch` | `search.web` | - Fetches content from a specified URL - Takes a URL and optional format as input - Fetches the URL content, converts to requested format (markdown by default) - Returns the content in the specified f |
+| `worktree_archive` | `platform.config` | Archive a finished Synergy-managed git worktree. Use when isolated work is complete, including from the running owner turn, or to reclaim another idle worktree. Optional target accepts a name, ID, bra |
 | `worktree_enter` | `platform.config` | Create or enter a git worktree for the current session.  |
 | `worktree_leave` | `platform.config` | Leave the current git worktree and return to the main checkout. Unbinds the session from the worktree,  |
 | `worktree_list` | `platform.config` | List all git worktrees in the current repository. Returns each worktree's path, branch, state, and a cleanup recommendation for non-main managed worktrees. The currently active worktree is marked. |
@@ -1644,6 +1645,17 @@ Kind: `search.web`
 | `url` | string | yes | The URL to fetch content from |
 | `format` | "text" \| "markdown" \| "html" |  | The format to return the content in (text, markdown, or html). Defaults to markdown. |
 | `timeoutSeconds` | number |  | Optional timeout in seconds (max 120); defaults to 30. |
+
+## worktree_archive
+
+Kind: `platform.config`
+
+Archive a finished Synergy-managed git worktree. Use when isolated work is complete, including from the running owner turn, or to reclaim another idle worktree. Optional target accepts a name, ID, branch or path; omitted target selects the caller's current worktree. The caller returns to its original checkout without stopping or archiving the conversation. Idle sessions are rebound before safe removal. Dirty or ignored files, local-only or unverifiable commits, locks and active users keep the checkout; there is no force option. Reports archived/noop/denied, restored checkout and whether cleanup actually happened with its reason. Keeps the branch; retained checkouts can be re-entered with worktree_enter. Removed checkouts have no automatic snapshot restore. Use worktree_leave to leave without requesting reclamation.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `target` | string |  | Managed worktree name, ID, branch, or path. Defaults to the calling session's current worktree; use worktree_list to find another idle worktree. |
+| `reason` | string |  | Optional short explanation of why the worktree is finished. |
 
 ## worktree_enter
 

@@ -25009,6 +25009,10 @@ msgid "tool.title.archive-note"
 msgstr "归档笔记"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.archive-worktree"
+msgstr "归档隔离工作区"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.ast-search"
 msgstr "搜索 AST"
 

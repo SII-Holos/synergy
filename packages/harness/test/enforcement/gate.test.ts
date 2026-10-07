@@ -1485,6 +1485,21 @@ describe("EnforcementGate profile integration", () => {
       expect(gate.evaluate("worktree_leave", { cleanup: "keep" }).decision).toBe("allow")
     }))
 
+  test("worktree archive is a file write even without an explicit target", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "autonomous",
+      })
+
+      for (const input of [{}, { target: "feature", reason: "Finished isolated work" }]) {
+        const envelope = gate.evaluate("worktree_archive", input)
+        expect(envelope.capabilities).toEqual([{ class: "file_write", nonBypassable: false }])
+        expect(envelope.decision).toBe("allow")
+      }
+    }))
+
   test("autonomous allows explicit branch push publication", () =>
     runtime.run(async () => {
       const gate = await EnforcementGate.create({

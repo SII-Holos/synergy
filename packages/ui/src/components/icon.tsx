@@ -526,6 +526,7 @@ const icons = {
   workflow: Workflow,
   "worktree-enter": GitFork,
   "worktree-leave": ArrowLeft,
+  "worktree-archive": Archive,
   "worktree-list": LayoutGrid,
   wrench: Wrench,
   x: X,

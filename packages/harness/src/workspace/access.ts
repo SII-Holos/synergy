@@ -224,7 +224,24 @@ export namespace WorkspaceAccess {
     return current()?.sessionID === sessionID
   }
 
-  export async function transition<T>(sessionID: string, workspace: Workspace | null, commit: () => Promise<T>) {
+  export function transition<T>(
+    sessionID: string,
+    workspace: Workspace | null,
+    commit: () => Promise<T>,
+    signal?: AbortSignal,
+  ) {
+    const active = current()?.signal
+    const abort = signal && active ? AbortSignal.any([signal, active]) : (signal ?? active)
+    abort?.throwIfAborted()
+    return transitionTask(sessionID, workspace, commit, abort)
+  }
+
+  async function transitionTask<T>(
+    sessionID: string,
+    workspace: Workspace | null,
+    commit: () => Promise<T>,
+    signal?: AbortSignal,
+  ) {
     const task = current()
     if (!task || task.sessionID !== sessionID) return commit()
     const previous = task.workspace
@@ -249,11 +266,12 @@ export namespace WorkspaceAccess {
                 ancestors: task.ancestors,
                 kind: "use",
                 roots: [workspace.path],
-                signal: task.signal,
+                signal: signal ?? task.signal,
               })
               await WorkspaceBinding.validate(workspace.id!, workspace.scopeID, workspace.generation)
             })
           }
+          signal?.throwIfAborted()
           task.signal.throwIfAborted()
           if (task.closed) throw new Error("Workspace task is closed")
           const result = await commit()
@@ -548,9 +566,11 @@ export namespace WorkspaceAccess {
   export async function retire<T>(
     roots: string[],
     fn: () => Promise<T>,
-    options: { writeRoots?: string[] } = {},
+    options: { writeRoots?: string[]; signal?: AbortSignal } = {},
   ): Promise<T> {
     return inTask(async (task) => {
+      const signal = options.signal ? AbortSignal.any([options.signal, task.signal]) : task.signal
+      signal.throwIfAborted()
       if (task.activity !== 1 || task.retiring) throw new BusyError("Workspace operations are in flight")
       const bindings = [...(task.workspace ? [task.workspace] : []), ...task.bindings.values()]
       if (
@@ -576,7 +596,7 @@ export namespace WorkspaceAccess {
             ancestors: task.ancestors,
             kind: "task",
             roots: [...roots, ...(options.writeRoots ?? [])],
-            signal: task.signal,
+            signal,
             timeoutMs: 1000,
           })
           lease = await host().acquire({
@@ -587,11 +607,12 @@ export namespace WorkspaceAccess {
             parentClaim: reservation!.id,
             transient: true,
             roots,
-            signal: task.signal,
+            signal,
             timeoutMs: 1000,
           })
         })
         await validate(task)
+        signal.throwIfAborted()
         return await retirement.run({ task, lease: lease!, roots: roots.map((root) => path.resolve(root)) }, fn)
       } finally {
         try {
@@ -604,6 +625,6 @@ export namespace WorkspaceAccess {
           task.retiring = false
         }
       }
-    })
+    }, options.signal)
   }
 }

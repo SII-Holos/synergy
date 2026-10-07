@@ -204,6 +204,7 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   profile_update: "config",
   worktree_enter: "config",
   worktree_leave: "config",
+  worktree_archive: "config",
   worktree_list: "config",
   agent_config: "config",
   connect: "network",

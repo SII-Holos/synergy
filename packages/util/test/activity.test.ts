@@ -5,6 +5,7 @@ import {
   isActivityGroupableTool,
   isActivityReceiptTool,
   toolDisplayPolicy,
+  semanticCategoryForKnownTool,
 } from "../src/activity"
 
 describe("activityScopeForTool", () => {
@@ -76,6 +77,12 @@ describe("isActivityGroupableTool", () => {
     expect(activityFamilyForTool("mcp__scholight__search_papers", {})).toBe("research-web")
     expect(activityFamilyForTool("mcp__scholight__extract_url", {})).toBe("research-web")
   })
+})
+
+test("worktree archive stays in workspace coordination rather than conversation control", () => {
+  expect(semanticCategoryForKnownTool("worktree_archive")).toBe("config")
+  expect(activityFamilyForTool("worktree_archive", {})).toBe("coordination")
+  expect(isActivityGroupableTool("worktree_archive", {})).toBe(true)
 })
 
 describe("activity classification for media-generation tools", () => {
