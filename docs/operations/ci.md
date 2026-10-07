@@ -16,6 +16,10 @@ PR 使用 base/head 两侧的 workspace、测试和静态资源导入关系计�
 
 普通包运行完整 suite；PostgreSQL 与长流任务另从实际测试入口追踪两侧输入。跨 workspace 输入包含生产和测试依赖；无法解析的别名、动态导入或资源使该任务对代码改动保守选中。输入图完整时才允许跳过未触及的昂贵任务。
 
+每次 `planInputs` 操作按完整提交 SHA 建立 `RevisionSnapshot`；base/head 相同则复用一次 inventory、一次 OID 寻址 blob batch 和每个源路径的紧凑分析事实，不保留 AST 或跨操作缓存。预读 JS/TS、`package.json`、`tsconfig*.json` 与存在的 coverage manifest，静态资源只保留路径。Git inventory 与 batch 严格校验 framing、对象类型、长度、顺序、数量和 blob SHA-1 后原子准入；inventory 中存在但未准入的请求 blob 输入以 `RevisionInputError` 使计划失败，不能替换为空源码或全量计划。真正缺失的任务入口仍标记不完整，可选配置缺失保持保守选择。取舍见 [revision 准入与分析复用决策](../decisions/implemented/bug-fix/2026-10-07-ci-revision-admission-and-analysis-reuse.md)。
+
+合法 gitlink 保留为 inventory 的 commit 条目，不进入文件清单、blob batch 或源分析；指向 gitlink 的任务入口及导入使输入图不完整。两侧任一 revision 的 gitlink 都不能作为 leaf-test 缩减依据，blob 与 gitlink 互转保持保守选择。
+
 ## 任务和报告
 
 普通包测试执行一次，同时产生 JUnit、lcov 和批次耗时。Harness、Web、Presets、UI、Local Runtime 分别使用 4、4、4、2、2 个分区，按稳定批次的历史耗时均衡分配；Web/UI 的批次直接使用各包 `script/test-options.ts` 和执行器共同的 `frontendBatches`；后端使用其共享批次执行器。原有批次与特殊隔离文件保持完整，执行清单逐文件核对，无遗漏或重复。每批拥有独立 Home 和 fixture 根。UI DOM 夹具与 Web 的 Workbench、Agenda、Office、Decision、Settings 浏览器夹具复用经过校验的静态编译；每个测试保留独立 DOM、页面和可变状态，alias/stub 配置参与缓存身份。真实 sandbox、macOS/Windows 原生 Workspace、PostgreSQL 16/17/18 与安装产物保持独立任务。Windows 原生与 Desktop 分成可分别重跑的任务，同平台串行；原生结果生成 JUnit 与 lcov，要求两个 Local Runtime 分区的完整基线共同计算原有覆盖率门槛。Local Runtime 分区还依赖完整 CLI 与 Presets suite，后两者为 CLI Scope、组件与 worker 注册、Skill 摘要和 Workspace 迁移提供跨包行为覆盖；原生任务间接选中的基线也必须保留这些报告。
