@@ -120,6 +120,35 @@ test("attachment purpose upgrades historical tool evidence and refreshes only th
         expect(summary.attachments).toEqual({ evidence: 1, deliverable: 1, references: [file.url] })
         expect(summary.display).toBe("activity")
         expect(part.state.status === "completed" && part.state.attachments?.[0].presentation?.purpose).toBeUndefined()
+
+        const cancelled: MessageV2.ToolPart = {
+          ...part,
+          tool: "openai_image_gen",
+          state: {
+            status: "error",
+            reason: "cancelled",
+            input: {},
+            error: "Operation aborted",
+            time: { start: 1, end: 2 },
+            metadata: { display: { kind: "media-generation", toolCard: "hidden" } },
+          },
+        }
+        await Session.updatePart(cancelled)
+        await Storage.write(stateKey, state)
+        const cancellationMigration = MigrationRegistry.list()
+          .get("session")!
+          .find((item) => item.id === "20261007-media-cancellation-display")
+        expect(cancellationMigration).toBeDefined()
+        await cancellationMigration!.upSession!({ scopeID: session.scope.id, sessionID: session.id }, () => {})
+        expect(await Storage.read<MessageV2.ToolPart>(key)).toEqual(cancelled)
+        expect(await Storage.read<Record<string, unknown>>(stateKey)).toEqual({ ready: false, generation: 8 })
+        expect(await Storage.read<Record<string, unknown>>(foreignKey)).toEqual(state)
+        await cancellationMigration!.upSession!({ scopeID: session.scope.id, sessionID: session.id }, () => {})
+        expect(await Storage.read<Record<string, unknown>>(stateKey)).toEqual({ ready: false, generation: 8 })
+        expect(upgradeImportedRecord(key, cancelled)).toEqual(cancelled)
+        expect(upgradeImportedRecord(stateKey, state)).toEqual({ ready: false, generation: 8 })
+        const refreshed = await SessionHistoryDisplay.partPage({ sessionID: session.id, messageID }, session.scope.id)
+        expect(refreshed.items[0].render).toBe(false)
         await Session.remove(session.id)
         await Session.remove(other.id)
       },

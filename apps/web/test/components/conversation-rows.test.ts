@@ -62,6 +62,27 @@ test("summary-only rendering honors producer display policy and evidence attachm
   expect(rows.find((row) => row.kind === "process")?.process?.hasContent).toBe(true)
 })
 
+test("hidden media summaries leave no virtual row before a resumed result", () => {
+  const content: SessionPartSummary[] = [
+    { ...parts[0], id: "cancelled", display: "content", status: "error", render: false },
+    { ...parts[0], id: "resumed", display: "content", status: "completed" },
+    { ...parts[0], id: "answer", type: "text" },
+  ]
+  for (const open of [false, true]) {
+    const rows = buildConversationRows({
+      timeline: [root],
+      messagesFor: () => [reply],
+      page: () => ({ hasMore: false }),
+      summaries: (id) => (id === reply.id ? content : []),
+      process: () => ({ open, working: false }),
+    })
+    expect(rows.filter((row) => row.kind === "body").flatMap((row) => row.parts.map((part) => part.id))).toEqual([
+      "resumed",
+      "answer",
+    ])
+  }
+})
+
 test("user groups preserve their boundaries and keys through canonical message aliases", () => {
   const canonical = { ...root, id: "accepted-root" }
   const content = ["attachment", "text", "text"].map(

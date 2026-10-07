@@ -2,7 +2,7 @@ import {
   AttachmentPresentation as SharedAttachmentPresentation,
   attachmentPurpose,
 } from "@ericsanchezok/synergy-util/attachment-presentation"
-import { isActivityGroupableTool } from "@ericsanchezok/synergy-util/activity"
+import { isActivityGroupableTool, isCancelledMediaGeneration } from "@ericsanchezok/synergy-util/activity"
 import { markdownAssetReferences } from "@ericsanchezok/synergy-util/markdown-assets"
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import { ToolIntent } from "./tool-intent"
@@ -823,6 +823,7 @@ export namespace MessageV2 {
         !["snapshot", "patch", "step-start", "step-finish"].includes(part.type) &&
         (part.type !== "text" || !isSystemPart(part)) &&
         (part.type !== "attachment" || !part.presentation?.hidden) &&
+        (part.type !== "tool" || !isCancelledMediaGeneration(part.state)) &&
         (part.type !== "reasoning" || part.text.trim().length > 0),
       preview:
         part.type === "text" || part.type === "reasoning"

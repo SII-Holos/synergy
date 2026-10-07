@@ -18,7 +18,7 @@ import type {
   UserMessage,
 } from "@ericsanchezok/synergy-sdk/client"
 import { useData } from "../context"
-import { isActivityGroupableTool } from "@ericsanchezok/synergy-util/activity"
+import { isActivityGroupableTool, isCancelledMediaGeneration } from "@ericsanchezok/synergy-util/activity"
 
 import {
   createEffect,
@@ -287,6 +287,7 @@ export function timelineKindForPart(part: PartType, _working: boolean): SessionT
   if (part.type === "reasoning") return part.text.trim() ? "reasoning" : undefined
   if (part.type === "compaction_recovery") return "part"
   if (part.type !== "tool") return undefined
+  if (isCancelledMediaGeneration(part.state)) return undefined
   if (isMediaGenerationToolPart(part)) return "media"
   if (isToolCardHidden(part)) {
     if (part.state.status === "error") return "part"

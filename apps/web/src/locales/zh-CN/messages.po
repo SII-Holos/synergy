@@ -25977,10 +25977,6 @@ msgid "ui.mailbox.fromSession"
 msgstr "来自 {source}"
 
 #. js-lingui-explicit-id
-msgid "ui.mediaGeneration.cancelled"
-msgstr "生成已停止"
-
-#. js-lingui-explicit-id
 msgid "ui.mediaGeneration.empty"
 msgstr "未返回媒体文件。"
 

@@ -103,12 +103,12 @@ describe("SessionTurn attachment placement", () => {
   })
 })
 
-test("media generation retains its wrapper through pending, success, failure and cancellation", async () => {
+test("media generation retains results but removes cancelled output without a replacement row", async () => {
   const harness = (globalThis as typeof globalThis & { __mediaLifecycleHarness: { move: (status: string) => void } })
     .__mediaLifecycleHarness
   const card = document.querySelector('[data-component="media-generation-card"]')!
   expect(Boolean(card)).toBe(true)
-  for (const status of ["pending", "generating", "running", "completed", "failed", "cancelled", "empty"]) {
+  for (const status of ["pending", "generating", "running", "completed", "failed", "empty"]) {
     harness.move(status)
     await waitForUpdate()
     expect(document.querySelector('[data-component="media-generation-card"]') === card).toBe(true)
@@ -117,7 +117,22 @@ test("media generation retains its wrapper through pending, success, failure and
     expect(Boolean(card.querySelector('[data-slot="media-generation-placeholder"]'))).toBe(pending)
     expect(Boolean(card.querySelector('[data-component="attachment-gallery"]'))).toBe(status === "completed")
     if (status === "failed") expect(card.textContent).toContain("Provider unavailable")
-    if (status === "cancelled") expect(card.textContent).toBe("Generation stopped")
     if (status === "empty") expect(card.textContent).toContain("No media was returned")
   }
+  harness.move("cancelled")
+  await waitForUpdate()
+  expect(Boolean(document.querySelector('[data-component="media-generation-card"]'))).toBe(false)
+  expect(Boolean(document.querySelector('[data-slot="session-turn-timeline-item"][data-kind="media"]'))).toBe(false)
+  expect(document.body.textContent).not.toContain("Generation stopped")
+  expect(
+    document.querySelectorAll('[data-slot="session-turn-timeline-item"][data-kind="tool-attachments"]'),
+  ).toHaveLength(1)
+  harness.move("running")
+  await waitForUpdate()
+  expect(Boolean(document.querySelector('[data-slot="media-generation-placeholder"]'))).toBe(true)
+  harness.move("completed")
+  await waitForUpdate()
+  expect(
+    Boolean(document.querySelector('[data-component="media-generation-card"] [data-component="attachment-gallery"]')),
+  ).toBe(true)
 })

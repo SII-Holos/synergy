@@ -87,4 +87,27 @@ describe("attachment purpose and bounded summaries", () => {
       deliverable: 0,
     })
   })
+
+  test("hides cancelled media from summaries while retaining genuine failures and other tools", () => {
+    const cancelled = {
+      ...tool,
+      tool: "openai_image_gen",
+      state: {
+        status: "error",
+        input: {},
+        error: "Operation aborted",
+        reason: "cancelled",
+        metadata: { display: { kind: "media-generation", toolCard: "hidden" } },
+        time: { start: 1, end: 2 },
+      },
+    } satisfies MessageV2.ToolPart
+    expect(MessageV2.summarizePart(cancelled).render).toBe(false)
+    expect(MessageV2.summarizePart({ ...cancelled, state: { ...cancelled.state, reason: undefined } }).render).toBe(
+      true,
+    )
+    expect(
+      MessageV2.summarizePart({ ...cancelled, tool: "bash", state: { ...cancelled.state, metadata: {} } }).render,
+    ).toBe(true)
+    expect(cancelled.state.status === "error" && cancelled.state.reason).toBe("cancelled")
+  })
 })

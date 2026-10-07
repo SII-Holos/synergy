@@ -8,7 +8,6 @@ import "./media-generation-card.css"
 
 const generatingMediaDescriptor = { id: "ui.mediaGeneration.generating", message: "Generating media" }
 const failedDescriptor = { id: "ui.mediaGeneration.failed", message: "Generation failed" }
-const cancelledDescriptor = { id: "ui.mediaGeneration.cancelled", message: "Generation stopped" }
 const emptyDescriptor = { id: "ui.mediaGeneration.empty", message: "No media was returned." }
 
 export function MediaGenerationCard(props: { part: ToolPart; files: AttachmentPart[]; serverUrl: string }) {
@@ -19,13 +18,11 @@ export function MediaGenerationCard(props: { part: ToolPart; files: AttachmentPa
   const size = createMemo(() => media()?.size ?? "medium")
   const status = createMemo(() => {
     const state = props.part.state
-    if (state.status === "error") return state.reason === "cancelled" ? "cancelled" : "failed"
+    if (state.status === "error") return "failed"
     if (state.status === "completed") return props.files.length ? "completed" : "failed"
     return "pending"
   })
-  const statusLabel = createMemo(() =>
-    status() === "pending" ? label() : status() === "cancelled" ? _(cancelledDescriptor) : _(failedDescriptor),
-  )
+  const statusLabel = createMemo(() => (status() === "pending" ? label() : _(failedDescriptor)))
   const error = createMemo(() => (props.part.state.status === "error" ? props.part.state.error : _(emptyDescriptor)))
 
   return (

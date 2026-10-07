@@ -25977,10 +25977,6 @@ msgid "ui.mailbox.fromSession"
 msgstr "From {source}"
 
 #. js-lingui-explicit-id
-msgid "ui.mediaGeneration.cancelled"
-msgstr "Generation stopped"
-
-#. js-lingui-explicit-id
 msgid "ui.mediaGeneration.empty"
 msgstr "No media was returned."
 

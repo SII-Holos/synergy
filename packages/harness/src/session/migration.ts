@@ -1590,6 +1590,20 @@ async function migrateAttachmentDisplay(
 
 export const migrations: Migration[] = [
   {
+    id: "20261007-media-cancellation-display",
+    scope: "session",
+    execution: "session",
+    domain: "session",
+    dependsOn: ["20261007-attachment-resource-summaries"],
+    description: "Refresh display summaries to omit cancelled media generation",
+    upgradeRecord(key, value) {
+      if (key[0] === "sessions" && key.length === 5 && key[3] === "display_parts_state")
+        invalidatePartDisplayState(value)
+    },
+    upSession: migratePartDisplay,
+    up: migratePartDisplaySessions,
+  },
+  {
     id: "20261007-attachment-resource-summaries",
     scope: "session",
     execution: "session",

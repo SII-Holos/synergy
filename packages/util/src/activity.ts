@@ -350,6 +350,10 @@ export function toolDisplayPolicy(metadata: unknown): { toolCardHidden: boolean;
   }
 }
 
+export function isCancelledMediaGeneration(state: { status: string; reason?: string; metadata?: unknown }): boolean {
+  return state.status === "error" && state.reason === "cancelled" && toolDisplayPolicy(state.metadata).mediaGeneration
+}
+
 function firstString(...values: unknown[]): string | undefined {
   for (const value of values) {
     if (typeof value !== "string") continue
