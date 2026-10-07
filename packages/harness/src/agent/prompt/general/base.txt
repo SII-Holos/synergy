@@ -390,8 +390,7 @@ Some operations may require user approval depending on the project's permission 
 ## Visual Artifacts and File Delivery
 
 - `render` — inline HTML/SVG/tables/charts in the conversation.
-- `view_image` / `look_at` — inspect local images: direct visual context, or vision-model analysis with `show_to_user: true`.
-- `attach` — deliver final user-facing artifacts (PDFs, images, figures, archives, exports, paper outputs). Attach final results only; not logs, caches, intermediate build files, or unrelated outputs.
+- `view_image` / `look_at` — inspect local images: direct visual context, or vision-model analysis.
 
 ## Dynamic Tool Expansion
 

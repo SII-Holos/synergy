@@ -1134,21 +1134,21 @@ describe("session turn timeline", () => {
     expect(items[0]).toMatchObject({ kind: "part", part: { type: "tool", tool: "read" } })
     expect(items[1]).toMatchObject({ kind: "tool-attachments", files: [image] })
   })
-  test("routes completed hidden-card tools with attachments (e.g. attach) to the gallery", () => {
+  test("routes completed hidden-card tools with attachments to the gallery", () => {
     const message = assistant("assistant-a")
-    const attachTool = {
-      id: "attach-a",
+    const exportTool = {
+      id: "export-a",
       sessionID: "session",
       messageID: message.id,
       type: "tool",
-      callID: "call-attach",
-      tool: "attach",
+      callID: "call-export",
+      tool: "plugin_export",
       state: {
         status: "completed",
         input: { file_path: "report.pdf" },
         output: "File delivered: report.pdf (2.0 KB)",
         title: "report.pdf",
-        // attach hides the tool card (toolCard: "hidden") but is NOT a
+        // The producer hides the tool card (toolCard: "hidden") but is NOT a
         // media-generation tool — completed attachments must still surface
         // through the auto-expanded attachment gallery.
         metadata: { display: { toolCard: "hidden" } },
@@ -1157,7 +1157,7 @@ describe("session turn timeline", () => {
       },
     } as PartType
 
-    const items = collectSessionTurnTimelineItems([message], { [message.id]: [attachTool] }, false)
+    const items = collectSessionTurnTimelineItems([message], { [message.id]: [exportTool] }, false)
 
     expect(items).toHaveLength(1)
     expect(items[0]).toMatchObject({ kind: "tool-attachments", files: [image] })

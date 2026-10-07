@@ -26,7 +26,7 @@ async function worktreeFixture(options?: { git?: boolean; init?(directory: strin
 // tool/workspace-boundary.test.ts
 //
 // Tests for the unified capability gate that protects the active workspace
-// from file/anchored/document/attach tool access outside the boundary.
+// from file/anchored/document tool access outside the boundary.
 //
 // When a session has a workspace with an originalCheckout (git worktree),
 // tools that read or attach files must gate access through the workspace
@@ -34,7 +34,7 @@ async function worktreeFixture(options?: { git?: boolean; init?(directory: strin
 //
 // These tests encode the DESIGN CONTRACT before implementation exists.
 // They MUST fail (RED) until the enforcement module is integrated into
-// the file/anchored/document/attach tool execution paths.
+// the file/anchored/document tool execution paths.
 // ---------------------------------------------------------------------------
 
 const ctx = {
@@ -47,7 +47,7 @@ const ctx = {
   ask: async () => {},
 }
 
-describe("workspace boundary — attach/read tools", () => {
+describe("workspace boundary — file inspection tools", () => {
   test("read tool rejects file access outside active workspace under git_worktree policy", () =>
     runtime.run(async () => {
       // Set up a worktree scenario: the scope is the worktree dir,

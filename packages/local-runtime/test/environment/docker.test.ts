@@ -4,7 +4,7 @@ import { WorkspaceFileService } from "../../src/workspace-file/service"
 import { WorktreeProcess } from "../../src/workspace/process"
 import { ViewFileTool } from "../../src/tools/view-file"
 import { EditTool } from "../../src/tools/edit"
-import { AttachTool } from "../../src/tools/attach"
+import { FileAttachment } from "../../src/file/attachment"
 import { expect, test } from "bun:test"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
@@ -496,12 +496,16 @@ test.skipIf(!image)(
                 { filePath: "result", oldString: "shell-content", newString: "edited-content" },
                 { ...context, callID: "edit" },
               )
-              const attached = await (
-                await AttachTool.init()
-              ).execute({ file_path: "result" }, { ...context, callID: "attach" })
-              expect(await Bun.file(attached.attachments![0]!.localPath!).text()).toBe(
-                "terminal-content\nedited-content",
+              const captured = await EnvironmentResources.provide(resources, "capture", () =>
+                FileAttachment.toPart({
+                  filepath: "result",
+                  filename: "result",
+                  mime: "text/plain",
+                  sessionID: session.id,
+                  messageID: "msg_files",
+                }),
               )
+              expect(await Bun.file(captured.localPath!).text()).toBe("terminal-content\nedited-content")
             }
             await Environment.deallocate(environment.id, { scopeID })
             expect(new TextDecoder().decode(await WorkspaceContent.read(selection, "result"))).toBe(

@@ -6,6 +6,7 @@ import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { truncateLineForDisplay } from "@ericsanchezok/synergy-local-runtime/tools/anchored-file"
 import DESCRIPTION from "./scan-document.txt"
 import { Attachment } from "@ericsanchezok/synergy-harness/attachment"
+import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
 
 const DEFAULT_LIMIT = 2000
 const MAX_LIMIT = 2000
@@ -158,6 +159,18 @@ export const ScanDocumentTool = Tool.define("scan_document", {
       title: documentKind ? `${documentKind.toUpperCase()} Document` : "Document",
       output,
       metadata,
+      attachments: [
+        await Attachment.toPart({
+          filepath,
+          filename: path.basename(filepath),
+          mime: Asset.mimeFromExt(ext.slice(1)),
+          localPath: filepath,
+          sessionID: ctx.sessionID,
+          messageID: ctx.messageID,
+          presentation: { purpose: "evidence" },
+          model: { mode: "summary", summary: `${path.basename(filepath)} read by scan_document` },
+        }),
+      ],
     }
   },
 })

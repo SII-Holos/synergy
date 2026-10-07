@@ -256,7 +256,7 @@ test(
         const id = await Asset.write(png, "image/png")
         const tool = await LookAtTool.init()
         const result = await tool.execute(
-          { file_path: Asset.resolvePath(id)!, goal: "Describe", show_to_user: true },
+          { file_path: Asset.resolvePath(id)!, goal: "Describe" },
           {
             sessionID: session.id,
             messageID: parent.info.id,

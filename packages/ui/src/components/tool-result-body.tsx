@@ -176,7 +176,7 @@ export function ToolResultBody(props: {
   )
 
   const attachmentsDisplay = () => (
-    <Show when={props.part.tool !== "attach" && attachments().length > 0}>
+    <Show when={attachments().length > 0}>
       <AttachmentGallery files={attachments()} serverUrl={props.serverUrl} />
     </Show>
   )

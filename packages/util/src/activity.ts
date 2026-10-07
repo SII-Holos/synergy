@@ -232,7 +232,6 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   openai_image_edit: "communication",
   speak: "communication",
   render: "analyze",
-  attach: "communication",
   response_card: "communication",
   "context7_resolve-library-id": "search",
   "context7_query-docs": "web",
@@ -281,7 +280,6 @@ const PATTERN_FALLBACKS: readonly { pattern: RegExp; category: SemanticCategory 
   { pattern: /^(send|notify|message)/i, category: "communication" },
   { pattern: /^question/i, category: "communication" },
   { pattern: /^(openai[-_])?image[-_](gen|edit)/i, category: "communication" },
-  { pattern: /^attach/i, category: "communication" },
 ]
 
 const ACTIVITY_FAMILIES = new Set<ActivityFamily>(ACTIVITY_FAMILY_ORDER)
@@ -308,7 +306,6 @@ const EXTERNAL_ACTION_TOOLS = new Set([
   "inspire_notebook",
 ])
 const PRODUCTION_COMMUNICATION_TOOLS = new Set([
-  "attach",
   "response_card",
   "openai_image_gen",
   "openai_image_edit",

@@ -208,7 +208,6 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   openai_image_gen: entry("communication.visual", { externalIO: true, stateful: true }),
   openai_image_edit: entry("communication.visual", { externalIO: true, stateful: true }),
   render: entry("communication.visual"),
-  attach: entry("communication.deliver"),
   response_card: entry("communication.deliver", { stateful: true, externalIO: true }),
   speak: entry("communication.audio", { externalIO: true }),
   // browser
@@ -279,7 +278,6 @@ const PATTERN_FALLBACKS: { pattern: RegExp; kind: ToolKind; traits?: ToolTraits 
     traits: { externalIO: true, stateful: true },
   },
   { pattern: /^render/i, kind: "communication.visual" },
-  { pattern: /^attach/i, kind: "communication.deliver" },
   { pattern: /^browser_/i, kind: "browser.inspect" },
 ]
 

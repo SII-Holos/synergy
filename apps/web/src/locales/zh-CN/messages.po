@@ -16168,10 +16168,6 @@ msgid "session-status.planning-next-steps"
 msgstr "正在规划下一步"
 
 #. js-lingui-explicit-id
-msgid "session-status.preparing-files"
-msgstr "正在准备文件"
-
-#. js-lingui-explicit-id
 msgid "session-status.querying-language-server"
 msgstr "正在查询语言服务器"
 
@@ -25007,10 +25003,6 @@ msgstr "归档笔记"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.ast-search"
 msgstr "搜索 AST"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.attach"
-msgstr "添加附件"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.batch-stop"

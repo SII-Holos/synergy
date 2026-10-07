@@ -47,7 +47,6 @@
     "./tools/session-search": "./src/tools/session-search.ts",
     "./tools/session-send": "./src/tools/session-send.ts",
     "./tools/scope-list": "./src/tools/scope-list.ts",
-    "./tools/attach": "./src/tools/attach.ts",
     "./tools/skill": "./src/tools/skill.ts",
     "./tools/process": "./src/tools/process.ts",
     "./tools/runtime-reload": "./src/tools/runtime-reload.ts",

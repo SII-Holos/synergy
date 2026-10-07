@@ -37,7 +37,7 @@ describe("PermissionRules.extractPattern", () => {
 
   test("extracts the first valid path from file_path arrays", () =>
     runtime.run(() => {
-      expect(PermissionRules.extractPattern("attach", { file_path: ["reports/a.pdf", "reports/b.pdf"] })).toBe(
+      expect(PermissionRules.extractPattern("look_at", { file_path: ["reports/a.pdf", "reports/b.pdf"] })).toBe(
         "reports/*",
       )
       expect(PermissionRules.extractPattern("look_at", { file_path: ["images/a.png", "images/b.png"] })).toBe(
