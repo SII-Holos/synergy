@@ -62,6 +62,7 @@ for (const environment of ["development", "production"] as const) {
     await page.locator(".office-reader-toolbar").getByText("1 / 2", { exact: true }).waitFor({ timeout: 15000 })
     const docFrame = page.frameLocator("iframe")
     await docFrame.getByText("中文阅读验收", { exact: true }).waitFor({ timeout: 8000 })
+    await docFrame.getByText("42", { exact: true }).waitFor({ state: "visible", timeout: 8000 })
     expect(await docFrame.getByText("42", { exact: true }).isVisible()).toBe(true)
     expect((await docFrame.locator("body").boundingBox())!.width).toBeGreaterThan(0)
     expect(
