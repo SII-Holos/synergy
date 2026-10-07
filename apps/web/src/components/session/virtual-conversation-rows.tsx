@@ -52,13 +52,26 @@ type ProcessControls = {
   executionFor?: (rootID: string) => TurnExecutionState | undefined
   connected?: () => boolean
   onRestoreChanges?: (messageID: string) => void
+  onRowReady?: (owner: symbol, ready: boolean | undefined) => void
 }
 
 export function VirtualConversationRows(
-  input: ProcessControls & { context: PluginConversationService; scrollRef?: HTMLDivElement },
+  input: ProcessControls & {
+    context: PluginConversationService
+    scrollRef?: HTMLDivElement
+    onReady?: (ready: boolean) => void
+  },
 ) {
   const props = input.context
   const content = props.content!
+  const pending = new Set<symbol>()
+  const [pendingCount, setPendingCount] = createSignal(0)
+  const onRowReady = (owner: symbol, ready: boolean | undefined) => {
+    if (ready === false) pending.add(owner)
+    else pending.delete(owner)
+    setPendingCount(pending.size)
+  }
+  createEffect(() => input.onReady?.(pendingCount() === 0))
   const userPresentations = new Map<string, UserMessagePresentation>()
   const userPresentation = (messageID: string) => {
     const key = input.messageKey?.(messageID) ?? messageID
@@ -485,6 +498,7 @@ export function VirtualConversationRows(
                     executionFor={input.executionFor}
                     connected={input.connected}
                     onRestoreChanges={input.onRestoreChanges}
+                    onRowReady={onRowReady}
                     onReading={(key, reading) => {
                       setReadingOwner((previous) => (reading ? key : previous === key ? undefined : previous))
                       setReadingBlocks((previous) =>
@@ -543,8 +557,26 @@ function ConversationDisplayRow(
   const [partStates, setPartStates] = createStore<
     Record<string, { pending: boolean; failed: boolean; error?: unknown } | undefined>
   >({})
+  const readinessOwner = Symbol()
+  input.onRowReady?.(readinessOwner, false)
+  onCleanup(() => input.onRowReady?.(readinessOwner, undefined))
   const [loading, setLoading] = createSignal(false)
   const [retry, setRetry] = createSignal(0)
+  createEffect(() => {
+    const current = row()
+    const pageReady = !!content.page(current.message.id) || !!loadFailure()
+    const ready =
+      current.kind === "load"
+        ? pageReady
+        : current.kind !== "body" || current.event
+          ? true
+          : pageReady &&
+            current.parts.every((part) => {
+              const state = partStates[part.id]
+              return state && !state.pending
+            })
+    input.onRowReady?.(readinessOwner, !!ready)
+  })
   let loadGeneration = 0
   let rowElement: HTMLDivElement | undefined
   let retryFocus: HTMLButtonElement | undefined
@@ -920,6 +952,7 @@ function ConversationDisplayRow(
                   executionFor={input.executionFor}
                   connected={input.connected}
                   onRestoreChanges={input.onRestoreChanges}
+                  onRowReady={input.onRowReady}
                 />
               </div>
             </Show>
@@ -1161,6 +1194,7 @@ function ConversationActivityBody(
                 executionFor={input.executionFor}
                 connected={input.connected}
                 onRestoreChanges={input.onRestoreChanges}
+                onRowReady={input.onRowReady}
               />
             )
           }}

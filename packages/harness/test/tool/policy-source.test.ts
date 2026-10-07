@@ -7,6 +7,8 @@ import { z } from "zod"
 import { Tool } from "../../src/tool/tool"
 import { ToolRegistry } from "../../src/tool/registry"
 import { ToolDiscovery } from "../../src/tool/discovery"
+import type { ToolExposure } from "../../src/tool/exposure"
+import { ExpandToolsTool } from "../../src/tool/expand-tools"
 import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import { SessionProcessor } from "../../src/session/processor"
@@ -44,6 +46,117 @@ const model: Provider.Model = {
   headers: {},
   release_date: "",
 }
+
+test.each(["available", "host", "permission", "user", "missing", "internal", "workspace"])(
+  "companion visibility is transitive and respects %s availability in discovery and resolution",
+  async (restriction) => {
+    await using runtime = await testRuntime({
+      register() {
+        const entries: Array<{ id: string; exposure: ToolExposure.Info }> = [
+          { id: "change_probe", exposure: { mode: "group", group: "change", companions: ["lookup_probe"] } },
+          { id: "lookup_probe", exposure: { mode: "group", group: "directory", companions: ["detail_probe"] } },
+          {
+            id: "detail_probe",
+            exposure: { mode: restriction === "internal" ? "internal" : "search", companions: ["lookup_probe"] },
+          },
+          { id: "unrelated_probe", exposure: { mode: "group", group: "directory" } },
+        ]
+        ToolRegistry.registerToolProvider("companion-fixture", () =>
+          entries
+            .filter((entry) => restriction !== "missing" || entry.id !== "detail_probe")
+            .map((entry) =>
+              Tool.define(
+                entry.id,
+                {
+                  description: "Companion visibility probe",
+                  parameters: z.object({}),
+                  async execute() {
+                    throw new Error("must not execute")
+                  },
+                },
+                {
+                  exposure: entry.exposure,
+                  requiresWorkspace: restriction === "workspace" && entry.id === "detail_probe",
+                },
+              ),
+            ),
+        )
+        ToolPolicySource.register({
+          async select(input) {
+            return input.toolIDs.filter((id) => restriction !== "host" || id !== "detail_probe")
+          },
+        })
+      },
+    })
+    await runtime.run(() =>
+      ScopeContext.provide({
+        scope: Scope.home(),
+        workspace: null,
+        fn: async () => {
+          const session = await Session.create({ workspace: null })
+          const userTools: Record<string, boolean> = restriction === "user" ? { detail_probe: false } : {}
+          const input = {
+            sessionID: session.id,
+            session,
+            providerID: model.providerID,
+            model,
+            agent:
+              restriction === "permission"
+                ? { ...agent, permission: PermissionNext.fromConfig({ "*": "allow", detail_probe: "deny" }) }
+                : agent,
+            userTools,
+            includeMCP: false,
+          }
+          expect((await ToolResolver.definitions(input)).map((item) => item.id)).not.toContain("change_probe")
+          const forced = await ToolResolver.definitions({
+            ...input,
+            userTools: { ...input.userTools, change_probe: true },
+          })
+          for (const id of ["change_probe", "lookup_probe", "detail_probe"])
+            expect(
+              forced.some((item) => item.id === id),
+              id,
+            ).toBe(restriction === "available")
+          expect((await Session.get(session.id)).toolState?.expandedGroups ?? []).toEqual([])
+          if (restriction === "available") {
+            const expand = await ExpandToolsTool.init({ agent })
+            const result = await expand.execute(
+              { groups: ["change"] },
+              {
+                sessionID: session.id,
+                messageID: "msg_expansion",
+                agent: agent.name,
+                abort: new AbortController().signal,
+                extra: { model },
+                metadata() {},
+                async ask() {},
+              },
+            )
+            expect(result.output).toContain("lookup_probe")
+            expect(result.output).toContain("detail_probe")
+          } else {
+            await Session.update(session.id, (draft) => {
+              draft.toolState = { expandedGroups: ["change"] }
+            })
+          }
+          const resumed = { ...input, session: await Session.get(session.id) }
+          const catalog = await ToolDiscovery.collect(resumed)
+          const resolved = await ToolResolver.availability(resumed)
+          const names = resolved.visible.map((item) => item.id)
+          expect(names.sort()).toEqual(ToolDiscovery.visibleTools(catalog))
+          for (const id of ["change_probe", "lookup_probe", "detail_probe"])
+            expect(names.includes(id), id).toBe(restriction === "available")
+          expect(names).not.toContain("unrelated_probe")
+          if (restriction !== "available") {
+            expect(resolved.autoExpandable.has("change_probe")).toBe(false)
+            expect(ToolDiscovery.nonResidentEntries(catalog).some((item) => item.id === "change_probe")).toBe(false)
+          }
+          expect(resumed.session.toolState?.expandedGroups).toEqual(["change"])
+        },
+      }),
+    )
+  },
+)
 
 test("host tool policy is isolated, sealed, and cannot widen the candidate catalog", async () => {
   await using guarded = await testRuntime({

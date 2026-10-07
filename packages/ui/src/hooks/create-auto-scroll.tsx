@@ -186,7 +186,9 @@ export function createAutoScroll(options: AutoScrollOptions) {
       // distance so "scrolled up" state stays honest in idle sessions.
       if (active() && !store.userScrolled) {
         if (forcedSettling) beginSettle(settleWindow(), true)
-        scrollToBottom(false)
+        // Resize delivery follows frame callbacks; another frame would paint the new height before its latest pin.
+        if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
+        flushScrollToBottom()
         return
       }
       const previousTop = scroll?.scrollTop

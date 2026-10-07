@@ -43,12 +43,14 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
     motion = createComposerMotion(root, setAnimating)
     const pane = root.closest<HTMLElement>(".session-workbench-pane") ?? root.parentElement
     const dock = root.closest(".session-prompt-dock-content")
+    const dockContainer = root.closest<HTMLElement>(".session-prompt-dock")
     const activity = dock?.querySelector(".prompt-dock-float-layer")
     const outlet = dock?.querySelector("[data-session-decision-outlet]")
     let paneWidth: number | undefined
     measure = () => {
       const viewport = window.visualViewport
       const rect = pane?.getBoundingClientRect()
+      const dockSpacing = dockContainer ? Number.parseFloat(getComputedStyle(dockContainer).paddingBottom) : 0
       const footer =
         root
           .closest(".session-prompt-dock-content")
@@ -66,7 +68,7 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
               ].reduce((height, element) => height + element.getBoundingClientRect().height, 0) + 36
             : 0)
       const height = Math.max(
-        96,
+        64,
         Math.min(
           rect?.bottom ?? window.innerHeight,
           viewport ? viewport.offsetTop + viewport.height : window.innerHeight,
@@ -75,7 +77,8 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
           topbar -
           footer -
           reserved -
-          16,
+          dockSpacing -
+          8,
       )
       if (Math.abs(height - availableHeight()) > 0.5 || (paneWidth !== undefined && paneWidth !== rect?.width))
         motion?.cancel()
@@ -87,6 +90,7 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
     }
     const observer = new ResizeObserver(measure)
     if (pane) observer.observe(pane)
+    if (dockContainer) observer.observe(dockContainer, { box: "border-box" })
     if (activity) observer.observe(activity)
     if (outlet) observer.observe(outlet)
     const form = root.querySelector("form")

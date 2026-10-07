@@ -110,7 +110,7 @@ describe("ToolResolver observability", () => {
 
           await expect(
             (tools.executionTools.ephemeral_hidden as any).execute({}, { toolCallId: "call_diagnostic_hidden" }),
-          ).rejects.toThrow("not currently visible")
+          ).rejects.toThrow("disabled for this request")
           await executions.get("call_diagnostic_hidden")
           ObservabilityStore.flush()
 

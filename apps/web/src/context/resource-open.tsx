@@ -29,6 +29,10 @@ import { useSDK } from "@/context/sdk"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { attachmentWorkbenchPanelInit } from "@/components/attachment-workbench/model"
 import { executionDetailState } from "@/components/session/execution-detail-model"
+import type { ToolPart } from "@ericsanchezok/synergy-sdk/client"
+import { supportsToolResource, toolResourceTarget } from "./tool-resource-target"
+import { sameWorkbenchResource } from "./workbench/panel-model"
+import type { WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
 import { useSync } from "@/context/sync"
 import { draftTransitionKey, useSessionTransition } from "@/context/session-transition"
 import { isOptimisticMessagePending } from "./session-optimistic-message"
@@ -105,6 +109,19 @@ export function ResourceOpenProvider(props: ParentProps) {
   const workbench = useWorkbenchPanels()
   const plugins = usePluginHost()
   const params = useParams()
+  const ownerKey = () => JSON.stringify([sdk.url, sdk.scopeKey, params.id])
+  let pending: AbortController | undefined
+  const [resourceSelection, setResourceSelection] = createSignal<{
+    owner: string
+    target: ToolActivityTarget
+    tab: Pick<WorkbenchPanelTab, "id" | "panelId" | "resourceId" | "source">
+  }>()
+  createEffect(() => {
+    ownerKey()
+    pending?.abort()
+    setResourceSelection(undefined)
+  })
+  onCleanup(() => pending?.abort())
   const { _ } = useLingui()
   const attachmentOpenings = new Set<string>()
   const [openedAttachment, setOpenedAttachment] = createSignal<{
@@ -183,13 +200,120 @@ export function ResourceOpenProvider(props: ParentProps) {
 
   const openActivityDetail = (target: ActivityDetailTarget) => {
     if (params.id !== target.sessionID) return false
+    pending?.abort()
+    setResourceSelection(undefined)
     void workbench.openPanel("execution-detail", {
       reuseExisting: true,
       init: { state: { server: sdk.url, scope: sdk.scopeKey, ...target } },
     })
     return true
   }
-  const openToolActivity = (target: ToolActivityTarget) => openActivityDetail({ ...target, kind: "tool" })
+  const openToolActivity = (target: ToolActivityTarget, part?: ToolPart) => {
+    if (params.id !== target.sessionID) return false
+    if (part && !supportsToolResource(part.tool)) return openActivityDetail({ ...target, kind: "tool" })
+    pending?.abort()
+    const request = new AbortController()
+    pending = request
+    const owner = ownerKey()
+    const client = sdk.client
+    const scopeID = sdk.scopeID
+    const side = workbench.surface("side")
+    const active = side.active()
+    const opened = side.opened()
+    const selectionRevision = side.selectionRevision()
+    const current = () =>
+      !request.signal.aborted &&
+      ownerKey() === owner &&
+      side.selectionRevision() === selectionRevision &&
+      side.active() === active &&
+      side.opened() === opened
+    const matches = (value: ToolPart) =>
+      value.id === target.partID &&
+      value.messageID === target.messageID &&
+      value.sessionID === target.sessionID &&
+      (!target.callID || value.callID === target.callID)
+    const fallback = () => {
+      if (current()) openActivityDetail({ ...target, kind: "tool" })
+    }
+    void (async () => {
+      try {
+        let value = part
+        let resource = value && matches(value) ? toolResourceTarget(value) : undefined
+        if (
+          !resource &&
+          (!value || (value.state.status === "completed" && Object.keys(value.state.metadata ?? {}).length === 0))
+        ) {
+          const result = await client.session.toolActivity(target, { signal: request.signal, throwOnError: true })
+          if (!current()) return
+          value = result.data?.part
+          resource = value && matches(value) ? toolResourceTarget(value) : undefined
+        }
+        if (!resource || !workbench.getPanel(resource.panelId)) return fallback()
+        let source = resource.source
+        if (resource.panelId === "notes") {
+          const groups = await Promise.all(
+            (["false", "true"] as const).map(async (archived) => {
+              const result = await client.note.listMeta(
+                { scopeID, archived },
+                { signal: request.signal, throwOnError: true },
+              )
+              return result.data ?? []
+            }),
+          )
+          if (!current()) return
+          const scopes = new Set(
+            groups
+              .flat()
+              .filter((group) => group.notes.some((note) => note.id === resource!.resourceId))
+              .map((group) => group.scopeID),
+          )
+          if (scopes.size !== 1) return fallback()
+          source = [...scopes][0]
+          const existing = side
+            .tabs()
+            .find((tab) => tab.panelId === "notes" && tab.resourceId === resource!.resourceId && tab.source === source)
+          if (existing) {
+            setResourceSelection({
+              owner,
+              target,
+              tab: {
+                id: existing.id,
+                panelId: existing.panelId,
+                resourceId: existing.resourceId,
+                source: existing.source,
+              },
+            })
+            workbench.activateTab("side", existing.id)
+            return
+          }
+        }
+        if (!current()) return
+        const tab = await workbench.openPanel(resource.panelId, {
+          activate: false,
+          canCommit: current,
+          init: { resourceId: resource.resourceId, ...(source ? { source } : {}) },
+        })
+        if (!tab) return fallback()
+        if (
+          request.signal.aborted ||
+          ownerKey() !== owner ||
+          side.selectionRevision() !== selectionRevision ||
+          (side.active() !== active && side.active() !== tab.id) ||
+          side.opened() !== opened
+        )
+          return
+        setResourceSelection({
+          owner,
+          target,
+          tab: { id: tab.id, panelId: tab.panelId, resourceId: tab.resourceId, source: tab.source },
+        })
+        workbench.activateTab("side", tab.id)
+      } catch {
+        fallback()
+      }
+    })()
+    return true
+  }
   const isActivityDetailSelected = (target: ActivityDetailTarget) => {
     const side = workbench.surface("side")
     if (!side.opened()) return false
@@ -203,7 +327,23 @@ export function ResourceOpenProvider(props: ParentProps) {
         (state.kind === "tool" && state.partID === target.partID && (!target.callID || state.callID === target.callID)))
     )
   }
-  const isToolActivitySelected = (target: ToolActivityTarget) => isActivityDetailSelected({ ...target, kind: "tool" })
+  const isToolActivitySelected = (target: ToolActivityTarget) => {
+    if (isActivityDetailSelected({ ...target, kind: "tool" })) return true
+    const selected = resourceSelection()
+    const side = workbench.surface("side")
+    const active = side.tabs().find((tab) => tab.id === side.active())
+    return (
+      !!selected &&
+      selected.owner === ownerKey() &&
+      side.opened() &&
+      active?.id === selected.tab.id &&
+      sameWorkbenchResource(active, selected.tab.panelId, selected.tab) &&
+      selected.target.sessionID === target.sessionID &&
+      selected.target.messageID === target.messageID &&
+      selected.target.partID === target.partID &&
+      (!target.callID || selected.target.callID === target.callID)
+    )
+  }
 
   const openToolReview = (target: ToolReviewTarget) => {
     void workbench.openPanel("session-review", {

@@ -16,7 +16,16 @@ import { catalog, changedFiles, OUTPUT, ROOT, workspaceInputs } from "./ci/catal
 import { verifyCoverage } from "./ci/coverage"
 import { latestResults, readResults, verifyResults } from "./ci/evidence"
 import { downloadInput, workflowExecutions } from "./ci/github"
-import { createPlan, executionQueue, needsBuild, QUEUES, validatePlan, type Mode, type Plan } from "./ci/plan"
+import {
+  createPlan,
+  executionQueue,
+  needsBuild,
+  QUEUES,
+  validatePlan,
+  type Mode,
+  type Plan,
+  type Task,
+} from "./ci/plan"
 import { executeUnit } from "./ci/run"
 import { policyIdentity, shadowEvidence } from "./ci/rollout"
 import { collectTimings, validateTimings } from "./ci/timing"
@@ -40,6 +49,8 @@ export async function policyDigest(root = ROOT) {
         "script/ci/selection-inputs.ts",
         "script/ci/inputs.ts",
         "script/workspace-dependencies.ts",
+        "script/ci/revision.ts",
+        "script/source-analysis.ts",
       ].map((file) => readFile(path.join(root, file), "utf8")),
     ),
   )
@@ -73,6 +84,32 @@ export function requiresSandbox(plan: Plan) {
       plan.selected.includes(task.id) &&
       (!!task.profile || ["sandbox", "artifacts"].includes(task.kind) || task.prerequisites?.includes("sandbox")),
   )
+}
+
+export async function planInputs(root: string, base: string, head: string, tasks: Task[]) {
+  const { RevisionSnapshot } = await import("./ci/revision")
+  const baseSnapshot = new RevisionSnapshot(root, base)
+  const headSnapshot = base === head ? baseSnapshot : new RevisionSnapshot(root, head)
+  const baseWorkspacesAnalysis = workspaceInputs(baseSnapshot)
+  const [baseWorkspaces, headWorkspaces] = await Promise.all([
+    baseWorkspacesAnalysis,
+    baseSnapshot === headSnapshot ? baseWorkspacesAnalysis : workspaceInputs(headSnapshot),
+  ])
+  const { taskInputs, selectionInputs } = await import("./ci/inputs")
+  const changed = changedFiles(root, base, head)
+  const baseInputsAnalysis = taskInputs(baseSnapshot, tasks, baseWorkspaces)
+  const [baseInputs, headInputs] = await Promise.all([
+    baseInputsAnalysis,
+    baseSnapshot === headSnapshot ? baseInputsAnalysis : taskInputs(headSnapshot, tasks, headWorkspaces),
+  ])
+  return {
+    changed,
+    selectionChanges: await selectionInputs(baseSnapshot, headSnapshot, changed, baseWorkspaces, headWorkspaces),
+    baseWorkspaces,
+    headWorkspaces,
+    baseInputs,
+    headInputs,
+  }
 }
 
 async function command(args: string[], cwd = ROOT) {
@@ -158,16 +195,7 @@ async function main() {
     if ((only.size || values.file || values.package) && mode !== "diagnostic")
       throw new Error("Task selectors require diagnostic mode")
     if (mode === "diagnostic" && !only.size) throw new Error("Select a diagnostic task, package, or file")
-    const [baseWorkspaces, headWorkspaces] = await Promise.all([
-      workspaceInputs(ROOT, base),
-      workspaceInputs(ROOT, head),
-    ])
-    const { taskInputs, selectionInputs } = await import("./ci/inputs")
-    const changed = changedFiles(ROOT, base, head)
-    const [baseInputs, headInputs] = await Promise.all([
-      taskInputs(ROOT, base, tasks, baseWorkspaces),
-      taskInputs(ROOT, head, tasks, headWorkspaces),
-    ])
+    const inputs = await planInputs(ROOT, base, head, tasks)
     const plan = createPlan({
       timings: await Bun.file(path.join(ROOT, "script/ci/timings.json"))
         .text()
@@ -178,12 +206,7 @@ async function main() {
       run: process.env.GITHUB_RUN_ID ?? "local",
       attempt: process.env.GITHUB_RUN_ATTEMPT ?? "1",
       mode,
-      changed,
-      selectionChanges: await selectionInputs(ROOT, base, head, changed, baseWorkspaces, headWorkspaces),
-      baseWorkspaces,
-      headWorkspaces,
-      baseInputs,
-      headInputs,
+      ...inputs,
       tasks,
       only: [...only],
     })

@@ -12,7 +12,7 @@ The built-in Web composer retains one mounted contenteditable editor, the revisi
 
 Expanded Enter inserts a line break and Control/Command+Enter submits. Completion and candidate menus handle their keys first; arrows stay in the editor and Escape closes the active composer popup before collapsing. Shell command behavior remains unchanged. An internal acceptance receipt collapses only a still-current, unchanged cleared draft; failed creation, failed submission and later edits preserve the presentation. This adds no Plugin interface or message-schema fields.
 
-Normal editor height starts at 96 pixels and grows within the measured chat height, up to the smaller of 240 pixels and 40 percent. The safe-area and available viewport constrain short windows. The expanded surface leaves side resources and the surrounding navigation available.
+Normal editor height starts at 64 pixels and grows within the measured chat height, up to the smaller of 240 pixels and 40 percent. The safe-area and available viewport constrain short windows. The expanded surface leaves side resources and the surrounding navigation available.
 
 A pointer-captured resize separator follows the gesture immediately. Manual height, including composer controls, is bounded by 60 percent of the measured chat area. Dragging a further 32 pixels arms expansion; returning to the height boundary disarms it. Pointer cancellation or Escape restores the previous automatic/manual height. The focusable separator also supports arrows, Home, End and Enter; the floating corner action offers expansion without dragging. The sizing controls follow [quiet composer sizing](../simplification/2026-10-02-quiet-composer-sizing.md). Pasting, auto-growth and viewport changes never expand the editor.
 

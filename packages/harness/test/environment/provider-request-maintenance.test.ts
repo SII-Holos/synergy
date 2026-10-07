@@ -4,6 +4,7 @@ import { EnvironmentMaintenance } from "../../src/environment/maintenance"
 import { EnvironmentProviders, type EnvironmentProvider } from "../../src/environment/provider"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
+import { StorageRecovery } from "../../src/storage/recovery"
 import { storageTestBackends } from "../support/storage-backends"
 import { testRuntime } from "../support/runtime"
 
@@ -171,6 +172,65 @@ for (const backend of storageTestBackends()) {
         )
         await (await acquire(environment.id)).release()
         expect((await Environment.deallocate(environment.id, { scopeID: "scope" })).state).toBe("idle")
+      })
+    }, 30_000)
+  }
+
+  for (const failureStage of ["checkpoint", "provider"] as const) {
+    test(`${backend}: failed ${failureStage} retains release intent until all resources retire`, async () => {
+      let allocation: { id: string; capabilities: string[] } | undefined
+      let residual = true
+      let saved = false
+      let failures = 2
+      let allocations = 0
+      const retired: string[] = []
+      const failure = new Error("release response lost")
+      const fail = (stage: typeof failureStage) => {
+        if (stage === failureStage && failures-- > 0) throw failure
+      }
+      await using runtime = await testRuntime({
+        postgres: backend === "postgres" ? process.env.SYNERGY_TEST_POSTGRES_URL : undefined,
+        register() {
+          EnvironmentProviders.register({
+            id: "held-provider",
+            async allocate(request) {
+              allocations++
+              return (allocation = { id: request.requestID, capabilities: ["exec"] })
+            },
+            async inspect() {
+              return allocation ? { state: "ready", allocation } : { state: "absent" }
+            },
+            async deallocate(request) {
+              expect(saved).toBe(true)
+              retired.push(request.requestID)
+              allocation = undefined
+              fail("provider")
+              residual = false
+            },
+          })
+          Environment.registerResourceOwner("retained-files", async () => {
+            fail("checkpoint")
+            saved = true
+          })
+        },
+      })
+      await runtime.run(async () => {
+        const environment = await bind()
+        const use = await acquire(environment.id)
+        await use.release()
+        expect(await Environment.deallocate(environment.id, { scopeID: "scope" }).catch((error) => error)).toBe(failure)
+        await StorageRecovery.recoverOwners()
+        const pending = await Environment.get(environment.id, "scope")
+        expect(pending.state).toBe("releasing")
+        expect(pending.allocation?.id).toBe(use.target.allocationID)
+        expect(residual).toBe(true)
+        expect(retired).toHaveLength(failureStage === "checkpoint" ? 0 : 2)
+        await EnvironmentMaintenance.tick()
+        expect((await Environment.get(environment.id, "scope")).state).toBe("idle")
+        expect(await Storage.readMany([StoragePath.environmentActive(environment.id)])).toEqual([undefined])
+        expect(residual).toBe(false)
+        expect(allocations).toBe(1)
+        expect(retired).toEqual(Array(failureStage === "checkpoint" ? 1 : 3).fill(use.target.allocationID))
       })
     }, 30_000)
   }

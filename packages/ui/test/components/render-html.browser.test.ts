@@ -59,6 +59,113 @@ async function visual(html: string, title = "Evidence at a glance") {
 }
 const frame = () => page.locator('[data-component="render-html"] iframe').first()
 
+type RenderStreamState = {
+  status: "pending" | "generating" | "running" | "completed" | "error"
+  raw?: string
+  html?: string
+  title?: string
+  error?: string
+  output?: string
+}
+
+async function renderStream(options: RenderStreamState) {
+  await page.evaluate((options) => {
+    const harness = (
+      window as unknown as {
+        __chronologyHarness: { setRenderStream: (state: RenderStreamState) => void }
+      }
+    ).__chronologyHarness
+    harness.setRenderStream(options)
+  }, options)
+}
+async function executionDetails() {
+  await page.evaluate(() => {
+    const harness = (
+      window as unknown as {
+        __chronologyHarness: { setMode: (mode: string) => void; setToolDetailFallback: (enabled: boolean) => void }
+      }
+    ).__chronologyHarness
+    harness.setMode("full")
+    harness.setToolDetailFallback(true)
+  })
+}
+
+test("streams Render inline from pending arguments to the completed visual", async () => {
+  await page.evaluate(() => {
+    const harness = (
+      window as unknown as {
+        __chronologyHarness: { reset: () => void; setMode: (mode: string) => void }
+      }
+    ).__chronologyHarness
+    harness.reset()
+    harness.setMode("minimal")
+  })
+  await renderStream({ status: "pending" })
+  const figure = page.locator('[data-component="render-tool"]')
+  await figure.waitFor({ timeout: 3000 })
+  expect(await figure.getAttribute("aria-busy")).toBe("true")
+  expect(await page.locator('[data-tool-status], [data-component="render-html"]').count()).toBe(0)
+  expect(await page.getByRole("button", { name: "Expand visual" }).count()).toBe(0)
+  expect(await figure.getByRole("status").innerText()).toContain("Preparing visual")
+  expect(await figure.locator("figcaption").innerText()).toBe("Visual result")
+  await figure.evaluate((element) => {
+    ;(window as unknown as { retainedRender: Element }).retainedRender = element
+  })
+  const html = '<p id="stream-result">Finished visual</p>'
+  for (const options of [
+    { status: "generating" as const, raw: '{"artifactTitle":"Stream title","html":"<p id=' },
+    { status: "generating" as const, raw: JSON.stringify({ artifactTitle: "Stream title", html }) },
+    { status: "running" as const, html, title: "Stream title" },
+  ]) {
+    await renderStream(options)
+    await page.waitForFunction(() => document.querySelector("figure figcaption")?.textContent === "Stream title")
+    expect(await figure.getAttribute("aria-busy")).toBe("true")
+    expect(
+      await figure.evaluate((element) => element === (window as unknown as { retainedRender: Element }).retainedRender),
+    ).toBe(true)
+    expect(
+      await page
+        .locator('[data-tool-status], [data-component="render-html"], [data-component="tool-output-text"]')
+        .count(),
+    ).toBe(0)
+    expect(await page.getByRole("button", { name: "Expand visual" }).count()).toBe(0)
+    expect(await page.locator("body").innerText()).not.toContain("<p")
+  }
+  await renderStream({ status: "completed", html, title: "Stream title" })
+  await page.frameLocator('[data-component="render-html"] iframe').locator("#stream-result").waitFor()
+  expect(
+    await figure.evaluate((element) => element === (window as unknown as { retainedRender: Element }).retainedRender),
+  ).toBe(true)
+  expect(await figure.getAttribute("aria-busy")).toBe("false")
+  expect(await figure.getByRole("status").count()).toBe(0)
+  expect(await page.getByRole("button", { name: "Expand visual" }).isVisible()).toBe(true)
+  expect(await page.getByText("The visual stays in the conversation.", { exact: true }).isVisible()).toBe(true)
+  expect(await page.getByText("Here is the comparison.", { exact: true }).isVisible()).toBe(true)
+  expect(await page.locator("[data-tool-status]").count()).toBe(0)
+}, 15000)
+
+test("stream failure retains selectable error evidence and supports a healthy successor", async () => {
+  await executionDetails()
+  await renderStream({ status: "running", title: "Failed visual" })
+  await page.locator('[data-slot="render-tool-loading"]').waitFor()
+  const error = "Render could not produce the visual. Recorded diagnostic."
+  await renderStream({ status: "error", title: "Failed visual", error })
+  const row = page.getByRole("button", { name: "Render content · Failed visual · Failed", exact: true })
+  await row.click()
+  const dialog = page.getByRole("dialog")
+  const recorded = dialog.locator('[data-slot="tool-result-error"]')
+  await recorded.waitFor()
+  expect(await recorded.innerText()).toBe(error)
+  expect(await page.locator('[data-component="render-tool"], [data-component="render-html"]').count()).toBe(0)
+  await page.keyboard.press("Escape")
+  await dialog.waitFor({ state: "detached" })
+  await renderStream({ status: "pending" })
+  expect(await page.locator('[data-slot="tool-result-error"]').count()).toBe(0)
+  await renderStream({ status: "completed", html: '<p id="recovered">Recovered visual</p>' })
+  await page.frameLocator('[data-component="render-html"] iframe').locator("#recovered").waitFor()
+  expect(await page.locator('[data-slot="render-tool-loading"]').count()).toBe(0)
+})
+
 // These use the real SessionTurn and standard tool renderer, not a substitute card.
 test("presents a visual between prose without a generic tool disclosure", async () => {
   await visual('<p id="result">Readable result</p>')
@@ -195,18 +302,17 @@ test("static MathML integration content retains native disclosure interaction", 
 })
 
 test("missing HTML keeps long fallback output readable", async () => {
+  await executionDetails()
   const output = "Recorded output ".repeat(100)
-  await page.evaluate((output) => {
-    const harness = (
-      window as unknown as {
-        __chronologyHarness: { setRender: (html: string, title: string, status: string, output: string) => void }
-      }
-    ).__chronologyHarness
-    harness.setRender("", "Fallback result", "completed", output)
-  }, output)
-  const disclosure = page.locator('[data-tool-status="completed"] button[aria-expanded]')
-  if ((await disclosure.getAttribute("aria-expanded")) !== "true") await disclosure.click()
-  const result = page.locator('[data-component="tool-output-text"]')
+  await renderStream({ status: "running", title: "Fallback result" })
+  await page.locator('[data-slot="render-tool-loading"]').waitFor()
+  await renderStream({ status: "completed", title: "Fallback result", output })
+  expect(await page.locator('[data-component="render-tool"], [data-component="render-html"]').count()).toBe(0)
+  const disclosure = page.locator('[data-tool-status="completed"]')
+  const trigger = disclosure.getByRole("button", { name: "Render content", exact: true })
+  await trigger.waitFor()
+  if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click()
+  const result = disclosure.locator('[data-component="tool-output-text"]')
   await result.waitFor()
   expect(await result.textContent()).toBe(output)
   const metrics = await result.evaluate((element) => ({
@@ -299,7 +405,18 @@ test("blocks malformed-document resource loads and HTML/SVG/MathML navigation in
 test("narrow viewport and reduced motion keep the visual and viewer controls reachable", async () => {
   await page.setViewportSize({ width: 320, height: 600 })
   await page.emulateMedia({ reducedMotion: "reduce" })
-  await visual("<p>Phone width</p>", "A long visual title that must wrap rather than displace the action")
+  const title = "A long visual title that must wrap rather than displace the action"
+  await renderStream({ status: "running", title })
+  const loading = page.locator('[data-slot="render-tool-loading"]')
+  await loading.waitFor()
+  expect(await loading.isVisible()).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+  expect(
+    await loading
+      .locator("rect")
+      .evaluateAll((elements) => elements.every((element) => getComputedStyle(element).animationName === "none")),
+  ).toBe(true)
+  await visual("<p>Phone width</p>", title)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
   const expand = page.getByRole("button", { name: "Expand visual" })
   await expand.click()

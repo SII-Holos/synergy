@@ -1,52 +1,24 @@
 import { POSTGRES_TEST_FILES } from "../../packages/harness/test/support/storage-backends"
 import path from "node:path"
-import { execFileSync } from "node:child_process"
 import { loadManifest } from "../coverage-check"
 import { collectTests } from "../../packages/testing/script/batches"
 import { type Task, type WorkspaceInput } from "./plan"
 import { workspaces } from "../workspace-manifest"
 import { partitionSuite, suiteSeconds } from "./suites"
 import { estimateTask, timingProfile, validateTimings } from "./timing"
+import type { RevisionSnapshot } from "./revision"
 export { changedFiles } from "./selection"
 
 export const ROOT = path.resolve(import.meta.dir, "../..")
 export const OUTPUT = ".artifacts/ci"
 
-function git(root: string, args: string[], input?: string): Buffer {
-  return execFileSync("git", args, { cwd: root, input, maxBuffer: 128 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"] })
-}
-
-export function revisionFiles(root: string, revision: string, names: string[]): Map<string, string> {
-  if (!/^[a-f0-9]{40}$/.test(revision)) throw new Error("CI revisions must be full commit SHAs")
-  const output = git(root, ["cat-file", "--batch"], names.map((name) => `${revision}:${name}\n`).join(""))
-  const result = new Map<string, string>()
-  let offset = 0
-  for (const name of names) {
-    const end = output.indexOf(10, offset)
-    const header = output.subarray(offset, end).toString()
-    offset = end + 1
-    if (header.endsWith(" missing")) continue
-    const size = Number(header.split(" ").at(-1))
-    if (!Number.isSafeInteger(size) || size < 0) throw new Error("Invalid Git object response")
-    result.set(name, output.subarray(offset, offset + size).toString())
-    offset += size + 1
-  }
-  return result
-}
-
-export async function workspaceInputs(root: string, revision: string): Promise<WorkspaceInput[]> {
-  const { imports } = await import("../workspace-dependencies")
-  const rootManifest = JSON.parse(revisionFiles(root, revision, ["package.json"]).get("package.json")!) as {
+export async function workspaceInputs(snapshot: RevisionSnapshot): Promise<WorkspaceInput[]> {
+  const rootManifest = JSON.parse(snapshot.required("package.json")) as {
     workspaces: { packages: string[] }
   }
-  const files = git(root, ["ls-tree", "-r", "--name-only", revision]).toString().trim().split("\n")
-  const manifests = revisionFiles(
-    root,
-    revision,
-    rootManifest.workspaces.packages.map((directory) => `${directory}/package.json`),
-  )
+  const files = snapshot.files
   const packages = rootManifest.workspaces.packages.map((directory) => {
-    const manifest = JSON.parse(manifests.get(`${directory}/package.json`)!) as {
+    const manifest = JSON.parse(snapshot.required(`${directory}/package.json`)) as {
       name: string
       dependencies?: Record<string, string>
       optionalDependencies?: Record<string, string>
@@ -67,9 +39,9 @@ export async function workspaceInputs(root: string, revision: string): Promise<W
   const byName = new Map(packages.map((entry) => [entry.name, entry]))
   const owner = (file: string) => packages.find((entry) => file.startsWith(entry.directory + "/"))
   const testFiles = files.filter((file) => /\/(?:test|script|src)\/.*\.[cm]?[jt]sx?$/.test(file) && owner(file))
-  for (const [file, source] of revisionFiles(root, revision, testFiles)) {
+  for (const file of testFiles) {
     const from = owner(file)!
-    for (const specifier of imports(file, source)) {
+    for (const specifier of snapshot.facts(file).specifiers) {
       const dependency = specifier.startsWith(".")
         ? owner(path.posix.normalize(path.posix.join(path.posix.dirname(file), specifier)))
         : byName.get(specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0]!)

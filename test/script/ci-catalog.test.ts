@@ -8,6 +8,7 @@ import { distributionCommands } from "../../script/ci/distributions"
 import { buildUnits, createPlan, LIMITS, selectAffected, type Task } from "../../script/ci/plan"
 import { commands } from "../../script/ci/run"
 import { requiresSandbox } from "../../script/ci"
+import { RevisionSnapshot } from "../../script/ci/revision"
 
 const tasks: Task[] = ["synergy", "codex", "opencode", "pi", "deepseek"].map((variant) => ({
   id: `native-${variant}`,
@@ -340,8 +341,8 @@ test("Git inventories retain removed edges and rename ownership, including test-
     git("add", ".")
     git("commit", "--quiet", "-m", "fixture head")
     const head = git("rev-parse", "HEAD")
-    const before = await workspaceInputs(root, base)
-    const after = await workspaceInputs(root, head)
+    const before = await workspaceInputs(new RevisionSnapshot(root, base))
+    const after = await workspaceInputs(new RevisionSnapshot(root, head))
     expect(before.find((workspace) => workspace.name === "client")!.testDependencies).toEqual(["core"])
     expect(after.find((workspace) => workspace.name === "client")!.testDependencies).toEqual([])
     expect(changedFiles(root, base, head)).toContain("packages/core/src/value.ts")

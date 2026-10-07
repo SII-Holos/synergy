@@ -24917,6 +24917,10 @@ msgid "tool.render.expand"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "tool.render.preparing"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "tool.render.visual"
 msgstr ""
 

@@ -6,6 +6,7 @@ import path from "node:path"
 import { selectionInputs, taskInputs } from "../../script/ci/inputs"
 import { changedFiles, workspaceInputs } from "../../script/ci/catalog"
 import { createPlan, type Task, type WorkspaceInput } from "../../script/ci/plan"
+import { RevisionSnapshot } from "../../script/ci/revision"
 
 test("integration inputs follow both revisions, resources and unresolved dynamic imports", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ci-inputs-"))
@@ -48,7 +49,7 @@ test("integration inputs follow both revisions, resources and unresolved dynamic
     git("add", ".")
     git("commit", "--quiet", "-m", "fixture base")
     const base = git("rev-parse", "HEAD")
-    const before = await taskInputs(root, base, tasks, workspaces)
+    const before = await taskInputs(new RevisionSnapshot(root, base), tasks, workspaces)
     expect(before.pressure!.complete).toBe(true)
     expect(before.pressure!.files).toContain("packages/core/src/value.ts")
     expect(before.pressure!.files).toContain("packages/core/test/fixture.json")
@@ -71,13 +72,13 @@ test("integration inputs follow both revisions, resources and unresolved dynamic
     await Bun.write(path.join(root, "packages/core/test/pressure.test.ts"), "export {}")
     git("add", ".")
     git("commit", "--quiet", "-m", "remove import")
-    const after = await taskInputs(root, git("rev-parse", "HEAD"), tasks, workspaces)
+    const after = await taskInputs(new RevisionSnapshot(root, git("rev-parse", "HEAD")), tasks, workspaces)
     expect(after.pressure!.files).not.toContain("packages/core/src/value.ts")
     expect(plan(["packages/core/src/value.ts"], after).selected).toContain("pressure")
     await Bun.write(path.join(root, "packages/core/test/pressure.test.ts"), "await import(process.env.INPUT!)")
     git("add", ".")
     git("commit", "--quiet", "-m", "dynamic import")
-    const dynamic = await taskInputs(root, git("rev-parse", "HEAD"), tasks, workspaces)
+    const dynamic = await taskInputs(new RevisionSnapshot(root, git("rev-parse", "HEAD")), tasks, workspaces)
     expect(dynamic.pressure!.complete).toBe(false)
     expect(plan(["packages/core/src/unrelated.ts"], dynamic).selected).toContain("pressure")
   } finally {
@@ -116,7 +117,8 @@ async function selectionFixture(files: Record<string, string>) {
     git("add", ".")
     git("commit", "--quiet", "-m", "selection counterexample")
     const revision = git("rev-parse", "HEAD")
-    const workspaces = await workspaceInputs(root, revision)
+    const snapshot = new RevisionSnapshot(root, revision)
+    const workspaces = await workspaceInputs(snapshot)
     const tasks: Task[] = [
       { id: "policy", kind: "policy", pool: "linux", owners: [], needs: [], seconds: 1 },
       {
@@ -129,7 +131,7 @@ async function selectionFixture(files: Record<string, string>) {
         inputs: ["packages/core/test/pressure.test.ts"],
       },
     ]
-    const inputs = await taskInputs(root, revision, tasks, workspaces)
+    const inputs = await taskInputs(snapshot, tasks, workspaces)
     return {
       workspaces,
       inputs,
@@ -318,6 +320,16 @@ test("leaf test classification checks imports, exports and unresolved consumers 
     git("commit", "--quiet", "-m", "fixture inputs")
     return git("rev-parse", "HEAD")
   }
+  const selection = (base: string, head: string, changed = [file]) => {
+    const before = new RevisionSnapshot(root, base)
+    return selectionInputs(
+      before,
+      base === head ? before : new RevisionSnapshot(root, head),
+      changed,
+      workspaces,
+      workspaces,
+    )
+  }
   try {
     git("init", "--quiet")
     await Bun.write(
@@ -332,48 +344,45 @@ test("leaf test classification checks imports, exports and unresolved consumers 
     await Bun.write(path.join(root, "packages/core/test/support/helper.ts"), "export const value = 1")
     await Bun.write(path.join(root, "packages/core/src/value.ts"), "export const value = 1")
     const base = commit()
-    expect(
-      (await selectionInputs(root, base, base, [file, "packages/core/test/support/helper.ts"], workspaces, workspaces))
-        .leafTests,
-    ).toEqual([file])
+    expect((await selection(base, base, [file, "packages/core/test/support/helper.ts"])).leafTests).toEqual([file])
     await Bun.write(path.join(root, "packages/consumer/test/aggregate.test.ts"), 'import "../../core/test/value.test"')
     const imported = commit()
-    expect((await selectionInputs(root, base, imported, [file], workspaces, workspaces)).leafTests).toEqual([])
+    expect((await selection(base, imported)).leafTests).toEqual([])
     await Bun.write(path.join(root, "packages/consumer/test/aggregate.test.ts"), "export {}")
     const removed = commit()
-    expect((await selectionInputs(root, imported, removed, [file], workspaces, workspaces)).leafTests).toEqual([])
+    expect((await selection(imported, removed)).leafTests).toEqual([])
     await Bun.write(
       path.join(root, "packages/core/src/value.ts"),
       "export async function load() { await import(process.env.FIXTURE_MODULE!) }",
     )
     const dynamicOwner = commit()
-    expect((await selectionInputs(root, removed, dynamicOwner, [file], workspaces, workspaces)).leafTests).toEqual([])
+    expect((await selection(removed, dynamicOwner)).leafTests).toEqual([])
     await Bun.write(path.join(root, "packages/core/src/value.ts"), "export const value = 1")
     await Bun.write(
       path.join(root, "packages/consumer/test/aggregate.test.ts"),
       "await import(process.env.FIXTURE_MODULE!)",
     )
     const dynamic = commit()
-    expect((await selectionInputs(root, removed, dynamic, [file], workspaces, workspaces)).leafTests).toEqual([])
+    expect((await selection(removed, dynamic)).leafTests).toEqual([])
     await Bun.write(path.join(root, "packages/consumer/test/aggregate.test.ts"), "export {}")
     await Bun.write(
       path.join(root, "packages/core/package.json"),
       JSON.stringify({ name: "core", exports: { "./test/*": "./test/*.ts" } }),
     )
     const exported = commit()
-    expect((await selectionInputs(root, removed, exported, [file], workspaces, workspaces)).leafTests).toEqual([])
+    expect((await selection(removed, exported)).leafTests).toEqual([])
     await Bun.write(
       path.join(root, "packages/core/package.json"),
       JSON.stringify({ name: "core", exports: { "./test/*": ["./test/*.ts"] } }),
     )
     const conditional = commit()
-    expect((await selectionInputs(root, removed, conditional, [file], workspaces, workspaces)).leafTests).toEqual([])
+    expect((await selection(removed, conditional)).leafTests).toEqual([])
     await Bun.write(
       path.join(root, "packages/core/package.json"),
       JSON.stringify({ name: "core", main: "test/value.test.ts" }),
     )
     const main = commit()
-    expect((await selectionInputs(root, removed, main, [file], workspaces, workspaces)).leafTests).toEqual([])
+    expect((await selection(removed, main)).leafTests).toEqual([])
     await Bun.write(
       path.join(root, "packages/core/package.json"),
       JSON.stringify({ name: "core", exports: { ".": "./src/value.ts" } }),
@@ -384,7 +393,7 @@ test("leaf test classification checks imports, exports and unresolved consumers 
     )
     await Bun.write(path.join(root, "packages/consumer/test/aggregate.test.ts"), 'import "fixture/value.test"')
     const alias = commit()
-    expect((await selectionInputs(root, removed, alias, [file], workspaces, workspaces)).leafTests).toEqual([])
+    expect((await selection(removed, alias)).leafTests).toEqual([])
   } finally {
     await rm(root, { recursive: true, force: true })
   }

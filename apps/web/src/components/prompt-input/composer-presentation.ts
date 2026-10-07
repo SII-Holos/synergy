@@ -43,7 +43,7 @@ export class ComposerPresentation {
 export function composerBodyLimits(available: number, chrome: number, hasAttachments = false, manualHeight?: number) {
   const manual = Math.max(24, available * 0.6 - chrome)
   const automatic = Math.max(24, Math.min(240, available * 0.4, manual))
-  return { minimum: Math.min(hasAttachments ? 48 : 96, automatic, manualHeight ?? Infinity), automatic, manual }
+  return { minimum: Math.min(hasAttachments ? 48 : 64, automatic, manualHeight ?? Infinity), automatic, manual }
 }
 
 export class ComposerResizeGesture {

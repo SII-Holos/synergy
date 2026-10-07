@@ -18,7 +18,7 @@ Every acquired use is persisted and blocks deallocation until released. Physical
 
 Default selection has an explicit Session, Workspace or Scope reuse policy. The local preset shares one borrowed native Environment per Scope so independent Sessions can use the same live Workspace. Embedded compositions choose their own policy; Harness does not infer users, tenants or billing groups.
 
-`EnvironmentResources` resolves declared file and execution needs. API-only operations resolve no physical resources. Dormant object-backed files and local directory access do not allocate compute. Execution obtains the target's platform, shell, scratch directory and filtered environment from the Executor, then attaches the selected Workspace. An active view must remain on its recorded target. File-tool availability follows the logical Workspace selection. Path authorization uses that target’s path namespace, with final symlink containment enforced by its file host; controller filesystem aliases cannot authorize remote paths. Backend incompatibility fails before allocation; missing authority never falls back to a controller path.
+`EnvironmentResources` resolves declared file and execution needs. API-only operations resolve no physical resources. Dormant object-backed files and local directory access do not allocate compute. Execution obtains the target's platform, shell, scratch directory and filtered environment from the Executor, then attaches the selected Workspace. An active view must remain on its recorded target. File-tool authorization accepts the selected object Workspace's validated logical root, including through the isolated policy worker; shell authorization retains the target's physical namespace. Native filesystem access gains no logical alias. Final symlink containment remains with the file host. Backend incompatibility fails before allocation; missing authority never falls back to a controller path.
 
 ## Ownership
 
@@ -70,6 +70,8 @@ The Docker image compiles Linux sandbox profiles on the execution host and uses 
 
 ## Workspace attachment and checkpointing
 
+Tool discovery and execution use the Session's selected Workspace ID even when there is no local directory. Listing capabilities neither materializes files nor allocates compute; permission and user-tool filters remain independent.
+
 Plugin file and shell Host Services resolve the invocation's pinned resource selection. Dormant files require no allocation; shell execution uses the same Environment process facade as first-party tools. Native file-host admission inherits its calling task's reservation while retaining a separate durable physical writer. This permits a shell followed by a file write in one invocation without bypassing foreign-writer exclusion or losing a writer on interrupted saving.
 
 `WorkspaceMounts` persists one active writable view per Workspace with its own mount generation and allocation target. Attachment transfers verified object chunks and materializes their manifest through the Executor's file host. Directory attachment requires an explicitly resolved provider path. A failed or uncertain attachment retains its Environment use for reconciliation. File inspection, bounded reads, versioned writes, checkpoint transfer and acknowledgement use the same file host directly or over transport.
@@ -77,6 +79,8 @@ Plugin file and shell Host Services resolve the invocation's pinned resource sel
 Execution records pin their explicitly selected Workspace mounts before dispatch and retain resource use through process exit, output drainage, checkpoint publication and release acknowledgement. Cancellation confirmed before activation needs no checkpoint. Managed file mutations retain their concrete writer until acknowledgement and reject stale preconditions before effects. Missing receipts remain unknown, and side effects are never replayed solely to retry saving.
 
 Materialized object-backed views publish content manifests. Directory and volume views retain files in their owning filesystem and publish a completion receipt with no object manifest. Those receipts still require physical writer completion and acknowledgement; ordinary native commands do not scan and upload the entire directory.
+
+Reconciliation of a releasing Environment resumes resource checkpoints and provider deallocation using its original allocation identity, even when compute is already absent. Repeated saving or provider failure preserves that release intent through startup recovery and maintenance; allocation state clears only after complete retirement. See [release recovery](../decisions/implemented/bug-fix/2026-10-06-resume-complete-environment-release.md).
 
 Environment deallocation first closes admission through its durable releasing state. Workspace resource owners publish a final checkpoint, detach the live views and clear their fenced bindings before the provider destroys compute. Docker uses an allocation-owned staging volume for materialized views; that volume is deleted after these checkpoints, while explicitly supplied Workspace volumes remain intact. Reallocation restores files into a new view and increments allocation and mount generations independently. See [checkpoint ownership](../decisions/implemented/architecture/2026-09-27-workspace-execution-checkpoints.md).
 

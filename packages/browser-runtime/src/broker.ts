@@ -24,6 +24,8 @@ import { BrowserStorage } from "./storage.js"
 import { BrowserDownloads } from "./downloads.js"
 import { BrowserEvent } from "./event.js"
 import { ObservabilityBrowserTelemetry } from "@ericsanchezok/synergy-harness/observability/browser-metrics"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { browserErrorDiagnostics } from "./error-diagnostics.js"
 
 export interface BrowserBrokerSocket {
   send(data: string): void
@@ -50,6 +52,8 @@ interface Connection {
 const runtimeState = RuntimeContext.state(() => ({
   connection: null as Connection | null,
   requestSequence: 0,
+  lifecycleQueue: [] as (() => void)[],
+  dispatchingLifecycle: false,
   profiles: new Map<string, string>(),
   popupListeners: new Map<string, (input: { id: string; url: string; openerId: string }) => Promise<unknown>>(),
   bufferedEvents: new Map<string, BrowserHostPageEvent[]>(),
@@ -66,6 +70,7 @@ const runtimeState = RuntimeContext.state(() => ({
 
 const MAX_PENDING_REQUESTS = 64
 const MAX_EVENTS_PER_SECOND = 500
+const log = Log.create({ service: "browser.broker" })
 
 export namespace BrowserBroker {
   export function secret(): string {
@@ -151,7 +156,7 @@ export namespace BrowserBroker {
       socket.close(1013, "Browser Host broker is already registered")
       throw new Error("A Browser Host broker is already registered for this server.")
     }
-    instanceState.connection = {
+    const active: Connection = {
       hostId: message.hostId,
       socket,
       capabilities: message.capabilities,
@@ -160,21 +165,42 @@ export namespace BrowserBroker {
       eventWindowStartedAt: Date.now(),
       eventCount: 0,
     }
-    notifyHostStatus("ready")
-    ObservabilityBrowserTelemetry.recordHostStatus("ready")
-    notifyActivity()
-    send({ type: "host.registered", protocolVersion: BROWSER_PROTOCOL_VERSION, hostId: message.hostId })
+    instanceState.connection = active
+    dispatchLifecycle(() => {
+      if (instanceState.connection !== active) return
+      notifyHostStatus("ready")
+      notifySafely("host.ready.telemetry", () => ObservabilityBrowserTelemetry.recordHostStatus("ready"))
+      notifyActivity()
+      if (instanceState.connection !== active) return
+      try {
+        socket.send(
+          JSON.stringify({
+            type: "host.registered",
+            protocolVersion: BROWSER_PROTOCOL_VERSION,
+            hostId: message.hostId,
+          }),
+        )
+      } catch (error) {
+        detach(socket)
+        notifySafely("host.handshake.close", () => socket.close(1011, "Browser Host registration failed"))
+        throw error
+      }
+    })
   }
 
   export function detach(socket: BrowserBrokerSocket): void {
     const instanceState = runtimeState()
 
     if (instanceState.connection?.socket !== socket) return
-    disconnect(instanceState.connection, new Error("Browser Host broker disconnected."))
+    const active = instanceState.connection
     instanceState.connection = null
-    notifyHostStatus("restarting")
-    ObservabilityBrowserTelemetry.recordHostStatus("restarting")
-    notifyActivity()
+    const notifyDisconnect = disconnect(active, new Error("Browser Host broker disconnected."))
+    dispatchLifecycle(() => {
+      notifyDisconnect()
+      notifyHostStatus("restarting")
+      notifySafely("host.restarting.telemetry", () => ObservabilityBrowserTelemetry.recordHostStatus("restarting"))
+      notifyActivity()
+    })
   }
 
   export function handle(socket: BrowserBrokerSocket, input: unknown): void {
@@ -451,11 +477,12 @@ export namespace BrowserBroker {
   export function resetForTest(): void {
     const instanceState = runtimeState()
 
-    if (instanceState.connection) {
-      disconnect(instanceState.connection, new Error("Browser Host broker test state was reset."))
-      instanceState.connection.socket.close()
-    }
+    const active = instanceState.connection
     instanceState.connection = null
+    if (active) {
+      disconnect(active, new Error("Browser Host broker test state was reset."))()
+      active.socket.close()
+    }
     instanceState.requestSequence = 0
     instanceState.preferences.clear()
     instanceState.eventListeners.clear()
@@ -465,13 +492,16 @@ export namespace BrowserBroker {
 
 function releasePage(connection: Connection, key: string) {
   const state = runtimeState()
-  connection.pages.delete(key)
+  if (!connection.pages.delete(key)) return
   const profileId = state.profiles.get(key)
   state.profiles.delete(key)
   state.bufferedEvents.delete(key)
   if (profileId && ![...state.profiles.values()].includes(profileId)) {
-    BrowserNetworkGateway.revoke(profileId)
-    BrowserProfiles.releaseTemporary(profileId)
+    try {
+      BrowserNetworkGateway.revoke(profileId)
+    } finally {
+      BrowserProfiles.releaseTemporary(profileId)
+    }
   }
 }
 
@@ -479,15 +509,43 @@ function notifyActivity(): void {
   const instanceState = runtimeState()
 
   const hasPages = Boolean(instanceState.connection?.pages.size)
-  for (const listener of instanceState.activityListeners) listener(hasPages)
+  for (const listener of instanceState.activityListeners) notifySafely("activity.observer", () => listener(hasPages))
 }
 
 function notifyHostStatus(status: BrowserHostStatus): void {
   const instanceState = runtimeState()
 
   for (const preference of instanceState.preferences.values()) {
-    BrowserEvent.publish(preference.owner, { type: "host.status", status })
+    notifySafely("host.status.event", () => BrowserEvent.publish(preference.owner, { type: "host.status", status }))
   }
+}
+
+function notifySafely(boundary: string, notify: () => unknown): void {
+  try {
+    notify()
+  } catch (error) {
+    log.warn("Browser Host lifecycle notification failed", { boundary, ...browserErrorDiagnostics(error) })
+  }
+}
+
+function dispatchLifecycle(notify: () => void): void {
+  const state = runtimeState()
+  state.lifecycleQueue.push(notify)
+  if (state.dispatchingLifecycle) return
+  state.dispatchingLifecycle = true
+  let failure: { error: unknown } | undefined
+  try {
+    while (state.lifecycleQueue.length) {
+      try {
+        state.lifecycleQueue.shift()!()
+      } catch (error) {
+        failure ??= { error }
+      }
+    }
+  } finally {
+    state.dispatchingLifecycle = false
+  }
+  if (failure) throw failure.error
 }
 
 function request(
@@ -564,7 +622,7 @@ function requestTimeout(
   return 35_000
 }
 
-function disconnect(active: Connection, error: Error): void {
+function disconnect(active: Connection, error: Error): () => void {
   const instanceState = runtimeState()
 
   for (const pending of active.pending.values()) {
@@ -572,32 +630,38 @@ function disconnect(active: Connection, error: Error): void {
     pending.reject(error)
   }
   active.pending.clear()
-  for (const preference of instanceState.preferences.values()) {
-    ObservabilityBrowserTelemetry.recordHostDisconnected(preference.owner)
-  }
-  for (const key of active.pages) {
+  const pages = [...active.pages]
+  const preferences = [...instanceState.preferences.values()]
+  const notifications = pages.map((key) => {
     const separator = key.lastIndexOf(":")
     const ownerKey = separator > 0 ? key.slice(0, separator) : undefined
-    const pageId = separator > 0 ? key.slice(separator + 1) : undefined
-    const listeners = instanceState.eventListeners.get(key)
-    const preference = ownerKey ? instanceState.preferences.get(ownerKey) : undefined
-    if (pageId && preference) {
-      BrowserEvent.publish(preference.owner, { type: "host.status", pageId, status: "restarting" })
+    return {
+      pageId: separator > 0 ? key.slice(separator + 1) : undefined,
+      listeners: [...(instanceState.eventListeners.get(key) ?? [])],
+      preference: ownerKey ? instanceState.preferences.get(ownerKey) : undefined,
     }
-    if (pageId && listeners) {
-      for (const listener of listeners) {
-        listener({ type: "host.status", pageId, status: "restarting" })
-        listener({ type: "page.error", pageId, message: error.message })
+  })
+  for (const key of pages) notifySafely("page.release", () => releasePage(active, key))
+  return () => {
+    for (const preference of preferences) {
+      notifySafely("host.disconnect.telemetry", () =>
+        ObservabilityBrowserTelemetry.recordHostDisconnected(preference.owner),
+      )
+    }
+    for (const { pageId, listeners, preference } of notifications) {
+      if (pageId && preference) {
+        notifySafely("page.status.event", () =>
+          BrowserEvent.publish(preference.owner, { type: "host.status", pageId, status: "restarting" }),
+        )
+      }
+      if (pageId) {
+        for (const listener of listeners) {
+          notifySafely("page.status.observer", () => listener({ type: "host.status", pageId, status: "restarting" }))
+          notifySafely("page.error.observer", () => listener({ type: "page.error", pageId, message: error.message }))
+        }
       }
     }
   }
-  for (const key of [...active.pages]) releasePage(active, key)
-}
-
-function send(message: BrowserHostMessage): void {
-  const instanceState = runtimeState()
-
-  instanceState.connection?.socket.send(JSON.stringify(message))
 }
 
 function nextRequestId(): string {

@@ -166,4 +166,20 @@ describe("prompt dock height observer", () => {
     await waitForHeight(180)
     expect(pageErrors).toEqual([])
   }, 10_000)
+  test("includes dock padding and borders, including padding-only changes", async () => {
+    await page.goto(baseUrl)
+    await page.click("[data-mount]")
+    await waitForHeight(150)
+    await page.locator("[data-dock]").evaluate((element) => {
+      const dock = element as HTMLElement
+      dock.style.paddingBottom = "24px"
+      dock.style.borderBottom = "2px solid"
+    })
+    await waitForHeight(176)
+    await page.locator("[data-dock]").evaluate((element) => {
+      ;(element as HTMLElement).style.paddingBottom = "12.25px"
+    })
+    await waitForHeight(165)
+    expect(pageErrors).toEqual([])
+  }, 15_000)
 })

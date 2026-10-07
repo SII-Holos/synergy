@@ -22,15 +22,9 @@ export class ConcurrencyLimiter {
   }
 }
 
-/**
- * Get the RSS memory (in MB) for a process.
- *
- * On Linux: reads /proc/{pid}/status for VmRSS (in kB), converts to MB.
- * On macOS: shells out to `ps -o rss=` (in kB), converts to MB.
- * Falls back to 0 on any error.
- */
-export async function getProcessMemoryMb(pid: number): Promise<number> {
-  return Math.round((ProcessInspection.rssBytes(pid) ?? 0) / (1024 * 1024))
+export async function getProcessMemoryMb(pid: number, signal?: AbortSignal): Promise<number | undefined> {
+  const rssBytes = await ProcessInspection.rssBytes(pid, { signal })
+  return rssBytes === undefined ? undefined : Math.round(rssBytes / (1024 * 1024))
 }
 
 export interface MemoryMonitorInput {
@@ -46,18 +40,23 @@ export type MemoryMonitor = { stop(): void }
 
 export function startMemoryMonitor(input: MemoryMonitorInput): MemoryMonitor {
   let stopped = false
+  let pending: AbortController | undefined
 
   const timer = setInterval(async () => {
-    if (stopped) return
+    if (stopped || pending) return
+    const controller = new AbortController()
+    pending = controller
     try {
-      const currentMb = await getProcessMemoryMb(input.pid)
-      if (currentMb <= 0) return
+      const currentMb = await getProcessMemoryMb(input.pid, controller.signal)
+      if (stopped || currentMb === undefined || currentMb <= 0) return
       input.onSample(currentMb)
       if (currentMb > input.maxMb) {
         input.onExceed(currentMb, input.maxMb)
       }
     } catch {
       // Polling failure is non-fatal — skip this tick
+    } finally {
+      pending = undefined
     }
   }, input.intervalMs)
   timer.unref()
@@ -66,6 +65,7 @@ export function startMemoryMonitor(input: MemoryMonitorInput): MemoryMonitor {
     stop: () => {
       stopped = true
       clearInterval(timer)
+      pending?.abort()
     },
   }
 }

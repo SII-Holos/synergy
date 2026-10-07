@@ -205,7 +205,7 @@ describe.serial("performance observability store", () => {
           return child
         })
 
-        ObservabilityResources.snapshot()
+        await ObservabilityResources.snapshot()
         ObservabilityStore.flush()
 
         const summary = await PerformanceDashboard.summary({ windowMs: 300_000 })
@@ -271,7 +271,7 @@ describe.serial("performance observability store", () => {
 
   test("scoped dashboard summary keeps process resource coverage", () =>
     runtime.run(async () => {
-      ObservabilityResources.snapshot()
+      await ObservabilityResources.snapshot()
       ObservabilityStore.flush()
 
       const summary = await PerformanceDashboard.summary({ windowMs: 300_000, scopeID: "d_scoped_dashboard" })
@@ -487,10 +487,10 @@ describe.serial("performance observability store", () => {
     }))
 
   test("resource sampler records finite process and app IO samples", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       ObservabilityResources.addRead(128)
       ObservabilityResources.addWrite(256)
-      ObservabilityResources.snapshot()
+      await ObservabilityResources.snapshot()
       ObservabilityStore.flush()
 
       const samples = ObservabilityStore.resourceSince(0)
@@ -529,13 +529,13 @@ describe.serial("performance observability store", () => {
     }))
 
   test("snapshot records external and array_buffers metrics and raises issues when thresholds exceeded", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       ObservabilityConfig.refresh({
         observability: {
           performance: { thresholds: { highExternalBytes: 0, highArrayBuffersBytes: 0 } },
         },
       })
-      ObservabilityResources.snapshot()
+      await ObservabilityResources.snapshot()
       ObservabilityStore.flush()
 
       const metrics = ObservabilityStore.queryMetrics({

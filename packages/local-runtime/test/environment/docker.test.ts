@@ -12,6 +12,7 @@ import { EnvironmentExecution } from "@ericsanchezok/synergy-harness/environment
 import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { dockerEnvironment } from "../../src/environment/docker"
+import { DockerEngine } from "../../src/environment/docker-engine"
 import { WorkspaceBlobs, WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceMounts } from "@ericsanchezok/synergy-harness/workspace/mount"
@@ -26,6 +27,88 @@ import { Pty } from "../../src/process/pty"
 import { shell } from "../../src/session/shell"
 
 const image = process.env.SYNERGY_TEST_DOCKER_ENVIRONMENT_IMAGE
+
+test.skipIf(!image || process.platform === "win32")(
+  "Docker release resumes after container deletion loses its response, preserving saved files",
+  async () => {
+    const endpoint = new URL(process.env.SYNERGY_TEST_DOCKER_HOST ?? "unix:///var/run/docker.sock")
+    if (endpoint.protocol !== "unix:") throw new Error("Release recovery requires a local Unix Docker socket")
+    let dropped = false
+    const proxy = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        const response = await fetch(`http://docker${url.pathname}${url.search}`, {
+          unix: endpoint.pathname,
+          method: request.method,
+          headers: { "content-type": "application/json" },
+          body: ["GET", "HEAD"].includes(request.method) ? undefined : await request.arrayBuffer(),
+        })
+        if (!dropped && request.method === "DELETE" && url.pathname.includes("/containers/") && response.ok) {
+          dropped = true
+          await response.body?.cancel()
+          return new Response(null, { status: 503 })
+        }
+        return response
+      },
+    })
+    const provider = dockerEnvironment({ endpoint: `http://127.0.0.1:${proxy.port}` })
+    const engine = new DockerEngine({ endpoint: endpoint.toString() })
+    try {
+      await using runtime = await testRuntime({
+        register() {
+          EnvironmentProviders.register(provider)
+          WorkspaceBlobs.register("fixture", {
+            put: (hash, bytes) => Storage.writeBinary(["release_blobs", hash], bytes),
+            get: (hash) => Storage.readBinary(["release_blobs", hash]),
+          })
+        },
+      })
+      await runtime.run(async () => {
+        const environment = await Environment.bind({
+          scopeID: "scope",
+          ownerID: "release",
+          provider: provider.id,
+          spec: { image: image! },
+        })
+        const workspace = await WorkspaceCatalog.create({
+          scopeID: "scope",
+          backend: { provider: "objects", spec: { blobStore: "fixture" } },
+        })
+        const selection = { workspaceID: workspace.id, scopeID: "scope" }
+        const saved = new TextEncoder().encode("retained through container deletion")
+        await WorkspaceContent.write(selection, { path: "saved", data: saved, expectedVersion: null })
+        await WorkspaceMounts.attach({ ...selection, environmentID: environment.id })
+        const request = Environment.requestOf(await Environment.get(environment.id, "scope"))
+        const filters = JSON.stringify({ label: [`io.synergy.allocation=${request.requestID}`] })
+        try {
+          await expect(Environment.deallocate(environment.id, { scopeID: "scope" })).rejects.toThrow("503")
+          expect(dropped).toBe(true)
+          expect((await Environment.get(environment.id, "scope")).state).toBe("releasing")
+          expect(await provider.inspect(request)).toEqual({ state: "absent" })
+          expect(
+            (await (await engine.request("GET", `/volumes?filters=${encodeURIComponent(filters)}`)).json()).Volumes,
+          ).toHaveLength(1)
+          expect(await WorkspaceContent.read(selection, "saved")).toEqual(saved)
+          expect((await Environment.reconcile(environment.id, "scope")).state).toBe("idle")
+          expect(
+            (await (await engine.request("GET", `/volumes?filters=${encodeURIComponent(filters)}`)).json()).Volumes,
+          ).toEqual([])
+          expect(
+            await (await engine.request("GET", `/networks?filters=${encodeURIComponent(filters)}`)).json(),
+          ).toEqual([])
+          expect(await WorkspaceContent.read(selection, "saved")).toEqual(saved)
+        } finally {
+          await provider.deallocate(request)
+        }
+      })
+    } finally {
+      await proxy.stop(true)
+    }
+  },
+  120_000,
+)
 
 test.skipIf(!image)(
   "a deleted Docker allocation marks its live view unavailable while retaining saved files and staging",

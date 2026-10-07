@@ -1277,7 +1277,7 @@ export namespace ToolResolver {
     const intentBindings = new Map(
       defs.map((definition) => [definition.id, ToolIntent.snapshot(definition.inputSchema)]),
     )
-    const visible: Definition[] = []
+    const eligible: Definition[] = []
     const diagnostics = new Map<string, ToolDiagnosticInfo>()
     const autoExpandable = new Set<string>()
     const disabled = PermissionNext.disabled(
@@ -1311,35 +1311,6 @@ export namespace ToolResolver {
         continue
       }
 
-      if (
-        !ToolExposure.isVisible(def.id, def.exposure, input.session?.toolState, {
-          forcedGroups,
-          forcedTools: forcedToolIDs,
-        })
-      ) {
-        const normalized = ToolExposure.normalize(def.id, def.exposure)
-        if (
-          (normalized.mode === "group" || normalized.mode === "search") &&
-          !isEphemeral &&
-          !disabled.has(def.id) &&
-          ToolExposure.userAllows(def.id, input.userTools) &&
-          !disabled.has("expand_tools") &&
-          ToolExposure.userAllows("expand_tools", input.userTools)
-        ) {
-          autoExpandable.add(def.id)
-        }
-        diagnostics.set(
-          def.id,
-          SessionModePolicy.unavailable({
-            toolName: def.id,
-            reason: "deferred",
-            session: input.session,
-            metadata: { exposure: def.exposure },
-          }),
-        )
-        continue
-      }
-
       const domainDiagnostic = domainAvailability.get(def.id)
       if (domainDiagnostic && !isEphemeral) {
         diagnostics.set(def.id, domainDiagnostic)
@@ -1370,7 +1341,7 @@ export namespace ToolResolver {
         continue
       }
 
-      visible.push(def)
+      eligible.push(def)
     }
 
     const allowed = new Set(
@@ -1379,22 +1350,42 @@ export namespace ToolResolver {
         session: input.session,
         agent: input.agent,
         model: input.model,
-        toolIDs: [...new Set([...visible.map((item) => item.id), ...autoExpandable])],
+        toolIDs: eligible.map((item) => item.id),
       }),
     )
-    for (const item of visible) {
-      if (allowed.has(item.id)) continue
+    const visibility = ToolExposure.resolveVisibility(
+      eligible.filter((item) => allowed.has(item.id)),
+      input.session?.toolState,
+      { forcedGroups, forcedTools: forcedToolIDs },
+    )
+    for (const item of eligible) {
+      if (visibility.visible.has(item.id)) continue
+      const available = visibility.available.has(item.id)
       diagnostics.set(
         item.id,
         SessionModePolicy.unavailable({
           toolName: item.id,
-          reason: "permission",
+          reason: available ? "deferred" : "permission",
           session: input.session,
+          ...(available ? { metadata: { exposure: item.exposure } } : {}),
         }),
       )
+      const normalized = ToolExposure.normalize(item.id, item.exposure)
+      if (
+        available &&
+        (normalized.mode === "group" || normalized.mode === "search") &&
+        !ephemeralToolIds.has(item.id) &&
+        !disabled.has("expand_tools") &&
+        ToolExposure.userAllows("expand_tools", input.userTools)
+      )
+        autoExpandable.add(item.id)
     }
-    for (const id of autoExpandable) if (!allowed.has(id)) autoExpandable.delete(id)
-    return { visible: visible.filter((item) => allowed.has(item.id)), diagnostics, autoExpandable, intentBindings }
+    return {
+      visible: eligible.filter((item) => visibility.visible.has(item.id)),
+      diagnostics,
+      autoExpandable,
+      intentBindings,
+    }
   }
 
   function diagnosticRuntimeTool(input: Input, diagnostic: ToolDiagnosticInfo): AITool {
@@ -1694,6 +1685,7 @@ export namespace ToolResolver {
                   await configureGateOptions({
                     activeWorkspace: workspace,
                     pathMode,
+                    virtualRoot: EnvironmentResources.virtualRoot(resources?.workspace),
                     workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
                     originalCheckout: localFiles ? (workspaceInfo as any)?.originalCheckout : undefined,
                     profileId,

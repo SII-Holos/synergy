@@ -312,6 +312,8 @@ export interface McpHandle {
   localProcess?: {
     pid: number
     startedAt: number
+    identity?: string
+    alive(): boolean
     currentRssBytes?: number
     baselineRssBytes?: number
     peakRssBytes?: number
@@ -405,6 +407,7 @@ class McpSupervisorImpl {
   private initPromise?: Promise<void>
   private mutation = Promise.resolve()
   private identityGeneration = 0
+  private samplingGeneration = 0
   private needsAuthTimer: ReturnType<typeof setInterval> | undefined
 
   // ── Public ──────────────────────────────────────────────────────────
@@ -630,22 +633,39 @@ class McpSupervisorImpl {
     }
   }
 
-  resourceStats() {
-    const processes = [...this.handles.values()]
-      .map((handle) => handle.localProcess)
-      .filter((entry): entry is NonNullable<McpHandle["localProcess"]> => Boolean(entry))
+  async resourceStats() {
+    const samplingGeneration = ++this.samplingGeneration
+    const candidates = [...this.handles.values()].flatMap((handle) =>
+      handle.localProcess ? [{ handle, entry: handle.localProcess, generation: handle.generation }] : [],
+    )
+    const samples = await ProcessInspection.sampleBatch(
+      candidates.filter(({ entry }) => entry.stdioState !== "closed" && entry.alive()).map(({ entry }) => entry.pid),
+    )
+    const processes = candidates
+      .filter(({ handle, entry, generation }) => this.isCurrent(handle, generation) && handle.localProcess === entry)
+      .map(({ entry }) => entry)
     for (const entry of processes) {
-      if (entry.stdioState === "closed" || !ProcessInspection.alive(entry.pid)) continue
-      const rssBytes = ProcessInspection.rssBytes(entry.pid)
-      if (rssBytes === undefined) continue
+      if (samplingGeneration !== this.samplingGeneration) continue
+      const sample = samples.get(entry.pid)
+      const rssBytes =
+        entry.stdioState !== "closed" &&
+        entry.alive() &&
+        entry.identity !== undefined &&
+        sample?.identity === entry.identity
+          ? sample.rssBytes
+          : undefined
       entry.currentRssBytes = rssBytes
+      if (rssBytes === undefined) continue
       entry.baselineRssBytes =
         entry.baselineRssBytes === undefined ? rssBytes : Math.min(entry.baselineRssBytes, rssBytes)
       entry.peakRssBytes = Math.max(entry.peakRssBytes ?? 0, rssBytes)
       entry.sampledAt = Date.now()
     }
     const active = processes.filter((entry) => entry.stdioState !== "closed")
-    const measured = active.filter((entry) => entry.currentRssBytes !== undefined)
+    const measured =
+      samplingGeneration === this.samplingGeneration
+        ? active.filter((entry) => entry.currentRssBytes !== undefined)
+        : []
     return {
       processCount: active.length,
       measuredProcessCount: measured.length,
@@ -1079,9 +1099,16 @@ class McpSupervisorImpl {
         client = candidateClient
         const pid = transport.pid
         if (pid !== null) {
+          const identity = (await ProcessInspection.sampleBatch([pid])).get(pid)?.identity
+          if (!this.isCurrent(handle, gen)) {
+            await candidateClient.close().catch(() => {})
+            return
+          }
           handle.localProcess = {
             pid,
             startedAt: Date.now(),
+            identity,
+            alive: () => transport.pid === pid && ProcessInspection.alive(pid),
             stdioState: "open",
             closeTimedOut: false,
             closeTimeoutMs: 5_000,
