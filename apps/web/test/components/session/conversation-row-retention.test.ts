@@ -788,9 +788,30 @@ describe("conversation row retention", () => {
   })
 })
 
+async function paintedConversationPixels() {
+  const screenshot = (await page.screenshot()).toString("base64")
+  return page.evaluate(async (screenshot) => {
+    const image = new Image()
+    image.src = `data:image/png;base64,${screenshot}`
+    await image.decode()
+    const canvas = document.createElement("canvas")
+    canvas.width = image.width
+    canvas.height = image.height
+    const context = canvas.getContext("2d")!
+    context.drawImage(image, 0, 0)
+    const pixels = context.getImageData(0, 0, image.width, image.height).data
+    let painted = 0
+    for (let index = 0; index < pixels.length; index += 4) {
+      if (pixels[index] === 0 && pixels[index + 1] === 255 && pixels[index + 2] === 0) painted++
+    }
+    return painted
+  }, screenshot)
+}
+
 test("reveals a session only after its mounted bodies and initial scroll settle, then preserves streaming visibility", async () => {
   await page.goto(new URL("?admission", page.url()).href)
   await page.waitForFunction(() => typeof window.__setTimeline === "function")
+  await page.addStyleTag({ content: "[data-display-row] { background: rgb(0, 255, 0); min-height: 32px; }" })
   await page.evaluate(() => {
     const fixture = window as unknown as {
       __holdBodies(): void
@@ -806,13 +827,19 @@ test("reveals a session only after its mounted bodies and initial scroll settle,
   await page.waitForSelector("[data-display-row]", { state: "attached" })
   const viewport = page.locator("[data-conversation-viewport]")
   expect(await viewport.getAttribute("aria-hidden")).toBe("true")
+  const pendingBounds = await page.locator("[data-display-row]").first().boundingBox()
+  expect(pendingBounds?.height).toBeGreaterThan(0)
+  expect(pendingBounds?.width).toBeGreaterThan(0)
+  expect(await paintedConversationPixels()).toBe(0)
   await page.evaluate(() => (window as unknown as { __layoutReady(value: boolean): void }).__layoutReady(true))
   await page.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   )
   expect(await viewport.getAttribute("aria-hidden")).toBe("true")
+  expect(await paintedConversationPixels()).toBe(0)
   await page.evaluate(() => (window as unknown as { __settleBodies(): void }).__settleBodies())
   await page.waitForSelector('[data-conversation-viewport][aria-hidden="false"]')
+  expect(await paintedConversationPixels()).toBeGreaterThan(0)
   await page.evaluate(() => {
     const fixture = window as unknown as { __holdBodies(): void; __setTimeline(messages: unknown[]): void }
     fixture.__holdBodies()
@@ -822,6 +849,7 @@ test("reveals a session only after its mounted bodies and initial scroll settle,
     ])
   })
   expect(await viewport.getAttribute("aria-hidden")).toBe("false")
+  expect(await paintedConversationPixels()).toBeGreaterThan(0)
   await page.evaluate(() => {
     const fixture = window as unknown as {
       __sessionID(value: string): void
@@ -833,6 +861,7 @@ test("reveals a session only after its mounted bodies and initial scroll settle,
     fixture.__setTimeline([{ id: "next", sessionID: "ses_2", role: "user", text: "next", time: { created: 3 } }])
   })
   expect(await viewport.getAttribute("aria-hidden")).toBe("true")
+  expect(await paintedConversationPixels()).toBe(0)
   await page.evaluate(() => {
     const fixture = window as unknown as { __settleBodies(): void; __layoutReady(value: boolean): void }
     fixture.__settleBodies()
