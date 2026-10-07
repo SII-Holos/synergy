@@ -202,8 +202,8 @@ describe("Feishu busy durable handoff", () => {
 
 /**
  * Attachment durability contract: prompt parts are produced from the temp
- * attachment file via Attachment.toPart (data URL for images, asset:// for
- * others) so the source file can be cleaned up before the inbox item is
+ * attachment file via Attachment.toPart (asset:// references) so the source
+ * file can be cleaned up before the inbox item is
  * materialized.
  */
 describe("Feishu attachment durable prompt parts", () => {
@@ -224,7 +224,7 @@ describe("Feishu attachment durable prompt parts", () => {
             sessionID: session.id,
             messageID: "msg_durable_image_000000000000000000000",
           })
-          expect(part.url.startsWith("data:image/png;base64,")).toBe(true)
+          expect(part.url.startsWith("asset://")).toBe(true)
           expect(part.model?.mode).toBe("provider-file")
 
           await SessionInbox.deliverUnique({

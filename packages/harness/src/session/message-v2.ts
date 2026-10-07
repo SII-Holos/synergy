@@ -1057,13 +1057,12 @@ export namespace MessageV2 {
 
   function shouldSendAttachmentFile(part: AttachmentPart): boolean {
     if (attachmentModelMode(part) !== "provider-file") return false
-    if (part.url.startsWith("asset://")) return false
+    if (part.url.startsWith("asset://") && !Asset.isValidId(part.url.slice("asset://".length))) return false
     return part.mime !== "application/x-directory"
   }
 
   function shouldExternalizeAttachment(part: AttachmentPart): boolean {
     if (!part.url.startsWith("data:")) return false
-    if (attachmentModelMode(part) === "provider-file") return false
     return true
   }
 
@@ -1080,7 +1079,7 @@ export namespace MessageV2 {
     return {
       ...part,
       url: `asset://${assetID}`,
-      localPath: Asset.resolvePath(assetID),
+      localPath: part.localPath ?? Asset.resolvePath(assetID),
       metadata: {
         ...part.metadata,
         attachment: {
@@ -1179,6 +1178,8 @@ export namespace MessageV2 {
     const mode = attachmentModelMode(part)
     if (mode === "none") return
     provenance.items.filesReferences++
+    const reference =
+      part.url.startsWith("asset://") && Asset.isValidId(part.url.slice("asset://".length)) ? part.url : undefined
 
     if (mode === "content") {
       const content = part.model?.mode === "content" ? part.model.text : undefined
@@ -1195,8 +1196,13 @@ export namespace MessageV2 {
         options.includeLocalPath && localPath && !Attachment.isText(part.mime) && !part.mime.startsWith("image/")
           ? ". Attached as-is; use file tools to inspect"
           : ""
-      const description =
-        options.includeLocalPath && localPath ? `${summary}. Local path: ${localPath}${toolHint}` : summary
+      const description = [
+        summary,
+        reference ? `Reference: ${reference}` : undefined,
+        options.includeLocalPath && localPath ? `Local path: ${localPath}${toolHint}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(". ")
       const text = `[Attachment: ${description}]`
       parts.push({ type: "text", text })
       provenance.categories.filesReferences.push({ text })
@@ -1204,7 +1210,11 @@ export namespace MessageV2 {
     }
 
     const localPath = attachmentModelPath(part)
-    if (options.includeLocalPath && localPath) {
+    if (reference) {
+      const text = `[Attachment: ${attachmentSummary(part)}. Reference: ${reference}${options.includeLocalPath && localPath ? `. Local path: ${localPath}` : ""}]`
+      parts.push({ type: "text", text })
+      provenance.categories.filesReferences.push({ text })
+    } else if (options.includeLocalPath && localPath) {
       const text = `[The user attached a file: ${attachmentName(part)} (${part.mime}). Local path: ${localPath}]`
       parts.push({ type: "text", text })
       provenance.categories.filesReferences.push({ text })

@@ -1,5 +1,6 @@
 import { afterAll, expect, test } from "bun:test"
 import { pathToFileURL } from "node:url"
+import { realpath } from "node:fs/promises"
 import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -147,7 +148,7 @@ test("audio and structured text preserve their original attachment with the docu
             parts: [{ type: "attachment", url: `asset://${id}`, mime, filename }],
           })
           const attachment = message.parts.find((part) => part.type === "attachment")
-          expect(attachment?.localPath).toBe(Asset.resolvePath(id))
+          expect(await realpath(attachment!.localPath!)).toBe(await realpath(Asset.resolvePath(id)!))
           expect(await Bun.file(attachment!.localPath!).text()).toBe(content)
           if (filename.endsWith("csv") || filename.endsWith("json"))
             expect(JSON.stringify(MessageV2.toModelMessage([message]))).toContain("TEXT_MARKER")

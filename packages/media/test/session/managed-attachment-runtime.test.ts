@@ -112,6 +112,33 @@ test("workspace file content policy preserves native selected-line reading", () 
     }),
   ))
 
+test("the primary model receives image bytes while history retains the immutable asset reference", () =>
+  runtime.run(() =>
+    withProvider(async (requests) => {
+      const id = await Asset.write(png, "image/png", "chart.png")
+      const session = await Session.create({ workspace: null, title: "Image input transport" })
+      const message = await createUserMessage({
+        sessionID: session.id,
+        model: { providerID: model.providerID, modelID: "vision" },
+        parts: [
+          { type: "text", text: "Read this image" },
+          { type: "attachment", url: `asset://${id}`, mime: "image/png", filename: "chart.png" },
+        ],
+      })
+      try {
+        await SessionInvoke.loop.force(session.id)
+        const request = requests.find((entry) => entry.model === "vision")
+        expect(request).toBeDefined()
+        expect(JSON.stringify(request!.messages)).toContain(`data:image/png;base64,${png.toString("base64")}`)
+        expect(JSON.stringify(request!.messages)).toContain(`Reference: asset://${id}`)
+        const saved = await MessageV2.get({ sessionID: session.id, messageID: message.info.id })
+        expect(saved.parts.find((part) => part.type === "attachment")?.url).toBe(`asset://${id}`)
+      } finally {
+        await SessionInvoke.cancel(session.id)
+      }
+    }),
+  ))
+
 test(
   "a failed uploaded task does not block the next task or contaminate its provider request",
   () =>

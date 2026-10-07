@@ -58,7 +58,7 @@ describe("tool.view_image", () => {
           expect(attachment?.mime).toBe("image/png")
           expect(attachment?.filename).toBe("image.png")
           expect(attachment?.localPath).toBe(filepath)
-          expect(attachment?.url).toStartWith("data:image/png;base64,")
+          expect(attachment?.url).toStartWith("asset://")
           expect(attachment?.model).toEqual({
             mode: "provider-file",
             summary: "image.png (image/png) loaded by view_image",

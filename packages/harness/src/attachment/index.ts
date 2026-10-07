@@ -234,20 +234,16 @@ export namespace Attachment {
       !Array.isArray(input.metadata.attachment)
         ? input.metadata.attachment
         : {}
-    const assetID =
-      model.mode === "provider-file"
-        ? undefined
-        : await Asset.write(Buffer.from(input.bytes), input.mime, input.filename)
-    const url = assetID ? `asset://${assetID}` : dataUrl(input.mime, input.bytes)
+    const assetID = await Asset.write(Buffer.from(input.bytes), input.mime, input.filename)
     return {
       id: input.id ?? Identifier.ascending("part"),
       sessionID: input.sessionID,
       messageID: input.messageID,
       type: "attachment",
-      url,
+      url: `asset://${assetID}`,
       mime: input.mime,
       filename: input.filename,
-      localPath: assetID ? Asset.resolvePath(assetID) : input.localPath,
+      localPath: input.localPath ?? Asset.resolvePath(assetID),
       source: input.source,
       presentation: input.presentation ?? fallbackPolicy.presentation,
       model,

@@ -311,7 +311,7 @@ describe("session.message-v2.toModelMessage", () => {
       ])
     }))
 
-  test("summarizes asset attachments instead of passing asset URLs to the provider", () =>
+  test("summarizes invalid asset references instead of passing them to the provider", () =>
     runtime.run(() => {
       const messageID = "m-user"
       const input: MessageV2.WithParts[] = [
@@ -341,6 +341,30 @@ describe("session.message-v2.toModelMessage", () => {
         { text: "[Attachment: file.ts (text/plain)]" },
       ])
       expect(projection.provenance.items.filesReferences).toBe(1)
+    }))
+
+  test("valid asset images expose a reusable reference and retain provider-file input", () =>
+    runtime.run(() => {
+      const reference = "asset://0123456789abcdef.png"
+      const messages = MessageV2.toModelMessage([
+        {
+          info: userInfo("m-user"),
+          parts: [
+            {
+              ...basePart("m-user", "p1"),
+              type: "attachment",
+              mime: "image/png",
+              filename: "chart.png",
+              url: reference,
+              model: { mode: "provider-file" },
+            },
+          ],
+        },
+      ])
+      const content = messages[0].content
+      if (typeof content === "string") throw new Error("Expected multimodal content")
+      expect(content.some((part) => part.type === "text" && part.text.includes(`Reference: ${reference}`))).toBe(true)
+      expect(content.some((part) => part.type === "file" && String(part.data) === reference)).toBe(true)
     }))
 
   test("uses attachment model policy for data text, https text, and images", () =>
@@ -1127,7 +1151,7 @@ describe("session.message-v2.toModelMessage", () => {
       const serialized = JSON.stringify(projection.messages)
 
       expect(serialized).toContain(
-        `[Attachment: trace.bin (application/octet-stream). Local path: ${assetPath}. Attached as-is; use file tools to inspect]`,
+        `[Attachment: trace.bin (application/octet-stream). Reference: asset://${assetID}. Local path: ${assetPath}. Attached as-is; use file tools to inspect]`,
       )
       expect(serialized).toContain(
         `[The user attached a file: reference.pdf (application/pdf). Local path: ${providerPath}]`,
@@ -1135,7 +1159,7 @@ describe("session.message-v2.toModelMessage", () => {
       expect(serialized).toContain("data:application/pdf;base64,JVBERi0xLjQ=")
       expect(serialized).not.toContain(staleSourcePath)
       expect(projection.provenance.categories.filesReferences).toContainEqual({
-        text: `[Attachment: trace.bin (application/octet-stream). Local path: ${assetPath}. Attached as-is; use file tools to inspect]`,
+        text: `[Attachment: trace.bin (application/octet-stream). Reference: asset://${assetID}. Local path: ${assetPath}. Attached as-is; use file tools to inspect]`,
       })
     }))
 
@@ -1161,7 +1185,7 @@ describe("session.message-v2.toModelMessage", () => {
       ]
 
       expect(JSON.stringify(MessageV2.projectModelMessages(input).messages)).toContain(
-        `[Attachment: trace.bin (application/octet-stream). Local path: ${assetPath}. Attached as-is; use file tools to inspect]`,
+        `[Attachment: trace.bin (application/octet-stream). Reference: asset://${assetID}. Local path: ${assetPath}. Attached as-is; use file tools to inspect]`,
       )
     }))
 
