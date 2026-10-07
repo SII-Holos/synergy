@@ -108,7 +108,7 @@ export namespace StorageCompat {
     return store.transaction((tx) => setLocator(tx, locator))
   }
 
-  export async function* catalog(store: TransactionalStore, scopeID?: string) {
+  export async function* catalog(store: Pick<TransactionalStore, "query">, scopeID?: string) {
     let after: string[] | undefined
     for (;;) {
       const page = await store.query<Catalog>({ kind: "compat_catalog", scopeID, after, limit: 128, descending: true })

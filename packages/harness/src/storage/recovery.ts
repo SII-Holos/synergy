@@ -2,15 +2,16 @@ import { RuntimeContext } from "../lifecycle/context"
 import { createHash } from "node:crypto"
 import { Storage } from "./storage"
 import { StorageIntegrityError } from "./errors"
+import type { StorageStartupProgress } from "@ericsanchezok/synergy-util/runtime-startup"
 
 export namespace StorageRecovery {
   const runtimeState = RuntimeContext.state(() => ({
-    owners: new Map<string, () => Promise<void>>(),
+    owners: new Map<string, (progress?: () => void) => Promise<void>>(),
     sealed: false,
     blocked: new WeakMap<object, Set<string>>(),
   }))
 
-  export function register(name: string, recover: () => Promise<void>) {
+  export function register(name: string, recover: (progress?: () => void) => Promise<void>) {
     const instanceState = runtimeState()
 
     if (instanceState.owners.get(name) === recover) return
@@ -18,12 +19,24 @@ export namespace StorageRecovery {
       throw new StorageIntegrityError("Register storage recovery owners before opening the Runtime")
     instanceState.owners.set(name, recover)
   }
-  export async function recoverOwners() {
+  export async function recoverOwners(progress?: (progress: StorageStartupProgress) => void) {
     const instanceState = runtimeState()
 
     instanceState.sealed = true
-    await Storage.collectArtifactGarbage({ scanOrphans: true })
-    for (const recover of instanceState.owners.values()) await recover()
+    const artifacts = (current: number) => progress?.({ stage: "artifacts", current, total: 0, bytes: 0 })
+    artifacts(0)
+    await Storage.collectArtifactGarbage({ scanOrphans: true, progress: artifacts })
+    let current = 0
+    const resources = () => progress?.({ stage: "resources", current, total: 0, bytes: 0 })
+    resources()
+    const advance = () => {
+      current++
+      resources()
+    }
+    for (const recover of instanceState.owners.values()) {
+      await recover(advance)
+      advance()
+    }
   }
 
   export async function validate(progress?: (current: number) => void) {
@@ -45,15 +58,17 @@ export namespace StorageRecovery {
     return report
   }
 
-  export async function load() {
+  export async function load(progress?: (current: number) => void) {
     const instanceState = runtimeState()
 
     const sessions = new Set<string>()
+    let current = 0
     for (const sessionID of await Storage.scan(["storage_recovery", "sessions"])) {
       const [state] = await Storage.readMany<{ blocked: boolean }>([
         ["storage_recovery", "sessions", sessionID, "info"],
       ])
       if (state?.blocked) sessions.add(sessionID)
+      progress?.(++current)
     }
     instanceState.blocked.set(Storage.current().store, sessions)
   }
@@ -67,7 +82,7 @@ export namespace StorageRecovery {
       )
   }
 
-  export async function reconcileNotifications() {
+  export async function reconcileNotifications(progress?: (current: number) => void) {
     const store = Storage.current().store
     let count = 0
     for (;;) {
@@ -82,6 +97,7 @@ export namespace StorageRecovery {
       // A new Runtime has a new event epoch and clients must reload snapshots.
       // Replaying arbitrary Bus subscribers could repeat an external effect.
       await store.acknowledgeEvents(events.map((event) => event.id))
+      progress?.(count)
     }
     return count
   }

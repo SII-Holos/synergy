@@ -15,6 +15,8 @@ description: Add or modify Synergy durable state, JSON storage keys, SQLite tabl
 
 When hydrating references from a batch of records, deduplicate referenced identities and use the owning domain's batch reader instead of one concurrent read per record. Keep ownership checks and missing-record positions, and verify more distinct references than storage admission capacity, shared references, malformed records and subsequent rebinding with real storage.
 
+For composed domain reads, use `Storage.snapshot()` and make every paginated projection query join its parent transaction; a direct `TransactionalStore` query inside it can reenter the non-reentrant reader queue or lose writer-local visibility. Release a reader snapshot before a cold derived-index write and recheck after writer admission. Verify with a real held writer, committed external reads, transaction-local writes and a concurrent publication; use physical barriers with bounded rescue and cleanup rather than latency targets.
+
 ### Authoritative Agent records
 
 1. Build logical keys through `StoragePath`; use an explicit `Storage.Handle`. Normal Agent record code must never read or write legacy JSON files.
@@ -32,6 +34,8 @@ When hydrating references from a batch of records, deduplicate referenced identi
 Background maintenance may update session metadata without representing conversation activity. Carry the owning session mutation's activity-preservation option through cleanup helpers, retaining canonical activity timestamps as well as navigation `lastActivityAt` while publishing changed metadata. Test normal reclamation, missing-resource reconciliation and navigation index reconstruction with real session records, and verify new conversation activity still advances recency. For pause recovery, cover the first latch write during lazy Scope startup as well as repeated reconciliation; an already-paused fixture alone cannot detect a recency change on initial discovery.
 
 When changing worker liveness or shutdown, close a real worker while a blocking query has entered its busy state. Verify probing exits within the teardown budget and deliberate shutdown emits no terminal-unavailability notification. Recheck driver and request ownership after awaited probes; a closed driver can make retries resolve immediately and starve shutdown timers.
+
+Keep queue admission wait caps separate from explicit request deadlines and SQL execution budgets. A local wait cap ends when its callback begins; only caller deadlines and cancellation propagate into later admissions. Test a real multi-step storage operation across that cap, plus expired waiters and nested explicit deadlines. Delaying a recovery entry point outside its storage gate does not exercise this boundary.
 
 ### SQLite and other domain stores
 

@@ -32,7 +32,7 @@ describe("ObservabilityStore", () => {
         correlationId: "corr_1",
         sessionID: "ses_1",
       })
-      ObservabilityResources.snapshot({ role: "server" })
+      await ObservabilityResources.snapshot({ role: "server" })
       ObservabilityIssues.raise({
         code: "PERF_TEST_STORE",
         severity: "warning",

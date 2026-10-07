@@ -1,4 +1,5 @@
 import {
+  createManagedStartupReporter,
   createManagedMigrationReporter,
   createManagedRecoveryReporter,
   createManagedStorageReporter,
@@ -45,6 +46,7 @@ export function createServerCommand(
 
         await runServerRuntime({
           managedReady: args.managedReady,
+          startupReporter: managed ? createManagedStartupReporter() : undefined,
           storageReporter: managed ? createManagedStorageReporter() : undefined,
           maintenanceReporter: managed ? createManagedMaintenanceReporter() : undefined,
           migrationReporter: managed ? createManagedMigrationReporter() : undefined,

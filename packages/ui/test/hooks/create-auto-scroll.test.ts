@@ -154,6 +154,7 @@ describe("createAutoScroll", () => {
       element.calls.length = 0
       element.scrollHeight = 2200
       harness.lastObserver()!.fire(element)
+      expect(element.calls).toEqual([{ top: 2200, behavior: "auto" }])
       harness.flushFrames()
       expect(element.calls).toEqual([{ top: 2200, behavior: "auto" }])
       autoScroll.handleInteraction()

@@ -49,6 +49,7 @@ function VerifyShellOutlets(props: { render(): ReturnType<Component>; required: 
 }
 
 export function ShellSurface(props: ShellSurfaceProps) {
+  let loaded: { entry: ShellEntry; loader: ShellEntry["loader"]; component: Component<ShellRenderProps> } | undefined
   const identity = createMemo(() => ({ entry: props.entry, loader: props.loader, sessionId: props.sessionId }))
   return Show({
     get when() {
@@ -99,14 +100,20 @@ export function ShellSurface(props: ShellSurfaceProps) {
         })
       const [component] = createResource(
         async () => {
+          if (loaded?.entry === bound.entry && loaded.loader === bound.loader) return loaded.component
           try {
-            return (await bound.loader()).default
+            const component = (await bound.loader()).default
+            if (active) loaded = { entry: bound.entry, loader: bound.loader, component }
+            return component
           } catch (error) {
             report(error)
             return props.fallback
           }
         },
-        { initialValue: props.fallback },
+        {
+          initialValue:
+            loaded?.entry === bound.entry && loaded.loader === bound.loader ? loaded.component : props.fallback,
+        },
       )
       return createComponent(ErrorBoundary, {
         fallback: (error) => {

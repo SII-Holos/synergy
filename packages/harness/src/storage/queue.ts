@@ -102,11 +102,8 @@ export class StorageQueue {
         : (options.signal ?? inherited?.signal)
     if (signal?.aborted) return Promise.reject(signal.reason)
     const enqueuedAt = performance.now()
-    const deadline = Math.min(
-      enqueuedAt + ADMISSION_DEADLINE_MS,
-      options.deadline ?? Infinity,
-      inherited?.deadline ?? Infinity,
-    )
+    const requestDeadline = Math.min(options.deadline ?? Infinity, inherited?.deadline ?? Infinity)
+    const deadline = Math.min(enqueuedAt + ADMISSION_DEADLINE_MS, requestDeadline)
     const priority = options.priority ?? inherited?.priority ?? "foreground"
     const expired = () => new StorageBusyError(`Authoritative storage admission deadline exceeded (${this.name})`)
     if (enqueuedAt >= deadline) return Promise.reject(expired())
@@ -146,7 +143,8 @@ export class StorageQueue {
           const startedAt = performance.now()
           void (async () => {
             try {
-              resolve(await admission.run({ deadline, signal, priority, onWait }, body))
+              // Admission's wait cap ends here; only a caller's deadline bounds later admissions.
+              resolve(await admission.run({ deadline: requestDeadline, signal, priority, onWait }, body))
             } catch (error) {
               reject(error)
             } finally {

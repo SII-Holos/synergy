@@ -57,7 +57,11 @@ export namespace SessionStaging {
     await Storage.remove(["storage_staging", id])
   }
 
-  export async function recover() {
-    for (const id of await Storage.scan(["storage_staging"])) await discard(id)
+  export async function recover(progress?: (current: number) => void) {
+    let current = 0
+    for (const id of await Storage.scan(["storage_staging"])) {
+      await discard(id)
+      progress?.(++current)
+    }
   }
 }

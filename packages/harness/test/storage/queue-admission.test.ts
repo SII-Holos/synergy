@@ -20,6 +20,69 @@ async function fixture() {
 }
 
 describe("storage queue identity", () => {
+  test("admitted work does not turn its queue wait budget into a deadline for later admissions", async () => {
+    const gate = new StorageQueue("test.artifacts")
+    const reader = new StorageQueue("test.reader")
+    const now = performance.now.bind(performance)
+    let elapsed = 0
+    using clock = spyOn(performance, "now").mockImplementation(() => now() + elapsed)
+    try {
+      expect(
+        await gate.run(async () => {
+          await reader.run(async () => undefined)
+          elapsed = 31_000
+          return reader.run(async () => "completed")
+        }),
+      ).toBe("completed")
+    } finally {
+      await Promise.all([gate.close(), reader.close()])
+    }
+  })
+
+  test("explicit request deadlines still bound later admissions after work begins", async () => {
+    const gate = new StorageQueue("test.request")
+    const reader = new StorageQueue("test.reader")
+    const now = performance.now.bind(performance)
+    let elapsed = 0
+    using clock = spyOn(performance, "now").mockImplementation(() => now() + elapsed)
+    try {
+      await expect(
+        withStorageQueueOptions({ deadline: performance.now() + 1000 }, () =>
+          gate.run(async () => {
+            elapsed = 1001
+            return reader.run(async () => true, { deadline: performance.now() + 60_000 })
+          }),
+        ),
+      ).rejects.toBeInstanceOf(StorageBusyError)
+    } finally {
+      await Promise.all([gate.close(), reader.close()])
+    }
+  })
+
+  test("each queue still rejects admission after its own default wait cap", async () => {
+    const queue = new StorageQueue("test.wait-cap")
+    const release = Promise.withResolvers<void>()
+    const now = performance.now.bind(performance)
+    let elapsed = 0
+    using clock = spyOn(performance, "now").mockImplementation(() => now() + elapsed)
+    const holder = queue.run(() => release.promise)
+    let executed = false
+    const waiting = queue
+      .run(async () => {
+        executed = true
+      })
+      .catch((error: unknown) => error)
+    elapsed = 31_000
+    release.resolve()
+    try {
+      expect(await waiting).toBeInstanceOf(StorageBusyError)
+      await holder
+      expect(executed).toBe(false)
+    } finally {
+      await queue.close()
+    }
+  })
+
   test("a nested admission cannot extend its parent deadline or replace cancellation", async () => {
     const queue = new StorageQueue("test.inherited")
     const parent = new AbortController()

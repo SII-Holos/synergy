@@ -5,6 +5,8 @@ import { BrowserPolicy } from "./policy.js"
 import { BrowserAnnotationHelper } from "./annotation.js"
 import { BrowserDownloads } from "./downloads.js"
 import { BrowserEvent } from "./event.js"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { browserErrorDiagnostics } from "./error-diagnostics.js"
 import {
   BrowserProtocolError,
   normalizeBrowserURL,
@@ -34,6 +36,8 @@ interface PageEntry {
   flight?: Promise<BrowserPageBackend>
   temporary?: boolean
 }
+
+const log = Log.create({ service: "browser.session" })
 
 export class BrowserSessionImpl implements BrowserSession {
   private entries = new Map<string, PageEntry>()
@@ -299,19 +303,26 @@ export class BrowserSessionImpl implements BrowserSession {
       onError: (page, message) => {
         const entry = this.entries.get(id)
         if (!entry) return
+        const errorMessage =
+          redactBrowserText(message).slice(0, 100_000).trim() || "Browser page reported an error without a description."
         entry.state.error = {
           type: "error",
           code: "browser_page_error",
-          message: redactBrowserText(message),
+          message: errorMessage,
           retryable: true,
           pageId: id,
         }
-        void this.save()
+        void this.save().catch((error) =>
+          log.warn("Browser page error state could not be saved", {
+            boundary: "page.error.save",
+            ...browserErrorDiagnostics(error),
+          }),
+        )
         BrowserEvent.publish(this.owner, {
           type: "page.error",
           pageId: page.id,
           url: page.url.slice(0, 20_000),
-          message: redactBrowserText(message).slice(0, 100_000),
+          message: errorMessage,
         })
       },
       onCrashed: (page, message) => {
