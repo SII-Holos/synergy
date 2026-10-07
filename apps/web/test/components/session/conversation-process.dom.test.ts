@@ -1044,10 +1044,22 @@ for (const { key, change } of [
     const reference = page.getByRole("link", { name: "Project reference 30", exact: true })
     await reference.scrollIntoViewIfNeeded()
     await reference.evaluate((element) => (element as HTMLElement).focus({ preventScroll: true }))
+    const selected =
+      change === "same-version body growth"
+        ? await reference.evaluate((element) => {
+            const range = document.createRange()
+            range.selectNodeContents(element)
+            const selection = document.getSelection()!
+            selection.removeAllRanges()
+            selection.addRange(range)
+            return selection.toString()
+          })
+        : undefined
     const bounds = await scroll.boundingBox()
     await page.mouse.move(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2)
     await page.mouse.wheel(0, -600)
     for (let index = 0; index < 6; index++) await frames()
+    expect(await reference.evaluate((element) => element === document.activeElement)).toBe(true)
     const visible = () =>
       scroll.evaluate((element) => {
         const bounds = element.getBoundingClientRect()
@@ -1071,6 +1083,8 @@ for (const { key, change } of [
     await page.keyboard.press(key)
     for (let index = 0; index < 12; index++) await frames()
     const before = await visible()
+    expect(await reference.evaluate((element) => element === document.activeElement)).toBe(true)
+    if (selected) expect(await page.evaluate(() => document.getSelection()?.toString())).toBe(selected)
     expect(Math.abs(before.top - previous.top)).toBeGreaterThan(100)
     expect(before.key).not.toBe(previous.key)
     expect(before.key).not.toBe(before.focused)
@@ -1096,6 +1110,7 @@ for (const { key, change } of [
     }, before.key)
     expect(after.connected).toBe(true)
     expect(Math.abs(after.offset! - before.offset)).toBeLessThanOrEqual(2)
+    if (selected) expect(await page.evaluate(() => document.getSelection()?.toString())).toBe(selected)
   })
 
 test("native Shift+Space leaves latest following and retains its reading row through background backfill", async () => {
