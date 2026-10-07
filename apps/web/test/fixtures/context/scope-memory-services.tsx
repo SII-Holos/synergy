@@ -24,6 +24,7 @@ export const useGlobalSDK = () => ({
     scope: { list: () => ok([]) },
     provider: { list: () => ok({ all: [] }), auth: () => ok({}) },
     session: { statuses: () => ok({}) },
+    cortex: { list: () => ok([]) },
   },
 })
 

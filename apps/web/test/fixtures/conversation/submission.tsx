@@ -175,6 +175,7 @@ export function SubmissionFixture(props: { locale(): void }) {
   }
   ;(window as unknown as { fixture: typeof fixture }).fixture = fixture
   const autoScroll: PluginConversationViewport = {
+    readingAnchorOwner: () => undefined,
     forceScrollToBottom() {},
     handleScroll() {},
     handleInteraction() {},

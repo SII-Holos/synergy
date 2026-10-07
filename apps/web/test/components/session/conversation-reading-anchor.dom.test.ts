@@ -13,6 +13,7 @@ type Fixture = {
   image(): void
   replaceOwner(): void
   latest(): void
+  foreignAnchor(): boolean
   facts(): {
     offset: number
     scroll: number
@@ -55,6 +56,7 @@ beforeAll(async () => {
       prepend(){auto.handleInteraction();const older=document.createElement("div");older.style.height="320px";older.textContent="Earlier accepted fallback messages";viewport.firstElementChild.prepend(older)},
       resize(){setWidth(350)},fold(){setFolded(true)},image(){setImage(200)},replaceOwner(){setOwner(owner()+1)},
       latest(){setWorking(false);auto.forceScrollToBottom({untilInteraction:true})},
+      foreignAnchor(){const foreign=document.createElement("article");foreign.dataset.scrollAnchor="foreign";document.body.append(foreign);const anchor=captureConversationReadingAnchor(viewport,()=>true,foreign);foreign.remove();return anchor===undefined},
       facts(){return {offset:marker.getBoundingClientRect().top-viewport.getBoundingClientRect().top,scroll:viewport.scrollTop,folded:fold.getBoundingClientRect().height,imageHeight:img.naturalHeight,distance:viewport.scrollHeight-viewport.clientHeight-viewport.scrollTop,userScrolled:auto.userScrolled()}}
     }
     const src=()=>"data:image/svg+xml,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="'+image()+'"></svg>')
@@ -132,6 +134,13 @@ test("a fallback transcript preserves latest reading through an earlier-message 
   expect(after.userScrolled).toBe(true)
   expect(Math.abs(after.offset - before.offset)).toBeLessThan(1)
   expect(after.scroll - before.scroll).toBe(320)
+})
+
+test("a foreign interaction target cannot own the current conversation viewport", async () => {
+  await page.goto(base)
+  await page.getByText("Current reading paragraph", { exact: true }).waitFor()
+  expect(await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.foreignAnchor())).toBe(true)
+  expect(errors).toEqual([])
 })
 
 test("layout events from a released conversation cannot move the current viewport", async () => {

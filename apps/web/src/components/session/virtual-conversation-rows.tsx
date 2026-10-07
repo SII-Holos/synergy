@@ -250,53 +250,13 @@ export function VirtualConversationRows(
   let locationFrame: number | undefined
   let locationGeneration = 0
   let disposed = false
-  let readingMovementPending = false
-  let readingMovementOffset = 0
-  const retainReadingRow = () => {
-    const scroll = input.scrollRef
-    if (!scroll || !container || !scroll.clientHeight) return
-    const bounds = scroll.getBoundingClientRect()
-    const row = [...container.querySelectorAll<HTMLElement>("[data-display-row]")].find((row) => {
-      const rect = row.getBoundingClientRect()
-      return (
-        !row.closest('[data-component="process-viewport"]') &&
-        rect.height > 0 &&
-        rect.bottom > bounds.top &&
-        rect.top < bounds.bottom
-      )
-    })
-    if (row) setOuterReadingOwner(row.dataset.displayRow)
-  }
-  createEffect(
-    on(
-      () => props.scrolledUp(),
-      (reading) => {
-        if (reading) untrack(retainReadingRow)
-        else setOuterReadingOwner(undefined)
-      },
-    ),
-  )
-  const readingMovement = (event: Event) => {
-    if (event.target instanceof Element && event.target.closest('[data-component="process-viewport"]')) return
-    if (
-      event instanceof PointerEvent &&
-      (event.target !== input.scrollRef || (event.type === "pointermove" && !event.buttons))
-    )
-      return
-    if (
-      event instanceof KeyboardEvent &&
-      !["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"].includes(event.key)
-    )
-      return
-    readingMovementPending = true
-    readingMovementOffset = input.scrollRef?.scrollTop ?? 0
-    retainReadingRow()
-  }
-  const readingScrolled = () => {
-    if (!readingMovementPending || input.scrollRef?.scrollTop === readingMovementOffset) return
-    readingMovementPending = false
-    if (props.scrolledUp()) retainReadingRow()
-  }
+  createEffect(() => {
+    const anchor = props.autoScroll?.readingAnchorOwner()
+    const row =
+      anchor?.closest('[data-component="process-window"]')?.parentElement?.closest<HTMLElement>("[data-display-row]") ??
+      anchor?.closest<HTMLElement>("[data-display-row]")
+    setOuterReadingOwner(row && container?.contains(row) ? row.dataset.displayRow : undefined)
+  })
   const releaseLocation = (event?: Event) => {
     if (!(event?.target instanceof Element && event.target.closest('[data-component="process-viewport"]')))
       setReadingOwner(undefined)
@@ -415,9 +375,6 @@ export function VirtualConversationRows(
     document.addEventListener("focusin", pinInteraction)
     document.addEventListener("focusout", pinInteraction)
     document.addEventListener("selectionchange", pinInteraction)
-    for (const type of ["wheel", "touchstart", "touchmove", "pointerdown", "pointermove", "keydown"])
-      input.scrollRef?.addEventListener(type, readingMovement, { passive: true })
-    input.scrollRef?.addEventListener("scroll", readingScrolled, { passive: true })
     input.scrollRef?.addEventListener("wheel", releaseLocation, { passive: true })
     input.scrollRef?.addEventListener("touchstart", releaseLocation, { passive: true })
     input.scrollRef?.addEventListener("pointerdown", releaseLocation)
@@ -481,9 +438,6 @@ export function VirtualConversationRows(
       document.removeEventListener("focusin", pinInteraction)
       document.removeEventListener("focusout", pinInteraction)
       document.removeEventListener("selectionchange", pinInteraction)
-      for (const type of ["wheel", "touchstart", "touchmove", "pointerdown", "pointermove", "keydown"])
-        input.scrollRef?.removeEventListener(type, readingMovement)
-      input.scrollRef?.removeEventListener("scroll", readingScrolled)
       input.scrollRef?.removeEventListener("wheel", releaseLocation)
       input.scrollRef?.removeEventListener("touchstart", releaseLocation)
       input.scrollRef?.removeEventListener("pointerdown", releaseLocation)

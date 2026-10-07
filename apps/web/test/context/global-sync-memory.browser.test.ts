@@ -43,7 +43,7 @@ test("evicted Scope content callbacks release their entire retained store", asyn
     const errors: string[] = []
     page.on("pageerror", (error) => errors.push(error.message))
     await page.goto(fixture.url)
-    await page.waitForFunction(() => !!window.__scopeMemoryFixture)
+    await page.waitForFunction(() => window.__scopeMemoryFixture?.ready())
     const cdp = await page.context().newCDPSession(page)
     await cdp.send("HeapProfiler.enable")
     await cdp.send("Performance.enable")

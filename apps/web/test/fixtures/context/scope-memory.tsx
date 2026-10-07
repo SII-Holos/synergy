@@ -19,6 +19,7 @@ class ScopeMemoryMarker implements TextPart {
 }
 
 export type ScopeMemoryFixture = {
+  ready(): boolean
   churn(batch: number, count: number): Promise<{ scopes: number; bytes: number }>
   dispose(): void
 }
@@ -48,6 +49,7 @@ export function mountScopeMemoryFixture(root: HTMLElement) {
   )
   window.__scopeMemoryPrototype = ScopeMemoryMarker.prototype
   window.__scopeMemoryFixture = {
+    ready: () => !!api?.ready,
     async churn(batch, count) {
       if (!api) throw new Error("Scope memory fixture was disposed")
       for (let index = 0; index < count; index++) {

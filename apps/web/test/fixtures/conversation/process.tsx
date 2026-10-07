@@ -118,6 +118,20 @@ const arrivalOwner = ["http://localhost", "/project", "session"]
 const arrivalView = arrivals.open(arrivalOwner)
 arrivalView.ready(true)
 const scenario = new URL(location.href).searchParams.get("content")
+if (new URL(location.href).searchParams.has("outer-paging"))
+  setData("part", "work", [
+    part("work", "thought", "reasoning", "Check evidence"),
+    ...Array.from({ length: 60 }, (_, index) =>
+      part(
+        "work",
+        `reading-${index}`,
+        "text",
+        `Reading paragraph ${index}. ${"The existing project notes remain available during historical loading. ".repeat(8)}\n\n[Project reference ${index}](https://example.com/project/${index})`,
+      ),
+    ),
+    part("work", "progress", "text", "I will check the project first."),
+    part("work", "command-0", "tool"),
+  ])
 const faults = new Map<string, "denied" | "conflict" | "stalled" | "pending" | "malformed">()
 const reads = new Map<string, number>()
 const completions = new Map<string, (response: Response) => void>()
@@ -411,6 +425,47 @@ window.__conversationProcess = {
       ),
     ])
   },
+  growReadingParagraph(id: string, count: number) {
+    const index = data.part.work.findIndex((item) => item.id === id)
+    const current = data.part.work[index]
+    if (current?.type !== "text") return
+    setData(
+      "part",
+      "work",
+      index,
+      reconcile({ ...current, text: `${current.text}\n\n${"Earlier accepted paragraph grows. ".repeat(count)}` }),
+    )
+  },
+  growToolEvidence(id: string) {
+    const index = data.part.more.findIndex((item) => item.id === id)
+    const current = data.part.more[index]
+    if (current?.type !== "tool" || current.state.status !== "completed") return
+    const evidence: Extract<Part, { type: "attachment" }> = {
+      id: `${id}-evidence`,
+      sessionID: current.sessionID,
+      messageID: current.messageID,
+      type: "attachment",
+      mime: "image/svg+xml",
+      filename: "Late reading evidence.svg",
+      url: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="160"><text x="10" y="20">Late body while native paging is moving</text></svg>')}`,
+      presentation: { purpose: "evidence" },
+    }
+    setData(
+      "part",
+      "more",
+      index,
+      reconcile({
+        ...current,
+        state: {
+          ...current.state,
+          attachments: [...(current.state.attachments ?? []), evidence],
+        },
+      }),
+    )
+  },
+  latest() {
+    context.autoScroll?.forceScrollToBottom()
+  },
   prependTurns(count: number) {
     context.autoScroll?.handleInteraction(new Event("history-load"))
     const older = Array.from(
@@ -547,7 +602,10 @@ function Scroller(props: ParentProps) {
         },
       })
     : undefined
-  context.autoScroll = autoScroll
+  context.autoScroll = autoScroll && {
+    ...autoScroll,
+    forceScrollToBottom: () => autoScroll.forceScrollToBottom({ untilInteraction: true }),
+  }
   if (autoScroll) context.scrolledUp = () => reading() || autoScroll.userScrolled()
   createEffect(on(scroll, (element) => autoScroll?.scrollRef(element)))
   return (

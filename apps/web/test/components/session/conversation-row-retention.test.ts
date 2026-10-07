@@ -400,6 +400,7 @@ beforeAll(async () => {
           ;(window as any).__locate = (id: string, partID?: string) => locate?.(id, "auto", partID)
           ;(window as any).__setTimeline = setFixtureMessages
           const autoScroll = {
+            readingAnchorOwner: () => undefined,
             contentRef: () => {},
             forceScrollToBottom: () => {},
             handleInteraction: () => {},

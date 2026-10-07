@@ -37,6 +37,9 @@ type Fixture = {
   restoreProcess(count: number): void
   backfill(count: number): void
   hydrateBefore(count: number): void
+  growReadingParagraph(id: string, count: number): void
+  growToolEvidence(id: string): void
+  latest(): void
   prependTurns(count: number): void
   prepend(count: number): void
   delivery(): void
@@ -1027,6 +1030,122 @@ test("historical Part backfill preserves latest reading when retained rows move 
   expect(after.top).toBeGreaterThan(before.top)
 })
 
+for (const { key, change } of [
+  ...["Space", "Shift+Space", "PageDown", "PageUp"].map((key) => ({ key, change: "internal Part backfill" })),
+  { key: "Space", change: "same-version body growth" },
+])
+  test(`outer ${key} paging keeps the new reading row through ${change}`, async () => {
+    await page.goto(`${url}?scrolling=1&outer-paging=1`)
+    const scroll = page.locator("[data-scroller]")
+    await scroll.evaluate((element) => {
+      element.style.height = "280px"
+    })
+    expect(await page.evaluate(() => window.__conversationProcess.locate("work", "reading-30"))).toBe(true)
+    const reference = page.getByRole("link", { name: "Project reference 30", exact: true })
+    await reference.scrollIntoViewIfNeeded()
+    await reference.evaluate((element) => (element as HTMLElement).focus({ preventScroll: true }))
+    const bounds = await scroll.boundingBox()
+    await page.mouse.move(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2)
+    await page.mouse.wheel(0, -600)
+    for (let index = 0; index < 6; index++) await frames()
+    const visible = () =>
+      scroll.evaluate((element) => {
+        const bounds = element.getBoundingClientRect()
+        const row = [...element.querySelectorAll<HTMLElement>("[data-display-row]")].find((row) => {
+          const rect = row.getBoundingClientRect()
+          return (
+            !row.closest('[data-component="process-viewport"]') &&
+            rect.height > 0 &&
+            rect.bottom > bounds.top &&
+            rect.top < bounds.bottom
+          )
+        })!
+        return {
+          top: element.scrollTop,
+          key: row.dataset.displayRow!,
+          offset: row.getBoundingClientRect().top - bounds.top,
+          focused: document.activeElement?.closest<HTMLElement>("[data-display-row]")?.dataset.displayRow,
+        }
+      })
+    const previous = await visible()
+    await page.keyboard.press(key)
+    for (let index = 0; index < 12; index++) await frames()
+    const before = await visible()
+    expect(Math.abs(before.top - previous.top)).toBeGreaterThan(100)
+    expect(before.key).not.toBe(previous.key)
+    expect(before.key).not.toBe(before.focused)
+    const height = await scroll.evaluate((element) => element.scrollHeight)
+    if (change === "internal Part backfill") await page.evaluate(() => window.__conversationProcess.backfill(120))
+    else {
+      await page.evaluate(
+        (id) => window.__conversationProcess.growReadingParagraph(id, 600),
+        before.key.replace(/^work:/, ""),
+      )
+    }
+    for (let index = 0; index < 8; index++) await frames()
+    if (change === "same-version body growth")
+      expect(await scroll.evaluate((element) => element.scrollHeight)).toBeGreaterThan(height + 500)
+    const after = await scroll.evaluate((element, key) => {
+      const row = [...element.querySelectorAll<HTMLElement>("[data-display-row]")].find(
+        (row) => row.dataset.displayRow === key,
+      )
+      return {
+        connected: !!row?.isConnected,
+        offset: row ? row.getBoundingClientRect().top - element.getBoundingClientRect().top : undefined,
+      }
+    }, before.key)
+    expect(after.connected).toBe(true)
+    expect(Math.abs(after.offset! - before.offset)).toBeLessThanOrEqual(2)
+  })
+
+test("native Shift+Space leaves latest following and retains its reading row through background backfill", async () => {
+  await page.goto(`${url}?scrolling=1&outer-paging=1`)
+  const scroll = page.locator("[data-scroller]")
+  await scroll.evaluate((element) => {
+    element.style.height = "280px"
+  })
+  expect(await page.evaluate(() => window.__conversationProcess.locate("work", "reading-59"))).toBe(true)
+  await page
+    .getByRole("link", { name: "Project reference 59", exact: true })
+    .evaluate((element) => (element as HTMLElement).focus({ preventScroll: true }))
+  await page.evaluate(() => window.__conversationProcess.latest())
+  for (let index = 0; index < 4; index++) await frames()
+  const latest = await scroll.evaluate((element) => element.scrollTop)
+  await page.keyboard.press("Shift+Space")
+  for (let index = 0; index < 12; index++) await frames()
+  const before = await scroll.evaluate((element) => {
+    const bounds = element.getBoundingClientRect()
+    const row = [...element.querySelectorAll<HTMLElement>("[data-display-row]")].find((row) => {
+      const rect = row.getBoundingClientRect()
+      return (
+        !row.closest('[data-component="process-viewport"]') &&
+        rect.height > 0 &&
+        rect.bottom > bounds.top &&
+        rect.top < bounds.bottom
+      )
+    })!
+    return {
+      key: row.dataset.displayRow!,
+      top: element.scrollTop,
+      offset: row.getBoundingClientRect().top - bounds.top,
+    }
+  })
+  expect(latest - before.top).toBeGreaterThan(100)
+  await page.evaluate(() => window.__conversationProcess.hydrateBefore(120))
+  for (let index = 0; index < 8; index++) await frames()
+  const after = await scroll.evaluate((element, key) => {
+    const row = [...element.querySelectorAll<HTMLElement>("[data-display-row]")].find(
+      (row) => row.dataset.displayRow === key,
+    )
+    return {
+      connected: !!row?.isConnected,
+      offset: row ? row.getBoundingClientRect().top - element.getBoundingClientRect().top : undefined,
+    }
+  }, before.key)
+  expect(after.connected).toBe(true)
+  expect(Math.abs(after.offset! - before.offset)).toBeLessThanOrEqual(2)
+})
+
 test("native reading movement wins over real body growth in the same wheel dispatch", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
@@ -1072,9 +1191,7 @@ test("native Space paging preserves new reading when real body growth follows it
     element.addEventListener(
       "scroll",
       () => {
-        const body = document.createElement("p")
-        body.textContent = "Late body while native paging is moving. ".repeat(100)
-        ;[...element.querySelectorAll("[data-display-row]")].at(-1)!.append(body)
+        window.__conversationProcess.growToolEvidence("many-400")
       },
       { once: true },
     )
@@ -1083,6 +1200,7 @@ test("native Space paging preserves new reading when real body growth follows it
   await viewport.press("Space")
   for (let index = 0; index < 12; index++) await frames()
   const after = await viewport.evaluate((element) => ({ top: element.scrollTop, height: element.scrollHeight }))
+  expect(await viewport.locator('[data-part-id="many-400"] [data-slot="activity-evidence"]').count()).toBe(1)
   expect(after.height).toBeGreaterThan(before.height)
   expect(after.top).toBeGreaterThan(before.top + 100)
 })

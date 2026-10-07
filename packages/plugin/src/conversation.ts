@@ -26,6 +26,7 @@ export interface PluginTurnProjection {
 }
 
 export interface PluginConversationViewport {
+  readingAnchorOwner: Accessor<HTMLElement | undefined>
   contentRef(element: HTMLElement | undefined, releaseOf?: HTMLElement): void
   handleScroll(): void
   handleInteraction(event: Event): void

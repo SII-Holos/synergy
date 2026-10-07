@@ -1296,10 +1296,6 @@ function SessionPageContent() {
       const scope = sdk.scopeKey
       const current = () =>
         owner === sessionKey() && sdk.url === server && sdk.scopeKey === scope && scroller === container
-      if (!input.reading && container.scrollHeight - container.clientHeight - container.scrollTop < 10)
-        return () => {
-          if (current()) container.scrollTop = container.scrollHeight
-        }
       return captureConversationReadingAnchor(container, current, input.target)
     },
     onMeasure: (distance) => {
