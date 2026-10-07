@@ -194,7 +194,27 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
                 .callTool({ name: "echo", arguments: { text: "actual request" } })
             ).content,
           ).toEqual([{ type: "text", text: "actual request" }])
-          expect(McpSupervisor().resourceStats().processCount).toBe(1)
+          const sampled = await McpSupervisor().resourceStats()
+          expect(sampled.processCount).toBe(1)
+          if (process.platform === "darwin" || process.platform === "linux") {
+            expect(sampled.measuredProcessCount).toBe(1)
+            expect(sampled.currentBytes).toBeGreaterThan(0)
+            const entry = handle.localProcess!
+            const identity = entry.identity
+            const older = McpSupervisor().resourceStats()
+            const latest = McpSupervisor().resourceStats()
+            expect((await older).measuredProcessCount).toBe(0)
+            expect((await latest).measuredProcessCount).toBe(1)
+            entry.identity = "different-process-start"
+            expect(await McpSupervisor().resourceStats()).toMatchObject({
+              processCount: 1,
+              measuredProcessCount: 0,
+              currentBytes: 0,
+            })
+            expect(entry.currentRssBytes).toBeUndefined()
+            expect(entry.peakRssBytes).toBeGreaterThan(0)
+            entry.identity = identity
+          }
           await McpSupervisor().disconnect(name)
           expect(McpSupervisor().test(name)).toEqual({ status: "disabled" })
           expect(McpSupervisor().getClient(name)).toBeUndefined()

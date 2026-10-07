@@ -6,6 +6,7 @@ import { Observability } from "../observability"
 import { ObservabilityMetrics } from "../observability/metrics"
 import { ObservabilityRedaction } from "../observability/redaction"
 import { ProcessInspection as OwnedProcessInspection } from "./inspection"
+import { workMap } from "../util/queue"
 
 const log = Log.create({ service: "process.registry" })
 
@@ -214,7 +215,11 @@ export namespace ProcessRegistry {
     timedOut?: boolean
   }
 
-  export type ProcessInspector = (pid: number, proc: Process) => ProcessInspection
+  export type ProcessInspector = (
+    pid: number,
+    proc: Process,
+    signal: AbortSignal,
+  ) => ProcessInspection | Promise<ProcessInspection>
 
   const runtimeState = RuntimeContext.state(() => ({
     running: new Map<string, Process>(),
@@ -225,6 +230,8 @@ export namespace ProcessRegistry {
     sweeper: null as Timer | null,
     ttlMs: DEFAULT_TTL_MS,
     processInspector: defaultProcessInspector as ProcessInspector,
+    samplingGeneration: 0,
+    activeInspections: 0,
     lastRecovery: undefined as
       | {
           action: "close"
@@ -498,23 +505,89 @@ export namespace ProcessRegistry {
     return [...listRunning(), ...listFinished()].sort((a, b) => b.startedAt - a.startedAt)
   }
 
-  export function resourceSnapshot(opts: { now?: number; settleStale?: boolean } = {}): ResourceSnapshot[] {
+  export async function resourceSnapshot(
+    opts: { now?: number; settleStale?: boolean; signal?: AbortSignal } = {},
+  ): Promise<ResourceSnapshot[]> {
     const instanceState = runtimeState()
-
+    const generation = ++instanceState.samplingGeneration
+    const inspector = instanceState.processInspector
+    const candidates = [...instanceState.running.values()]
+      .filter((proc) => !proc.exited)
+      .map((proc) => ({ proc, pid: proc.pid, child: proc.child }))
+    const controller = new AbortController()
+    const cancel = () => controller.abort()
+    opts.signal?.addEventListener("abort", cancel, { once: true })
+    if (opts.signal?.aborted) cancel()
+    const timer = inspector === defaultProcessInspector ? undefined : setTimeout(cancel, 1000)
+    const signal = controller.signal
+    let inspections: ProcessInspection[]
+    try {
+      const samples =
+        inspector === defaultProcessInspector
+          ? await OwnedProcessInspection.rssBatch(
+              candidates
+                .filter(({ proc }) => isAlive(proc) !== false)
+                .flatMap(({ pid }) => (pid === undefined ? [] : [pid])),
+              { signal: opts.signal },
+            )
+          : undefined
+      inspections = await workMap(4, candidates, async ({ proc, pid }): Promise<ProcessInspection> => {
+        if (pid === undefined || signal.aborted) return {}
+        if (samples) return { alive: isAlive(proc), rssBytes: samples.get(pid) }
+        if (instanceState.activeInspections >= 4) return {}
+        instanceState.activeInspections++
+        let abort: (() => void) | undefined
+        try {
+          const pending = Promise.resolve()
+            .then(() => inspector(pid, proc, signal))
+            .finally(() => {
+              instanceState.activeInspections--
+            })
+          return await Promise.race([
+            pending,
+            new Promise<ProcessInspection>((resolve) => {
+              abort = () => resolve({})
+              signal.addEventListener("abort", abort, { once: true })
+              if (signal.aborted) abort()
+            }),
+          ])
+        } catch (error) {
+          log.warn("failed to inspect process", { id: proc.id, pid, error })
+          return {}
+        } finally {
+          if (abort) signal.removeEventListener("abort", abort)
+        }
+      })
+    } finally {
+      if (timer) clearTimeout(timer)
+      opts.signal?.removeEventListener("abort", cancel)
+    }
+    if (opts.signal?.aborted) return []
     const now = opts.now ?? Date.now()
     const result: ResourceSnapshot[] = []
-    for (const proc of Array.from(instanceState.running.values())) {
-      if (proc.exited) continue
-      const inspection = inspect(proc)
+    for (const [index, { proc, pid, child }] of candidates.entries()) {
+      if (proc.exited || instanceState.running.get(proc.id) !== proc || proc.pid !== pid || proc.child !== child)
+        continue
+      const inspected = inspections[index]
+      const alive = child || proc.exitObservedAt !== undefined ? isAlive(proc) : inspected.alive
+      const inspection = {
+        alive,
+        rssBytes: alive === false || generation !== instanceState.samplingGeneration ? undefined : inspected.rssBytes,
+      }
+      if (generation === instanceState.samplingGeneration) proc.currentRssBytes = inspection.rssBytes
       if (inspection.rssBytes !== undefined) {
-        proc.currentRssBytes = inspection.rssBytes
         proc.baselineRssBytes =
           proc.baselineRssBytes === undefined
             ? inspection.rssBytes
             : Math.min(proc.baselineRssBytes, inspection.rssBytes)
         proc.peakRssBytes = Math.max(proc.peakRssBytes ?? 0, inspection.rssBytes)
       }
-      if (opts.settleStale && proc.pid !== undefined && inspection.alive === false) {
+      if (
+        generation === instanceState.samplingGeneration &&
+        opts.settleStale &&
+        proc.pid !== undefined &&
+        inspection.alive === false
+      ) {
         markStale(proc)
         continue
       }
@@ -543,14 +616,14 @@ export namespace ProcessRegistry {
     return result.sort((a, b) => (b.rssBytes ?? -1) - (a.rssBytes ?? -1) || b.startedAt - a.startedAt)
   }
 
-  export function settleStaleProcesses() {
-    resourceSnapshot({ settleStale: true })
+  export async function settleStaleProcesses() {
+    await resourceSnapshot({ settleStale: true })
   }
 
-  export function resourceStats() {
+  export async function resourceStats() {
     const instanceState = runtimeState()
 
-    const processes = resourceSnapshot()
+    const processes = await resourceSnapshot()
     const measured = processes.filter((entry) => entry.rssBytes !== undefined)
     const owned = [...instanceState.running.values()].filter((entry) => !entry.exited)
     return {
@@ -688,17 +761,12 @@ export namespace ProcessRegistry {
     })
   }
 
-  function inspect(proc: Process): ProcessInspection {
-    const instanceState = runtimeState()
-
-    if (proc.pid === undefined) return {}
-    try {
-      const result = instanceState.processInspector(proc.pid, proc)
-      return proc.child?.alive ? { ...result, alive: proc.child.alive() } : result
-    } catch (error) {
-      log.warn("failed to inspect process", { id: proc.id, pid: proc.pid, error })
-      return {}
-    }
+  function isAlive(proc: Process): boolean | undefined {
+    if (proc.exited || proc.exitObservedAt !== undefined) return false
+    if (proc.child?.exitCode !== null && proc.child?.exitCode !== undefined) return false
+    if (proc.child?.signalCode !== null && proc.child?.signalCode !== undefined) return false
+    if (proc.child?.alive) return proc.child.alive()
+    return proc.pid === undefined ? undefined : OwnedProcessInspection.alive(proc.pid)
   }
 
   function markStale(proc: Process) {
@@ -716,10 +784,6 @@ export namespace ProcessRegistry {
   }
 
   function defaultProcessInspector(pid: number): ProcessInspection {
-    const alive = OwnedProcessInspection.alive(pid)
-    return {
-      alive,
-      rssBytes: alive ? OwnedProcessInspection.rssBytes(pid) : undefined,
-    }
+    return { alive: OwnedProcessInspection.alive(pid) }
   }
 }
