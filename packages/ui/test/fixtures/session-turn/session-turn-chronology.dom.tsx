@@ -115,6 +115,7 @@ const runtime = {
 }
 const openedTools = []
 const openedActivities = []
+const [toolDetailFallback, setToolDetailFallback] = createSignal(false)
 const resourceController = {
   openActivityDetail: (target) => {
     openedActivities.push(target)
@@ -122,7 +123,7 @@ const resourceController = {
   },
   openToolActivity: (target) => {
     openedTools.push(target)
-    return true
+    return !toolDetailFallback()
   },
   open: () => false,
   openAttachment: () => false,
@@ -296,6 +297,7 @@ globalThis.__chronologyHarness = {
   selection: () => openedActivities.at(-1),
   move,
   setMode,
+  setToolDetailFallback,
   setPreview,
   setRender: (html: string, title = "Evidence at a glance", status = "completed", output = toolPart.state.output) =>
     batch(() => {
@@ -316,6 +318,60 @@ globalThis.__chronologyHarness = {
           },
         },
         { ...answerPart, id: "visual-after", text: "The visual stays in the conversation." },
+      ])
+      setData("part", secondAssistantID, [])
+    }),
+  setRenderStream: (options: {
+    status: "pending" | "generating" | "running" | "completed" | "error"
+    raw?: string
+    html?: string
+    title?: string
+    error?: string
+    output?: string
+  }) =>
+    batch(() => {
+      const active = ["pending", "generating", "running"].includes(options.status)
+      const input = { html: options.html ?? "", artifactTitle: options.title ?? "" }
+      const state =
+        options.status === "pending" || options.status === "generating"
+          ? {
+              status: options.status,
+              input: {},
+              raw: options.raw ?? "",
+              ...(options.status === "generating" ? { charsReceived: options.raw?.length ?? 0 } : {}),
+            }
+          : options.status === "running"
+            ? { status: options.status, input, time: { start: 1 } }
+            : options.status === "error"
+              ? { status: options.status, input, error: options.error, time: { start: 1, end: 2 } }
+              : {
+                  status: options.status,
+                  input,
+                  output: options.output ?? "Visual rendered",
+                  title: options.title,
+                  metadata: { render: "html", html: options.html },
+                  time: { start: 1, end: 2 },
+                }
+      setStage(active ? 3 : 8)
+      setExecutionState({
+        rootID,
+        status: active ? "running" : "completed",
+        startedAt: 1,
+        endedAt: active ? undefined : 2,
+        stoppedAt: [],
+      })
+      setData("message", sessionID, [
+        rootMessage,
+        {
+          ...assistantMessage,
+          time: { created: 1, completed: active ? undefined : 2 },
+          finish: active ? undefined : "stop",
+        },
+      ])
+      setData("part", assistantID, [
+        { ...answerPart, id: "visual-before", text: "Here is the comparison." },
+        { ...toolPart, id: "visual", tool: "render", state },
+        ...(!active ? [{ ...answerPart, id: "visual-after", text: "The visual stays in the conversation." }] : []),
       ])
       setData("part", secondAssistantID, [])
     }),
