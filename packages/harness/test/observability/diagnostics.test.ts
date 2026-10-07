@@ -47,7 +47,7 @@ describe("Diagnostics", () => {
         sessionID: "ses_diag",
       })
       const span = ObservabilitySpans.start({ name: "tool.execute", module: "tool", sessionID: "ses_diag" })!
-      ObservabilityResources.snapshot({ role: "server" })
+      await ObservabilityResources.snapshot({ role: "server" })
       ObservabilityStore.flush()
 
       const summary = await Diagnostics.summary()

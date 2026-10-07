@@ -6,6 +6,8 @@ import {
 } from "@ericsanchezok/synergy-browser-core"
 import { SyncSequencer } from "@ericsanchezok/synergy-harness/bus/sequencer"
 import { BrowserOwner } from "./owner.js"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { browserErrorDiagnostics } from "./error-diagnostics.js"
 
 type SequencedEvent = Exclude<BrowserProtocolEvent, { type: "session.state" | "error" }>
 type EventInput = SequencedEvent extends infer Event
@@ -23,6 +25,7 @@ interface State {
 const runtimeState = RuntimeContext.state(() => ({
   states: new Map<string, State>(),
 }))
+const log = Log.create({ service: "browser.event" })
 
 export namespace BrowserEvent {
   export function publish<Input extends EventInput>(
@@ -38,7 +41,17 @@ export namespace BrowserEvent {
     }
     state.sequencer.stamp(payload, Date.now())
     const event = BrowserEventSchema.parse(payload)
-    for (const listener of state.listeners) listener(event)
+    for (const listener of state.listeners) {
+      try {
+        listener(event)
+      } catch (error) {
+        log.warn("Browser event observer failed", {
+          boundary: "event.observer",
+          type: event.type,
+          ...browserErrorDiagnostics(error),
+        })
+      }
+    }
     return event as Extract<SequencedEvent, { type: Input["type"] }>
   }
 

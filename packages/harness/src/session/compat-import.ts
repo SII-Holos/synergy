@@ -428,7 +428,8 @@ export namespace SessionCompat {
 
   async function pendingInfos(scopeID?: string) {
     const result: Info[] = []
-    for await (const entry of StorageCompat.catalog(Storage.current().store, scopeID)) {
+    const storage = Storage.current()
+    for await (const entry of StorageCompat.catalog(storage.transaction ?? storage.store, scopeID)) {
       if (entry.status === "quarantined") continue
       const info = await projectedPending(entry.info)
       if (info) result.push(info)

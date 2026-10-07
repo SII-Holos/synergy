@@ -7,7 +7,7 @@ import { useGlobalSync } from "../global-sync"
 import { useGlobalSDK } from "../global-sdk"
 import { useServer } from "../server"
 import { usePlatform } from "../platform"
-import { Scope, Session } from "@ericsanchezok/synergy-sdk"
+import { type Message, type Part, Scope, Session } from "@ericsanchezok/synergy-sdk"
 import { Persist, persisted, removePersisted } from "@/utils/persist"
 import { same } from "@/utils/same"
 import { createScrollPersistence, type SessionScroll } from "./scroll"
@@ -48,6 +48,7 @@ import { planPrefetchApply } from "./prefetch-apply"
 import { internMessages, internParts } from "../string-intern"
 import { findSessionIndex } from "../session-collection"
 import { classifyScopeEvent } from "./event-routing"
+import { readSessionViewportContent, planSessionViewportContent } from "../session-viewport-content"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 export type AvatarColorKey = (typeof AVATAR_COLOR_KEYS)[number]
@@ -1017,10 +1018,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       running: number
     }
 
-    const prefetchChunk = 200
+    const prefetchChunk = 100
     const prefetchConcurrency = 1
     const prefetchPendingLimit = 6
     const prefetchToken = { value: 0 }
+    let prefetchAbort = new AbortController()
+    onCleanup(() => prefetchAbort.abort())
     const prefetchQueues = new Map<string, PrefetchQueue>()
 
     const queueFor = (directory: string) => {
@@ -1040,20 +1043,55 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       const [, setChildStore] = globalSync.ensureScopeState(scopeKey)
       const request = globalSync.captureResourceRequest(scopeKey, sessionID, "message")
       const revision = globalSync.beginContextProjection(scopeKey, sessionID)
+      const signal = prefetchAbort.signal
       // Prefetch runs the same per-message part-snapshot gate as the
       // foreground loader: a response captured before a streaming mutation
       // must not overwrite a live part bucket with its older snapshot.
       const partSnapshotRequest = globalSync.capturePartSnapshotRequest(scopeKey, sessionID)
       return retry(() =>
-        globalSdk.client.session.messagePage({
-          ...scopeRequest(scopeKey),
-          sessionID,
-          limit: prefetchChunk,
-        }),
+        globalSdk.client.session.timelinePage(
+          {
+            ...scopeRequest(scopeKey),
+            sessionID,
+            limit: prefetchChunk,
+          },
+          { signal, throwOnError: true },
+        ),
       )
-        .then((response) => {
+        .then(async (response) => {
           if (prefetchToken.value !== token || !response.data) return
-          const plan = planPrefetchApply({
+          const content = await readSessionViewportContent({
+            messages: [...response.data.referencedRoots, ...response.data.items].map((entry) => entry.info),
+            signal,
+            page: async (messageID) => {
+              const result = await globalSdk.client.session.partPage(
+                { ...scopeRequest(scopeKey), sessionID, messageID, limit: 100 },
+                { signal, throwOnError: true },
+              )
+              if (!result.data) throw new Error("Missing conversation summary")
+              return result.data
+            },
+            body: async (summary) => {
+              const result = await globalSdk.client.session.partContent(
+                {
+                  ...scopeRequest(scopeKey),
+                  sessionID,
+                  messageID: summary.messageID,
+                  partID: summary.id,
+                  version: summary.content.version,
+                },
+                { signal, throwOnError: true },
+              )
+              if (!result.data) throw new Error("Missing conversation content")
+              return result.data
+            },
+          })
+          if (prefetchToken.value !== token) return
+          const viewport = planSessionViewportContent(content, (messageID) =>
+            globalSync.partSnapshotAction(scopeKey, sessionID, messageID, partSnapshotRequest),
+          )
+          if (!viewport) return
+          const plan = planPrefetchApply<Message, Part>({
             page: response.data,
             partSnapshotAction: (messageID) =>
               globalSync.partSnapshotAction(scopeKey, sessionID, messageID, partSnapshotRequest),
@@ -1061,6 +1099,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           if (plan.status === "retry") return
           globalSync.applyResourceResponse(scopeKey, sessionID, "message", request, response.response?.headers, () => {
             batch(() => {
+              globalSync.seedSessionViewportContent(scopeKey, viewport)
               setChildStore("message", sessionID, reconcile(internMessages(plan.window.messages), { key: "id" }))
               setChildStore("messageWindow", sessionID, reconcile(plan.metadata))
               globalSync.setLatestContextMessage(scopeKey, sessionID, plan.latestContextMessage, revision)
@@ -1111,6 +1150,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
     function resetPrefetch() {
       prefetchToken.value += 1
+      prefetchAbort.abort()
+      prefetchAbort = new AbortController()
       for (const q of prefetchQueues.values()) {
         q.pending.length = 0
         q.pendingSet.clear()

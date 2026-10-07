@@ -30,6 +30,11 @@ import { loadOlderOrRecoverLatest } from "./session-message-page-recovery"
 import type { SyncResourceRequest } from "./sync-resource-freshness"
 import { internMessages, internParts } from "./string-intern"
 import { findSessionByID, findSessionIndex } from "./session-collection"
+import {
+  readSessionViewportContent,
+  planSessionViewportContent,
+  type SessionViewportContent,
+} from "./session-viewport-content"
 
 type RefreshOptions = { force?: boolean }
 type SessionSyncOptions = { refreshVolatile?: boolean; trigger?: SessionSyncTrigger }
@@ -234,6 +239,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       request?: SyncResourceRequest
       contextProjectionRevision?: number
       latestContextMessage?: Message | null
+      viewport?: SessionViewportContent
       partSnapshotRequest: ReturnType<typeof globalSync.capturePartSnapshotRequest>
     }
     type MessagePageLoadInput = {
@@ -302,7 +308,30 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             latest.data?.items.map((entry) => entry.info) ?? [],
           )
         }
-        return { response, request, contextProjectionRevision, partSnapshotRequest, latestContextMessage }
+        const viewport =
+          input?.mode === "latest" && !hasMessageSnapshot(sessionID) && response.data
+            ? await readSessionViewportContent({
+                messages: [...response.data.referencedRoots, ...response.data.items].map((entry) => entry.info),
+                signal,
+                page: async (messageID) => {
+                  const result = await sdk.client.session.partPage(
+                    { sessionID, messageID, limit: 100 },
+                    { signal, throwOnError: true },
+                  )
+                  if (!result.data) throw new Error("Missing conversation summary")
+                  return result.data
+                },
+                body: async (summary) => {
+                  const result = await sdk.client.session.partContent(
+                    { sessionID, messageID: summary.messageID, partID: summary.id, version: summary.content.version },
+                    { signal, throwOnError: true },
+                  )
+                  if (!result.data) throw new Error("Missing conversation content")
+                  return result.data
+                },
+              })
+            : undefined
+        return { response, request, contextProjectionRevision, partSnapshotRequest, latestContextMessage, viewport }
       },
       apply: (sessionID, result, input) => {
         const page = result.response.data
@@ -328,8 +357,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           ]),
         )
         if ([...partActions.values()].some((action) => action === "retry")) return "superseded"
+        const viewport = planSessionViewportContent(result.viewport, (messageID) =>
+          globalSync.partSnapshotAction(sdk.scopeKey, sessionID, messageID, result.partSnapshotRequest),
+        )
+        if (!viewport) return "superseded"
         const apply = () => {
           batch(() => {
+            if (Object.keys(viewport.pages).length) globalSync.seedSessionViewportContent(sdk.scopeKey, viewport)
             for (const messageID of plan.droppedIds) materializer.invalidate(messageID)
             setStore(
               produce((draft) => {

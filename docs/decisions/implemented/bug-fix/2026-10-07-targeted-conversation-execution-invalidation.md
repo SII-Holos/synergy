@@ -32,4 +32,6 @@ Two response scenarios mount the actual `VirtualConversationRows` with 70 timeli
 
 ## Consequences
 
+Combined regressions retain Session switching display admission and execution invalidation in the same mounted conversation. Their fixture shares the Session signal across canonical data and execution, and can independently hold current body hydration while a target changes.
+
 A matching single-root lifecycle invalidation submits one root instead of 64; multiple same-turn roots share one request. Unaffected accepted states survive partial responses and refresh failures. Initial and conservative permission/reconnect reads still query up to 64 roots, but all accepted writes or failure clears from one response publish coherently. Per-root fences can require a second query when lifecycle state changes in flight; recovery stops when failures settle without another invalidation. The fixture establishes owner-level correctness, request fanout and virtual projection work, not production latency or per-token savings.

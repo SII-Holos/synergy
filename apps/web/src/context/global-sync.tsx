@@ -27,6 +27,7 @@ import {
 import { sharedRequests } from "@/utils/shared-requests"
 import { createContentBudget, contentBudgetKey } from "./content-budget"
 import { clearConversationContent } from "./conversation-content-state"
+import type { SessionViewportContent } from "./session-viewport-content"
 import { createPartArrivalState } from "./part-arrival"
 import type { createPartMaterializer } from "./part-materializer"
 import { mergeModelDirectory, type ProviderSnapshot } from "./model-directory"
@@ -2635,6 +2636,48 @@ function createGlobalSync() {
     partArrival,
     contentBudget,
     retainContentCache,
+    seedSessionViewportContent(scopeKey: string, content: SessionViewportContent) {
+      const state = children[scopeKey]
+      if (!state) return
+      const [store, setStore] = state
+      batch(() => {
+        for (const [messageID, page] of Object.entries(content.pages)) {
+          const { items, ...metadata } = page
+          setStore(
+            "partSummary",
+            messageID,
+            reconcile(
+              [...items].sort((a, b) => a.id.localeCompare(b.id)),
+              { key: "id" },
+            ),
+          )
+          setStore("partPage", messageID, reconcile(metadata))
+        }
+        for (const { part, version } of content.bodies) {
+          const summary = store.partSummary[part.messageID]?.find((item) => item.id === part.id)
+          if (summary?.content.version !== version) continue
+          const parts = store.part[part.messageID] ?? []
+          const index = parts.findIndex((item) => item.id === part.id)
+          if (index >= 0) setStore("part", part.messageID, index, reconcile(part))
+          else
+            setStore(
+              "part",
+              part.messageID,
+              [...parts, part].sort((a, b) => a.id.localeCompare(b.id)),
+            )
+          setStore("partVersion", part.id, version)
+          contentBudget.publish(
+            contentBudgetKey(scopeKey, part.messageID, part.id),
+            version,
+            summary.content.bytes * 2,
+            () => {
+              contentCaches.get(scopeKey)?.cache.invalidate(part.messageID, part.id)
+              setStore("part", part.messageID, (current) => (current ?? []).filter((item) => item.id !== part.id))
+            },
+          )
+        }
+      })
+    },
     get ready() {
       return globalStore.ready
     },

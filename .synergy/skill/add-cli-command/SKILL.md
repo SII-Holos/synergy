@@ -1,6 +1,6 @@
 ---
 name: add-cli-command
-description: Add or modify a Synergy CLI command, command group, positional, option, alias, help text, exit behavior, or root command registration under packages/cli/src/cli. Use for installed synergy CLI work; do not use for the repository-only bun dev orchestrator.
+description: Add or modify a Synergy CLI command, command group, positional, option, alias, help text, exit behavior, root command registration, or installed component runner dispatch and bootstrap IPC lifecycle. Use for installed synergy CLI work; do not use for the repository-only bun dev orchestrator.
 ---
 
 # Add a CLI Command
@@ -43,6 +43,24 @@ bun run quality:quick
 ```
 
 For startup, daemon, port, Web, Desktop, auth, or data movement changes, test through an isolated `SYNERGY_HOME`; use the `develop-synergy` skill and never disrupt the active instance.
+
+## Installed component runner lifecycle
+
+Use this workflow for metadata-owned subprocess runners. Read [Installable packages](../../../docs/reference/installable-packages.md#trusted-host-components), [Runtime and Scope](../../../docs/architecture/runtime-and-scope.md#composition-and-migration-registration), and the [bootstrap IPC decision](../../../docs/decisions/implemented/bug-fix/2026-10-07-replay-component-runner-bootstrap-ipc.md) before changing dispatch.
+
+1. Keep optional runners in the owning component's `synergy.runners` metadata. Verify the installed launcher selects the declared export from its parent's pinned, sealed generation; do not add an optional runner to `CORE_RUNNERS` or load full product composition to obtain dispatch.
+2. In an IPC-consuming `main()`, register `process.on("message", ...)` synchronously before the first `await`. Return a Promise that covers the worker's lifetime through shutdown; a one-shot runner may settle when its operation finishes.
+3. Preserve the handoff order in `runComponentRunner`: invoke the export, capture its completion value, call the registration callback, then await completion. Ensure the launcher supplies `resumeWorker`, which removes the bootstrap receiver and replays buffered messages. This callback means listener registration, not asynchronous resource readiness; use the component's IPC protocol for the latter.
+4. Keep the RuntimeContext alive until the completion Promise settles, with disposal in `finally`. Do not dispose when the registration callback fires or return while detached worker work still owns the context.
+5. Exercise installed dispatch, not only a direct module import. Use a sealed synthetic installation with observable registration and disposal, spawn its pinned runner, and send `start` immediately without waiting for registration. Expect `registered` followed by an echo of the early `start`, no disposal while live, then normal exit and disposal after `shutdown` settles the runner. Check subprocess errors and clean up the fixture; never use the active runtime's Home.
+
+Run the focused regression from the repository root:
+
+```bash
+bun test --cwd packages/cli test/component-runner.test.ts
+```
+
+The fixture checks shared launcher replay and context lifetime, not the component's resource initialization or query correctness. Record the actual result; the existence of this test is not passing evidence. Verify any component-specific asynchronous readiness separately through its own protocol.
 
 ## Synchronize Documentation
 

@@ -1,12 +1,13 @@
-import { afterAll, expect, test } from "bun:test"
+import { afterAll, expect, spyOn, test } from "bun:test"
 import { BrowserSessionImpl } from "../src/session"
 import { BrowserProfiles } from "../src/profiles"
 import { BrowserStorage } from "../src/storage"
 import { BrowserEvent } from "../src/event"
 import { BrowserDownloads } from "../src/downloads"
 import type { BrowserPageEventHandlers, BrowserPageBackend } from "../src/page"
-import type { BrowserEvent as Event } from "@ericsanchezok/synergy-browser-core"
+import { BrowserSessionPageSchema, type BrowserEvent as Event } from "@ericsanchezok/synergy-browser-core"
 import { testRuntime } from "./support/runtime"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
 const owner = () => ({ mode: "scope" as const, scopeID: `restore-${crypto.randomUUID()}`, directory: null })
@@ -122,6 +123,72 @@ test("native events preserve page attribution and redact private download paths"
     expect(() => handlers.onLoaded?.(page)).not.toThrow()
     unsubscribe()
   }))
+test.each([
+  ["empty", ""],
+  ["blank", "   "],
+  ["long", "failure ".repeat(15_000)],
+  ["redacted", "token=private-secret"],
+])("page errors remain valid through status updates and persistence: %s", (_label, message) =>
+  runtime.run(async () => {
+    const target = owner()
+    const events: Event[] = []
+    let handlers: BrowserPageEventHandlers = {}
+    const unsubscribe = BrowserEvent.subscribe(target, (event) => events.push(event))
+    const session = new BrowserSessionImpl(target, async ({ id, url, events }) => {
+      handlers = events
+      return backend(id, url!)
+    })
+    try {
+      const page = await session.openPage({})
+      handlers.onError?.(page, message)
+      expect(() => handlers.onStatus?.(page, "restarting")).not.toThrow()
+      const descriptor = BrowserSessionPageSchema.parse(session.describe(page.id))
+      expect(descriptor.error?.message.trim().length).toBeGreaterThan(0)
+      expect(descriptor.error!.message.length).toBeLessThanOrEqual(100_000)
+      expect(descriptor.error!.message).not.toContain("private-secret")
+      expect(events.findLast((event) => event.type === "page.error")).toMatchObject({
+        message: descriptor.error!.message,
+      })
+      await session.save()
+      expect((await BrowserStorage.load(target))?.pages[0]?.error).toEqual(descriptor.error)
+    } finally {
+      unsubscribe()
+      await session.dispose()
+    }
+  }),
+)
+test("error persistence failures are diagnosed safely and do not poison the next save", () =>
+  runtime.run(async () => {
+    const target = owner()
+    let handlers: BrowserPageEventHandlers = {}
+    const session = new BrowserSessionImpl(target, async ({ id, url, events }) => {
+      handlers = events
+      return backend(id, url!)
+    })
+    const page = await session.openPage({})
+    const logger = spyOn(Log.create({ service: "browser.session" }), "warn").mockImplementation(() => {})
+    const failure = Object.assign(new Error("/private/fixture/account token=fixture-secret"), { code: "ENOSPC" })
+    const save = spyOn(BrowserStorage, "save").mockRejectedValueOnce(failure)
+    try {
+      expect(() => handlers.onError?.(page, "")).not.toThrow()
+      await session.save()
+      expect(logger).toHaveBeenCalledWith("Browser page error state could not be saved", {
+        boundary: "page.error.save",
+        errorKind: "system_error",
+        code: "ENOSPC",
+      })
+      expect(JSON.stringify(logger.mock.calls)).not.toContain("fixture-secret")
+      expect(JSON.stringify(logger.mock.calls)).not.toContain("/private/fixture")
+      expect((await BrowserStorage.load(target))?.pages[0]?.error?.message).toBe(
+        "Browser page reported an error without a description.",
+      )
+    } finally {
+      save.mockRestore()
+      logger.mockRestore()
+      await session.dispose()
+    }
+  }))
+
 test("annotations round trip without allocating a browser", () =>
   runtime.run(async () => {
     const target = owner()

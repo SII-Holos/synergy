@@ -11,7 +11,7 @@ import { useSDK } from "@/context/sdk"
 import { useSessionDataView } from "@/context/session-data-view"
 import type { PluginComponentProps, PluginConversationService } from "@ericsanchezok/synergy-plugin"
 import { Dynamic } from "solid-js/web"
-import { For, Show, batch, createEffect, createMemo, createSignal, onCleanup, onMount, untrack } from "solid-js"
+import { For, Show, batch, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { VirtualConversationRows } from "./virtual-conversation-rows"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -27,9 +27,31 @@ import { S } from "./session-i18n"
 import { PendingTimelineItem } from "./pending-timeline-item"
 import { useExecution } from "@/context/execution"
 
-export function SessionConversation(input: PluginComponentProps<PluginConversationService>) {
+export function SessionConversation(
+  input: PluginComponentProps<PluginConversationService> & {
+    initialScrollSettled?: () => boolean
+  },
+) {
   const transitions = useSessionTransition()
   const props = input.context
+  const [contentReady, setContentReady] = createSignal(false)
+  const [admittedSession, setAdmittedSession] = createSignal<string>()
+  createEffect(
+    on(
+      () => props.sessionID,
+      () => setAdmittedSession(undefined),
+    ),
+  )
+  const viewportReady = () => !input.initialScrollSettled || admittedSession() === props.sessionID
+  createEffect(() => {
+    const sessionID = props.sessionID
+    if (!input.initialScrollSettled || admittedSession() === sessionID) return
+    if (!input.initialScrollSettled() || (props.content && !contentReady())) return
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => setAdmittedSession(sessionID))
+    })
+    onCleanup(() => cancelAnimationFrame(frame))
+  })
   const preparation = useSessionPreparation()
   const execution = useExecution()
   const { i18n } = useLocale()
@@ -286,6 +308,7 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
   return (
     <ConversationMotionProvider takeArrival={takePartArrival} liveRevision={() => arrivalView()?.revision() ?? 0}>
       <ConversationViewport
+        ready={viewportReady()}
         scrolledUp={props.scrolledUp()}
         onScrolledUpChange={props.onScrolledUpChange}
         autoScroll={props.autoScroll}
@@ -445,6 +468,7 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
           }
         >
           <VirtualConversationRows
+            onReady={setContentReady}
             messageKey={messageKey}
             takePartArrival={takePartArrival}
             liveRevision={() => arrivalView()?.revision() ?? 0}

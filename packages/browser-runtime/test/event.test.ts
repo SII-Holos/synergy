@@ -49,6 +49,31 @@ describe("Browser event sequencing", () => {
       expect(BrowserEvent.replay(eventOwner, 1, "stale-epoch")).toBeNull()
       BrowserEvent.remove(eventOwner)
     }))
+  test("isolates observers without relaxing event validation or losing replay", () =>
+    runtime.run(() => {
+      const eventOwner = { ...owner, sessionID: crypto.randomUUID() }
+      const received: number[] = []
+      const faulty = BrowserEvent.subscribe(eventOwner, () => {
+        throw new Error("observer failure")
+      })
+      const healthy = BrowserEvent.subscribe(eventOwner, (event) => {
+        if ("seq" in event) received.push(event.seq)
+      })
+      try {
+        expect(() => BrowserEvent.publish(eventOwner, { type: "host.status", status: "restarting" })).not.toThrow()
+        const next = BrowserEvent.publish(eventOwner, { type: "host.status", status: "ready" })
+        expect(received).toEqual([1, 2])
+        expect(
+          BrowserEvent.replay(eventOwner, 0, next.epoch)?.map((event) => ("seq" in event ? event.seq : undefined)),
+        ).toEqual([1, 2])
+        expect(() => BrowserEvent.publish(eventOwner, { type: "page.closed", pageId: "" })).toThrow()
+        expect(received).toEqual([1, 2])
+      } finally {
+        faulty()
+        healthy()
+        BrowserEvent.remove(eventOwner)
+      }
+    }))
 })
 
 describe("native Browser presentation tickets", () => {

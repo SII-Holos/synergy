@@ -24,6 +24,59 @@ const shell = { page: () => "session" as const, render: () => element("host") }
 const fallback: Component<ShellRenderProps> = () => element("fallback")
 const flush = () => Bun.sleep(5)
 
+test("a loaded page binds the next session without mounting the fallback or loading its module again", async () => {
+  let loads = 0
+  let fallbacks = 0
+  const released: string[] = []
+  const entry: ShellEntry = {
+    id: "stable:page",
+    label: "Stable",
+    slot: "app.shell",
+    loader: async () => {
+      loads++
+      return {
+        default: (props) => {
+          const id = props.sessionId!
+          onCleanup(() => released.push(id))
+          return element(id)
+        },
+      }
+    },
+  }
+  const [sessionId, setSessionId] = createSignal("a")
+  const target = document.createElement("div")
+  const dispose = render(
+    () =>
+      createComponent(ShellSurface, {
+        entry,
+        loader: entry.loader,
+        shell,
+        get sessionId() {
+          return sessionId()
+        },
+        fallback: () => {
+          fallbacks++
+          return element("fallback")
+        },
+        reportError: () => {},
+      }),
+    target,
+  )
+  try {
+    await flush()
+    const initialFallbacks = fallbacks
+    setSessionId("b")
+    expect(target.textContent).toBe("b")
+    expect(released).toEqual(["a"])
+    await flush()
+    expect(loads).toBe(1)
+    expect(fallbacks).toBe(initialFallbacks)
+  } finally {
+    dispose()
+  }
+  expect(released).toEqual(["a", "b"])
+})
+
 test("releases the bound session immediately and ignores an old page load", async () => {
   const pending = deferred<{ default: Component<ShellRenderProps> }>()
   const released: string[] = []

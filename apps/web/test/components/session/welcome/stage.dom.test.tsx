@@ -32,6 +32,8 @@ beforeAll(async () => {
     import { createBlocks } from "${source}/components/session/welcome/blocks/model"
     import { createFlight, startFlight } from "${source}/components/session/welcome/flight/model"
     import { welcomeScenes } from "${source}/components/session/welcome/registry"
+    import { sceneRandom } from "${source}/components/session/welcome/random"
+    import { sprite, sprites } from "${source}/components/session/welcome/pixels"
     import { handleComposerTypingAutofocus } from "${source}/components/prompt-input/typing-autofocus"
     import "@ericsanchezok/synergy-ui/styles"
     import "${source}/index.css"
@@ -53,6 +55,31 @@ beforeAll(async () => {
     function App() {
       if (new URLSearchParams(location.search).has("lifecycle")) return <Lifecycle />
       const theme = useTheme()
+      Object.assign(window, { ambientReference: () => {
+        const ambient = document.querySelector(".welcome-ambient")
+        const reference = document.createElement("canvas")
+        reference.width = ambient.width
+        reference.height = ambient.height
+        const ctx = reference.getContext("2d")
+        const dpr = Math.min(devicePixelRatio || 1, 2)
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+        const random = sceneRandom(8)
+        const masks = [sprites.star, sprites.ring, sprites.bolt, sprites.sprout, sprites.crate, sprites.drone, sprites.heart].map(mask => mask.map(row => row.replaceAll("2", "0")))
+        for (let index = 0; index < 240; index++) {
+          const column = index % 20, row = Math.floor(index / 20)
+          const offset = random(), depth = 0.35 + random() * 0.65
+          const mask = masks[Math.floor(random() * masks.length)]
+          const x = (column + 0.3 + offset * 0.35) * Math.max(62, ambient.clientWidth / 18) + Math.sin(row * 0.6) * 9
+          if (x > ambient.clientWidth + 20) continue
+          const cycle = ambient.clientHeight + 100
+          const y = ((row / 12 * cycle + offset * 40) % cycle) - 45
+          const band = 0.6 + 0.4 * Math.sin(column * 0.8 + row * 0.35)
+          const edge = Math.min(1, Math.max(0, y / 65), Math.max(0, (ambient.clientHeight - y) / 80))
+          ctx.globalAlpha = (0.025 + 0.062 * depth) * band * edge
+          sprite(ctx, mask, x, y, depth > 0.65 ? 2 : 1, theme.tokens()["text-strong"])
+        }
+        return reference.getContext("2d").getImageData(0, 0, reference.width, reference.height).data
+      } })
       const [definition, setDefinition] = createSignal(welcomeScenes.find(s => s.id === new URLSearchParams(location.search).get("scene")) ?? welcomeScenes[0])
       const initialMemory = createWelcomeMemory()
       const fixture = new URLSearchParams(location.search).get("fixture")
@@ -289,10 +316,23 @@ test("each scene supports light, dark, and doubled scale", async () => {
       await page.setViewportSize({ width: 1100, height: 920 })
       await page.emulateMedia({ colorScheme, reducedMotion: "reduce" })
       await open(scene === "flight" ? "flight&fixture=flight-pickups" : scene)
-      if (captures)
-        await page
-          .locator(".session-workbench-pane")
-          .screenshot({ path: path.join(captures, `${scene}-${colorScheme}.png`) })
+      if (captures) {
+        for (const width of [960, 375]) {
+          await page.setViewportSize({ width, height: 920 })
+          await page.waitForFunction(() => getComputedStyle(document.querySelector(".welcome-stage")!).opacity === "1")
+          await page
+            .locator(".session-workbench-pane")
+            .screenshot({ path: path.join(captures, `${scene}-${colorScheme}-${width}.png`) })
+          const pixels = await page
+            .locator(".welcome-ambient")
+            .evaluate((el) => (el as HTMLCanvasElement).toDataURL().split(",")[1]!)
+          await Bun.write(
+            path.join(captures, `ambient-${scene}-${colorScheme}-${width}.png`),
+            Buffer.from(pixels, "base64"),
+          )
+        }
+        await page.setViewportSize({ width: 1100, height: 920 })
+      }
       await page.evaluate(() => {
         document.documentElement.style.zoom = "2"
       })
@@ -362,6 +402,143 @@ test("same-mode theme changes redraw canvas without losing progress, and remount
   expect(errors).toEqual([])
   await page.emulateMedia({ reducedMotion: "no-preference" })
 })
+
+test("ambient frames reuse pixel motifs instead of repainting their cells", async () => {
+  await page.setViewportSize({ width: 960, height: 920 })
+  await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "light" })
+  await open("flight")
+  await page.getByRole("button", { name: "Mount", exact: true }).click()
+  await page.evaluate(() => {
+    const fills = new Map<HTMLCanvasElement, number>()
+    const buffers = new Set<HTMLCanvasElement>()
+    let images = 0
+    const originalFill = CanvasRenderingContext2D.prototype.fillRect
+    const originalImage = CanvasRenderingContext2D.prototype.drawImage
+    CanvasRenderingContext2D.prototype.fillRect = function (this: CanvasRenderingContext2D, ...args) {
+      fills.set(this.canvas, (fills.get(this.canvas) ?? 0) + 1)
+      return originalFill.apply(this, args)
+    }
+    CanvasRenderingContext2D.prototype.drawImage = function (this: CanvasRenderingContext2D, ...args) {
+      if (this.canvas.classList.contains("welcome-ambient")) {
+        images++
+        if (args[0] instanceof HTMLCanvasElement) buffers.add(args[0])
+      }
+      return Reflect.apply(originalImage, this, args)
+    } as typeof originalImage
+    Object.assign(window, {
+      ambientDrawCounts: () => ({
+        cells: Array.from(fills).reduce(
+          (total, [canvas, count]) =>
+            total + (buffers.has(canvas) || canvas.classList.contains("welcome-ambient") ? count : 0),
+          0,
+        ),
+        images,
+        buffers: Array.from(buffers, (canvas) => ({ width: canvas.width, height: canvas.height })),
+      }),
+      restoreAmbientDrawing: () => {
+        CanvasRenderingContext2D.prototype.fillRect = originalFill
+        CanvasRenderingContext2D.prototype.drawImage = originalImage
+      },
+    })
+  })
+  const readCounts = () =>
+    page.evaluate(() =>
+      (
+        window as unknown as {
+          ambientDrawCounts: () => { cells: number; images: number; buffers: { width: number; height: number }[] }
+        }
+      ).ambientDrawCounts(),
+    )
+  try {
+    await page.getByRole("button", { name: "Mount", exact: true }).click()
+    await page.locator(".welcome-game-canvas").waitFor()
+    await page.getByRole("textbox").click()
+    const initial = await readCounts()
+    await page.emulateMedia({ reducedMotion: "no-preference" })
+    await page.waitForFunction((previous) => {
+      const counts = (
+        window as unknown as { ambientDrawCounts: () => { cells: number; images: number } }
+      ).ambientDrawCounts()
+      return counts.cells + counts.images > previous + 480
+    }, initial.cells + initial.images)
+    const moving = await readCounts()
+    expect(moving.cells - initial.cells).toBe(0)
+    expect(moving.images).toBeGreaterThan(initial.images)
+    expect(moving.buffers).toHaveLength(7)
+    await page.emulateMedia({ reducedMotion: "reduce" })
+    const ambient = page.locator(".welcome-ambient")
+    const frame = () => ambient.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
+    const beforeTheme = await frame()
+    const cached = await readCounts()
+    await page.getByRole("button", { name: "Theme", exact: true }).click()
+    await page.waitForFunction(
+      (snapshot) => document.querySelector<HTMLCanvasElement>(".welcome-ambient")?.toDataURL() !== snapshot,
+      beforeTheme,
+    )
+    const themed = await readCounts()
+    expect(themed.cells - cached.cells).toBe(initial.cells)
+    expect(themed.buffers).toEqual(initial.buffers)
+    await page.setViewportSize({ width: 375, height: 700 })
+    await page.waitForFunction(() => document.querySelector<HTMLCanvasElement>(".welcome-ambient")!.clientWidth < 400)
+    await page.waitForFunction(
+      (previous) =>
+        (window as unknown as { ambientDrawCounts: () => { images: number } }).ambientDrawCounts().images > previous,
+      themed.images,
+    )
+    expect((await readCounts()).cells).toBe(themed.cells)
+    await page.getByRole("button", { name: "Mount", exact: true }).click()
+    expect((await readCounts()).buffers).toEqual(Array.from({ length: 7 }, () => ({ width: 0, height: 0 })))
+    expect(await page.locator(".welcome-ambient").count()).toBe(0)
+    expect(errors).toEqual([])
+  } finally {
+    await page.evaluate(() => (window as unknown as { restoreAmbientDrawing: () => void }).restoreAmbientDrawing())
+    await page.emulateMedia({ reducedMotion: "no-preference" })
+  }
+})
+
+test("ambient caching preserves cell coverage at real integer and fractional device scales", async () => {
+  for (const deviceScaleFactor of [1, 1.25, 1.5, 2]) {
+    const context = await browser.newContext({ deviceScaleFactor, reducedMotion: "reduce" })
+    const scaled = await context.newPage()
+    try {
+      for (const width of [960, 375])
+        for (const colorScheme of ["light", "dark"] as const) {
+          await scaled.setViewportSize({ width, height: 920 })
+          await scaled.emulateMedia({ colorScheme })
+          await scaled.goto(`${url}?scene=flight`)
+          await scaled.locator(".welcome-game-canvas").waitFor()
+          await scaled.waitForFunction(() => document.querySelector<HTMLCanvasElement>(".welcome-ambient")?.width)
+          const result = await scaled.evaluate(() => {
+            const canvas = document.querySelector<HTMLCanvasElement>(".welcome-ambient")!
+            const actual = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height).data
+            const expected = (window as unknown as { ambientReference: () => Uint8ClampedArray }).ambientReference()
+            let occupiedMismatch = 0,
+              maxAlpha = 0,
+              maxComposite = 0
+            for (let index = 0; index < actual.length; index += 4) {
+              const a = actual[index + 3]!,
+                b = expected[index + 3]!
+              if (a > 0 !== b > 0) occupiedMismatch++
+              maxAlpha = Math.max(maxAlpha, Math.abs(a - b))
+              for (let color = 0; color < 3; color++)
+                for (const background of [0, 255]) {
+                  const ac = Math.round((actual[index + color]! * a + background * (255 - a)) / 255)
+                  const bc = Math.round((expected[index + color]! * b + background * (255 - b)) / 255)
+                  maxComposite = Math.max(maxComposite, Math.abs(ac - bc))
+                }
+            }
+            return { dpr: devicePixelRatio, occupiedMismatch, maxAlpha, maxComposite }
+          })
+          expect(result.dpr).toBe(deviceScaleFactor)
+          expect(result.occupiedMismatch).toBe(0)
+          expect(result.maxAlpha).toBe(0)
+          expect(result.maxComposite).toBeLessThanOrEqual(1)
+        }
+    } finally {
+      await context.close()
+    }
+  }
+}, 60000)
 
 test("ambient motion continues when outside clicks and keyboard focus pause play", async () => {
   await page.setViewportSize({ width: 960, height: 920 })
