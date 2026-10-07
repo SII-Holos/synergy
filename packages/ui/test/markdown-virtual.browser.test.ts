@@ -53,7 +53,7 @@ beforeAll(async () => {
     }
     configureClipboard({writer: value=>{ copies.push(value);return true }})
     const i18n = setupI18n({locale:"en",messages:{en:{}}})
-    render(()=><I18nProvider i18n={i18n}><MarkedProvider><ResourceOpenProvider value={resources}><div id="scroller" style="height:480px;overflow:auto;width:720px"><Markdown text={text()} streaming={streaming()} cacheKey={"fixture:"+identity()} /></div></ResourceOpenProvider></MarkedProvider></I18nProvider>,document.getElementById("root")!)
+    render(()=><I18nProvider i18n={i18n}><MarkedProvider><ResourceOpenProvider value={resources}><div id="scroller" data-scroll-viewport="vertical" style="height:480px;overflow:auto;width:720px"><div id="horizontal-host"><Markdown text={text()} streaming={streaming()} cacheKey={"fixture:"+identity()} /></div></div></ResourceOpenProvider></MarkedProvider></I18nProvider>,document.getElementById("root")!)
     Object.assign(window,{markdownFixture:{setText,setStreaming,beginStream(text:string){batch(()=>{setIdentity(value=>value+1);setText(text);setStreaming(true)})},copies,code,opened}, async paragraphRanges(text:string){const parser=createMarkdownParser();try{return (await parseMarkdownDocument(parser,text)).blocks.map(block=>block.source)}finally{parser.dispose()}}, async runStreamProbe(){
       const root=document.createElement("div")
       root.dataset.component="markdown";root.style.cssText="position:fixed;top:0;width:300px"
@@ -99,6 +99,22 @@ beforeAll(async () => {
       const result={cached:!!cache,reused:layout(reused.root),fresh:layout(fresh.root)}
       reused.dispose();fresh.dispose();for(const host of hosts)host.remove();parser.dispose()
       return result
+    }, async mountColdVerticalOwner(){
+      const parser=createMarkdownParser()
+      const parsed=await parseMarkdownDocument(parser,Array.from({length:1000},(_,index)=>"Cold owner paragraph "+index+". "+"Reading stays in this viewport. ".repeat(4)+"\\n\\n").join(""))
+      const scroller=document.createElement("div")
+      scroller.id="cold-scroller";scroller.dataset.scrollViewport="vertical"
+      scroller.style.cssText="position:fixed;top:0;left:0;height:280px;overflow:auto;width:480px"
+      const horizontal=document.createElement("div")
+      horizontal.style.overflowX="auto"
+      const root=document.createElement("div")
+      root.dataset.component="markdown"
+      horizontal.append(root);scroller.append(horizontal);document.body.append(scroller)
+      const initial={scrollHeight:scroller.scrollHeight,clientHeight:scroller.clientHeight}
+      const dispose=render(()=><MarkdownDocumentView root={root} document={parsed} cacheUpdated={()=>{}} enhance={()=>()=>{}}/>,root)
+      Object.assign(window,{coldOwner:{scroller,root,dispose:()=>{dispose();scroller.remove();parser.dispose()}}})
+      await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())))
+      return {...initial,count:root.querySelectorAll("[data-markdown-block]").length}
     }, async mountMeasured(entry:string, sizes:number[], windowed:boolean){
       const scroller=document.createElement("div")
       scroller.style.cssText=windowed?"position:absolute;top:137px;left:0;width:300px":"position:fixed;top:0;left:0;width:300px;height:200px;overflow:auto"
@@ -520,7 +536,15 @@ const prose = Array.from(
   { length: 180 },
   (_, index) => `Review paragraph ${index}. ${"Stable reading content. ".repeat(24)}\n\n`,
 ).join("")
-type HandoffCase = { name: string; text: string; target: string; image?: boolean; windowed?: boolean; narrow?: boolean }
+type HandoffCase = {
+  name: string
+  text: string
+  target: string
+  image?: boolean
+  windowed?: boolean
+  narrow?: boolean
+  horizontal?: boolean
+}
 const handoffCases: HandoffCase[] = [
   {
     name: "a code block with leading blank lines",
@@ -550,6 +574,12 @@ const handoffCases: HandoffCase[] = [
   },
   { name: "window scrolling with a nonzero root margin", text: prose, target: "Review paragraph 80.", windowed: true },
   { name: "narrow resized typography and reduced motion", text: prose, target: "Review paragraph 80.", narrow: true },
+  {
+    name: "a giant paragraph inside a horizontal overflow ancestor",
+    text: "prefix words ".repeat(1600) + "Interior reading target " + "following words ".repeat(4000),
+    target: "Interior reading target",
+    horizontal: true,
+  },
 ]
 
 test("selection and focus postpone terminal adoption until their owner releases", async () => {
@@ -621,6 +651,8 @@ test.each([false, true].flatMap((windowed) => ["wheel", "Space"].map((input) => 
         scroller.style.cssText = windowed
           ? "height:auto;overflow:visible;width:720px"
           : "height:480px;overflow:auto;width:720px"
+        if (windowed) scroller.removeAttribute("data-scroll-viewport")
+        else scroller.dataset.scrollViewport = "vertical"
         scroller.tabIndex = 0
         document.getElementById("root")!.style.paddingTop = "137px"
         window.scrollTo(0, 0)
@@ -720,6 +752,7 @@ test.each([
         const scroller = document.getElementById("scroller")!
         delete (scroller as unknown as { scrollTop?: number }).scrollTop
         scroller.style.cssText = "height:480px;overflow:auto;width:720px"
+        scroller.dataset.scrollViewport = "vertical"
         scroller.tabIndex = 0
         document.getElementById("root")!.style.paddingTop = "137px"
         window.scrollTo(0, 0)
@@ -847,9 +880,12 @@ test.each(handoffCases.map((scenario) => [scenario.name, scenario] as const))(
       ;(document.activeElement as HTMLElement)?.blur()
       const scroller = document.getElementById("scroller")!
       scroller.style.overflow = scenario.windowed ? "visible" : "auto"
+      if (scenario.windowed) scroller.removeAttribute("data-scroll-viewport")
+      else scroller.dataset.scrollViewport = "vertical"
       scroller.style.height = scenario.windowed ? "auto" : "480px"
       scroller.style.width = scenario.narrow ? "420px" : "720px"
       scroller.style.fontSize = scenario.narrow ? "18px" : ""
+      document.getElementById("horizontal-host")!.style.overflowX = scenario.horizontal ? "auto" : ""
       document.getElementById("root")!.style.paddingTop = scenario.windowed ? "137px" : "37px"
       window.scrollTo(0, 0)
       ;(window as unknown as { markdownFixture: { beginStream(text: string): void } }).markdownFixture.beginStream(
@@ -906,7 +942,7 @@ test.each(handoffCases.map((scenario) => [scenario.name, scenario] as const))(
           )
         : undefined
     const result = await page.evaluate(
-      async ({ target, image, windowed, text, ranges }) => {
+      async ({ target, image, windowed, horizontal, text, ranges }) => {
         const scroller = document.getElementById("scroller")!
         const root = scroller.querySelector<HTMLElement>('[data-component="markdown"]')!
         const point = () => {
@@ -989,7 +1025,7 @@ test.each(handoffCases.map((scenario) => [scenario.name, scenario] as const))(
           const frame = () => {
             frames.push(readingOffset())
             targetFrames.push(offset())
-            if (frames.length === 45) resolve()
+            if (frames.length === (horizontal ? 90 : 45)) resolve()
             else requestAnimationFrame(frame)
           }
           requestAnimationFrame(frame)
@@ -1026,3 +1062,28 @@ test.each(handoffCases.map((scenario) => [scenario.name, scenario] as const))(
   },
   30_000,
 )
+
+test("an initially empty vertical owner keeps terminal scrolling after its document overflows", async () => {
+  const initial = await page.evaluate(() =>
+    (
+      window as unknown as {
+        mountColdVerticalOwner(): Promise<{ scrollHeight: number; clientHeight: number; count: number }>
+      }
+    ).mountColdVerticalOwner(),
+  )
+  try {
+    expect(initial.scrollHeight).toBe(initial.clientHeight)
+    expect(initial.count).toBeLessThan(30)
+    await page.locator("#cold-scroller").hover()
+    await page.mouse.wheel(0, 2000)
+    await page.waitForFunction(() => document.querySelector("#cold-scroller")!.scrollTop > 1000)
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+    )
+    expect(await page.locator("#cold-scroller [data-markdown-block]").count()).toBeLessThan(30)
+    expect(await page.locator("#cold-scroller").textContent()).not.toContain("Cold owner paragraph 0.")
+    expect(errors).toEqual([])
+  } finally {
+    await page.evaluate(() => (window as unknown as { coldOwner: { dispose(): void } }).coldOwner.dispose())
+  }
+}, 30_000)

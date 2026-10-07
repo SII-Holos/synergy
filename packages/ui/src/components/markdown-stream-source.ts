@@ -1,4 +1,5 @@
 import type { MarkdownDocument } from "../context/markdown-document"
+import { markdownScrollViewport } from "./markdown-scroll-viewport"
 
 export type MarkdownLayoutSignature = { width: number; font: string }
 
@@ -105,12 +106,7 @@ export function createMarkdownStreamSource(root: HTMLElement) {
       const tops = document.blocks.map((block) => position(block.source.start))
       const sizes = tops.map((top, index) => Math.max(1, (tops[index + 1] ?? bounds.bottom) - top))
       sizes[0] += Math.max(0, tops[0] - bounds.top)
-      let scroller: HTMLElement | undefined
-      for (let parent = root.parentElement; parent; parent = parent.parentElement)
-        if (["auto", "scroll"].includes(getComputedStyle(parent).overflowY)) {
-          scroller = parent
-          break
-        }
+      const scroller = markdownScrollViewport(root)
       const viewportTop = scroller?.getBoundingClientRect().top ?? 0
       const viewportBottom = scroller ? viewportTop + scroller.clientHeight : window.innerHeight
       let reading: { source: number; top: number } | undefined

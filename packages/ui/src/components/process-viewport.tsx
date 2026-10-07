@@ -340,6 +340,7 @@ export function ProcessViewport(
       </Show>
       <div
         data-component="process-viewport"
+        data-scroll-viewport="vertical"
         data-overflow={overflow() ? "" : undefined}
         role="region"
         aria-label={_({ id: "session.process.records", message: "Process history" })}

@@ -5,12 +5,7 @@ import { sanitizeHtml } from "./markdown-sanitize"
 import { markdownLayoutSignature, type MarkdownStreamLayout } from "./markdown-stream-source"
 import type { MarkdownLayoutCache } from "./markdown-render"
 import { markdownReadingPoint } from "./markdown-reading"
-
-function scrollContainer(root: HTMLElement) {
-  for (let parent = root.parentElement; parent; parent = parent.parentElement) {
-    if (["auto", "scroll"].includes(getComputedStyle(parent).overflowY)) return parent
-  }
-}
+import { markdownScrollViewport } from "./markdown-scroll-viewport"
 
 export function MarkdownDocumentView(props: {
   root: HTMLDivElement
@@ -20,7 +15,7 @@ export function MarkdownDocumentView(props: {
   cacheUpdated(cache: MarkdownLayoutCache | undefined): void
   enhance(root: HTMLDivElement, source?: string): () => void
 }) {
-  const scroller = scrollContainer(props.root)
+  const scroller = markdownScrollViewport(props.root)
   const signature = markdownLayoutSignature(props.root)
   const matches = (layout: MarkdownLayoutCache | MarkdownStreamLayout | undefined) =>
     layout?.width === signature.width && layout.font === signature.font
