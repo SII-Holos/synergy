@@ -28,7 +28,7 @@ The viewport's initial visibility gate still allowed virtualized children with e
 - [Browser viewport regression](../../apps/web/test/components/session/conversation-row-retention.test.ts) independently delays bodies and layout, verifies pending rows retain geometry without painting, then checks visible pixels through streaming and target replacement.
 - [Latest-following regression](../../packages/ui/test/hooks/create-auto-scroll.test.ts) checks that delayed growth lands before another frame and explicit reading cancels following.
 - [Shell lifecycle regression](../../apps/web/test/plugin/shell-surface.test.ts) checks module reuse without retaining the previous Session’s services.
-- [Production navigation verification](../../apps/web/test/fixtures/workbench/verify-session-switch.ts) delays capability reads and event replay, then checks every admitted frame for bodies and latest positioning across cached switches, both themes and phone layout.
+- [Production navigation verification](../../apps/web/test/fixtures/workbench/verify-session-switch.ts) delays capability reads and event replay, then checks pending rows for exposure and every admitted frame for bodies and latest positioning across cached and rapid switches, both themes and phone layout.
 - [The frontend workflow](../../.synergy/skill/develop-frontend/SKILL.md) records composed navigation verification; [the decision](../decisions/implemented/bug-fix/2026-10-07-session-switch-display-admission.md) records bounds and tradeoffs.
 
 ## Lessons
