@@ -1,22 +1,12 @@
-import { execFileSync } from "node:child_process"
 import path from "node:path"
 import ts from "typescript"
-import { revisionFiles } from "./catalog"
-import { imports } from "../workspace-dependencies"
+import type { RevisionSnapshot } from "./revision"
 import type { Task, TaskInputs, WorkspaceInput } from "./plan"
 export { selectionInputs } from "./selection-inputs"
 
-export async function taskInputs(root: string, revision: string, tasks: Task[], workspaces: WorkspaceInput[]) {
-  const files = execFileSync("git", ["ls-tree", "-r", "--name-only", revision], { cwd: root, encoding: "utf8" })
-    .trim()
-    .split("\n")
-  const inventory = new Set(files)
-  const source = revisionFiles(
-    root,
-    revision,
-    files.filter((file) => /\.[cm]?[jt]sx?$/.test(file) || /(?:^|\/)(?:tsconfig|package)\.json$/.test(file)),
-  )
-  const read = (file: string) => source.get(file) ?? ""
+export async function taskInputs(snapshot: RevisionSnapshot, tasks: Task[], workspaces: WorkspaceInput[]) {
+  const { files, inventory } = snapshot
+  const read = (file: string) => snapshot.required(file)
   const owner = (file: string) => workspaces.find((entry) => file.startsWith(entry.directory + "/"))
   const aliases = new Map<string, { complete: boolean; source: boolean }>()
   for (const workspace of workspaces) {
@@ -60,7 +50,7 @@ export async function taskInputs(root: string, revision: string, tasks: Task[], 
       .flatMap(([, target]) => exportTargets(target))
   }
   const publicInputs = (workspace: WorkspaceInput, specifier: string) => {
-    const manifest = JSON.parse(read(`${workspace.directory}/package.json`) || "{}") as {
+    const manifest = JSON.parse(read(`${workspace.directory}/package.json`)) as {
       exports?: unknown
       main?: string
     }
@@ -90,36 +80,13 @@ export async function taskInputs(root: string, revision: string, tasks: Task[], 
       target.startsWith("./") ? resolve(path.posix.join(workspace.directory, target)) : undefined,
     )
   }
-  const analyses = new Map<string, { complete: boolean; specifiers: string[] }>()
   const analyze = (file: string) => {
-    const existing = analyses.get(file)
-    if (existing) return existing
     const workspace = owner(file)
-    const result = {
-      complete: !workspace || aliases.get(workspace.directory)?.complete !== false,
-      specifiers: imports(file, read(file)),
+    const facts = snapshot.facts(file)
+    return {
+      complete: (!workspace || aliases.get(workspace.directory)?.complete !== false) && !facts.dynamicReferences,
+      specifiers: facts.specifiers,
     }
-    const syntax = ts.createSourceFile(file, read(file), ts.ScriptTarget.Latest, true)
-    const inspect = (node: ts.Node) => {
-      if (
-        ts.isCallExpression(node) &&
-        (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-          ["require", "import.meta.resolve"].includes(node.expression.getText(syntax))) &&
-        (!node.arguments[0] || !ts.isStringLiteralLike(node.arguments[0]))
-      )
-        result.complete = false
-      if (
-        ts.isNewExpression(node) &&
-        node.expression.getText(syntax) === "URL" &&
-        node.arguments?.[1]?.getText(syntax) === "import.meta.url" &&
-        (!node.arguments[0] || !ts.isStringLiteralLike(node.arguments[0]))
-      )
-        result.complete = false
-      ts.forEachChild(node, inspect)
-    }
-    inspect(syntax)
-    analyses.set(file, result)
-    return result
   }
   const results: Record<string, TaskInputs> = {}
   for (const task of tasks.filter((task) => task.inputs)) {

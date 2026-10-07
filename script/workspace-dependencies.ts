@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import path from "node:path"
-import ts from "typescript"
+import { analyzeSource } from "./source-analysis"
 import { workspaces, workspaceGraph } from "./workspace-manifest"
 export { workspaces, workspaceGraph, type Workspace } from "./workspace-manifest"
 
@@ -14,32 +14,7 @@ export function sourceFiles(directory: string): string[] {
 }
 
 export function imports(file: string, source: string): string[] {
-  const syntax = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true)
-  const result = new Set<string>()
-  function visit(node: ts.Node) {
-    if (ts.isStringLiteralLike(node)) {
-      const parent = node.parent
-      if (
-        (ts.isModuleDeclaration(parent) && parent.name === node) ||
-        (ts.isLiteralTypeNode(parent) && ts.isImportTypeNode(parent.parent)) ||
-        (ts.isImportDeclaration(parent) && parent.moduleSpecifier === node) ||
-        (ts.isExportDeclaration(parent) && parent.moduleSpecifier === node) ||
-        (ts.isNewExpression(parent) &&
-          parent.expression.getText(syntax) === "URL" &&
-          parent.arguments?.[0] === node &&
-          parent.arguments?.[1]?.getText(syntax) === "import.meta.url") ||
-        (ts.isCallExpression(parent) &&
-          parent.arguments[0] === node &&
-          (parent.expression.kind === ts.SyntaxKind.ImportKeyword ||
-            ["require", "import.meta.resolve"].includes(parent.expression.getText(syntax))))
-      ) {
-        result.add(node.text)
-      }
-    }
-    ts.forEachChild(node, visit)
-  }
-  visit(syntax)
-  return [...result]
+  return analyzeSource(file, source).specifiers
 }
 
 export function cycles(edges: Record<string, string[]>): string[][] {

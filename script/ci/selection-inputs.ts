@@ -1,11 +1,9 @@
-import { execFileSync } from "node:child_process"
 import path from "node:path"
 import ts from "typescript"
-import { revisionFiles } from "./catalog"
+import type { RevisionSnapshot } from "./revision"
 import { coverageChanges } from "./coverage-selection"
 import type { WorkspaceInput } from "./plan"
 import type { SelectionChanges } from "./selection"
-import { imports } from "../workspace-dependencies"
 
 function parse(source: string | undefined): unknown {
   try {
@@ -25,26 +23,18 @@ function targets(value: unknown): string[] {
   return record(value) ? Object.values(value).flatMap(targets) : []
 }
 
-function leafTests(root: string, revision: string, candidates: string[], workspaces: WorkspaceInput[]) {
-  const files = execFileSync("git", ["ls-tree", "-r", "--name-only", revision], { cwd: root, encoding: "utf8" })
-    .trim()
-    .split("\n")
-  const inventory = new Set(files)
-  const source = revisionFiles(
-    root,
-    revision,
-    files.filter((file) => /\.[cm]?[jt]sx?$/.test(file) || /(?:^|\/)(?:package|tsconfig[^/]*)\.json$/.test(file)),
-  )
+function leafTests(snapshot: RevisionSnapshot, candidates: string[], workspaces: WorkspaceInput[]) {
+  const { inventory, sources: source } = snapshot
   const owner = (file: string) => workspaces.find((entry) => file.startsWith(entry.directory + "/"))
   const manifests = new Map(
-    workspaces.map((entry) => [entry.name, parse(source.get(`${entry.directory}/package.json`))]),
+    workspaces.map((entry) => [entry.name, parse(snapshot.read(`${entry.directory}/package.json`))]),
   )
   const aliases = new Map<string, boolean>()
   function knownAliases(file: string, active = new Set<string>()): boolean {
     if (aliases.has(file)) return aliases.get(file)!
-    if (active.has(file) || !source.has(file)) return false
+    if (active.has(file) || !inventory.has(file)) return false
     active.add(file)
-    const parsed = ts.parseConfigFileTextToJson(file, source.get(file)!)
+    const parsed = ts.parseConfigFileTextToJson(file, snapshot.required(file))
     const config: unknown = parsed.config
     if (parsed.error || !record(config)) return false
     if (config.extends && config.extends !== "@tsconfig/bun/tsconfig.json") {
@@ -108,42 +98,16 @@ function leafTests(root: string, revision: string, candidates: string[], workspa
       !candidates.some((candidate) => consumers.get(candidate)?.has(entry?.name))
     )
       continue
-    const syntax = ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true)
+    const facts = snapshot.facts(file)
     const config = entry && `${entry.directory}/tsconfig.json`
-    let unresolved = !!config && source.has(config) && !knownAliases(config)
-    const inspect = (node: ts.Node) => {
-      if (
-        eligible.has(file) &&
-        (ts.isExportDeclaration(node) ||
-          ts.isExportAssignment(node) ||
-          (ts.canHaveModifiers(node) &&
-            ts.getModifiers(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)))
-      )
-        eligible.delete(file)
-      if (ts.isStringLiteralLike(node)) {
-        for (const target of [node.text, path.posix.normalize(path.posix.join(path.posix.dirname(file), node.text))])
-          for (const candidate of candidateFor(target)) if (candidate !== file) eligible.delete(candidate)
-      }
-      if (
-        ts.isCallExpression(node) &&
-        (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-          ["require", "import.meta.resolve", "Bun.file", "readFile", "readFileSync"].includes(
-            node.expression.getText(syntax),
-          )) &&
-        (!node.arguments[0] || !ts.isStringLiteralLike(node.arguments[0]))
-      )
-        unresolved = true
-      if (
-        ts.isNewExpression(node) &&
-        node.expression.getText(syntax) === "URL" &&
-        node.arguments?.[1]?.getText(syntax) === "import.meta.url" &&
-        (!node.arguments[0] || !ts.isStringLiteralLike(node.arguments[0]))
-      )
-        unresolved = true
-      ts.forEachChild(node, inspect)
+    let unresolved =
+      (!!config && inventory.has(config) && !knownAliases(config)) || facts.dynamicReferences || facts.dynamicReads
+    if (facts.hasExports) eligible.delete(file)
+    for (const literal of facts.literals) {
+      for (const target of [literal, path.posix.normalize(path.posix.join(path.posix.dirname(file), literal))])
+        for (const candidate of candidateFor(target)) if (candidate !== file) eligible.delete(candidate)
     }
-    inspect(syntax)
-    for (const specifier of imports(file, content)) {
+    for (const specifier of facts.specifiers) {
       if (specifier.startsWith(".")) continue
       const dependency = workspaces.find(
         (workspace) => specifier === workspace.name || specifier.startsWith(workspace.name + "/"),
@@ -180,9 +144,8 @@ function leafTests(root: string, revision: string, candidates: string[], workspa
 }
 
 export async function selectionInputs(
-  root: string,
-  base: string,
-  head: string,
+  base: RevisionSnapshot,
+  head: RevisionSnapshot,
   changed: string[],
   baseWorkspaces: WorkspaceInput[],
   headWorkspaces: WorkspaceInput[],
@@ -190,12 +153,7 @@ export async function selectionInputs(
   const result: SelectionChanges = { leafTests: [] }
   if (changed.includes("script/coverage-exempt.json")) {
     const file = "script/coverage-exempt.json"
-    result.coverage = coverageChanges(
-      parse(revisionFiles(root, base, [file]).get(file)),
-      parse(revisionFiles(root, head, [file]).get(file)),
-      baseWorkspaces,
-      headWorkspaces,
-    )
+    result.coverage = coverageChanges(parse(base.read(file)), parse(head.read(file)), baseWorkspaces, headWorkspaces)
   }
   const candidates = changed.filter(
     (file) =>
@@ -209,8 +167,8 @@ export async function selectionInputs(
       ),
   )
   if (!candidates.length) return result
-  const before = leafTests(root, base, candidates, baseWorkspaces)
-  const after = base === head ? before : leafTests(root, head, candidates, headWorkspaces)
+  const before = leafTests(base, candidates, baseWorkspaces)
+  const after = base === head ? before : leafTests(head, candidates, headWorkspaces)
   result.leafTests = candidates
     .filter(
       (file) =>
