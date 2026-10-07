@@ -30,6 +30,7 @@ Use the next `NNNN-kebab-case-title.md`. Sections:
 
 ## Index
 
+- [0057: Conversation lifetime](0057-conversation-rendering-lifetime-and-scope-retention.md)
 - [0056: PostgreSQL cleanup](0056-postgres-node-cleanup-repeated-candidates.md)
 - [0055: Workspace tool discovery](0055-discovery-omitted-workspace-selection.md)
 - [0054: Logical file paths](0054-logical-workspace-path-classification.md)

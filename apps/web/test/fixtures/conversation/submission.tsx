@@ -208,6 +208,7 @@ export function SubmissionFixture(props: { locale(): void }) {
                   contentClass="session-content-column"
                 >
                   <VirtualConversationRows
+                    layoutOwner={["http://localhost", "/project", "session"]}
                     context={context as PluginConversationService}
                     scrollRef={scroll()}
                     messageKey={(id) => state.messageIdentity.key(owner, id)}

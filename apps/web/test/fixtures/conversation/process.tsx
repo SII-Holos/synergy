@@ -8,7 +8,7 @@ import type {
   SessionActivity,
 } from "@ericsanchezok/synergy-sdk"
 import type { Data } from "@ericsanchezok/synergy-ui/context/data"
-import { createSignal, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, on, Show, type ParentProps } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { render } from "solid-js/web"
 import { setupI18n } from "@lingui/core"
@@ -25,6 +25,8 @@ import { createPartMaterializer } from "../../../src/context/part-materializer"
 import { createPartArrivalState } from "../../../src/context/part-arrival"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { reasoningItemKey } from "@ericsanchezok/synergy-util/reasoning-item"
+import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
+import { captureConversationReadingAnchor } from "../../../src/components/session/conversation-reading-anchor"
 
 const root: UserMessage = {
   id: "root",
@@ -109,6 +111,7 @@ const [expanded, setExpanded] = createStore<Record<string, boolean>>({})
 const [scroll, setScroll] = createSignal<HTMLDivElement>()
 const [versions, setVersions] = createStore<Record<string, string>>({})
 const [hasPage, setHasPage] = createSignal(true)
+const [pageStale, setPageStale] = createSignal(false)
 const [mounted, setMounted] = createSignal(true)
 const arrivals = createPartArrivalState()
 const arrivalOwner = ["http://localhost", "/project", "session"]
@@ -141,7 +144,26 @@ if (scenario) {
 }
 const canonicalParts =
   scenario === "late-reconnect" ? new Map(Object.entries(data.part).map(([id, parts]) => [id, [...parts]])) : undefined
+const scrolling = new URL(location.href).searchParams.has("scrolling")
+let summaryReads = 0
+const summaries = createMemo(() =>
+  Object.fromEntries(
+    Object.entries(data.part).map(([id, parts]) => [
+      id,
+      (canonicalParts?.get(id) ?? parts).map((p) => ({
+        ...p,
+        preview: "",
+        status: p.type === "tool" ? p.state.status : undefined,
+        reasoningKey: p.type === "reasoning" ? reasoningItemKey(p.metadata) : undefined,
+        content: { version: versions[p.id] ?? "v1", bytes: 64 },
+      })),
+    ]),
+  ),
+)
 let finishPage: (() => void) | undefined
+let pageRefresh: Promise<void> | undefined
+let finishPageRefresh: (() => void) | undefined
+let pageLoads = 0
 const pageReady = canonicalParts
   ? new Promise<void>((resolve) => {
       finishPage = resolve
@@ -225,13 +247,14 @@ let retained = 0
 let locate: ((messageID: string, behavior?: ScrollBehavior, partID?: string) => Promise<boolean>) | undefined
 const context: Partial<PluginConversationService> = {
   sessionID: "session",
-  timeline: () => [data.message.session[0]],
+  timeline: () => data.message.session.filter((message) => message.role === "user" && message.isRoot) as UserMessage[],
   lastUserMessage: () => root,
   turnProjection: () => ({
     roots: [],
     byRoot: new Map(),
     memberIndex: new Map(),
-    turnMessagesFor: () => data.message.session.slice(1),
+    turnMessagesFor: (turn = root) =>
+      data.message.session.filter((message) => message.rootID === turn.id && message.id !== turn.id),
     compactionParentIDs: new Set<string>(),
   }),
   activityDisplay: mode,
@@ -247,17 +270,25 @@ const context: Partial<PluginConversationService> = {
     return () => {}
   },
   content: {
-    summaries: (id) =>
-      (canonicalParts?.get(id) ?? data.part[id]).map((p) => ({
+    summaries: (id) => {
+      if (scrolling) {
+        summaryReads++
+        return summaries()[id]
+      }
+      return (canonicalParts?.get(id) ?? data.part[id]).map((p) => ({
         ...p,
         preview: "",
         status: p.type === "tool" ? p.state.status : undefined,
         reasoningKey: p.type === "reasoning" ? reasoningItemKey(p.metadata) : undefined,
         content: { version: versions[p.id] ?? "v1", bytes: 64 },
-      })),
-    page: () => (hasPage() ? { hasMore: false } : undefined),
+      }))
+    },
+    page: () => (hasPage() ? { hasMore: false, stale: pageStale() } : undefined),
     load: async () => {
+      pageLoads++
       await pageReady
+      await pageRefresh
+      setPageStale(false)
       setHasPage(true)
     },
     text: async () => "Final answer stays mounted.",
@@ -359,6 +390,19 @@ window.__conversationProcess = {
       Array.from({ length: count }, (_, i) => part("more", "many-" + i, "tool")),
     )
   },
+  restoreProcess(count: number) {
+    setData(
+      "part",
+      "more",
+      Array.from({ length: count }, (_, i) => part("more", "restored-" + i, "tool")),
+    )
+    setMounted(false)
+    queueMicrotask(() => setMounted(true))
+  },
+  backfill(count: number) {
+    context.autoScroll?.handleInteraction(new Event("history-load"))
+    window.__conversationProcess.hydrateBefore(count)
+  },
   hydrateBefore(count: number) {
     setData("part", "root", [
       part("root", "request", "text", "Describe the project"),
@@ -366,6 +410,21 @@ window.__conversationProcess = {
         part("root", `history-${index}`, "text", `Historical section ${index}`),
       ),
     ])
+  },
+  prependTurns(count: number) {
+    context.autoScroll?.handleInteraction(new Event("history-load"))
+    const older = Array.from(
+      { length: count },
+      (_, index): UserMessage => ({
+        ...root,
+        id: `earlier-turn-${index}`,
+        rootID: `earlier-turn-${index}`,
+        time: { created: -count + index },
+      }),
+    )
+    for (const message of older)
+      setData("part", message.id, [part(message.id, `${message.id}-text`, "text", `Earlier turn ${message.id}`)])
+    setData("message", "session", (messages) => [...older, ...messages])
   },
   prepend(count: number) {
     setData("part", "more", [
@@ -421,6 +480,7 @@ window.__conversationProcess = {
   locate: (messageID: string, partID?: string) => locate?.(messageID, "auto", partID) ?? Promise.resolve(false),
   reading: setReading,
   retained: () => retained,
+  summaryReads: () => summaryReads,
   contentRecover(id) {
     faults.delete(id)
     setVersions(id, `${versions[id] ?? "v1"}-recovered`)
@@ -443,7 +503,17 @@ window.__conversationProcess = {
   },
   contentPageFinish() {
     finishPage?.()
+    finishPageRefresh?.()
+    finishPageRefresh = undefined
+    pageRefresh = undefined
   },
+  contentStale() {
+    pageRefresh = new Promise<void>((resolve) => {
+      finishPageRefresh = resolve
+    })
+    setPageStale(true)
+  },
+  contentPageLoads: () => pageLoads,
 }
 const runtime = {
   statusFor: (): SessionStatus =>
@@ -466,6 +536,34 @@ const resource = {
   resolveWorkspacePath: (v: string) => v,
   openWorkspaceSource: () => false,
 }
+function Scroller(props: ParentProps) {
+  const autoScroll = scrolling
+    ? createAutoScroll({
+        working: context.isWorking!,
+        captureReadingAnchor: ({ reading, target }) => {
+          const element = scroll()
+          if (!element || !reading) return
+          return captureConversationReadingAnchor(element, () => scroll() === element, target)
+        },
+      })
+    : undefined
+  context.autoScroll = autoScroll
+  if (autoScroll) context.scrolledUp = () => reading() || autoScroll.userScrolled()
+  createEffect(on(scroll, (element) => autoScroll?.scrollRef(element)))
+  return (
+    <div
+      ref={setScroll}
+      onScroll={() => autoScroll?.handleScroll()}
+      style="height:600px;overflow:auto;width:700px;max-width:100%"
+      data-scroller
+    >
+      <div ref={(element) => autoScroll?.contentRef(element)}>{props.children}</div>
+      <button type="button" data-outside-control>
+        Outside conversation
+      </button>
+    </div>
+  )
+}
 render(
   () => (
     <I18nProvider i18n={setupI18n({ locale: "en", messages: { en: {} } })}>
@@ -475,9 +573,10 @@ render(
             <MarkedProvider>
               <DiffComponentProvider component={() => null}>
                 <DataProvider data={data} runtime={runtime} directory="/project" serverUrl="http://localhost">
-                  <div ref={setScroll} style="height:600px;overflow:auto;width:700px;max-width:100%" data-scroller>
+                  <Scroller>
                     <Show when={mounted()}>
                       <VirtualConversationRows
+                        layoutOwner={["http://localhost", "/project", "session"]}
                         takePartArrival={arrivalView.take}
                         liveRevision={arrivalView.revision}
                         context={context as PluginConversationService}
@@ -487,10 +586,7 @@ render(
                         connected={connected}
                       />
                     </Show>
-                    <button type="button" data-outside-control>
-                      Outside conversation
-                    </button>
-                  </div>
+                  </Scroller>
                 </DataProvider>
               </DiffComponentProvider>
             </MarkedProvider>

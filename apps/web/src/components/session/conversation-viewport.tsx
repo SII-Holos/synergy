@@ -6,9 +6,11 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import type { PluginConversationViewport } from "@ericsanchezok/synergy-plugin"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import "./conversation-viewport.css"
 
 export function ConversationViewport(props: {
   ready?: boolean
+  animateAdmission?: boolean
   scrolledUp: boolean
   onScrolledUpChange: (value: boolean) => void
   autoScroll: PluginConversationViewport
@@ -61,6 +63,7 @@ export function ConversationViewport(props: {
       </Show>
       <div
         data-conversation-viewport
+        data-ready={props.ready !== false}
         aria-hidden={props.ready === false}
         inert={props.ready === false}
         style={{ visibility: props.ready === false ? "hidden" : undefined }}
@@ -76,6 +79,7 @@ export function ConversationViewport(props: {
         }}
         onClick={props.autoScroll.handleInteraction}
         class="relative min-w-0 w-full h-full overflow-y-auto [overflow-x:clip] no-scrollbar md:pt-[58px] md:[scroll-padding-top:58px]"
+        classList={{ "conversation-viewport-admission": props.animateAdmission !== false }}
       >
         <Show when={props.stickyHeader}>{props.stickyHeader}</Show>
         <div

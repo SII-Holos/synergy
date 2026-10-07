@@ -1,43 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import {
-  adjustedScrollTop,
   adjustTrimScrollTop,
   computeTurnTrim,
-  selectPrependAnchor,
   shouldRecoverToLatest,
 } from "../../../src/components/session/session-history-scroll"
-
-describe("session history prepend scroll", () => {
-  test("keeps the first visible Part identity when one message spans several display rows", () => {
-    expect(
-      selectPrependAnchor(
-        [
-          { messageID: "message", rowKey: "part:earlier", top: -240, bottom: -140 },
-          { messageID: "message", rowKey: "part:visible", top: -40, bottom: 60 },
-          { messageID: "message", rowKey: "part:next", top: 60, bottom: 160 },
-        ],
-        0,
-      ),
-    ).toEqual({ messageID: "message", rowKey: "part:visible", offsetTop: -40 })
-  })
-
-  test("anchors the first message intersecting the viewport", () => {
-    expect(
-      selectPrependAnchor(
-        [
-          { messageID: "older", top: -120, bottom: -20 },
-          { messageID: "visible", top: -20, bottom: 80 },
-          { messageID: "next", top: 80, bottom: 180 },
-        ],
-        0,
-      ),
-    ).toEqual({ messageID: "visible", offsetTop: -20 })
-  })
-
-  test("compensates scrollTop by the anchored message displacement", () => {
-    expect(adjustedScrollTop({ scrollTop: 360, beforeOffsetTop: -20, afterOffsetTop: 180 })).toBe(560)
-  })
-})
 
 describe("adjustTrimScrollTop (top-trim removal direction)", () => {
   test("decreases scrollTop by the removed height to keep the same visual position", () => {

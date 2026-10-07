@@ -34,7 +34,10 @@ type Fixture = {
   terminal(): void
   complete(): void
   grow(count: number): void
+  restoreProcess(count: number): void
+  backfill(count: number): void
   hydrateBefore(count: number): void
+  prependTurns(count: number): void
   prepend(count: number): void
   delivery(): void
   manualCompaction(): void
@@ -43,12 +46,15 @@ type Fixture = {
   locate(messageID: string, partID?: string): Promise<boolean>
   reading(value: boolean): void
   retained(): number
+  summaryReads(): number
   contentRecover(id: string): void
   contentPending(id: string): void
   contentFinish(id: string): void
   contentReads(id: string): number
   contentReconnect(): void
   contentPageFinish(): void
+  contentStale(): void
+  contentPageLoads(): number
 }
 declare global {
   interface Window {
@@ -616,6 +622,26 @@ test("an unfocused process reader survives outer layout changes until an outer r
   await page.waitForFunction(() => !document.querySelector('[data-component="process-viewport"]'))
 })
 
+test("an already-paused process reader reacquires retention after another reader takes ownership", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => window.__conversationProcess.mode("full"))
+  await page.waitForFunction(() => document.querySelectorAll('[data-component="process-viewport"]').length === 2)
+  await page.evaluate(() => {
+    const [first, second] = document.querySelectorAll('[data-component="process-viewport"]')
+    for (const viewport of [first, second, first])
+      viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -1, bubbles: true }))
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+    window.__conversationProcess.hydrateBefore(80)
+  })
+  await page.locator("[data-scroller]").evaluate((scroller) => (scroller.scrollTop = 0))
+  await frames()
+  await frames()
+  await page.waitForFunction(() => document.querySelectorAll('[data-component="process-viewport"]').length === 1)
+  expect(await page.locator('[data-component="process-viewport"]').textContent()).toContain("Check evidence")
+  expect(await page.getByText("Continue checking", { exact: true }).count()).toBe(0)
+})
+
 test("reasoning chevrons appear on hover and focus and remain visible on touch", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
@@ -798,6 +824,7 @@ test("replayed additions and passive resize cannot follow a historical viewport"
   const viewport = page.locator('[data-component="process-viewport"]').last()
   await page.waitForTimeout(250)
   await viewport.evaluate((el) => {
+    el.dispatchEvent(new WheelEvent("wheel", { deltaY: -24, bubbles: true }))
     el.scrollTop = 40
     ;(el as HTMLElement).style.maxHeight = "200px"
   })
@@ -882,6 +909,27 @@ test("process edge fades blend into the conversation canvas in both themes", asy
   }
 })
 
+test("repeated process reading input does not rebuild unchanged conversation summaries", async () => {
+  await page.goto(`${url}?scrolling`)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => window.__conversationProcess.grow(600))
+  const batch = page.locator('[data-slot="activity-batch-trigger"]').last()
+  await batch.click()
+  await batch.click()
+  const viewport = page.locator('[data-component="process-viewport"]').last()
+  await viewport.waitFor()
+  await viewport.dispatchEvent("wheel", { deltaY: -1 })
+  await frames()
+  await frames()
+  const before = await page.evaluate(() => window.__conversationProcess.summaryReads())
+  for (let index = 0; index < 6; index++) {
+    await viewport.dispatchEvent("wheel", { deltaY: -1 })
+    await frames()
+  }
+  expect(await page.evaluate(() => window.__conversationProcess.summaryReads())).toBe(before)
+  expect(errors).toEqual([])
+})
+
 test("a long logical block uses a bounded independent viewport", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
@@ -908,6 +956,263 @@ test("a long logical block uses a bounded independent viewport", async () => {
   await page.locator('[data-slot="process-latest"]').waitFor({ state: "detached" })
   expect(await page.evaluate(() => window.__conversationProcess.retained())).toBeLessThan(120)
 })
+
+test("loading earlier turns from latest preserves the visible outer row before and after measurement", async () => {
+  await page.goto(`${url}?scrolling=1`)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.locator("[data-scroller]").evaluate((element) => {
+    element.style.height = "280px"
+  })
+  for (let index = 0; index < 4; index++) await frames()
+  const before = await page.locator("[data-scroller]").evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+    const bounds = element.getBoundingClientRect()
+    const row = [...element.querySelectorAll<HTMLElement>("[data-display-row]")].find((row) => {
+      const rect = row.getBoundingClientRect()
+      return (
+        !row.closest('[data-component="process-viewport"]') &&
+        rect.height > 0 &&
+        rect.bottom > bounds.top &&
+        rect.top < bounds.bottom
+      )
+    })!
+    return {
+      top: element.scrollTop,
+      key: row.dataset.displayRow!,
+      offset: row.getBoundingClientRect().top - bounds.top,
+    }
+  })
+  await frames()
+  expect(before.top).toBeGreaterThan(0)
+  await page.evaluate(() => window.__conversationProcess.prependTurns(120))
+  for (let index = 0; index < 8; index++) await frames()
+  const after = await page.locator("[data-scroller]").evaluate((element, key) => {
+    const row = [...element.querySelectorAll<HTMLElement>("[data-display-row]")].find(
+      (row) => row.dataset.displayRow === key,
+    )
+    return {
+      top: element.scrollTop,
+      offset: row ? row.getBoundingClientRect().top - element.getBoundingClientRect().top : undefined,
+    }
+  }, before.key)
+  expect(after.offset).toBeDefined()
+  expect(Math.abs(after.offset! - before.offset)).toBeLessThanOrEqual(2)
+  expect(after.top).toBeGreaterThan(before.top)
+})
+
+test("historical Part backfill preserves latest reading when retained rows move inside the same root", async () => {
+  await page.goto(`${url}?scrolling=1`)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.locator("[data-scroller]").evaluate((element) => {
+    element.style.height = "280px"
+  })
+  for (let index = 0; index < 4; index++) await frames()
+  const before = await page.locator("[data-scroller]").evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+    const row = element.querySelector<HTMLElement>('[data-display-row="root:process"]')!
+    return { offset: row.getBoundingClientRect().top - element.getBoundingClientRect().top, top: element.scrollTop }
+  })
+  await frames()
+  await page.evaluate(() => window.__conversationProcess.backfill(60))
+  for (let index = 0; index < 8; index++) await frames()
+  const after = await page.locator("[data-scroller]").evaluate((element) => {
+    const row = element.querySelector<HTMLElement>('[data-display-row="root:process"]')
+    return {
+      offset: row ? row.getBoundingClientRect().top - element.getBoundingClientRect().top : undefined,
+      top: element.scrollTop,
+    }
+  })
+  expect(after.offset).toBeDefined()
+  expect(Math.abs(after.offset! - before.offset)).toBeLessThanOrEqual(2)
+  expect(after.top).toBeGreaterThan(before.top)
+})
+
+test("native reading movement wins over real body growth in the same wheel dispatch", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.grow(1000)
+  })
+  for (let index = 0; index < 4; index++) await frames()
+  await page.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
+  const viewport = page.locator('[data-component="process-viewport"]').last()
+  await viewport.hover()
+  await frames()
+  const before = await viewport.evaluate((element) => {
+    const top = element.scrollTop
+    const height = element.scrollHeight
+    element.addEventListener(
+      "wheel",
+      () => {
+        const body = document.createElement("p")
+        body.textContent = "Late current-version output below the reading position. ".repeat(100)
+        ;[...element.querySelectorAll("[data-display-row]")].at(-1)!.append(body)
+      },
+      { once: true },
+    )
+    return { top, height }
+  })
+  await page.mouse.wheel(0, -120)
+  for (let index = 0; index < 4; index++) await frames()
+  const after = await viewport.evaluate((element) => ({ top: element.scrollTop, height: element.scrollHeight }))
+  expect(after.height).toBeGreaterThan(before.height)
+  expect(after.top).toBeLessThanOrEqual(before.top - 100)
+  await page.locator('[data-slot="process-latest"]').last().waitFor({ state: "visible" })
+})
+
+test("native Space paging preserves new reading when real body growth follows its first movement", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => window.__conversationProcess.grow(1000))
+  await page.evaluate(() => window.__conversationProcess.locate("more", "many-400"))
+  const viewport = page.locator('[data-component="process-viewport"]').last()
+  await viewport.focus()
+  for (let index = 0; index < 4; index++) await frames()
+  const before = await viewport.evaluate((element) => {
+    element.addEventListener(
+      "scroll",
+      () => {
+        const body = document.createElement("p")
+        body.textContent = "Late body while native paging is moving. ".repeat(100)
+        ;[...element.querySelectorAll("[data-display-row]")].at(-1)!.append(body)
+      },
+      { once: true },
+    )
+    return { top: element.scrollTop, height: element.scrollHeight }
+  })
+  await viewport.press("Space")
+  for (let index = 0; index < 12; index++) await frames()
+  const after = await viewport.evaluate((element) => ({ top: element.scrollTop, height: element.scrollHeight }))
+  expect(after.height).toBeGreaterThan(before.height)
+  expect(after.top).toBeGreaterThan(before.top + 100)
+})
+
+test("restoring an active process follows its current action after virtual body measurements", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.mode("full")
+    window.__conversationProcess.restoreProcess(80)
+  })
+  const viewport = page.locator('[data-component="process-viewport"]').last()
+  await viewport.waitFor()
+  for (let index = 0; index < 4; index++) await frames()
+  const restored = await viewport.evaluate((element) => {
+    const current = element.querySelector('[data-part-id="restored-79"]')
+    const bounds = element.getBoundingClientRect()
+    const row = current?.getBoundingClientRect()
+    return {
+      distance: element.scrollHeight - element.clientHeight - element.scrollTop,
+      currentVisible: !!row && row.height > 0 && row.bottom > bounds.top && row.top < bounds.bottom,
+    }
+  })
+  expect(restored.distance).toBeLessThanOrEqual(2)
+  expect(restored.currentVisible).toBe(true)
+})
+
+for (const scenario of [
+  { name: "starts with its accepted layout before new resize delivery", restores: true },
+  { name: "rejects measurements from a different width", width: 350 },
+  { name: "rejects measurements changed during a previous mounted resize", mountedWidth: 350, width: 700 },
+]) {
+  test(`a process revisit ${scenario.name}`, async () => {
+    await page.goto(url)
+    await page.getByText("I will check the project first.", { exact: true }).waitFor()
+    await page.evaluate(() => {
+      window.__conversationProcess.mode("full")
+      window.__conversationProcess.grow(80)
+      window.__conversationProcess.remount()
+    })
+    for (let index = 0; index < 4; index++) await frames()
+    if (scenario.mountedWidth) {
+      await page.evaluate((width) => {
+        document.querySelector<HTMLElement>("[data-scroller]")!.style.width = `${width}px`
+      }, scenario.mountedWidth)
+      for (let index = 0; index < 4; index++) await frames()
+    }
+    const layout = await page.evaluate(async (width) => {
+      const original = [...document.querySelectorAll<HTMLElement>('[data-component="process-viewport"]')].at(-1)!
+      const height = original.querySelector<HTMLElement>('[data-slot="process-viewport-content"] > div')!.style.height
+      const first = await new Promise<string>((resolve) => {
+        const observer = new MutationObserver(() => {
+          const current = [...document.querySelectorAll<HTMLElement>('[data-component="process-viewport"]')].at(-1)
+          if (!current || current === original) return
+          const content = current.querySelector<HTMLElement>('[data-slot="process-viewport-content"] > div')
+          if (!content) return
+          observer.disconnect()
+          resolve(content.style.height)
+        })
+        observer.observe(document.getElementById("root")!, { childList: true, subtree: true })
+        if (width) document.querySelector<HTMLElement>("[data-scroller]")!.style.width = `${width}px`
+        window.__conversationProcess.remount()
+      })
+      return { height, first }
+    }, scenario.width)
+    if (scenario.restores) expect(layout.first).toBe(layout.height)
+    else expect(layout.first).not.toBe(layout.height)
+  })
+}
+
+for (const detached of [false, true]) {
+  test(`same-version active body growth ${detached ? "preserves reading" : "follows the current action"} without arrival events`, async () => {
+    await page.goto(url)
+    await page.getByText("I will check the project first.", { exact: true }).waitFor()
+    await page.evaluate(() => {
+      window.__conversationProcess.mode("full")
+      window.__conversationProcess.grow(40)
+    })
+    const viewport = page.locator('[data-component="process-viewport"]').last()
+    await viewport.waitFor()
+    await viewport.evaluate((element) => {
+      element.scrollTop = element.scrollHeight
+      element.dispatchEvent(new Event("scroll"))
+    })
+    for (let index = 0; index < 3; index++) await frames()
+    const before = await viewport.evaluate(async (element, detached) => {
+      if (detached) {
+        element.dispatchEvent(new WheelEvent("wheel", { deltaY: -24, bubbles: true }))
+        element.scrollTop -= 24
+        element.dispatchEvent(new Event("scroll"))
+      }
+      const top = element.scrollTop
+      const height = element.scrollHeight
+      const content = element.querySelector<HTMLElement>('[data-slot="process-viewport-content"]')!
+      const contentHeight = content.getBoundingClientRect().height
+      const paint = new Promise<{ top: number; distance: number }>((resolve) => {
+        const observer = new ResizeObserver(() => {
+          if (content.getBoundingClientRect().height <= contentHeight) return
+          observer.disconnect()
+          requestAnimationFrame(() => {
+            resolve({
+              top: element.scrollTop,
+              distance: element.scrollHeight - element.clientHeight - element.scrollTop,
+            })
+          })
+        })
+        observer.observe(content)
+      })
+      const row = element.querySelector('[data-part-id="many-39"]')!
+      const lateBody = document.createElement("p")
+      lateBody.textContent = "Late current-version tool content. ".repeat(200)
+      row.append(lateBody)
+      return { top, height, paint: await paint }
+    }, detached)
+    for (let index = 0; index < 5; index++) await frames()
+    const after = await viewport.evaluate((element) => ({
+      top: element.scrollTop,
+      height: element.scrollHeight,
+      distance: element.scrollHeight - element.clientHeight - element.scrollTop,
+    }))
+    expect(after.height).toBeGreaterThan(before.height)
+    if (detached) {
+      expect(Math.abs(before.paint.top - before.top)).toBeLessThanOrEqual(1)
+      expect(Math.abs(after.top - before.top)).toBeLessThanOrEqual(1)
+    } else {
+      expect(before.paint.distance).toBeLessThanOrEqual(2)
+      expect(after.distance).toBeLessThanOrEqual(2)
+    }
+  })
+}
 
 test("a finished process can reach the end while retaining its outer conversation", async () => {
   await page.goto(url)
@@ -1018,6 +1323,11 @@ test("local reading survives new actions, history prepend and reopening without 
   const part = page.locator('[data-slot="activity-step"][data-part-id="many-400"]')
   const before = await part.evaluate((el) => el.getBoundingClientRect().top)
   const outer = await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)
+  await page.evaluate(() => window.__conversationProcess.append("live-reading-append"))
+  await frames()
+  await frames()
+  expect(Math.abs((await part.evaluate((el) => el.getBoundingClientRect().top)) - before)).toBeLessThan(2)
+  expect(await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)).toBe(outer)
   await page.evaluate(() => window.__conversationProcess.prepend(24))
   await frames()
   expect(Math.abs((await part.evaluate((el) => el.getBoundingClientRect().top)) - before)).toBeLessThan(2)
@@ -1045,6 +1355,15 @@ test("local reading survives new actions, history prepend and reopening without 
     ),
   ).toBeLessThan(2)
   expect(await page.evaluate(() => window.__conversationProcess.retained())).toBeLessThan(120)
+  await page.locator('[data-slot="process-latest"]').last().click()
+  await page.waitForFunction(() => {
+    const part = document.querySelector('[data-part-id="live-reading-append"]')
+    const viewport = part?.closest('[data-component="process-viewport"]')
+    if (!part || !viewport) return false
+    const bounds = viewport.getBoundingClientRect(),
+      row = part.getBoundingClientRect()
+    return row.height > 0 && row.bottom > bounds.top && row.top < bounds.bottom
+  })
 }, 30000)
 
 test("compaction has one compact lifecycle row and exposes running status while collapsed", async () => {
@@ -1308,6 +1627,29 @@ test("exhausted conflicts show a sync retry and malformed errors use a readable 
   expect(await page.getByRole("button", { name: "Retry loading content", exact: true }).count()).toBe(1)
   expect(errors).toEqual([])
 }, 60000)
+
+test("stale accepted summaries revalidate without removing current content or replaying its entrance", async () => {
+  await page.goto(url)
+  const prose = page.getByText("I will check the project first.", { exact: true })
+  await prose.waitFor()
+  await page.evaluate(() => {
+    window.answerNode = document.querySelector('[data-part-id="progress"] [data-component="markdown"]')
+    window.__conversationProcess.contentStale()
+  })
+  await frames()
+  expect(await page.evaluate(() => window.__conversationProcess.contentPageLoads())).toBeGreaterThan(0)
+  expect(await page.evaluate(() => !!window.answerNode?.isConnected)).toBe(true)
+  expect(await prose.count()).toBe(1)
+  await page.evaluate(() => window.__conversationProcess.contentPageFinish())
+  await frames()
+  expect(
+    await page.evaluate(
+      () => window.answerNode === document.querySelector('[data-part-id="progress"] [data-component="markdown"]'),
+    ),
+  ).toBe(true)
+  expect(await prose.count()).toBe(1)
+  expect(await page.locator('[data-part-id="progress"] [data-motion-changing]').count()).toBe(0)
+})
 
 test("reconnect renews invalidated body leases even when the summary version stays the same", async () => {
   await contentPage("conflict")
