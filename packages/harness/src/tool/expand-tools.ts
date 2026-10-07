@@ -200,6 +200,7 @@ export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => {
         changed,
         reason: params.reason,
         availableRequestedTools,
+        newlyVisibleTools,
         issues,
         availableGroups: availableGroups.map((group) => group.id),
       })
@@ -217,6 +218,7 @@ function formatOutput(input: {
   changed: boolean
   reason?: string
   availableRequestedTools: string[]
+  newlyVisibleTools: string[]
   issues: ExpandToolsIssues
   availableGroups: string[]
 }) {
@@ -234,9 +236,11 @@ function formatOutput(input: {
       : "No requested tools were made available."
 
   const issueLines = formatIssueLines(input.issues, input.availableGroups)
+  const companions = input.newlyVisibleTools.filter((id) => !input.availableRequestedTools.includes(id))
 
   return [
     status,
+    companions.length > 0 ? `Required companion tools are also available: ${companions.join(", ")}.` : undefined,
     input.reason ? `Reason: ${input.reason}` : undefined,
     input.availableRequestedTools.length > 0 ? "" : undefined,
     input.availableRequestedTools.length > 0 ? "You can call these tools directly:" : undefined,
