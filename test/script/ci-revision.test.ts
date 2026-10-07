@@ -11,7 +11,7 @@ import {
   RevisionSnapshot,
 } from "../../script/ci/revision"
 import { workspaceInputs } from "../../script/ci/catalog"
-import { taskInputs } from "../../script/ci/inputs"
+import { selectionInputs, taskInputs } from "../../script/ci/inputs"
 
 const revision = "a".repeat(40)
 const body = Buffer.from("export const fixture = 1\n")
@@ -119,6 +119,90 @@ test("absent task roots remain incomplete but inventory-present unloaded inputs 
       missing: { files: ["absent.ts"], packages: [], complete: false },
     })
     await expect(workspaceInputs(snapshot)).rejects.toThrow(RevisionInputError)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("valid gitlinks remain inventory entries without becoming source or leaf tests", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ci-gitlinks-"))
+  const git = (...args: string[]) =>
+    execFileSync("git", args, {
+      cwd: root,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "Fixture",
+        GIT_AUTHOR_EMAIL: "fixture@test",
+        GIT_COMMITTER_NAME: "Fixture",
+        GIT_COMMITTER_EMAIL: "fixture@test",
+      },
+    }).trim()
+  try {
+    git("init", "--quiet")
+    await Bun.write(path.join(root, "package.json"), JSON.stringify({ workspaces: { packages: ["packages/core"] } }))
+    await Bun.write(path.join(root, "packages/core/package.json"), JSON.stringify({ name: "core" }))
+    await Bun.write(path.join(root, "packages/core/test/linked.test.ts"), 'import "bun:test"')
+    await Bun.write(path.join(root, "packages/core/test/consumer.test.ts"), 'import "../src/linked.ts"')
+    git("add", ".")
+    git("commit", "--quiet", "-m", "base")
+    const base = git("rev-parse", "HEAD")
+    const before = new RevisionSnapshot(root, base)
+    const linked = "packages/core/src/linked.ts"
+    const linkedTest = "packages/core/test/linked.test.ts"
+    git("update-index", "--add", "--cacheinfo", `160000,${base},${linked}`)
+    git("update-index", "--add", "--cacheinfo", `160000,${"b".repeat(40)},${linkedTest}`)
+    git("commit", "--quiet", "-m", "linked inputs")
+    const snapshot = new RevisionSnapshot(root, git("rev-parse", "HEAD"))
+    expect(snapshot.inventory.get(linked)).toMatchObject({ mode: "160000", type: "commit", oid: base })
+    expect(snapshot.inventory.get(linkedTest)?.type).toBe("commit")
+    expect(snapshot.files).not.toContain(linked)
+    expect(snapshot.files).not.toContain(linkedTest)
+    expect(snapshot.sources.has(linked)).toBe(false)
+    expect(snapshot.read(linked)).toBeUndefined()
+    expect(() => snapshot.required(linked)).toThrow(RevisionInputError)
+    const workspaces = await workspaceInputs(snapshot)
+    expect(workspaces).toEqual([{ directory: "packages/core", name: "core", dependencies: [], testDependencies: [] }])
+    const tasks = [
+      {
+        id: "consumer",
+        kind: "rollout" as const,
+        pool: "linux" as const,
+        owners: ["packages/core"],
+        needs: [],
+        seconds: 1,
+        inputs: ["packages/core/test/consumer.test.ts"],
+      },
+      {
+        id: "root",
+        kind: "rollout" as const,
+        pool: "linux" as const,
+        owners: ["packages/core"],
+        needs: [],
+        seconds: 1,
+        inputs: [linkedTest],
+      },
+    ]
+    expect(await taskInputs(snapshot, tasks, workspaces)).toEqual({
+      consumer: {
+        files: ["packages/core/test/consumer.test.ts"],
+        packages: [],
+        complete: false,
+      },
+      root: { files: [linkedTest], packages: [], complete: false },
+    })
+    expect(await selectionInputs(snapshot, snapshot, [linkedTest], workspaces, workspaces)).toEqual({ leafTests: [] })
+    expect(await selectionInputs(before, snapshot, [linkedTest], workspaces, workspaces)).toEqual({ leafTests: [] })
+    expect(await selectionInputs(snapshot, before, [linkedTest], workspaces, workspaces)).toEqual({ leafTests: [] })
+    await Bun.write(path.join(root, linkedTest), 'import { test } from "bun:test"; test("restored", () => {})')
+    git("add", "--", linkedTest)
+    git("commit", "--quiet", "-m", "restored blob")
+    const restored = new RevisionSnapshot(root, git("rev-parse", "HEAD"))
+    expect(restored.inventory.get(linkedTest)?.type).toBe("blob")
+    expect(await selectionInputs(snapshot, restored, [linkedTest], workspaces, workspaces)).toEqual({ leafTests: [] })
+    expect(await selectionInputs(before, restored, [linkedTest], workspaces, workspaces)).toEqual({
+      leafTests: [linkedTest],
+    })
   } finally {
     await rm(root, { recursive: true, force: true })
   }

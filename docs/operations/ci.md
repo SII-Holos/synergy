@@ -16,7 +16,9 @@ PR 使用 base/head 两侧的 workspace、测试和静态资源导入关系计�
 
 普通包运行完整 suite；PostgreSQL 与长流任务另从实际测试入口追踪两侧输入。跨 workspace 输入包含生产和测试依赖；无法解析的别名、动态导入或资源使该任务对代码改动保守选中。输入图完整时才允许跳过未触及的昂贵任务。
 
-每次 `planInputs` 操作按完整提交 SHA 建立 `RevisionSnapshot`；base/head 相同则复用一次 inventory、一次 OID 寻址 blob batch 和每个源路径的紧凑分析事实，不保留 AST 或跨操作缓存。预读 JS/TS、`package.json`、`tsconfig*.json` 与存在的 coverage manifest，静态资源只保留路径。Git inventory 与 batch 严格校验 framing、对象类型、长度、顺序、数量和 blob SHA-1 后原子准入；inventory 中存在但未准入的请求输入以 `RevisionInputError` 使计划失败，不能替换为空源码或全量计划。真正缺失的任务入口仍标记不完整，可选配置缺失保持保守选择。取舍见 [revision 准入与分析复用决策](../decisions/implemented/bug-fix/2026-10-07-ci-revision-admission-and-analysis-reuse.md)。
+每次 `planInputs` 操作按完整提交 SHA 建立 `RevisionSnapshot`；base/head 相同则复用一次 inventory、一次 OID 寻址 blob batch 和每个源路径的紧凑分析事实，不保留 AST 或跨操作缓存。预读 JS/TS、`package.json`、`tsconfig*.json` 与存在的 coverage manifest，静态资源只保留路径。Git inventory 与 batch 严格校验 framing、对象类型、长度、顺序、数量和 blob SHA-1 后原子准入；inventory 中存在但未准入的请求 blob 输入以 `RevisionInputError` 使计划失败，不能替换为空源码或全量计划。真正缺失的任务入口仍标记不完整，可选配置缺失保持保守选择。取舍见 [revision 准入与分析复用决策](../decisions/implemented/bug-fix/2026-10-07-ci-revision-admission-and-analysis-reuse.md)。
+
+合法 gitlink 保留为 inventory 的 commit 条目，不进入文件清单、blob batch 或源分析；指向 gitlink 的任务入口及导入使输入图不完整。两侧任一 revision 的 gitlink 都不能作为 leaf-test 缩减依据，blob 与 gitlink 互转保持保守选择。
 
 ## 任务和报告
 

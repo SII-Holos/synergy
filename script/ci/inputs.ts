@@ -38,7 +38,7 @@ export async function taskInputs(snapshot: RevisionSnapshot, tasks: Task[], work
       ...[".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".json", "/index.ts", "/index.tsx", "/index.js"].map(
         (ext) => stem + ext,
       ),
-    ].find((candidate) => inventory.has(candidate))
+    ].find((candidate) => inventory.get(candidate)?.type === "blob")
   }
   const exportTargets = (value: unknown): string[] => {
     if (typeof value === "string") return [value]
@@ -105,7 +105,7 @@ export async function taskInputs(snapshot: RevisionSnapshot, tasks: Task[], work
     const visit = (file: string) => {
       if (visited.has(file)) return
       visited.add(file)
-      if (!inventory.has(file)) {
+      if (inventory.get(file)?.type !== "blob") {
         complete = false
         return
       }

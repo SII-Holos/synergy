@@ -93,7 +93,8 @@ export class RevisionSnapshot {
       }
     }
     const inventory = decodeRevisionInventory(revision, git("inventory", ["ls-tree", "-rz", revision]))
-    const entries = [...inventory.values()].filter(
+    const files = [...inventory.values()].filter((entry) => entry.type === "blob")
+    const entries = files.filter(
       (entry) =>
         /\.[cm]?[jt]sx?$/.test(entry.path) ||
         /(?:^|\/)(?:package|tsconfig[^/]*)\.json$/.test(entry.path) ||
@@ -105,12 +106,12 @@ export class RevisionSnapshot {
       git("batch", ["cat-file", "--batch"], entries.map((entry) => `${entry.oid}\n`).join("")),
     )
     this.inventory = inventory
-    this.files = [...inventory.keys()]
+    this.files = files.map((entry) => entry.path)
     this.sources = sources
   }
 
   read(file: string): string | undefined {
-    if (!this.inventory.has(file)) return undefined
+    if (this.inventory.get(file)?.type !== "blob") return undefined
     const source = this.sources.get(file)
     if (source === undefined)
       throw new RevisionInputError(this.revision, "read", "requested input was not admitted", file)

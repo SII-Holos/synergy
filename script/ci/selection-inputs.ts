@@ -80,6 +80,10 @@ function leafTests(snapshot: RevisionSnapshot, candidates: string[], workspaces:
       eligible.delete(candidate)
       continue
     }
+    if (inventory.get(candidate)?.type === "commit") {
+      eligible.delete(candidate)
+      continue
+    }
     for (const target of targets(manifest.exports ?? manifest.main)) {
       if (
         (!target.startsWith("./") && manifest.exports !== undefined) ||
@@ -172,7 +176,7 @@ export async function selectionInputs(
   result.leafTests = candidates
     .filter(
       (file) =>
-        (before.inventory.has(file) || after.inventory.has(file)) &&
+        (before.inventory.get(file)?.type === "blob" || after.inventory.get(file)?.type === "blob") &&
         before.eligible.has(file) &&
         after.eligible.has(file),
     )
