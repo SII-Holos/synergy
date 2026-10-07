@@ -41,6 +41,7 @@
     "dist"
   ],
   "dependencies": {
+    "marked": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

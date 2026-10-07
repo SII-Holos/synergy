@@ -1,4 +1,6 @@
 import { attachmentPurpose } from "@ericsanchezok/synergy-util/attachment-presentation"
+import { attachmentSuppression, markdownAssetReferences } from "@ericsanchezok/synergy-util/markdown-assets"
+import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import { useLingui } from "@lingui/solid"
 import { sessionActivityAnimating, sessionActivityLabel } from "./session-status"
 import { SESSION_TURN_DESC, MAILBOX_DESC } from "./tool-title-descriptors"
@@ -298,12 +300,64 @@ export function timelineKindForPart(part: PartType, _working: boolean): SessionT
   return "part"
 }
 
+function turnAttachmentSuppression(
+  messages: AssistantMessage[],
+  partsByMessage: Record<string, PartType[] | undefined>,
+): Record<string, readonly string[]> {
+  const last = messages.at(-1)
+  const finalParts = last && last.finish !== "tool-calls" ? (partsByMessage[last.id] ?? []) : []
+  const inline = finalParts.flatMap((part, index) =>
+    part.type === "text" &&
+    !isSystemPart(part) &&
+    !finalParts
+      .slice(index + 1)
+      .some((item) => item.type === "tool" && isActivityGroupableTool(item.tool, item.state.metadata))
+      ? markdownAssetReferences(part.text)
+      : [],
+  )
+  return attachmentSuppression(
+    messages.flatMap((message) =>
+      (partsByMessage[message.id] ?? []).map((part) => {
+        const files =
+          part.type === "attachment"
+            ? [part]
+            : part.type === "tool" && part.state.status === "completed"
+              ? (part.state.attachments ?? [])
+              : []
+        return {
+          id: part.id,
+          references: files
+            .filter(
+              (file) =>
+                !file.presentation?.hidden &&
+                attachmentPurpose(file) === "deliverable" &&
+                AssetReference.parse(file.url),
+            )
+            .map((file) => file.url),
+        }
+      }),
+    ),
+    inline,
+  )
+}
+
 export function collectSessionTurnTimelineItems(
   messages: AssistantMessage[],
   partsByMessage: Record<string, PartType[] | undefined>,
   working: boolean,
+  hiddenAttachments = turnAttachmentSuppression(messages, partsByMessage),
 ): SessionTurnTimelineItem[] {
   const items: SessionTurnTimelineItem[] = []
+  const delivered = (part: ToolPart) => {
+    const seen = new Set(hiddenAttachments[part.id])
+    return visibleAttachmentParts(part.state.status === "completed" ? part.state.attachments : []).filter((file) => {
+      if (attachmentPurpose(file) !== "deliverable") return false
+      if (!AssetReference.parse(file.url)) return true
+      if (seen.has(file.url)) return false
+      seen.add(file.url)
+      return true
+    })
+  }
 
   for (const message of messages) {
     const parts = partsByMessage[message.id] ?? []
@@ -318,6 +372,12 @@ export function collectSessionTurnTimelineItems(
     for (const part of parts) {
       const kind = timelineKindForPart(part, working)
       if (!kind) continue
+      if (
+        part.type === "attachment" &&
+        attachmentPurpose(part) === "deliverable" &&
+        hiddenAttachments[part.id]?.includes(part.url)
+      )
+        continue
 
       // When a compaction recovery card is present, suppress raw text parts
       // so only the structured card renders — no duplicate markdown output.
@@ -330,12 +390,7 @@ export function collectSessionTurnTimelineItems(
 
       if (kind === "tool-attachments") {
         const toolPart = part as ToolPart
-        const files =
-          toolPart.state.status === "completed"
-            ? visibleAttachmentParts(toolPart.state.attachments).filter(
-                (file) => attachmentPurpose(file) === "deliverable",
-              )
-            : []
+        const files = delivered(toolPart)
         if (files.length === 0) continue
         items.push({ kind, message, part: toolPart, files })
         continue
@@ -348,9 +403,7 @@ export function collectSessionTurnTimelineItems(
 
       items.push({ kind, message, part: part as TextPart | ToolPart | AttachmentPart })
       if (part.type === "tool" && part.state.status === "completed") {
-        const files = visibleAttachmentParts(part.state.attachments).filter(
-          (file) => attachmentPurpose(file) === "deliverable",
-        )
+        const files = delivered(part)
         if (files.length) items.push({ kind: "tool-attachments", message, part, files })
       }
     }
@@ -1010,6 +1063,7 @@ export function SessionTurn(
       processHeader?: boolean
       processBody?: boolean
       toolAttachments?: "only" | "omit"
+      hiddenAttachments?: Readonly<Record<string, readonly string[]>>
       contentMessageID?: string
       process?: { open: boolean; working: boolean; hasContent: boolean; hasTurnContent: boolean }
     }
@@ -1087,6 +1141,16 @@ export function SessionTurn(
   )
 
   const lastAssistantMessage = createMemo(() => assistantMessages().at(-1))
+  const hiddenAttachments = createMemo(
+    () =>
+      props.segment?.hiddenAttachments ??
+      turnAttachmentSuppression(
+        assistantMessages(),
+        Object.fromEntries(assistantMessages().map((message) => [message.id, partsFor(message.id)])),
+      ),
+    undefined,
+    { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+  )
 
   // Compaction failures own their error presentation in the lifecycle card.
   const error = createMemo(() => assistantMessages().findLast((m) => !isCompactionAssistant(m))?.error)
@@ -1150,12 +1214,13 @@ export function SessionTurn(
         !view.partsFor(item.id).some((part) => part.type === "compaction_recovery")
       if (!ownsRecovery && !placeholder) return []
     }
-    const sourceItems = collectSessionTurnTimelineItems([item], segmentParts(), true).filter((item) =>
-      props.segment?.toolAttachments === "only"
-        ? item.kind === "tool-attachments"
-        : props.segment?.toolAttachments === "omit"
-          ? item.kind !== "tool-attachments"
-          : true,
+    const sourceItems = collectSessionTurnTimelineItems([item], segmentParts(), true, hiddenAttachments()).filter(
+      (item) =>
+        props.segment?.toolAttachments === "only"
+          ? item.kind === "tool-attachments"
+          : props.segment?.toolAttachments === "omit"
+            ? item.kind !== "tool-attachments"
+            : true,
     )
     return projectAssistantActivityItems({
       message: item,

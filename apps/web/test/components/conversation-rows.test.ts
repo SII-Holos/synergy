@@ -687,3 +687,44 @@ test("a running parallel call keeps its earlier batch active and summaries count
     [1, true, []],
   ])
 })
+
+test("final resource references replace delivery galleries using summaries without hydrating history", () => {
+  const image = "asset://0123456789abcdef.png"
+  const document = "asset://fedcba9876543210.docx"
+  const work = { ...reply, id: "work", finish: "tool-calls" } as Message
+  const final = { ...reply, id: "final", finish: "stop" } as Message
+  const output = {
+    ...parts[0],
+    id: "create",
+    messageID: work.id,
+    tool: "bash",
+    display: "activity",
+    attachments: { evidence: 1, deliverable: 2, references: [image, document] },
+  } as SessionPartSummary
+  const input = {
+    timeline: [root],
+    messagesFor: () => [work, final],
+    page: () => ({ hasMore: false }),
+    process: () => ({ open: false, working: false }),
+  }
+  const rows = (references: string[]) =>
+    buildConversationRows({
+      ...input,
+      summaries: (id) =>
+        id === work.id ? [output] : id === final.id ? [{ ...parts[0], id: "answer", type: "text", references }] : [],
+    })
+  expect(
+    rows([])
+      .filter((row) => row.kind === "body")
+      .map((row) => row.key),
+  ).toEqual(["work:create:attachments", "final:answer"])
+  const partial = rows([image]).find((row) => row.kind === "body" && row.toolAttachments === "only")
+  expect(partial?.kind === "body" && partial.hiddenAttachments?.create).toEqual([image])
+  expect(
+    rows([image, document])
+      .filter((row) => row.kind === "body")
+      .map((row) => row.key),
+  ).toEqual(["final:answer"])
+  output.attachments!.deliverable = 3
+  expect(rows([image, document]).some((row) => row.kind === "body" && row.toolAttachments === "only")).toBe(true)
+})

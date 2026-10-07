@@ -67490,6 +67490,14 @@
             "type": "string",
             "enum": ["activity", "content"]
           },
+          "references": {
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 256
+            }
+          },
           "attachments": {
             "type": "object",
             "properties": {
@@ -67502,6 +67510,14 @@
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 9007199254740991
+              },
+              "references": {
+                "maxItems": 32,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 256
+                }
               }
             },
             "required": ["evidence", "deliverable"]

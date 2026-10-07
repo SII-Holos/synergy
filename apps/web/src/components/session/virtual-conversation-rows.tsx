@@ -686,6 +686,7 @@ function ConversationDisplayRow(
       beforeReasoning: current.kind === "body" && current.beforeReasoning,
       reasoningAnchors: current.kind === "body" ? current.reasoningAnchors : undefined,
       toolAttachments: current.kind === "body" ? current.toolAttachments : undefined,
+      hiddenAttachments: current.kind === "body" ? current.hiddenAttachments : undefined,
       activityBody: current.kind === "body" && !!current.activity,
       processHeader: current.kind === "process",
       processBody: current.kind === "body" && current.processBody,

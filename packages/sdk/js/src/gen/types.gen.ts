@@ -10370,9 +10370,11 @@ export type SessionPartSummary = {
   tool?: string
   reasoningKey?: string
   display?: "activity" | "content"
+  references?: Array<string>
   attachments?: {
     evidence: number
     deliverable: number
+    references?: Array<string>
   }
   content: SessionPartContentReference
 }

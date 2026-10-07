@@ -951,6 +951,7 @@
       "name": "@ericsanchezok/synergy-util",
       "version": "1.1.26",
       "dependencies": {
+        "marked": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {

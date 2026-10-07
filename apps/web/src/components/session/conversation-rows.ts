@@ -1,5 +1,6 @@
 import type { Message, SessionPartSummary } from "@ericsanchezok/synergy-sdk"
 import { isActivityGroupableTool } from "@ericsanchezok/synergy-util/activity"
+import { attachmentSuppression } from "@ericsanchezok/synergy-util/markdown-assets"
 
 const isExecutionPart = (part: SessionPartSummary) =>
   part.type === "reasoning" ||
@@ -53,6 +54,7 @@ export type ConversationRow = {
       reasoningAnchors?: Record<string, string>
       processBody?: boolean
       toolAttachments?: "only" | "omit"
+      hiddenAttachments?: Readonly<Record<string, readonly string[]>>
       event?: "agent-delivery" | "compaction"
     }
   | { kind: "activity"; activity: ConversationActivity }
@@ -136,6 +138,24 @@ export function buildConversationRows(input: {
         const parts = partsFor(message.id)
         return parts.some((_, index) => isProcessPart(message, parts, index))
       }),
+    }
+    const assistantParts = messages
+      .filter((message) => message.role === "assistant")
+      .flatMap((message) => partsFor(message.id))
+    const inline =
+      lastAssistant && lastAssistant.finish !== "tool-calls"
+        ? partsFor(lastAssistant.id).flatMap((part, index, parts) =>
+            part.type === "text" && !isProcessPart(lastAssistant, parts, index) ? (part.references ?? []) : [],
+          )
+        : []
+    const hiddenAttachments = attachmentSuppression(
+      assistantParts.map((part) => ({ id: part.id, references: part.attachments?.references })),
+      inline,
+    )
+    const allAttachmentsHidden = (part: SessionPartSummary) => {
+      const count = part.attachments?.deliverable ?? 0
+      const refs = part.attachments?.references ?? []
+      return count > 0 && count === refs.length && refs.every((ref) => hiddenAttachments[part.id]?.includes(ref))
     }
     let header = false
     for (const message of messages) {
@@ -231,6 +251,7 @@ export function buildConversationRows(input: {
             : `${messageKey(message.id)}:${parts[first].id}`)
         if (message.role === "user") usedUserKeys.add(key)
         const splitAttachments = message.role === "assistant" && separatesDeliverables(parts[first])
+        const hiddenOutput = message.role === "assistant" && allAttachmentsHidden(parts[first])
         const body: Extract<ConversationRow, { kind: "body" }> = {
           key,
           root,
@@ -245,14 +266,15 @@ export function buildConversationRows(input: {
           ),
           process,
           processBody,
+          hiddenAttachments,
           toolAttachments: splitAttachments ? "omit" : undefined,
           before: first === 0 && !page?.hasEarlier,
-          after: !splitAttachments && offset >= parts.length && !page?.hasMore,
+          after: (!splitAttachments || hiddenOutput) && offset >= parts.length && !page?.hasMore,
           beforeTool: !page?.hasEarlier && firstTool >= first && firstTool < offset,
           beforeReasoning: !page?.hasEarlier && firstReasoning >= first && firstReasoning < offset,
         }
-        rows.push(body)
-        if (splitAttachments)
+        if (!hiddenOutput || parts[first].type !== "attachment") rows.push(body)
+        if (splitAttachments && !hiddenOutput)
           rows.push({
             ...body,
             key: `${key}:attachments`,

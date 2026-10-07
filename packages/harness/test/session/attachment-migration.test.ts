@@ -117,7 +117,7 @@ test("attachment purpose upgrades historical tool evidence and refreshes only th
         expect(upgradeImportedRecord(key, before)).toEqual(saved)
         const summary = (await SessionHistoryDisplay.partPage({ sessionID: session.id, messageID }, session.scope.id))
           .items[0]
-        expect(summary.attachments).toEqual({ evidence: 1, deliverable: 1 })
+        expect(summary.attachments).toEqual({ evidence: 1, deliverable: 1, references: [file.url] })
         expect(summary.display).toBe("activity")
         expect(part.state.status === "completed" && part.state.attachments?.[0].presentation?.purpose).toBeUndefined()
         await Session.remove(session.id)

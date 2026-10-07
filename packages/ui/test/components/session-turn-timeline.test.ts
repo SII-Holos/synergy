@@ -1289,3 +1289,32 @@ describe("persisted reasoning injection", () => {
     expect(injectPersistedReasoningItems(items, [message], { [message.id]: parts })).toEqual(items)
   })
 })
+
+test("managed deliveries deduplicate across tools and yield to final Markdown", () => {
+  const work = { ...assistant("work"), finish: "tool-calls" } as AssistantMessage
+  const final = completedAssistant("final")
+  const file = { ...image, url: "asset://0123456789abcdef.png" }
+  const first = mediaTool({ id: "first", messageID: work.id, status: "completed", attachments: [file, file] })
+  const second = mediaTool({ id: "second", messageID: work.id, status: "completed", attachments: [file] })
+  const before = collectSessionTurnTimelineItems([work], { work: [first, second] }, true)
+  expect(before).toHaveLength(1)
+  expect(before[0].kind === "tool-attachments" && before[0].files).toHaveLength(1)
+  const after = collectSessionTurnTimelineItems(
+    [work, final],
+    { work: [first, second], final: [textPart("answer", final.id, `![chart](${file.url})`)] },
+    false,
+  )
+  expect(after.map((item) => item.part?.id)).toEqual(["answer"])
+  const process = collectSessionTurnTimelineItems(
+    [work],
+    { work: [first, textPart("progress", work.id, `![chart](${file.url})`)] },
+    true,
+  )
+  expect(process.some((item) => item.kind === "tool-attachments")).toBe(true)
+  const incomplete = collectSessionTurnTimelineItems(
+    [work, final],
+    { work: [first], final: [textPart("answer", final.id, `![chart](${file.url}`)] },
+    true,
+  )
+  expect(incomplete.some((item) => item.kind === "tool-attachments")).toBe(true)
+})

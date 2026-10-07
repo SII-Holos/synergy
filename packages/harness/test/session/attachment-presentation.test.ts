@@ -50,11 +50,25 @@ describe("attachment purpose and bounded summaries", () => {
       },
     }
     const summary = MessageV2.summarizePart(part)
-    expect(summary.attachments).toEqual({ evidence: 1, deliverable: 1 })
+    expect(summary.attachments).toEqual({ evidence: 1, deliverable: 1, references: [attachment.url] })
     expect(summary.display).toBe("activity")
     expect(JSON.stringify(summary).length).toBeLessThan(700)
     expect(JSON.stringify(summary)).not.toContain("private output")
     expect(summary.content.bytes).toBeGreaterThan(500000)
+  })
+
+  test("summarizes Markdown resources independently of the short preview", () => {
+    const part: MessageV2.TextPart = {
+      id: "text",
+      sessionID: "session",
+      messageID: "message",
+      type: "text",
+      text: "explanation ".repeat(100) + `![chart](${attachment.url})`,
+    }
+    expect(MessageV2.summarizePart(part).references).toEqual([attachment.url])
+    expect(MessageV2.summarizePart({ ...part, text: `\`![chart](${attachment.url})\`` }).references).toBeUndefined()
+    const many = { ...tool, state: { ...tool.state, attachments: Array.from({ length: 100 }, () => attachment) } }
+    expect(MessageV2.summarizePart(many).attachments?.references).toHaveLength(32)
   })
 
   test("carries generation boundaries and hidden attachment visibility into summary-only rendering", () => {

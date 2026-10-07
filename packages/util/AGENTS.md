@@ -26,3 +26,5 @@ Run `bun run typecheck`, `bun test`, and `bun run build`, affected consumer test
 `installed-launcher` validates generation pins and builds subprocess argument arrays from explicitly supplied environment metadata. It performs no discovery, import or shell evaluation.
 
 `native-assets` resolves platform resources from an explicit owning module. Linux ABI selection distinguishes musl and glibc; native resource packages remain separate from portable JavaScript.
+
+`markdown-assets` owns bounded managed-reference extraction using the Markdown lexer and deterministic attachment suppression. It performs no resource loading; callers decide which prose is the final answer and which files are deliverables. Verify parser boundaries, summary limits and both virtual and hydrated conversation placement.

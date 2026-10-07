@@ -3,6 +3,8 @@ import {
   attachmentPurpose,
 } from "@ericsanchezok/synergy-util/attachment-presentation"
 import { isActivityGroupableTool } from "@ericsanchezok/synergy-util/activity"
+import { markdownAssetReferences } from "@ericsanchezok/synergy-util/markdown-assets"
+import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import { ToolIntent } from "./tool-intent"
 import { ToolActivityEvidence } from "./activity-evidence"
 import { RuntimeContext } from "../lifecycle/context"
@@ -771,8 +773,13 @@ export namespace MessageV2 {
       tool: z.string().optional(),
       reasoningKey: z.string().optional(),
       display: z.enum(["activity", "content"]).optional(),
+      references: z.array(z.string().max(256)).max(32).optional(),
       attachments: z
-        .object({ evidence: z.number().int().nonnegative(), deliverable: z.number().int().nonnegative() })
+        .object({
+          evidence: z.number().int().nonnegative(),
+          deliverable: z.number().int().nonnegative(),
+          references: z.array(z.string().max(256)).max(32).optional(),
+        })
         .optional(),
       content: z
         .object({ version: z.string(), bytes: z.number().int().nonnegative() })
@@ -795,6 +802,17 @@ export namespace MessageV2 {
       },
       { evidence: 0, deliverable: 0 },
     )
+    const references = part.type === "text" && !isSystemPart(part) ? markdownAssetReferences(part.text) : []
+    const outputs = attachments
+      ?.filter(
+        (file) =>
+          !file.presentation?.hidden &&
+          attachmentPurpose(file) === "deliverable" &&
+          file.url.length <= 256 &&
+          AssetReference.parse(file.url),
+      )
+      .slice(0, 32)
+      .map((file) => file.url)
     return {
       id: part.id,
       sessionID: part.sessionID,
@@ -820,7 +838,8 @@ export namespace MessageV2 {
             ? "activity"
             : "content"
           : undefined,
-      attachments: counts,
+      references: references.length ? references : undefined,
+      attachments: counts && { ...counts, ...(outputs?.length ? { references: outputs } : {}) },
       content: { version: new Bun.CryptoHasher("sha256").update(text).digest("hex"), bytes: Buffer.byteLength(text) },
     }
   }
