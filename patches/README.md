@@ -23,3 +23,21 @@ Provenance: [Kobalte core 0.13.11 source](https://github.com/kobaltedev/kobalte/
 Local adaptation: [the pinned patch](@kobalte%252Fcore@0.13.11.patch) escapes opaque collection keys before attribute-selector lookup in selection, keyboard navigation, Tabs and Combobox. Native selectable-item focus also marks its collection active so Accordion arrow keys move DOM focus without redirecting focus from editable content. Both published JavaScript and JSX entrypoints carry the same corrections. Public values, callbacks, DOM attributes and persisted resource identities remain unchanged; the package's licenses remain intact.
 
 [Real browser regressions](../packages/ui/test/components/collection-key-navigation.browser.test.ts) exercise both entrypoints through shared Accordion and Tabs, including controlled updates, uncontrolled defaults, pointer activation and keyboard focus. Keep the patch until a replacement dependency passes these cases without it. Verify a fresh frozen-lockfile install before accepting an upgrade.
+
+## Virtua Solid initial measurements
+
+Provenance: [Virtua 0.42.3 measurement actions](https://github.com/inokawa/virtua/blob/0.42.3/src/core/store.ts).
+
+Local adaptation: [the pinned patch](virtua@0.42.3.patch) exposes `initialSizes` on Solid Virtualizer and WindowVirtualizer. A finite positive size for every data item seeds the ordinary item-resize action before mounting; invalid arrays are ignored. The caller supplies measurements in data order at the current width and font. Both shipped Solid entrypoints and their declarations share the input. The scroll observer also reads the existing viewport offset on mount through the ordinary scroll and scroll-end actions, including WindowVirtualizer start position, without creating an input timer or disabling pointer events. The input avoids constructing an opaque internal cache to adopt a layout measured by a preceding renderer.
+
+Virtua `restoreToIndex(index, offset)` synchronously accepts currently mounted content-box measurements through its existing resizer, consumes estimate compensation and commits one native-idle position. It has no imperative scroll waiter; identical accepted-offset scroll delivery is ignored. The mounted registry has one owner and releases entries on unmount/disposal. Both Solid entrypoints and declarations carry this contract. The compiled entrypoint is generated from the patched JSX using the installed `babel-preset-solid` DOM transform and Bun browser minification with `solid-js` and `solid-js/web` external.
+
+[Browser regression](../packages/ui/test/markdown-virtual.browser.test.ts) exercises the JavaScript and JSX entrypoints before their first paint and the real Markdown worker handoff. Keep this input until an upgraded dependency supports equivalent measured initialization and passes these checks after a fresh frozen-lockfile install.
+
+## Streaming Markdown consumed source spans
+
+Provenance: [streaming-markdown 0.2.15 parser](https://github.com/thetarnav/streaming-markdown/blob/v0.2.15/smd.js).
+
+Local adaptation: [the pinned patch](streaming-markdown@0.2.15.patch) optionally records compact affine source spans alongside the parser's text, pending-token and indentation buffers. Recursive consumption carries its original positions; parser-generated whitespace has no original position. Opted-in renderers receive source spans with text flushes and token starts. Whole appended deltas retain one parser call. Both the source and browser artifact implement the same hook, and the type declarations describe it. Existing renderers preserve their emitted tokens, text and attributes.
+
+[Pure entrypoint regressions](../packages/ui/test/markdown-stream-provenance.test.ts) verify emitted bytes, consumed positions and split Unicode chunks through both artifacts. [Controller regressions](../packages/ui/test/markdown-stream.test.ts) verify source transfer, compact settled Text runs, selection endpoints and incremental grapheme work. Keep this patch until an upgraded parser exposes equivalent consumed provenance and passes the same cases after a fresh frozen-lockfile install; do not reconstruct parser consumption outside its owner.

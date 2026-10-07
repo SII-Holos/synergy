@@ -12,3 +12,26 @@ test("Markdown caches obey their byte budget and refresh recency", () => {
   cache.set("oversized", { hash: "x", html: "x".repeat(20) })
   expect(cache.get("oversized")).toBeUndefined()
 })
+
+test("Markdown source runs participate in the shared cache byte budget", () => {
+  const cache = createMarkdownCache(128)
+  cache.set("run-budget", {
+    hash: "version",
+    html: "",
+    document: {
+      blocks: [{ html: "content", source: { start: 0, end: 10 } }],
+      codes: {},
+      reading: {
+        marker: "owner",
+        runs: [
+          {
+            source: { start: 0, end: 10 },
+            spans: Array.from({ length: 10 }, (_, index) => ({ source: index * 2, offset: index, length: 1 })),
+          },
+        ],
+      },
+    },
+  })
+  expect(cache.get("run-budget")).toBeUndefined()
+  expect(cache.bytes).toBe(0)
+})

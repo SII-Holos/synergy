@@ -193,6 +193,7 @@
     "@kobalte/core@0.13.11": "patches/@kobalte%2Fcore@0.13.11.patch",
     "@hey-api/openapi-ts@0.88.1": "patches/@hey-api%2Fopenapi-ts@0.88.1.patch",
     "@kobalte/utils@0.9.1": "patches/@kobalte%2Futils@0.9.1.patch",
-    "virtua@0.42.3": "patches/virtua@0.42.3.patch"
+    "virtua@0.42.3": "patches/virtua@0.42.3.patch",
+    "streaming-markdown@0.2.15": "patches/streaming-markdown@0.2.15.patch"
   }
 }

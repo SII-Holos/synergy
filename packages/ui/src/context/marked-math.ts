@@ -2,6 +2,7 @@ import katex from "katex"
 import type { MarkedExtension, TokenizerAndRendererExtension } from "marked"
 import type { MarkedKatexOptions } from "marked-katex-extension"
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
+import { markdownSourceOffsets } from "./markdown-source"
 
 const generatedKatexAttribute = "data-synergy-katex-generated"
 let generatedKatexMarker = generateUUID()
@@ -24,6 +25,19 @@ const fenceStartRule = /^[ \t]{0,3}(`{3,}|~{3,})/
 
 export function prepareMarkdownMath(markdown: string) {
   return escapeTableMathPipes(markdown)
+}
+
+export function prepareMarkdownMathSource(markdown: string) {
+  const newlines: Array<{ start: number; end: number; length: number }> = []
+  const normalized = markdown.replace(/\r\n|\r/g, (newline, start: number) => {
+    newlines.push({ start, end: start + newline.length, length: 1 })
+    return "\n"
+  })
+  const pipes: Array<{ start: number; end: number; length: number }> = []
+  const prepared = escapeTableMathPipes(normalized, (start) => pipes.push({ start, end: start + 1, length: 6 }))
+  const original = markdownSourceOffsets(newlines)
+  const source = markdownSourceOffsets(pipes)
+  return { markdown: prepared, sourceOffset: (offset: number) => original(source(offset)) }
 }
 
 export function stripGeneratedKatexMarker(html: string) {
@@ -115,13 +129,16 @@ export function markGeneratedKatex(extension: MarkedExtension): MarkedExtension 
   }
 }
 
-function escapeTableMathPipes(text: string) {
+function escapeTableMathPipes(text: string, replaced?: (start: number) => void) {
   const lines = text.split("\n")
   let fence: { marker: string; length: number } | undefined
   let inTable = false
+  let sourceOffset = 0
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
+    const lineOffset = sourceOffset
+    sourceOffset += line.length + 1
     const fenceMatch = fenceStartRule.exec(line)
 
     if (fence) {
@@ -146,7 +163,12 @@ function escapeTableMathPipes(text: string) {
     }
 
     if (!inTable) continue
-    lines[i] = line.replace(tableMathRule, (math) => math.replaceAll("|", "\\vert "))
+    lines[i] = line.replace(tableMathRule, (math, offset: number) =>
+      math.replace(/\|/g, (_, pipe: number) => {
+        replaced?.(lineOffset + offset + pipe)
+        return "\\vert "
+      }),
+    )
   }
 
   return lines.join("\n")

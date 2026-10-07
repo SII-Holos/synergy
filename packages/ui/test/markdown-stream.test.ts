@@ -24,6 +24,126 @@ function createRoot() {
 }
 
 describe("createMarkdownStreamController", () => {
+  test("grapheme work stays incremental after a large settled prefix", () => {
+    const root = createRoot()
+    const animate = dom.window.HTMLElement.prototype.animate
+    const segment = Intl.Segmenter.prototype.segment
+    const animations: Animation[] = []
+    dom.window.HTMLElement.prototype.animate = () => {
+      const animation = { cancel() {}, onfinish: null } as unknown as Animation
+      animations.push(animation)
+      return animation
+    }
+    let processed = 0
+    try {
+      const stream = createMarkdownStreamController(root)
+      let text = "settled ".repeat(128 * 1024)
+      stream.update(text)
+      Intl.Segmenter.prototype.segment = function (input) {
+        processed += input.length
+        return segment.call(this, input)
+      }
+      for (let update = 0; update < 100; update++) {
+        text += "x"
+        stream.update(text)
+        for (const animation of animations.splice(0))
+          animation.onfinish?.call(animation, new dom.window.Event("finish") as AnimationPlaybackEvent)
+      }
+      stream.end()
+      expect(root.textContent).toBe(text)
+      expect(processed).toBeLessThan(1000)
+    } finally {
+      Intl.Segmenter.prototype.segment = segment
+      dom.window.HTMLElement.prototype.animate = animate
+    }
+  })
+
+  test("small stream deltas retain one settled text run and compact source spans", () => {
+    const root = createRoot()
+    const stream = createMarkdownStreamController(root)
+    const text = "steady ".repeat(400)
+    for (let length = 1; length <= text.length; length++) stream.update(text.slice(0, length))
+    stream.end()
+    const paragraph = root.querySelector("p")!
+    expect(paragraph.childNodes).toHaveLength(1)
+    const node = paragraph.firstChild as Text
+    expect(node.data).toBe(text)
+    expect(stream.sourceAt(node, text.indexOf("steady", 20))).toBe(text.indexOf("steady", 20))
+  })
+
+  test("completed append motion merges text while preserving caret and source ownership", () => {
+    const root = createRoot()
+    document.body.append(root)
+    const original = dom.window.HTMLElement.prototype.animate
+    const animations: Animation[] = []
+    dom.window.HTMLElement.prototype.animate = () => {
+      const animation = { cancel() {}, onfinish: null } as unknown as Animation
+      animations.push(animation)
+      return animation
+    }
+    try {
+      const stream = createMarkdownStreamController(root)
+      stream.update("Original text. ")
+      const settled = root.querySelector("p")!.firstChild as Text
+      const before = settled.length
+      stream.update("Original text. newly streamed text. ")
+      const appended = root.querySelector("span")!.firstChild as Text
+      const range = document.createRange()
+      range.setStart(appended, 3)
+      range.collapse(true)
+      document.getSelection()!.removeAllRanges()
+      document.getSelection()!.addRange(range)
+      for (const animation of animations)
+        animation.onfinish?.call(animation, new dom.window.Event("finish") as AnimationPlaybackEvent)
+      expect(root.querySelector("p")!.childNodes).toHaveLength(1)
+      expect(document.getSelection()!.anchorNode).toBe(settled)
+      expect(document.getSelection()!.anchorOffset).toBe(before + 3)
+      expect(stream.sourceAt(settled, before + 3)).toBe(before + 3)
+      stream.end()
+    } finally {
+      document.getSelection()?.removeAllRanges()
+      dom.window.HTMLElement.prototype.animate = original
+      root.remove()
+    }
+  })
+
+  test.each([
+    "Prefix **bold** [label](https://example.com/label) repeated label.\n\n",
+    "Escaped \\*literal\\* &amp; `inline code` $x^2$ remain.\n\n",
+    "First paragraph.\r\n\r\n- list item\r\n  - nested item\r\n\r\nFinal paragraph.\r\n",
+    "<span>literal HTML</span> stays text.\n\n",
+    "`a\nb`\n",
+    "raw http://example.com/a trailing\n",
+    "x $$currency literal $$x\n",
+    "```ts\nconst value = 42\nconst second = 'text'\n```\n\n",
+  ])("stream text points retain original source positions: %s", (markdown) => {
+    const root = createRoot()
+    const stream = createMarkdownStreamController(root)
+    stream.update(markdown)
+    stream.end()
+    const walker = document.createTreeWalker(root, dom.window.NodeFilter.SHOW_TEXT)
+    while (walker.nextNode()) {
+      const node = walker.currentNode as Text
+      for (let offset = 0; offset < node.length; offset++) {
+        if (!node.data[offset].trim()) continue
+        const source = stream.sourceAt(node, offset)
+        expect(source).toBeDefined()
+        expect(markdown[source!]).toBe(node.data[offset])
+      }
+    }
+  })
+
+  test("repeated link labels retain their distinct consumed source positions", () => {
+    const markdown = "[label](https://example.com/label) [label](https://example.com/label)\n\n"
+    const root = createRoot()
+    const stream = createMarkdownStreamController(root)
+    stream.update(markdown)
+    stream.end()
+    const labels = root.querySelectorAll("a")
+    expect(stream.sourceAt(labels[0].firstChild as Text, 0)).toBe(markdown.indexOf("label"))
+    expect(stream.sourceAt(labels[1].firstChild as Text, 0)).toBe(markdown.indexOf("[label]", 1) + 1)
+  })
+
   test.each([
     ["Hello 👩‍", "Hello 👩‍🔬 hello ", "👩‍🔬"],
     ["Hello 🇨🇳", "Hello 🇨🇳 hello ", "🇨🇳"],
