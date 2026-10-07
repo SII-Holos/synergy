@@ -106,6 +106,7 @@ export const ReadTool = Tool.define(
                 await FileAttachment.toPart({
                   filepath,
                   mime: "application/pdf",
+                  presentation: { purpose: "evidence" },
                   sessionID: ctx.sessionID,
                   messageID: ctx.messageID,
                 }),

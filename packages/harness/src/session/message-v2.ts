@@ -1,3 +1,8 @@
+import {
+  AttachmentPresentation as SharedAttachmentPresentation,
+  attachmentPurpose,
+} from "@ericsanchezok/synergy-util/attachment-presentation"
+import { isActivityGroupableTool } from "@ericsanchezok/synergy-util/activity"
 import { ToolIntent } from "./tool-intent"
 import { ToolActivityEvidence } from "./activity-evidence"
 import { RuntimeContext } from "../lifecycle/context"
@@ -223,16 +228,7 @@ export namespace MessageV2 {
     ref: "AttachmentSource",
   })
 
-  export const AttachmentPresentation = z
-    .object({
-      hidden: z.boolean().optional(),
-      renderer: z.enum(["image", "video", "audio", "thumbnail", "file"]).optional(),
-      size: z.enum(["original", "small", "medium", "large"]).optional(),
-      crop: z.boolean().optional(),
-    })
-    .meta({
-      ref: "AttachmentPresentation",
-    })
+  export const AttachmentPresentation = SharedAttachmentPresentation.meta({ ref: "AttachmentPresentation" })
   export type AttachmentPresentation = z.infer<typeof AttachmentPresentation>
 
   export const AttachmentModelPolicy = z
@@ -774,6 +770,10 @@ export namespace MessageV2 {
       status: z.string().optional(),
       tool: z.string().optional(),
       reasoningKey: z.string().optional(),
+      display: z.enum(["activity", "content"]).optional(),
+      attachments: z
+        .object({ evidence: z.number().int().nonnegative(), deliverable: z.number().int().nonnegative() })
+        .optional(),
       content: z
         .object({ version: z.string(), bytes: z.number().int().nonnegative() })
         .meta({ ref: "SessionPartContentReference" }),
@@ -782,6 +782,19 @@ export namespace MessageV2 {
   export type PartSummary = z.infer<typeof PartSummary>
   export function summarizePart(part: Part): PartSummary {
     const text = JSON.stringify(part)
+    const attachments =
+      part.type === "attachment"
+        ? [part]
+        : part.type === "tool" && part.state.status === "completed"
+          ? part.state.attachments
+          : undefined
+    const counts = attachments?.reduce(
+      (counts, attachment) => {
+        if (!attachment.presentation?.hidden) counts[attachmentPurpose(attachment)]++
+        return counts
+      },
+      { evidence: 0, deliverable: 0 },
+    )
     return {
       id: part.id,
       sessionID: part.sessionID,
@@ -790,6 +803,7 @@ export namespace MessageV2 {
       render:
         !["snapshot", "patch", "step-start", "step-finish"].includes(part.type) &&
         (part.type !== "text" || !isSystemPart(part)) &&
+        (part.type !== "attachment" || !part.presentation?.hidden) &&
         (part.type !== "reasoning" || part.text.trim().length > 0),
       preview:
         part.type === "text" || part.type === "reasoning"
@@ -800,6 +814,13 @@ export namespace MessageV2 {
       tool: part.type === "tool" ? part.tool : undefined,
       status: part.type === "tool" ? part.state.status : undefined,
       reasoningKey: part.type === "reasoning" ? reasoningItemKey(part.metadata) : undefined,
+      display:
+        part.type === "tool"
+          ? isActivityGroupableTool(part.tool, part.state.metadata)
+            ? "activity"
+            : "content"
+          : undefined,
+      attachments: counts,
       content: { version: new Bun.CryptoHasher("sha256").update(text).digest("hex"), bytes: Buffer.byteLength(text) },
     }
   }
@@ -906,19 +927,8 @@ export namespace MessageV2 {
     return part.synthetic === true
   }
 
-  /**
-   * Whether an attachment is an explicit deliverable. Prefers the canonical
-   * `metadata.attachment.deliverable` verdict written at creation (the attach
-   * tool and explicit markdown/file_url references are deliverables; paths
-   * that merely appeared in tool output are incidental). Falls back to the
-   * legacy `detectedFrom` heuristic for attachments persisted before the
-   * verdict existed. The single predicate consumers should use instead of
-   * reading attachment metadata directly.
-   */
   export function isDeliverableAttachment(attachment: AttachmentPart): boolean {
-    const metadata = attachment.metadata?.attachment as { deliverable?: boolean; detectedFrom?: string } | undefined
-    if (metadata?.deliverable !== undefined) return metadata.deliverable
-    return metadata?.detectedFrom !== "line" && metadata?.detectedFrom !== "path"
+    return attachmentPurpose(attachment) === "deliverable"
   }
 
   function partIsSystem(part: Part): boolean {

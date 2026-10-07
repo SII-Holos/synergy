@@ -40,7 +40,6 @@ describe("tool.attach", () => {
                 originTool: "attach",
                 sourcePath,
                 size: 10,
-                deliverable: true,
               },
             },
           })

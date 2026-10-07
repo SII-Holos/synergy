@@ -8433,6 +8433,7 @@ export type ResourceSource = {
 export type AttachmentSource = FileSource | SymbolSource | ResourceSource
 
 export type AttachmentPresentation = {
+  purpose?: "evidence" | "deliverable"
   hidden?: boolean
   renderer?: "image" | "video" | "audio" | "thumbnail" | "file"
   size?: "original" | "small" | "medium" | "large"
@@ -10368,6 +10369,11 @@ export type SessionPartSummary = {
   status?: string
   tool?: string
   reasoningKey?: string
+  display?: "activity" | "content"
+  attachments?: {
+    evidence: number
+    deliverable: number
+  }
   content: SessionPartContentReference
 }
 

@@ -1,3 +1,5 @@
+import { attachmentPurpose, type AttachmentPresentation } from "@ericsanchezok/synergy-util/attachment-presentation"
+export type { AttachmentPresentation } from "@ericsanchezok/synergy-util/attachment-presentation"
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import type { ImagePreviewImage } from "./image-preview-model"
 export interface AttachmentFile {
@@ -19,14 +21,8 @@ export type AttachmentRenderer = "image" | "video" | "audio" | "thumbnail" | "fi
 export type AttachmentOpenTarget = "image-preview" | "attachment-workspace" | "compatibility"
 export type AttachmentDisplaySize = "original" | "small" | "medium" | "large"
 
-export interface AttachmentPresentation {
-  hidden?: boolean
-  renderer?: AttachmentRenderer
-  size?: AttachmentDisplaySize
-  crop?: boolean
-}
-
 export interface ResolvedAttachmentPresentation {
+  purpose: "evidence" | "deliverable"
   hidden: boolean
   renderer: AttachmentRenderer
   size: AttachmentDisplaySize
@@ -83,6 +79,7 @@ export function resolveAttachmentPresentation(file: AttachmentFile): ResolvedAtt
     requested === "thumbnail" && !hasThumbnail ? "file" : (requested ?? inferAttachmentRenderer(file, hasThumbnail))
 
   return {
+    purpose: attachmentPurpose(file),
     hidden: presentation.hidden === true,
     renderer,
     size: presentation.size ?? "medium",

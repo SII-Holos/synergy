@@ -13,6 +13,8 @@ Run `bun run typecheck`, `bun test`, and `bun run build`, affected consumer test
 
 `asset-reference` owns portable immutable Asset ID/reference validation and MIME/extension mapping. Runtime storage and UI resolution share this contract; it never reads files or selects a server. Verify it with `bun test test/asset-reference.test.ts` and affected Asset/Markdown tests.
 
+`attachment-presentation` owns the shared attachment presentation schema and evidence/deliverable classification used by runtime, plugins and UI. Purpose is independent of model input policy; absent purpose defaults to a deliverable. Legacy metadata conversion belongs to the Session migration, not this portable contract. Verify the Harness attachment presentation/migration and UI attachment tests when changing it.
+
 `reasoning-item` owns portable provider-scoped reasoning identity for canonical Part summaries and UI grouping. Preserve ambiguous/missing-identity rejection and keep encrypted content out of derived keys.
 
 `terminal` owns explicit Bun terminal output primitives; product branding stays in CLI. `cli-command` supplies yargs definition typing without loading the CLI parser.

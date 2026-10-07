@@ -158,6 +158,10 @@ export namespace AttachmentDiscovery {
         mime,
         filename,
         url: `asset://${assetId}`,
+        presentation: {
+          purpose:
+            candidate.detectedFrom === "markdown" || candidate.detectedFrom === "file_url" ? "deliverable" : "evidence",
+        },
         localPath: FileView.native() ? canonical : Asset.resolvePath(assetId),
         model: {
           mode: "summary",
@@ -170,9 +174,6 @@ export namespace AttachmentDiscovery {
             sourcePath: canonical,
             size: info.size,
             detectedFrom: candidate.detectedFrom,
-            // Explicit references (markdown, file urls) are deliverables;
-            // paths that merely appeared in tool output are incidental.
-            deliverable: candidate.detectedFrom === "markdown" || candidate.detectedFrom === "file_url",
           },
         },
       })

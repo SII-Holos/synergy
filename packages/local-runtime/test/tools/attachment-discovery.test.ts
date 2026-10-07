@@ -51,8 +51,7 @@ describe("tool.attachment-discovery", () => {
           expect(attachments[0].url.startsWith("asset://")).toBe(true)
           expect(attachments[0].localPath).toBe(filepath)
           expect(attachments[0].metadata?.kind).toBe("attachment")
-          const attachmentMeta = attachments[0]?.metadata?.attachment as { deliverable?: boolean } | undefined
-          expect(attachmentMeta?.deliverable).toBe(false)
+          expect(attachments[0]?.presentation?.purpose).toBe("evidence")
         },
       })
     }))
@@ -74,8 +73,7 @@ describe("tool.attachment-discovery", () => {
             tool: "bash",
           })
           expect(attachments).toHaveLength(1)
-          const attachmentMeta = attachments[0]?.metadata?.attachment as { deliverable?: boolean } | undefined
-          expect(attachmentMeta?.deliverable).toBe(true)
+          expect(attachments[0]?.presentation?.purpose).toBe("deliverable")
         },
       })
     }))

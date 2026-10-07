@@ -71,14 +71,13 @@ export const SpeakTool = Tool.define(
           mime: result.mimeType,
           filename,
           url: `asset://${assetId}`,
-          presentation: { renderer: "audio", size: "medium" },
+          presentation: { purpose: "deliverable", renderer: "audio", size: "medium" },
           model: { mode: "none" },
           metadata: {
             kind: "attachment",
             attachment: {
               originTool: "speak",
               size: bytes,
-              deliverable: true,
             },
           },
         },

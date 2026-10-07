@@ -61214,6 +61214,10 @@
       "AttachmentPresentation": {
         "type": "object",
         "properties": {
+          "purpose": {
+            "type": "string",
+            "enum": ["evidence", "deliverable"]
+          },
           "hidden": {
             "type": "boolean"
           },
@@ -67481,6 +67485,26 @@
           },
           "reasoningKey": {
             "type": "string"
+          },
+          "display": {
+            "type": "string",
+            "enum": ["activity", "content"]
+          },
+          "attachments": {
+            "type": "object",
+            "properties": {
+              "evidence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "deliverable": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["evidence", "deliverable"]
           },
           "content": {
             "$ref": "#/components/schemas/SessionPartContentReference"

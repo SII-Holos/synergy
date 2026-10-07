@@ -58,6 +58,7 @@ export const AttachTool = Tool.define(
           mime,
           filename,
           url: `asset://${assetId}`,
+          presentation: { purpose: "deliverable" },
           localPath: FileView.native() ? filePath : Asset.resolvePath(assetId),
           model: {
             mode: "summary",
@@ -69,7 +70,6 @@ export const AttachTool = Tool.define(
               originTool: "attach",
               sourcePath: filePath,
               size: buffer.length,
-              deliverable: true,
             },
           },
         })

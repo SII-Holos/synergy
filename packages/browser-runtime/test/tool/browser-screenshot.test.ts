@@ -65,7 +65,8 @@ describe("tool.browser_screenshot", () => {
       expect(result.attachments).toHaveLength(1)
       expect(result.attachments?.[0]).toMatchObject({
         mime: "image/png",
-        url: PNG_DATA_URL,
+        url: expect.stringMatching(/^asset:\/\//),
+        presentation: { purpose: "evidence" },
         model: { mode: "provider-file" },
       })
     }))

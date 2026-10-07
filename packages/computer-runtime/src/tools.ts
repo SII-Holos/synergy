@@ -73,8 +73,8 @@ async function executeSelected(ctx: Tool.Context, command: ComputerCommand): Pro
         mime: image.mimeType,
         filename,
         localPath,
-        url: supported ? `data:${image.mimeType};base64,${image.data}` : `asset://${assetId}`,
-        presentation: { renderer: "image", size: "large", crop: false },
+        url: `asset://${assetId}`,
+        presentation: { purpose: "evidence", renderer: "image", size: "large", crop: false },
         metadata: {
           imageInput: {
             sha256: createHash("sha256").update(Buffer.from(image.data, "base64")).digest("hex"),

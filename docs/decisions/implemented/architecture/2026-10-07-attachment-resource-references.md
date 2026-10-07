@@ -16,6 +16,8 @@ Markdown preserves validated Asset references through both the streaming parser 
 
 Asset ID validation and MIME/extension mapping live in a portable utility consumed by the runtime and UI. Browser URLs are derived from the active server and validated IDs; Markdown does not gain access to arbitrary local paths or executable protocols.
 
+Attachment purpose belongs to the existing presentation contract shared by runtime, plugin tools and UI. Inspection evidence and deliverables retain the same resource identity and independent model policy. New producers declare purpose; omitted purpose means deliverable. A versioned Session migration converts the former metadata boolean and inspection history, preserves immutable bytes and provenance, and invalidates derived display indexes. Import uses the same conversion. Runtime consumers read only the current contract. Part summaries carry visible counts by purpose and tool display classification without embedding attachment data or tool output.
+
 ## Alternatives considered
 
 **Keep inline bytes and add a second presentation URL.** Rejected because parallel resource identities would need reconciliation for every upload, tool result and historical message.
@@ -27,3 +29,5 @@ Asset ID validation and MIME/extension mapping live in a portable utility consum
 ## Consequences
 
 Model input and presentation share one durable resource identity. Request preparation reads eligible local Assets, and unavailable content becomes a preparation error instead of silently disappearing from inference. The existing URL schema and attachment normalization path accept historical inline data; there is no new asset store or provider protocol. Tests cover immutable history, provider bytes through the real worker and HTTP boundary, invalid references, cancellation and explicit model policies. Browser tests cover streamed/settled references, shared previews and readers, immutable downloads, keyboard activation and focus after terminal rendering.
+
+Purpose migration tests cover existing storage, owner isolation, repeated upgrades, imported records, malformed siblings, resource preservation and summary rebuilding. Presentation and outbound delivery no longer depend on undocumented attachment metadata.

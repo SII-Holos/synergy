@@ -63,7 +63,12 @@ describe("tool.view_image", () => {
             mode: "provider-file",
             summary: "image.png (image/png) loaded by view_image",
           })
-          expect(attachment?.presentation).toEqual({ renderer: "image", size: "medium", crop: false })
+          expect(attachment?.presentation).toEqual({
+            purpose: "evidence",
+            renderer: "image",
+            size: "medium",
+            crop: false,
+          })
         },
       })
     }))

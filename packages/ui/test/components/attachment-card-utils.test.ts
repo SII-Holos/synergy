@@ -23,6 +23,7 @@ describe("attachment presentation resolver", () => {
         presentation: { renderer: "file", size: "large", crop: true, hidden: true },
       }),
     ).toEqual({
+      purpose: "deliverable",
       renderer: "file",
       size: "large",
       crop: true,

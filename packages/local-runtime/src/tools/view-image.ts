@@ -132,7 +132,7 @@ export const ViewImageTool = Tool.define<typeof parameters, ViewImageMetadata>(
             localPath: filepath,
             sessionID: ctx.sessionID,
             messageID: ctx.messageID,
-            presentation: { renderer: "image", size: "medium", crop: false },
+            presentation: { purpose: "evidence", renderer: "image", size: "medium", crop: false },
             model: { mode: "provider-file", summary },
           }),
         ],

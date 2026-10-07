@@ -59,6 +59,7 @@ async function toVisibleAttachment(
     filename: file.filename,
     url: `asset://${assetId}`,
     localPath: file.filepath,
+    presentation: { purpose: "evidence" },
     model: {
       mode: "summary",
       summary: `${file.filename} (${file.mimeType}) analyzed by look_at`,
