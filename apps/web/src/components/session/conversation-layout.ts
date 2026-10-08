@@ -2,6 +2,8 @@ import type { VirtualizerHandle } from "virtua/solid"
 
 type Layout = { keys: readonly string[]; width: number; cache: VirtualizerHandle["cache"] }
 
+export const conversationReadingInset = 100
+
 export function conversationReadingIndex(
   virtual: Pick<VirtualizerHandle, "scrollOffset" | "findStartIndex" | "getItemOffset">,
   count: number,
@@ -9,7 +11,7 @@ export function conversationReadingIndex(
 ) {
   if (!count) return
   let index = Math.min(virtual.findStartIndex(), count - 1)
-  const cutoff = virtual.scrollOffset - margin + 100
+  const cutoff = virtual.scrollOffset - margin + conversationReadingInset
   if (virtual.getItemOffset(index) > cutoff) return
   while (index + 1 < count && virtual.getItemOffset(index + 1) <= cutoff) index++
   return index

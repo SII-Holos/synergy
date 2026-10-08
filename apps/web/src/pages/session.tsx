@@ -61,6 +61,7 @@ import { hasSpecialUserMessageRenderer } from "@ericsanchezok/synergy-ui/special
 import { sessionSideWorkspaceMounts, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
 import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
 import { captureConversationReadingAnchor } from "@/components/session/conversation-reading-anchor"
+import { conversationReadingInset } from "@/components/session/conversation-layout"
 
 import { useSync } from "@/context/sync"
 import { useGlobalSync } from "@/context/global-sync"
@@ -1568,7 +1569,7 @@ function SessionPageContent() {
       if (!target) return
 
       const nodes = target.querySelectorAll<HTMLElement>("[data-message-id]")
-      const cutoff = target.scrollTop + 100
+      const cutoff = target.scrollTop + conversationReadingInset
       let id: string | undefined
 
       for (const node of nodes) {
