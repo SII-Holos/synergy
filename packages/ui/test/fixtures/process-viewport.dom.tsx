@@ -9,6 +9,7 @@ import {
   type ProcessReadingAnchor,
 } from "../../src/components/process-viewport"
 import { setupI18n } from "../../src/testing/i18n"
+import { createDisclosureMotion } from "../../src/utils/disclosure-motion"
 
 export type Capture = { target: string | null; height: number; restores: number; anchor?: ProcessReadingAnchor }
 export type FixtureHarness = {
@@ -25,6 +26,7 @@ export type FixtureHarness = {
   growCharacterData(position: "above" | "below"): void
   growChildList(position: "above" | "below"): void
   pause(): void
+  appendTool(): void
 }
 
 const parameters = new URLSearchParams(location.search)
@@ -72,6 +74,13 @@ const harness: FixtureHarness = {
   growChildList,
   burst,
   pause: () => pause(),
+  appendTool() {
+    const added = document.createElement("div")
+    added.style.height = "32px"
+    added.textContent = "New tool"
+    virtualRoot.append(added)
+    createDisclosureMotion(added, true).setVisible(true, true, true)
+  },
   clear() {
     notifications.length = 0
     harness.interactions = 0

@@ -19,6 +19,7 @@ const [countValue, setCountValue] = createSignal(9)
 const [batchPending, setBatchPending] = createSignal(0)
 const [batchLive, setBatchLive] = createSignal(true)
 const [countIdentity, setCountIdentity] = createSignal("turn-a")
+const batchCount = () => ({ identity: countIdentity(), count: countValue(), pending: batchPending() })
 const [summaryCompleted, setSummaryCompleted] = createSignal(false)
 const [railState, setRailState] = createSignal<"running" | "done">("running")
 
@@ -351,10 +352,10 @@ render(
           </div>
           <div id="batch-count-host">
             <ActivityBatchLabel
-              identity={countIdentity()}
+              identity={batchCount().identity}
               live={batchLive()}
-              total={countValue() + batchPending()}
-              batch={{ facts: [{ family: "execute", count: countValue() }] }}
+              total={batchCount().count + batchCount().pending}
+              batch={{ facts: [{ family: "execute", count: batchCount().count }] }}
             />
           </div>
           <MinimalActivitySummary

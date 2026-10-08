@@ -100,10 +100,10 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
     const bottom = scroll.scrollHeight
     const distance = bottom - scroll.clientHeight - scroll.scrollTop
-    if (Math.abs(distance) < 2) return
+    if (Math.abs(distance) < 2 && !options.motionTarget) return
 
     const animate =
-      !!options.motionTarget && (!force || smoothForce) && !store.contentRef?.querySelector("[data-motion-changing]")
+      !!options.motionTarget && (!force || smoothForce) && !store.contentRef?.querySelector("[data-motion-resizing]")
     motion.move(scroll, bottom, animate)
     smoothForce = false
   }

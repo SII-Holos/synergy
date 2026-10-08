@@ -72,6 +72,7 @@ export function ActivityBatchLabel(props: {
   live?: boolean
 }) {
   const [totalShown, setTotalShown] = createSignal(false)
+  const identity = createMemo(() => props.identity)
   const entries = createMemo(() => {
     const result: { key: string; descriptor: MessageDescriptor; count: number }[] = []
     const add = (key: string, descriptor: MessageDescriptor, count: number) => result.push({ key, descriptor, count })
@@ -118,12 +119,7 @@ export function ActivityBatchLabel(props: {
     !entries().length ||
     entries().length > 2 ||
     props.batch.facts.reduce((sum, fact) => sum + fact.count, 0) < props.total
-  createEffect(
-    on(
-      () => props.identity,
-      () => setTotalShown(false),
-    ),
-  )
+  createEffect(on(identity, () => setTotalShown(false)))
   createEffect(() => {
     if (needsTotal()) setTotalShown(true)
   })

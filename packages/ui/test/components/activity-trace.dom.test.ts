@@ -206,6 +206,21 @@ describe("AnimatedActivityCount DOM behavior", () => {
     expect(document.querySelector("#batch-count-host")?.textContent).toBe("Ran 2 commands")
   })
 
+  test("unrelated projection updates cannot restart an unchanged count transition", async () => {
+    harness.resetCount("stable-count-timer", 9)
+    await wait(0)
+    harness.setCountValue(10)
+    await wait(100)
+    harness.setBatchPending(1)
+    await wait(120)
+    const number = document.querySelector(
+      '#batch-count-host [data-activity-fact="execute"] [data-component="animated-activity-count"]',
+    )!
+    expect(number.hasAttribute("data-animating")).toBe(false)
+    expect(number.getAttribute("aria-label")).toBe("10")
+    harness.setBatchPending(0)
+  })
+
   test("decrease and identity reset snap without a transition", async () => {
     harness.resetCount("snap-dec", 20)
     await wait(0)

@@ -268,7 +268,7 @@ export function ProcessViewport(
   }
   const commitFollow = (force = false) => {
     if (following() && viewport && (force || props.following !== false))
-      motion.move(viewport, viewport.scrollHeight, followReady && !content.querySelector("[data-motion-changing]"))
+      motion.move(viewport, viewport.scrollHeight, followReady && !content.querySelector("[data-motion-resizing]"))
   }
   const follow = (force = false) => {
     if (frame !== undefined) cancelAnimationFrame(frame)

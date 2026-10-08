@@ -5,6 +5,7 @@ import { domFixture } from "../support/dom-fixtures"
 type ActivityDisplayMode = "full" | "balanced" | "minimal"
 
 interface ActivitySwitchHarness {
+  setSessionPaused: (paused: boolean) => void
   setMode: (mode: ActivityDisplayMode) => void
   openedTools: { sessionID: string; messageID: string; partID: string; callID?: string }[]
   setExecutionStatus: (status: "completed" | "stopped" | "failed") => void
@@ -155,5 +156,15 @@ describe("SessionTurn activity display switching", () => {
     await waitForUpdate()
     expect(process.textContent?.trim()).toBe("Execution failed")
     harness.setExecutionStatus("completed")
+  })
+
+  test("a canonical pause prevents the completion footer from advertising a stale running round", async () => {
+    harness.setSessionPaused(true)
+    await waitForUpdate()
+    const footer = document.querySelector('[data-component="execution-completion"]')!
+    expect(footer.textContent).toContain("Interrupted")
+    expect(footer.textContent).not.toContain("Running")
+    expect(footer.textContent).toContain("00:03")
+    harness.setSessionPaused(false)
   })
 })

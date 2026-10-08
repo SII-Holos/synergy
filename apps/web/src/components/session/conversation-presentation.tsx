@@ -62,7 +62,10 @@ export function ConversationPresentation(props: {
             copy.removeAttribute("id")
             copy.scrollTop = source.scrollTop
             copy.scrollLeft = source.scrollLeft
-            if (source.hasAttribute("data-motion-changing")) {
+            if (
+              source.hasAttribute("data-motion-changing") ||
+              source.matches('[data-conversation-motion], [data-slot="process-viewport-motion"]')
+            ) {
               const style = getComputedStyle(source)
               copy.style.height = `${source.getBoundingClientRect().height}px`
               copy.style.opacity = style.opacity

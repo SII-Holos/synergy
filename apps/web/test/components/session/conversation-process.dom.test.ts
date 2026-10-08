@@ -281,6 +281,11 @@ test("compact activity titles retain successful facts while showing current runt
   )
   await page.emulateMedia({ reducedMotion: "reduce" })
   expect(await animation()).toBe("none")
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('[data-slot="activity-batch-status"]')].some((node) =>
+      node.textContent?.includes("Waiting for model response"),
+    ),
+  )
   expect(await status.textContent()).toContain("Waiting for model response")
   await page.emulateMedia({ reducedMotion: "no-preference" })
   await page.evaluate(() => {
@@ -1494,11 +1499,11 @@ test("native Shift+Space leaves latest following and retains its reading row thr
     element.style.height = "280px"
   })
   expect(await page.evaluate(() => window.__conversationProcess.locate("work", "reading-59"))).toBe(true)
+  await page.evaluate(() => window.__conversationProcess.latest())
+  for (let index = 0; index < 4; index++) await frames()
   await page
     .getByRole("link", { name: "Project reference 59", exact: true })
     .evaluate((element) => (element as HTMLElement).focus({ preventScroll: true }))
-  await page.evaluate(() => window.__conversationProcess.latest())
-  for (let index = 0; index < 4; index++) await frames()
   const latest = await scroll.evaluate((element) => element.scrollTop)
   await page.keyboard.press("Shift+Space")
   for (let index = 0; index < 12; index++) await frames()

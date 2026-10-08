@@ -1,6 +1,7 @@
 export function createScrollMotion(target: () => HTMLElement | undefined) {
   let animation: Animation | undefined
   let element: HTMLElement | undefined
+  let position: { viewport: HTMLElement; top: number } | undefined
   const reduced = typeof window !== "undefined" ? window.matchMedia?.("(prefers-reduced-motion: reduce)") : undefined
   const offset = () => {
     if (!element || !animation) return 0
@@ -20,12 +21,20 @@ export function createScrollMotion(target: () => HTMLElement | undefined) {
     move(viewport: HTMLElement, top: number, animate: boolean) {
       const next = target()
       const carry = next === element ? offset() : 0
-      const previous = viewport.scrollTop
-      const destination = Math.max(0, Math.min(top, viewport.scrollHeight - viewport.clientHeight))
+      const maximum = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+      const clamped =
+        animate &&
+        next === element &&
+        position?.viewport === viewport &&
+        position.top > maximum &&
+        Math.abs(viewport.scrollTop - maximum) < 1
+      const previous = clamped ? position!.top : viewport.scrollTop
+      const destination = Math.max(0, Math.min(top, maximum))
       if (animate && next === element && Math.abs(destination - previous) < 0.5) return
       cancel()
       element = next
       viewport.scrollTo({ top, behavior: "auto" })
+      position = { viewport, top: viewport.scrollTop }
       const delta = viewport.scrollTop - previous + carry
       if (!animate || reduced?.matches || !next?.animate || Math.abs(delta) < 0.5) return
       const style = getComputedStyle(next)
@@ -47,8 +56,12 @@ export function createScrollMotion(target: () => HTMLElement | undefined) {
       const carry = offset()
       cancel()
       if (viewport && carry) viewport.scrollTop -= carry
+      position = undefined
     },
-    settle: cancel,
+    settle() {
+      cancel()
+      position = undefined
+    },
     dispose() {
       cancel()
       reduced?.removeEventListener?.("change", preference)

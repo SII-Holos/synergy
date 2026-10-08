@@ -96,6 +96,27 @@ test("a dynamic reduced-motion preference settles a running transition", async (
   expect(await page.locator("#viewport").evaluate((node) => node.scrollTop)).toBe(232)
 })
 
+test("shrinking content compensates native scroll clamping before the resize delivery", async () => {
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await page.goto(server.url.href)
+  await page.waitForFunction(() => !!(window as unknown as { motion: unknown }).motion)
+  const result = await page.evaluate(() => {
+    const viewport = document.querySelector<HTMLElement>("#viewport")!
+    const target = document.querySelector<HTMLElement>("#target")!
+    const anchor = document.querySelector<HTMLElement>("#anchor")!
+    const before = anchor.getBoundingClientRect().top
+    target.style.height = "268px"
+    ;(window as unknown as { motion: { move(v: HTMLElement, top: number, animate: boolean): void } }).motion.move(
+      viewport,
+      viewport.scrollHeight,
+      true,
+    )
+    return { before, after: anchor.getBoundingClientRect().top, top: viewport.scrollTop }
+  })
+  expect(result.top).toBe(168)
+  expect(Math.abs(result.after - result.before)).toBeLessThan(1)
+})
+
 test("distant latest navigation exposes the destination without sliding an empty viewport", async () => {
   await page.emulateMedia({ reducedMotion: "no-preference" })
   await page.goto(server.url.href)

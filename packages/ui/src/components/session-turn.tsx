@@ -1488,6 +1488,11 @@ export function SessionTurn(
     const status = sessionStatus()
     return isLastUserMessage() && status?.type === "paused" ? status : undefined
   }
+  const executionSummary = (): TurnExecutionSummary | undefined => {
+    const summary = props.executionSummary
+    if (!paused() || summary?.status !== "running") return summary
+    return { ...summary, status: paused()?.reason === "failed" ? "failed" : "interrupted" }
+  }
   const hasProcess = createMemo(
     () =>
       (props.segment?.process?.hasContent ?? (turnReasoning().length > 0 || timelineItems().some(isProcessItem))) ||
@@ -1852,10 +1857,7 @@ export function SessionTurn(
                         </For>
                         <Show when={showFooter() && showExecutionCompletion()}>
                           <div data-slot="session-turn-timeline-item" data-kind="execution-completion">
-                            <ExecutionCompletion
-                              summary={props.executionSummary}
-                              onDetails={props.onExecutionDetails}
-                            />
+                            <ExecutionCompletion summary={executionSummary()} onDetails={props.onExecutionDetails} />
                           </div>
                         </Show>
                         <Show

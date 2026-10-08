@@ -162,10 +162,7 @@ test("live growth keeps the painted tool in place and interrupted following yiel
     const last = root.lastElementChild!
     const before = last.getBoundingClientRect().top
     const height = viewport.scrollHeight
-    const added = document.createElement("div")
-    added.style.height = "32px"
-    added.textContent = "New tool"
-    root.append(added)
+    harness.appendTool()
     await harness.frames(2)
     const during = last.getBoundingClientRect().top
     const canonical = viewport.scrollTop

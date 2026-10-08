@@ -79,6 +79,9 @@ export function AnimatedActivityCount(props: { value: number; identity: string; 
   let timer: ReturnType<typeof setTimeout> | undefined
   let element: HTMLSpanElement | undefined
   let widthMotion: Animation | undefined
+  const identity = createMemo(() => `${props.identity}:${i18n().locale}`)
+  const value = createMemo(() => props.value)
+  const animate = createMemo(() => props.animate !== false)
 
   const cancelTimer = () => {
     if (timer === undefined) return
@@ -87,33 +90,30 @@ export function AnimatedActivityCount(props: { value: number; identity: string; 
   }
 
   createEffect(
-    on(
-      () => [`${props.identity}:${i18n().locale}`, props.value, props.animate] as const,
-      ([identity, value]) => {
-        const width = element?.getBoundingClientRect().width
-        widthMotion?.cancel()
-        cancelTimer()
-        const next = reduceActivityCountTransition(state(), {
-          identity,
-          value,
-          reducedMotion: props.animate === false || prefersReducedMotion(),
+    on([identity, value, animate], ([identity, value]) => {
+      const width = element?.getBoundingClientRect().width
+      widthMotion?.cancel()
+      cancelTimer()
+      const next = reduceActivityCountTransition(state(), {
+        identity,
+        value,
+        reducedMotion: props.animate === false || prefersReducedMotion(),
+      })
+      setState(next)
+      if (!next.animating) return
+      const targetWidth = element?.getBoundingClientRect().width
+      if (width && targetWidth && width !== targetWidth && element?.animate) {
+        widthMotion = element.animate([{ width: `${width}px` }, { width: `${targetWidth}px` }], {
+          duration: TRANSITION_MS,
+          easing: "cubic-bezier(0.2, 0, 0, 1)",
         })
-        setState(next)
-        if (!next.animating) return
-        const targetWidth = element?.getBoundingClientRect().width
-        if (width && targetWidth && width !== targetWidth && element?.animate) {
-          widthMotion = element.animate([{ width: `${width}px` }, { width: `${targetWidth}px` }], {
-            duration: TRANSITION_MS,
-            easing: "cubic-bezier(0.2, 0, 0, 1)",
-          })
-        }
-        const revision = next.revision
-        timer = setTimeout(() => {
-          setState((current) => (current ? finishActivityCountTransition(current, revision) : current))
-          timer = undefined
-        }, TRANSITION_MS)
-      },
-    ),
+      }
+      const revision = next.revision
+      timer = setTimeout(() => {
+        setState((current) => (current ? finishActivityCountTransition(current, revision) : current))
+        timer = undefined
+      }, TRANSITION_MS)
+    }),
   )
 
   const settle = () => {

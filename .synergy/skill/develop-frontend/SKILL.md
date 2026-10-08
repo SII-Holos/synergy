@@ -445,6 +445,8 @@ For browser-local document readers, validate actual streamed decompression in a 
 
 Test the production conversation's start-aligned flex column when adding a presentation wrapper; an un-sized intermediary can collapse percentage-width virtual rows despite isolated component tests passing. Keep scrollable geometry independent from presentation transforms and measure virtual margins in canonical coordinates. Interrupt following from the painted position and do not run a second compensation during disclosure space motion.
 
+Distinguish opacity-only arrival from disclosure height motion when coordinating following; a shared in-progress marker cannot identify which animation already owns space. Exercise both growth and native bottom clamping after shrink. Gate identity and count effects through scalar memos when their getters read a replaced projection object: unchanged IDs and values must not reset retained labels or restart timers. Test with replacement objects as well as independent primitive signals.
+
 For reading restoration, include a pagination demand row and a body with the same message ID, delayed Markdown admission, a remounted paragraph and a changed preceding height. Save once before outgoing disposal can remove its content. A retained outgoing frame is inert, stripped of IDs and non-reactive; it never owns actions or data leases. Verify warm and slow A–B–C navigation, errors, Scope changes, reduced motion during loading and crossfade, and paragraph coordinates after return. Explicit local submission may resume latest; passive arrivals and canonical handoff may not.
 
 ## Conversation process and read-only evidence

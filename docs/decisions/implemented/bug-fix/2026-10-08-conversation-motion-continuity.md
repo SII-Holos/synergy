@@ -14,7 +14,11 @@ The shared process-working resolver gives a canonical pause precedence over curr
 
 An unfinished tool within a canonically paused session shows a static paused indicator instead of continuing its spinner or shimmer. Resuming exposes the recorded tool state again; presentation never rewrites a tool outcome to success or failure.
 
+The current paused turn also overrides a stale running completion summary with an interrupted or failed presentation, preserving its recorded duration and detail target. Completed turns with independently running subtasks keep their supplied summary.
+
 Activity labels retain semantic fragment keys and localize numeric components through explicit translation placeholders. Counts use the shared 180 ms role and at most one old/new pair, with quiet four-pixel movement and locale-aware tabular numerals. Initial values, history, corrections and locale changes settle directly. A displayed total remains present for that batch even when pending facts catch up across activity phases. Routine activity labels coalesce over 120 ms; pause, error, approval, disconnection, submission and compaction transitions are immediate.
+
+Scalar memo boundaries prevent a replaced projection object from being mistaken for a new identity or count. Resize markers distinguish height disclosure from opacity-only arrival. Following compensates native bottom clamping after content shrink, and retained navigation frames preserve active scroll transforms.
 
 The outer viewport and bounded process viewport pin canonical layout immediately and decay a separate presentation offset over 240 ms. Clipped content wrappers prevent the offset from increasing scrollable geometry. Repeated growth retargets from the painted offset without restarting for unchanged destinations; native reading absorbs that offset into the real scroll position before cancelling. Explicit disclosure space motion excludes additional compensation. Navigation spanning a viewport uses a bounded 180 ms opacity transition so virtual rows cannot slide an empty screen into view. Reduced-motion changes settle current motion. Returning to latest has one preparation-and-scroll owner instead of two competing forced pins.
 
