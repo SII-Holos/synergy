@@ -127,7 +127,7 @@ describe("channel_reaction_only availability gate", () => {
     expect(channelToolVisibility({ toolName: "channel_reaction_only", session: workerSession })).toBeUndefined()
   })
 
-  test("stays synchronous so a Promise cannot hide every tool",() => {
+  test("stays synchronous so a Promise cannot hide every tool", () => {
     // SessionModePolicy.visibility is synchronous and its aggregator does not
     // await: a returned Promise is truthy and would mark every definition from
     // every contribution source unavailable. Keep this guard.
