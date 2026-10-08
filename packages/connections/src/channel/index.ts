@@ -946,7 +946,13 @@ export namespace Channel {
                     })
                   } else {
                     // The reaction never landed. Record the failure instead of
-                    // degrading into a text reply, and do not mark the turn sent.
+                    // degrading into a text reply, and do not mark the turn
+                    // sent. The status chain still ends visibly: the turn
+                    // started with Typing on the inbound message, and leaving
+                    // it there reads as perpetual progress, so swap in the
+                    // standard error emoji. This is the one path where a
+                    // reaction-only turn touches two emojis, and only one of
+                    // them (ERROR) actually lands.
                     log.error("reaction-only return delivery failed", {
                       sessionID,
                       reaction: reactionOnlyIntent.reaction,
@@ -957,6 +963,7 @@ export namespace Channel {
                       terminalMessageID: result.info.id,
                       reaction: reactionOnlyIntent.reaction,
                     })
+                    await reactionController.setError()
                   }
                 } else {
                   // If the response failed but tools completed successfully, build a
