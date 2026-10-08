@@ -9,6 +9,7 @@ const TRANSITION_MS = 180
 const TRANSITION_SETTLE_MS = TRANSITION_MS + 80
 
 interface ActivityDomHarness {
+  setSessionPaused: (paused: boolean) => void
   setBatchPending: (count: number) => void
   setBatchLive: (live: boolean) => void
   setApproval: (enabled: boolean) => void
@@ -110,6 +111,20 @@ function closeResult() {
 }
 
 describe("AnimatedActivityCount DOM behavior", () => {
+  test("canonical pause stops stale tool animation and resuming restores the recorded running state", async () => {
+    const selector = '#activity-rail-host [data-slot="activity-step"][data-state="running"]'
+    const step = document.querySelector(selector)!
+    expect(step).not.toBeNull()
+    harness.setSessionPaused(true)
+    await wait(0)
+    expect(step.querySelector('[data-component="spinner"]')).toBeNull()
+    expect(step.textContent).toContain("Paused")
+    expect(step.hasAttribute("data-working")).toBe(false)
+    harness.setSessionPaused(false)
+    await wait(0)
+    expect(document.querySelector(selector)).toBe(step)
+    expect(step.querySelector('[data-component="spinner"]')).not.toBeNull()
+  })
   test("a visible pending total survives facts catching up across activity phases", async () => {
     harness.resetCount("pending-total", 24)
     harness.setBatchLive(false)
@@ -135,6 +150,7 @@ describe("AnimatedActivityCount DOM behavior", () => {
   test.each([
     [9, 10],
     [20, 21],
+    [24, 25],
     [99, 100],
   ])("%i to %i keeps exactly one old/new transition then settles", async (before, after) => {
     harness.resetCount(`trans-${after}`, before)

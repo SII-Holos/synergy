@@ -211,10 +211,18 @@ function stateIcon(state: ActivityGroupState) {
   return getSemanticIcon("state.success")
 }
 
-function ActivityState(props: { state: ActivityGroupState; label: string }) {
+function ActivityState(props: { state: ActivityGroupState | "paused"; label: string }) {
   return (
     <span data-slot="activity-state" data-state={props.state}>
-      <Show when={props.state === "running"} fallback={<Icon name={stateIcon(props.state)} size="small" />}>
+      <Show
+        when={props.state === "running"}
+        fallback={
+          <Icon
+            name={props.state === "paused" ? getSemanticIcon("session.pause") : stateIcon(props.state)}
+            size="small"
+          />
+        }
+      >
         <Spinner />
       </Show>
       <span>{props.label}</span>
@@ -282,7 +290,11 @@ function ActivityStep(props: {
     const index = Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\")) + 1
     return [value.slice(0, index), value.slice(index)]
   }
-  const stateLabel = createMemo(() => _(stateDescriptor(props.step.state)))
+  const paused = () =>
+    props.step.state === "running" && data.view.statusFor(props.step.part.sessionID)?.type === "paused"
+  const stateLabel = createMemo(() =>
+    paused() ? _({ id: "session.process.paused", message: "Paused" }) : _(stateDescriptor(props.step.state)),
+  )
   const approval = createMemo(() => {
     const metadata = props.step.part.state.metadata
     if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return undefined
@@ -301,9 +313,9 @@ function ActivityStep(props: {
       data-slot="activity-step"
       data-part-id={props.step.part.id}
       data-family={props.step.family}
-      data-state={props.step.state}
+      data-state={paused() ? "paused" : props.step.state}
       data-current={props.current ? "" : undefined}
-      data-working={props.current && props.step.state === "running" ? "" : undefined}
+      data-working={!paused() && props.current && props.step.state === "running" ? "" : undefined}
       ref={motionRef}
       onFocusIn={() => props.onFocus?.(props.step.part.id)}
       onFocusOut={(event) => {
@@ -387,7 +399,7 @@ function ActivityStep(props: {
           </span>
         </Show>
         <Show when={(!props.quiet && props.step.state === "running") || props.step.state === "waiting-approval"}>
-          <ActivityState state={props.step.state} label={stateLabel()} />
+          <ActivityState state={paused() ? "paused" : props.step.state} label={stateLabel()} />
         </Show>
       </button>
       <Show when={evidence().length > 0}>
