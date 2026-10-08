@@ -24,6 +24,8 @@ let reads = 0,
   writes = 0
 const requests: string[] = []
 const images: Array<string | undefined> = []
+let holdFollowUp = false
+let releaseFollowUp: (() => void) | undefined
 const descriptor = () => {
   const { html, ...rest } = source
   return { ...rest, source: `asset://${String(count).padStart(16, "0")}.bin` }
@@ -50,10 +52,15 @@ const host: RenderHost = {
     RenderArtifact.FollowUp.parse(input)
     requests.push(input.text)
     images.push(input.image)
+    if (holdFollowUp)
+      await new Promise<void>((resolve) => {
+        releaseFollowUp = resolve
+      })
     return "cancelled"
   },
 }
 const i18n = setupI18n()
+i18n.load("zh-CN", { "tool.render.reset": "重置" })
 Object.assign(window, {
   __renderTest: {
     setup(html: string, libraries: RenderArtifact.Source["libraries"] = []) {
@@ -72,6 +79,13 @@ Object.assign(window, {
     },
     locale(locale: string) {
       i18n.activate(locale)
+    },
+    holdFollowUp() {
+      holdFollowUp = true
+    },
+    releaseFollowUp() {
+      holdFollowUp = false
+      releaseFollowUp?.()
     },
   },
 })

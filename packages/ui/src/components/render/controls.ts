@@ -23,6 +23,20 @@ export function installRenderControls(
     element.addEventListener("click", action)
     return element
   }
+  function label<T extends HTMLElement>(element: T, key: string, attribute?: string): T {
+    element.dataset.renderCopy = key
+    if (attribute) {
+      element.dataset.renderCopyAttribute = attribute
+      element.setAttribute(attribute, L[key])
+    } else element.textContent = L[key]
+    return element
+  }
+  api.addEventListener("hostcontextchange", () => {
+    document.querySelectorAll<HTMLElement>("[data-render-copy]").forEach((element) => {
+      const key = element.dataset.renderCopy!
+      if (key in L) label(element, key, element.dataset.renderCopyAttribute)
+    })
+  })
   function mount(element: HTMLElement) {
     if (document.body) document.body.append(element)
     else document.addEventListener("DOMContentLoaded", () => document.body.append(element), { once: true })
@@ -82,7 +96,9 @@ export function installRenderControls(
           (value) => typeof value === "number" && Number.isFinite(value),
         ) ||
           (item.min ?? 0) >= (item.max ?? 100) ||
-          (item.step ?? 1) <= 0)
+          (item.step ?? 1) <= 0 ||
+          Number(item.value) < (item.min ?? 0) ||
+          Number(item.value) > (item.max ?? 100))
       )
         throw new Error(L.invalidControls)
       if (item.type === "color" && !/^#[0-9a-f]{6}$/i.test(String(item.value))) throw new Error(L.invalidControls)
@@ -91,6 +107,7 @@ export function installRenderControls(
         item.type === "select" &&
         (!item.options?.length ||
           item.options.length > 12 ||
+          new Set(item.options).size !== item.options.length ||
           item.options.some((option) => typeof option !== "string" || option.length > 160) ||
           !item.options.includes(String(item.value)))
       )
@@ -102,13 +119,13 @@ export function installRenderControls(
     change = onChange
     const root = make("section")
     root.dataset.renderControls = ""
-    root.setAttribute("aria-label", L.parameters)
+    label(root, "parameters", "aria-label")
     const containers = new Map<string, HTMLElement>()
     for (const item of items) {
       const group = item.group ?? L.parameters
       if (!containers.has(group)) {
         const fieldset = make("fieldset")
-        fieldset.append(make("legend", group))
+        fieldset.append(item.group ? make("legend", group) : label(make("legend"), "parameters"))
         root.append(fieldset)
         containers.set(group, fieldset)
       }
@@ -186,6 +203,9 @@ export function installRenderControls(
         )
         .catch(host.report)
     })
+    label(reset, "reset")
+    label(original, "original")
+    label(submit, "review")
     submit.disabled = host.offline
     actions.append(reset, original, submit)
     root.append(actions)
@@ -220,7 +240,7 @@ export function installRenderControls(
     variants = items
     const root = make("nav")
     root.dataset.renderVariants = ""
-    root.setAttribute("aria-label", L.variants)
+    label(root, "variants", "aria-label")
     for (const item of items) {
       const control = button(item.label, () => selectVariant(item.id))
       control.dataset.variant = item.id
@@ -305,6 +325,8 @@ export function installRenderControls(
       }
       const previous = button(L.previous, () => move(-1)),
         next = button(L.next, () => move(1))
+      label(previous, "previous")
+      label(next, "next")
       previous.disabled = selected === "0001-01"
       next.disabled = selected === "9999-12"
       toolbar.append(previous, title, next)

@@ -10,6 +10,7 @@ import { Dialog } from "./dialog"
 import { IconButton } from "./icon-button"
 import { RenderHtml, renderHtmlDocument, readThemeCss, readHostContext } from "./render-html"
 import { loadRenderLibraries } from "./render/libraries"
+import { loadRenderFonts } from "./render/fonts"
 import { localizeRenderLabels, renderLabels } from "./render/labels"
 import { getSemanticIcon } from "./semantic-icon"
 import { Spinner } from "./spinner"
@@ -40,8 +41,8 @@ export function RenderTool(
   )
   const target = () =>
     RenderArtifact.Target.parse({ sessionID: props.sessionId, messageID: props.messageId, partID: props.partId })
-  const key = createMemo(
-    () => descriptor() && [props.sessionId, props.messageId, props.partId, descriptor()!.source].join("/"),
+  const key = createMemo(() =>
+    [props.sessionId, props.messageId, props.partId, descriptor()?.source ?? "static"].join("/"),
   )
   let loading: AbortController | undefined
   let viewerID: string | undefined
@@ -57,12 +58,15 @@ export function RenderTool(
   let writeEpoch = 0
   let disposed = false
   let writes = Promise.resolve<RenderArtifact.State>(RenderArtifact.emptyState())
-  const [snapshot, { refetch }] = createResource(key, async () => {
-    loading?.abort()
-    loading = new AbortController()
-    if (!host) throw new Error(_(renderLabels.unavailable))
-    return host.read(target(), loading.signal)
-  })
+  const [snapshot, { refetch }] = createResource(
+    () => (descriptor() ? key() : false),
+    async () => {
+      loading?.abort()
+      loading = new AbortController()
+      if (!host) throw new Error(_(renderLabels.unavailable))
+      return host.read(target(), loading.signal)
+    },
+  )
   createEffect(() => {
     key()
     untrack(() => {
@@ -75,7 +79,7 @@ export function RenderTool(
     })
   })
   createEffect(() => {
-    if (!key()) return
+    if (!descriptor()) return
     const stop = host?.observe?.(
       target(),
       (next) => setAcknowledged((current) => (next.revision > current.revision ? next : current)),
@@ -97,7 +101,10 @@ export function RenderTool(
   // Historical unversioned results enter the same surface with static execution policy.
   const html = () =>
     loaded()?.source.html ??
-    (props.status === "completed" && typeof props.metadata?.html === "string" && props.metadata.html.trim()
+    (!descriptor() &&
+    props.status === "completed" &&
+    typeof props.metadata?.html === "string" &&
+    props.metadata.html.trim()
       ? (props.metadata.html as string)
       : undefined)
   const title = () =>
@@ -200,17 +207,21 @@ export function RenderTool(
   }
   async function download() {
     if (!html()) return
+    const captured = key(),
+      documentHTML = html()!,
+      documentTitle = title(),
+      source = loaded()?.source
     setExporting(true)
     setError(undefined)
     try {
       await (expanded() || props.expanded ? flushExpanded?.() : flushInline?.())
       await writes
-      const source = loaded()?.source
+      if (disposed || key() !== captured) return
       const context = readHostContext(i18n().locale, 1024, true)
       context.viewMode = "export"
       const document = renderHtmlDocument(
-        html()!,
-        readThemeCss(),
+        documentHTML,
+        (await loadRenderFonts()) + readThemeCss(),
         {
           nonce: generateSecureUUID(),
           version: source?.id ?? "static",
@@ -223,12 +234,11 @@ export function RenderTool(
         },
         await loadRenderLibraries(source?.libraries ?? []),
       )
+      if (disposed || key() !== captured) return
       const url = URL.createObjectURL(new Blob([document], { type: "text/html" }))
       const link = window.document.createElement("a")
       link.href = url
-      link.download = `${title()
-        .replace(/[^\p{L}\p{N}_-]/gu, "_")
-        .slice(0, 80)}.html`
+      link.download = `${documentTitle.replace(/[^\p{L}\p{N}_-]/gu, "_").slice(0, 80)}.html`
       link.click()
       window.setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch (failure) {

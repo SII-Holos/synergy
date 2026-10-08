@@ -31,4 +31,4 @@ Run `bun run typecheck`, `bun test`, and `bun run build`, affected consumer test
 
 `resource-reference` owns the portable target parser, Workspace origin and location schemas. It never selects a current Workspace or probes files. Use it for every Markdown/resource ingress; ownership validation and opening belong to the host. Verify `test/resource-reference.test.ts` with affected message, composer and resource-opening tests.
 
-`render-artifact` owns the portable visual descriptor and bounded state protocol; Media owns storage and UI owns presentation. `json-value` validates nested JSON without exposing recursive definitions unsupported by the OpenAPI converter.
+`render-artifact` owns [visual schemas](../../docs/architecture/visual-results.md); `json-value` validates nested JSON.

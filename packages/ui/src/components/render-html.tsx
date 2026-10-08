@@ -8,6 +8,7 @@ import { renderRuntime } from "./render/runtime"
 import { installRenderControls } from "./render/controls"
 import { captureRenderElement } from "./render/capture"
 import { loadRenderLibraries } from "./render/libraries"
+import { loadRenderFonts } from "./render/fonts"
 import { localizeRenderLabels, renderLabels } from "./render/labels"
 import { Button } from "./button"
 import { THEME_CHANGE_EVENT } from "../theme/application"
@@ -391,10 +392,16 @@ export function RenderHtml(props: {
     props.source?.id
     return generateSecureUUID()
   })
-  const [libraries] = createResource(() => {
-    attempt()
-    return props.source?.libraries ?? []
-  }, loadRenderLibraries)
+  const [libraries] = createResource(
+    () => {
+      attempt()
+      return props.source?.libraries ?? []
+    },
+    async (libraries) => {
+      const [scripts, fonts] = await Promise.all([loadRenderLibraries(libraries), loadRenderFonts()])
+      return { scripts, fonts }
+    },
+  )
   const context = () =>
     readHostContext(
       i18n().locale,
@@ -415,7 +422,7 @@ export function RenderHtml(props: {
   const srcdoc = createMemo(() => {
     const code = libraries.error || libraries.loading ? undefined : libraries()
     if (!code) return undefined
-    return renderHtmlDocument(props.html, untrack(readThemeCss), untrack(config), code)
+    return renderHtmlDocument(props.html, code.fonts + untrack(readThemeCss), untrack(config), code.scripts)
   })
   function disconnect() {
     clearTimeout(deadline)
@@ -429,7 +436,8 @@ export function RenderHtml(props: {
     }
     flushes.clear()
   }
-  const updateContext = () => port?.postMessage({ type: "context", context: context() })
+  const updateContext = () =>
+    port?.postMessage({ type: "context", context: context(), labels: localizeRenderLabels(_) })
   async function handle(channel: MessagePort, data: unknown) {
     if (channel !== port) return
     let parsed: ReturnType<typeof FrameMessage.safeParse>
@@ -439,7 +447,22 @@ export function RenderHtml(props: {
     } catch {
       return
     }
-    if (!parsed.success) return
+    if (!parsed.success) {
+      if (
+        data &&
+        typeof data === "object" &&
+        "requestID" in data &&
+        typeof data.requestID === "string" &&
+        data.requestID.length <= 100
+      )
+        channel.postMessage({
+          type: "response",
+          requestID: data.requestID,
+          ok: false,
+          error: _(renderLabels.invalidRequest),
+        })
+      return
+    }
     const message = parsed.data
     if (message.type === "flushed") {
       const flush = flushes.get(message.requestID)

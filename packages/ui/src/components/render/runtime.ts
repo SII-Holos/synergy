@@ -17,13 +17,12 @@ export function renderRuntime(
   let state = config.state
   let revision = config.revision
   let epoch = 0
-  const sent = new Set<string>()
   let view: ViewState = { controls: {} }
   let authoredUI: RenderArtifact.Content["uiContent"]
   let feedback = false
   const pending = new Map<
     string,
-    { resolve: (value?: unknown) => void; reject: (error: Error) => void; timer: number }
+    { resolve: (value?: unknown) => void; reject: (error: Error) => void; timer?: number }
   >()
   let resolveReady!: () => void
   const ready = new Promise<void>((resolve) => {
@@ -105,16 +104,27 @@ export function renderRuntime(
   }
   function request(type: string, payload: object) {
     if (!config.interactive) return Promise.reject(new Error(labels.static))
+    if (
+      type === "followup" &&
+      (!("text" in payload) || typeof payload.text !== "string" || !payload.text.trim() || payload.text.length > 8000)
+    )
+      return Promise.reject(new Error(labels.invalidRequest))
     if (config.offline) return type === "state" ? Promise.resolve() : Promise.reject(new Error(labels.offline))
-    if (pending.size >= 8) return Promise.reject(new Error(labels.busy))
     return ready.then(
       () =>
         new Promise<unknown>((resolve, reject) => {
+          if (!port || pending.size >= 8) {
+            reject(new Error(port ? labels.busy : labels.closed))
+            return
+          }
           const requestID = `${config.nonce}:${++sequence}`
-          const timer = window.setTimeout(() => {
-            pending.delete(requestID)
-            reject(new Error(labels.timeout))
-          }, 30000)
+          const timer =
+            type === "state"
+              ? window.setTimeout(() => {
+                  pending.delete(requestID)
+                  reject(new Error(labels.timeout))
+                }, 30000)
+              : undefined
           pending.set(requestID, { resolve, reject, timer })
           port!.postMessage({ type, requestID, ...payload })
         }),
@@ -130,9 +140,6 @@ export function renderRuntime(
       .catch(() => {})
       .then(async () => {
         if (epoch !== current) throw new Error(labels.conflict)
-        const encoded = JSON.stringify(content)
-        sent.add(encoded)
-        if (sent.size > 8) sent.delete(sent.values().next().value!)
         const value = (await request("state", { revision, content })) as { revision?: number } | undefined
         if (typeof value?.revision === "number") revision = Math.max(revision, value.revision)
       })
@@ -229,10 +236,13 @@ export function renderRuntime(
         if (message.ok) receipt.resolve(message.value)
         else receipt.reject(new Error(message.error))
       }
-      if (message.type === "context") applyTheme(message.context)
+      if (message.type === "context") {
+        Object.assign(labels, message.labels)
+        applyTheme(message.context)
+      }
       if (message.type === "state" && message.state.revision >= revision) {
         revision = message.state.revision
-        if (!sent.has(JSON.stringify(message.state.content))) {
+        if (!message.state.mutationID?.startsWith(`${config.nonce}:`)) {
           epoch++
           unpack(message.state.content)
           restore()

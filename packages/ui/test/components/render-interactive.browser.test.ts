@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import path from "node:path"
+import type { RenderArtifact } from "@ericsanchezok/synergy-util/render-artifact"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { fileURLToPath } from "node:url"
@@ -266,4 +267,80 @@ test("inactive inline frames pause animation work and resume without remounting"
         }),
       paused,
     )
+})
+
+test("live locale and font changes retain the mounted interactive document", async () => {
+  await setup()
+  await inline().getByRole("slider", { name: "Workers" }).fill("4")
+  await page.evaluate(() =>
+    (window as unknown as { __renderTest: { locale(locale: string): void } }).__renderTest.locale("zh-CN"),
+  )
+  await inline().locator("html[lang=zh-CN]").waitFor()
+  expect(await inline().getByRole("button", { name: "重置", exact: true }).count()).toBe(1)
+  expect(await inline().locator("#total").innerText()).toBe("48")
+  expect(
+    await inline()
+      .locator("body")
+      .evaluate(async () => {
+        await document.fonts.ready
+        return Array.from(document.fonts).some((font) => font.family === "Inter" && font.status === "loaded")
+      }),
+  ).toBe(true)
+  await page.evaluate(() =>
+    (window as unknown as { __renderTest: { locale(locale: string): void } }).__renderTest.locale("en"),
+  )
+})
+
+test("a remote reset to an earlier local value is not mistaken for a write echo", async () => {
+  await setup()
+  type Host = {
+    __renderTest: { stats(): { state: RenderArtifact.State }; remote(content: RenderArtifact.Content): void }
+  }
+  for (const value of [4, 8]) {
+    await inline().getByRole("slider", { name: "Workers" }).fill(String(value))
+    await inline().getByRole("slider", { name: "Workers" }).dispatchEvent("change")
+    await page.waitForFunction(
+      (value) =>
+        JSON.stringify((window as unknown as Host).__renderTest.stats().state.content).includes(`"*:workers":${value}`),
+      value,
+    )
+    if (value === 4)
+      await page.evaluate(() => {
+        sessionStorage.setItem(
+          "saved-render-content",
+          JSON.stringify((window as unknown as Host).__renderTest.stats().state.content),
+        )
+      })
+  }
+  await page.evaluate(() =>
+    (window as unknown as Host).__renderTest.remote(JSON.parse(sessionStorage.getItem("saved-render-content")!)),
+  )
+  await inline().locator("#total").filter({ hasText: "48" }).waitFor({ timeout: 2000 })
+})
+
+test("control definitions reject out-of-range defaults and duplicate choices", async () => {
+  await setup(
+    `<output id="invalid"></output><script>(async()=>{const api=synergy.render;await api.ready;let rejected=0;for(const control of [{id:'count',label:'Count',type:'number',min:1,max:8,value:9},{id:'choice',label:'Choice',type:'select',value:'A',options:['A','A']}]){try{api.controls([control],()=>{})}catch{rejected++}}document.getElementById('invalid').textContent=String(rejected);document.body.dataset.ready='true'})()</script>`,
+  )
+  expect(await inline().locator("#invalid").innerText()).toBe("2")
+})
+
+test("human review remains pending past the state-save timeout", async () => {
+  await setup(
+    `<button id="review">Review</button><output id="status">idle</output><script>(async()=>{await synergy.render.ready;document.getElementById('review').onclick=async()=>{const status=document.getElementById('status');status.textContent='waiting';try{await synergy.render.requestFollowUp('Review this timing');status.textContent='settled'}catch{status.textContent='failed'}};document.body.dataset.ready='true'})()</script>`,
+  )
+  await page.evaluate(() =>
+    (window as unknown as { __renderTest: { holdFollowUp(): void } }).__renderTest.holdFollowUp(),
+  )
+  await page.clock.install()
+  try {
+    await inline().locator("#review").click()
+    await page.clock.fastForward(31000)
+    expect(await inline().locator("#status").innerText()).toBe("waiting")
+  } finally {
+    await page.evaluate(() =>
+      (window as unknown as { __renderTest: { releaseFollowUp(): void } }).__renderTest.releaseFollowUp(),
+    )
+    await page.clock.resume()
+  }
 })

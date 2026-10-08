@@ -25097,6 +25097,10 @@ msgid "tool.render.invalidIcon"
 msgstr "未知的可视化图标。"
 
 #. js-lingui-explicit-id
+msgid "tool.render.invalidRequest"
+msgstr "可视化请求无效。"
+
+#. js-lingui-explicit-id
 msgid "tool.render.invalidVariants"
 msgstr "可视化方案定义无效。"
 
