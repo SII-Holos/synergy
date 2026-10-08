@@ -2,7 +2,7 @@ import { attachmentPurpose } from "@ericsanchezok/synergy-util/attachment-presen
 import { attachmentSuppression, markdownAssetReferences } from "@ericsanchezok/synergy-util/markdown-assets"
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import { useLingui } from "@lingui/solid"
-import { sessionActivityAnimating, sessionActivityLabel } from "./session-status"
+import { processIsWorking, sessionActivityAnimating, sessionActivityLabel } from "./session-status"
 import { SESSION_TURN_DESC, MAILBOX_DESC } from "./tool-title-descriptors"
 
 import type {
@@ -1181,16 +1181,18 @@ export function SessionTurn(
   })
 
   const working = createMemo(() =>
-    props.submission
-      ? !props.submission.failed
-      : (props.segment?.process?.working ??
-        (props.executionState
-          ? ["preparing", "running", "approval"].includes(props.executionState.status)
-          : resolveTurnWorking({
-              isLastUserMessage: isLastUserMessage(),
-              messages: turnMessages(),
-              sessionStatus: view.statusFor(props.sessionID),
-            }))),
+    processIsWorking({
+      current: isLastUserMessage(),
+      sessionStatus: view.statusFor(props.sessionID),
+      submission: props.submission,
+      executionStatus: props.executionState?.status,
+      projected: props.segment?.process?.working,
+      fallback: resolveTurnWorking({
+        isLastUserMessage: isLastUserMessage(),
+        messages: turnMessages(),
+        sessionStatus: view.statusFor(props.sessionID),
+      }),
+    }),
   )
 
   const isToolRenderBoundary = (tool: string) => {
@@ -1501,10 +1503,11 @@ export function SessionTurn(
     else setExplicitProcessOpen(true)
   }
   const stopped = () =>
-    props.executionState
+    paused()?.reason === "aborted" ||
+    (props.executionState
       ? props.executionState.status === "stopped"
       : lastAssistantMessage()?.error?.name === "MessageAbortedError" ||
-        (paused()?.type === "paused" && paused()?.reason === "aborted")
+        (paused()?.type === "paused" && paused()?.reason === "aborted"))
   const turnDuration = () => {
     const summary = props.executionSummary
     if (summary?.elapsedMs == null) return undefined
@@ -1549,6 +1552,7 @@ export function SessionTurn(
           ? _({ id: "session.process.interrupted", message: "Interrupted" })
           : props.submission?.failed ||
               props.executionState?.status === "failed" ||
+              paused()?.reason === "failed" ||
               (!props.executionState && (error() || (paused()?.type === "paused" && paused()?.reason === "failed")))
             ? _({ id: "session.process.failed", message: "Execution failed" })
             : paused() || !lastAssistantMessage()?.time.completed

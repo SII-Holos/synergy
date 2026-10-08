@@ -2,6 +2,21 @@ import type { I18n, MessageDescriptor } from "@lingui/core"
 import type { Part as PartType, ToolPart, SessionStatus, SessionActivity } from "@ericsanchezok/synergy-sdk/client"
 import { TOOL_TITLE_DESC } from "./tool-title-descriptors"
 
+export function processIsWorking(input: {
+  current: boolean
+  sessionStatus?: SessionStatus
+  submission?: { failed: boolean }
+  executionStatus?: string
+  projected?: boolean
+  fallback: boolean
+}): boolean {
+  if (input.submission) return !input.submission.failed
+  if (input.current && input.sessionStatus?.type === "paused") return false
+  if (input.projected !== undefined) return input.projected
+  if (input.executionStatus) return ["preparing", "running", "approval"].includes(input.executionStatus)
+  return input.fallback
+}
+
 // ── Descriptor helpers ──────────────────────────────────────────────
 
 function defineDescriptor(id: string, message: string): MessageDescriptor {
