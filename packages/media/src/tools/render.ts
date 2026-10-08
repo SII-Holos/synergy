@@ -1,26 +1,62 @@
 import { z } from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
-
-const DESCRIPTION = `Create a read-only visual result from an HTML fragment or document. Use for charts, diagrams, comparisons and other results that benefit from visual layout. Include HTML, inline CSS and SVG; omit JavaScript and external resources. Small fragments are sufficient. Use data-render-fullbleed on a single root element to remove outer padding. Returns the rendered content and its artifact title.`
+import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
+import { RenderArtifact } from "@ericsanchezok/synergy-util/render-artifact"
+import { Render } from "../render"
+import DESCRIPTION from "./render.txt" with { type: "text" }
 
 export const RenderTool = Tool.define("render", {
   description: DESCRIPTION,
   parameters: z.object({
-    html: z
-      .string()
-      .describe(
-        "HTML fragment or document to render. Can include inline <style>, <svg>, <table>, and other HTML elements. JavaScript and external network resources are not executed or loaded.",
-      ),
-    artifactTitle: z.string().optional().describe("Short name for the visual result; omit to use the default name"),
+    html: RenderArtifact.Source.shape.html.describe(
+      "Complete HTML fragment with inline CSS, SVG and optional JavaScript. Execute only after the call completes.",
+    ),
+    artifactTitle: z.string().trim().min(1).max(160).optional().describe("Short name for the visual result"),
+    layout: z.enum(["normal", "wide"]).optional(),
+    libraries: z
+      .array(RenderArtifact.Library)
+      .max(3)
+      .refine((items) => new Set(items).size === items.length, "Libraries must be unique")
+      .optional(),
+    replaces: RenderArtifact.ID.optional().describe(
+      "ID of a previous visual in this session; creates an immutable new version",
+    ),
   }),
-  async execute(params) {
+  async execute(params, ctx) {
+    ctx.abort.throwIfAborted()
+    if (params.replaces) await Render.assertVersion(ctx.sessionID, params.replaces)
+    const source = RenderArtifact.Source.parse({
+      format: "synergy.visual",
+      version: 1,
+      mode: "interactive",
+      id: crypto.randomUUID(),
+      title: params.artifactTitle ?? "Visual result",
+      layout: params.layout ?? "normal",
+      libraries: params.libraries ?? [],
+      html: params.html,
+      replaces: params.replaces,
+    })
+    const asset = await Asset.write(Buffer.from(JSON.stringify(source)), RenderArtifact.MIME)
+    const { html: _, ...identity } = source
+    const descriptor: RenderArtifact.Descriptor = { ...identity, source: `asset://${asset}` }
     return {
-      title: params.artifactTitle ?? "Render",
-      output: `Rendered HTML${params.artifactTitle ? `: ${params.artifactTitle}` : ""} (${params.html.length} chars)`,
-      metadata: {
-        render: "html",
-        html: params.html,
-      },
+      title: source.title,
+      output: `Saved visual ${source.id}: ${source.title}. Source: ${descriptor.source}. Rendering is verified by the client, not this tool.`,
+      metadata: { visual: descriptor },
+      attachments: [
+        {
+          id: Identifier.ascending("part"),
+          sessionID: ctx.sessionID,
+          messageID: ctx.messageID,
+          type: "attachment" as const,
+          mime: RenderArtifact.MIME,
+          filename: "visual.synergy.json",
+          url: descriptor.source,
+          model: { mode: "none" as const },
+          presentation: { purpose: "deliverable" as const, renderer: "file" as const },
+        },
+      ],
     }
   },
 })

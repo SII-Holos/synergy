@@ -614,6 +614,11 @@ import type {
   RegistryPublishInput,
   RegistryRefreshErrors,
   RegistryRefreshResponses,
+  RenderGetErrors,
+  RenderGetResponses,
+  RenderStateWrite,
+  RenderUpdateErrors,
+  RenderUpdateResponses,
   ReviewCompareErrors,
   ReviewCompareResponses,
   ReviewFileErrors,
@@ -15184,6 +15189,83 @@ export class Voice extends HeyApiClient {
   }
 }
 
+export class Render extends HeyApiClient {
+  /**
+   * Read an owned visual
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID: string
+      partID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+            { in: "path", key: "partID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<RenderGetResponses, RenderGetErrors, ThrowOnError>({
+      url: "/render/{sessionID}/{messageID}/{partID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Save visual state without invoking a model
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID: string
+      partID: string
+      directory?: string
+      scopeID?: string
+      renderStateWrite?: RenderStateWrite
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+            { in: "path", key: "partID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "renderStateWrite", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<RenderUpdateResponses, RenderUpdateErrors, ThrowOnError>({
+      url: "/render/{sessionID}/{messageID}/{partID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class App extends HeyApiClient {
   /**
    * Write log
@@ -16179,6 +16261,8 @@ export class SynergyClient extends HeyApiClient {
   registry = new Registry({ client: this.client })
 
   voice = new Voice({ client: this.client })
+
+  render = new Render({ client: this.client })
 
   app = new App({ client: this.client })
 

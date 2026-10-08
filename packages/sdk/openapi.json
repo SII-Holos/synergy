@@ -33610,6 +33610,201 @@
         ]
       }
     },
+    "/render/{sessionID}/{messageID}/{partID}": {
+      "get": {
+        "operationId": "render.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/RenderTarget"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "messageID",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "partID",
+            "required": true
+          }
+        ],
+        "summary": "Read an owned visual",
+        "responses": {
+          "200": {
+            "description": "Immutable source and current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenderSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.render.get({\n  ...\n})"
+          }
+        ]
+      },
+      "put": {
+        "operationId": "render.update",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/RenderTarget"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "messageID",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "partID",
+            "required": true
+          }
+        ],
+        "summary": "Save visual state without invoking a model",
+        "responses": {
+          "200": {
+            "description": "Committed state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenderState"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenderConflict"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenderStateWrite"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.render.update({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/log": {
       "post": {
         "operationId": "app.log",
@@ -76783,6 +76978,194 @@
         "required": ["text"],
         "additionalProperties": false
       },
+      "RenderDescriptor": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "string",
+            "const": "synergy.visual"
+          },
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["static", "interactive"]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "layout": {
+            "type": "string",
+            "enum": ["normal", "wide"]
+          },
+          "libraries": {
+            "maxItems": 3,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["d3", "chart", "mermaid"]
+            }
+          },
+          "replaces": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "source": {
+            "type": "string",
+            "pattern": "^asset:\\/\\/[a-f0-9]{16}\\.bin$"
+          }
+        },
+        "required": ["format", "version", "id", "mode", "title", "layout", "libraries", "source"],
+        "additionalProperties": false
+      },
+      "RenderSource": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "string",
+            "const": "synergy.visual"
+          },
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["static", "interactive"]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "layout": {
+            "type": "string",
+            "enum": ["normal", "wide"]
+          },
+          "libraries": {
+            "maxItems": 3,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["d3", "chart", "mermaid"]
+            }
+          },
+          "html": {
+            "type": "string",
+            "minLength": 1
+          },
+          "replaces": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": ["format", "version", "id", "mode", "title", "layout", "libraries", "html"],
+        "additionalProperties": false
+      },
+      "RenderContent": {
+        "type": "object",
+        "properties": {
+          "modelContent": {},
+          "uiContent": {}
+        },
+        "additionalProperties": false
+      },
+      "RenderState": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "updatedAt": {
+            "type": "number",
+            "minimum": 0
+          },
+          "mutationID": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "content": {
+            "$ref": "#/components/schemas/RenderContent"
+          }
+        },
+        "required": ["revision", "updatedAt", "content"],
+        "additionalProperties": false
+      },
+      "RenderSnapshot": {
+        "type": "object",
+        "properties": {
+          "descriptor": {
+            "$ref": "#/components/schemas/RenderDescriptor"
+          },
+          "source": {
+            "$ref": "#/components/schemas/RenderSource"
+          },
+          "state": {
+            "$ref": "#/components/schemas/RenderState"
+          }
+        },
+        "required": ["descriptor", "source", "state"]
+      },
+      "RenderConflict": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "RenderConflict"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "state": {
+                "$ref": "#/components/schemas/RenderState"
+              }
+            },
+            "required": ["message", "state"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "RenderStateWrite": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "mutationID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "content": {
+            "$ref": "#/components/schemas/RenderContent"
+          }
+        },
+        "required": ["revision", "mutationID", "content"],
+        "additionalProperties": false
+      },
       "ModelRoleUsage": {
         "type": "object",
         "properties": {
@@ -80003,6 +80386,15 @@
         "schema": {
           "$ref": "#/components/schemas/PerfIssueStatus"
         }
+      },
+      "RenderTarget": {
+        "in": "path",
+        "name": "sessionID",
+        "schema": {
+          "type": "string",
+          "pattern": "^ses_[\\w]+$"
+        },
+        "required": true
       }
     }
   }

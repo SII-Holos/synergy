@@ -120,7 +120,7 @@ export namespace SessionHistory {
     return { hidden, cut }
   }
 
-  async function requireDisplayMessage(session: Info, messageID: string) {
+  export async function requireDisplayMessage(session: Info, messageID: string) {
     const sessionID = session.id
     await prepareSessionDisplay(session, { messageID })
     const [header, visibility] = await Promise.all([
