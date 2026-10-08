@@ -330,7 +330,7 @@ export function ActivityBatch(props: {
       <ProcessViewport
         identity={`${props.serverUrl}:${data.directory}:${props.batch.message.sessionID}:${props.batch.key}`}
         active={props.active}
-        following={props.following}
+        parentFollowing={props.following}
         revision={props.batch.steps.map((step) => `${step.part.id}:${step.state}`).join(",")}
         onBeforeLayoutChange={props.onBeforeLayoutChange}
       >

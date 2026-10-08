@@ -7,14 +7,11 @@ import {
   on,
   onCleanup,
   onMount,
-  Show,
   untrack,
   useContext,
   type ParentProps,
 } from "solid-js"
 import { useLingui } from "@lingui/solid"
-import { Icon } from "./icon"
-import { getSemanticIcon } from "./semantic-icon"
 import "./process-viewport.css"
 import { useConversationLiveRevision } from "./conversation-motion"
 import { readSelectionRanges } from "../utils/selection"
@@ -121,7 +118,7 @@ export function ProcessViewport(
     identity: string
     active: boolean
     revision?: string
-    following?: boolean
+    parentFollowing?: boolean
     ref?: (element: HTMLDivElement) => void
     onScroll?: () => void
     onReading?: (value: boolean) => void
@@ -266,15 +263,15 @@ export function ProcessViewport(
       })
     }
   }
-  const commitFollow = (force = false) => {
-    if (following() && viewport && (force || props.following !== false))
+  const commitFollow = () => {
+    if (following() && viewport)
       motion.move(viewport, viewport.scrollHeight, followReady && !content.querySelector("[data-motion-resizing]"))
   }
-  const follow = (force = false) => {
+  const follow = () => {
     if (frame !== undefined) cancelAnimationFrame(frame)
     frame = requestAnimationFrame(() => {
       frame = undefined
-      commitFollow(force)
+      commitFollow()
     })
   }
   const latest = () => {
@@ -289,8 +286,17 @@ export function ProcessViewport(
     disclosureAnchor = undefined
     disclosureGeneration++
     notifyReading(false)
-    follow(true)
+    follow()
   }
+  createEffect(
+    on(
+      () => props.parentFollowing,
+      (value, previous) => {
+        if (value && previous === false && props.active) latest()
+      },
+      { defer: true },
+    ),
+  )
   const revision = createMemo(() => props.revision)
   createEffect(
     on(
@@ -319,8 +325,7 @@ export function ProcessViewport(
         props.onWidthChange?.(width)
       }
       if (following()) {
-        if (explicitFollow) commitFollow(true)
-        else if (props.active) commitFollow()
+        if (explicitFollow || props.active) commitFollow()
       } else preserve()
       const height = viewport.clientHeight
       const contentHeight = viewport.scrollHeight
@@ -391,17 +396,6 @@ export function ProcessViewport(
       data-above={above() ? "" : undefined}
       data-below={below() ? "" : undefined}
     >
-      <Show when={!following() && below()}>
-        <button
-          type="button"
-          data-slot="process-latest"
-          onClick={latest}
-          aria-label={_({ id: "session.process.latest", message: "Back to latest action" })}
-          title={_({ id: "session.process.latest", message: "Back to latest action" })}
-        >
-          <Icon name={getSemanticIcon("navigation.latest")} size="small" />
-        </button>
-      </Show>
       <div
         data-component="process-viewport"
         data-scroll-viewport="vertical"
@@ -439,6 +433,14 @@ export function ProcessViewport(
         }}
         onKeyDown={(event) => {
           if ((event.target as Element).closest("input, textarea, [contenteditable='true']")) return
+          if (event.key === " ") {
+            if ((event.target as Element).closest("button, summary, [role='button']")) return
+            if (event.shiftKey) beginMovement()
+            else {
+              if (!following()) beginMovement()
+              resumeRequested = true
+            }
+          }
           if (["ArrowUp", "PageUp", "Home"].includes(event.key)) beginMovement()
           if (["ArrowDown", "PageDown"].includes(event.key)) {
             if (!following()) beginMovement()

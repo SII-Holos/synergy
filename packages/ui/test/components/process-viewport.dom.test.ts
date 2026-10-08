@@ -129,7 +129,7 @@ test("repeated wheel pauses notify reading only when following changes, includin
     viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -20, bubbles: true }))
     await harness.frames()
     const repeatedPause = [...harness.notifications]
-    document.querySelector<HTMLButtonElement>('[data-slot="process-latest"]')!.click()
+    viewport.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }))
     await harness.frames()
     const latest = [...harness.notifications]
     for (let input = 0; input < 4; input++)
@@ -150,6 +150,112 @@ test("repeated wheel pauses notify reading only when following changes, includin
     nextPause: [true, false, true],
     interactions: 11,
   })
+})
+
+test("parent reading does not stop a live process from following new actions", async () => {
+  const result = await page.evaluate(async () => {
+    const harness = (window as unknown as FixtureWindow).processViewportFixture
+    const viewport = document.querySelector<HTMLElement>('[data-component="process-viewport"]')!
+    harness.parentFollowing(false)
+    harness.appendTool()
+    await harness.frames(20)
+    const first = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop
+    harness.appendTool()
+    await harness.frames(20)
+    return { first, second: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop }
+  })
+  expect(result.first).toBeLessThanOrEqual(2)
+  expect(result.second).toBeLessThanOrEqual(2)
+})
+
+test("returning the parent to latest resumes a locally paused active process", async () => {
+  const result = await page.evaluate(async () => {
+    const harness = (window as unknown as FixtureWindow).processViewportFixture
+    const viewport = document.querySelector<HTMLElement>('[data-component="process-viewport"]')!
+    harness.parentFollowing(false)
+    viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -20, bubbles: true }))
+    const before = viewport.scrollTop
+    harness.appendTool()
+    await harness.frames(20)
+    const reading = viewport.scrollTop
+    const buttons = document.querySelectorAll('[data-slot="process-latest"]').length
+    harness.parentFollowing(true)
+    await harness.frames(20)
+    return {
+      before,
+      reading,
+      buttons,
+      distance: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
+      notifications: harness.notifications,
+    }
+  })
+  expect(result.reading).toBe(result.before)
+  expect(result.distance).toBeLessThanOrEqual(2)
+  expect(result.buttons).toBe(0)
+  expect(result.notifications).toEqual([true, false])
+})
+
+test("returning the parent to latest preserves a completed process's reading position", async () => {
+  const result = await page.evaluate(async () => {
+    const harness = (window as unknown as FixtureWindow).processViewportFixture
+    const viewport = document.querySelector<HTMLElement>('[data-component="process-viewport"]')!
+    harness.active(false)
+    harness.parentFollowing(false)
+    harness.pause()
+    const before = viewport.scrollTop
+    harness.parentFollowing(true)
+    harness.growChildList("below")
+    await harness.frames(20)
+    return { before, after: viewport.scrollTop, notifications: harness.notifications }
+  })
+  expect(result.after).toBe(result.before)
+  expect(result.notifications).toEqual([true])
+})
+
+for (const reducedMotion of ["no-preference", "reduce"] as const) {
+  test(`native bottom scrolling resumes process following without another button (${reducedMotion})`, async () => {
+    await page.emulateMedia({ reducedMotion })
+    const viewport = page.locator('[data-component="process-viewport"]')
+    await viewport.focus()
+    await viewport.press("End")
+    await page.evaluate(() => (window as unknown as FixtureWindow).processViewportFixture.frames(20))
+    await viewport.hover()
+    await page.mouse.wheel(0, -160)
+    await page.evaluate(() => (window as unknown as FixtureWindow).processViewportFixture.frames(20))
+    expect(
+      await viewport.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop),
+    ).toBeGreaterThan(100)
+    await page.mouse.wheel(0, 10000)
+    await page.evaluate(() => (window as unknown as FixtureWindow).processViewportFixture.frames(20))
+    await page.evaluate(async () => {
+      const harness = (window as unknown as FixtureWindow).processViewportFixture
+      harness.appendTool()
+      await harness.frames(20)
+    })
+    expect(
+      await viewport.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop),
+    ).toBeLessThanOrEqual(2)
+    expect(await page.locator('[data-slot="process-latest"]').count()).toBe(0)
+  })
+}
+
+test("native Shift+Space pauses process following before new actions arrive", async () => {
+  const viewport = page.locator('[data-component="process-viewport"]')
+  await viewport.focus()
+  await viewport.press("End")
+  await page.evaluate(() => (window as unknown as FixtureWindow).processViewportFixture.frames(20))
+  await viewport.press("Shift+Space")
+  await page.evaluate(() => (window as unknown as FixtureWindow).processViewportFixture.frames(20))
+  const before = await viewport.evaluate((element) => element.scrollTop)
+  expect(
+    await viewport.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop),
+  ).toBeGreaterThan(100)
+  await page.evaluate(async () => {
+    const harness = (window as unknown as FixtureWindow).processViewportFixture
+    harness.appendTool()
+    await harness.frames(20)
+  })
+  expect(await viewport.evaluate((element) => element.scrollTop)).toBe(before)
 })
 
 test("live growth keeps the painted tool in place and interrupted following yields without a jump", async () => {
@@ -329,7 +435,7 @@ test("a detached default local anchor survives live body growth without a revisi
   expect(result.captures).toEqual([])
   expect(result.restores).toEqual([])
   expect(result.sameParagraph).toBe(true)
-  expect(result.latest).toBe(true)
+  expect(result.latest).toBe(false)
 })
 
 test("consumer root identity excludes direct child mount and unmount but preserves nested body mutations", async () => {

@@ -17753,10 +17753,6 @@ msgid "session.process.interrupted"
 msgstr "已中断"
 
 #. js-lingui-explicit-id
-msgid "session.process.latest"
-msgstr "回到最新操作"
-
-#. js-lingui-explicit-id
 msgid "session.process.loadFailed"
 msgstr "无法加载过程详情。"
 

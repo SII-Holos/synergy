@@ -17753,10 +17753,6 @@ msgid "session.process.interrupted"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "session.process.latest"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "session.process.loadFailed"
 msgstr ""
 

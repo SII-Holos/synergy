@@ -1188,6 +1188,42 @@ test("loaded empty reasoning hides its control and a failed body keeps an access
   expect(await page.locator('[data-component="process-reasoning"][data-part-id="thought-2"]').count()).toBe(1)
 })
 
+test("opening a live group follows its actions independently and the outer latest action resumes it", async () => {
+  await page.goto(`${url}?scrolling`)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => window.__conversationProcess.grow(80))
+  const trigger = page.locator('[data-slot="activity-batch-trigger"]').last()
+  if ((await trigger.getAttribute("aria-expanded")) === "true") await trigger.click()
+  await trigger.click()
+  const viewport = page.locator('[data-component="process-viewport"]').last()
+  await viewport.waitFor()
+  for (let index = 0; index < 15; index++) await frames()
+  const outer = page.locator("[data-scroller]")
+  const outerTop = await outer.evaluate((element) => element.scrollTop)
+  await page.evaluate(() => window.__conversationProcess.append("opened-live-action"))
+  for (let index = 0; index < 15; index++) await frames()
+  expect(
+    await viewport.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop),
+  ).toBeLessThanOrEqual(2)
+  expect(await viewport.locator('[data-part-id="opened-live-action"]').count()).toBe(1)
+  expect(await outer.evaluate((element) => element.scrollTop)).toBe(outerTop)
+  await viewport.hover()
+  await page.mouse.wheel(0, -120)
+  for (let index = 0; index < 10; index++) await frames()
+  const reading = await viewport.evaluate((element) => element.scrollTop)
+  await page.evaluate(() => window.__conversationProcess.append("reading-live-action"))
+  for (let index = 0; index < 15; index++) await frames()
+  expect(await viewport.evaluate((element) => element.scrollTop)).toBe(reading)
+  expect(await page.locator('[data-slot="process-latest"]').count()).toBe(0)
+  await page.evaluate(() => window.__conversationProcess.latest())
+  for (let index = 0; index < 15; index++) await frames()
+  expect(
+    await viewport.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop),
+  ).toBeLessThanOrEqual(2)
+  expect(await viewport.locator('[data-part-id="reading-live-action"]').count()).toBe(1)
+  expect(errors).toEqual([])
+})
+
 test("replayed additions and passive resize cannot follow a historical viewport", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
@@ -1324,7 +1360,7 @@ test("a long logical block uses a bounded independent viewport", async () => {
   await frames()
   expect(await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)).toBe(mainOffset)
   expect(await page.getByText("More actions below", { exact: true }).count()).toBe(0)
-  expect(await page.locator('[data-slot="process-latest"]').last().textContent()).toBe("")
+  expect(await page.locator('[data-slot="process-latest"]').count()).toBe(0)
   await viewport.focus()
   await viewport.press("End")
   await page.locator('[data-slot="process-latest"]').waitFor({ state: "detached" })
@@ -1571,7 +1607,7 @@ test("native reading movement wins over real body growth in the same wheel dispa
   const after = await viewport.evaluate((element) => ({ top: element.scrollTop, height: element.scrollHeight }))
   expect(after.height).toBeGreaterThan(before.height)
   expect(after.top).toBeLessThanOrEqual(before.top - 100)
-  await page.locator('[data-slot="process-latest"]').last().waitFor({ state: "visible" })
+  expect(await page.locator('[data-slot="process-latest"]').count()).toBe(0)
 })
 
 test("native Space paging preserves new reading when real body growth follows its first movement", async () => {
@@ -1926,7 +1962,7 @@ test("local reading survives new actions, history prepend and reopening without 
   await frames()
   expect(Math.abs((await part.evaluate((el) => el.getBoundingClientRect().top)) - before)).toBeLessThan(2)
   expect(await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)).toBe(outer)
-  await page.locator('[data-slot="process-latest"]').last().waitFor()
+  expect(await page.locator('[data-slot="process-latest"]').count()).toBe(0)
   const header = page.locator('[data-slot="turn-process-trigger"]')
   const relative = await part.evaluate(
     (el) =>
@@ -1949,7 +1985,8 @@ test("local reading survives new actions, history prepend and reopening without 
     ),
   ).toBeLessThan(2)
   expect(await page.evaluate(() => window.__conversationProcess.retained())).toBeLessThan(120)
-  await page.locator('[data-slot="process-latest"]').last().click()
+  await viewport.focus()
+  await viewport.press("End")
   await page.waitForFunction(() => {
     const part = document.querySelector('[data-part-id="live-reading-append"]')
     const viewport = part?.closest('[data-component="process-viewport"]')

@@ -1276,7 +1276,7 @@ function ConversationActivityBody(
       }}
       onBeforeLayoutChange={(event) => input.context.autoScroll?.handleInteraction(event)}
       active={input.row().activity?.active ?? false}
-      following={!input.context.scrolledUp()}
+      parentFollowing={!input.context.scrolledUp()}
       revision={entries()
         .map((entry) =>
           entry.kind === "body" ? entry.parts.map((part) => `${part.id}:${part.content.version}`).join(",") : entry.key,

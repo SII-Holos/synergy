@@ -1,5 +1,5 @@
 import { I18nProvider } from "@lingui/solid"
-import { For } from "solid-js"
+import { createSignal, For } from "solid-js"
 import { render } from "solid-js/web"
 import {
   captureProcessReadingAnchor,
@@ -27,6 +27,8 @@ export type FixtureHarness = {
   growChildList(position: "above" | "below"): void
   pause(): void
   appendTool(): void
+  parentFollowing(value: boolean): void
+  active(value: boolean): void
 }
 
 const parameters = new URLSearchParams(location.search)
@@ -40,6 +42,8 @@ let viewport!: HTMLDivElement
 let virtualRoot!: HTMLDivElement
 let pause!: () => void
 const rows = Array.from({ length: 28 }, (_, index) => index)
+const [parentFollowing, setParentFollowing] = createSignal(true)
+const [active, setActive] = createSignal(true)
 const body = (position: "above" | "below") => document.querySelector(`[data-body="${position}"]`)!
 const targetID = (target?: Element) => target?.id || null
 const frames = async (count = 6) => {
@@ -74,6 +78,8 @@ const harness: FixtureHarness = {
   growChildList,
   burst,
   pause: () => pause(),
+  parentFollowing: setParentFollowing,
+  active: setActive,
   appendTool() {
     const added = document.createElement("div")
     added.style.height = "32px"
@@ -125,7 +131,8 @@ render(
     <I18nProvider i18n={setupI18n()}>
       <ProcessViewport
         identity="process-viewport-fixture"
-        active
+        active={active()}
+        parentFollowing={parentFollowing()}
         ref={(element) => (viewport = element)}
         onReading={(value) => notifications.push(value)}
         onInteraction={() => harness.interactions++}
