@@ -48,12 +48,20 @@ const output = path.join(home, "acceptance-session-switch")
 await mkdir(output, { recursive: true })
 const browser = await chromium.launch({ headless: true })
 const errors: string[] = []
+type FrameMeasurements = {
+  samples: number[]
+  missingBodies: number
+  pendingFrames: number
+  exposedPendingFrames: number
+  active: boolean
+}
 const measurements: {
   theme: string
   width: number
   preparationReads: number
   switches: number
   largestVisibleGap: number
+  pendingFrames: number
 }[] = []
 try {
   for (const theme of ["light", "dark"] as const) {
@@ -75,17 +83,32 @@ try {
           preparationReads.set(session.id, (preparationReads.get(session.id) ?? 0) + 1)
       }
     })
-    await page.goto(`${url.origin}/aG9tZQ/session/${sessions[0].id}`)
-    const viewport = page.locator('[data-conversation-viewport][aria-hidden="false"]')
-    await viewport.waitFor()
-    assert.ok((await viewport.innerText()).includes("Synthetic reading content."), "cold admission contains its body")
-    await page.evaluate(() => {
-      const state = { samples: [] as number[], missingBodies: 0, active: true }
+    await page.addInitScript(() => {
+      const state: FrameMeasurements = {
+        samples: [],
+        missingBodies: 0,
+        pendingFrames: 0,
+        exposedPendingFrames: 0,
+        active: true,
+      }
       Object.assign(window, { switchMeasurements: state })
       const sample = () => {
         if (!state.active) return
-        const viewport = document.querySelector('[data-conversation-viewport][aria-hidden="false"]')
-        if (viewport) {
+        const viewport = document.querySelector("[data-conversation-viewport]")
+        if (viewport?.getAttribute("aria-hidden") === "true") {
+          state.pendingFrames++
+          const exposed = [...viewport.querySelectorAll<HTMLElement>("[data-display-row]")].some((row) => {
+            const bounds = row.getBoundingClientRect()
+            if (!bounds.width || !bounds.height || bounds.bottom <= 0 || bounds.top >= innerHeight) return false
+            if (getComputedStyle(row).visibility !== "visible") return false
+            for (let element: HTMLElement | null = row; element; element = element.parentElement) {
+              const style = getComputedStyle(element)
+              if (style.display === "none" || Number(style.opacity) === 0) return false
+            }
+            return true
+          })
+          if (exposed) state.exposedPendingFrames++
+        } else if (viewport) {
           state.samples.push(viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop)
           if (!viewport.textContent?.includes("Synthetic reading content.")) state.missingBodies++
         }
@@ -93,6 +116,10 @@ try {
       }
       requestAnimationFrame(sample)
     })
+    await page.goto(`${url.origin}/aG9tZQ/session/${sessions[0].id}`)
+    const viewport = page.locator('[data-conversation-viewport][aria-hidden="false"]')
+    await viewport.waitFor()
+    assert.ok((await viewport.innerText()).includes("Synthetic reading content."), "cold admission contains its body")
     for (const width of [1440, 375]) {
       await page.setViewportSize({ width, height: width === 375 ? 812 : 900 })
       if (width === 375) {
@@ -121,31 +148,49 @@ try {
             "visible navigation starts at latest content",
           )
         }
-        const frames = await page.evaluate(() => {
-          const state = (
-            window as unknown as { switchMeasurements: { active: boolean; samples: number[]; missingBodies: number } }
-          ).switchMeasurements
-          state.active = false
-          return { samples: state.samples, missingBodies: state.missingBodies }
-        })
-        const { samples, missingBodies } = frames
-        assert.equal(missingBodies, 0, "every admitted animation frame retains its user body")
-        const largestVisibleGap = Math.max(0, ...samples)
-        await Bun.write(path.join(output, `${theme}-frames.json`), JSON.stringify(samples))
-        assert.ok(largestVisibleGap <= 2, "every admitted animation frame stays at latest")
+        for (let index = 0; index < 6; index++) {
+          await page
+            .getByText(sessions[(index + 1) % 2].title, { exact: true })
+            .first()
+            .click()
+        }
+        await page.waitForURL(`**/session/${sessions[0].id}`)
+        await viewport.waitFor()
+        assert.ok(
+          (await viewport.innerText()).includes(`${sessions[0].title} message 7`),
+          "rapid target replacement admits only the final target's body",
+        )
+      }
+      await page.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+      )
+      const frames = await page.evaluate(() => {
+        const state = (window as unknown as { switchMeasurements: FrameMeasurements }).switchMeasurements
+        state.active = false
+        return state
+      })
+      const { samples, missingBodies, pendingFrames, exposedPendingFrames } = frames
+      assert.equal(missingBodies, 0, "every admitted animation frame retains its user body")
+      assert.ok(pendingFrames > 0, "pending admission was observed")
+      assert.equal(exposedPendingFrames, 0, "pending admission never exposes virtual rows")
+      const largestVisibleGap = Math.max(0, ...samples)
+      await Bun.write(path.join(output, `${theme}-${width}-frames.json`), JSON.stringify(frames))
+      assert.ok(largestVisibleGap <= 2, "every admitted animation frame stays at latest")
+      if (width === 1440) {
         assert.ok(
           [...preparationReads.values()].every((count) => count <= 1),
           "cached return does not repeat preparation",
         )
         assert.equal(preparationReads.size, 2, "both cold preparations were observed")
-        measurements.push({
-          theme,
-          width,
-          preparationReads: [...preparationReads.values()].reduce((sum, count) => sum + count, 0),
-          switches: 6,
-          largestVisibleGap,
-        })
       }
+      measurements.push({
+        theme,
+        width,
+        preparationReads: [...preparationReads.values()].reduce((sum, count) => sum + count, 0),
+        switches: width === 1440 ? 12 : 0,
+        largestVisibleGap,
+        pendingFrames,
+      })
       await page.screenshot({ path: path.join(output, `${theme}-${width}.png`) })
     }
     await context.close()
@@ -154,7 +199,8 @@ try {
   await Bun.write(path.join(output, "measurements.json"), JSON.stringify(measurements, null, 2))
   console.log(
     JSON.stringify({
-      checks: "production Session switching, cached preparation, first visible scroll, both themes and phone layout",
+      checks:
+        "production Session switching, pending visibility, rapid replacement, cached preparation, first visible scroll, both themes and phone layout",
       measurements,
     }),
   )
