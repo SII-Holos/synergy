@@ -234,6 +234,7 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   speak: "communication",
   render: "analyze",
   response_card: "communication",
+  channel_reaction_only: "communication",
   "context7_resolve-library-id": "search",
   "context7_query-docs": "web",
   mcp__anysearch__search: "web",
@@ -308,6 +309,7 @@ const EXTERNAL_ACTION_TOOLS = new Set([
 ])
 const PRODUCTION_COMMUNICATION_TOOLS = new Set([
   "response_card",
+  "channel_reaction_only",
   "openai_image_gen",
   "openai_image_edit",
   "speak",

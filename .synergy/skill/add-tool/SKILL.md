@@ -31,7 +31,7 @@ description: Add or modify a first-party Synergy tool, its Zod parameters, execu
 When a tool prepares an interactive Channel artifact or another provider-owned message:
 
 1. Keep the tool provider-neutral and side-effect free. Return a bounded structured intent in tool metadata instead of provider JSON or a direct provider call.
-2. Expose the tool only in Channel sessions when its contract depends on Channel identity, reply anchors, or provider capabilities.
+2. Expose the tool only in Channel sessions when its contract depends on Channel identity, reply anchors, or provider capabilities. Gate channel-level identity in the **synchronous** `visibility` hook (it must stay an object return — returning a Promise there is truthy and would hide every tool from every source). Put account-config-dependent gating in the **async** `availability` hook, which is awaited and whose diagnostic removes the tool from the visible set; both run inside `SessionModePolicy.register({ id: "channel", ... })`, and the config rule must fail closed.
 3. Let the Channel runtime own rendering, durable registration, provider delivery, retry/deduplication, and original-requester binding. Foreground and unattended paths must share the same durable delivery record.
 4. Treat provider callback IDs and values as opaque metadata. Validate them against the durable registration and synthesize model-visible text only from trusted registered labels.
 5. Route an accepted callback into a fresh user task through the normal session, tool, and permission pipeline; never invoke a model, command, or tool directly from the callback handler.

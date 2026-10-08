@@ -52,6 +52,7 @@ Every model-visible tool schema includes optional `workBrief`: One short sentenc
 | `browser_view` | `browser.inspect` | Control the Browser Side Workspace panel. Show or hide the Browser UI, switch focus to the browser page, or query the Side Workspace open state. This does not affect CDP or the running browser — only  |
 | `browser_wait` | `browser.inspect` | Wait for a specific page condition: load state, URL, title, text, locator state, download, or dialog. The result only reports that the requested condition was observed; it is never evidence of busines |
 | `channel_push` | `orchestration.session` | 把结果或状态显式推送到渠道(或回复某条消息),是 Boss Mode 的显式回执工具。Push a text receipt to a channel chat, or reply to an inbound message — the only outbound delivery surface for boss-role sessions. accountId defaults to the  |
+| `channel_reaction_only` | `communication.deliver` | End the turn with only a reaction on the user's inbound message: add that reaction and send no text, card, attachment, or other message. Use this only when the message needs no answer at all — a pure  |
 | `clarus_extend_task` | `platform.collaboration` | Extend the current Clarus assignment deadline. The current session supplies assignment identity; never provide project, task, run, subtask, or account IDs. |
 | `clarus_submit_task_result` | `platform.collaboration` | Submit the current Clarus assignment result. The current session supplies assignment identity; never provide project, task, run, subtask, or account IDs. |
 | `computer_action` | `platform.external` | Act on the latest observation: click (button, count), type text, key (optional modifiers), scroll, drag, or set_value. target is {elementIndex} from the observation or {x,y} in the image; drag uses fr |
@@ -672,6 +673,18 @@ Kind: `orchestration.session`
 | `accountId` | string |  | Channel account ID. Defaults to the session's channel endpoint. |
 | `chatId` | string |  | Target chat (group or DM) ID. Defaults to the chat the current message arrived from. |
 | `replyToMessageId` | string |  | Reply to this message ID instead of pushing a new message. |
+
+## channel_reaction_only
+
+Kind: `communication.deliver`
+
+End the turn with only a reaction on the user's inbound message: add that reaction and send no text, card, attachment, or other message. Use this only when the message needs no answer at all — a pure acknowledgement, a "seen" or "working on it" signal, or a lightweight confirmation. Anything the user must read — an answer, a question, an error, a decision, or a status they need to act on — must be delivered as a normal reply instead. Call this tool at most once per turn (one call per user message). After calling it, stop immediately: produce no answer text and make no further tool calls. Calling it again or adding a reply could deliver a reaction AND a text message for the same turn, breaking the reaction-only promise. This is available only on Feishu accounts with reactionOnlyReply.enabled and streaming disabled; other accounts never offer the tool. The reaction is fixed by the account's reactionOnlyReply.forceReaction setting — you cannot choose one. The reaction is recorded as this turn's terminal intent and the Channel runtime delivers it, so do not also send a reply.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `title` | - | yes |  |
+| `output` | - | yes |  |
+| `metadata` | - | yes |  |
 
 ## clarus_extend_task
 

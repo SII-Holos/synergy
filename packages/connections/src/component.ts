@@ -15,6 +15,7 @@ import { registerConnectionsAgents } from "./agents"
 import { registerEmailTools } from "./email/tools"
 import { registerChannelTools } from "./channel/tools"
 import { registerChannelSessionProjects } from "./channel/session-projects"
+import { registerReactionOnlyJobs } from "./channel/loop-jobs"
 import { GithubWatchPolicy } from "@ericsanchezok/synergy-workflows/agenda/github-watch-policy"
 import { BossRuntime } from "@ericsanchezok/synergy-workflows/boss/boss-runtime"
 import { readGithubWatchPolicy, readBossAccounts } from "./workflow-settings"
@@ -55,6 +56,7 @@ export function connections(): RuntimeComponent {
       registerEmailTools()
       registerChannelTools()
       registerChannelSessionProjects()
+      registerReactionOnlyJobs()
       GithubWatchPolicy.register(readGithubWatchPolicy)
       BossRuntime.registerAccountSource(readBossAccounts)
     },

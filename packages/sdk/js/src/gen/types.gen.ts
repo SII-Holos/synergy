@@ -5556,6 +5556,44 @@ export type ChannelFeishuAccountConfig = {
    * Reply in thread when message is part of a topic
    */
   replyInThread?: boolean
+  /**
+   * Reaction-only terminal delivery for this Feishu account; disabled unless enabled is true
+   */
+  reactionOnlyReply?: {
+    /**
+     * Let the model end a turn with a reaction on the inbound message instead of a reply (non-streaming accounts only)
+     */
+    enabled?: boolean
+    /**
+     * Feishu emoji_type forced for every reaction-only turn; the model cannot choose one
+     */
+    forceReaction?:
+      | "SILENT"
+      | "SHHH"
+      | "EYESCLOSED"
+      | "DONE"
+      | "OK"
+      | "THUMBSUP"
+      | "JIAYI"
+      | "CheckMark"
+      | "OnIt"
+      | "Get"
+      | "LGTM"
+      | "OneSecond"
+      | "SALUTE"
+      | "SMILE"
+      | "THANKS"
+      | "FINGERHEART"
+      | "HEART"
+      | "CLAP"
+      | "PRAISE"
+      | "THINKING"
+      | "SLEEP"
+      | "Sigh"
+      | "FACEPALM"
+      | "SPEECHLESS"
+      | "WHAT"
+  }
 }
 
 export type ChannelFeishuConfig = {

@@ -46,6 +46,14 @@ describe("tool classifier localization", () => {
     expect(classified.subtitle).toBe("Choose a release path")
   })
 
+  test("classifies channel_reaction_only as localized communication with the reaction as subtitle", () => {
+    const classified = classifyTool("channel_reaction_only", { reaction: "SILENT" })
+
+    expect(classified.category).toBe("communication")
+    expect(classified.titleDescriptor).toBe(TOOL_TITLE_DESC.channel_reaction_only)
+    expect(classified.subtitle).toBe("SILENT")
+  })
+
   test("classifies speak as localized communication", () => {
     const classified = classifyTool("speak", { text: "Hello" })
 

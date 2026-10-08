@@ -2,6 +2,7 @@ import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context
 import { registerChannelToolPolicy } from "./tool-policy"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { ChannelPushTool } from "./tools/channel-push"
+import { ChannelReactionOnlyTool } from "./tools/channel-reaction-only"
 import { ResponseCardTool } from "./tools/response-card"
 import { ClarusSubmitTaskResultTool } from "./tools/clarus-submit-task-result"
 import { ClarusExtendTaskTool } from "./tools/clarus-extend-task"
@@ -23,6 +24,7 @@ export function registerChannelTools(): void {
 
   ToolRegistry.registerToolProvider("channel", () => [
     ChannelPushTool,
+    ChannelReactionOnlyTool,
     ResponseCardTool,
     ClarusSubmitTaskResultTool,
     ClarusExtendTaskTool,

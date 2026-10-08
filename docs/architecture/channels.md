@@ -174,6 +174,7 @@ Feishu keeps unsupported image-format adaptation inside the provider boundary. O
 - Conversation providers release their ingress lane only after durable acceptance, track background execution through account drain, and use `SessionInbox` as the sole durable busy-session queue.
 - Durable outbound state is written before send, and ambiguous dispatch is never retried automatically.
 - Foreground conversation replies are delivered exactly once: while a streaming card owns a root's terminal reply, the outbound bridge skips that root; after delivery the bridge persists `channelOutboundSent` so queued, recovered, or late metadata updates never re-deliver the same answer.
+- A reaction-only terminal (Feishu, opted-in non-streaming accounts) is exclusive and idempotent: it applies one reaction to the user's own inbound message rather than the reply anchor, posts nothing on either delivery path, and records its delivered or failed state durably — a failed reaction never falls back to a text reply.
 - Remote archive preserves local Scope data but blocks new Task delivery.
 - An expired assignment creates no Session or assignment binding; an archived owning Session blocks replay without replacement.
 - Deadline guidance is hidden Session context, not a visible user prompt.

@@ -37,6 +37,7 @@
     "./channel/provider/github": "./src/channel/provider/github/index.ts",
     "./channel/tools/github-deliver-fix": "./src/channel/tools/github-deliver-fix.ts",
     "./channel/tools/response-card": "./src/channel/tools/response-card.ts",
+    "./channel/tools/channel-reaction-only": "./src/channel/tools/channel-reaction-only.ts",
     "./config-schema": "./src/config-schema.ts",
     "./agents": "./src/agents.ts",
     "./github/identity": "./src/github/identity.ts",

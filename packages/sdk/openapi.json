@@ -54462,6 +54462,49 @@
             "description": "Reply in thread when message is part of a topic",
             "default": false,
             "type": "boolean"
+          },
+          "reactionOnlyReply": {
+            "description": "Reaction-only terminal delivery for this Feishu account; disabled unless enabled is true",
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "description": "Let the model end a turn with a reaction on the inbound message instead of a reply (non-streaming accounts only)",
+                "default": false,
+                "type": "boolean"
+              },
+              "forceReaction": {
+                "description": "Feishu emoji_type forced for every reaction-only turn; the model cannot choose one",
+                "type": "string",
+                "enum": [
+                  "SILENT",
+                  "SHHH",
+                  "EYESCLOSED",
+                  "DONE",
+                  "OK",
+                  "THUMBSUP",
+                  "JIAYI",
+                  "CheckMark",
+                  "OnIt",
+                  "Get",
+                  "LGTM",
+                  "OneSecond",
+                  "SALUTE",
+                  "SMILE",
+                  "THANKS",
+                  "FINGERHEART",
+                  "HEART",
+                  "CLAP",
+                  "PRAISE",
+                  "THINKING",
+                  "SLEEP",
+                  "Sigh",
+                  "FACEPALM",
+                  "SPEECHLESS",
+                  "WHAT"
+                ]
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": ["appId", "appSecret"],
