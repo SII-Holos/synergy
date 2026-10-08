@@ -554,7 +554,11 @@ export function RenderHtml(props: {
         void handle(channel.port1, event.data)
       }
       port.start()
-      iframe.contentWindow!.postMessage({ type: "synergy.render.connect", nonce: nonce() }, "*", [channel.port2])
+      iframe.contentWindow!.postMessage(
+        { type: "synergy.render.connect", nonce: nonce(), state: props.state ?? RenderArtifact.emptyState() },
+        "*",
+        [channel.port2],
+      )
       clearTimeout(deadline)
       props.onReady?.(
         () =>

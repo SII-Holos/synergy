@@ -74,7 +74,11 @@ export function RenderTool(
       setError(undefined)
       setUnavailable(false)
       setFeedback(false)
+      setExporting(false)
       writeEpoch++
+      closing = false
+      flushInline = undefined
+      flushExpanded = undefined
       if (viewerID) dialog.close(viewerID)
     })
   })
@@ -125,8 +129,10 @@ export function RenderTool(
           if (!disposed && key() === captured) setAcknowledged(saved)
           return saved
         } catch (error) {
-          writeEpoch++
-          if (!disposed && key() === captured && error instanceof RenderStateConflict) setAcknowledged(error.state)
+          if (!disposed && key() === captured) {
+            writeEpoch++
+            if (error instanceof RenderStateConflict) setAcknowledged(error.state)
+          }
           throw error
         }
       })
@@ -157,11 +163,12 @@ export function RenderTool(
     />
   )
   async function flushView(flush: (() => Promise<void>) | undefined) {
+    const captured = key()
     try {
       await flush?.()
       await writes
     } catch (failure) {
-      setError(String(failure))
+      if (!disposed && key() === captured) setError(String(failure))
       throw failure
     }
   }
@@ -169,13 +176,14 @@ export function RenderTool(
     if (closing) return
     closing = true
     const id = viewerID
+    const captured = key()
     try {
       await flushView(flushExpanded)
       if (id) dialog.close(id)
     } catch {
       return
     } finally {
-      closing = false
+      if (key() === captured) closing = false
     }
   }
   async function expand() {
@@ -184,10 +192,12 @@ export function RenderTool(
     try {
       await flushInline?.()
     } catch (failure) {
-      setError(String(failure))
+      if (!disposed && key() === captured) setError(String(failure))
       return
     }
     if (key() !== captured || viewerID) return
+    setError(undefined)
+    flushExpanded = undefined
     setExpanded(true)
     viewerID = dialog.push(
       () => (
@@ -201,6 +211,7 @@ export function RenderTool(
       ),
       () => {
         viewerID = undefined
+        flushExpanded = undefined
         setExpanded(false)
       },
     )
@@ -235,6 +246,7 @@ export function RenderTool(
         await loadRenderLibraries(source?.libraries ?? []),
       )
       if (disposed || key() !== captured) return
+      if (disposed || key() !== captured) return
       const url = URL.createObjectURL(new Blob([document], { type: "text/html" }))
       const link = window.document.createElement("a")
       link.href = url
@@ -242,9 +254,9 @@ export function RenderTool(
       link.click()
       window.setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure))
+      if (!disposed && key() === captured) setError(failure instanceof Error ? failure.message : String(failure))
     } finally {
-      setExporting(false)
+      if (key() === captured) setExporting(false)
     }
   }
   const actions = (canExpand: boolean) => (

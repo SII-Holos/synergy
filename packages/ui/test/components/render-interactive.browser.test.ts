@@ -373,3 +373,77 @@ test("restoring semantic state redraws controls without writing the same state a
   )
   expect(writes).toBe(before)
 })
+
+test("asynchronous authored state saves settle across expansion and variant restoration", async () => {
+  await setup(`<div id="a" style="min-height:600px"><output id="total"></output></div><div id="b">Assumptions</div><script>
+  (async()=>{const api=synergy.render;await api.ready;let workers=api.getState().modelContent?.workers??4;
+  const draw=()=>document.getElementById('total').textContent=String(36+48/workers);
+  api.controls([{id:'workers',label:'Workers',type:'number',value:workers,min:1,max:8,step:1}],values=>{
+    if(values.workers===workers)return;workers=values.workers;draw();Promise.resolve().then(()=>api.setState({modelContent:{workers}})).catch(error=>document.body.dataset.saveError=error.message)
+  });
+  api.variants([{id:'a',label:'Timing',element:document.getElementById('a')},{id:'b',label:'Details',element:document.getElementById('b')}]);
+  api.addEventListener('statechange',()=>Promise.resolve().then(()=>{workers=api.getState().modelContent?.workers??workers;draw()}));draw();document.body.dataset.ready='true';})()
+  </script>`)
+  await inline().getByRole("slider", { name: "Workers" }).fill("8")
+  await page.getByRole("button", { name: "Expand visual" }).click()
+  const expanded = page.frameLocator('[data-component="render-viewer"] iframe')
+  await expanded.locator("body[data-ready=true]").waitFor()
+  await expanded.getByRole("slider", { name: "Workers" }).fill("1")
+  await expanded.getByRole("button", { name: "Details", exact: true }).click()
+  await page.locator('[data-component="render-viewer"]').getByRole("button", { name: "Close dialog" }).click()
+  await page.locator('[data-component="render-viewer"]').waitFor({ state: "detached" })
+  await page.getByRole("button", { name: "Expand visual" }).click()
+  await expanded.locator("body[data-ready=true]").waitFor()
+  expect(await expanded.getByRole("slider", { name: "Workers" }).inputValue()).toBe("1")
+  expect(await page.getByRole("alert").count()).toBe(0)
+  await page.locator('[data-component="render-viewer"]').getByRole("button", { name: "Close dialog" }).click()
+})
+
+test("failed close saves keep the viewer open until the user discards", async () => {
+  await setup()
+  await page.getByRole("button", { name: "Expand visual" }).click()
+  const expanded = page.frameLocator('[data-component="render-viewer"] iframe')
+  await expanded.locator("body[data-ready=true]").waitFor()
+  await page.evaluate(() =>
+    (window as unknown as { __renderTest: { rejectWrites(): void } }).__renderTest.rejectWrites(),
+  )
+  await expanded.getByRole("slider", { name: "Workers" }).fill("8")
+  const viewer = page.locator('[data-component="render-viewer"]')
+  await viewer.getByRole("button", { name: "Close dialog" }).click()
+  await viewer.getByRole("button", { name: "Close without saving" }).waitFor()
+  expect(await viewer.getByRole("dialog").isVisible()).toBe(true)
+  expect(await viewer.getByRole("alert").first().innerText()).toContain("Saving is unavailable")
+  await viewer.getByRole("button", { name: "Close without saving" }).click()
+  await viewer.waitFor({ state: "detached" })
+})
+
+test("the initial bridge handshake adopts a state update received before the frame is ready", async () => {
+  await page.evaluate(() => {
+    function update(event: MessageEvent) {
+      if (event.data?.type !== "synergy.render.ready") return
+      window.removeEventListener("message", update, true)
+      ;(window as unknown as { __renderTest: { remote(content: unknown): void } }).__renderTest.remote({
+        modelContent: { workers: 8 },
+      })
+    }
+    window.addEventListener("message", update, true)
+  })
+  await setup(
+    `<output id="workers"></output><script>(async()=>{await synergy.render.ready;document.getElementById('workers').textContent=String(synergy.render.getState().modelContent?.workers??4);document.body.dataset.ready='true'})()</script>`,
+  )
+  expect(await inline().locator("#workers").innerText()).toBe("8")
+})
+
+test("form restoration preserves named radio groups without explicit element IDs", async () => {
+  await setup(
+    `<label><input type="radio" name="mode" value="fast">Fast</label><label><input type="radio" name="mode" value="slow">Slow</label><script>synergy.render.ready.then(()=>document.body.dataset.ready='true')</script>`,
+  )
+  await inline().getByRole("radio", { name: "Fast", exact: true }).check()
+  await page.getByRole("button", { name: "Expand visual" }).click()
+  const expanded = page.frameLocator('[data-component="render-viewer"] iframe')
+  await expanded.locator("body[data-ready=true]").waitFor()
+  expect(await expanded.getByRole("radio", { name: "Fast", exact: true }).isChecked()).toBe(true)
+  expect(await expanded.getByRole("radio", { name: "Slow", exact: true }).isChecked()).toBe(false)
+  await page.locator('[data-component="render-viewer"]').getByRole("button", { name: "Close dialog" }).click()
+  await page.locator('[data-component="render-viewer"]').waitFor({ state: "detached" })
+})

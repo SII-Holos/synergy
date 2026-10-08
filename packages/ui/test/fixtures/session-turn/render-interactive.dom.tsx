@@ -25,6 +25,7 @@ let reads = 0,
 const requests: string[] = []
 const images: Array<string | undefined> = []
 let holdFollowUp = false
+let rejectWrite = false
 let releaseFollowUp: (() => void) | undefined
 const descriptor = () => {
   const { html, ...rest } = source
@@ -37,6 +38,9 @@ const host: RenderHost = {
     return { source, state }
   },
   async write(target, update) {
+    if (rejectWrite) {
+      throw new Error("Saving is unavailable")
+    }
     if (update.revision !== state.revision) throw new Error("revision conflict")
     state = {
       revision: state.revision + 1,
@@ -64,6 +68,7 @@ i18n.load("zh-CN", { "tool.render.reset": "重置" })
 Object.assign(window, {
   __renderTest: {
     setup(html: string, libraries: RenderArtifact.Source["libraries"] = []) {
+      rejectWrite = false
       source = { ...source, id: crypto.randomUUID(), html, libraries }
       state = RenderArtifact.emptyState()
       count++
@@ -72,6 +77,9 @@ Object.assign(window, {
     },
     stats() {
       return { reads, writes, requests, images, state }
+    },
+    rejectWrites() {
+      rejectWrite = true
     },
     remote(content: RenderArtifact.Content) {
       state = { revision: state.revision + 1, updatedAt: Date.now(), content }

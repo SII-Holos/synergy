@@ -2,6 +2,7 @@ import { OverlayLayerProvider } from "../context/overlay-layer"
 import { Dialog as Kobalte } from "@kobalte/core/dialog"
 import { createSignal, ComponentProps, JSXElement, Match, ParentProps, Show, Switch, onCleanup } from "solid-js"
 import { useLingui } from "@lingui/solid"
+import { Dynamic } from "solid-js/web"
 import { Icon } from "./icon"
 
 const dialogCloseDescriptor = { id: "ui.dialog.close", message: "Close dialog" }
@@ -82,8 +83,10 @@ export function Dialog(props: DialogProps) {
                 <Switch>
                   <Match when={props.action}>{props.action}</Match>
                   <Match when={true}>
-                    <Kobalte.CloseButton
-                      onClick={(event) => {
+                    <Dynamic
+                      component={props.onCloseRequest ? "button" : Kobalte.CloseButton}
+                      type="button"
+                      onClick={(event: MouseEvent) => {
                         if (props.onCloseRequest) {
                           event.preventDefault()
                           props.onCloseRequest()
@@ -95,7 +98,7 @@ export function Dialog(props: DialogProps) {
                       data-variant="ghost"
                     >
                       <Icon name="x" size="small" />
-                    </Kobalte.CloseButton>
+                    </Dynamic>
                   </Match>
                 </Switch>
               </div>

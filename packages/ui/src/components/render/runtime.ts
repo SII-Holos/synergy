@@ -153,6 +153,7 @@ export function renderRuntime(
   let viewTimer: number | undefined
   function saveView() {
     clearTimeout(viewTimer)
+    if (!context.active) return
     viewTimer = window.setTimeout(() => {
       persist().catch(report)
     }, 120)
@@ -165,6 +166,7 @@ export function renderRuntime(
       document.documentElement.style.setProperty(`--render-${name}`, value)
     document.documentElement.dataset.renderActive = String(next.active)
     document.documentElement.dataset.renderReducedMotion = String(next.reducedMotion)
+    if (!next.active) clearTimeout(viewTimer)
     for (const [id, frame] of frames) {
       if (!next.active && frame.scheduled !== undefined) {
         nativeCancelFrame(frame.scheduled)
@@ -175,7 +177,10 @@ export function renderRuntime(
     api.dispatchEvent(new Event("hostcontextchange"))
   }
   function fieldKey(element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement, index: number) {
-    return element.id || element.name || String(index)
+    if (element.id) return element.id
+    if (element instanceof HTMLInputElement && element.name && ["checkbox", "radio"].includes(element.type))
+      return JSON.stringify([element.type, element.name, element.value])
+    return element.name || String(index)
   }
   function fields() {
     return Array.from(
@@ -231,6 +236,12 @@ export function renderRuntime(
       return
     port = event.ports[0]
     window.removeEventListener("message", connect)
+    if (event.data.state?.revision > revision) {
+      revision = event.data.state.revision
+      savedContent = JSON.stringify(event.data.state.content)
+      unpack(event.data.state.content)
+      restore()
+    }
     port.onmessage = (event) => {
       const message = event.data
       if (message.type === "response") {
@@ -292,10 +303,7 @@ export function renderRuntime(
     port?.postMessage({ type: "resize", height })
   }
   document.addEventListener("change", () => {
-    if (config.interactive) {
-      clearTimeout(viewTimer)
-      persist().catch(report)
-    }
+    if (config.interactive && context.active) saveView()
   })
   const annotations = new Map<
     Element,
@@ -346,7 +354,7 @@ export function renderRuntime(
     if (event.key === "Escape" && !event.defaultPrevented) port?.postMessage({ type: "escape" })
   })
   document.addEventListener("input", () => {
-    if (!config.interactive) return
+    if (!config.interactive || !context.active) return
     view.forms = Object.fromEntries(
       fields().map((element, index) => [
         fieldKey(element, index),
@@ -360,8 +368,9 @@ export function renderRuntime(
   window.addEventListener(
     "scroll",
     () => {
+      if (!config.interactive || !context.active) return
       view.scroll = window.scrollY
-      if (config.interactive) saveView()
+      saveView()
     },
     { passive: true },
   )
