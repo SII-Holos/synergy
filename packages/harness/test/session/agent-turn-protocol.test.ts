@@ -466,6 +466,27 @@ describe("AgentTurnProtocol", () => {
     })
   })
 
+  test("validates strict recursive causes and aggregate limits at every level", () => {
+    const leaf = { name: "Error", message: "leaf", code: "ECONNRESET", syscall: "read" }
+    const cause = { name: "AggregateError", message: "nested", cause: leaf, errors: Array(16).fill(leaf) }
+    const error = { name: "TypeError", message: "fetch failed", cause, errors: [cause] }
+
+    expect(AgentTurnProtocol.SerializedError.parse(error)).toEqual(error)
+    const aggregate = { ...error, errors: Array(16).fill(leaf) }
+    expect(AgentTurnProtocol.SerializedError.parse(aggregate)).toEqual(aggregate)
+    for (const invalid of [
+      { ...error, unexpected: true },
+      { ...error, cause: { ...cause, unexpected: true } },
+      { ...error, cause: { ...cause, cause: { ...leaf, unexpected: true } } },
+      { ...error, errors: [{ ...cause, errors: [{ ...leaf, unexpected: true }] }] },
+      { ...error, cause: { ...cause, errors: Array(17).fill(leaf) } },
+      { ...error, errors: [{ ...cause, errors: Array(17).fill(leaf) }] },
+      { ...error, errors: Array(17).fill(leaf) },
+    ]) {
+      expect(AgentTurnProtocol.SerializedError.safeParse(invalid).success).toBe(false)
+    }
+  })
+
   test("bounds cause graphs and makes truncation explicit", () => {
     const cyclic = Object.assign(new Error("cyclic"), { cause: undefined as unknown })
     cyclic.cause = cyclic

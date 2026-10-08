@@ -264,16 +264,26 @@ describe("OpenAPI spec generation", () => {
       expect(Object.keys(spec.components?.schemas ?? {}).some((name) => name.startsWith("SynergyLink"))).toBe(false)
     }))
 
-  test("survives a /doc request earlier in the same process", () =>
-    runtime.run(async () => {
-      // The /doc handler shares route-resolver state with Server.openapi();
-      // requesting /doc first must not strip components from a later generation.
-      await (await Server.App().request("/doc")).json()
-      const spec = await Server.openapi()
-      expect(spec.components?.schemas?.ProviderListResponse).toBeDefined()
-      expect(spec.components?.schemas?.Provider).toBeDefined()
-      expect(spec.components?.schemas?.Model).toBeDefined()
-    }))
+  test.each(["doc-first", "api-first"] as const)("preserves cold OpenAPI components with %s", async (order) => {
+    await using freshRuntime = await testRuntime()
+    await freshRuntime.run(async () => {
+      const doc = async () => {
+        const response = await Server.App().request("/doc")
+        expect(response.status).toBe(200)
+        return response.json()
+      }
+      const first = order === "doc-first" ? await doc() : await Server.openapi()
+      const second = order === "doc-first" ? await Server.openapi() : await doc()
+      for (const spec of [first, second]) {
+        expect(spec.openapi).toBe("3.1.1")
+        expect(spec.components?.schemas?.Config).toBeDefined()
+        expect(spec.components?.schemas?.ProviderListResponse).toBeDefined()
+        expect(spec.components?.schemas?.Provider).toBeDefined()
+        expect(spec.components?.schemas?.Model).toBeDefined()
+        expect(spec.paths["/session/{sessionID}/prompt_async"]?.post?.operationId).toBe("session.prompt_async")
+      }
+    })
+  })
 
   test("documents runtime shutdown for every API operation", () =>
     runtime.run(async () => {

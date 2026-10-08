@@ -1,5 +1,5 @@
 import { RuntimeContext } from "../lifecycle/context"
-import z from "zod"
+import { z } from "zod"
 import type { ConfigExtensionShape } from "./schema"
 
 export class ConfigRegistrationLockedError extends Error {
@@ -30,6 +30,7 @@ export namespace ConfigExtensions {
     complete: false,
     locked: false,
     schemas: new WeakMap<object, { generation: number; schema: z.ZodObject }>(),
+    fields: new Map<string, { generation: number; schema: z.ZodType }>(),
   }))
   const schemaResolvers = new WeakMap<object, () => z.ZodObject>()
 
@@ -90,8 +91,64 @@ export namespace ConfigExtensions {
     return proxy
   }
 
+  type JSONSchemaParams = NonNullable<Parameters<typeof z.toJSONSchema>[1]>
+  interface JSONSchemaContext {
+    seen: Map<z.core.$ZodType, { ref?: z.core.$ZodType | null }>
+  }
+  interface JSONSchemaPath {
+    path: (string | number)[]
+    schemaPath: z.core.$ZodType[]
+  }
+  interface JSONSchemaTraversal {
+    process(schema: z.core.$ZodType, context: JSONSchemaContext, params: JSONSchemaPath): unknown
+    createToJSONSchemaMethod(schema: z.core.$ZodType): (params?: JSONSchemaParams) => unknown
+    createStandardJSONSchemaMethod(schema: z.core.$ZodType, io: "input" | "output"): (params: unknown) => unknown
+  }
+
+  // Provenance: https://github.com/colinhacks/zod/blob/f3c9ec03ba7a28ae72d25cc295f38674bee0f559/packages/zod/src/v4/core/to-json-schema.ts
+  // Local adaptation: use native wrapper refs for distinct facade/instance identities; processJSONSchema is internal and version-coupled.
   export function dynamicSchema<T extends z.ZodType>(resolved: () => T): T {
-    return new Proxy({} as T, {
+    const views = new WeakMap<T, T["_zod"]>()
+    const traversal = z.core as unknown as Partial<JSONSchemaTraversal>
+    const process = traversal.process
+    function internals(schema: T): T["_zod"] {
+      const original = schema._zod
+      if (!Reflect.get(original, "processJSONSchema")) return original
+      if (!process) throw new Error("Dynamic schema requires the native Zod JSON Schema traversal")
+      const cached = views.get(schema)
+      if (cached) return cached
+      const processor = (context: JSONSchemaContext, _json: unknown, params: JSONSchemaPath) => {
+        process(schema, context, params)
+        const entry = context.seen.get(proxy)
+        if (!entry) throw new Error("Dynamic schema is missing from the native JSON Schema traversal")
+        entry.ref = schema
+      }
+      const view = new Proxy(original, {
+        get(target, property) {
+          return property === "processJSONSchema" ? processor : Reflect.get(target, property)
+        },
+      })
+      views.set(schema, view)
+      return view
+    }
+    let toJSONSchema: ((params?: JSONSchemaParams) => unknown) | undefined
+    let standardJSONSchema: { input(params: unknown): unknown; output(params: unknown): unknown } | undefined
+    function value(schema: T, property: string | symbol): unknown {
+      if (property === "_zod") return internals(schema)
+      if (property === "toJSONSchema" && traversal.createToJSONSchemaMethod) {
+        return (toJSONSchema ??= traversal.createToJSONSchemaMethod(proxy))
+      }
+      const result = Reflect.get(schema, property)
+      if (property === "~standard" && traversal.createStandardJSONSchemaMethod) {
+        standardJSONSchema ??= {
+          input: traversal.createStandardJSONSchemaMethod(proxy, "input"),
+          output: traversal.createStandardJSONSchemaMethod(proxy, "output"),
+        }
+        return { ...result, jsonSchema: standardJSONSchema }
+      }
+      return typeof result === "function" ? result.bind(schema) : result
+    }
+    const proxy: T = new Proxy({} as T, {
       getPrototypeOf() {
         return Reflect.getPrototypeOf(resolved())
       },
@@ -102,14 +159,19 @@ export namespace ConfigExtensions {
         return Reflect.ownKeys(resolved())
       },
       getOwnPropertyDescriptor(_target, property) {
-        const descriptor = Reflect.getOwnPropertyDescriptor(resolved(), property)
-        return descriptor ? { ...descriptor, configurable: true } : undefined
+        const schema = resolved()
+        const descriptor = Reflect.getOwnPropertyDescriptor(schema, property)
+        if (!descriptor) return
+        if (property === "_zod" || property === "toJSONSchema" || property === "~standard") {
+          return { configurable: true, enumerable: descriptor.enumerable, value: value(schema, property) }
+        }
+        return { ...descriptor, configurable: true }
       },
       get(_target, property) {
-        const value = Reflect.get(resolved(), property)
-        return typeof value === "function" ? value.bind(resolved()) : value
+        return value(resolved(), property)
       },
     })
+    return proxy
   }
 
   export function resolveSchema<S extends z.ZodRawShape>(schema: z.ZodObject<S>): z.ZodObject<S> {
@@ -124,11 +186,19 @@ export namespace ConfigExtensions {
 
   export function field<K extends string>(key: K): z.ZodOptional<Field<K>> {
     return dynamicSchema(() => {
-      for (const contribution of state().contributions.values()) {
-        const schema = contribution.shape[key] as z.ZodType | undefined
-        if (schema) return schema.optional().meta(schema.meta() ?? {})
-      }
-      return z.never().optional().describe(`Configuration field ${key} requires its owning capability`)
+      const instance = state()
+      const cached = instance.fields.get(key)
+      if (cached?.generation === instance.generation) return cached.schema
+      const owner = [...instance.contributions.values()].find((contribution) => contribution.shape[key])?.shape[key] as
+        | z.ZodType
+        | undefined
+      const metadata = { ...owner?.meta() }
+      delete metadata.id
+      const schema = owner
+        ? owner.optional().meta(metadata)
+        : z.never().optional().describe(`Configuration field ${key} requires its owning capability`)
+      instance.fields.set(key, { generation: instance.generation, schema })
+      return schema
     }) as unknown as z.ZodOptional<Field<K>>
   }
 

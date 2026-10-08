@@ -27,20 +27,18 @@ export namespace AgentTurnProtocol {
   export const METRIC_LABEL_KEYS_MAX = 48
   export const METRIC_LABEL_VALUE_MAX_CHARS = 4096
 
-  const SerializedCause = z
-    .object({
-      name: z.string(),
-      message: z.string(),
-      code: z.string().optional(),
-      syscall: z.string().optional(),
-      get cause(): z.ZodOptional<typeof SerializedCause> {
-        return SerializedCause.optional()
-      },
-      get errors(): z.ZodOptional<z.ZodArray<typeof SerializedCause>> {
-        return z.array(SerializedCause).max(16).optional()
-      },
-    })
-    .strict()
+  const SerializedCause = z.strictObject({
+    name: z.string(),
+    message: z.string(),
+    code: z.string().optional(),
+    syscall: z.string().optional(),
+    get cause(): z.ZodOptional<typeof SerializedCause> {
+      return SerializedCause.optional()
+    },
+    get errors(): z.ZodOptional<z.ZodArray<typeof SerializedCause>> {
+      return z.array(SerializedCause).max(16).optional()
+    },
+  })
 
   export const SerializedError = z
     .object({
