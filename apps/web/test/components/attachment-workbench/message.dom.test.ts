@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
 import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
+import type { ResourceOpenController } from "@ericsanchezok/synergy-ui/context/resource-open"
 
 let browser: Browser, page: Page, server: BrowserFixture
 const errors: string[] = []
@@ -41,6 +42,43 @@ async function visit(query = "") {
       throw new Error(`${errors.join("\n")}\n${error}`)
     })
 }
+
+test("an invalid structured path keeps its error feedback even when it cannot be copied", async () => {
+  await visit()
+  const result = await page.evaluate(() =>
+    (window as unknown as { openResource: ResourceOpenController["open"] }).openResource(
+      { kind: "workspace-file", path: "/fixture/bad\u0000.ts" },
+      { context: { state: "bound", workspace: { id: "wsp_fixture", generation: 1, root: "/fixture" }, directory: "" } },
+    ),
+  )
+  expect(result.status).toBe("unavailable")
+  await page.getByText("Couldn’t open reference", { exact: true }).waitFor()
+  expect(await page.getByRole("button", { name: "Copy reference", exact: true }).count()).toBe(0)
+  expect(errors).toEqual([])
+})
+
+test("image syntax for a known document opens the file reader", async () => {
+  await page.route("**/workspace/files/stat?**", (route) =>
+    route.fulfill({ json: { type: "file", path: "docs/README.md" } }),
+  )
+  await visit()
+  const result = await page.evaluate(() =>
+    (window as unknown as { openResource: ResourceOpenController["open"] }).openResource(
+      { kind: "workspace-file", path: "docs/README.md", mime: "image/*" },
+      {
+        prefer: "preview",
+        context: { state: "bound", workspace: { id: "wsp_fixture", generation: 1, root: "/fixture" }, directory: "" },
+      },
+    ),
+  )
+  expect(result.status).toBe("opened")
+  expect(await page.evaluate(() => (window as unknown as { openedFiles: string[] }).openedFiles)).toEqual([
+    "docs/README.md",
+  ])
+  expect(await page.locator('[data-component="image-preview"]').count()).toBe(0)
+  expect(errors).toEqual([])
+  await page.unroute("**/workspace/files/stat?**")
+})
 
 test("a captured first-send attachment uses the temporary reader until canonical admission", async () => {
   await visit("?preparing")

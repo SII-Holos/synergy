@@ -56,7 +56,13 @@ export function observeMarkdownResources(
     element.removeAttribute("target")
     element.setAttribute("role", "button")
     element.setAttribute("tabindex", "0")
-    element.setAttribute("title", value)
+    const image = element.querySelector("img")
+    const title =
+      image || reference.kind === "image"
+        ? (image?.getAttribute("alt") ?? element.textContent ?? "").slice(0, 256)
+        : value
+    if (title) element.setAttribute("title", title)
+    else element.removeAttribute("title")
     element.setAttribute("data-resource-kind", reference.kind)
     element.setAttribute("data-resource-bound", "true")
     if (element.querySelector("img") || element.querySelector("[data-reference-icon]")) return

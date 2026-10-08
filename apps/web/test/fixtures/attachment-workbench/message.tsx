@@ -12,6 +12,7 @@ import { Toast } from "@ericsanchezok/synergy-ui/toast"
 import { UserMessageDisplay, createUserMessagePresentation } from "@ericsanchezok/synergy-ui/user-message-content"
 import type { AttachmentPart, Part, UserMessage } from "@ericsanchezok/synergy-sdk"
 import { ResourceOpenProvider } from "../../../src/context/resource-open"
+import { useResourceOpen } from "@ericsanchezok/synergy-ui/context/resource-open"
 import { WorkbenchPanelsProvider, useWorkbenchPanels } from "../../../src/context/workbench"
 import { registerWorkbenchPanel } from "../../../src/plugin/registries/workbench-panel-registry"
 import { AttachmentWorkbenchContent } from "../../../src/components/attachment-workbench/content"
@@ -22,7 +23,7 @@ import {
   SessionTransitionProvider,
   useSessionTransition,
 } from "../../../src/context/session-transition"
-import { setCanonicalMessages } from "./message-host"
+import { openedFiles, setCanonicalMessages } from "./message-host"
 import "@ericsanchezok/synergy-ui/styles"
 import "../../../src/index.css"
 import "../../../src/components/session/conversation-rows.css"
@@ -55,6 +56,11 @@ const image: AttachmentPart = {
   url: svg(80, 160),
 }
 const query = new URLSearchParams(location.search)
+function ResourceProbe() {
+  const resources = useResourceOpen()!
+  Object.assign(window, { openResource: resources.open, openedFiles })
+  return null
+}
 let fail = query.get("failure")
 let release: (() => void) | undefined
 function Fixture() {
@@ -170,6 +176,7 @@ function Fixture() {
   return (
     <Show when={resourcesMounted()}>
       <ResourceOpenProvider>
+        <ResourceProbe />
         <DataProvider
           data={{
             session: [],

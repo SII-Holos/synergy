@@ -39,6 +39,7 @@ import { useFile, useProjectFiles } from "@/context/file"
 import { useSDK } from "@/context/sdk"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { attachmentWorkbenchPanelInit } from "@/components/attachment-workbench/model"
+import { classifyResourcePreview } from "@/components/resource-preview"
 import { executionDetailState } from "@/components/session/execution-detail-model"
 import type { ToolPart } from "@ericsanchezok/synergy-sdk/client"
 import { supportsToolResource, toolResourceTarget } from "./tool-resource-target"
@@ -445,7 +446,13 @@ export function ResourceOpenProvider(props: ParentProps) {
       { signal: options.signal, throwOnError: true },
     )
     if (!current() || side.selectionRevision() !== revision) return false
-    if (options.prefer === "preview" && mime?.startsWith("image/")) {
+    const preview = classifyResourcePreview("", target.path)
+    if (
+      options.prefer === "preview" &&
+      mime?.startsWith("image/") &&
+      response.data?.type !== "directory" &&
+      ["image", "svg", "unsupported"].includes(preview.kind)
+    ) {
       const src = resolveUrl({ kind: "workspace-file", path }, options.context)
       if (!src) return false
       const image = {
@@ -645,10 +652,15 @@ export function ResourceOpenProvider(props: ParentProps) {
         (error instanceof Error
           ? error.message
           : _({ id: "app.reference.unavailable", message: "The resource is unavailable." }))
-      const reference =
-        resource.kind === "attachment"
-          ? attachmentCopyReference(resource.file, options.location)
-          : ResourceReference.format(resource, options.location)
+      const reference = (() => {
+        try {
+          return resource.kind === "attachment"
+            ? attachmentCopyReference(resource.file, options.location)
+            : ResourceReference.format(resource, options.location)
+        } catch {
+          return undefined
+        }
+      })()
       showToast({
         type: "error",
         title: _({ id: "app.reference.openFailed", message: "Couldn’t open reference" }),

@@ -2,6 +2,12 @@ import { describe, expect, test } from "bun:test"
 import { renderUserMarkdown } from "../../src/components/user-markdown-model"
 
 describe("user Markdown", () => {
+  test("a workspace file written with image syntax remains a button without a broken image", async () => {
+    const html = await renderUserMarkdown("![Readme](README.md)", [])
+    expect(html).toContain('data-user-image="README.md"')
+    expect(html).toContain("Readme</button>")
+    expect(html).not.toContain("<img")
+  })
   test("keeps inline images as explicit preview actions", async () => {
     for (const url of ["data:image/png;base64,AAAA", "blob:https://ui.example/image"])
       expect(await renderUserMarkdown(`![Chart](${url})`, [])).toContain(`data-user-image="${url}"`)
