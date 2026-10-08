@@ -298,6 +298,11 @@ export function createSendCommand(runtimeFactory: typeof openLocalRuntime = open
             return (data.info.rootID ?? (data.info.role === "assistant" ? data.info.parentID : data.info.id)) === runID
           }
           if (descendants.has(id)) return true
+          const { data: progress } = await sdk.session.inputStatus(
+            { sessionID, messageID: runID },
+            { throwOnError: true },
+          )
+          if (!progress.canonical) return false
           const { data } = await sdk.session.runResult({ sessionID, runID }, { throwOnError: true })
           for (const snapshot of data.snapshots)
             if (snapshot.owner.kind === "session") descendants.add(snapshot.owner.sessionID)

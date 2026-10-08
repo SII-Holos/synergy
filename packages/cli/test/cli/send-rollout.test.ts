@@ -3,7 +3,7 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { RolloutAccounting } from "@ericsanchezok/synergy-harness/session/rollout/accounting"
 
 async function run(
-  interaction?: "permission" | "question",
+  interaction?: "permission" | "question" | "foreign-permission" | "foreign-question",
   command = false,
   delayedCommand = false,
   inputFailure?: string,
@@ -19,6 +19,7 @@ async function run(
   let commandStarted = !delayedCommand
   let experiment: unknown
   const sessionID = "ses_test"
+  const interactionSessionID = interaction?.startsWith("foreign-") ? "ses_unrelated" : sessionID
   let runID = "msg_test"
   const state = () => ({
     version: 1,
@@ -37,29 +38,28 @@ async function run(
         return new Response(
           new ReadableStream({
             start(controller) {
-              const event =
-                interaction === "permission"
+              const event = interaction?.endsWith("permission")
+                ? {
+                    type: "permission.asked",
+                    properties: {
+                      id: "per_test",
+                      sessionID: interactionSessionID,
+                      permission: "bash",
+                      patterns: ["echo"],
+                      metadata: {},
+                      always: [],
+                    },
+                  }
+                : interaction?.endsWith("question")
                   ? {
-                      type: "permission.asked",
+                      type: "question.asked",
                       properties: {
-                        id: "per_test",
-                        sessionID,
-                        permission: "bash",
-                        patterns: ["echo"],
-                        metadata: {},
-                        always: [],
+                        id: "que_test",
+                        sessionID: interactionSessionID,
+                        questions: [{ header: "Choice", question: "Choose", options: [] }],
                       },
                     }
-                  : interaction === "question"
-                    ? {
-                        type: "question.asked",
-                        properties: {
-                          id: "que_test",
-                          sessionID,
-                          questions: [{ header: "Choice", question: "Choose", options: [] }],
-                        },
-                      }
-                    : { type: "session.idle", properties: { sessionID } }
+                  : { type: "session.idle", properties: { sessionID } }
               controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`))
               request.signal.addEventListener(
                 "abort",
@@ -139,7 +139,11 @@ async function run(
             : {}),
         })
       }
-      if (url.pathname.endsWith("/result"))
+      if (url.pathname.endsWith("/result")) {
+        if (admission && admissionPolls < 3 && !cancelled) {
+          prematureRunReads++
+          return Response.json({ name: "NotFoundError", data: { message: "Run has not started" } }, { status: 404 })
+        }
         return Response.json({
           version: 1,
           run: state(),
@@ -149,6 +153,7 @@ async function run(
           elapsedActive: false,
           elapsedLowerBound: false,
         })
+      }
       return Response.json({ name: "UnexpectedEndpoint", data: { message: url.pathname } }, { status: 404 })
     },
   })
@@ -202,6 +207,16 @@ test("send waits for input admission without reading a nonexistent run", async (
   expect(result.prematureRunReads).toBe(0)
   expect(result.events.at(-1)).toMatchObject({ type: "result", runID: "msg_test", exitCode: 0 })
 }, 20_000)
+
+for (const interaction of ["foreign-permission", "foreign-question"] as const)
+  test(`send ignores ${interaction} while input is awaiting admission`, async () => {
+    const result = await run(interaction, false, false, undefined, false, "delayed")
+    expect(result.exitCode, result.stderr).toBe(0)
+    expect(result.prematureRunReads).toBe(0)
+    expect(result.cancelled).toBe(false)
+    expect(result.rejected).toBe(false)
+    expect(result.events.at(-1)).toMatchObject({ type: "result", runID: "msg_test", exitCode: 0 })
+  }, 20_000)
 
 for (const admission of ["failed", "removed"] as const)
   test(`send reports ${admission} input before an execution exists`, async () => {
