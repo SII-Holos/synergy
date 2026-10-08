@@ -3,12 +3,28 @@ import type { VirtualizerHandle } from "virtua/solid"
 import {
   createConversationLayoutBinding,
   createConversationLayoutCache,
+  conversationReadingIndex,
 } from "../../../src/components/session/conversation-layout"
 
 const layout = () => ({
   keys: ["paragraph", "tools"],
   width: 700,
   cache: [[86, 240], 40] as unknown as VirtualizerHandle["cache"],
+})
+
+test("reading follows accepted row offsets in viewport coordinates, including the leading margin", () => {
+  const offsets = [0, 80, 360, 1000]
+  const virtual = {
+    scrollOffset: 210,
+    findStartIndex: () => 1,
+    getItemOffset: (index: number) => offsets[index],
+  }
+  expect(conversationReadingIndex(virtual, offsets.length, 60)).toBe(1)
+  virtual.scrollOffset = 330
+  expect(conversationReadingIndex(virtual, offsets.length, 60)).toBe(2)
+  virtual.scrollOffset = 970
+  expect(conversationReadingIndex(virtual, offsets.length, 60)).toBe(3)
+  expect(conversationReadingIndex(virtual, 0, 60)).toBeUndefined()
 })
 
 test("retains accepted measurements independently of the disposed renderer and virtualizer arrays", () => {

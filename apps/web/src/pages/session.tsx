@@ -1552,7 +1552,11 @@ function SessionPageContent() {
     updateHash(message.id)
   }
 
-  const scheduleScrollSpy = (container: HTMLDivElement) => {
+  const scheduleScrollSpy = (container: HTMLDivElement, messageID?: string) => {
+    if (messageID) {
+      if (messageID !== store.messageId) setStore("messageId", messageID)
+      return
+    }
     scrollSpyTarget = container
     if (scrollSpyFrame !== undefined) return
 

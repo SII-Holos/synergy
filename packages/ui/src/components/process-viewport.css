@@ -12,8 +12,6 @@
   margin-inline: -3px;
   scrollbar-width: thin;
   scrollbar-gutter: stable;
-  /* The virtual parent suspends pointer events while scrolling; nested scroll regions keep their own input. */
-  pointer-events: auto;
 }
 [data-component="process-viewport"][data-overflow] {
   overscroll-behavior: contain;

@@ -46,6 +46,8 @@ description: Add, modify, or review Synergy Plugin API 4 definitions, generated 
 27. Package compiler dependencies with their owning module in the sealed installation graph. Verify the thin standalone launcher resolves authoring dependencies from that graph outside the repository; workspace resolution cannot establish package completeness.
 28. Give every external generation one owned memory monitor and stop it on every lifecycle exit. A memory-limit callback may restart only its exact active registry generation with the same manifest and limits; never let a stale callback stop or replace a newer generation. Attribute trusted `inProcess` allocations to the Control Plane rather than double-counting plugin RSS.
 
+Virtual conversation views can publish their accepted message identity through the optional second argument to `onScheduleScrollSpy`; preserve the existing one-argument materialized-view contract. Keep geometry ownership in the view rather than introducing another host-side measurement pass.
+
 Viewport reference bindings must carry their acquired element through cleanup and permission disposal. Test both replacement within one surface and disposal after a successor surface has mounted; stale releases must not clear successor references.
 
 Moving a host view in the default layout does not retire its public render part. Exercise the old part through a packed custom layout and keep the host-owned behavior available, while separately verifying the default layout's new placement.

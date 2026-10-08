@@ -2,6 +2,18 @@ import type { VirtualizerHandle } from "virtua/solid"
 
 type Layout = { keys: readonly string[]; width: number; cache: VirtualizerHandle["cache"] }
 
+export function conversationReadingIndex(
+  virtual: Pick<VirtualizerHandle, "scrollOffset" | "findStartIndex" | "getItemOffset">,
+  count: number,
+  margin: number,
+) {
+  if (!count) return
+  let index = Math.min(virtual.findStartIndex(), count - 1)
+  const cutoff = virtual.scrollOffset - margin + 100
+  while (index + 1 < count && virtual.getItemOffset(index + 1) <= cutoff) index++
+  return index
+}
+
 export function createConversationLayoutCache(maxBytes = 4 * 1024 * 1024, maxEntries = 128) {
   const entries = new Map<string, Layout & { bytes: number }>()
   let bytes = 0
