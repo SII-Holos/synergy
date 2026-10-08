@@ -15,7 +15,7 @@ Otherwise, add a tested fix.
 ## Placement
 
 - Bugs and underlying process failures belong here.
-- Deliberate decisions, their rejected alternatives, and rationale belong in decision records at `docs/decisions/`.
+- Decisions, alternatives and rationale belong in `docs/decisions/`.
 
 ## Format
 
@@ -30,6 +30,7 @@ Use the next `NNNN-kebab-case-title.md`. Sections:
 
 ## Index
 
+- [0058: Markdown settlement](0058-markdown-terminal-estimates-lost-reading.md)
 - [0057: Conversation lifetime](0057-conversation-rendering-lifetime-and-scope-retention.md)
 - [0056: PostgreSQL cleanup](0056-postgres-node-cleanup-repeated-candidates.md)
 - [0055: Workspace tool discovery](0055-discovery-omitted-workspace-selection.md)

@@ -63,6 +63,7 @@ export function ConversationViewport(props: {
       </Show>
       <div
         data-conversation-viewport
+        data-scroll-viewport="vertical"
         data-ready={props.ready !== false}
         aria-hidden={props.ready === false}
         inert={props.ready === false}

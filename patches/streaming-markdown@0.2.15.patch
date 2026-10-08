@@ -1,0 +1,1018 @@
+diff --git a/smd.d.ts b/smd.d.ts
+index cc589fed84ee0cf97ef0fafefbb4c3cd930e5e90..ceb0c83a1ab55c7ef25ea51f72541061091cf1f5 100644
+--- a/smd.d.ts
++++ b/smd.d.ts
+@@ -177,14 +177,16 @@ export namespace Attr {
+ export function level_to_heading(level: number): Token;
+ export function heading_from_level(level: number): Token;
+ export function heading_to_level(token: Token): number;
+-export type Renderer_Add_Token<T> = (data: T, type: Token) => void;
++export type SourceSpan = {source: number; length: number};
++export type Renderer_Add_Token<T> = (data: T, type: Token, source?: number) => void;
+ export type Renderer_End_Token<T> = (data: T) => void;
+-export type Renderer_Add_Text<T> = (data: T, text: string) => void;
++export type Renderer_Add_Text<T> = (data: T, text: string, source?: readonly SourceSpan[]) => void;
+ export type Renderer_Set_Attr<T> = (data: T, type: Attr, value: string) => void;
+ /**
+  * The renderer interface.
+  */
+ export type Renderer<T> = {
++    track_source?: boolean;
+     /**
+      * User data object. Available as first param in callbacks.
+      */
+diff --git a/smd.js b/smd.js
+index f7ad270f0172e7b2a9ce07b3c3bd95d3207083ca..21e2df982dbb66ee74db7eb38c57a659dfb9d710 100644
+--- a/smd.js
++++ b/smd.js
+@@ -192,9 +192,70 @@ export const heading_to_level = (token) => {
+  * @property {number      } blockquote_idx  - For Blockquote parsing
+  * @property {string      } hr_char         - For horizontal rule parsing
+  * @property {number      } hr_chars        - For horizontal rule parsing
++ * @property {SourceState|undefined} source
+  * @property {number      } table_state
+  */
+
++
++// Provenance: https://github.com/thetarnav/streaming-markdown/blob/v0.2.15/smd.js
++// Local adaptation: preserve consumed source spans across pending-token replay.
++/** @typedef {{source: number, length: number}} SourceSpan */
++/** @typedef {number|readonly SourceSpan[]} SourceInput */
++/** @typedef {{position: number, text: SourceSpan[], pending: SourceInput, indent: SourceSpan[]}} SourceState */
++/** @param {SourceSpan[]} target @param {SourceInput} spans @param {number} length */
++function append_sources(target, spans, length) {
++    if (!length) return target
++    if (typeof spans === "number") {
++        const last = target[target.length - 1]
++        if (last && (last.source >= 0 && last.source + last.length === spans || last.source < 0 && spans < 0)) last.length += length
++        else target.push({source: spans, length})
++    } else {
++        for (const span of spans) append_sources(target, span.source, span.length)
++    }
++    return target
++}
++/** @param {SourceInput} left @param {number} left_length @param {SourceInput} right @param {number} right_length */
++function concat_sources(left, left_length, right, right_length) {
++    if (!left_length) return right
++    if (!right_length) return left
++    if (typeof left === "number" && typeof right === "number" &&
++        (left >= 0 && left + left_length === right || left < 0 && right < 0)) return left
++    return append_sources(append_sources([], left, left_length), right, right_length)
++}
++/** @param {SourceInput} spans @param {number} start @param {number} length @returns {SourceInput} */
++function slice_sources(spans, start, length) {
++    if (typeof spans === "number") return spans < 0 ? -1 : spans + start
++    /** @type {SourceSpan[]} */ const result = []
++    let offset = 0
++    for (const span of spans) {
++        const from = Math.max(start, offset)
++        const end = Math.min(start + length, offset + span.length)
++        if (from < end) append_sources(result, span.source < 0 ? -1 : span.source + from - offset, end - from)
++        offset += span.length
++        if (offset >= start + length) break
++    }
++    return result.length === 1 ? result[0].source : result
++}
++/** @param {Parser} p @param {string} text @param {SourceInput} spans */
++function append_text(p, text, spans) {
++    p.text += text
++    if (p.source) append_sources(p.source.text, spans, text.length)
++}
++/** @param {Parser} p @param {string} text @param {SourceInput} spans */
++function set_text(p, text, spans) {
++    p.text = text
++    if (p.source) p.source.text = append_sources([], spans, text.length)
++}
++/** @param {Parser} p @param {string} text @param {SourceInput} spans */
++function set_pending(p, text, spans) {
++    p.pending = text
++    if (p.source) p.source.pending = spans
++}
++/** @param {SourceInput|undefined} source */
++function first_source(source) {
++    return typeof source === "number" ? source : source?.[0]?.source
++}
++
+ const TOKEN_ARRAY_CAP = 24
+
+ /**
+@@ -220,6 +281,7 @@ export function parser(renderer) {
+         indent     : "",
+         indent_len : 0,
+         table_state: 0,
++        source: renderer.track_source ? {position: 0, text: [], pending: -1, indent: []} : undefined,
+     }
+ }
+
+@@ -229,7 +291,7 @@ export function parser(renderer) {
+  * @returns {void  } */
+ export function parser_end(p) {
+     if (p.pending.length > 0) {
+-        parser_write(p, "\n")
++        parser_write(p, "\n", -1)
+     }
+ }
+
+@@ -239,8 +301,8 @@ export function parser_end(p) {
+ function add_text(p) {
+     if (p.text.length === 0) return
+     console.assert(p.len > 0, "Never adding text to root")
+-    p.renderer.add_text(p.renderer.data, p.text)
+-    p.text = ""
++    p.renderer.add_text(p.renderer.data, p.text, p.source?.text)
++    set_text(p, "", [])
+ }
+
+ /**
+@@ -263,7 +325,7 @@ function ensure_paragraph(p) {
+  * @returns {void  } */
+ function push_text(p, text) {
+     ensure_paragraph(p)
+-    p.text += text
++    append_text(p, text, -1)
+ }
+
+ /**
+@@ -299,7 +361,7 @@ function add_token(p, token) {
+     p.len += 1
+     p.tokens[p.len] = token
+     p.token = token
+-    p.renderer.add_token(p.renderer.data, token)
++    p.renderer.add_token(p.renderer.data, token, first_source(p.source?.pending))
+ }
+
+ /**
+@@ -419,8 +481,9 @@ function add_list_item(p, prefix_length) {
+  * @returns {void  } */
+ function clear_root_pending(p) {
+     p.indent = ""
++    if (p.source) p.source.indent = []
+     p.indent_len = 0
+-    p.pending = ""
++    set_pending(p, "", [])
+ }
+
+ /**
+@@ -469,9 +532,19 @@ function is_alnum(charcode) {
+  * Parse and render another chunk of markdown.
+  * @param   {Parser} p
+  * @param   {string} chunk
++ * @param   {SourceInput} [supplied_source] Internal replay provenance.
+  * @returns {void  } */
+-export function parser_write(p, chunk) {
++export function parser_write(p, chunk, supplied_source) {
++    let source_offset = 0
+     for (const char of chunk) {
++        const char_source = !p.source ? -1 : supplied_source !== undefined
++            ? slice_sources(supplied_source, source_offset, char.length)
++            : p.source.position
++        if (p.source && supplied_source === undefined) p.source.position += char.length
++        source_offset += char.length
++        const pending_source = p.source?.pending ?? -1
++        const pending_length = p.pending.length
++
+
+         /*
+          Handle newlines
+@@ -492,7 +565,7 @@ export function parser_write(p, chunk) {
+             p.token = p.tokens[p.len]
+
+             if (indent > 0) {
+-                parser_write(p, " ".repeat(indent))
++                parser_write(p, " ".repeat(indent), -1)
+             }
+         }
+
+@@ -511,18 +584,20 @@ export function parser_write(p, chunk) {
+
+             switch (p.pending[0]) {
+             case undefined:
+-                p.pending = char
++                set_pending(p, char, char_source)
+                 continue
+             case ' ':
+                 console.assert(p.pending.length === 1)
+-                p.pending = char
++                set_pending(p, char, char_source)
+                 p.indent += ' '
++                if (p.source) append_sources(p.source.indent, pending_source, 1)
+                 p.indent_len += 1
+                 continue
+             case '\t':
+                 console.assert(p.pending.length === 1)
+-                p.pending = char
++                set_pending(p, char, char_source)
+                 p.indent += '\t'
++                if (p.source) append_sources(p.source.indent, pending_source, 1)
+                 p.indent_len += 4
+                 continue
+             case '\n':
+@@ -536,7 +611,7 @@ export function parser_write(p, chunk) {
+                 if (p.tokens[p.len] === LIST_ITEM && p.token === LINE_BREAK) {
+                     end_token(p)
+                     clear_root_pending(p)
+-                    p.pending = char
++                    set_pending(p, char, char_source)
+                     continue
+                 }
+                 /*
+@@ -547,14 +622,14 @@ export function parser_write(p, chunk) {
+                 clear_root_pending(p)
+                 p.blockquote_idx = 0
+                 p.fence_start = 0
+-                p.pending = char
++                set_pending(p, char, char_source)
+                 continue
+             /* Heading */
+             case '#':
+                 switch (char) {
+                 case '#':
+                     if (p.pending.length < 6) {
+-                        p.pending = pending_with_char
++                        set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                         continue
+                     }
+                     break // fail
+@@ -583,7 +658,7 @@ export function parser_write(p, chunk) {
+                 }
+
+                 clear_root_pending(p)
+-                p.pending = char
++                set_pending(p, char, char_source)
+                 continue
+             }
+             /* Horizontal Rule
+@@ -602,15 +677,15 @@ export function parser_write(p, chunk) {
+                     switch (char) {
+                     case p.hr_char:
+                         p.hr_chars += 1
+-                        p.pending = pending_with_char
++                        set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                         continue
+                     case ' ':
+-                        p.pending = pending_with_char
++                        set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                         continue
+                     case '\n':
+                         if (p.hr_chars < 3) break
+                         end_tokens_to_indent(p, p.indent_len)
+-                        p.renderer.add_token(p.renderer.data, RULE)
++                        p.renderer.add_token(p.renderer.data, RULE, first_source(pending_source))
+                         p.renderer.end_token(p.renderer.data)
+                         clear_root_pending(p)
+                         p.hr_chars = 0
+@@ -630,7 +705,7 @@ export function parser_write(p, chunk) {
+                 ) {
+                     continue_or_add_list(p, LIST_UNORDERED)
+                     add_list_item(p, 2)
+-                    parser_write(p, pending_with_char.slice(2))
++                    parser_write(p, pending_with_char.slice(2), slice_sources(concat_sources(pending_source, pending_length, char_source, char.length), 2, pending_with_char.length - 2))
+                     continue
+                 }
+
+@@ -642,7 +717,7 @@ export function parser_write(p, chunk) {
+                 */
+                 if (p.pending.length < 3) {
+                     if ('`' === char) {
+-                        p.pending = pending_with_char
++                        set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                         p.fence_start = pending_with_char.length
+                         continue
+                     }
+@@ -656,7 +731,7 @@ export function parser_write(p, chunk) {
+                            ^
+                     */
+                     if (p.pending.length === p.fence_start) {
+-                        p.pending = pending_with_char
++                        set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                         p.fence_start = pending_with_char.length
+                     }
+                     /*  ```code`
+@@ -666,7 +741,7 @@ export function parser_write(p, chunk) {
+                         add_token(p, PARAGRAPH)
+                         clear_root_pending(p)
+                         p.fence_start = 0
+-                        parser_write(p, pending_with_char)
++                        parser_write(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                     }
+                     continue
+                 case '\n': {
+@@ -687,7 +762,7 @@ export function parser_write(p, chunk) {
+                     /*  ```lang\n
+                             ^
+                     */
+-                    p.pending = pending_with_char
++                    set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                     continue
+                 }
+             /*
+@@ -720,7 +795,7 @@ export function parser_write(p, chunk) {
+                     if (46 === char_code || // '.'
+                         is_digit(char_code) // 0-9
+                     ) {
+-                        p.pending = pending_with_char
++                        set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                         continue
+                     }
+                 }
+@@ -732,13 +807,14 @@ export function parser_write(p, chunk) {
+                 add_token(p, TABLE)
+                 add_token(p, TABLE_ROW)
+
+-                p.pending = ""
+-                parser_write(p, char)
++                set_pending(p, "", [])
++                parser_write(p, char, char_source)
+
+                 continue
+             }
+
+             let to_write = pending_with_char
++            let to_write_source = concat_sources(pending_source, pending_length, char_source, char.length)
+
+             /* Add a line break and continue in previous token */
+             if (p.token === LINE_BREAK) {
+@@ -768,6 +844,7 @@ export function parser_write(p, chunk) {
+                     }
+                 }
+                 to_write = p.indent.slice(code_start) + pending_with_char
++                to_write_source = concat_sources(slice_sources(p.source?.indent ?? [], code_start, p.indent.length - code_start), p.indent.length - code_start, to_write_source, pending_with_char.length)
+                 add_token(p, CODE_BLOCK)
+             }
+             /* Paragraph */
+@@ -776,7 +853,7 @@ export function parser_write(p, chunk) {
+             }
+
+             clear_root_pending(p)
+-            parser_write(p, to_write)
++            parser_write(p, to_write, to_write_source)
+             continue
+         case TABLE:
+             if (p.table_state === 1) {
+@@ -785,11 +862,11 @@ export function parser_write(p, chunk) {
+                 case ' ':
+                 case '|':
+                 case ':':
+-                    p.pending = pending_with_char
++                    set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                     continue
+                 case '\n':
+                     p.table_state = 2
+-                    p.pending = ""
++                    set_pending(p, "", [])
+                     continue
+                 default:
+                     end_token(p)
+@@ -800,14 +877,14 @@ export function parser_write(p, chunk) {
+                 switch (p.pending) {
+                 case "|":
+                     add_token(p, TABLE_ROW)
+-                    p.pending = ""
+-                    parser_write(p, char)
++                    set_pending(p, "", [])
++                    parser_write(p, char, char_source)
+                     continue
+                 case "\n":
+                     end_token(p)
+-                    p.pending = ""
++                    set_pending(p, "", [])
+                     p.table_state = 0
+-                    parser_write(p, char)
++                    parser_write(p, char, char_source)
+                     continue
+                 }
+             }
+@@ -819,18 +896,18 @@ export function parser_write(p, chunk) {
+             case "|":
+                 add_token(p, TABLE_CELL)
+                 end_token(p)
+-                p.pending = ""
+-                parser_write(p, char)
++                set_pending(p, "", [])
++                parser_write(p, char, char_source)
+                 continue
+             case "\n":
+                 end_token(p)
+                 p.table_state = Math.min(p.table_state+1, 2)
+-                p.pending = ""
+-                parser_write(p, char)
++                set_pending(p, "", [])
++                parser_write(p, char, char_source)
+                 continue
+             default:
+                 add_token(p, TABLE_CELL)
+-                parser_write(p, char)
++                parser_write(p, char, char_source)
+                 continue
+             }
+             break
+@@ -838,8 +915,8 @@ export function parser_write(p, chunk) {
+             if (p.pending === "|") {
+                 add_text(p)
+                 end_token(p)
+-                p.pending = ""
+-                parser_write(p, char)
++                set_pending(p, "", [])
++                parser_write(p, char, char_source)
+                 continue
+             }
+             break
+@@ -850,22 +927,22 @@ export function parser_write(p, chunk) {
+             case "\n  \t":
+             case "\n \t":
+             case "\n\t":
+-                p.text += "\n"
+-                p.pending = ""
++                append_text(p, "\n", slice_sources(pending_source, 0, 1))
++                set_pending(p, "", [])
+                 continue
+             case "\n":
+             case "\n ":
+             case "\n  ":
+             case "\n   ":
+-                p.pending = pending_with_char
++                set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                 continue
+             default:
+                 if (p.pending.length !== 0) {
+                     add_text(p)
+                     end_token(p)
+-                    p.pending = char
++                    set_pending(p, char, char_source)
+                 } else {
+-                    p.text += char
++                    append_text(p, char, char_source)
+                 }
+                 continue
+             }
+@@ -875,7 +952,7 @@ export function parser_write(p, chunk) {
+                 /*  ```\n<code>\n``??
+                 |                 ^
+                 */
+-                p.pending = pending_with_char
++                set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                 continue
+             case '\n':
+                 /*  ```\n<code>\n```\n
+@@ -884,7 +961,7 @@ export function parser_write(p, chunk) {
+                 if (pending_with_char.length === p.fence_start + p.fence_end + 1) {
+                     add_text(p)
+                     end_token(p)
+-                    p.pending = ""
++                    set_pending(p, "", [])
+                     p.fence_start = 0
+                     p.fence_end = 0
+                     p.token = NEWLINE
+@@ -897,15 +974,15 @@ export function parser_write(p, chunk) {
+                 |                ^  (space after newline is allowed)
+                 */
+                 if (p.pending[0] === '\n') {
+-                    p.pending = pending_with_char
++                    set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                     p.fence_end += 1
+                     continue
+                 }
+                 break
+             }
+             // any other char
+-            p.text   += p.pending
+-            p.pending = char
++            append_text(p, p.pending, pending_source)
++            set_pending(p, char, char_source)
+             p.fence_end = 1
+             continue
+         case CODE_INLINE:
+@@ -916,27 +993,27 @@ export function parser_write(p, chunk) {
+                 ) {
+                     add_text(p)
+                     end_token(p)
+-                    p.pending = ""
++                    set_pending(p, "", [])
+                     p.fence_start = 0
+                 } else {
+-                    p.pending = pending_with_char
++                    set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                 }
+                 continue
+             case '\n':
+-                p.text += p.pending
+-                p.pending = ""
++                append_text(p, p.pending, pending_source)
++                set_pending(p, "", [])
+                 p.token = LINE_BREAK
+                 p.blockquote_idx = 0
+                 add_text(p)
+                 continue
+             /* Trim space before ` */
+             case ' ':
+-                p.text += p.pending
+-                p.pending = char
++                append_text(p, p.pending, pending_source)
++                set_pending(p, char, char_source)
+                 continue
+             default:
+-                p.text += pending_with_char
+-                p.pending = ""
++                append_text(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
++                set_pending(p, "", [])
+                 continue
+             }
+         /* Checkboxes */
+@@ -944,15 +1021,15 @@ export function parser_write(p, chunk) {
+             switch (p.pending.length) {
+             case 0:
+                 if ('[' !== char) break // fail
+-                p.pending = pending_with_char
++                set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                 continue
+             case 1:
+                 if (' ' !== char && 'x' !== char) break // fail
+-                p.pending = pending_with_char
++                set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                 continue
+             case 2:
+                 if (']' !== char) break // fail
+-                p.pending = pending_with_char
++                set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                 continue
+             case 3:
+                 if (' ' !== char) break // fail
+@@ -961,13 +1038,13 @@ export function parser_write(p, chunk) {
+                     p.renderer.set_attr(p.renderer.data, CHECKED, "")
+                 }
+                 p.renderer.end_token(p.renderer.data)
+-                p.pending = " "
++                set_pending(p, " ", char_source)
+                 continue
+             }
+
+             p.token = p.tokens[p.len]
+-            p.pending = ""
+-            parser_write(p, pending_with_char)
++            set_pending(p, "", [])
++            parser_write(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+             continue
+         case STRONG_AST:
+         case STRONG_UND: {
+@@ -985,14 +1062,14 @@ export function parser_write(p, chunk) {
+                 */
+                 if (symbol === char) {
+                     end_token(p)
+-                    p.pending = ""
++                    set_pending(p, "", [])
+                     continue
+                 }
+                 /* **Bold*Bold->Em*
+                           ^
+                 */
+                 add_token(p, italic)
+-                p.pending = char
++                set_pending(p, char, char_source)
+                 continue
+             }
+
+@@ -1015,7 +1092,7 @@ export function parser_write(p, chunk) {
+                        With the help of the next character
+                     */
+                     if (p.tokens[p.len-1] === strong) {
+-                        p.pending = pending_with_char
++                        set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                     }
+                     /* *em**bold
+                            ^
+@@ -1023,7 +1100,7 @@ export function parser_write(p, chunk) {
+                     else {
+                         add_text(p)
+                         add_token(p, strong)
+-                        p.pending = ""
++                        set_pending(p, "", [])
+                     }
+                 }
+                 /* *em*foo
+@@ -1032,7 +1109,7 @@ export function parser_write(p, chunk) {
+                 else {
+                     add_text(p)
+                     end_token(p)
+-                    p.pending = char
++                    set_pending(p, char, char_source)
+                 }
+                 continue
+             case symbol+symbol:
+@@ -1045,9 +1122,9 @@ export function parser_write(p, chunk) {
+                 */
+                 if (symbol !== char) {
+                     add_token(p, italic)
+-                    p.pending = char
++                    set_pending(p, char, char_source)
+                 } else {
+-                    p.pending = ""
++                    set_pending(p, "", [])
+                 }
+                 continue
+             }
+@@ -1057,7 +1134,7 @@ export function parser_write(p, chunk) {
+             if ("~~" === pending_with_char) {
+                 add_text(p)
+                 end_token(p)
+-                p.pending = ""
++                set_pending(p, "", [])
+                 continue
+             }
+             break
+@@ -1069,23 +1146,23 @@ export function parser_write(p, chunk) {
+             if (char === '\n') {
+                 add_text(p)
+                 add_token(p, EQUATION_BLOCK)
+-                p.pending = ""
++                set_pending(p, "", [])
+             } else {
+                 p.token = p.tokens[p.len]
+                 if (p.pending[0] === '\\') {
+-                    p.text += '['
++                    append_text(p, '[', slice_sources(pending_source, 1, 1))
+                 } else {
+-                    p.text += '$$'
++                    append_text(p, '$$', pending_source)
+                 }
+-                p.pending = ""
+-                parser_write(p, char)
++                set_pending(p, "", [])
++                parser_write(p, char, char_source)
+             }
+             continue
+         case EQUATION_BLOCK:
+             if ("\\]" === pending_with_char || "$$" === pending_with_char) {
+                 add_text(p)
+                 end_token(p)
+-                p.pending = ""
++                set_pending(p, "", [])
+                 continue
+             }
+             break
+@@ -1095,9 +1172,9 @@ export function parser_write(p, chunk) {
+                 end_token(p)
+
+                 if(char === ')'){
+-                    p.pending = ""
++                    set_pending(p, "", [])
+                 } else {
+-                    p.pending = char
++                    set_pending(p, char, char_source)
+                 }
+                 continue
+             }
+@@ -1109,18 +1186,18 @@ export function parser_write(p, chunk) {
+             ) {
+                 add_text(p)
+                 add_token(p, RAW_URL)
+-                p.pending = pending_with_char
+-                p.text    = pending_with_char
++                set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
++                set_text(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+             }
+             else
+             if ("http:/" [p.pending.length] === char ||
+                 "https:/"[p.pending.length] === char
+             ) {
+-                p.pending = pending_with_char
++                set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+             }
+             else {
+                 p.token = p.tokens[p.len]
+-                parser_write(p, char)
++                parser_write(p, char, char_source)
+             }
+             continue
+         case LINK:
+@@ -1132,10 +1209,10 @@ export function parser_write(p, chunk) {
+                 */
+                 add_text(p)
+                 if ('(' === char) {
+-                    p.pending = pending_with_char
++                    set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                 } else {
+                     end_token(p)
+-                    p.pending = char
++                    set_pending(p, char, char_source)
+                 }
+                 continue
+             }
+@@ -1151,9 +1228,9 @@ export function parser_write(p, chunk) {
+                     const url = p.pending.slice(2)
+                     p.renderer.set_attr(p.renderer.data, type, url)
+                     end_token(p)
+-                    p.pending = ""
++                    set_pending(p, "", [])
+                 } else {
+-                    p.pending += char
++                    set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                 }
+                 continue
+             }
+@@ -1169,10 +1246,10 @@ export function parser_write(p, chunk) {
+                 p.renderer.set_attr(p.renderer.data, HREF, p.pending)
+                 add_text(p)
+                 end_token(p)
+-                p.pending = char
++                set_pending(p, char, char_source)
+             } else {
+-                p.text   += char
+-                p.pending = pending_with_char
++                append_text(p, char, char_source)
++                set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+             }
+             continue
+         case MAYBE_BR:
+@@ -1185,7 +1262,7 @@ export function parser_write(p, chunk) {
+                     char === '/' && (pending_with_char.length === 4 ||
+                                      p.pending[p.pending.length-1] === ' ')
+                 ) {
+-                    p.pending = pending_with_char
++                    set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                     continue
+                 }
+
+@@ -1195,15 +1272,15 @@ export function parser_write(p, chunk) {
+                     p.token = p.tokens[p.len]
+                     p.renderer.add_token(p.renderer.data, LINE_BREAK)
+                     p.renderer.end_token(p.renderer.data)
+-                    p.pending = ""
++                    set_pending(p, "", [])
+                     continue
+                 }
+             }
+             // Fail
+             p.token = p.tokens[p.len]
+-            p.text += '<'
+-            p.pending = p.pending.slice(1)
+-            parser_write(p, char)
++            append_text(p, '<', slice_sources(pending_source, 0, 1))
++            set_pending(p, p.pending.slice(1), slice_sources(pending_source, 1, p.pending.length - 1))
++            parser_write(p, char, char_source)
+             continue
+         }
+
+@@ -1222,24 +1299,21 @@ export function parser_write(p, chunk) {
+             case '(':
+                 add_text(p)
+                 add_token(p, EQUATION_INLINE)
+-                p.pending = ""
++                set_pending(p, "", [])
+                 continue
+             case '[':
+                 p.token = MAYBE_EQ_BLOCK
+-                p.pending = pending_with_char
++                set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                 continue
+             case '\n':
+                 // Escaped newline has the same affect as unescaped one
+-                p.pending = char
++                set_pending(p, char, char_source)
+                 continue
+             default:
+                 let charcode = char.charCodeAt(0)
+-                p.pending = ""
+-                p.text += is_digit(charcode)                 || // 0-9
+-                          (charcode >= 65 && charcode <= 90) || // A-Z
+-                          (charcode >= 97 && charcode <= 122)   // a-z
+-                            ? pending_with_char
+-                            : char
++                set_pending(p, "", [])
++                const literal = is_digit(charcode) || (charcode >= 65 && charcode <= 90) || (charcode >= 97 && charcode <= 122)
++                append_text(p, literal ? pending_with_char : char, literal ? concat_sources(pending_source, pending_length, char_source, char.length) : char_source)
+                 continue
+             }
+         /* Newline */
+@@ -1258,11 +1332,11 @@ export function parser_write(p, chunk) {
+                 add_text(p)
+                 end_tokens_to_len(p, p.blockquote_idx)
+                 p.blockquote_idx = 0
+-                p.pending = char
++                set_pending(p, char, char_source)
+                 continue
+             default:
+                 add_text(p)
+-                p.pending = char
++                set_pending(p, char, char_source)
+                 p.token = LINE_BREAK
+                 p.blockquote_idx = 0
+                 continue
+@@ -1275,7 +1349,7 @@ export function parser_write(p, chunk) {
+                 p.token !== EQUATION_INLINE
+             ) {
+                 add_text(p)
+-                p.pending = pending_with_char
++                set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                 p.token = MAYBE_BR
+                 continue
+             }
+@@ -1286,13 +1360,13 @@ export function parser_write(p, chunk) {
+
+             if ('`' === char) {
+                 p.fence_start += 1
+-                p.pending = pending_with_char
++                set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+             } else {
+                 p.fence_start += 1 // started at 0, and first wasn't counted
+                 add_text(p)
+                 add_token(p, CODE_INLINE)
+-                p.text = ' ' === char || '\n' === char ? "" : char // trim leading space
+-                p.pending = ""
++                set_text(p, ' ' === char || '\n' === char ? "" : char, ' ' === char || '\n' === char ? [] : char_source) // trim leading space
++                set_pending(p, "", [])
+             }
+             continue
+         case '_':
+@@ -1316,7 +1390,7 @@ export function parser_write(p, chunk) {
+                     ^
+                 */
+                 if (symbol === char) {
+-                    p.pending = pending_with_char
++                    set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                     continue
+                 }
+                 /* *Em*
+@@ -1325,7 +1399,7 @@ export function parser_write(p, chunk) {
+                 if (' ' !== char && '\n' !== char) {
+                     add_text(p)
+                     add_token(p, italic)
+-                    p.pending = char
++                    set_pending(p, char, char_source)
+                     continue
+                 }
+             } else {
+@@ -1336,7 +1410,7 @@ export function parser_write(p, chunk) {
+                     add_text(p)
+                     add_token(p, strong)
+                     add_token(p, italic)
+-                    p.pending = ""
++                    set_pending(p, "", [])
+                     continue
+                 }
+                 /* **Strong**
+@@ -1345,7 +1419,7 @@ export function parser_write(p, chunk) {
+                 if (' ' !== char && '\n' !== char) {
+                     add_text(p)
+                     add_token(p, strong)
+-                    p.pending = char
++                    set_pending(p, char, char_source)
+                     continue
+                 }
+             }
+@@ -1361,7 +1435,7 @@ export function parser_write(p, chunk) {
+                         ^
+                     */
+                     if ('~' === char) {
+-                        p.pending = pending_with_char
++                        set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                         continue
+                     }
+                 } else {
+@@ -1371,7 +1445,7 @@ export function parser_write(p, chunk) {
+                     if (' ' !== char && '\n' !== char) {
+                         add_text(p)
+                         add_token(p, STRIKE)
+-                        p.pending = char
++                        set_pending(p, char, char_source)
+                         continue
+                     }
+                 }
+@@ -1388,7 +1462,7 @@ export function parser_write(p, chunk) {
+                 */
+                 if ('$' === char) {
+                     p.token = MAYBE_EQ_BLOCK
+-                    p.pending = pending_with_char
++                    set_pending(p, pending_with_char, concat_sources(pending_source, pending_length, char_source, char.length))
+                     continue
+                 }
+                 /* $123
+@@ -1403,7 +1477,7 @@ export function parser_write(p, chunk) {
+                 else {
+                     add_text(p)
+                     add_token(p, EQUATION_INLINE)
+-                    p.pending = char
++                    set_pending(p, char, char_source)
+                     continue
+                 }
+             }
+@@ -1418,7 +1492,7 @@ export function parser_write(p, chunk) {
+             ) {
+                 add_text(p)
+                 add_token(p, LINK)
+-                p.pending = char
++                set_pending(p, char, char_source)
+                 continue
+             }
+             break
+@@ -1429,7 +1503,7 @@ export function parser_write(p, chunk) {
+             ) {
+                 add_text(p)
+                 add_token(p, IMAGE)
+-                p.pending = ""
++                set_pending(p, "", [])
+                 continue
+             }
+             break
+@@ -1452,8 +1526,8 @@ export function parser_write(p, chunk) {
+            (" " === p.pending ||
+             ""  === p.pending)
+         ) {
+-            p.text   += p.pending
+-            p.pending = char
++            append_text(p, p.pending, pending_source)
++            set_pending(p, char, char_source)
+
+             p.token = MAYBE_URL
+             continue
+@@ -1462,8 +1536,8 @@ export function parser_write(p, chunk) {
+         /*
+         No check hit
+         */
+-        p.text += p.pending
+-        p.pending = char
++        append_text(p, p.pending, pending_source)
++        set_pending(p, char, char_source)
+     }
+
+     add_text(p)
+@@ -1475,6 +1549,7 @@ export function parser_write(p, chunk) {
+  * @callback Renderer_Add_Token
+  * @param   {T    } data
+  * @param   {Token} type
++ * @param   {number} [source]
+  * @returns {void } */
+
+ /**
+@@ -1488,6 +1563,7 @@ export function parser_write(p, chunk) {
+  * @callback Renderer_Add_Text
+  * @param   {T     } data
+  * @param   {string} text
++ * @param   {readonly SourceSpan[]} [source]
+  * @returns {void  } */
+
+ /**
+@@ -1503,6 +1579,7 @@ export function parser_write(p, chunk) {
+  * @template T
+  * @typedef  {object               } Renderer
+  * @property {T                    } data      User data object. Available as first param in callbacks.
++ * @property {boolean} [track_source] Preserve consumed source spans.
+  * @property {Renderer_Add_Token<T>} add_token When the tokens starts.
+  * @property {Renderer_End_Token<T>} end_token When the token ends.
+  * @property {Renderer_Add_Text <T>} add_text  To append text to current token. Can be called multiple times or none.
+diff --git a/smd.min.js b/smd.min.js
+index 65abd77c4a36aecfe40b0686c96e018fc0747d35..34a757f1da7317d483883d5923920e36700ff2e3 100644
+--- a/smd.min.js
++++ b/smd.min.js
+@@ -1,29 +1,30 @@
+-var D=2,C=3,h=4,b=5,B=6,U=7,G=8,S=9,x=10,m=11,H=12,K=13,M=14,Q=15,w=16,q=17,W=18,P=19,Y=20,y=21,F=22,$=23,v=24,X=25,j=26,z=27,J=28,V=29,Z=30,p=31;var I=1,k=2,L=4,T=8,f=16;function ee(e){switch(e){case I:return"href";case k:return"src";case L:return"class";case T:return"checked";case f:return"start"}}var ne=e=>{switch(e){case 1:return 3;case 2:return 4;case 3:return 5;case 4:return 6;case 5:return 7;default:return 8}},te=ne;var O=24;function ae(e){let c=new Uint32Array(O);return c[0]=1,{renderer:e,text:"",pending:"",tokens:c,len:0,token:1,fence_end:0,blockquote_idx:0,hr_char:"",hr_chars:0,fence_start:0,spaces:new Uint8Array(O),indent:"",indent_len:0,table_state:0}}function ce(e){e.pending.length>0&&o(e,`
+-`)}function a(e){e.text.length!==0&&(e.renderer.add_text(e.renderer.data,e.text),e.text="")}function _(e){e.len-=1,e.token=e.tokens[e.len],e.renderer.end_token(e.renderer.data)}function i(e,c){(e.tokens[e.len]===24||e.tokens[e.len]===23)&&c!==25&&_(e),e.len+=1,e.tokens[e.len]=c,e.token=c,e.renderer.add_token(e.renderer.data,c)}function re(e,c,n){for(;n<=e.len;){if(e.tokens[n]===c)return n;n+=1}return-1}function l(e,c){for(e.fence_start=0;e.len>c;)_(e)}function u(e,c){let n=0;for(let t=0;t<=e.len&&(c-=e.spaces[t],!(c<0));t+=1)switch(e.tokens[t]){case 9:case 10:case 20:case 25:n=t;break}for(;e.len>n;)_(e);return c}function A(e,c){let n=-1,t=-1;for(let s=e.blockquote_idx+1;s<=e.len;s+=1)if(e.tokens[s]===25){if(e.indent_len<e.spaces[s]){t=-1;break}t=s}else e.tokens[s]===c&&(n=s);return t===-1?n===-1?(l(e,e.blockquote_idx),i(e,c),!0):(l(e,n),!1):(l(e,t),i(e,c),!0)}function g(e,c){i(e,25),e.spaces[e.len]=e.indent_len+c,E(e),e.token=103}function E(e){e.indent="",e.indent_len=0,e.pending=""}function N(e){switch(e){case 48:case 49:case 50:case 51:case 52:case 53:case 54:case 55:case 56:case 57:return!0;default:return!1}}function ie(e){switch(e){case 32:case 58:case 59:case 41:case 44:case 33:case 46:case 63:case 93:case 10:return!0;default:return!1}}function se(e){return N(e)||ie(e)}function o(e,c){for(let n of c){if(e.token===101){switch(n){case" ":e.indent_len+=1;continue;case"	":e.indent_len+=4;continue}let s=u(e,e.indent_len);e.indent_len=0,e.token=e.tokens[e.len],s>0&&o(e," ".repeat(s))}let t=e.pending+n;switch(e.token){case 21:case 1:case 20:case 24:case 23:switch(e.pending[0]){case void 0:e.pending=n;continue;case" ":e.pending=n,e.indent+=" ",e.indent_len+=1;continue;case"	":e.pending=n,e.indent+="	",e.indent_len+=4;continue;case`
+-`:if(e.tokens[e.len]===25&&e.token===21){_(e),E(e),e.pending=n;continue}l(e,e.blockquote_idx),E(e),e.blockquote_idx=0,e.fence_start=0,e.pending=n;continue;case"#":switch(n){case"#":if(e.pending.length<6){e.pending=t;continue}break;case" ":u(e,e.indent_len),i(e,te(e.pending.length)),E(e);continue}break;case">":{let r=re(e,20,e.blockquote_idx+1);r===-1?(l(e,e.blockquote_idx),e.blockquote_idx+=1,e.fence_start=0,i(e,20)):e.blockquote_idx=r,E(e),e.pending=n;continue}case"-":case"*":case"_":if(e.hr_chars===0&&(e.hr_chars=1,e.hr_char=e.pending),e.hr_chars>0){switch(n){case e.hr_char:e.hr_chars+=1,e.pending=t;continue;case" ":e.pending=t;continue;case`
+-`:if(e.hr_chars<3)break;u(e,e.indent_len),e.renderer.add_token(e.renderer.data,22),e.renderer.end_token(e.renderer.data),E(e),e.hr_chars=0;continue}e.hr_chars=0}if(e.pending[0]!=="_"&&e.pending[1]===" "){A(e,23),g(e,2),o(e,t.slice(2));continue}break;case"`":if(e.pending.length<3){if(n==="`"){e.pending=t,e.fence_start=t.length;continue}e.fence_start=0;break}switch(n){case"`":e.pending.length===e.fence_start?(e.pending=t,e.fence_start=t.length):(i(e,2),E(e),e.fence_start=0,o(e,t));continue;case`
+-`:{u(e,e.indent_len),i(e,10),e.pending.length>e.fence_start&&e.renderer.set_attr(e.renderer.data,L,e.pending.slice(e.fence_start)),E(e),e.token=101;continue}default:e.pending=t;continue}case"+":if(n!==" ")break;A(e,23),g(e,2);continue;case"0":case"1":case"2":case"3":case"4":case"5":case"6":case"7":case"8":case"9":if(e.pending[e.pending.length-1]==="."){if(n!==" ")break;A(e,24)&&e.pending!=="1."&&e.renderer.set_attr(e.renderer.data,f,e.pending.slice(0,-1)),g(e,e.pending.length+1);continue}else{let r=n.charCodeAt(0);if(r===46||N(r)){e.pending=t;continue}}break;case"|":l(e,e.blockquote_idx),i(e,27),i(e,28),e.pending="",o(e,n);continue}let s=t;if(e.token===21)e.token=e.tokens[e.len],e.renderer.add_token(e.renderer.data,21),e.renderer.end_token(e.renderer.data);else if(e.indent_len>=4){let r=0;for(;r<4;r+=1)if(e.indent[r]==="	"){r=r+1;break}s=e.indent.slice(r)+t,i(e,9)}else i(e,2);E(e),o(e,s);continue;case 27:if(e.table_state===1)switch(n){case"-":case" ":case"|":case":":e.pending=t;continue;case`
+-`:e.table_state=2,e.pending="";continue;default:_(e),e.table_state=0;break}else switch(e.pending){case"|":i(e,28),e.pending="",o(e,n);continue;case`
+-`:_(e),e.pending="",e.table_state=0,o(e,n);continue}break;case 28:switch(e.pending){case"":break;case"|":i(e,29),_(e),e.pending="",o(e,n);continue;case`
+-`:_(e),e.table_state=Math.min(e.table_state+1,2),e.pending="",o(e,n);continue;default:i(e,29),o(e,n);continue}break;case 29:if(e.pending==="|"){a(e),_(e),e.pending="",o(e,n);continue}break;case 9:switch(t){case`
++var p=1,ee=2,ne=3,te=4,ce=5,re=6,ae=7,oe=8,se=9,ie=10,_e=11,de=12,ue=13,Ee=14,le=15,Ie=16,Ae=17,fe=18,ke=19,Ne=20,ge=21,Le=22,he=23,Te=24,Oe=25,Re=26,De=27,be=28,Ce=29,Be=30,Ue=31,me=101,Ge=102,Se=103,xe=104,Ke=105,He={Document:1,Blockquote:20,Paragraph:2,Heading_1:3,Heading_2:4,Heading_3:5,Heading_4:6,Heading_5:7,Heading_6:8,Code_Block:9,Code_Fence:10,Code_Inline:11,Italic_Ast:12,Italic_Und:13,Strong_Ast:14,Strong_Und:15,Strike:16,Link:17,Raw_URL:18,Image:19,Line_Break:21,Rule:22,List_Unordered:23,List_Ordered:24,List_Item:25,Checkbox:26,Table:27,Table_Row:28,Table_Cell:29,Equation_Block:30,Equation_Inline:31};function Q(e){switch(e){case 1:return"Document";case 20:return"Blockquote";case 2:return"Paragraph";case 3:return"Heading_1";case 4:return"Heading_2";case 5:return"Heading_3";case 6:return"Heading_4";case 7:return"Heading_5";case 8:return"Heading_6";case 9:return"Code_Block";case 10:return"Code_Fence";case 11:return"Code_Inline";case 12:return"Italic_Ast";case 13:return"Italic_Und";case 14:return"Strong_Ast";case 15:return"Strong_Und";case 16:return"Strike";case 17:return"Link";case 18:return"Raw URL";case 19:return"Image";case 21:return"Line_Break";case 22:return"Rule";case 23:return"List_Unordered";case 24:return"List_Ordered";case 25:return"List_Item";case 26:return"Checkbox";case 27:return"Table";case 28:return"Table_Row";case 29:return"Table_Cell";case 30:return"Equation_Block";case 31:return"Equation_Inline"}}var D=1,m=2,G=4,S=8,x=16,Me={Href:D,Src:m,Lang:G,Checked:S,Start:x};function H(e){switch(e){case D:return"href";case m:return"src";case G:return"class";case S:return"checked";case x:return"start"}}var q=(e)=>{switch(e){case 1:return 3;case 2:return 4;case 3:return 5;case 4:return 6;case 5:return 7;default:return 8}},W=q,we=(e)=>{switch(e){case 3:return 1;case 4:return 2;case 5:return 3;case 6:return 4;case 7:return 5;case 8:return 6;default:return 0}};function h(e,a,i){if(!i)return e;if(typeof a==="number"){let r=e[e.length-1];if(r&&(r.source>=0&&r.source+r.length===a||r.source<0&&a<0))r.length+=i;else e.push({source:a,length:i})}else for(let r of a)h(e,r.source,r.length);return e}function d(e,a,i,r){if(!a)return i;if(!r)return e;if(typeof e==="number"&&typeof i==="number"&&(e>=0&&e+a===i||e<0&&i<0))return e;return h(h([],e,a),i,r)}function T(e,a,i){if(typeof e==="number")return e<0?-1:e+a;let r=[],n=0;for(let c of e){let o=Math.max(a,n),_=Math.min(a+i,n+c.length);if(o<_)h(r,c.source<0?-1:c.source+o-n,_-o);if(n+=c.length,n>=a+i)break}return r.length===1?r[0].source:r}function k(e,a,i){if(e.text+=a,e.source)h(e.source.text,i,a.length)}function B(e,a,i){if(e.text=a,e.source)e.source.text=h([],i,a.length)}function t(e,a,i){if(e.pending=a,e.source)e.source.pending=i}function M(e){return typeof e==="number"?e:e?.[0]?.source}var K=24;function Qe(e){let a=new Uint32Array(K);return a[0]=1,{renderer:e,text:"",pending:"",tokens:a,len:0,token:1,fence_end:0,blockquote_idx:0,hr_char:"",hr_chars:0,fence_start:0,spaces:new Uint8Array(K),indent:"",indent_len:0,table_state:0,source:e.track_source?{position:0,text:[],pending:-1,indent:[]}:void 0}}function qe(e){if(e.pending.length>0)A(e,`
++`,-1)}function E(e){if(e.text.length===0)return;console.assert(e.len>0,"Never adding text to root"),e.renderer.add_text(e.renderer.data,e.text,e.source?.text),B(e,"",[])}function I(e){console.assert(e.len>0,"No nodes to end"),e.len-=1,e.token=e.tokens[e.len],e.renderer.end_token(e.renderer.data)}function l(e,a){if((e.tokens[e.len]===24||e.tokens[e.len]===23)&&a!==25)I(e);e.len+=1,e.tokens[e.len]=a,e.token=a,e.renderer.add_token(e.renderer.data,a,M(e.source?.pending))}function P(e,a,i){while(i<=e.len){if(e.tokens[i]===a)return i;i+=1}return-1}function O(e,a){e.fence_start=0;while(e.len>a)I(e)}function R(e,a){let i=0;for(let r=0;r<=e.len;r+=1){if(a-=e.spaces[r],a<0)break;switch(e.tokens[r]){case 9:case 10:case 20:case 25:i=r;break}}while(e.len>i)I(e);return a}function b(e,a){let i=-1,r=-1;for(let n=e.blockquote_idx+1;n<=e.len;n+=1)if(e.tokens[n]===25){if(e.indent_len<e.spaces[n]){r=-1;break}r=n}else if(e.tokens[n]===a)i=n;if(r===-1){if(i===-1)return O(e,e.blockquote_idx),l(e,a),!0;return O(e,i),!1}return O(e,r),l(e,a),!0}function C(e,a){l(e,25),e.spaces[e.len]=e.indent_len+a,g(e),e.token=103}function g(e){if(e.indent="",e.source)e.source.indent=[];e.indent_len=0,t(e,"",[])}function U(e){switch(e){case 48:case 49:case 50:case 51:case 52:case 53:case 54:case 55:case 56:case 57:return!0;default:return!1}}function y(e){switch(e){case 32:case 58:case 59:case 41:case 44:case 33:case 46:case 63:case 93:case 10:return!0;default:return!1}}function Y(e){return U(e)||y(e)}function A(e,a,i){let r=0;for(let n of a){let c=!e.source?-1:i!==void 0?T(i,r,n.length):e.source.position;if(e.source&&i===void 0)e.source.position+=n.length;r+=n.length;let o=e.source?.pending??-1,_=e.pending.length;if(e.token===101){switch(n){case" ":e.indent_len+=1;continue;case"\t":e.indent_len+=4;continue}let f=R(e,e.indent_len);if(e.indent_len=0,e.token=e.tokens[e.len],f>0)A(e," ".repeat(f),-1)}let s=e.pending+n;switch(e.token){case 21:case 1:case 20:case 24:case 23:switch(console.assert(e.text.length===0,"Root should not have any text"),e.pending[0]){case void 0:t(e,n,c);continue;case" ":if(console.assert(e.pending.length===1),t(e,n,c),e.indent+=" ",e.source)h(e.source.indent,o,1);e.indent_len+=1;continue;case"\t":if(console.assert(e.pending.length===1),t(e,n,c),e.indent+="\t",e.source)h(e.source.indent,o,1);e.indent_len+=4;continue;case`
++`:if(console.assert(e.pending.length===1),e.tokens[e.len]===25&&e.token===21){I(e),g(e),t(e,n,c);continue}O(e,e.blockquote_idx),g(e),e.blockquote_idx=0,e.fence_start=0,t(e,n,c);continue;case"#":switch(n){case"#":if(e.pending.length<6){t(e,s,d(o,_,c,n.length));continue}break;case" ":R(e,e.indent_len),l(e,W(e.pending.length)),g(e);continue}break;case">":{let u=P(e,20,e.blockquote_idx+1);if(u===-1)O(e,e.blockquote_idx),e.blockquote_idx+=1,e.fence_start=0,l(e,20);else e.blockquote_idx=u;g(e),t(e,n,c);continue}case"-":case"*":case"_":if(e.hr_chars===0)console.assert(e.pending.length===1,"Pending should be one character"),e.hr_chars=1,e.hr_char=e.pending;if(e.hr_chars>0){switch(n){case e.hr_char:e.hr_chars+=1,t(e,s,d(o,_,c,n.length));continue;case" ":t(e,s,d(o,_,c,n.length));continue;case`
++`:if(e.hr_chars<3)break;R(e,e.indent_len),e.renderer.add_token(e.renderer.data,22,M(o)),e.renderer.end_token(e.renderer.data),g(e),e.hr_chars=0;continue}e.hr_chars=0}if(e.pending[0]!=="_"&&e.pending[1]===" "){b(e,23),C(e,2),A(e,s.slice(2),T(d(o,_,c,n.length),2,s.length-2));continue}break;case"`":if(e.pending.length<3){if(n==="`"){t(e,s,d(o,_,c,n.length)),e.fence_start=s.length;continue}e.fence_start=0;break}switch(n){case"`":if(e.pending.length===e.fence_start)t(e,s,d(o,_,c,n.length)),e.fence_start=s.length;else l(e,2),g(e),e.fence_start=0,A(e,s,d(o,_,c,n.length));continue;case`
++`:{if(R(e,e.indent_len),l(e,10),e.pending.length>e.fence_start)e.renderer.set_attr(e.renderer.data,G,e.pending.slice(e.fence_start));g(e),e.token=101;continue}default:t(e,s,d(o,_,c,n.length));continue}case"+":if(n!==" ")break;b(e,23),C(e,2);continue;case"0":case"1":case"2":case"3":case"4":case"5":case"6":case"7":case"8":case"9":if(e.pending[e.pending.length-1]==="."){if(n!==" ")break;if(b(e,24)&&e.pending!=="1.")e.renderer.set_attr(e.renderer.data,x,e.pending.slice(0,-1));C(e,e.pending.length+1);continue}else{let u=n.charCodeAt(0);if(u===46||U(u)){t(e,s,d(o,_,c,n.length));continue}}break;case"|":O(e,e.blockquote_idx),l(e,27),l(e,28),t(e,"",[]),A(e,n,c);continue}let f=s,N=d(o,_,c,n.length);if(e.token===21)e.token=e.tokens[e.len],e.renderer.add_token(e.renderer.data,21),e.renderer.end_token(e.renderer.data);else if(e.indent_len>=4){let u=0;for(;u<4;u+=1)if(e.indent[u]==="\t"){u=u+1;break}f=e.indent.slice(u)+s,N=d(T(e.source?.indent??[],u,e.indent.length-u),e.indent.length-u,N,s.length),l(e,9)}else l(e,2);g(e),A(e,f,N);continue;case 27:if(e.table_state===1)switch(n){case"-":case" ":case"|":case":":t(e,s,d(o,_,c,n.length));continue;case`
++`:e.table_state=2,t(e,"",[]);continue;default:I(e),e.table_state=0;break}else switch(e.pending){case"|":l(e,28),t(e,"",[]),A(e,n,c);continue;case`
++`:I(e),t(e,"",[]),e.table_state=0,A(e,n,c);continue}break;case 28:switch(e.pending){case"":break;case"|":l(e,29),I(e),t(e,"",[]),A(e,n,c);continue;case`
++`:I(e),e.table_state=Math.min(e.table_state+1,2),t(e,"",[]),A(e,n,c);continue;default:l(e,29),A(e,n,c);continue}break;case 29:if(e.pending==="|"){E(e),I(e),t(e,"",[]),A(e,n,c);continue}break;case 9:switch(s){case`
+     `:case`
+    	`:case`
+   	`:case`
+  	`:case`
+-	`:e.text+=`
+-`,e.pending="";continue;case`
++	`:k(e,`
++`,T(o,0,1)),t(e,"",[]);continue;case`
+ `:case`
+  `:case`
+   `:case`
+-   `:e.pending=t;continue;default:e.pending.length!==0?(a(e),_(e),e.pending=n):e.text+=n;continue}case 10:switch(n){case"`":e.pending=t;continue;case`
+-`:if(t.length===e.fence_start+e.fence_end+1){a(e),_(e),e.pending="",e.fence_start=0,e.fence_end=0,e.token=101;continue}e.token=101;break;case" ":if(e.pending[0]===`
+-`){e.pending=t,e.fence_end+=1;continue}break}e.text+=e.pending,e.pending=n,e.fence_end=1;continue;case 11:switch(n){case"`":t.length===e.fence_start+ +(e.pending[0]===" ")?(a(e),_(e),e.pending="",e.fence_start=0):e.pending=t;continue;case`
+-`:e.text+=e.pending,e.pending="",e.token=21,e.blockquote_idx=0,a(e);continue;case" ":e.text+=e.pending,e.pending=n;continue;default:e.text+=t,e.pending="";continue}case 103:switch(e.pending.length){case 0:if(n!=="[")break;e.pending=t;continue;case 1:if(n!==" "&&n!=="x")break;e.pending=t;continue;case 2:if(n!=="]")break;e.pending=t;continue;case 3:if(n!==" ")break;e.renderer.add_token(e.renderer.data,26),e.pending[1]==="x"&&e.renderer.set_attr(e.renderer.data,T,""),e.renderer.end_token(e.renderer.data),e.pending=" ";continue}e.token=e.tokens[e.len],e.pending="",o(e,t);continue;case 14:case 15:{let r="*",d=12;if(e.token===15&&(r="_",d=13),r===e.pending){if(a(e),r===n){_(e),e.pending="";continue}i(e,d),e.pending=n;continue}break}case 12:case 13:{let r="*",d=14;switch(e.token===13&&(r="_",d=15),e.pending){case r:r===n?e.tokens[e.len-1]===d?e.pending=t:(a(e),i(e,d),e.pending=""):(a(e),_(e),e.pending=n);continue;case r+r:let R=e.token;a(e),_(e),_(e),r!==n?(i(e,R),e.pending=n):e.pending="";continue}break}case 16:if(t==="~~"){a(e),_(e),e.pending="";continue}break;case 105:n===`
+-`?(a(e),i(e,30),e.pending=""):(e.token=e.tokens[e.len],e.pending[0]==="\\"?e.text+="[":e.text+="$$",e.pending="",o(e,n));continue;case 30:if(t==="\\]"||t==="$$"){a(e),_(e),e.pending="";continue}break;case 31:if(t==="\\)"||e.pending[0]==="$"){a(e),_(e),n===")"?e.pending="":e.pending=n;continue}break;case 102:t==="http://"||t==="https://"?(a(e),i(e,18),e.pending=t,e.text=t):"http:/"[e.pending.length]===n||"https:/"[e.pending.length]===n?e.pending=t:(e.token=e.tokens[e.len],o(e,n));continue;case 17:case 19:if(e.pending==="]"){a(e),n==="("?e.pending=t:(_(e),e.pending=n);continue}if(e.pending[0]==="]"&&e.pending[1]==="("){if(n===")"){let r=e.token===17?I:k,d=e.pending.slice(2);e.renderer.set_attr(e.renderer.data,r,d),_(e),e.pending=""}else e.pending+=n;continue}break;case 18:n===" "||n===`
+-`||n==="\\"?(e.renderer.set_attr(e.renderer.data,I,e.pending),a(e),_(e),e.pending=n):(e.text+=n,e.pending=t);continue;case 104:if(t.startsWith("<br")){if(t.length===3||n===" "||n==="/"&&(t.length===4||e.pending[e.pending.length-1]===" ")){e.pending=t;continue}if(n===">"){a(e),e.token=e.tokens[e.len],e.renderer.add_token(e.renderer.data,21),e.renderer.end_token(e.renderer.data),e.pending="";continue}}e.token=e.tokens[e.len],e.text+="<",e.pending=e.pending.slice(1),o(e,n);continue}switch(e.pending[0]){case"\\":if(e.token===19||e.token===30||e.token===31)break;switch(n){case"(":a(e),i(e,31),e.pending="";continue;case"[":e.token=105,e.pending=t;continue;case`
+-`:e.pending=n;continue;default:let s=n.charCodeAt(0);e.pending="",e.text+=N(s)||s>=65&&s<=90||s>=97&&s<=122?t:n;continue}case`
+-`:switch(e.token){case 19:case 30:case 31:break;case 3:case 4:case 5:case 6:case 7:case 8:a(e),l(e,e.blockquote_idx),e.blockquote_idx=0,e.pending=n;continue;default:a(e),e.pending=n,e.token=21,e.blockquote_idx=0;continue}break;case"<":if(e.token!==19&&e.token!==30&&e.token!==31){a(e),e.pending=t,e.token=104;continue}break;case"`":if(e.token===19)break;n==="`"?(e.fence_start+=1,e.pending=t):(e.fence_start+=1,a(e),i(e,11),e.text=n===" "||n===`
+-`?"":n,e.pending="");continue;case"_":case"*":{if(e.token===19||e.token===30||e.token===31||e.token===14)break;let s=12,r=14,d=e.pending[0];if(d==="_"&&(s=13,r=15),e.pending.length===1){if(d===n){e.pending=t;continue}if(n!==" "&&n!==`
+-`){a(e),i(e,s),e.pending=n;continue}}else{if(d===n){a(e),i(e,r),i(e,s),e.pending="";continue}if(n!==" "&&n!==`
+-`){a(e),i(e,r),e.pending=n;continue}}break}case"~":if(e.token!==19&&e.token!==16){if(e.pending==="~"){if(n==="~"){e.pending=t;continue}}else if(n!==" "&&n!==`
+-`){a(e),i(e,16),e.pending=n;continue}}break;case"$":if(e.token!==19&&e.token!==16&&e.pending==="$")if(n==="$"){e.token=105,e.pending=t;continue}else{if(se(n.charCodeAt(0)))break;a(e),i(e,31),e.pending=n;continue}break;case"[":if(e.token!==19&&e.token!==17&&e.token!==30&&e.token!==31&&n!=="]"){a(e),i(e,17),e.pending=n;continue}break;case"!":if(e.token!==19&&n==="["){a(e),i(e,19),e.pending="";continue}break;case" ":if(e.pending.length===1&&n===" ")continue;break}if(e.token!==19&&e.token!==17&&e.token!==30&&e.token!==31&&n==="h"&&(e.pending===" "||e.pending==="")){e.text+=e.pending,e.pending=n,e.token=102;continue}e.text+=e.pending,e.pending=n}a(e)}function _e(e){return{add_token:oe,end_token:de,add_text:Ee,set_attr:le,data:{nodes:[e,,,,,],index:0}}}function oe(e,c){let n=e.nodes[e.index],t;switch(c){case 1:return;case 20:t=document.createElement("blockquote");break;case 2:t=document.createElement("p");break;case 21:t=document.createElement("br");break;case 22:t=document.createElement("hr");break;case 3:t=document.createElement("h1");break;case 4:t=document.createElement("h2");break;case 5:t=document.createElement("h3");break;case 6:t=document.createElement("h4");break;case 7:t=document.createElement("h5");break;case 8:t=document.createElement("h6");break;case 12:case 13:t=document.createElement("em");break;case 14:case 15:t=document.createElement("strong");break;case 16:t=document.createElement("s");break;case 11:t=document.createElement("code");break;case 18:case 17:t=document.createElement("a");break;case 19:t=document.createElement("img");break;case 23:t=document.createElement("ul");break;case 24:t=document.createElement("ol");break;case 25:t=document.createElement("li");break;case 26:let s=t=document.createElement("input");s.type="checkbox",s.disabled=!0;break;case 9:case 10:n=n.appendChild(document.createElement("pre")),t=document.createElement("code");break;case 27:t=document.createElement("table");break;case 28:switch(n.children.length){case 0:n=n.appendChild(document.createElement("thead"));break;case 1:n=n.appendChild(document.createElement("tbody"));break;default:n=n.children[1]}t=document.createElement("tr");break;case 29:t=document.createElement(n.parentElement?.tagName==="THEAD"?"th":"td");break;case 30:t=document.createElement("equation-block");break;case 31:t=document.createElement("equation-inline");break}e.nodes[++e.index]=n.appendChild(t)}function de(e){e.index-=1}function Ee(e,c){e.nodes[e.index].appendChild(document.createTextNode(c))}function le(e,c,n){e.nodes[e.index].setAttribute(ee(c),n)}export{Y as BLOCKQUOTE,j as CHECKBOX,T as CHECKED,S as CODE_BLOCK,x as CODE_FENCE,m as CODE_INLINE,Z as EQUATION_BLOCK,p as EQUATION_INLINE,C as HEADING_1,h as HEADING_2,b as HEADING_3,B as HEADING_4,U as HEADING_5,G as HEADING_6,I as HREF,P as IMAGE,H as ITALIC_AST,K as ITALIC_UND,L as LANG,y as LINE_BREAK,q as LINK,X as LIST_ITEM,v as LIST_ORDERED,$ as LIST_UNORDERED,D as PARAGRAPH,W as RAW_URL,F as RULE,k as SRC,f as START,w as STRIKE,M as STRONG_AST,Q as STRONG_UND,z as TABLE,V as TABLE_CELL,J as TABLE_ROW,_e as default_renderer,ae as parser,ce as parser_end,o as parser_write};
++   `:t(e,s,d(o,_,c,n.length));continue;default:if(e.pending.length!==0)E(e),I(e),t(e,n,c);else k(e,n,c);continue}case 10:switch(n){case"`":t(e,s,d(o,_,c,n.length));continue;case`
++`:if(s.length===e.fence_start+e.fence_end+1){E(e),I(e),t(e,"",[]),e.fence_start=0,e.fence_end=0,e.token=101;continue}e.token=101;break;case" ":if(e.pending[0]===`
++`){t(e,s,d(o,_,c,n.length)),e.fence_end+=1;continue}break}k(e,e.pending,o),t(e,n,c),e.fence_end=1;continue;case 11:switch(n){case"`":if(s.length===e.fence_start+Number(e.pending[0]===" "))E(e),I(e),t(e,"",[]),e.fence_start=0;else t(e,s,d(o,_,c,n.length));continue;case`
++`:k(e,e.pending,o),t(e,"",[]),e.token=21,e.blockquote_idx=0,E(e);continue;case" ":k(e,e.pending,o),t(e,n,c);continue;default:k(e,s,d(o,_,c,n.length)),t(e,"",[]);continue}case 103:switch(e.pending.length){case 0:if(n!=="[")break;t(e,s,d(o,_,c,n.length));continue;case 1:if(n!==" "&&n!=="x")break;t(e,s,d(o,_,c,n.length));continue;case 2:if(n!=="]")break;t(e,s,d(o,_,c,n.length));continue;case 3:if(n!==" ")break;if(e.renderer.add_token(e.renderer.data,26),e.pending[1]==="x")e.renderer.set_attr(e.renderer.data,S,"");e.renderer.end_token(e.renderer.data),t(e," ",c);continue}e.token=e.tokens[e.len],t(e,"",[]),A(e,s,d(o,_,c,n.length));continue;case 14:case 15:{let u="*",L=12;if(e.token===15)u="_",L=13;if(u===e.pending){if(E(e),u===n){I(e),t(e,"",[]);continue}l(e,L),t(e,n,c);continue}break}case 12:case 13:{let u="*",L=14;if(e.token===13)u="_",L=15;switch(e.pending){case u:if(u===n)if(e.tokens[e.len-1]===L)t(e,s,d(o,_,c,n.length));else E(e),l(e,L),t(e,"",[]);else E(e),I(e),t(e,n,c);continue;case u+u:let w=e.token;if(E(e),I(e),I(e),u!==n)l(e,w),t(e,n,c);else t(e,"",[]);continue}break}case 16:if(s==="~~"){E(e),I(e),t(e,"",[]);continue}break;case 105:if(n===`
++`)E(e),l(e,30),t(e,"",[]);else{if(e.token=e.tokens[e.len],e.pending[0]==="\\")k(e,"[",T(o,1,1));else k(e,"$$",o);t(e,"",[]),A(e,n,c)}continue;case 30:if(s==="\\]"||s==="$$"){E(e),I(e),t(e,"",[]);continue}break;case 31:if(s==="\\)"||e.pending[0]==="$"){if(E(e),I(e),n===")")t(e,"",[]);else t(e,n,c);continue}break;case 102:if(s==="http://"||s==="https://")E(e),l(e,18),t(e,s,d(o,_,c,n.length)),B(e,s,d(o,_,c,n.length));else if("http:/"[e.pending.length]===n||"https:/"[e.pending.length]===n)t(e,s,d(o,_,c,n.length));else e.token=e.tokens[e.len],A(e,n,c);continue;case 17:case 19:if(e.pending==="]"){if(E(e),n==="(")t(e,s,d(o,_,c,n.length));else I(e),t(e,n,c);continue}if(e.pending[0]==="]"&&e.pending[1]==="("){if(n===")"){let u=e.token===17?D:m,L=e.pending.slice(2);e.renderer.set_attr(e.renderer.data,u,L),I(e),t(e,"",[])}else t(e,s,d(o,_,c,n.length));continue}break;case 18:if(n===" "||n===`
++`||n==="\\")e.renderer.set_attr(e.renderer.data,D,e.pending),E(e),I(e),t(e,n,c);else k(e,n,c),t(e,s,d(o,_,c,n.length));continue;case 104:if(s.startsWith("<br")){if(s.length===3||n===" "||n==="/"&&(s.length===4||e.pending[e.pending.length-1]===" ")){t(e,s,d(o,_,c,n.length));continue}if(n===">"){E(e),e.token=e.tokens[e.len],e.renderer.add_token(e.renderer.data,21),e.renderer.end_token(e.renderer.data),t(e,"",[]);continue}}e.token=e.tokens[e.len],k(e,"<",T(o,0,1)),t(e,e.pending.slice(1),T(o,1,e.pending.length-1)),A(e,n,c);continue}switch(e.pending[0]){case"\\":if(e.token===19||e.token===30||e.token===31)break;switch(n){case"(":E(e),l(e,31),t(e,"",[]);continue;case"[":e.token=105,t(e,s,d(o,_,c,n.length));continue;case`
++`:t(e,n,c);continue;default:let f=n.charCodeAt(0);t(e,"",[]);let N=U(f)||f>=65&&f<=90||f>=97&&f<=122;k(e,N?s:n,N?d(o,_,c,n.length):c);continue}case`
++`:switch(e.token){case 19:case 30:case 31:break;case 3:case 4:case 5:case 6:case 7:case 8:E(e),O(e,e.blockquote_idx),e.blockquote_idx=0,t(e,n,c);continue;default:E(e),t(e,n,c),e.token=21,e.blockquote_idx=0;continue}break;case"<":if(e.token!==19&&e.token!==30&&e.token!==31){E(e),t(e,s,d(o,_,c,n.length)),e.token=104;continue}break;case"`":if(e.token===19)break;if(n==="`")e.fence_start+=1,t(e,s,d(o,_,c,n.length));else e.fence_start+=1,E(e),l(e,11),B(e,n===" "||n===`
++`?"":n,n===" "||n===`
++`?[]:c),t(e,"",[]);continue;case"_":case"*":{if(e.token===19||e.token===30||e.token===31||e.token===14)break;let f=12,N=14,u=e.pending[0];if(u==="_")f=13,N=15;if(e.pending.length===1){if(u===n){t(e,s,d(o,_,c,n.length));continue}if(n!==" "&&n!==`
++`){E(e),l(e,f),t(e,n,c);continue}}else{if(u===n){E(e),l(e,N),l(e,f),t(e,"",[]);continue}if(n!==" "&&n!==`
++`){E(e),l(e,N),t(e,n,c);continue}}break}case"~":if(e.token!==19&&e.token!==16){if(e.pending==="~"){if(n==="~"){t(e,s,d(o,_,c,n.length));continue}}else if(n!==" "&&n!==`
++`){E(e),l(e,16),t(e,n,c);continue}}break;case"$":if(e.token!==19&&e.token!==16&&e.pending==="$")if(n==="$"){e.token=105,t(e,s,d(o,_,c,n.length));continue}else if(Y(n.charCodeAt(0)))break;else{E(e),l(e,31),t(e,n,c);continue}break;case"[":if(e.token!==19&&e.token!==17&&e.token!==30&&e.token!==31&&n!=="]"){E(e),l(e,17),t(e,n,c);continue}break;case"!":if(e.token!==19&&n==="["){E(e),l(e,19),t(e,"",[]);continue}break;case" ":if(e.pending.length===1&&n===" ")continue;break}if(e.token!==19&&e.token!==17&&e.token!==30&&e.token!==31&&n==="h"&&(e.pending===" "||e.pending==="")){k(e,e.pending,o),t(e,n,c),e.token=102;continue}k(e,e.pending,o),t(e,n,c)}E(e)}function We(e){return{add_token:F,end_token:v,add_text:X,set_attr:j,data:{nodes:[e,,,,,],index:0}}}function F(e,a){let i=e.nodes[e.index],r;switch(a){case 1:return;case 20:r=document.createElement("blockquote");break;case 2:r=document.createElement("p");break;case 21:r=document.createElement("br");break;case 22:r=document.createElement("hr");break;case 3:r=document.createElement("h1");break;case 4:r=document.createElement("h2");break;case 5:r=document.createElement("h3");break;case 6:r=document.createElement("h4");break;case 7:r=document.createElement("h5");break;case 8:r=document.createElement("h6");break;case 12:case 13:r=document.createElement("em");break;case 14:case 15:r=document.createElement("strong");break;case 16:r=document.createElement("s");break;case 11:r=document.createElement("code");break;case 18:case 17:r=document.createElement("a");break;case 19:r=document.createElement("img");break;case 23:r=document.createElement("ul");break;case 24:r=document.createElement("ol");break;case 25:r=document.createElement("li");break;case 26:let n=r=document.createElement("input");n.type="checkbox",n.disabled=!0;break;case 9:case 10:i=i.appendChild(document.createElement("pre")),r=document.createElement("code");break;case 27:r=document.createElement("table");break;case 28:switch(i.children.length){case 0:i=i.appendChild(document.createElement("thead"));break;case 1:i=i.appendChild(document.createElement("tbody"));break;default:i=i.children[1]}r=document.createElement("tr");break;case 29:r=document.createElement(i.parentElement?.tagName==="THEAD"?"th":"td");break;case 30:r=document.createElement("equation-block");break;case 31:r=document.createElement("equation-inline");break}e.nodes[++e.index]=i.appendChild(r)}function v(e){e.index-=1}function X(e,a){e.nodes[e.index].appendChild(document.createTextNode(a))}function j(e,a,i){e.nodes[e.index].setAttribute(H(a),i)}function Pe(){return{data:void 0,add_token:z,end_token:J,add_text:V,set_attr:Z}}function z(e,a){console.log("add_token:",Q(a))}function J(e){console.log("end_token")}function V(e,a){console.log('add_text: "%s"',a)}function Z(e,a,i){console.log('set_attr: %s="%s"',H(a),i)}export{Me as Attr,Ne as BLOCKQUOTE,Re as CHECKBOX,S as CHECKED,se as CODE_BLOCK,ie as CODE_FENCE,_e as CODE_INLINE,p as DOCUMENT,Be as EQUATION_BLOCK,Ue as EQUATION_INLINE,ne as HEADING_1,te as HEADING_2,ce as HEADING_3,re as HEADING_4,ae as HEADING_5,oe as HEADING_6,D as HREF,ke as IMAGE,de as ITALIC_AST,ue as ITALIC_UND,G as LANG,ge as LINE_BREAK,Ae as LINK,Oe as LIST_ITEM,Te as LIST_ORDERED,he as LIST_UNORDERED,xe as MAYBE_BR,Ke as MAYBE_EQ_BLOCK,Se as MAYBE_TASK,Ge as MAYBE_URL,me as NEWLINE,ee as PARAGRAPH,fe as RAW_URL,Le as RULE,m as SRC,x as START,Ie as STRIKE,Ee as STRONG_AST,le as STRONG_UND,De as TABLE,Ce as TABLE_CELL,be as TABLE_ROW,He as Token,H as attr_to_html_attr,X as default_add_text,F as default_add_token,v as default_end_token,We as default_renderer,j as default_set_attr,W as heading_from_level,we as heading_to_level,q as level_to_heading,V as logger_add_text,z as logger_add_token,J as logger_end_token,Pe as logger_renderer,Z as logger_set_attr,Qe as parser,qe as parser_end,A as parser_write,Q as token_to_string};

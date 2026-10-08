@@ -2,25 +2,45 @@ import { Virtualizer, WindowVirtualizer, type VirtualizerHandle, type WindowVirt
 import { createSignal, onCleanup, onMount } from "solid-js"
 import type { MarkdownBlock, MarkdownDocument } from "../context/markdown-document"
 import { sanitizeHtml } from "./markdown-sanitize"
-type CacheSnapshot = VirtualizerHandle["cache"]
-
-function scrollContainer(root: HTMLElement) {
-  for (let parent = root.parentElement; parent; parent = parent.parentElement) {
-    if (["auto", "scroll"].includes(getComputedStyle(parent).overflowY)) return parent
-  }
-}
+import { markdownLayoutSignature, type MarkdownStreamLayout } from "./markdown-stream-source"
+import type { MarkdownLayoutCache } from "./markdown-render"
+import { markdownReadingPoint } from "./markdown-reading"
+import { markdownScrollViewport } from "./markdown-scroll-viewport"
 
 export function MarkdownDocumentView(props: {
   root: HTMLDivElement
   document: MarkdownDocument
-  cache?: CacheSnapshot
-  cacheUpdated(cache: CacheSnapshot): void
+  cache?: MarkdownLayoutCache
+  initialLayout?: MarkdownStreamLayout
+  cacheUpdated(cache: MarkdownLayoutCache | undefined): void
   enhance(root: HTMLDivElement, source?: string): () => void
 }) {
-  const scroller = scrollContainer(props.root)
+  const scroller = markdownScrollViewport(props.root)
+  const signature = markdownLayoutSignature(props.root)
+  const matches = (layout: MarkdownLayoutCache | MarkdownStreamLayout | undefined) =>
+    layout?.width === signature.width && layout.font === signature.font
+  const initial = matches(props.initialLayout) ? props.initialLayout : undefined
+  const cache = matches(props.cache) ? props.cache!.measurements : undefined
+  let reusable = true
   const [margin, setMargin] = createSignal(0)
   const [kept, setKept] = createSignal<number[]>([])
   let virtual: VirtualizerHandle | WindowVirtualizerHandle | undefined
+  let anchorRestored = false
+  let disposed = false
+  onCleanup(() => {
+    disposed = true
+  })
+  const restoreAnchor = (root: HTMLElement, index: number) => {
+    const anchor = initial?.anchor
+    if (!anchor || anchor.index !== index || anchorRestored) return
+    anchorRestored = true
+    queueMicrotask(() => {
+      if (disposed || !virtual) return
+      const point = markdownReadingPoint(root, props.document, anchor.source)
+      if (point === undefined) return
+      virtual.restoreToIndex(index, point - root.getBoundingClientRect().top - anchor.offset)
+    })
+  }
   const pin = () => {
     const selected = new Set<number>()
     const add = (node: Node | null) => {
@@ -44,10 +64,13 @@ export function MarkdownDocumentView(props: {
   }
   onMount(() => {
     const measure = () => {
+      const current = markdownLayoutSignature(props.root)
+      if (current.width !== signature.width || current.font !== signature.font) reusable = false
       if (scroller)
         setMargin(props.root.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop)
     }
     const observer = new ResizeObserver(measure)
+    observer.observe(props.root)
     if (props.root.parentElement) observer.observe(props.root.parentElement)
     if (scroller?.firstElementChild) observer.observe(scroller.firstElementChild)
     measure()
@@ -63,7 +86,8 @@ export function MarkdownDocumentView(props: {
       document.removeEventListener("selectionchange", pin)
       document.removeEventListener("focusin", pin)
       document.removeEventListener("focusout", pin)
-      if (virtual) props.cacheUpdated(virtual.cache)
+      measure()
+      if (virtual) props.cacheUpdated(reusable ? { ...signature, measurements: virtual.cache } : undefined)
     })
   })
   const block = (value: MarkdownBlock, index: () => number) => (
@@ -72,6 +96,7 @@ export function MarkdownDocumentView(props: {
       index={index}
       source={value.codeID ? props.document.codes[value.codeID] : undefined}
       enhance={props.enhance}
+      ready={(root) => restoreAnchor(root, index())}
     />
   )
   return scroller ? (
@@ -84,7 +109,8 @@ export function MarkdownDocumentView(props: {
       startMargin={margin()}
       overscan={4}
       keepMounted={kept()}
-      cache={props.cache}
+      cache={cache}
+      initialSizes={initial?.sizes}
     >
       {block}
     </Virtualizer>
@@ -95,7 +121,8 @@ export function MarkdownDocumentView(props: {
       }}
       data={props.document.blocks}
       overscan={4}
-      cache={props.cache}
+      cache={cache}
+      initialSizes={initial?.sizes}
     >
       {block}
     </WindowVirtualizer>
@@ -107,11 +134,13 @@ function MarkdownDocumentBlock(props: {
   index(): number
   source?: string
   enhance(root: HTMLDivElement, source?: string): () => void
+  ready(root: HTMLDivElement): void
 }) {
   let root!: HTMLDivElement
   onMount(() => {
     root.innerHTML = sanitizeHtml(props.block.html)
     onCleanup(props.enhance(root, props.source))
+    props.ready(root)
   })
   return <div data-markdown-block={props.index()} ref={root} style={{ display: "flow-root" }} />
 }

@@ -1,11 +1,14 @@
 import type { MarkdownDocument } from "../context/markdown-document"
 import type { VirtualizerHandle } from "virtua/solid"
+import type { MarkdownLayoutSignature } from "./markdown-stream-source"
+
+export type MarkdownLayoutCache = MarkdownLayoutSignature & { measurements: VirtualizerHandle["cache"] }
 
 export type MarkdownRenderEntry = {
   hash: string
   html: string
   document?: MarkdownDocument
-  layout?: VirtualizerHandle["cache"]
+  layout?: MarkdownLayoutCache
 }
 
 export function markdownRenderHash(value: string) {

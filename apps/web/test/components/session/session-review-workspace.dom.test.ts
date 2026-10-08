@@ -2,10 +2,9 @@ import { afterAll, beforeAll, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
-import { createServer, type ViteDevServer } from "vite"
-import solid from "vite-plugin-solid"
+import { preview, type PreviewServer } from "vite"
 
-let server: ViteDevServer
+let server: PreviewServer
 let browser: Browser
 let page: Page
 let fixture: string
@@ -25,9 +24,11 @@ beforeAll(async () => {
     import {createSignal} from "solid-js"
     import {I18nProvider} from "@lingui/solid"
     import {setupI18n} from "@lingui/core"
+    import {messages as enMessages} from ${JSON.stringify(`${appSrc}/locales/en/messages.po`)}
+    import {messages as zhMessages} from ${JSON.stringify(`${appSrc}/locales/zh-CN/messages.po`)}
     import "@ericsanchezok/synergy-ui/styles"
     import {ThemeProvider,useTheme} from "@ericsanchezok/synergy-ui/theme"
-    import {SessionReviewTab} from ${JSON.stringify(`/@fs/${appSrc}/components/session/session-review-tab.tsx`)}
+    import {SessionReviewTab} from ${JSON.stringify(`${appSrc}/components/session/session-review-tab.tsx`)}
     import {TurnChangeSummaryPanel} from "@ericsanchezok/synergy-ui/turn-change-summary-panel"
     const [incomplete,setIncomplete]=createSignal(false)
     const [pending,setPending]=createSignal(false)
@@ -37,7 +38,7 @@ beforeAll(async () => {
     const [diffs,setDiffs]=createSignal([{id:"wsp_a",generation:1,root:"/a"},{id:"wsp_b",generation:1,root:"/b"}].map(workspace=>({file:"same.txt",workspace,additions:1,deletions:0,preview:"+"+workspace.root})))
     const h=window.fixture={calls:[],loads:[],reviews:0,undos:0,metadata:()=>setDiffs([{file:"compact.txt",workspace:{id:"wsp_a",generation:1,root:"/a"},additions:1,deletions:0}]),pending:()=>setPending(true),ready:()=>setPending(false),incomplete:()=>setIncomplete(true),error:()=>setFailed(true),empty:()=>setDiffs([]),locale:(locale)=>i18n.activate(locale),operations:()=>setDiffs(["first","last"].map(operationID=>({file:"same.txt",workspace:{id:"wsp_a",generation:1,root:"/a"},operationID,additions:1,deletions:1,preview:"+"+operationID}))),legacy:()=>setDiffs(["/legacy-a","/legacy-b"].map(legacyRoot=>({file:"same.txt",legacyRoot,additions:1,deletions:0,preview:"+"+legacyRoot}))),switch:()=>setWorkspace({id:"wsp_b",generation:1,path:"/b"}),rebind:()=>setWorkspace({id:"wsp_b",generation:2,path:"/b"})}
     const view=()=>({review:{open,setOpen},scroll:()=>undefined,setScroll(){}})
-    const i18n=setupI18n({locale:"en",messages:{en:{},"zh-CN":{"ui.turnChangeSummary.title":"已更改 {fileCount} 个文件","ui.turnChangeSummary.undo":"撤销","turn-change.review-changes":"查看更改"}}})
+    const i18n=setupI18n({locale:"en",messages:{en:enMessages,"zh-CN":zhMessages}})
     function Content(){
       const theme=useTheme()
       h.theme=theme.setColorScheme
@@ -49,32 +50,50 @@ beforeAll(async () => {
   const reservation = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
   const port = reservation.port
   await reservation.stop(true)
-  server = await createServer({
+  const options = {
     configFile: false,
+    logLevel: "error",
     root: fixture,
-    cacheDir: path.join(fixture, ".vite"),
-    plugins: [solid()],
+    define: { "process.env.NODE_ENV": JSON.stringify("production") },
+    worker: { format: "es" },
     resolve: {
       alias: { "@": appSrc, lru_map: Bun.resolveSync("lru_map", path.resolve(appSrc, "../../../packages/ui")) },
     },
-    optimizeDeps: {
-      include: ["solid-js", "solid-js/web", "solid-js/store", "@lingui/core", "@lingui/solid", "lru_map"],
-      noDiscovery: true,
+    build: {
+      outDir: path.join(fixture, "dist"),
+      minify: false,
+      target: "esnext",
+      lib: { entry: path.join(fixture, "main.tsx"), formats: ["es"], fileName: "main", cssFileName: "styles" },
     },
-    server: { host: "127.0.0.1", port, strictPort: true, fs: { allow: [path.resolve(appSrc, "../../.."), fixture] } },
+  }
+  const builder = Bun.spawn(
+    [
+      process.execPath,
+      "-e",
+      `import {build} from ${JSON.stringify(Bun.resolveSync("vite", import.meta.dir))}; import solidPlugin from ${JSON.stringify(Bun.resolveSync("vite-plugin-solid", import.meta.dir))}; import lingui from ${JSON.stringify(Bun.resolveSync("@lingui/vite-plugin", import.meta.dir))}; await build({... ${JSON.stringify(options)}, plugins:[solidPlugin(),...lingui({configPath:${JSON.stringify(path.resolve(appSrc, "../lingui.config.ts"))}})]}); process.exit(0)`,
+    ],
+    { env: { ...process.env, NODE_ENV: "test" }, stdout: "inherit", stderr: "inherit" },
+  )
+  if (await builder.exited) throw new Error("Review workspace fixture build failed")
+  await Bun.write(
+    path.join(fixture, "dist/index.html"),
+    '<!doctype html><link rel="stylesheet" href="/styles.css"><div id="root"></div><script type="module" src="/main.js"></script>',
+  )
+  server = await preview({
+    configFile: false,
+    root: fixture,
+    preview: { host: "127.0.0.1", port, strictPort: true },
   })
-  await server.listen()
   base = server.resolvedUrls!.local[0]!
-  await server.warmupRequest("/main.tsx")
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage()
   page.setDefaultTimeout(4000)
   page.setDefaultNavigationTimeout(20_000)
   page.on("pageerror", (error) => errors.push(error.message))
-}, 30_000)
+}, 120_000)
 afterAll(async () => {
   await browser?.close()
-  await server?.close()
+  if (server) await new Promise<void>((resolve) => server.httpServer.close(() => resolve()))
   if (fixture) await rm(fixture, { recursive: true, force: true })
 })
 
